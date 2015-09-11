@@ -1,0 +1,43 @@
+{:port 12321
+ :authorization {:one-user "dgrnbrg"
+                 ;:kerberos true
+                 ;:http-basic true
+                 }
+ :database {:datomic-uri "datomic:mem://mesos-jobs"}
+ :zookeeper {:local? true
+             ;:local-port 3291 ; Uncomment to change the default port
+             ;:connection "zk1.example.com:2181,zk2.example.com:2181,zk3.example.com:2181/cook" ; delete the :local? setting to use a networked ZK
+             }
+ :scheduler {:offer-incubate-ms 15000
+             :task-constraints {:timeout-hours 1
+                                :timeout-interval-minutes 1
+                                :memory-gb 48
+                                :cpus 6}}
+ :mesos {:master "zk://localhost:2181/mesos"
+         :failover-timeout-ms nil
+         :leader-path "/cook-scheduler"
+         :principal nil}
+ :unhandled-exceptions {:email {:to ["admin@example.com"]
+                                :from "cook@example.com"
+                                :subject "Unhandled exception in cook"}}
+ :nrepl {:enabled? true
+         :port 8888}
+ :log {:file "log/cook.log"
+       :levels {"datomic.db" :warn
+                "datomic.peer" :warn
+                "datomic.kv-cluster" :warn
+                :default :info}}
+ 
+ ;; Not yet supported
+ ;:hostname
+ ;:dns
+ ;; Needs documentation
+ ;:federation {:remotes ["http://localhost:12322"]
+ ;             :priviledged-principal "admin"
+ ;             :threads 4
+ ;             :circuit-breaker {:failure-threshold 0
+ ;                               :lifetime-ms 60000
+ ;                               :response-timeout-ms 60000
+ ;                               :reset-timeout-ms 60000
+ ;                               :failure-logger-size 10000}}
+ }

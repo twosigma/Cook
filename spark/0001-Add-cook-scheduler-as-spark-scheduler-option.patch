@@ -1,0 +1,261 @@
+From a86f378c5af09e5b8aa3412532f61ef1d9d3cb74 Mon Sep 17 00:00:00 2001
+From: Wil Yegelwel <Wil.Yegelwel@twosigma.com>
+Date: Thu, 11 Jun 2015 20:42:35 +0000
+Subject: [PATCH] Add cook scheduler as spark scheduler option
+
+---
+ core/pom.xml                                       |    5 +
+ .../main/scala/org/apache/spark/SparkContext.scala |    8 +
+ .../org/apache/spark/deploy/SparkSubmit.scala      |   14 +-
+ .../scheduler/CoarseCookSchedulerBackend.scala     |  149 ++++++++++++++++++++
+ 4 files changed, 170 insertions(+), 6 deletions(-)
+ create mode 100644 core/src/main/scala/org/apache/spark/scheduler/CoarseCookSchedulerBackend.scala
+
+diff --git a/core/pom.xml b/core/pom.xml
+index a239e00..f4fa982 100644
+--- a/core/pom.xml
++++ b/core/pom.xml
+@@ -35,6 +35,11 @@
+   <url>http://spark.apache.org/</url>
+   <dependencies>
+     <dependency>
++      <groupId>com.twosigma</groupId>
++      <artifactId>cook_jobclient</artifactId>
++      <version>0.1-SNAPSHOT</version>
++    </dependency>
++    <dependency>
+       <groupId>com.google.guava</groupId>
+       <artifactId>guava</artifactId>
+     </dependency>
+diff --git a/core/src/main/scala/org/apache/spark/SparkContext.scala b/core/src/main/scala/org/apache/spark/SparkContext.scala
+index 05c3210..43e7099 100644
+--- a/core/src/main/scala/org/apache/spark/SparkContext.scala
++++ b/core/src/main/scala/org/apache/spark/SparkContext.scala
+@@ -2099,6 +2099,8 @@ object SparkContext extends Logging {
+     val MESOS_REGEX = """(mesos|zk)://.*""".r
+     // Regular expression for connection to Simr cluster
+     val SIMR_REGEX = """simr://(.*)""".r
++    // Regular expression for connection to Cook Scheduler
++    val COOK_REGEX = """cook://(.*):([0-9]+)""".r
+ 
+     // When running locally, don't try to re-execute tasks on failure.
+     val MAX_LOCAL_TASK_FAILURES = 1
+@@ -2110,6 +2112,12 @@ object SparkContext extends Logging {
+         scheduler.initialize(backend)
+         (backend, scheduler)
+ 
++      case COOK_REGEX(url, port) =>
++        val scheduler = new TaskSchedulerImpl(sc)
++        val backend = new CoarseCookSchedulerBackend(scheduler, sc, url, port.toInt)
++        scheduler.initialize(backend)
++        (backend, scheduler)
++
+       case LOCAL_N_REGEX(threads) =>
+         def localCpuCount = Runtime.getRuntime.availableProcessors()
+         // local[*] estimates the number of cores on the machine; local[N] uses exactly N threads.
+diff --git a/core/src/main/scala/org/apache/spark/deploy/SparkSubmit.scala b/core/src/main/scala/org/apache/spark/deploy/SparkSubmit.scala
+index 4a74641..751a1e8 100644
+--- a/core/src/main/scala/org/apache/spark/deploy/SparkSubmit.scala
++++ b/core/src/main/scala/org/apache/spark/deploy/SparkSubmit.scala
+@@ -63,7 +63,8 @@ object SparkSubmit {
+   private val STANDALONE = 2
+   private val MESOS = 4
+   private val LOCAL = 8
+-  private val ALL_CLUSTER_MGRS = YARN | STANDALONE | MESOS | LOCAL
++  private val COOK = 16
++  private val ALL_CLUSTER_MGRS = YARN | STANDALONE | MESOS | COOK | LOCAL
+ 
+   // Deploy modes
+   private val CLIENT = 1
+@@ -213,7 +214,8 @@ object SparkSubmit {
+       case m if m.startsWith("spark") => STANDALONE
+       case m if m.startsWith("mesos") => MESOS
+       case m if m.startsWith("local") => LOCAL
+-      case _ => printErrorAndExit("Master must start with yarn, spark, mesos, or local"); -1
++      case m if m.startsWith("cook") => COOK
++      case _ => printErrorAndExit("Master must start with yarn, spark, mesos, cook, or local"); -1
+     }
+ 
+     // Set the deploy mode; default is client mode
+@@ -374,11 +376,11 @@ object SparkSubmit {
+       OptionAssigner(args.jars, YARN, CLUSTER, clOption = "--addJars"),
+ 
+       // Other options
+-      OptionAssigner(args.executorMemory, STANDALONE | MESOS | YARN, ALL_DEPLOY_MODES,
++      OptionAssigner(args.executorMemory, STANDALONE | MESOS | COOK | YARN, ALL_DEPLOY_MODES,
+         sysProp = "spark.executor.memory"),
+-      OptionAssigner(args.totalExecutorCores, STANDALONE | MESOS, ALL_DEPLOY_MODES,
++      OptionAssigner(args.totalExecutorCores, STANDALONE | MESOS | COOK, ALL_DEPLOY_MODES,
+         sysProp = "spark.cores.max"),
+-      OptionAssigner(args.files, LOCAL | STANDALONE | MESOS, ALL_DEPLOY_MODES,
++      OptionAssigner(args.files, LOCAL | STANDALONE | MESOS | COOK, ALL_DEPLOY_MODES,
+         sysProp = "spark.files")
+     )
+ 
+@@ -746,7 +748,7 @@ private[spark] object SparkSubmitUtils {
+       md.addDependency(dd)
+     }
+   }
+-  
++
+   /** Add exclusion rules for dependencies already included in the spark-assembly */
+   private[spark] def addExclusionRules(
+       ivySettings: IvySettings,
+diff --git a/core/src/main/scala/org/apache/spark/scheduler/CoarseCookSchedulerBackend.scala b/core/src/main/scala/org/apache/spark/scheduler/CoarseCookSchedulerBackend.scala
+new file mode 100644
+index 0000000..f45f674
+--- /dev/null
++++ b/core/src/main/scala/org/apache/spark/scheduler/CoarseCookSchedulerBackend.scala
+@@ -0,0 +1,149 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *    http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.apache.spark.scheduler
++
++import scala.collection.JavaConverters._
++
++import org.apache.mesos._
++import org.apache.mesos.Protos._
++
++import org.apache.spark.{Logging, SparkContext}
++import org.apache.spark.scheduler.TaskSchedulerImpl
++import org.apache.spark.scheduler.cluster.CoarseGrainedSchedulerBackend
++import org.apache.spark.scheduler.cluster.mesos.{CoarseMesosSchedulerBackend,MemoryUtils}
++
++import com.twosigma.cook.jobclient.{Job, JobClient, JobListener => CJobListener}
++import java.util.UUID
++
++/**
++ * A SchedulerBackend that runs tasks using Cook, using "coarse-grained" tasks, where it holds
++ * onto Cook instances for the duration of the Spark job instead of relinquishing cores whenever
++ * a task is done. It launches Spark tasks within the coarse-grained Cook instances using the
++ * CoarseGrainedSchedulerBackend mechanism. This class is useful for lower and more predictable
++ * latency.
++ */
++private[spark] class CoarseCookSchedulerBackend(
++    scheduler: TaskSchedulerImpl,
++    sc: SparkContext,
++    cookHost: String,
++    cookPort: Int)
++extends CoarseGrainedSchedulerBackend(scheduler, sc.env.actorSystem)
++with Logging {
++  // Book-keeping for cores we have requested from cook
++  var totalCoresRequested = 0
++  var totalFailures = 0
++  val maxFailures = conf.getInt("spark.executor.failures", 5)
++
++  val maxCores = conf.getInt("spark.cores.max", 0)
++  val maxCoresPerJob = 5
++
++  val priority = conf.getInt("spark.cook.priority", 75)
++
++  val sparkMesosScheduler = new CoarseMesosSchedulerBackend(scheduler, sc, "")
++
++  val jobClient = new JobClient.Builder()
++    .setHost(cookHost)
++    .setPort(cookPort)
++    .setEndpoint("rawscheduler")
++    .setStatusUpdateInterval(1)
++    .setBatchRequestSize(10)
++    .build()
++
++  var runningJobUUIDs = Set[UUID]()
++
++  val jobListener = new CJobListener {
++    // These are called serially so don't need to worry about race conditions
++    def onStatusUpdate(job : Job) : Unit = {
++      if (job.getStatus == Job.Status.COMPLETED && !job.isSuccess){
++        totalCoresRequested -= job.getCpus().toInt
++        totalFailures += 1
++        logWarning(s"Job ${job.getUUID()} has died. ")
++        runningJobUUIDs = runningJobUUIDs - job.getUUID
++        if (totalFailures >= maxFailures){
++          logError(s"We have exceeded our maximum failures ($maxFailures)" +
++                    "and will not relaunch any more tasks")
++        } else{
++          requestRemainingCores()
++        }
++      }
++    }
++  }
++
++  def createJob(numCores : Int) : Job = { // should return Job
++    val jobId = UUID.randomUUID()
++    logInfo(s"Creating job with id: $jobId")
++    val fakeOffer = Offer.newBuilder()
++      .setId(OfferID.newBuilder().setValue("Cook-id"))
++      .setFrameworkId(FrameworkID.newBuilder().setValue("Cook"))
++      .setHostname("$(hostname)")
++      .setSlaveId(SlaveID.newBuilder().setValue(jobId.toString))
++      .build()
++    val commandInfo = sparkMesosScheduler.createCommand(fakeOffer, numCores)
++    val commandString = commandInfo.getValue
++    val environmentInfo = commandInfo.getEnvironment
++    val environmentString = environmentInfo.getVariablesList.asScala
++      .map{ v => s"${v.getName}=${v.getValue}" }.mkString("; ")
++    // This is a hack. Will want cook api to support uris
++    val urisCommand = commandInfo.getUrisList.asScala
++      .map{ u => s"cp ${u.getValue} . && tar -xvzf $$(basename ${u.getValue}) " }
++      .mkString(" && ")
++    logDebug(s"uri command: $urisCommand")
++    logDebug(s"env command: $environmentString")
++    logDebug(s"command: $commandString")
++    new Job.Builder()
++      .setUUID(jobId)
++      .setCommand(Seq(environmentString, urisCommand, commandString).mkString(";"))
++      .setMemory(MemoryUtils.calculateTotalMemory(sc))
++      .setCpus(numCores)
++      .setPriority(priority)
++      .build()
++  }
++
++  def createRemainingJobs() : List[Job] = {
++    val totalCoresRemaining = maxCores - totalCoresRequested
++    val numFullJobs = totalCoresRemaining/maxCoresPerJob
++    val coresRemaining = totalCoresRemaining % maxCoresPerJob
++
++    val jobs = (1 to numFullJobs).map { _ => createJob(maxCoresPerJob) }
++      .foldRight(List.empty[Job]) { _ :: _ }
++
++    if (coresRemaining > 0){
++      createJob(coresRemaining) :: jobs
++    }else{
++      jobs
++    }
++  }
++
++  def requestRemainingCores() : Unit = {
++    val jobs = createRemainingJobs()
++    totalCoresRequested += jobs.map{_.getCpus.toInt}.sum
++    runningJobUUIDs = runningJobUUIDs ++ jobs.map{_.getUUID}
++    jobClient.submit(jobs.asJava, jobListener)
++  }
++
++  override def start() {
++    super.start()
++    logInfo("Starting Cook Spark Scheduler")
++    requestRemainingCores()
++  }
++
++  override def stop() {
++    super.stop()
++    jobClient.abort(runningJobUUIDs.asJava)
++  }
++}
+-- 
+1.7.3
+
