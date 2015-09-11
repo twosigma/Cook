@@ -13,7 +13,7 @@ Please visit the `scheduler` subproject first to get started.
 
 ## Contributing
 
-In order to accept your code contributions, please fill out the appropriate Contributer License Agreement in the `cla` folder and submit it to tsos@twosigma.com.
+In order to accept your code contributions, please fill out the appropriate Contributor License Agreement in the `cla` folder and submit it to tsos@twosigma.com.
 
 ## Disclaimer
 
