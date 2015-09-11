@@ -31,7 +31,6 @@
                  [amalloy/ring-buffer "1.1"]
                  [lonocloud/synthread "1.0.4"]
                  [org.clojure/tools.namespace "0.2.4"]
-                 [nathanmarz/tools.cli "0.2.2"]
                  [org.clojure/core.cache "0.6.3"]
                  [org.clojure/core.memoize "0.5.6"]
                  [clj-time "0.9.0"]
@@ -95,7 +94,6 @@
                   :exclusions [org.slf4j/slf4j-api
                                com.fasterxml.jackson.core/jackson-core
                                org.slf4j/jcl-over-slf4j
-                               org.clojure/tools.cli
                                org.slf4j/jul-to-slf4j
                                org.slf4j/log4j-over-slf4j
                                org.slf4j/slf4j-nop
@@ -135,9 +133,9 @@
    :dev
    {:dependencies [[clj-http-fake "1.0.1"]
                    [org.clojure/test.check "0.6.1"]]
-    :jvm-opts ["-Xms16G"
+    :jvm-opts ["-Xms2G"
                "-XX:-OmitStackTraceInFastThrow"
-               "-Xmx16G"]
+               "-Xmx2G"]
     :source-paths []}}
 
   :test-selectors {:default (complement :integration)

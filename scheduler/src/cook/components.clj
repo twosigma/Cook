@@ -72,7 +72,7 @@
                       (route/not-found "<h1>Not a valid route</h1>")))})
 
 (def mesos-scheduler
-  {:mesos-scheduler (fnk [[:settings mesos-master mesos-leader-path mesos-failover-timeout mesos-principal offer-incubate-time-ms task-constraints] mesos-datomic mesos-datomic-mult curator-framework]
+  {:mesos-scheduler (fnk [[:settings mesos-master mesos-leader-path mesos-failover-timeout mesos-principal mesos-role offer-incubate-time-ms task-constraints] mesos-datomic mesos-datomic-mult curator-framework]
                          (try
                            (Class/forName "org.apache.mesos.Scheduler")
                            ((lazy-load-var 'cook.mesos/start-mesos-scheduler)
@@ -83,6 +83,7 @@
                             mesos-leader-path
                             mesos-failover-timeout
                             mesos-principal
+                            mesos-role
                             offer-incubate-time-ms
                             task-constraints)
                            (catch ClassNotFoundException e
@@ -298,11 +299,13 @@
                              leader-path)
      :mesos-principal (fnk [[:config [:mesos principal]]]
                            principal)
+     :mesos-role (fnk [[:config [:mesos {role "*"}]]]
+                           role)
      :nrepl-server (fnk [[:config [:nrepl {enabled? false} {port 0}]]]
                         (when enabled?
                           (when (zero? port)
                             (throw (ex-info "You enabled nrepl but didn't configure a port. Please configure a port in your config file." {})))
-                          (start-server :port port)))}))
+                          ((lazy-load-var 'clojure.tools.nrepl.server/start-server) :port port)))}))
 
 (defn- init-logger
   ([] (init-logger {:levels {"datomic.db" :warn

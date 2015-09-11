@@ -76,7 +76,7 @@
 
 (defn start-mesos-scheduler
   "Starts a leader elector that runs a mesos."
-  [mesos-master curator-framework mesos-datomic-conn mesos-datomic-mult zk-prefix mesos-failover-timeout mesos-principal offer-incubate-time-ms task-constraints]
+  [mesos-master curator-framework mesos-datomic-conn mesos-datomic-mult zk-prefix mesos-failover-timeout mesos-principal mesos-role offer-incubate-time-ms task-constraints]
   (let [zk-framework-id (str zk-prefix "/framework-id")
         datomic-report-chan (async/chan (async/sliding-buffer 4096))
         mesos-pending-jobs-atom (atom [])
@@ -108,21 +108,23 @@
                               (let [normal-exit (atom true)
                                     shutdown-hooks (atom ())]
                                 (try
-                                  (let [driver (clj-mesos.scheduler/driver
-                                                 scheduler
-                                                 (merge
-                                                   {:user ""
-                                                    :role "cook"
-                                                    :name (str "Cook-" cook.util/version)
-                                                    :checkpoint true}
-                                                   (when mesos-principal
-                                                     {:principal mesos-principal})
-                                                   (when mesos-failover-timeout
-                                                     {:failover-timeout mesos-failover-timeout})
-                                                   (when framework-id
-                                                     {:id framework-id}))
-                                                 mesos-master
-                                                 {:principal mesos-principal})]
+                                  (let [driver (apply clj-mesos.scheduler/driver
+                                                      scheduler
+                                                      (merge
+                                                        {:user ""
+                                                         :name (str "Cook-" cook.util/version)
+                                                         :checkpoint true}
+                                                        (when mesos-role
+                                                          {:role mesos-role})
+                                                        (when mesos-principal
+                                                          {:principal mesos-principal})
+                                                        (when mesos-failover-timeout
+                                                          {:failover-timeout mesos-failover-timeout})
+                                                        (when framework-id
+                                                          {:id framework-id}))
+                                                      mesos-master
+                                                      (when mesos-principal
+                                                        [{:principal mesos-principal}]))]
                                     (clj-mesos.scheduler/start driver)
                                     (reset! current-driver driver)
                                     (swap! shutdown-hooks conj (cook.mesos.monitor/riemann-reporter mesos-datomic-conn))
