@@ -120,17 +120,13 @@
              ;; The 180s session and 30s connection timeouts were pulled from a google group
              ;; recommendation
              curator-framework (CuratorFrameworkFactory/newClient zookeeper 180000 30000 retry-policy)
-             riemann-send (lazy-load-var 'cook.riemann/riemann-send)]
+             ]
          (.. curator-framework
              getConnectionStateListenable
              (addListener (reify ConnectionStateListener
                             (stateChanged [_ client newState]
-                              (riemann-send
-                               {:service "Cook cloud"
-                                :state "notice"
-                                :description (str "The state of the curator changed: " newState)})
-                                       (log/info "Curator state changed:"
-                                                 (str newState))))))
+                              (log/info "Curator state changed:"
+                                        (str newState))))))
          (.start curator-framework)
          curator-framework)))
 
@@ -293,11 +289,11 @@
                                   offer-incubate-ms)
      :mesos-master (fnk [[:config [:mesos master]]]
                         master)
-     :mesos-failover-timeout (fnk [[:config [:mesos failover-timeout-ms]]]
+     :mesos-failover-timeout (fnk [[:config [:mesos {failover-timeout-ms nil}]]]
                                   failover-timeout-ms)
      :mesos-leader-path (fnk [[:config [:mesos leader-path]]]
                              leader-path)
-     :mesos-principal (fnk [[:config [:mesos principal]]]
+     :mesos-principal (fnk [[:config [:mesos {principal nil}]]]
                            principal)
      :mesos-role (fnk [[:config [:mesos {role "*"}]]]
                            role)

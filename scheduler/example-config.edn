@@ -1,5 +1,5 @@
 {:port 12321
- :authorization {:one-user "dgrnbrg"
+ :authorization {:one-user "vagrant"
                  ;:kerberos true
                  ;:http-basic true
                  }
