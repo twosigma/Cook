@@ -17,9 +17,17 @@
          :failover-timeout-ms nil
          :leader-path "/cook-scheduler"
          :principal nil}
- :unhandled-exceptions {:email {:to ["admin@example.com"]
-                                :from "cook@example.com"
-                                :subject "Unhandled exception in cook"}}
+ :unhandled-exceptions {:log-level :error
+                        ;:email {:to ["admin@example.com"]
+                        ;        :from "cook@example.com"
+                        ;        :subject "Unhandled exception in cook"}
+                        }
+ :metrics {;:riemann {:host
+           ;          :port
+           ;          :tags
+           ;          :prefix
+           ;          }
+           :jmx true}
  :nrepl {:enabled? true
          :port 8888}
  :log {:file "log/cook.log"

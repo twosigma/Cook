@@ -296,12 +296,22 @@
           (str "\nCaused by:" (get-html-stacktrace cause))))))
 
 (defn install-email-on-exception-handler
-  [email-config]
+  "When an exception isn't caught anywhere, this installs a global handler.
+   It will log the exception at the given log-level (:error is recommended),
+   and it will send an email to the address specified by the email-config.
+   
+   email-config comes from the postal library. Usually, you'll specify
+   a map like:
+   {:to [\"admin@example.com\"]
+    :from \"cook@example.com\"
+    :subject \"unhandled exception in cook\"}"
+  [log-level email-config]
   (Thread/setDefaultUncaughtExceptionHandler
     (reify Thread$UncaughtExceptionHandler
       (uncaughtException [_ thread e]
         (log/error e "Uncaught exception on thread" (.getName thread))
-        (let [stacktrace (get-html-stacktrace e)]
-          (postal/send-message (-> email-config
-                                   (update-in [:subject] str " on thread " (.getName thread))
-                                   (assoc :body stacktrace))))))))
+        (when email-config
+          (let [stacktrace (get-html-stacktrace e)]
+            (postal/send-message (-> email-config
+                                     (update-in [:subject] str " on thread " (.getName thread))
+                                     (assoc :body stacktrace)))))))))

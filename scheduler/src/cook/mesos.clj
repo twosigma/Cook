@@ -24,7 +24,6 @@
             [cook.datomic :refer (transact-with-retries)]
             [cook.mesos.scheduler :as sched]
             [cook.mesos.heartbeat]
-            [cook.mesos.monitor]
             [cook.mesos.rebalancer]
             [cook.util]
             [cook.curator :as curator])
@@ -127,7 +126,6 @@
                                                         [{:principal mesos-principal}]))]
                                     (clj-mesos.scheduler/start driver)
                                     (reset! current-driver driver)
-                                    (swap! shutdown-hooks conj (cook.mesos.monitor/riemann-reporter mesos-datomic-conn))
                                     #_(swap! shutdown-hooks conj (cook.mesos.scheduler/reconciler mesos-datomic-conn driver))
                                     (swap! shutdown-hooks conj (cook.mesos.scheduler/lingering-task-killer mesos-datomic-conn driver (select-keys task-constraints [:timeout-hours :timeout-interval-minutes])))
                                     (swap! shutdown-hooks conj (cook.mesos.heartbeat/start-heartbeat-watcher! mesos-datomic-conn mesos-heartbeat-chan))

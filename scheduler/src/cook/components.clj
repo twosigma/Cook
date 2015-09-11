@@ -172,8 +172,6 @@
                              (log/info "Starting local ZK server")
                              (.start zookeeper-server)))
      :mesos mesos-scheduler
-     :metric-riemann-reporter (fnk []
-                                   ((lazy-load-var 'cook.reporter/metric-riemann-reporter) :service-prefix "cook scheduler"))
      :curator-framework curator-framework}))
 
 (def simple-dns-name
@@ -270,7 +268,7 @@
                          local-port)
      :zookeeper-server (fnk [[:config [:zookeeper {local? false}]] local-zk-port]
                             (when local?
-                              (log/info "Created local testing server; not yet started")
+                              (log/info "Created local ZooKeeper; not yet started")
                               (org.apache.curator.test.TestingServer. local-zk-port false)))
      :zookeeper (fnk [[:config [:zookeeper {local? false} {connection nil}]] local-zk-port]
                      (cond
@@ -297,6 +295,14 @@
                            principal)
      :mesos-role (fnk [[:config [:mesos {role "*"}]]]
                            role)
+     ;:riemann-metrics (fnk [[:config [:metrics {riemann nil}]]]
+     ;                  (when riemann
+     ;                    (when-not (= 4 (count (select-keys riemann [:host :port])))
+     ;                      (throw (ex-info "You must specify the riemann :host and :port!" riemann)))
+     ;                    ((lazy-load-var 'cook.reporter/riemann-reporter) riemann)))
+     :jmx-metrics (fnk [[:config [:metrics {jmx false}]]]
+                       (when jmx
+                         ((lazy-load-var 'cook.reporter/jmx-reporter))))
      :nrepl-server (fnk [[:config [:nrepl {enabled? false} {port 0}]]]
                         (when enabled?
                           (when (zero? port)
@@ -335,8 +341,8 @@
 (def pre-configuration
   "This configures logging and exception handling, to make the configuration phase simpler to understand"
   (graph/eager-compile
-    {:exception-handler (fnk [[:config [:unhandled-exceptions email]] logging]
-                             ((lazy-load-var 'cook.util/install-email-on-exception-handler) email))
+    {:exception-handler (fnk [[:config [:unhandled-exceptions {log-level :error} {email nil}]] logging]
+                             ((lazy-load-var 'cook.util/install-email-on-exception-handler) log-level email))
      :logging (fnk [[:config log]]
                    (init-logger log))}))
 

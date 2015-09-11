@@ -1,6 +1,6 @@
 # Cook Scheduler
 
-The Cook scheduleri is a Mesos framework that is able to scheduler jobs submitted to it via its REST API from multiple users.
+The Cook scheduler is a Mesos framework that is able to scheduler jobs submitted to it via its REST API from multiple users.
 It's raison d'etre is to prioritize the user experience on a shared cluster.
 It does so by allowing users to use as much resources as possible, preempting users with greater shares when new users show up, and allowing users to have new jobs jump to the head of their queue.
 You can learn more about the algorithms used by Cook in this talk by Li Jin at MesosCon: https://www.youtube.com/watch?v=BkBMYUe76oI.

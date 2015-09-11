@@ -50,11 +50,6 @@
                  [org.slf4j/slf4j-log4j12 "1.7.12"]
                  [com.draines/postal "1.11.0"
                   :exclusions [commons-codec]]
-                 [riemann-clojure-client "0.2.10"
-                  :exclusions [io.netty/netty
-                               org.clojure/clojure
-                               com.codahale.metrics/metrics-core
-                               ]]
                  [prismatic/plumbing "0.1.1"]
                  [instaparse "1.4.0"]
                  [org.codehaus.jsr166-mirror/jsr166y "1.7.0"]
@@ -156,6 +151,9 @@
              "-Xloggc:gclog"
              "-XX:+UseGCLogFileRotation"
              "-XX:NumberOfGCLogFiles=20"
+             "-Dcom.sun.management.jmxremote.port=5555"
+             "-Dcom.sun.management.jmxremote.authenticate=false"
+             "-Dcom.sun.management.jmxremote.ssl=false"
              "-XX:GCLogFileSize=128M"
              "-XX:+PrintGCDateStamps"
              "-XX:+HeapDumpOnOutOfMemoryError"
