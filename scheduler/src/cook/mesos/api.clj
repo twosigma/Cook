@@ -33,6 +33,13 @@
 (def PosDouble
   (s/both double (s/pred pos? 'pos?)))
 
+(def Uri
+  "Schema for a Mesos fetch URI, which has many options"
+  {:value s/Str
+   (s/optional-key :executable?) s/Bool
+   (s/optional-key :extract?) s/Bool
+   (s/optional-key :cache?) s/Bool})
+
 (def Job
   "A schema for a job"
   {:uuid (s/pred #(instance? UUID %) 'uuid?)
@@ -43,6 +50,8 @@
    :priority (s/both s/Int (s/pred #(<= 0 % 100) 'between-0-and-100))
    :max-retries (s/both s/Int (s/pred pos? 'pos?))
    :max-runtime (s/both s/Int (s/pred pos? 'pos?))
+   (s/optional-key :uris) [Uri]
+   (s/optional-key :ports) [(s/pred zero? 'zero)] ;;TODO add to docs the limited uri/port support
    :cpus (s/both PosDouble (s/pred #(<= % 32) 'under-32-cpus))
    :mem (s/both PosDouble (s/pred #(<= % 200000) 'under-200gb-mem))
    ;; Make sure the user name is vaild. It must begin with a lower case character, end with
@@ -51,8 +60,30 @@
 
 (sm/defn submit-jobs
   [conn jobs :- [Job]]
-  (doseq [{:keys [uuid command max-retries max-runtime priority cpus mem user name]} jobs
-          :let [txn {:db/id (d/tempid :db.part/user)
+  (doseq [{:keys [uuid command max-retries max-runtime priority cpus mem user name ports uris]} jobs
+          :let [id (d/tempid :db.part/user)
+                ports (mapv (fn [port]
+                              ;;TODO this schema might not work b/c all ports are zero
+                              [:db/add id :job/port port])
+                            ports)
+                uris (mapcat (fn [{:keys [value executable? cache? extract?]}]
+                               (let [uri-id (d/tempid :db.part/user)
+                                     optional-params {:resource.uri/executable? executable?
+                                                      :resource.uri/extract? extract?
+                                                      :resource.uri/cache? cache?}]
+                                 [[:db/add id :job/resource uri-id]
+                                  (reduce-kv
+                                    ;; This only adds the optional params to the DB if they were explicitly set
+                                    (fn [txn-map k v]
+                                      (if-not (nil? v)
+                                        (assoc txn-map k v)
+                                        txn-map))
+                                    {:db/id uri-id
+                                     :resource/type :resource.type/uri
+                                     :resource.uri/value value}
+                                    optional-params)]))
+                             uris)
+                txn {:db/id id
                      :job/uuid uuid
                      :job/name name
                      :job/command command
@@ -66,8 +97,10 @@
                                      :resource/amount cpus}
                                     {:resource/type :resource.type/mem
                                      :resource/amount mem}]}]]
-
-    @(d/transact conn [txn]))
+    ;; TODO batch these transactions to improve performance
+    @(d/transact conn (-> ports
+                          (into uris)
+                          (conj txn))))
   "ok")
 
 (defn unused-uuid?
@@ -83,7 +116,7 @@
 (defn validate-and-munge-job
   "Takes the user and the parsed json from the job and returns proper
    Job objects, or else throws an exception"
-  [db user {:strs [cpus mem uuid command priority max_retries max_runtime name]}]
+  [db user {:strs [cpus mem uuid command priority max_retries max_runtime name uris ports]}]
   (let [munged {:user user
                 :uuid (UUID/fromString uuid)
                 :name (or name "cookjob") ; Add default job name if user does not provide a name.
@@ -91,9 +124,20 @@
                 :priority (or priority 50) ; Add default priority to maintain backwards compatibility.
                 :max-retries max_retries
                 :max-runtime (if max_runtime max_runtime Long/MAX_VALUE)
+                :uris (or (map (fn [{:strs [value executable cache extract]}]
+                                 (merge {:value value}
+                                        (when executable {:executable? executable})
+                                        (when cache {:cache? cache})
+                                        (when extract {:extract? extract})))
+                               uris)
+                          [])
+                :ports (or ports [])
                 :cpus (double cpus)
                 :mem (double mem)}]
     (s/validate Job munged)
+    (doseq [{:keys [executable? extract?] :as uri} (:uris munged)
+            :when (and (not (nil? executable?)) (not (nil? extract?)))]
+      (throw (ex-info "Uri cannot set executable and extract" uri)))
     (unused-uuid? db (:uuid munged))
     munged))
 

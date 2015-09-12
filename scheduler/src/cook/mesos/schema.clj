@@ -92,6 +92,11 @@
     :db/valueType :db.type/long
     :db/cardinality :db.cardinality/one
     :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :job/port
+    :db/valueType :db.type/long
+    :db/cardinality :db.cardinality/many
+    :db.install/_attribute :db.part/db}
     ;; Resource attributes
     {:db/id (d/tempid :db.part/db)
      :db/ident :resource/type
@@ -103,6 +108,26 @@
      :db/valueType :db.type/double
      :db/cardinality :db.cardinality/one
      :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :resource.uri/executable?
+    :db/valueType :db.type/boolean
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :resource.uri/value
+    :db/valueType :db.type/string
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :resource.uri/extract?
+    :db/valueType :db.type/boolean
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :resource.uri/cache?
+    :db/valueType :db.type/boolean
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
     ;; Instance attributes
     {:db/id (d/tempid :db.part/db)
      :db/ident :instance/task-id
@@ -228,6 +253,8 @@
    {:db/id (d/tempid :db.part/user)
     :db/ident :resource.type/mem
     :resource.type/mesos-name :mem}
+   {:db/id (d/tempid :db.part/user)
+    :db/ident :resource.type/uri}
    ;; Functions for database manipulation
    {:db/id (d/tempid :db.part/user)
     :db/ident :instance/create

@@ -67,8 +67,7 @@
 
                  ;;External system integrations
                  [me.raynes/conch "0.5.2"]
-                 [clj-mesos "0.22.0"]
-                 [org.apache.mesos/mesos "0.20.0"]
+                 [clj-mesos "0.22.1-SNAPSHOT"]
                  [com.google.protobuf/protobuf-java "2.5.0"] ; used by clj-mesos
                  [org.clojure/tools.nrepl "0.2.3"]
 

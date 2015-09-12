@@ -65,28 +65,18 @@
        [(>= ?mem ?mem-req)]]
      db pending-jobs (tuplify-offer offer)))
 
-(defn resources->mesos-resource-map
-  "Takes a collection of datomic-style resources and converts
-   to mesos formatting"
-  [db resources]
-  (into {} (q '[:find ?k ?v
-                :in $ [?r ...]
-                :where
-                [?r :resource/type ?t]
-                [?t :resource.type/mesos-name ?k]
-                [?r :resource/amount ?v]]
-              db resources)))
-
 (defn job->task-info
   "Takes a job entity, returns a taskinfo"
   [db fid job]
   (let [job-ent (d/entity db job)
         task-id (str (java.util.UUID/randomUUID))
+        resources (util/job-ent->resources job-ent)
         ;; If the custom-executor attr isn't set, we default to using a custom
         ;; executor in order to support jobs submitted before we added this field
         custom-executor (:job/custom-executor job-ent true)
         command {:value (:job/command job-ent)
-                 :user (:job/user job-ent)}
+                 :user (:job/user job-ent)
+                 :uris (:uris resources)}
         ;; executor-{key,value} configure whether this is a command or custom
         ;; executor
         executor-key (if custom-executor :executor :command)
@@ -100,7 +90,9 @@
     ;; If the there is no value for key :job/name, the following name will contain a substring "null".
     {:name (format "%s_%s_%s" (:job/name job-ent) (:job/user job-ent) task-id)
      :task-id task-id
-     :resources (util/job-ent->resources job-ent)
+     :num-ports (count (:ports resources))
+     :resources (select-keys resources [:mem :cpus])
+     ;;TODO this data is a race-condition
      :data (.getBytes
              (pr-str
                {:instance (str (count (:job/instance job-ent)))})
@@ -321,6 +313,7 @@
         :let [ids (mapcat #(or (:ids %) (seq [(:id %)])) offers)
               cpu (apply + (map (comp :cpus :resources) offers))
               mem (apply + (map (comp :mem :resources) offers))
+              ports (vec (apply concat (map (comp :ports :resources) offers)))
               time-received (->> offers
                                 (sort-by :time-received)
                                 first
@@ -331,7 +324,8 @@
         (log/debug "Combining offers " offers))
       {:ids ids
        :resources {:cpus cpu
-                   :mem mem}
+                   :mem mem
+                   :ports ports}
        :hostname hostname
        :slave-id slave-id
        :driver driver
@@ -458,6 +452,10 @@
                                              :slave-id (:slave-id offer)
                                              :job-id job-id)))
                                   matches)]
+              ;TODO assign the ports to actual available ones, and configure the environment variables; look at the Fenzo API to match up with it
+              ;First we need to convince mesos to actually offer ports
+              ;then, we need to allocate the ports (incremental or bulk?) copy from my book.
+              
               ;; Note that this transaction can fail if a job was scheduled
               ;; during a race. If that happens, then other jobs that should
               ;; be scheduled will not be eligible for rescheduling until
@@ -493,11 +491,11 @@
               (mesos/launch-tasks
                 driver
                 (:ids offer)
-                (mapv #(dissoc % :job-id) task-infos))))))
+                (mapv #(dissoc % :job-id :num-ports) task-infos))))))
       (catch Throwable t
         (decline-offers driver (:ids offer))
         (meters/mark! handle-resource-offer!-errors)
-        (log/error t "Error in match")))))
+        (log/error t "Error in match:" (ex-data t))))))
 
 (defn reconcile-jobs
   "Ensure all jobs saw their final state change"
