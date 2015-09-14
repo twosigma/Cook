@@ -5,7 +5,6 @@ target
 .vim_jack_in
 .kill_lein
 src/cfg/current.clj
-docs
 .nrepl-port
 .lein-cljsbuild-compiler*
 .lein-repl-history
