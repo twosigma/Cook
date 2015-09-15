@@ -592,14 +592,15 @@
               (fn [now]
                 (let [db (d/db conn)
                       lingering-tasks (get-lingering-tasks db now timeout-hours)]
-                  (log/info "Start to kill lingering jobs running more than" timeout-hours
-                            "hours. There are in total" (count lingering-tasks) "lingering tasks.")
-                  (doseq [task-id lingering-tasks]
-                    (log/info "Killing lingering task" task-id)
-                    ;; Note that we probably should update db to mark a task failed as well.
-                    ;; However in the case that we fail to kill a particular task in Mesos,
-                    ;; we could lose the chances to kill this task again.
-                    (mesos/kill-task driver task-id))))
+                  (when-not (zero? (count lingering-tasks))
+                    (log/info "Starting to kill lingering jobs running more than" timeout-hours
+                              "hours. There are in total" (count lingering-tasks) "lingering tasks.")
+                    (doseq [task-id lingering-tasks]
+                      (log/info "Killing lingering task" task-id)
+                      ;; Note that we probably should update db to mark a task failed as well.
+                      ;; However in the case that we fail to kill a particular task in Mesos,
+                      ;; we could lose the chances to kill this task again.
+                      (mesos/kill-task driver task-id)))))
               {:error-handler (fn [e]
                                 (log/error e "Failed to reap timeout tasks!"))})))
 
