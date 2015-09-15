@@ -197,7 +197,7 @@ public class JobClient implements Closeable {
 
             _httpClientBuilder.setDefaultCredentialsProvider(credentialsProvider);
             _httpClientBuilder.setDefaultAuthSchemeRegistry(RegistryBuilder.<AuthSchemeProvider>create()
-                    .register(AuthSchemes.SPNEGO, new SPNegoSchemeFactory(true)).build());
+                    .register(AuthSchemes.SPNEGO, new SPNegoSchemeFactory(true, false)).build());
             return this;
         }
 
