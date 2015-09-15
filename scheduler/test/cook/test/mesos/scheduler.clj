@@ -30,12 +30,10 @@
 (def datomic-uri "datomic:mem://test-mesos-jobs")
 
 (deftest test-tuplify-offer
-  (println "test-tuplify-offer")
   (is (= ["1234" 40.0 100.0] (sched/tuplify-offer {:slave-id "1234"
                                                    :resources {:cpus 40.0
                                                                :mem 100.0}}))))
 (deftest test-sort-jobs-by-dru
-  (println "test-sort-jobs-by-dru")
   (let [uri "datomic:mem://test-sort-jobs-by-dru"
         conn (restore-fresh-database! uri)
         j1 (create-dummy-job conn :user "ljin" :ncpus 1.0 :memory 3.0)
@@ -86,6 +84,7 @@
 
 (d/delete-database "datomic:mem://preemption-testdb")
 (d/create-database "datomic:mem://preemption-testdb")
+;;NB you shouldn't transact to this DB--it's read only once it's been initialized
 (def c (d/connect "datomic:mem://preemption-testdb"))
 
 (doseq [[t i] (mapv vector cook.mesos.schema/work-item-schema (range))]
@@ -175,17 +174,14 @@
   (def t2-1 (d/resolve-tempid db-after tempids t2-1)))
 
 (deftest test-extract-job-resources
-  (println "test-extract-job-resources")
   (let [resources (util/job-ent->resources (d/entity (db c) j1))]
     (is (= 1.0 (:cpus resources)))
     (is (= 1000.0 (:mem resources)))))
 
 (deftest test-prefixes
-  (println "test-prefixes")
   (is (= [[1] [1 2] [1 2 3] [1 2 3 4] [1 2 3 4 5]] (sched/prefixes [1 2 3 4 5]))))
 
 (deftest test-match-offer-to-schedule
-  (println "test-match-offer-to-schedule")
   (let [schedule (map #(d/entity (db c) %) [j1 j2 j3 j4])] ; all 1gb 1 cpu
       (testing "Consume no schedule cases"
         (is (= [] (sched/match-offer-to-schedule [] {:resources {:cpus 0 :mem 0}})))
@@ -202,7 +198,6 @@
         (is (= schedule (sched/match-offer-to-schedule schedule {:resources {:cpus 5 :mem 5000}}))))))
 
 (deftest test-get-user->used-resources
-  (println "test-get-user->used-resources")
   (let [uri "datomic:mem://test-get-used-resources"
         conn (restore-fresh-database! uri)
         j1 (create-dummy-job conn :user "u1" :job-state :job.state/running)
@@ -225,7 +220,6 @@
     (java.util.Date. (tc/to-long datetime)))
 
 (deftest test-get-lingering-tasks
-  (println "test-get-lingering-tasks")
   (let [uri "datomic:mem://test-get-lingering-tasks"
         conn (restore-fresh-database! uri)
         ;; a job has been timeout
@@ -260,7 +254,6 @@
     (is (= #{task-id-1 task-id-2} (set (sched/get-lingering-tasks test-db (t/now) timeout-hours))))))
 
 (deftest test-filter-offensive-jobs
-  (println "test-filter-offensive-jobs")
   (let [uri "datomic:mem://test-filter-offensive-jobs"
         conn (restore-fresh-database! uri)
         constraints {:memory-gb 10.0
@@ -287,7 +280,6 @@
         jobs [job-entity-1 job-entity-2 job-entity-3]
         offensive-jobs-ch (async/chan (count jobs))
         offensive-jobs #{job-entity-1 job-entity-2}]
-    (println "inited")
     (is (= #{job-entity-3} (set (sched/filter-offensive-jobs constraints offensive-jobs-ch jobs))))
     (println "check1")
     (let [received-offensive-jobs (async/<!! offensive-jobs-ch)]
@@ -296,7 +288,6 @@
       (async/close! offensive-jobs-ch))))
 
 (deftest test-rank-jobs
-  (println "test-rank-jobs")
   (let [uri "datomic:mem://test-rank-jobs"
         conn (restore-fresh-database! uri)
         constraints {:memory-gb 10.0
@@ -322,8 +313,7 @@
     (is (= #{job-entity-2} (set (sched/rank-jobs test-db offensive-job-filter))))))
 
 (deftest test-get-lingering-tasks
-  (println "test-get-lingering-tasks")
-  (let [uri "datomic:mem://test-rank-jobs"
+  (let [uri "datomic:mem://test-lingering-tasks"
         conn (restore-fresh-database! uri)
         now (tc/from-date #inst "2015-01-05")
         job-id-1 (create-dummy-job conn

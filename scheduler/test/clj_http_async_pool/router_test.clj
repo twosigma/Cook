@@ -23,7 +23,7 @@
             [clj-http-async-pool.router :as router]
             [clj-http-async-pool.test-utils :refer :all]))
 
-(deftest test-routing
+(deftest ^:integration test-routing
   (testing "Separate hosts have separate threadpools"
     (let [req-time 25
           goog-req-mult 1
@@ -73,7 +73,7 @@
                               (+ (quot msft-requests threads)
                                  (min 1 (rem msft-requests threads)))))))))))))))
 
-(deftest test-timeouts
+(deftest ^:integration test-timeouts
   (testing "A slow server can't block client requests"
     (let [req-time 200
           timeout 50]
@@ -99,7 +99,7 @@
                ;; variance
                (is (> (* 3 timeout) elapsed))))))))))
 
-(deftest test-circuit-breaker-stats
+(deftest ^:integration test-circuit-breaker-stats
   (testing "We can snoop on the circuit-breaker stats properly"
     (let [req-time 200
           timeout 100]

@@ -291,24 +291,23 @@
         (async/close! chan)
         (d/delete-database test-db-uri)))))
 
-
 (deftest test-tx-report-queue-monitor
   (let [test-db-uri "datomic:mem://test-transact-db"
         _ (d/create-database test-db-uri)
         conn (d/connect test-db-uri)
         [mult kill-thread] (cook.datomic/create-tx-report-mult conn)
         chan (async/chan)
-        ]
+        shutdown-monitor (sched/monitor-tx-report-queue chan conn (atom nil))]
     (try
       (async/tap mult chan)
       (doseq [init cook.mesos.schema/work-item-schema]
         @(d/transact conn init))
-      (sched/monitor-tx-report-queue chan conn (atom nil))
       ;; This only tests that the :job/update-state db-fn was invoked (not whether it's correct)
       (let [j (make-fake-job-with-tasks conn :job.state/waiting :instance.status/running)]
         (Thread/sleep 1000)
         (is (= :job.state/running (:job/state (d/entity (db conn) j)))))
       (finally
+        (shutdown-monitor)
         (kill-thread)
         (async/untap mult chan)
         (async/close! chan)
