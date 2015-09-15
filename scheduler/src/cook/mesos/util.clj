@@ -32,8 +32,15 @@
   "Take a job entity and return a resource map. NOTE: the keys must be same as mesos resource keys"
   [job-ent]
   (reduce (fn [m r]
-            (assoc m (keyword (name (:resource/type r))) (:resource/amount r)))
-          {}
+            (let [resource (keyword (name (:resource/type r)))]
+              (condp contains? resource
+                #{:cpus :mem} (assoc m resource (:resource/amount r))
+                #{:uri} (update-in m [:uris] (fnil conj [])
+                                   {:cache (:resource.uri/cache? r false)
+                                    :executable (:resource.uri/executable? r false)
+                                    :value (:resource.uri/value r)
+                                    :extract (:resource.uri/extract? r false)}))))
+          {:ports (:job/port job-ent)}
           (:job/resource job-ent)))
 
 (defn sum-resources-of-jobs
