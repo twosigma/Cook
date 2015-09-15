@@ -254,7 +254,7 @@
                                                                                     (log/error e "Failed to parse the basic auth header")
                                                                                     nil))]
                                                          (do
-                                                           (log/info "Got http basic auth:" user pass)
+                                                           (log/debug "Got http basic auth:" user pass)
                                                            (h (assoc req :authorization/user user)))
                                                          {:status 400
                                                           :body "malformed authorization header in basic auth"}))))
