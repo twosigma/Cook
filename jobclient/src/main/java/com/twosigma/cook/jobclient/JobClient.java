@@ -18,6 +18,7 @@ package com.twosigma.cook.jobclient;
 
 import java.io.Closeable;
 import java.io.IOException;
+import java.io.UnsupportedEncodingException;
 import java.lang.Thread.UncaughtExceptionHandler;
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -32,17 +33,38 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.security.Principal;
 
 import org.apache.http.HttpEntity;
 import org.apache.http.HttpResponse;
 import org.apache.http.NameValuePair;
 import org.apache.http.ParseException;
 import org.apache.http.StatusLine;
+import org.apache.http.auth.AuthSchemeProvider;
+import org.apache.http.auth.AuthScope;
+import org.apache.http.auth.Credentials;
+import org.apache.http.auth.UsernamePasswordCredentials;
+import org.apache.http.client.CredentialsProvider;
+import org.apache.http.client.config.AuthSchemes;
+import org.apache.http.client.config.RequestConfig;
+import org.apache.http.client.entity.UrlEncodedFormEntity;
+import org.apache.http.client.methods.HttpDelete;
+import org.apache.http.client.methods.HttpGet;
+import org.apache.http.client.methods.HttpPost;
+import org.apache.http.client.methods.HttpRequestBase;
+import org.apache.http.client.utils.URIBuilder;
+import org.apache.http.config.RegistryBuilder;
+import org.apache.http.entity.StringEntity;
 import org.apache.http.client.methods.HttpRequestBase;
 import org.apache.http.HttpStatus;
 import org.apache.http.client.utils.URIBuilder;
 import org.apache.http.message.BasicNameValuePair;
 import org.apache.http.util.EntityUtils;
+import org.apache.http.impl.auth.SPNegoSchemeFactory;
+import org.apache.http.impl.client.BasicCredentialsProvider;
+import org.apache.http.impl.client.CloseableHttpClient;
+import org.apache.http.impl.client.HttpClientBuilder;
+import org.apache.http.impl.client.StandardHttpRequestRetryHandler;
 import org.json.JSONException;
 import org.json.JSONObject;
 
@@ -52,8 +74,6 @@ import com.google.common.collect.Lists;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 
 import org.apache.log4j.Logger;
-
-import com.twosigma.cook.jobclient.httpclient.BasicKerberizedHttpClient;
 
 /**
  * An implementation for the Cook job client.
@@ -79,17 +99,10 @@ public class JobClient implements Closeable {
 
     private static final Logger _log = Logger.getLogger(JobClient.class);
 
-    public static class NotVatsBuilder extends AbstractBuilder<NotVatsBuilder> {
-        @Override
-	public NotVatsBuilder _this() {
-            return this;
-	}
-    }
-
     /**
      * A builder for the {@link JobClient}.
      */
-    public static abstract class AbstractBuilder<T extends AbstractBuilder>
+    public static class Builder
     {
         private String _host;
 
@@ -118,6 +131,12 @@ public class JobClient implements Closeable {
          */
         private Integer _requestTimeoutSeconds;
 
+        private HttpClientBuilder _httpClientBuilder;
+
+        public Builder() {
+            _httpClientBuilder = HttpClientBuilder.create();
+        }
+
         /**
          * Prior to {@code Build()}, host, port, and endpoint for the Cook scheduler must be specified either by user or
          * properties. If any of them is not specified, it will throw a {@link DeathError}.
@@ -138,16 +157,49 @@ public class JobClient implements Closeable {
             if (_requestTimeoutSeconds == null) {
                 _requestTimeoutSeconds = DEFAULT_REQUEST_TIMEOUT_SECONDS;
             }
+            RequestConfig requestConfig = RequestConfig.custom()
+                .setSocketTimeout(_requestTimeoutSeconds * 1000)
+                .setConnectTimeout(_requestTimeoutSeconds * 1000)
+                .setConnectionRequestTimeout(_requestTimeoutSeconds * 1000).setStaleConnectionCheckEnabled(true)
+                .build();
+            _httpClientBuilder.setDefaultRequestConfig(requestConfig);
+            _httpClientBuilder.setRetryHandler(new StandardHttpRequestRetryHandler());
             return new JobClient(
-                Preconditions.checkNotNull(_host, "host must be set"),
-                Preconditions.checkNotNull(_port, "port must be set"),
-                Preconditions.checkNotNull(_endpoint, "endpoint must be set"),
-                _statusUpdateIntervalSeconds,
-                _batchRequestSize,
-                _requestTimeoutSeconds);
+                    Preconditions.checkNotNull(_host, "host must be set"),
+                    Preconditions.checkNotNull(_port, "port must be set"),
+                    Preconditions.checkNotNull(_endpoint, "endpoint must be set"),
+                    _statusUpdateIntervalSeconds,
+                    _batchRequestSize,
+                    _httpClientBuilder.build());
         }
 
-	public abstract T _this();
+        public Builder setUsernameAuth(String username, String password) {
+            CredentialsProvider credentialsProvider = new BasicCredentialsProvider();
+            credentialsProvider.setCredentials(AuthScope.ANY, new UsernamePasswordCredentials(username, password));
+            _httpClientBuilder.setDefaultCredentialsProvider(credentialsProvider);
+            return this;
+        }
+
+        public Builder setKerberosAuth() {
+            Credentials creds = new Credentials() {
+                @Override
+                    public String getPassword() {
+                        return null;
+                    }
+
+                @Override
+                    public Principal getUserPrincipal() {
+                        return null;
+                    }
+            };
+            CredentialsProvider credentialsProvider = new BasicCredentialsProvider();
+            credentialsProvider.setCredentials(AuthScope.ANY, creds);
+
+            _httpClientBuilder.setDefaultCredentialsProvider(credentialsProvider);
+            _httpClientBuilder.setDefaultAuthSchemeRegistry(RegistryBuilder.<AuthSchemeProvider>create()
+                    .register(AuthSchemes.SPNEGO, new SPNegoSchemeFactory(true)).build());
+            return this;
+        }
 
         /**
          * Set the Cook scheduler host where the job client expected to build will connect to.
@@ -155,15 +207,15 @@ public class JobClient implements Closeable {
          * @param host {@link String} specifies the Cook scheduler host.
          * @return this builder.
          */
-        public T setHost(String host) {
+        public Builder setHost(String host) {
             Preconditions.checkNotNull(host, "host can not be null!");
             _host = host;
-            return _this();
+            return this;
         }
 
-	public String getHost() {
+        public String getHost() {
             return _host;
-	}
+        }
 
         /**
          * Set the Cook scheduler port where the job client expected to build will connect to.
@@ -171,15 +223,15 @@ public class JobClient implements Closeable {
          * @param port specifies the Cook scheduler port.
          * @return this builder.
          */
-        public T setPort(int port) {
+        public Builder setPort(int port) {
             Preconditions.checkNotNull(port, "port can not be null!");
             _port = port;
-            return _this();
+            return this;
         }
 
-	public Integer getPort() {
+        public Integer getPort() {
             return _port;
-	}
+        }
 
         /**
          * Set the Cook scheduler endpoint where the job client expected to build will send the requests to.
@@ -187,18 +239,18 @@ public class JobClient implements Closeable {
          * @param endpoint {@link String} specifies the Cook scheduler endpoint.
          * @return this builder.
          */
-        public T setEndpoint(String endpoint) {
+        public Builder setEndpoint(String endpoint) {
             if (!endpoint.startsWith("/")) {
                 _endpoint = "/" + endpoint;
             } else {
                 _endpoint = endpoint;
             }
-            return _this();
+            return this;
         }
 
-	public String getEndpoint() {
+        public String getEndpoint() {
             return _endpoint;
-	}
+        }
 
         /**
          * Set the status update interval in seconds for the job client expected to build.
@@ -214,16 +266,16 @@ public class JobClient implements Closeable {
          * @param intervalSeconds specifies the status update interval in seconds.
          * @return this builder.
          */
-        public T setStatusUpdateInterval(int intervalSeconds) {
+        public Builder setStatusUpdateInterval(int intervalSeconds) {
             // make sure that the interval must be at least 10 seconds.
             _statusUpdateIntervalSeconds = Math.max(intervalSeconds, DEFAULT_STATUS_UPDATE_INTERVAL_SECONDS);
             _log.info("The status update interval in seconds is " + _statusUpdateIntervalSeconds);
-            return _this();
+            return this;
         }
 
-	public Integer getStatusUpdateInterval() {
+        public Integer getStatusUpdateInterval() {
             return _statusUpdateIntervalSeconds;
-	}
+        }
 
         /**
          * Set the size of batch requests for the job client expected to build. This will limit the number of jobs per
@@ -232,15 +284,15 @@ public class JobClient implements Closeable {
          * @param batchRequestSize specifies the maximum number of jobs per any http request.
          * @return this builder.
          */
-        public T setBatchRequestSize(int batchRequestSize) {
+        public Builder setBatchRequestSize(int batchRequestSize) {
             Preconditions.checkArgument(batchRequestSize > 0, "The batch request size must be > 0.");
             _batchRequestSize = batchRequestSize;
-            return _this();
+            return this;
         }
 
-	public Integer getBatchRequestSize() {
+        public Integer getBatchRequestSize() {
             return _batchRequestSize;
-	}
+        }
 
         /**
          * Set HTTP request timeout in seconds expected to set SocketTimeout, ConnectionTimeout, and
@@ -249,15 +301,15 @@ public class JobClient implements Closeable {
          * @param timeoutSeconds specifies the request timeout seconds for HTTP requests.
          * @return this builder.
          */
-        public T setRequestTimeout(int timeoutSeconds) {
+        public Builder setRequestTimeout(int timeoutSeconds) {
             Preconditions.checkArgument(timeoutSeconds > 0, "The timeout seconds must be > 0.");
             _requestTimeoutSeconds = timeoutSeconds;
-            return _this();
+            return this;
         }
 
-	public Integer getRequestTimeout() {
+        public Integer getRequestTimeout() {
             return _requestTimeoutSeconds;
-	}
+        }
     }
 
     /**
@@ -268,7 +320,7 @@ public class JobClient implements Closeable {
     /**
      * A kerberized HTTP client.
      */
-    private final BasicKerberizedHttpClient _httpClient;
+    private final CloseableHttpClient _httpClient;
 
     /**
      * A {@link ScheduledExecutorService} for pulling job status and invoking listener.
@@ -309,13 +361,13 @@ public class JobClient implements Closeable {
      * @throws URISyntaxException
      */
     private JobClient(String host, int port, String endpoint, int statusUpdateInterval, int batchSubmissionLimit,
-            int requestTimeoutSeconds) throws URISyntaxException {
+            CloseableHttpClient httpClient) throws URISyntaxException {
         _statusUpdateInterval = statusUpdateInterval;
         _batchRequestSize = batchSubmissionLimit;
         _activeUUIDToJob = new ConcurrentHashMap<UUID, Job>();
         _activeUUIDToListener = new ConcurrentHashMap<UUID, JobListener>();
         _uri = new URIBuilder().setScheme("http").setHost(host).setPort(port).setPath(endpoint).build();
-        _httpClient = new BasicKerberizedHttpClient(host, port, requestTimeoutSeconds);
+        _httpClient = httpClient;
         _log.info("Open ScheduledExecutorService for listener.");
         _listenerService = startListenService();
     }
@@ -420,6 +472,26 @@ public class JobClient implements Closeable {
     }
 
     /**
+     * Generate a HTTP POST request for a given uri and a JSON object.
+     * 
+     * @param uri {@link URI} specifies the uri for the request.
+     * @param params {@link JSONObject} specifies the parameters used in the HTTP POST request.
+     * @return {@link HttpPost} request.
+     * @throws URISyntaxException
+     */
+    public static HttpPost makeHttpPost(URI uri, JSONObject params) {
+        try {
+            StringEntity input = new StringEntity(params.toString());
+            input.setContentType("application/json");
+            HttpPost request = new HttpPost(uri);
+            request.setEntity(input);
+            return request;
+        } catch (UnsupportedEncodingException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    /**
      * Submit a list of jobs to Cook scheduler and start to track these jobs until they complete. Note that jobs
      * submitted through this API will not be listened by any listener.
      * 
@@ -436,9 +508,9 @@ public class JobClient implements Closeable {
             throw new JobClientException("Can not jsonize jobs to submit.", e);
         }
         HttpResponse httpResponse;
-        HttpRequestBase httpRequest = BasicKerberizedHttpClient.getHttpPostNoThrow(_uri, json);
+        HttpRequestBase httpRequest = makeHttpPost(_uri, json);
         try {
-            httpResponse = _httpClient.executeWithRetries(httpRequest, 5, 10);
+            httpResponse = executeWithRetries(httpRequest, 5, 10);
         } catch (IOException e) {
             throw releaseAndCreateException(httpRequest, "Can not submit POST request " + json + " via uri " + _uri, e);
         }
@@ -521,7 +593,9 @@ public class JobClient implements Closeable {
             HttpResponse httpResponse;
             HttpRequestBase httpRequest;
             try {
-                httpRequest = BasicKerberizedHttpClient.getHttpGet(_uri, params);
+                URIBuilder uriBuilder = new URIBuilder(_uri);
+                uriBuilder.addParameters(params);
+                httpRequest = new HttpGet(uriBuilder.build());
                 httpResponse = _httpClient.execute(httpRequest);
             } catch (IOException | URISyntaxException e) {
                 throw releaseAndCreateException(null, "Can not submit GET request " + params + " via uri " + _uri, e);
@@ -572,7 +646,9 @@ public class JobClient implements Closeable {
         for (final List<NameValuePair> params : Lists.partition(allParams, _batchRequestSize)) {
             HttpRequestBase httpRequest;
             try {
-                httpRequest = BasicKerberizedHttpClient.getHttpDelete(_uri, params);
+                URIBuilder uriBuilder = new URIBuilder(_uri);
+                uriBuilder.addParameters(params);
+                httpRequest =  new HttpDelete(uriBuilder.build());
             } catch (URISyntaxException e) {
                 throw releaseAndCreateException(null, "Can not submit DELETE request " + params + " via uri " + _uri, e);
             }
@@ -608,6 +684,47 @@ public class JobClient implements Closeable {
                 httpRequest.releaseConnection();
             }
         }
+    }
+
+    /**
+     * A wrapper for the function {@code execute(HttpRequestBase request)}. It retries using
+     * exponential retry strategy with the following intervals:<br>
+     * {@code baseIntervalSeconds, baseIntervalSeconds * 2, baseIntervalSeconds * 2^2, baseIntervalSeconds * 2^3 ...}
+     * 
+     * @param request {@link HttpRequestBase} specifies the HTTP request expected to execute.
+     * @param maxRetries specifies the maximum number of retries.
+     * @param baseIntervalSeconds specifies the interval base for the exponential retry strategy
+     * @return the {@link HttpResponse} if the execution is successful with maximum number of
+     *         retries.
+     * @throws IOException
+     */
+    public HttpResponse executeWithRetries(HttpRequestBase request, int maxRetries, long baseIntervalSeconds)
+        throws IOException {
+        Preconditions.checkArgument(maxRetries > 0, "maxRetries must be > 1");
+        Preconditions.checkArgument(baseIntervalSeconds > 0, "baseIntervalSeconds must be > 0");
+
+        HttpResponse response = null;
+        IOException exception = null;
+        long sleepMillis = TimeUnit.SECONDS.toMillis(baseIntervalSeconds);
+        for (int i = 0; i < maxRetries; ++i) {
+            try {
+                response = _httpClient.execute(request);
+            } catch (IOException e) {
+                exception = e;
+                response = null;
+                try {
+                    Thread.sleep(sleepMillis);
+                    sleepMillis *= 2;
+                } catch (InterruptedException ie) {
+                    // no-op
+                }
+            }
+            if (null != response) {
+                return response;
+            }
+        }
+        // If it can not get any response after several retries, re-throw the the exception.
+        throw new IOException(exception);
     }
 
     @Override

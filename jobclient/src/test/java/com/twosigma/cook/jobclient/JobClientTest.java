@@ -25,6 +25,7 @@ import mockit.Mock;
 import mockit.MockUp;
 import mockit.integration.junit4.JMockit;
 
+import org.apache.http.client.HttpClient;
 import org.apache.commons.io.IOUtils;
 import org.apache.http.HttpResponse;
 import org.apache.http.ProtocolVersion;
@@ -56,10 +57,9 @@ public class JobClientTest {
 
     private JobListener _listener;
 
-    private static class MockBasicKerberizedHttpClient extends MockUp<BasicKerberizedHttpClient> {
+    private static class MockHttpClient extends MockUp<JobClient> {
         @Mock
-        public HttpResponse execute(HttpRequestBase request) throws ClientProtocolException,
-                IOException {
+        public HttpResponse executeWithRetries(HttpRequestBase request, int ignore1, long ignore2) throws IOException {
             final ProtocolVersion protocolVersion = new ProtocolVersion("HTTP", 1, 1);
             final BasicHttpEntity httpEntity = new BasicHttpEntity();
             httpEntity.setContent(IOUtils.toInputStream("hello", "UTF-8"));
@@ -70,14 +70,15 @@ public class JobClientTest {
                 final BasicHttpResponse response = new BasicHttpResponse(statusLine);
                 response.setEntity(httpEntity);
                 return response;
+            } else {
+                return null;
             }
-            return null;
         }
     }
 
     @Before
     public void setup() throws URISyntaxException {
-        new MockBasicKerberizedHttpClient();
+        new MockHttpClient();
         final Job.Builder jobBuilder = new Job.Builder();
         jobBuilder.setUUID(UUID.randomUUID());
         jobBuilder.setCommand("sleep 10s");
@@ -86,7 +87,7 @@ public class JobClientTest {
         _initializedJob = jobBuilder.build();
 
         // Create the job client.
-        JobClient.NotVatsBuilder builder = new JobClient.NotVatsBuilder();
+        JobClient.Builder builder = new JobClient.Builder();
         _listener = new JobListener() {
             @Override
             public void onStatusUpdate(Job job) {
