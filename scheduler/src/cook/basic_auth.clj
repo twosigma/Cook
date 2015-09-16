@@ -29,7 +29,8 @@
                       (org.apache.commons.codec.binary.Base64/decodeBase64)
                       (String. "utf-8")))
           (catch Exception e
-            (log/error e "Failed to parse the basic auth header:" (pr-str req))
+            ;;We log at debug if this seems to be a basic challenge/response issue
+            (log/logp (if authorization :error :debug) e "Failed to parse the basic auth header:" (pr-str req))
             nil))]
     (when data [user pass])))
 

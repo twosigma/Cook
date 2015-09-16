@@ -309,7 +309,7 @@
   (Thread/setDefaultUncaughtExceptionHandler
     (reify Thread$UncaughtExceptionHandler
       (uncaughtException [_ thread e]
-        (log/error e "Uncaught exception on thread" (.getName thread))
+        (log/logp log-level e "Uncaught exception on thread" (.getName thread))
         (when email-config
           (let [stacktrace (get-html-stacktrace e)]
             (postal/send-message (-> email-config
