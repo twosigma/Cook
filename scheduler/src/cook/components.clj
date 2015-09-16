@@ -241,23 +241,7 @@
                                     (cond
                                       http-basic (do
                                                    (log/info "Using http basic authentication")
-                                                   (fn http-basic-middleware [h]
-                                                     (fn [{{:strs [authorization]} :headers :as req}]
-                                                       (if-let [[[_ user pass]] (try
-                                                                                  (re-seq #"([^:]*):(.*)"
-                                                                                          (-> (re-matches #"\s*Basic\s+(.+)" authorization)
-                                                                                              (second)
-                                                                                              (.getBytes "utf-8")
-                                                                                              (org.apache.commons.codec.binary.Base64/decodeBase64)
-                                                                                              (String. "utf-8")))
-                                                                                  (catch Exception e
-                                                                                    (log/error e "Failed to parse the basic auth header")
-                                                                                    nil))]
-                                                         (do
-                                                           (log/debug "Got http basic auth:" user pass)
-                                                           (h (assoc req :authorization/user user)))
-                                                         {:status 400
-                                                          :body "malformed authorization header in basic auth"}))))
+                                                   (lazy-load-var 'cook.basic-auth/http-basic-middleware))
                                       one-user (do
                                                  (log/info "Using single user authorization")
                                                  (fn one-user-middleware [h]
