@@ -29,7 +29,6 @@
             [ring.middleware.stacktrace :refer (wrap-stacktrace-web)]
             [ring.util.response :refer (response)]
             [ring.util.mime-type]
-            [metrics.ring.instrument :refer (instrument)]
             [compojure.core :refer (GET POST routes context)]
             [compojure.route :as route]
             [plumbing.graph :as graph]
@@ -155,8 +154,7 @@
                                                        wrap-stacktrace-web
                                                        wrap-no-cache
                                                        wrap-params
-                                                       health-check-middleware
-                                                       instrument)
+                                                       health-check-middleware)
                                      :join? false
                                      :max-threads 200})]
                          (fn [] (.stop jetty))))

@@ -14,8 +14,8 @@
 ;; limitations under the License.
 ;;
 (defproject cook "0.1.0-SNAPSHOT"
-  :description "This launches sims really really really fast"
-  :license {:name "Two Sigma Proprietary"}
+  :description "This launches jobs on a Mesos cluster with fair sharing and preemption"
+  :license {:name "Apache License, Version 2.0"}
   :dependencies [[org.clojure/clojure "1.6.0"]
 
                  ;;Data marshalling
@@ -59,15 +59,14 @@
                  ;;Networking
                  [clj-http "2.0.0"]
                  [io.netty/netty "3.10.1.Final"]
-                 ^{:voom {:repo "https://github.com/sjl/metrics-clojure" :branch "master" :version "2.6.0-SNAPSHOT" :sha "089c4fc"}}
-                 [metrics-clojure "2.6.0-20150707_225158-g089c4fc"
+                 [dgrnbrg/metrics-clojure "2.6.1"
                   :exclusions [io.netty/netty
                                org.clojure/clojure]]
                  [cc.qbits/jet "0.5.4"]
 
                  ;;External system integrations
                  [me.raynes/conch "0.5.2"]
-                 [clj-mesos "0.22.1-SNAPSHOT"]
+                 [clj-mesos "0.22.1"]
                  [com.google.protobuf/protobuf-java "2.5.0"] ; used by clj-mesos
                  [org.clojure/tools.nrepl "0.2.3"]
 
@@ -77,8 +76,6 @@
                  [compojure "1.4.0"]
                  [hiccup "1.0.5"]
                  [ring/ring-json "0.2.0"]
-                 [metrics-clojure-ring "2.3.0"
-                  :exclusions [io.netty/netty org.clojure/clojure]]
                  [ring-edn "0.1.0"]
                  [com.duelinmarkers/ring-request-logging "0.2.0"]
                  [liberator "0.13"]
@@ -108,21 +105,15 @@
   :repositories {"maven2" {:url "http://files.couchbase.com/maven2/"}
                  "sonatype-oss-public" "https://oss.sonatype.org/content/groups/public/"}
 
-  :profiles
-  {:release
-   {:aot [cook.components]
-    :jvm-opts ["-Xms12G"
-               "-Xmx12G"
-               "-server"
-               "-XX:-OmitStackTraceInFastThrow"]
-    :filespecs [{:type :fn
-                 :fn (fn [p]
-                       {:type :bytes :path "git-log"
-                        :bytes (.trim (:out (clojure.java.shell/sh
-                                              "git" "rev-parse" "HEAD")))})}]}
+  :filespecs [{:type :fn
+               :fn (fn [p]
+                     {:type :bytes :path "git-log"
+                      :bytes (.trim (:out (clojure.java.shell/sh
+                                            "git" "rev-parse" "HEAD")))})}]
 
-   :in-lein
-   {:eval-in-leiningen true}
+  :profiles
+  {:uberjar
+   {:aot [cook.components]}
 
    :dev
    {:dependencies [[clj-http-fake "1.0.1"]
@@ -135,8 +126,6 @@
   :test-selectors {:default (complement :integration)
                    :integration :integration
                    :all (constantly true)}
-
-  :aliases {"release-jar" ["do" "clean," "voom" "build-deps," "with-profile" "release" "uberjar"]}
 
   :main cook.components
 
@@ -156,6 +145,4 @@
              "-XX:GCLogFileSize=128M"
              "-XX:+PrintGCDateStamps"
              "-XX:+HeapDumpOnOutOfMemoryError"
-             ]
-  :plugins [[lein-voom "0.1.0-20150822_000839-g763d315"]]
-)
+             ])

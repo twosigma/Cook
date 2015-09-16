@@ -7,21 +7,7 @@ You can learn more about the algorithms used by Cook in this talk by Li Jin at M
 
 ## Building
 
-To build the cook scheduler, you'll need to run `lein voom build-deps` before it will build successfully.
-
-In order to be able to use voom, please include the following in your project.clj:
-
-```clojure
-{:user {
-    :plugins [[lein-voom "0.1.0-20150822_000839-g763d315"]]
-  }
-}
-```
-
-Voom is a tool that allows us to depend on git repositories at specific commits, rather than waiting for projects to release their code to a Maven repository.
-We're working to remove the voom dependencies, or to simplify building them.
-
-You can build the final jar correctly by running `lein release-jar`.
+You can build the final jar by running `lein uberjar`.
 
 ## Running
 
