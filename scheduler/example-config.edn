@@ -3,7 +3,7 @@
                  ;:kerberos true
                  :http-basic true
                  }
- :database {:datomic-uri "datomic:mem://mesos-jobs"}
+ :database {:datomic-uri "datomic:mem://cook-jobs"}
  :zookeeper {:local? true
              ;:local-port 3291 ; Uncomment to change the default port
              ;:connection "zk1.example.com:2181,zk2.example.com:2181,zk3.example.com:2181/cook" ; delete the :local? setting to use a networked ZK
