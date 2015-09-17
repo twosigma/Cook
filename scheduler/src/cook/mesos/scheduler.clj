@@ -74,9 +74,11 @@
         ;; If the custom-executor attr isn't set, we default to using a custom
         ;; executor in order to support jobs submitted before we added this field
         custom-executor (:job/custom-executor job-ent true)
+        environment (util/job-ent->env job-ent)
         command {:value (:job/command job-ent)
+                 :environment environment
                  :user (:job/user job-ent)
-                 :uris (:uris resources)}
+                 :uris (:uris resources [])}
         ;; executor-{key,value} configure whether this is a command or custom
         ;; executor
         executor-key (if custom-executor :executor :command)
