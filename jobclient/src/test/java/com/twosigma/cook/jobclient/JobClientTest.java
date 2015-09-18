@@ -25,14 +25,18 @@ import mockit.Mock;
 import mockit.MockUp;
 import mockit.integration.junit4.JMockit;
 
-import org.apache.http.client.HttpClient;
 import org.apache.commons.io.IOUtils;
+import org.apache.http.HttpEntity;
 import org.apache.http.HttpResponse;
 import org.apache.http.ProtocolVersion;
-import org.apache.http.client.ClientProtocolException;
+import org.apache.http.StatusLine;
+import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpPost;
 import org.apache.http.client.methods.HttpRequestBase;
+import org.apache.http.client.methods.HttpUriRequest;
+import org.apache.http.concurrent.Cancellable;
 import org.apache.http.entity.BasicHttpEntity;
+import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.message.BasicHttpResponse;
 import org.apache.http.message.BasicStatusLine;
 import org.junit.Before;
@@ -40,10 +44,9 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 
 import com.google.common.collect.Lists;
-import com.twosigma.cook.jobclient.httpclient.BasicKerberizedHttpClient;
 
 /**
- * Unit test for JobClient
+ * Unit test for AsyncJobClient
  * <p>
  * Created: March 14, 2015
  *
@@ -53,23 +56,49 @@ import com.twosigma.cook.jobclient.httpclient.BasicKerberizedHttpClient;
 public class JobClientTest {
     private Job _initializedJob;
 
-    private JobClient _client;
+    private AsyncJobClient _client;
 
     private JobListener _listener;
 
-    private static class MockHttpClient extends MockUp<JobClient> {
+    final static ProtocolVersion _protocolVersion = new ProtocolVersion("HTTP", 1, 1);
+
+    private static CloseableHttpResponse mockResponse(final int httpCode, final String status, final String content) {
+        return new MockUp<CloseableHttpResponse>() {
+            @Mock
+            public StatusLine getStatusLine() {
+                return new BasicStatusLine(_protocolVersion, httpCode, status);
+            }
+
+            @Mock
+            public HttpEntity getEntity() {
+                final BasicHttpEntity entity = new BasicHttpEntity();
+                try {
+                    entity.setContent(IOUtils.toInputStream(content, "UTF-8"));
+                    return entity;
+                } catch (IOException e) {
+                    return null;
+                }
+            }
+
+            @Mock(invocations = 1)
+            public void close() throws IOException {}
+        }.getMockInstance();
+    }
+
+    private static class MockHttpClient extends MockUp<CloseableHttpClient> {
         @Mock
-        public HttpResponse executeWithRetries(HttpRequestBase request, int ignore1, long ignore2) throws IOException {
-            final ProtocolVersion protocolVersion = new ProtocolVersion("HTTP", 1, 1);
-            final BasicHttpEntity httpEntity = new BasicHttpEntity();
-            httpEntity.setContent(IOUtils.toInputStream("hello", "UTF-8"));
+        public CloseableHttpResponse execute(HttpUriRequest request)
+            throws IOException
+        {
+            HttpRequestBase.class.cast(request).setCancellable(new MockUp<Cancellable>() {
+                @Mock(invocations = 1)
+                public boolean cancel() {
+                    return true;
+                }
+            }.getMockInstance());
             // Test http post for submitting jobs.
             if (request instanceof HttpPost) {
-                final BasicStatusLine statusLine =
-                        new BasicStatusLine(protocolVersion, 201, "test reason");
-                final BasicHttpResponse response = new BasicHttpResponse(statusLine);
-                response.setEntity(httpEntity);
-                return response;
+                return mockResponse(201, "test status", "hello");
             } else {
                 return null;
             }
@@ -87,7 +116,7 @@ public class JobClientTest {
         _initializedJob = jobBuilder.build();
 
         // Create the job client.
-        JobClient.Builder builder = new JobClient.Builder();
+        AsyncJobClient.Builder builder = new AsyncJobClient.Builder();
         _listener = new JobListener() {
             @Override
             public void onStatusUpdate(Job job) {
