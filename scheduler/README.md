@@ -12,11 +12,11 @@ You can build the final jar by running `lein uberjar`.
 ## Running
 
 You can run the scheduler using the build system by running `lein run $config`, where config is an `.edn` file.
-See `example-config.edn` for example usage.
-You should be able to start a sample instance (without any persistence) using the `example-config`.
+See `dev-config.edn` for example usage.
+You should be able to start a sample instance (without any persistence) using the `dev-config.edn`.
 You'll need to have the environment variable `MESOS_NATIVE_JAVA_LIBRARY` set.
 
-To deploy the scheduler, simply build a jar as described above, and then run it with `java -cp target/cook-0.1.0-SNAPSHOT-standalone.jar cook.components example-config.edn`.
+To deploy the scheduler, simply build a jar as described above, and then run it with `java -cp target/cook-0.1.0-SNAPSHOT-standalone.jar cook.components dev-config.edn`.
 See the Asciidoc document `docs/configuration.asc` for details on the config file format and options.
 
 ## API

@@ -1,0 +1,24 @@
+{:port 12321
+ :authorization {:http-basic true}
+ :database {:datomic-uri "datomic:free://example.com:4334/cook-jobs"}
+ :zookeeper {:connection "zk1.example.com:2181,zk2.example.com:2181,zk3.example.com:2181/cook"}
+ :scheduler {:offer-incubate-ms 15000
+             :task-constraints {:timeout-hours 24
+                                :timeout-interval-minutes 10
+                                :memory-gb 96
+                                :cpus 20}}
+ :mesos {:master "zk://zk1.example.com:2181,zk2.example.com:2181,zk3.example.com:2181/cook"
+         :failover-timeout-ms 1209600000
+         :leader-path "/cook-scheduler"}
+ :unhandled-exceptions {:log-level :error
+                        :email {:to ["admin@example.com"]
+                                :from "cook@example.com"
+                                :subject "Unhandled exception in cook"}}
+ :metrics {:jmx true}
+ :nrepl {:enabled? true
+         :port 8888}
+ :log {:file "log/cook.log"
+       :levels {"datomic.db" :warn
+                "datomic.peer" :warn
+                "datomic.kv-cluster" :warn
+                :default :info}}}
