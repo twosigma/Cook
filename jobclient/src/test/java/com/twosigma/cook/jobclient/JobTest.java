@@ -45,6 +45,8 @@ public class JobTest {
         jobBuilder.setCommand("sleep 10s");
         jobBuilder.setMemory(100.0);
         jobBuilder.setCpus(1.0);
+        jobBuilder.addEnv("FOO", "test");
+        jobBuilder.addUri(new FetchableURI.Builder().setValue("http://example.com/my_resource").build());
         _initializedJob = jobBuilder.build();
     }
 
