@@ -3,10 +3,17 @@
     <modelVersion>4.0.0</modelVersion>
     <groupId>com.twosigma</groupId>
     <artifactId>cook_jobclient</artifactId>
-    <version>0.1-SNAPSHOT</version>
+    <version>0.1.0</version>
     <packaging>jar</packaging>
     <name>Cook JobClient</name>
     <url>http://github.com/twosigma/Cook</url>
+    <licenses>
+        <license>
+            <name>Apache License, Version 2.0</name>
+            <url>http://www.apache.org/licenses/LICENSE-2.0.txt</url>
+            <distribution>repo</distribution>
+        </license>
+    </licenses>
     <dependencies>
         <dependency>
             <groupId>com.google.guava</groupId>
