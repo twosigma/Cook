@@ -40,7 +40,6 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 
 import com.google.common.collect.Lists;
-import com.twosigma.cook.jobclient.httpclient.BasicKerberizedHttpClient;
 
 /**
  * Unit test for JobClient

@@ -17,6 +17,8 @@
 package com.twosigma.cook.jobclient;
 
 import java.util.ArrayList;
+import java.util.Map;
+import java.util.HashMap;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
@@ -27,6 +29,7 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
 import com.google.common.base.Preconditions;
 
 /**
@@ -84,6 +87,8 @@ final public class Job {
         private Status _status;
         private Integer _priority;
         private List<Instance> _instances = Collections.synchronizedList(new ArrayList<Instance>());
+        private List<FetchableURI> _uris = new ArrayList<>();
+        private Map<String,String> _env = new HashMap<>();
 
         /**
          * Prior to {@code build()}, command, memory and cpus for a job must be provided.<br>
@@ -107,11 +112,11 @@ final public class Job {
                 _priority = 50;
             if (_status == null)
                 _status = Status.INITIALIZED;
-            return new Job(_uuid, _command, _memory, _cpus, _retries, _status, _priority, _instances);
+            return new Job(_uuid, _command, _memory, _cpus, _retries, _status, _priority, _instances, _env, _uris);
         }
 
         /**
-         * Set command, memory, cpus, and retries from a job.
+         * Set command, memory, cpus, env vars, uris, and retries from a job.
          * 
          * @param job {@link Job} specifies a job.
          * @return this builder.
@@ -121,6 +126,82 @@ final public class Job {
             setMemory(job.getMemory());
             setCpus(job.getCpus());
             setRetries(job.getRetries());
+            setEnv(job.getEnv());
+            setUris(job.getUris());
+            return this;
+        }
+
+        /**
+         * Add a URI to the job
+         *
+         * @param uri The uri to fetch for the job
+         * @return this builder
+         */
+        public Builder addUri(FetchableURI uri) {
+            _uris.add(uri);
+            return this;
+        }
+
+        /**
+         * Adds the URIs to the job.
+         *
+         * Note that this keeps previously added URIs.
+         *
+         * @param uris A list of URIs to add to this job
+         * @return this builder
+         */
+        public Builder addUris(Collection<FetchableURI> uris) {
+            _uris.addAll(uris);
+            return this;
+        }
+
+        /**
+         * Resets the URIs of the job to the given collection.
+         *
+         * @param uris A collection of URIs to use for this job
+         * @return this builder
+         */
+        public Builder setUris(Collection<FetchableURI> uris) {
+            _uris.clear();
+            _uris.addAll(uris);
+            return this;
+        }
+
+        /**
+         * Add an env var to the job
+         *
+         * @param name specifies the name of the env var
+         * @param value specifies the value of the env var
+         * @return this builder
+         */
+        public Builder addEnv(String name, String value) {
+            _env.put(name, value);
+            return this;
+        }
+
+        /**
+         * Adds a collection of env vars to the job.
+         *
+         * This adds the enviroment to the job; it won't remove variables that were previously set.
+         *
+         * @param environment specifies the environment to add to this job.
+         * @return this builder
+         */
+        public Builder addEnv(Map<String,String> enviroment) {
+            _env.putAll(enviroment);
+            return this;
+        }
+
+        /**
+         * Adds a collection of env vars to the job.
+         *
+         * This resets the enviroment to the job; it will remove variables that were previously set.
+         *
+         * @param environment specifies the environment to set for this job.
+         * @return this builder
+         */
+        public Builder setEnv(Map<String,String> enviroment) {
+            _env = ImmutableMap.copyOf(enviroment);
             return this;
         }
 
@@ -233,9 +314,11 @@ final public class Job {
     final private Integer _priority;
     final private Status _status;
     final private List<Instance> _instances;
+    final private Map<String, String> _env;
+    final private List<FetchableURI> _uris;
 
     private Job(UUID uuid, String command, Double memory, Double cpus, Integer retries, Status status,
-            Integer priority, List<Instance> instances) {
+            Integer priority, List<Instance> instances, Map<String,String> env, List<FetchableURI> uris) {
         _uuid = uuid;
         _command = command;
         _memory = memory;
@@ -244,6 +327,8 @@ final public class Job {
         _status = status;
         _priority = priority;
         _instances = ImmutableList.copyOf(instances);
+        _env = ImmutableMap.copyOf(env);
+        _uris = ImmutableList.copyOf(uris);
     }
 
     /**
@@ -279,6 +364,20 @@ final public class Job {
      */
     public Integer getRetries() {
         return _retries;
+    }
+
+    /**
+     * @return the job's environment
+     */
+    public Map<String,String> getEnv() {
+        return _env;
+    }
+
+    /**
+     * @return the job's uris
+     */
+    public List<FetchableURI> getUris() {
+        return _uris;
     }
 
     /**
@@ -340,6 +439,7 @@ final public class Job {
      */
     public static JSONObject jsonizeJob(Job job)
         throws JSONException {
+        final JSONObject env = new JSONObject(job.getEnv());
         final JSONObject object = new JSONObject();
         object.put("uuid", job.getUUID().toString());
         object.put("command", job.getCommand());
@@ -348,6 +448,10 @@ final public class Job {
         object.put("priority", job.getPriority());
         object.put("max_retries", job.getRetries());
         object.put("status", job.getStatus());
+        object.put("env", env);
+        for (FetchableURI uri : job.getUris()) {
+            object.append("uris", FetchableURI.jsonizeUri(uri));
+        }
         return object;
     }
 
@@ -436,6 +540,20 @@ final public class Job {
             jobBuilder.setPriority(json.getInt("priority"));
             jobBuilder.setStatus(Status.fromString(json.getString("status")));
             jobBuilder.setRetries(json.getInt("max_retries"));
+            JSONObject envJson = json.getJSONObject("env");
+            Map<String,String> envMap = new HashMap<>();
+            if (envJson.length() > 0) {
+                for (String varName : JSONObject.getNames(envJson)) {
+                    envMap.put(varName, envJson.getString(varName));
+                }
+            }
+            jobBuilder.setEnv(envMap);
+            JSONArray urisJson = json.optJSONArray("uris");
+            if (urisJson != null) {
+                for (int j = 0; j < urisJson.length(); j++) {
+                    jobBuilder.addUri(FetchableURI.parseFromJSON(urisJson.getJSONObject(j)));
+                }
+            }
             jobBuilder.addInstances(Instance.parseFromJSON(json.getJSONArray("instances")));
             jobs.add(jobBuilder.build());
         }

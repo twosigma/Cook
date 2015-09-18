@@ -27,6 +27,7 @@
             [clj-http.client :as http]
             [ring.middleware.json]
             [liberator.core :refer [resource defresource]]
+            [cook.mesos.util :as util]
             [clj-time.core :as t])
   (:import java.util.UUID))
 
@@ -40,6 +41,9 @@
    (s/optional-key :extract?) s/Bool
    (s/optional-key :cache?) s/Bool})
 
+(def NonEmptyString
+  (s/both s/Str (s/pred #(not (zero? (count %))) 'empty-string)))
+
 (def Job
   "A schema for a job"
   {:uuid (s/pred #(instance? UUID %) 'uuid?)
@@ -52,6 +56,7 @@
    :max-runtime (s/both s/Int (s/pred pos? 'pos?))
    (s/optional-key :uris) [Uri]
    (s/optional-key :ports) [(s/pred zero? 'zero)] ;;TODO add to docs the limited uri/port support
+   (s/optional-key :env) {NonEmptyString s/Str}
    :cpus (s/both PosDouble (s/pred #(<= % 32) 'under-32-cpus))
    :mem (s/both PosDouble (s/pred #(<= % 200000) 'under-200gb-mem))
    ;; Make sure the user name is vaild. It must begin with a lower case character, end with
@@ -60,7 +65,7 @@
 
 (sm/defn submit-jobs
   [conn jobs :- [Job]]
-  (doseq [{:keys [uuid command max-retries max-runtime priority cpus mem user name ports uris]} jobs
+  (doseq [{:keys [uuid command max-retries max-runtime priority cpus mem user name ports uris env]} jobs
           :let [id (d/tempid :db.part/user)
                 ports (mapv (fn [port]
                               ;;TODO this schema might not work b/c all ports are zero
@@ -83,6 +88,13 @@
                                      :resource.uri/value value}
                                     optional-params)]))
                              uris)
+                env (mapcat (fn [[k v]]
+                              (let [env-var-id (d/tempid :db.part/user)]
+                                [[:db/add id :job/environment env-var-id]
+                                 {:db/id env-var-id
+                                  :environment/name k
+                                  :environment/value v}]))
+                            env)
                 txn {:db/id id
                      :job/uuid uuid
                      :job/name name
@@ -100,6 +112,7 @@
     ;; TODO batch these transactions to improve performance
     @(d/transact conn (-> ports
                           (into uris)
+                          (into env)
                           (conj txn))))
   "ok")
 
@@ -116,24 +129,28 @@
 (defn validate-and-munge-job
   "Takes the user and the parsed json from the job and returns proper
    Job objects, or else throws an exception"
-  [db user {:strs [cpus mem uuid command priority max_retries max_runtime name uris ports]}]
-  (let [munged {:user user
-                :uuid (UUID/fromString uuid)
-                :name (or name "cookjob") ; Add default job name if user does not provide a name.
-                :command command
-                :priority (or priority 50) ; Add default priority to maintain backwards compatibility.
-                :max-retries max_retries
-                :max-runtime (if max_runtime max_runtime Long/MAX_VALUE)
-                :uris (or (map (fn [{:strs [value executable cache extract]}]
+  [db user {:strs [cpus mem uuid command priority max_retries max_runtime name uris ports env]}]
+  (let [munged (merge
+                 {:user user
+                  :uuid (UUID/fromString uuid)
+                  :name (or name "cookjob") ; Add default job name if user does not provide a name.
+                  :command command
+                  :priority (or priority 50) ; Add default priority to maintain backwards compatibility.
+                  :max-retries max_retries
+                  :max-runtime (if max_runtime max_runtime Long/MAX_VALUE)
+                  :ports (or ports [])
+                  :cpus (double cpus)
+                  :mem (double mem)}
+                 (when uris
+                   {:uris (map (fn [{:strs [value executable cache extract]}]
                                  (merge {:value value}
                                         (when executable {:executable? executable})
                                         (when cache {:cache? cache})
                                         (when extract {:extract? extract})))
-                               uris)
-                          [])
-                :ports (or ports [])
-                :cpus (double cpus)
-                :mem (double mem)}]
+                               uris)})
+                 (when env
+                   ;; Remains strings
+                   {:env env}))]
     (s/validate Job munged)
     (doseq [{:keys [executable? extract?] :as uri} (:uris munged)
             :when (and (not (nil? executable?)) (not (nil? extract?)))]
@@ -189,18 +206,20 @@
 (defn fetch-job-map
   [db fid job-uuid]
   (let [job (d/entity db [:job/uuid job-uuid])
-        resources (into {} (map (juxt :resource/type :resource/amount)
-                                (:job/resource job)))]
+        resources (util/job-ent->resources job)]
     {:command (:job/command job)
      :uuid (str (:job/uuid job))
      :name (:job/name job)
      :priority (:job/priority job)
-     :cpus (:resource.type/cpus resources)
-     :mem (:resource.type/mem resources)
+     :cpus (:cpus resources)
+     :mem (:mem resources)
      :max_retries  (:job/max-retries job) ; Consistent with input
      :max_runtime (:job/max-runtime job) ; Consistent with input
      :framework_id fid
      :status (name (:job/state job))
+     :uris (:uris resources)
+     :env (util/job-ent->env job)
+     ;;TODO include ports
      :instances
      (map (fn [instance]
             (let [hostname (:instance/hostname instance)

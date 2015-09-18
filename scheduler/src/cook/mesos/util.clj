@@ -28,6 +28,16 @@
           db)
        (map first)))
 
+(defn job-ent->env
+  "Take a job entity and return the environment variable map"
+  [job-ent]
+  (reduce (fn [m env-var]
+            (assoc m
+                   (:environment/name env-var)
+                   (:environment/value env-var)))
+          {}
+          (:job/environment job-ent)))
+
 (defn job-ent->resources
   "Take a job entity and return a resource map. NOTE: the keys must be same as mesos resource keys"
   [job-ent]
