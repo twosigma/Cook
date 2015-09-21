@@ -59,7 +59,7 @@
    (s/optional-key :env) {NonEmptyString s/Str}
    :cpus (s/both PosDouble (s/pred #(<= % 32) 'under-32-cpus))
    :mem (s/both PosDouble (s/pred #(<= % 200000) 'under-200gb-mem))
-   ;; Make sure the user name is vaild. It must begin with a lower case character, end with
+   ;; Make sure the user name is valid. It must begin with a lower case character, end with
    ;; a lower case character or a digit, and has length between 2 to (62 + 2).
    :user (s/both s/Str (s/pred #(re-matches #"\A[a-z][a-z0-9_-]{0,62}[a-z0-9]\z" %) 'lowercase-alphanum?))})
 
