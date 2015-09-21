@@ -20,8 +20,8 @@ index 6b082ad..07ea6ec 100644
      </dependency>
      <dependency>
 +      <groupId>com.twosigma</groupId>
-+      <artifactId>cook_jobclient</artifactId>
-+      <version>0.1-SNAPSHOT</version>
++      <artifactId>cook.jobclient</artifactId>
++      <version>0.1.0</version>
 +    </dependency>
 +    <dependency>
        <groupId>com.google.guava</groupId>
