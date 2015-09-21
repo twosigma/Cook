@@ -7,7 +7,7 @@ before_install:
 sudo: required
 env:
   global:
-    - MESOS_NATIVE_LIBRARY=/usr/lib/libmesos.so
+    - MESOS_NATIVE_JAVA_LIBRARY=/usr/lib/libmesos.so
   matrix:
     - TEST_DIR=scheduler TOOL=lein
     - TEST_DIR=jobclient TOOL=mvn
