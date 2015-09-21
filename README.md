@@ -1,5 +1,7 @@
 # Cook Scheduler
 
+[![Build Status](https://travis-ci.org/twosigma/Cook.svg)](https://travis-ci.org/twosigma/Cook)
+
 Welcome to Two Sigma's Cook Scheduler!
 
 You'd probably like to run Spark jobs on Cook, right?
