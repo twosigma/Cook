@@ -3,7 +3,8 @@
  :authorization {:one-user "vagrant"}
  :database {:datomic-uri "datomic:mem://cook-jobs"}
  :zookeeper {:local? true
-             ;:local-port 3291 ; Uncomment to change the default port}
+             ;:local-port 3291 ; Uncomment to change the default port
+             }
  :scheduler {:offer-incubate-ms 15000
              :task-constraints {:timeout-hours 1
                                 :timeout-interval-minutes 1

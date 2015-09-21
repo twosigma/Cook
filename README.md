@@ -3,7 +3,7 @@
 Welcome to Two Sigma's Cook Scheduler!
 
 You'd probably like to run Spark jobs on Cook, right?
-First, go to the `cook` subproject, and follow the README to build and launch the Cook scheduler Mesos framework.
+First, go to the `scheduler` subproject, and follow the README to build and launch the Cook scheduler Mesos framework.
 Then, go to the `spark` subproject, and follow the README to patch Spark to support Cook as a scheduler.
 If you'd like to learn more or do something different, read on...
 
