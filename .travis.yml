@@ -1,5 +1,14 @@
 language: java
+before_install:
+  - sudo apt-key adv --keyserver keyserver.ubuntu.com --recv E56151BF
+  - echo "deb http://repos.mesosphere.io/ubuntu/ precise varnish-3.0" | sudo tee /etc/apt/sources.list.d/mesosphere.list
+  - sudo apt-get update -qq
+  - sudo apt-get install mesos
+sudo: required
 env:
-  - TEST_DIR=scheduler TOOL=lein
-  - TEST_DIR=jobclient TOOL=mvn
+  global:
+    - MESOS_NATIVE_LIBRARY=/usr/lib/libmesos.so
+  matrix:
+    - TEST_DIR=scheduler TOOL=lein
+    - TEST_DIR=jobclient TOOL=mvn
 script: cd $TEST_DIR && $TOOL test
