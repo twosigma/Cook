@@ -9,6 +9,6 @@ env:
   global:
     - MESOS_NATIVE_JAVA_LIBRARY=/usr/lib/libmesos.so
   matrix:
-    - TEST_DIR=scheduler TOOL=lein
-    - TEST_DIR=jobclient TOOL=mvn
-script: cd $TEST_DIR && $TOOL test
+    - TEST_DIR=scheduler TEST_CMD='lein test :all'
+    - TEST_DIR=jobclient TEST_CMD='mvn test'
+script: cd $TEST_DIR && $TEST_CMD
