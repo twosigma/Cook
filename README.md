@@ -16,8 +16,6 @@ In this repository, you'll find several subprojects, each of which has its own d
 * `scheduler` - This is the actual Mesos framework, Cook. It comes with a JSON REST API.
 * `jobclient` - This is the Java API for Cook, which uses the REST API under the hood.
 * `spark` - This contains the patch to Spark to enable Cook as a backend.
-* `datomic-migration` - This tool allows you to clean old data from your Cook database. This tool should be run every 6-9 months to keep Cook fast.
-* `agent` - This contains an example enhanced Mesos executor for Cook which supports progress updates and heartbeats.
 
 Please visit the `scheduler` subproject first to get started.
 
