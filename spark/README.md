@@ -9,8 +9,9 @@ Then, do `git apply --check 0001-Add-cook-support.patch` to check for any errors
 If that works, do `git am < 0001-Add-cook-support.patch` to apply the patch.
 
 Once you've built Spark, you can run a Spark shell.
-To do this (assuming Cook is running with the default testing configuration on `localhost`), you can start Spark with the command line `MASTER=cook://$username:passwordIgnored@localhost:12321 ./bin/spark-shell --conf spark.cores.max=1`.
+To do this (assuming Cook is running with the default testing configuration on `localhost`), you can start Spark with the command line `./bin/spark-shell --master cook://$username:passwordIgnored@localhost:12321 --conf spark.cores.max=1`.
 You must specify the `spark.cores.max`, or else it won't launch any Spark executors.
 You can set that property to a bigger number to use more resources and thus run faster.
+To change the memory per executor, you can change the `spark.executor.memory` property, e.g. `--conf spark.executor.memory=500m`.
 
 © Two Sigma Open Source, LLC
