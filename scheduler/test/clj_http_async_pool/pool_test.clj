@@ -25,7 +25,7 @@
 
 (deftest test-batching
   (testing "When there are more concurrent requests than threads, we batch appropriately."
-    (let [req-time 25]
+    (let [req-time (multiply-duration 25)]
       (http-fake/with-fake-routes-in-isolation
         {"http://google.com/apps" (fn [req]
                                     (Thread/sleep req-time)

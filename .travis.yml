@@ -8,6 +8,7 @@ sudo: required
 env:
   global:
     - MESOS_NATIVE_JAVA_LIBRARY=/usr/lib/libmesos.so
+    - CLJ_HTTP_ASYNC_POOL_TEST_DURATION_MULTIPLIER=5
   matrix:
     - TEST_DIR=scheduler TEST_CMD='lein test :all'
     - TEST_DIR=jobclient TEST_CMD='mvn test'
