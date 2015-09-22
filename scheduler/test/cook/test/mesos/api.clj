@@ -61,7 +61,7 @@
              "env" env
              "cpus" 2.0
              "mem" 2048.0}
-        h (handler conn "my-framework-id")]
+        h (handler conn "my-framework-id" {:cpus 12 :memory-gb 100})]
     (is (<= 200
             (:status (h {:request-method :post
                          :scheme :http
@@ -105,3 +105,51 @@
                          :authorization/user "dgrnbrg"
                          :params {"job" (str uuid)}}))
             299))))
+
+(deftest job-validator
+  (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
+        job (fn [cpus mem] {"uuid" (str (java.util.UUID/randomUUID))
+                            "command" "hello world"
+                            "name" "my-cool-job"
+                            "priority" 66
+                            "max_retries" 100
+                            "max_runtime" 1000000
+                            "cpus" cpus
+                            "mem" mem})
+        h (handler conn "my-framework-id" {:cpus 3.0 :memory-gb 2})]
+    (testing "Within limits"
+      (is (<= 200
+              (:status (h {:request-method :post
+                           :scheme :http
+                           :uri "/rawscheduler"
+                           :headers {"Content-Type" "application/json"}
+                           :authorization/user "dgrnbrg"
+                           :params {"jobs" [(job 1 500)]}}))
+              299)))
+    (testing "At limits"
+      (is (<= 200
+              (:status (h {:request-method :post
+                           :scheme :http
+                           :uri "/rawscheduler"
+                           :headers {"Content-Type" "application/json"}
+                           :authorization/user "dgrnbrg"
+                           :params {"jobs" [(job 3 2048)]}}))
+              299)))
+    (testing "Beyond limits cpus"
+      (is (<= 400
+              (:status (h {:request-method :post
+                           :scheme :http
+                           :uri "/rawscheduler"
+                           :headers {"Content-Type" "application/json"}
+                           :authorization/user "dgrnbrg"
+                           :params {"jobs" [(job 3.1 100)]}}))
+              499)))
+    (testing "Beyond limits mem"
+      (is (<= 400
+              (:status (h {:request-method :post
+                           :scheme :http
+                           :uri "/rawscheduler"
+                           :headers {"Content-Type" "application/json"}
+                           :authorization/user "dgrnbrg"
+                           :params {"jobs" [(job 1 2050)]}}))
+              499)))))

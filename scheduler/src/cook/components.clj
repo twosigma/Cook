@@ -57,10 +57,11 @@
     (resolve var-sym)))
 
 (def raw-scheduler-routes
-  {:scheduler (fnk [mesos-datomic framework-id]
+  {:scheduler (fnk [mesos-datomic framework-id [:settings task-constraints]]
                    ((lazy-load-var 'cook.mesos.api/handler)
                     mesos-datomic
-                    framework-id))
+                    framework-id
+                    task-constraints))
    :view (fnk [scheduler]
               scheduler)})
 

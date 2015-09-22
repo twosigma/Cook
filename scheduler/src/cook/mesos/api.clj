@@ -57,8 +57,8 @@
    (s/optional-key :uris) [Uri]
    (s/optional-key :ports) [(s/pred zero? 'zero)] ;;TODO add to docs the limited uri/port support
    (s/optional-key :env) {NonEmptyString s/Str}
-   :cpus (s/both PosDouble (s/pred #(<= % 32) 'under-32-cpus))
-   :mem (s/both PosDouble (s/pred #(<= % 200000) 'under-200gb-mem))
+   :cpus PosDouble
+   :mem PosDouble
    ;; Make sure the user name is valid. It must begin with a lower case character, end with
    ;; a lower case character or a digit, and has length between 2 to (62 + 2).
    :user (s/both s/Str (s/pred #(re-matches #"\A[a-z][a-z0-9_-]{0,62}[a-z0-9]\z" %) 'lowercase-alphanum?))})
@@ -129,7 +129,7 @@
 (defn validate-and-munge-job
   "Takes the user and the parsed json from the job and returns proper
    Job objects, or else throws an exception"
-  [db user {:strs [cpus mem uuid command priority max_retries max_runtime name uris ports env]}]
+  [db user task-constraints {:strs [cpus mem uuid command priority max_retries max_runtime name uris ports env] :as job}]
   (let [munged (merge
                  {:user user
                   :uuid (UUID/fromString uuid)
@@ -152,6 +152,15 @@
                    ;; Remains strings
                    {:env env}))]
     (s/validate Job munged)
+    (when (> cpus (:cpus task-constraints))
+      (throw (ex-info (str "Requested " cpus " cpus, but only allowed to use " (:cpus task-constraints))
+                      {:constraints task-constraints
+                       :job job})))
+    (when (> mem (* 1024 (:memory-gb task-constraints)))
+      (throw (ex-info (str "Requested " mem "mb memory, but only allowed to use "
+                           (* 1024 (:memory-gb task-constraints)))
+                      {:constraints task-constraints
+                       :job job})))
     (doseq [{:keys [executable? extract?] :as uri} (:uris munged)
             :when (and (not (nil? executable?)) (not (nil? extract?)))]
       (throw (ex-info "Uri cannot set executable and extract" uri)))
@@ -256,7 +265,7 @@
 ;;;
 ;;; On GET; use repeated job argument
 (defn job-resource
-  [conn fid]
+  [conn fid task-constraints]
   (-> (resource
         :available-media-types ["application/json"]
         :allowed-methods [:post :get :delete]
@@ -281,6 +290,7 @@
                               [false {::jobs (mapv #(validate-and-munge-job
                                                       (db conn)
                                                       user
+                                                      task-constraints
                                                       %)
                                                    (get params "jobs"))}])
                             (catch Exception e
@@ -329,6 +339,6 @@
       ring.middleware.json/wrap-json-params))
 
 (defn handler
-  [conn fid]
+  [conn fid task-constraints]
   (ANY "/rawscheduler" []
-       (job-resource conn fid)))
+       (job-resource conn fid task-constraints)))
