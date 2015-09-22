@@ -32,8 +32,8 @@
 
 (defn multiply-duration
   [base]
-  (* base (or (Long. (System/getenv "CLJ_HTTP_ASYNC_POOL_TEST_DURATION_MULTIPLIER"))
-              1)))
+  (* base (Long. (or (System/getenv "CLJ_HTTP_ASYNC_POOL_TEST_DURATION_MULTIPLIER")
+                     1))))
 
 (defmacro timed
   [& body]
