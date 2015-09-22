@@ -254,7 +254,7 @@ index 0000000..97465d2
 +    val environment =
 +      environmentInfo.getVariablesList.asScala
 +      .map{ v => (v.getName, v.getValue) }.toMap +
-+      ("SPARK_LOCAL_DIRS" -> "$MESOS_DIRECTORY/spark-temp")
++      ("SPARK_LOCAL_DIRS" -> "spark-temp")
 +
 +    val uris = commandInfo.getUrisList.asScala
 +      .map{ uri => new FetchableURI.Builder()
