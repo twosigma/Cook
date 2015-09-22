@@ -11,7 +11,7 @@ What is Cook?
 - Cook has been battle-hardened to automatically recover after dozens of classes of cluster failures.
 - Cook can act as a Spark scheduler, and it comes with a REST API and Java client.
 
-Buty you'd probably like to run Spark jobs on Cook, right?
+But you'd probably like to run Spark jobs on Cook, right?
 To do so, go to the `scheduler` subproject, and follow the README to build and launch the Cook scheduler Mesos framework.
 Then, go to the `spark` subproject, and follow the README to patch Spark to support Cook as a scheduler.
 If you'd like to learn more or do something different, read on...
