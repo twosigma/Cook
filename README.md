@@ -4,8 +4,15 @@
 
 Welcome to Two Sigma's Cook Scheduler!
 
-You'd probably like to run Spark jobs on Cook, right?
-First, go to the `scheduler` subproject, and follow the README to build and launch the Cook scheduler Mesos framework.
+What is Cook?
+
+- Cook is a powerful batch scheduler, specifically designed to provide a great user experience when there are more jobs to run than your cluster has capacity for.
+- Cook is able to intelligently preempt jobs to ensure that no user ever needs to wait long to get quick answers, while simultaneously helping you to achieve 90%+ utilization for massive workloads.
+- Cook has been battle-hardened to automatically recover after dozens of classes of cluster failures.
+- Cook can act as a Spark scheduler, and it comes with a REST API and Java client.
+
+Buty you'd probably like to run Spark jobs on Cook, right?
+To do so, go to the `scheduler` subproject, and follow the README to build and launch the Cook scheduler Mesos framework.
 Then, go to the `spark` subproject, and follow the README to patch Spark to support Cook as a scheduler.
 If you'd like to learn more or do something different, read on...
 
