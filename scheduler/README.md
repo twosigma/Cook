@@ -16,6 +16,11 @@ See `dev-config.edn` for example usage.
 You should be able to start a sample instance (without any persistence) using the `dev-config.edn`.
 You'll need to have the environment variable `MESOS_NATIVE_JAVA_LIBRARY` set.
 
+When Cook starts running, it prints out as it initializes itself.
+Once logging is initialized, all further logging data will be written to the log file, not stdout or stderr.
+`libmesos`, the Mesos client library, prints all of its logging to stdout and stderr.
+Thus, all messages printed to stdout and stderr are about the connection to Mesos.
+
 To deploy the scheduler, simply build a jar as described above, and then run it with `java -cp target/cook-0.1.0-SNAPSHOT-standalone.jar cook.components dev-config.edn`.
 See the Asciidoc document `docs/configuration.asc` for details on the config file format and options.
 
