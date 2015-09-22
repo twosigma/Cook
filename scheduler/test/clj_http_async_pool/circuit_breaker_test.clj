@@ -102,6 +102,7 @@
     (let [reset-timeout-ms (multiply-duration 200)
           recovery-time-ms (+ reset-timeout-ms (/ reset-timeout-ms 10))
           breaker (cb/make-circuit-breaker (test-circuit-breaker-opts {:response-timeout-ms (multiply-duration 5)
+                                                                       :lifetime-ms (multiply-duration 10)
                                                                        :failure-threshold 0
                                                                        :reset-timeout-ms reset-timeout-ms})
                                            (service))

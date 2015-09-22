@@ -112,7 +112,10 @@
           new-avg (+ (* alpha (if success? +1 -1))
                      (* (- 1 alpha) avg))
           new-mode (condp = mode
-                     :closed (if (< new-avg failure-threshold) :open :closed)
+                     :closed (if (and (not success?)
+                                      (< new-avg failure-threshold))
+                               :open
+                               :closed)
                      :open :open
                      :half-open (if success? :closed :open))]
       (assoc this
