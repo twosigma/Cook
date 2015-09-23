@@ -10,6 +10,7 @@ env:
     - MESOS_NATIVE_JAVA_LIBRARY=/usr/lib/libmesos.so
     - CLJ_HTTP_ASYNC_POOL_TEST_DURATION_MULTIPLIER=5
   matrix:
-    - TEST_DIR=scheduler TEST_CMD='lein test :all'
-    - TEST_DIR=jobclient TEST_CMD='mvn test'
+    - TEST_DIR=scheduler DEPS_CMD='lein with-profiles +test deps' TEST_CMD='lein test :all'
+    - TEST_DIR=jobclient DEPS_CMD='mvn dependency:resolve' TEST_CMD='mvn test'
+before_script: (cd $TEST_DIR && $DEPS_CMD)
 script: cd $TEST_DIR && $TEST_CMD
