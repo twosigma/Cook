@@ -18,59 +18,54 @@
             [clojure.tools.logging :as log]
             [datomic.api :as d :refer (q)]
             [metatransaction.core :as mt :refer (db)]
-            ;[riemann.client :as riemann]
-            ;[metrics.timers :as timers]
-            [metrics.core :as metrics]
-            ;[clj-time.core :as time]
-            ;[clj-time.periodic :as periodic]
-            ;[chime :refer [chime-at]]
-            )
-  ;(:import [java.util.concurrent Executors TimeUnit]
-  ;         [com.codahale.metrics.riemann Riemann RiemannReporter JvmMetricSet]
-  ;         [com.codahale.metrics Counter Timer Gauge Histogram Meter])
-  )
+            [metrics.core :as metrics])
+  (:import [com.codahale.metrics.graphite GraphiteReporter PickledGraphite Graphite]
+           com.codahale.metrics.MetricFilter
+           [com.codahale.metrics.riemann Riemann RiemannReporter]
+           com.aphyr.riemann.client.RiemannClient
+           java.util.concurrent.TimeUnit
+           java.net.InetSocketAddress))
 
 ;; the default registry
 (def registry metrics/default-registry)
-
-;(defn metric-riemann-reporter
-;  "Send all metric events to riemann for metrics registered at metric-registry.
-;   Return a function to close this reporter.
-;
-;   Note that the service of an event is of format:
-;   \"<event-service-prefix> default.default.<metrics title> <metric>\"
-;   E.g. for a (timer \"i-am-timer\"), its 99 percentile metric is
-;   \"cook metrics default.default.i-am-timer p99\". However, if a timer is
-;   defined by (timer [\"\" \"\" \"i-am-timer\"]), its 99 percentile metric is
-;   \"cook metrics i-am-timer p99\"."
-;  [{:keys [host port tags prefix]}]
-;  (let [reporter (try
-;                   (.. RiemannReporter
-;                       (forRegistry registry)
-;                       (prefixedWith prefix)
-;                       (tags tags)
-;                       (build (Riemann. host (Integer. port))))
-;                   (catch Exception e
-;                     (log/error e "couldn't construct metric riemann reporter.")
-;                     (throw e)))
-;        jvm-metric-map (->> (JvmMetricSet.)
-;                         (.getMetrics)
-;                         (java.util.TreeMap.))
-;        empty-map (java.util.TreeMap.)]
-;    (or (when reporter
-;          (log/info "Starting metric riemann reporter and send metrics to" host)
-;          (chime-at (periodic/periodic-seq (time/now) (time/millis 10000))
-;                    (fn [time]
-;                      ;; sending metrics for timers, meters etc. registered via registry
-;                      (.report reporter)
-;                      ;; sending jvm metrics only
-;                      (.report reporter jvm-metric-map empty-map empty-map empty-map empty-map)
-;                      :error-handler (fn [ex]
-;                                        (log/error ex "Reporting metrics to riemann failed!")))))
-;        (fn [] (log/fatal "The metric riemann reporter was NOT started.")))))
 
 (defn jmx-reporter
   []
   (.. (com.codahale.metrics.JmxReporter/forRegistry metrics/default-registry)
       (build)
       (start)))
+
+(defn graphite-reporter
+  [{:keys [prefix host port pickled?]}]
+  (let [addr (InetSocketAddress. host port)
+        graphite (if pickled?
+                   (PickledGraphite. addr)
+                   (Graphite. addr))]
+    (doto (.. (GraphiteReporter/forRegistry metrics/default-registry)
+              (prefixedWith prefix)
+              (filter MetricFilter/ALL)
+              (convertRatesTo TimeUnit/SECONDS)
+              (convertDurationsTo TimeUnit/MILLISECONDS)
+              (build graphite))
+      (.start 30 TimeUnit/SECONDS))))
+
+(defn riemann-reporter
+  [{:keys [host port tags prefix mode local-host] :or {tags [] mode :tcp} :as cfg}]
+  (when (= mode :udp)
+    (throw (ex-info "You shouldn't use UDP mode Riemann! Almost every user finds it annoying when, without TCP backpressure, they start losing critical metrics during failure events." {})))
+  (let [addr (InetSocketAddress. host port)
+        riemann-client (case mode
+                         :tcp (RiemannClient/tcp host port)
+                         :udp (RiemannClient/udp addr)
+                         (throw (ex-info "Mode must be :tcp or :udp" cfg)))]
+    (.connect riemann-client)
+    (doto (.. (RiemannReporter/forRegistry metrics/default-registry)
+              (localHost local-host)
+              (prefixedWith prefix)
+              (filter MetricFilter/ALL)
+              (convertRatesTo TimeUnit/SECONDS)
+              (convertDurationsTo TimeUnit/MILLISECONDS)
+              (withTtl (float 60))
+              (tags tags)
+              (build (Riemann. riemann-client)))
+      (.start 30 TimeUnit/SECONDS))))

@@ -305,6 +305,23 @@
      :jmx-metrics (fnk [[:config [:metrics {jmx false}]]]
                        (when jmx
                          ((lazy-load-var 'cook.reporter/jmx-reporter))))
+     :graphite-metrics (fnk [[:config [:metrics {graphite nil}]]]
+                            (when graphite
+                              (when-not (:host graphite)
+                                (throw (ex-info "You must specify the graphite host!" {:graphite graphite})))
+                              (let [config (merge {:port 2003 :pickled? true} graphite)]
+                                ((lazy-load-var 'cook.reporter/graphite-reporter) config))))
+     :riemann-metrics (fnk [[:config [:metrics {riemann nil}]]]
+                           (when riemann
+                             (when-not (:host riemann)
+                               (throw (ex-info "You must specific the :host to send the riemann metrics to!" {:riemann riemann})))
+                             (when-not (every? string? tags)
+                               (throw (ex-info "Riemann tags must be a [\"list\", \"of\", \"strings\"]") riemann))
+                             (let [config (merge {:port 5555
+                                                  :local-host (.getHostName
+                                                                (java.net.InetAddress/getLocalHost))}
+                                                 riemann)]
+                               (cook.reporter/riemann-reporter config))))
      :nrepl-server (fnk [[:config [:nrepl {enabled? false} {port 0}]]]
                         (when enabled?
                           (when (zero? port)

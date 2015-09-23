@@ -59,15 +59,19 @@
                  ;;Networking
                  [clj-http "2.0.0"]
                  [io.netty/netty "3.10.1.Final"]
+                 [cc.qbits/jet "0.5.4"]
+
+                 ;;Metrics
                  [dgrnbrg/metrics-clojure "2.6.1"
                   :exclusions [io.netty/netty
                                org.clojure/clojure]]
-                 [cc.qbits/jet "0.5.4"]
+                 [io.dropwizard.metrics/metrics-graphite "3.1.2"]
+                 [com.aphyr/metrics3-riemann-reporter "0.4.0"]
 
                  ;;External system integrations
                  [me.raynes/conch "0.5.2"]
                  [clj-mesos "0.22.2"]
-                 [com.google.protobuf/protobuf-java "2.5.0"] ; used by clj-mesos
+                 [com.google.protobuf/protobuf-java "2.6.1"] ; used by clj-mesos
                  [org.clojure/tools.nrepl "0.2.3"]
 
                  ;;Ring
