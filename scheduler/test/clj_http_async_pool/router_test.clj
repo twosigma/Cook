@@ -121,7 +121,7 @@
                              :stats-chan
                              async/<!!
                              (dissoc :mode)))]
-                 (async/<!! (async/timeout 25))
+                 (async/<!! (async/timeout (multiply-duration 25)))
 
                  (let [stats (grab-stats)]
                    (are [k val] (= val (get stats k))
@@ -130,7 +130,7 @@
                         :pending requests
                         :dropped 0))
 
-                 (async/<!! (async/timeout 150))
+                 (async/<!! (async/timeout (multiply-duration 150)))
 
                  (let [stats (grab-stats)]
                    (are [k val] (= val (get stats k))
