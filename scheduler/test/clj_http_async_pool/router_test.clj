@@ -25,7 +25,7 @@
 
 (deftest ^:integration test-routing
   (testing "Separate hosts have separate threadpools"
-    (let [req-time 25
+    (let [req-time (multiply-duration 25)
           goog-req-mult 1
           aapl-req-mult 2
           msft-req-mult 3]
@@ -75,8 +75,8 @@
 
 (deftest ^:integration test-timeouts
   (testing "A slow server can't block client requests"
-    (let [req-time 200
-          timeout 50]
+    (let [req-time (multiply-duration 200)
+          timeout (multiply-duration 50)]
       (http-fake/with-fake-routes-in-isolation
         {"http://google.com/apps" (fn [req]
                                     (Thread/sleep req-time)
@@ -101,8 +101,8 @@
 
 (deftest ^:integration test-circuit-breaker-stats
   (testing "We can snoop on the circuit-breaker stats properly"
-    (let [req-time 200
-          timeout 100]
+    (let [req-time (multiply-duration 200)
+          timeout (multiply-duration 100)]
       (http-fake/with-fake-routes-in-isolation
         {"http://google.com/apps" (fn [req]
                                     (Thread/sleep req-time)
@@ -121,7 +121,7 @@
                              :stats-chan
                              async/<!!
                              (dissoc :mode)))]
-                 (async/<!! (async/timeout 25))
+                 (async/<!! (async/timeout (multiply-duration 25)))
 
                  (let [stats (grab-stats)]
                    (are [k val] (= val (get stats k))
@@ -130,7 +130,7 @@
                         :pending requests
                         :dropped 0))
 
-                 (async/<!! (async/timeout 150))
+                 (async/<!! (async/timeout (multiply-duration 150)))
 
                  (let [stats (grab-stats)]
                    (are [k val] (= val (get stats k))

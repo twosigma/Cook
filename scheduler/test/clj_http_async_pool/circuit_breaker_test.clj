@@ -43,8 +43,8 @@
 
 (deftest responsive-test
   (testing "behavior when server is responsive"
-    (let [breaker (cb/make-circuit-breaker (test-circuit-breaker-opts {:response-timeout-ms 25
-                                                                       :lifetime-ms 10
+    (let [breaker (cb/make-circuit-breaker (test-circuit-breaker-opts {:response-timeout-ms (multiply-duration 25)
+                                                                       :lifetime-ms (multiply-duration 10)
                                                                        :failure-threshold 0.95})
                                            (service))
           service (:request-chan breaker)
@@ -73,9 +73,9 @@
 
 (deftest unresponsive-test
   (testing "behavior when server never works right"
-    (let [breaker (cb/make-circuit-breaker (test-circuit-breaker-opts {:response-timeout-ms 5
+    (let [breaker (cb/make-circuit-breaker (test-circuit-breaker-opts {:response-timeout-ms (multiply-duration 5)
                                                                        :failure-threshold 0
-                                                                       :reset-timeout-ms 100})
+                                                                       :reset-timeout-ms (multiply-duration 100)})
                                            (service))
           service (:request-chan breaker)
           stats-chan (:stats-chan breaker)]
@@ -99,9 +99,10 @@
 
 (deftest recovery-test
   (testing "circuit breaker recovers after reset-timeout-ms"
-    (let [reset-timeout-ms 200
+    (let [reset-timeout-ms (multiply-duration 200)
           recovery-time-ms (+ reset-timeout-ms (/ reset-timeout-ms 10))
-          breaker (cb/make-circuit-breaker (test-circuit-breaker-opts {:response-timeout-ms 5
+          breaker (cb/make-circuit-breaker (test-circuit-breaker-opts {:response-timeout-ms (multiply-duration 5)
+                                                                       :lifetime-ms (multiply-duration 10)
                                                                        :failure-threshold 0
                                                                        :reset-timeout-ms reset-timeout-ms})
                                            (service))
@@ -145,7 +146,7 @@
 
 (deftest timeout-test
   (testing "timeout is accurate"
-    (let [response-timeout-ms 50
+    (let [response-timeout-ms (multiply-duration 50)
           pass-delay (/ response-timeout-ms 2)
           fail-delay (+ response-timeout-ms
                         (/ response-timeout-ms 2))
@@ -154,7 +155,7 @@
         (testing "responding faster than the timeout counts as passing"
           (let [breaker (cb/make-circuit-breaker (test-circuit-breaker-opts {:response-timeout-ms response-timeout-ms
                                                                              :failure-threshold 0
-                                                                             :reset-timeout-ms 200})
+                                                                             :reset-timeout-ms (multiply-duration 200)})
                                                  (service))
                 service (:request-chan breaker)
                 stats-chan (:stats-chan breaker)
@@ -171,7 +172,7 @@
         (testing "responding slower than the timeout counts as failing"
           (let [breaker (cb/make-circuit-breaker (test-circuit-breaker-opts {:response-timeout-ms response-timeout-ms
                                                                              :failure-threshold 0
-                                                                             :reset-timeout-ms 200})
+                                                                             :reset-timeout-ms (multiply-duration 200)})
                                                  (service))
                 service (:request-chan breaker)
                 stats-chan (:stats-chan breaker)
@@ -188,7 +189,7 @@
         (testing "mixing concurrent passes and fails does the right thing"
           (let [breaker (cb/make-circuit-breaker (test-circuit-breaker-opts {:response-timeout-ms response-timeout-ms
                                                                              :failure-threshold 0
-                                                                             :reset-timeout-ms 200})
+                                                                             :reset-timeout-ms (multiply-duration 200)})
                                                  (service))
                 service (:request-chan breaker)
                 stats-chan (:stats-chan breaker)
@@ -218,10 +219,10 @@
      (for [passes (range 15 25)
            fails (range 1 15)
            :let [failure-threshold (- 1 (* 2 (/ fails (+ passes fails))))]]
-       (let [breaker (cb/make-circuit-breaker (test-circuit-breaker-opts {:response-timeout-ms 5
-                                                                          :lifetime-ms 50
+       (let [breaker (cb/make-circuit-breaker (test-circuit-breaker-opts {:response-timeout-ms (multiply-duration 5)
+                                                                          :lifetime-ms (multiply-duration 50)
                                                                           :failure-threshold failure-threshold
-                                                                          :reset-timeout-ms 200})
+                                                                          :reset-timeout-ms (multiply-duration 200)})
                                               (service))
              service (:request-chan breaker)
              stats-chan (:stats-chan breaker)]
@@ -250,9 +251,9 @@
      (for [passes (range 50 200 25)
            :let [fails-without-noticing 5
                  additional-fails 10]]
-       (let [delay-ms 5
-             lifetime-ms 1000
-             response-timeout-ms 25
+       (let [delay-ms (multiply-duration 5)
+             lifetime-ms (multiply-duration 1000)
+             response-timeout-ms (multiply-duration 25)
              ;; TODO: figure out why these constants tend to work, and
              ;; make something more robust.
              failure-threshold 0.5

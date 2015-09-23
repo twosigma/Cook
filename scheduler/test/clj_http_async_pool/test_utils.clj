@@ -30,6 +30,11 @@
                           :level :debug}))
 )
 
+(defn multiply-duration
+  [base]
+  (* base (Long. (or (System/getenv "CLJ_HTTP_ASYNC_POOL_TEST_DURATION_MULTIPLIER")
+                     1))))
+
 (defmacro timed
   [& body]
   `(let [ch# (async/chan 1)
