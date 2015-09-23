@@ -105,6 +105,8 @@
   [task-ent]
   (get-in task-ent [:job/_instance :job/user]))
 
+(def ^:const default-job-priority 50)
+
 (defn same-user-task-comparator
   "Comparator to order same user's tasks"
   [task1 task2]
@@ -113,7 +115,7 @@
             ;; Use :db/id because they guarantee uniqueness for different entities
             ;; (:db/id task) is not sufficient because synthetic task entities don't have :db/id
             ;; This assumes there are at most one synthetic task for a job, otherwise uniqueness invariant will break
-            [(- (:job/priority (:job/_instance task) 50))
+            [(- (:job/priority (:job/_instance task) default-job-priority))
              (:instance/start-time task (java.util.Date. Long/MAX_VALUE))
              (:db/id task)
              (:db/id (:job/_instance task))])]
