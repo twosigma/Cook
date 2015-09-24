@@ -210,6 +210,7 @@
                                           job-resources
                                           instance-runtime))
              (when (or (nil? instance)
+                       (not= task-state :task-lost) ; killing an unknown task causes a TASK_LOST message. Break the cycle!
                        (= prior-job-state :job.state/completed)
                        (= prior-instance-status :instance.status/failed))
                (log/warn "Attempting to kill task" task-id
