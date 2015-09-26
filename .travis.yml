@@ -5,6 +5,7 @@ before_install:
   - sudo apt-get update -qq
   - sudo apt-get install mesos
 sudo: required
+dist: trusty
 env:
   global:
     - MESOS_NATIVE_JAVA_LIBRARY=/usr/lib/libmesos.so
