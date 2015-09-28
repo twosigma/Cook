@@ -90,7 +90,7 @@
                           :command command}
                          command)]
     ;; If the there is no value for key :job/name, the following name will contain a substring "null".
-    {:name (format "%s_%s_%s" (:job/name job-ent) (:job/user job-ent) task-id)
+    {:name (format "%s_%s_%s" (:job/name job-ent "cookjob") (:job/user job-ent) task-id)
      :task-id task-id
      :num-ports (count (:ports resources))
      :resources (select-keys resources [:mem :cpus])

@@ -95,15 +95,20 @@
                                   :environment/name k
                                   :environment/value v}]))
                             env)
+                ;; These are optionally set datoms w/ default values
+                maybe-datoms (concat
+                               (when (and name (not= name "cookjob"))
+                                 [[:db/add id :job/name name]])
+                               (when (and priority (not= util/default-job-priority priority))
+                                 [[:db/add id :job/priority priority]])
+                               (when (and max-runtime (not= Long/MAX_VALUE max-runtime))
+                                 [[:db/add id :job/max-runtime max-runtime]]))
                 txn {:db/id id
                      :job/uuid uuid
-                     :job/name name
                      :job/command command
                      :job/custom-executor false
                      :job/user user
-                     :job/priority priority
                      :job/max-retries max-retries
-                     :job/max-runtime max-runtime
                      :job/state :job.state/waiting
                      :job/resource [{:resource/type :resource.type/cpus
                                      :resource/amount cpus}
@@ -113,6 +118,7 @@
     @(d/transact conn (-> ports
                           (into uris)
                           (into env)
+                          (into maybe-datoms)
                           (conj txn))))
   "ok")
 
@@ -135,9 +141,9 @@
                   :uuid (UUID/fromString uuid)
                   :name (or name "cookjob") ; Add default job name if user does not provide a name.
                   :command command
-                  :priority (or priority 50) ; Add default priority to maintain backwards compatibility.
+                  :priority (or priority util/default-job-priority)
                   :max-retries max_retries
-                  :max-runtime (if max_runtime max_runtime Long/MAX_VALUE)
+                  :max-runtime (or max_runtime Long/MAX_VALUE)
                   :ports (or ports [])
                   :cpus (double cpus)
                   :mem (double mem)}
@@ -216,45 +222,46 @@
   [db fid job-uuid]
   (let [job (d/entity db [:job/uuid job-uuid])
         resources (util/job-ent->resources job)]
-    {:command (:job/command job)
-     :uuid (str (:job/uuid job))
-     :name (:job/name job)
-     :priority (:job/priority job)
-     :cpus (:cpus resources)
-     :mem (:mem resources)
-     :max_retries  (:job/max-retries job) ; Consistent with input
-     :max_runtime (:job/max-runtime job) ; Consistent with input
-     :framework_id fid
-     :status (name (:job/state job))
-     :uris (:uris resources)
-     :env (util/job-ent->env job)
-     ;;TODO include ports
-     :instances
-     (map (fn [instance]
-            (let [hostname (:instance/hostname instance)
-                  executor-states (get-executor-states fid hostname)
-                  url-path (try
-                             (executor-state->url-path hostname (get executor-states (:instance/executor-id instance)))
-                             (catch Exception e
-                               nil))
-                  start (:instance/start-time instance)
-                  end (:instance/end-time instance)
-                  base {:task_id (:instance/task-id instance)
-                        :hostname hostname
-                        :slave_id (:instance/slave-id instance)
-                        :executor_id (:instance/executor-id instance)
-                        :status (name (:instance/status instance))}
-                  base (if url-path
-                         (assoc base :output_url url-path)
-                         base)
-                  base (if start
-                         (assoc base :start_time (.getTime start))
-                         base)
-                  base (if end
-                         (assoc base :end_time (.getTime end))
-                         base)]
-              base))
-          (:job/instance job))}))
+    (merge
+      {:command (:job/command job)
+       :uuid (str (:job/uuid job))
+       :name (:job/name job "cookjob")
+       :priority (:job/priority job util/default-job-priority)
+       :cpus (:cpus resources)
+       :mem (:mem resources)
+       :max_retries  (:job/max-retries job) ; Consistent with input
+       :max_runtime (:job/max-runtime job Long/MAX_VALUE) ; Consistent with input
+       :framework_id fid
+       :status (name (:job/state job))
+       :uris (:uris resources)
+       :env (util/job-ent->env job)
+       ;;TODO include ports
+       :instances
+       (map (fn [instance]
+              (let [hostname (:instance/hostname instance)
+                    executor-states (get-executor-states fid hostname)
+                    url-path (try
+                               (executor-state->url-path hostname (get executor-states (:instance/executor-id instance)))
+                               (catch Exception e
+                                 nil))
+                    start (:instance/start-time instance)
+                    end (:instance/end-time instance)
+                    base {:task_id (:instance/task-id instance)
+                          :hostname hostname
+                          :slave_id (:instance/slave-id instance)
+                          :executor_id (:instance/executor-id instance)
+                          :status (name (:instance/status instance))}
+                    base (if url-path
+                           (assoc base :output_url url-path)
+                           base)
+                    base (if start
+                           (assoc base :start_time (.getTime start))
+                           base)
+                    base (if end
+                           (assoc base :end_time (.getTime end))
+                           base)]
+                base))
+            (:job/instance job))})))
 
 ;;; On POST; JSON blob that looks like:
 ;;; {"jobs": [{"command": "echo hello world",
