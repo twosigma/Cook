@@ -122,15 +122,14 @@
                           (conj txn))))
   "ok")
 
-(defn unused-uuid?
-  "Throws if the given uuid is used in datomic"
+(defn used-uuid?
+  "Returns truthy if the given uuid is used in datomic"
   [db uuid]
-  (when (seq (q '[:find ?j
-                  :in $ ?uuid
-                  :where
-                  [?j :job/uuid ?uuid]]
-                db uuid))
-    (throw (ex-info (str "UUID " uuid " already used") {:uuid uuid}))))
+  (seq (q '[:find ?j
+            :in $ ?uuid
+            :where
+            [?j :job/uuid ?uuid]]
+          db uuid)))
 
 (defn validate-and-munge-job
   "Takes the user and the parsed json from the job and returns proper
@@ -170,7 +169,8 @@
     (doseq [{:keys [executable? extract?] :as uri} (:uris munged)
             :when (and (not (nil? executable?)) (not (nil? extract?)))]
       (throw (ex-info "Uri cannot set executable and extract" uri)))
-    (unused-uuid? db (:uuid munged))
+    (when (used-uuid? db (:uuid munged))
+      (throw (ex-info (str "UUID " (:uuid munged) " already used") munged)))
     munged))
 
 (defn get-executor-states-impl
@@ -306,18 +306,14 @@
         :allowed? (fn [ctx]
                     (condp contains? (get-in ctx [:request :request-method])
                       #{:get :delete}
-                      (letfn [(used? [uuid]
-                                (try
-                                  (unused-uuid? (db conn) uuid)
-                                  false
-                                  (catch Exception e
-                                    true)))]
+                      (let [db (db conn)
+                            used? #(used-uuid? db %)]
                         (or (every? used? (::jobs ctx))
-                          [false {::error (str "UUID "
-                                               (str/join
-                                                 \space
-                                                 (remove used? (::jobs ctx)))
-                                               " didn't correspond to a job")}]))
+                            [false {::error (str "UUID "
+                                                 (str/join
+                                                   \space
+                                                   (remove used? (::jobs ctx)))
+                                                 " didn't correspond to a job")}]))
                       #{:post}
                       true))
         :handle-malformed (fn [ctx]
@@ -345,7 +341,77 @@
                           (::results ctx)))
       ring.middleware.json/wrap-json-params))
 
+(defn validate-and-munge-clone
+  ;;TODO document
+  [db user task-constraints {:strs [from_uuid new_uuid kill_original job]}]
+  (let [orig-job (fetch-job-map db nil (UUID/fromString from_uuid))
+        orig-job-string-keys (reduce-kv (fn [m k v]
+                                          (assoc m (name k) v))
+                                        {}
+                                        (dissoc orig-job
+                                                :instances
+                                                :status
+                                                :framework_id
+                                                :uuid))
+        updated-job (-> orig-job-string-keys
+                        (merge job)
+                        (assoc "uuid" new_uuid))
+        validated-job (validate-and-munge-job db user task-constraints updated-job)]
+    (merge {:job validated-job}
+           (when kill_original
+             {:kill (UUID/fromString from_uuid)}))))
+
+(defn clone-job-resource
+  [conn fid task-constraints]
+  ;;TODO maybe this should go under "copies" in the JSON submitted to the original REST endpoint
+  (resource
+    :available-media-types ["application/json"]
+    :allowed-methods [:post]
+    :malformed? (fn [ctx]
+                  (try
+                    (let [jobs (get-in ctx [:request :params "jobs"])
+                          user (get-in ctx [:request :authorization/user]) 
+                          db (db conn)
+                          used? #(used-uuid? db %)
+                          from-uuids (mapv #(UUID/fromString (get % "from_uuid")) jobs)]
+                      (when (zero? (count jobs))
+                        (throw (ex-info "Must provide at least one job to clone") (:request ctx)))
+                      (when-not (every? used? from-uuids)
+                        (let [unknown-uuids (remove used? from-uuids)]
+                          (throw (ex-info (str "There's no such job with UUID " unknown-uuids)
+                                          {:uuids unknown-uuids}))))
+                      [false {::clones (mapv #(validate-and-munge-clone
+                                               (db conn)
+                                               user
+                                               task-constraints
+                                               %)
+                                            jobs)}])
+                    (catch Exception e
+                      (log/warn e "Malformed clone request")
+                      [true {::error e}])))
+    ;;TODO should we use forbidden for when a from_uuid isn't valid, or whatever?
+    :handle-malformed (fn [ctx]
+                        (str (::error ctx)))
+    :processable? (fn [ctx]
+                    (let [clones (::clones ctx)]
+                      (try
+                        (log/info "Cloning jobs through raw api" clones)
+                        (submit-jobs conn (map :job clones))
+                        (when-let [to-kill (seq (remove nil? (map :kill clones)))]
+                          (cook.mesos/kill-job conn to-kill))
+                        true
+                        (catch Exception e
+                          (log/error e "Error cloning jobs" clones)
+                          [false (str e)]))))
+    :post! (fn [ctx]
+             ;; We did the actual logic in processable?, so there's nothing left to do
+             {::results (str/join \space (cons "submitted jobs" (map (comp str :uuid :job) (::clones ctx))))})
+    :handle-created (fn [ctx]
+                      (::results ctx))))
+
 (defn handler
   [conn fid task-constraints]
+  (ANY "/rawscheduler/clone" []
+       (clone-job-resource conn fid task-constraints))
   (ANY "/rawscheduler" []
        (job-resource conn fid task-constraints)))
