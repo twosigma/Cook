@@ -209,10 +209,11 @@
                (handle-throughput-metrics complete-throughput-metrics
                                           job-resources
                                           instance-runtime))
-             (when (or (nil? instance)
+             ;; This code kills any task that "shouldn't" be running
+             (when (or (nil? instance) ; We could know nothing about the task, meaning a DB error happened and it's a waste to finish
                        (not= task-state :task-lost) ; killing an unknown task causes a TASK_LOST message. Break the cycle!
-                       (= prior-job-state :job.state/completed)
-                       (= prior-instance-status :instance.status/failed))
+                       (= prior-job-state :job.state/completed) ; The task is attached to a failed job, possibly due to instances running on multiple hosts
+                       (= prior-instance-status :instance.status/failed)) ; The kill-task message could've been glitched on the network
                (log/warn "Attempting to kill task" task-id
                          "as instance" instance "with" prior-job-state "and" prior-instance-status
                          "should've been put down already")
