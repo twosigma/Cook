@@ -124,7 +124,10 @@
                    [org.clojure/test.check "0.6.1"]]
     :jvm-opts ["-Xms2G"
                "-XX:-OmitStackTraceInFastThrow"
-               "-Xmx2G"]
+               "-Xmx2G"
+               "-Dcom.sun.management.jmxremote.port=5555"
+               "-Dcom.sun.management.jmxremote.authenticate=false"
+               "-Dcom.sun.management.jmxremote.ssl=false"]
     :source-paths []}}
 
   :test-selectors {:default (complement :integration)
@@ -143,9 +146,6 @@
              "-Xloggc:gclog"
              "-XX:+UseGCLogFileRotation"
              "-XX:NumberOfGCLogFiles=20"
-             "-Dcom.sun.management.jmxremote.port=5555"
-             "-Dcom.sun.management.jmxremote.authenticate=false"
-             "-Dcom.sun.management.jmxremote.ssl=false"
              "-XX:GCLogFileSize=128M"
              "-XX:+PrintGCDateStamps"
              "-XX:+HeapDumpOnOutOfMemoryError"
