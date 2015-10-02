@@ -48,7 +48,7 @@
   "A schema for a job"
   {:uuid (s/pred #(instance? UUID %) 'uuid?)
    :command s/Str
-   ;; Make sure the job name is a vaild string which can only contain '.', '_', '-' or any word characters and has
+   ;; Make sure the job name is a valid string which can only contain '.', '_', '-' or any word characters and has
    ;; length at most 128.
    :name (s/both s/Str (s/pred #(re-matches #"[\.a-zA-Z0-9_-]{0,128}" %) 'under-128-characters-and-alphanum?))
    :priority (s/both s/Int (s/pred #(<= 0 % 100) 'between-0-and-100))
