@@ -237,7 +237,7 @@
           (log/error e "Mesos scheduler status update error"))))))
 
 (timers/deftimer [cook-mesos scheduler tx-report-queue-processing-duration])
-(meters/defmeter [cook-mesos schedulery tx-report-queue-datoms])
+(meters/defmeter [cook-mesos scheduler tx-report-queue-datoms])
 (meters/defmeter [cook-mesos scheduler tx-report-queue-update-job-state])
 (meters/defmeter [cook-mesos scheduler tx-report-queue-job-complete])
 (meters/defmeter [cook-mesos scheduler tx-report-queue-tasks-killed])
@@ -463,7 +463,7 @@
               ;TODO assign the ports to actual available ones, and configure the environment variables; look at the Fenzo API to match up with it
               ;First we need to convince mesos to actually offer ports
               ;then, we need to allocate the ports (incremental or bulk?) copy from my book.
-              
+
               ;; Note that this transaction can fail if a job was scheduled
               ;; during a race. If that happens, then other jobs that should
               ;; be scheduled will not be eligible for rescheduling until
