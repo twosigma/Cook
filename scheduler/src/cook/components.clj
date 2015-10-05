@@ -72,7 +72,7 @@
                       (route/not-found "<h1>Not a valid route</h1>")))})
 
 (def mesos-scheduler
-  {:mesos-scheduler (fnk [[:settings mesos-master mesos-leader-path mesos-failover-timeout mesos-principal mesos-role offer-incubate-time-ms task-constraints] mesos-datomic mesos-datomic-mult curator-framework]
+  {:mesos-scheduler (fnk [[:settings mesos-master mesos-leader-path mesos-failover-timeout mesos-principal mesos-role offer-incubate-time-ms task-constraints riemann] mesos-datomic mesos-datomic-mult curator-framework]
                          (try
                            (Class/forName "org.apache.mesos.Scheduler")
                            ((lazy-load-var 'cook.mesos/start-mesos-scheduler)
@@ -85,7 +85,9 @@
                             mesos-principal
                             mesos-role
                             offer-incubate-time-ms
-                            task-constraints)
+                            task-constraints
+                            (:host riemann)
+                            (:port riemann))
                            (catch ClassNotFoundException e
                              (log/warn e "Not loading mesos support...")
                              nil)))})
@@ -311,6 +313,8 @@
                                 (throw (ex-info "You must specify the graphite host!" {:graphite graphite})))
                               (let [config (merge {:port 2003 :pickled? true} graphite)]
                                 ((lazy-load-var 'cook.reporter/graphite-reporter) config))))
+     :riemann (fnk [[:config [:metrics {riemann nil}]]]
+                   riemann)
      :riemann-metrics (fnk [[:config [:metrics {riemann nil}]]]
                            (when riemann
                              (when-not (:host riemann)
@@ -386,7 +390,7 @@
         server (scheduler-server settings)]
     (intern 'user 'main-graph server)
     (log/info "Started cook, stored variable in user/main-graph"))
-    (println "Started cook, stored variable in user/main-graph") 
+    (println "Started cook, stored variable in user/main-graph")
     (catch Throwable t
       (log/error t "Failed to start Cook")
       (println "Failed to start Cook")
