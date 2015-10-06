@@ -25,6 +25,7 @@
             [cook.mesos.scheduler :as sched]
             [cook.mesos.heartbeat]
             [cook.mesos.rebalancer]
+            [cook.mesos.monitor]
             [cook.util]
             [cook.curator :as curator])
   (:import [org.apache.curator.framework.recipes.leader LeaderSelector LeaderSelectorListener]
@@ -75,7 +76,7 @@
 
 (defn start-mesos-scheduler
   "Starts a leader elector that runs a mesos."
-  [mesos-master curator-framework mesos-datomic-conn mesos-datomic-mult zk-prefix mesos-failover-timeout mesos-principal mesos-role offer-incubate-time-ms task-constraints]
+  [mesos-master curator-framework mesos-datomic-conn mesos-datomic-mult zk-prefix mesos-failover-timeout mesos-principal mesos-role offer-incubate-time-ms task-constraints riemann-host riemann-port]
   (let [zk-framework-id (str zk-prefix "/framework-id")
         datomic-report-chan (async/chan (async/sliding-buffer 4096))
         mesos-pending-jobs-atom (atom [])
@@ -126,6 +127,8 @@
                                                         [{:principal mesos-principal}]))]
                                     (clj-mesos.scheduler/start driver)
                                     (reset! current-driver driver)
+                                    (if riemann-host
+                                      (swap! shutdown-hooks conj (cook.mesos.monitor/riemann-reporter mesos-datomic-conn :riemann-host riemann-host :riemann-port riemann-port)))
                                     #_(swap! shutdown-hooks conj (cook.mesos.scheduler/reconciler mesos-datomic-conn driver))
                                     (swap! shutdown-hooks conj (cook.mesos.scheduler/lingering-task-killer mesos-datomic-conn driver (select-keys task-constraints [:timeout-hours :timeout-interval-minutes])))
                                     (swap! shutdown-hooks conj (cook.mesos.heartbeat/start-heartbeat-watcher! mesos-datomic-conn mesos-heartbeat-chan))
@@ -185,4 +188,3 @@
                                    [:db/add [:job/uuid job-uuid] :job/state :job.state/completed])
                                  uuids)
                                (concat (repeat 10 500) (repeat 10 1000)))))))
-
