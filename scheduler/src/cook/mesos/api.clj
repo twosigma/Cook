@@ -177,8 +177,12 @@
   "Builds an indexed version of all executor states on the specified slave. Has no cache; takes 100-500ms
    to run."
   [framework-id hostname]
-  (let [slave-state (:body (http/get (str "http://" hostname ":5051/state.json")
-                                     {:as :json-string-keys
+  (let [timeout-millis (* 5 1000)
+        ;; Throw SocketTimeoutException or ConnectionTimeoutException when timeout
+        slave-state (:body (http/get (str "http://" hostname ":5051/state.json")
+                                     {:socket-timeout timeout-millis
+                                      :conn-timeout timeout-millis
+                                      :as :json-string-keys
                                       :spnego-auth true}))
         framework-executors (for [framework (concat (get slave-state "frameworks")
                                                     (get slave-state "completed_frameworks"))
