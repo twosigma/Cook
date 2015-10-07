@@ -30,11 +30,11 @@ public interface JobListener {
      * INITIALIZED -> WAITING, WAITING -> RUNNING, RUNNING -> COMPLETED where it will receive a
      * {@link Job} object with a possible status WAITING, RUNNING and COMPLETED respectively.
      * <p>
-     * Note that if any exception when {@link JobClient} invokes this method for a job status
+     * Note that if any exception when {@link AsyncJobClient} invokes this method for a job status
      * update, it will just simply log this exception. It won't invoke this method for the
      * particular status update again.
      * 
      * @param job
      */
-    public void onStatusUpdate(Job job);
+    void onStatusUpdate(Job job);
 }
