@@ -48,7 +48,10 @@
          ;; Produce a list of maps from user's name to his stats.
          (mapv (fn [job-ent]
                  (let [user (:job/user job-ent)
-                       stats (assoc (util/job-ent->resources job-ent) :count 1)]
+                       stats (-> job-ent
+                                 util/job-ent->resources
+                                 (select-keys [:cpus :mem])
+                                 (assoc :count 1))]
                    {user stats})))
          (reduce (partial merge-with (partial merge-with +)) {}))))
 
@@ -148,4 +151,4 @@
                     (log/debug (format "Sending %s monitor events ..." (count events)))
                     (riemann/send-events riemann-client events)))
                 {:error-handler (fn [ex]
-                                  (log/error "Sending riemann events failed!" ex))}))))
+                                  (log/error ex "Sending riemann events failed!"))}))))
