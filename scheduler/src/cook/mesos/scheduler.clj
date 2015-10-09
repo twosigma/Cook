@@ -652,9 +652,10 @@
                (zipmap (util/get-all-resource-types db) (repeat 0.0)))})))
 
 (defn sort-jobs-by-dru
+  "Return a list of job entities ordered by dru"
   [db]
   (let [pending-job-ents (util/get-pending-job-ents db)
-        pending-task-ents (map util/create-task-ent pending-job-ents)
+        pending-task-ents (into #{} (map util/create-task-ent pending-job-ents))
         running-task-ents (util/get-running-task-ents db)
         user->dru-divisors (dru/init-user->dru-divisors db running-task-ents pending-job-ents)
         jobs (-<>> (concat running-task-ents pending-task-ents)
@@ -664,8 +665,7 @@
                    (into {})
                    (dru/init-task->scored-task <> user->dru-divisors)
                    (filter (fn [[task scored-task]]
-                             (= :job.state/waiting
-                                (:job/state (:job/_instance task)))))
+                             (contains? pending-task-ents task)))
                    (map (fn [[task scored-task]]
                           (:job/_instance task)))
                    (reverse))]
