@@ -108,17 +108,18 @@
 
 (deftest job-validator
   (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
-        job-with-constraints (fn [cpus mem host-constraints]
-                               (merge {"uuid" (str (java.util.UUID/randomUUID))
-                                       "command" "hello world"
-                                       "name" "my-cool-job"
-                                       "priority" 66
-                                       "max_retries" 100
-                                       "max_runtime" 1000000
-                                       "cpus" cpus
-                                       "mem" mem}
-                                      (when host-constraints {"host_constraints" host-constraints})))
-        job (fn [cpus mem] (job-with-constraints cpus mem false))
+        job (fn job-func
+              ([cpus mem] (job-func cpus mem false))
+              ([cpus mem host-constraints]
+               (merge {"uuid" (str (java.util.UUID/randomUUID))
+                       "command" "hello world"
+                       "name" "my-cool-job"
+                       "priority" 66
+                       "max_retries" 100
+                       "max_runtime" 1000000
+                       "cpus" cpus
+                       "mem" mem}
+                      (when host-constraints {"host_constraints" host-constraints}))))
         h (handler conn "my-framework-id" {:cpus 3.0 :memory-gb 2})]
     (testing "Within limits"
       (is (<= 200
@@ -156,39 +157,39 @@
                            :authorization/user "dgrnbrg"
                            :params {"jobs" [(job 1 2050)]}}))
               499)))
-    (testing "Valid Host Constraints"
+    (testing "Valid Host Constraints: String->String attributes"
       (is (<= 200
               (:status (h {:request-method :post
                            :scheme :http
                            :uri "/rawscheduler"
                            :headers {"Content-Type" "application/json"}
                            :authorization/user "dgrnbrg"
-                           :params {"jobs" [(job-with-constraints 3 2048 {"attr1" "val1" "attr2" "val2"})]}}))
+                           :params {"jobs" [(job 3 2048 {"attr1" "val1" "attr2" "val2"})]}}))
               299)))
-    (testing "Invalid Host Constraints 1"
+    (testing "Invalid Host Constraints: Numberic attribute"
       (is (<= 400
               (:status (h {:request-method :post
                            :scheme :http
                            :uri "/rawscheduler"
                            :headers {"Content-Type" "application/json"}
                            :authorization/user "dgrnbrg"
-                           :params {"jobs" [(job-with-constraints 3 2048 {"numeric_attr" 1 "attr2" "val2"})]}}))
+                           :params {"jobs" [(job 3 2048 {"numeric_attr" 1 "attr2" "val2"})]}}))
               499)))
-    (testing "Invalid Host Constraints 2"
+    (testing "Invalid Host Constraints: Empty aatribute"
       (is (<= 400
               (:status (h {:request-method :post
                            :scheme :http
                            :uri "/rawscheduler"
                            :headers {"Content-Type" "application/json"}
                            :authorization/user "dgrnbrg"
-                           :params {"jobs" [(job-with-constraints 3 2048 {"empty_attr" ""})]}}))
+                           :params {"jobs" [(job 3 2048 {"empty_attr" ""})]}}))
               499)))
-    (testing "Invalid Host Constraints 3"
+    (testing "Invalid Host Constraints: Nil attribute"
       (is (<= 400
               (:status (h {:request-method :post
                            :scheme :http
                            :uri "/rawscheduler"
                            :headers {"Content-Type" "application/json"}
                            :authorization/user "dgrnbrg"
-                           :params {"jobs" [(job-with-constraints 3 2048 {"nil_attr" nil "attr2" "val2"})]}}))
+                           :params {"jobs" [(job 3 2048 {"nil_attr" nil "attr2" "val2"})]}}))
               499)))))
