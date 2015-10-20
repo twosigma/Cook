@@ -405,7 +405,7 @@
 (def front-of-job-queue-mem-atom (atom 0))
 (def front-of-job-queue-cpus-atom (atom 0))
 (gauges/defgauge [cook-mesos scheduler front-of-job-queue-mem] (fn [] @front-of-job-queue-mem-atom))
-(gauges/defgauge [cook-mesos-scheduler front-of-job-queue-cpus] (fn [] @front-of-job-queue-cpus-atom))
+(gauges/defgauge [cook-mesos scheduler front-of-job-queue-cpus] (fn [] @front-of-job-queue-cpus-atom))
 
 (defn handle-resource-offer!
   "Gets a list of offers from mesos. Decides what to do with them all--they should all
