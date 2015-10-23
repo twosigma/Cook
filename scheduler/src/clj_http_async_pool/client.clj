@@ -19,47 +19,43 @@
   (:require [clj-http-async-pool.core :refer :all])
   (:refer-clojure :exclude (get update)))
 
+(defn- make-req
+  [this url req method]
+  (request this (merge req {:url url
+                            :method method})))
+
 (defn get
   [this url req]
-  (request this (merge req {:url url
-                            :method :get})))
+  (make-req this url req :get))
 
 (defn head
   [this url req]
-  (request this (merge req {:url url
-                            :method :head})))
+  (make-req this url req :head))
 
 (defn post
   [this url req]
-  (request this (merge req {:url url
-                            :method :post})))
+  (make-req this url req :post))
 
 (defn put
   [this url req]
-  (request this (merge req {:url url
-                            :method :put})))
+  (make-req this url req :put))
 
 (defn delete
   [this url req]
-  (request this (merge req {:url url
-                            :method :delete})))
+  (make-req this url req :delete))
 
 (defn options
   [this url req]
-  (request this (merge req {:url url
-                            :method :options})))
+  (make-req this url req :options))
 
 (defn copy
   [this url req]
-  (request this (merge req {:url url
-                            :method :copy})))
+  (make-req this url req :copy))
 
 (defn move
   [this url req]
-  (request this (merge req {:url url
-                            :method :move})))
+  (make-req this url req :move))
 
 (defn patch
   [this url req]
-  (request this (merge req {:url url
-                            :method :patch})))
+  (make-req this url req :patch))
