@@ -12,7 +12,8 @@ What is Cook?
 - Cook can act as a Spark scheduler, and it comes with a REST API and Java client.
 
 But you'd probably like to run Spark jobs on Cook, right?
-To do so, go to the `scheduler` subproject, and follow the README to build and launch the Cook scheduler Mesos framework.
+To do so, download the latest Cook scheduler [here](https://github.com/twosigma/Cook/releases).
+You can launch the scheduler for testing by running `java -jar cook-release.jar dev-config.edn` (get `dev-config.edn` [here](https://github.com/twosigma/Cook/blob/master/scheduler/dev-config.edn); read more about configuration in `scheduler/docs/configuration.asc`).
 Then, go to the `spark` subproject, and follow the README to patch Spark to support Cook as a scheduler.
 If you'd like to learn more or do something different, read on...
 
