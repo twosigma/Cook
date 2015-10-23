@@ -3,7 +3,7 @@ before_install:
   - sudo apt-key adv --keyserver keyserver.ubuntu.com --recv E56151BF
   - echo "deb http://repos.mesosphere.io/ubuntu/ precise main" | sudo tee /etc/apt/sources.list.d/mesosphere.list
   - sudo apt-get update -qq
-  - sudo apt-get install mesos
+  - sudo apt-get install mesos -y </dev/null
 branches:
   only:
     - master
