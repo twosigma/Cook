@@ -42,6 +42,7 @@
                  [org.clojure/data.priority-map "0.0.5"]
                  [swiss-arrows "1.0.0"]
                  [riddley "0.1.10"]
+                 [com.netflix.fenzo/fenzo-core "0.7.10"]
 
                  ;;Logging
                  [org.clojure/tools.logging "0.2.6"]

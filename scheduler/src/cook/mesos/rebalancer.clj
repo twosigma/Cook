@@ -334,7 +334,7 @@
     utilization))
 
 (defn start-rebalancer!
-  [{:keys [conn driver mesos-master pending-jobs-atom view-incubating-offers view-mature-offers]}]
+  [{:keys [conn driver mesos-master pending-jobs-atom view-incubating-offers]}]
   (let [rebalance-interval (time/minutes 5)
         observe-interval (time/seconds 5)
         observe-refreshness-threshold (time/seconds 30)
@@ -343,7 +343,6 @@
                                     (fn [now]
                                       (let [host->combined-offers
                                             (-<>> (view-incubating-offers)
-                                                  (sched/combine-offers)
                                                   (map (fn [v]
                                                          [(:hostname v) (assoc v :time-observed now)]))
                                                   (into {}))]

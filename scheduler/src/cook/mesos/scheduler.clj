@@ -36,7 +36,9 @@
             [cook.mesos.heartbeat :as heartbeat]
             [cook.mesos.share :as share]
             [swiss.arrows :refer :all])
-  (import java.util.concurrent.TimeUnit))
+  (import java.util.concurrent.TimeUnit
+          com.netflix.fenzo.TaskScheduler
+          com.netflix.fenzo.VirtualMachineLease))
 
 (defn now
   []
@@ -164,77 +166,80 @@
 
 (defn handle-status-update
   "Takes a status update from mesos."
-  [conn driver status]
-  (future
-    (log/info "Mesos status is: " status)
-    (timers/time!
-      handle-status-update-duration
-      (try (let [db (db conn)
-                 {:keys [task-id] task-state :state} status
-                 [job instance prior-instance-status] (first (q '[:find ?j ?i ?status
-                                                                  :in $ ?task-id
-                                                                  :where
-                                                                  [?i :instance/task-id ?task-id]
-                                                                  [?i :instance/status ?s]
-                                                                  [?s :db/ident ?status]
-                                                                  [?j :job/instance ?i]]
-                                                                db task-id))
-                 job-ent (d/entity db job)
-                 retries-so-far (count (:job/instance job-ent))
-                 instance-status (condp contains? task-state
-                                   #{:task-staging} :instance.status/unknown
-                                   #{:task-starting
-                                     :task-running} :instance.status/running
-                                   #{:task-finished} :instance.status/success
-                                   #{:task-failed
-                                     :task-killed
-                                     :task-lost} :instance.status/failed)
-                 prior-job-state (:job/state (d/entity db job))
-                 progress (when (:data status)
-                            (:percent (read-string (String. (:data status)))))
-                 instance-runtime (- (.getTime (now)) ; Used for reporting
-                                     (.getTime (:instance/start-time (d/entity db instance))))
-                 job-resources (util/job-ent->resources job-ent)]
-             (when (= instance-status :instance.status/success)
-               (handle-throughput-metrics success-throughput-metrics
-                                          job-resources
-                                          instance-runtime)
-               (handle-throughput-metrics complete-throughput-metrics
-                                          job-resources
-                                          instance-runtime))
-             (when (= instance-status :instance.status/failed)
-               (handle-throughput-metrics fail-throughput-metrics
-                                          job-resources
-                                          instance-runtime)
-               (handle-throughput-metrics complete-throughput-metrics
-                                          job-resources
-                                          instance-runtime))
-             ;; This code kills any task that "shouldn't" be running
-             (when (and
-                     (or (nil? instance) ; We could know nothing about the task, meaning a DB error happened and it's a waste to finish
-                         (= prior-job-state :job.state/completed) ; The task is attached to a failed job, possibly due to instances running on multiple hosts
-                         (= prior-instance-status :instance.status/failed)) ; The kill-task message could've been glitched on the network
-                     (contains? #{:task-running
-                                  :task-staging
-                                  :task-starting}
-                                task-state)) ; killing an unknown task causes a TASK_LOST message. Break the cycle! Only kill non-terminal tasks
-               (log/warn "Attempting to kill task" task-id
-                         "as instance" instance "with" prior-job-state "and" prior-instance-status
-                         "should've been put down already")
-               (meters/mark! tasks-killed-in-status-update)
-               (mesos/kill-task driver task-id))
-             (when-not (nil? instance)
-               ;; (println "update:" task-id task-state job instance instance-status prior-job-state)
-               (transact-with-retries conn
-                                      (concat
-                                        [[:instance/update-state instance instance-status]]
-                                        (when (#{:instance.status/success
-                                                 :instance.status/failed} instance-status)
-                                          [[:db/add instance :instance/end-time (now)]])
-                                        (when progress
-                                          [[:db/add instance :instance/progress progress]])))))
-        (catch Exception e
-          (log/error e "Mesos scheduler status update error"))))))
+  [conn driver ^TaskScheduler fenzo status]
+  (log/info "Mesos status is: " status)
+  (timers/time!
+    handle-status-update-duration
+    (try (let [db (db conn)
+               {:keys [task-id] task-state :state} status
+               [job instance prior-instance-status] (first (q '[:find ?j ?i ?status
+                                                                :in $ ?task-id
+                                                                :where
+                                                                [?i :instance/task-id ?task-id]
+                                                                [?i :instance/status ?s]
+                                                                [?s :db/ident ?status]
+                                                                [?j :job/instance ?i]]
+                                                              db task-id))
+               job-ent (d/entity db job)
+               retries-so-far (count (:job/instance job-ent))
+               instance-status (condp contains? task-state
+                                 #{:task-staging} :instance.status/unknown
+                                 #{:task-starting
+                                   :task-running} :instance.status/running
+                                 #{:task-finished} :instance.status/success
+                                 #{:task-failed
+                                   :task-killed
+                                   :task-lost} :instance.status/failed)
+               prior-job-state (:job/state (d/entity db job))
+               progress (when (:data status)
+                          (:percent (read-string (String. (:data status)))))
+               instance-runtime (- (.getTime (now)) ; Used for reporting
+                                   (.getTime (:instance/start-time (d/entity db instance))))
+               job-resources (util/job-ent->resources job-ent)]
+           (when (#{:instance.status/success :instance.status/failed} instance-status)
+             (.. fenzo
+                 (getTaskUnAssigner)
+                 (call task-id (:instance/hostname instance)))) ;;TODO is this hostname already in memory?
+           (when (= instance-status :instance.status/success)
+             (handle-throughput-metrics success-throughput-metrics
+                                        job-resources
+                                        instance-runtime)
+             (handle-throughput-metrics complete-throughput-metrics
+                                        job-resources
+                                        instance-runtime))
+           (when (= instance-status :instance.status/failed)
+             (handle-throughput-metrics fail-throughput-metrics
+                                        job-resources
+                                        instance-runtime)
+             (handle-throughput-metrics complete-throughput-metrics
+                                        job-resources
+                                        instance-runtime))
+           ;; This code kills any task that "shouldn't" be running
+           (when (and
+                   (or (nil? instance) ; We could know nothing about the task, meaning a DB error happened and it's a waste to finish
+                       (= prior-job-state :job.state/completed) ; The task is attached to a failed job, possibly due to instances running on multiple hosts
+                       (= prior-instance-status :instance.status/failed)) ; The kill-task message could've been glitched on the network
+                   (contains? #{:task-running
+                                :task-staging
+                                :task-starting}
+                              task-state)) ; killing an unknown task causes a TASK_LOST message. Break the cycle! Only kill non-terminal tasks
+             (log/warn "Attempting to kill task" task-id
+                       "as instance" instance "with" prior-job-state "and" prior-instance-status
+                       "should've been put down already")
+             (meters/mark! tasks-killed-in-status-update)
+             (mesos/kill-task driver task-id))
+           (when-not (nil? instance)
+             ;; (println "update:" task-id task-state job instance instance-status prior-job-state)
+             (transact-with-retries conn
+                                    (concat
+                                      [[:instance/update-state instance instance-status]]
+                                      (when (#{:instance.status/success
+                                               :instance.status/failed} instance-status)
+                                        [[:db/add instance :instance/end-time (now)]])
+                                      (when progress
+                                        [[:db/add instance :instance/progress progress]])))))
+         (catch Exception e
+           (log/error e "Mesos scheduler status update error")))))
 
 (timers/deftimer [cook-mesos scheduler tx-report-queue-processing-duration])
 (meters/defmeter [cook-mesos scheduler tx-report-queue-datoms])
@@ -304,48 +309,31 @@
 ;;; API for matcher
 ;;; ===========================================================================
 
-(def combine-offer-key
-  "Function to generate the key used to group offers."
-  (juxt :hostname :slave-id :driver :fid))
+(defrecord VirtualMachineLeaseAdapter [offer time]
+  com.netflix.fenzo.VirtualMachineLease
+  (cpuCores [_] (get-in offer [:resources :cpus]))
+  (diskMB [_] (:disk offer))
+  (getAttributeMap [_] nil) ;;TODO
+  (getId [_] (:id offer))
+  (getOffer [_] (throw (UnsupportedOperationException.)))
+  (getOfferedTime [_] time)
+  (getVMID [_] (:slave-id offer))
+  (hostname [_] (:hostname offer))
+  (memoryMB [_] (get-in offer [:resources :mem]))
+  (networkMbps [_] (throw (UnsupportedOperationException.)))
+  (portRanges [_] (throw (UnsupportedOperationException.))))
 
-(meters/defmeter [cook-mesos scheduler offers-combine])
-
-(defn combine-offers
-  "Takes a sequence of offers and returns a new sequence of offers such that all offers with the
-   same slave-id, hostname, driver, fid are combined into a single offer. Offers will have the following fields
-   set: `:resources` (same as a single offer, but excluding ports), `:hostname`, `:slave-id`,
-   `:ids` (a list of the all the composite offer ids), ':driver', ':fid', ':time-receieved'.
-   The combine offer will use the earliest time-received of the offers."
-  [offers]
-  (for [[[hostname slave-id driver fid] offers] (group-by combine-offer-key offers)
-        :let [ids (mapcat #(or (:ids %) (seq [(:id %)])) offers)
-              cpu (apply + (map (comp :cpus :resources) offers))
-              mem (apply + (map (comp :mem :resources) offers))
-              ports (vec (apply concat (map (comp :ports :resources) offers)))
-              time-received (->> offers
-                                (sort-by :time-received)
-                                first
-                                :time-received)]]
-    (do
-      (when (> (count offers) 1)
-        (meters/mark! offers-combine)
-        (log/debug "Combining offers " offers))
-      {:ids ids
-       :resources {:cpus cpu
-                   :mem mem
-                   :ports ports}
-       :hostname hostname
-       :slave-id slave-id
-       :driver driver
-       :fid fid
-       :time-received time-received})))
-
-(defn prefixes
-  "Returns a seq of the prefixes of a seq"
-  [xs]
-  (if (seq xs)
-    (reductions conj [(first xs)] (rest xs))
-    []))
+(defrecord TaskRequestAdapter [job task-info]
+  com.netflix.fenzo.TaskRequest
+  (getCPUs [_] (get-in task-info [:resources :cpus]))
+  (getDisk [_] 0.0) ;;TODO
+  (getHardConstraints [_] []) ;;TODO
+  (getId [_] (:name task-info))
+  (getMemory [_] (get-in task-info [:resources :mem]))
+  (getNetworkMbps [_] (throw (UnsupportedOperationException.)))
+  (getPorts [_] 0)
+  (getSoftConstraints [_] [])
+  (taskGroupName [_] (str (:job/uuid job))))
 
 (defn match-offer-to-schedule
   "Given an offer and a schedule, computes all the tasks should be launched as a result.
@@ -354,14 +342,18 @@
    the offer.
 
    Returns a list of tasks that got matched to the offer"
-  [schedule {{:keys [cpus mem]} :resources :as offer}]
-  (log/debug "Matching offer " offer " to the schedule" schedule)
-  (loop [[candidates & remaining-prefixes] (prefixes schedule)
-         prev []]
-    (let [required (util/sum-resources-of-jobs candidates)]
-      (if (and candidates (>= cpus (:cpus required)) (>= mem (:mem required)))
-        (recur remaining-prefixes candidates)
-        prev))))
+  [^TaskScheduler fenzo considerable offers db fid]
+  (let [t (System/currentTimeMillis)
+        leases (mapv #(->VirtualMachineLeaseAdapter % t) offers)
+        ;;TODO this requests conversion could probably benefit from a 500-1000 element cache if constructing task-info is expensive
+        requests (mapv #(->TaskRequestAdapter % (job->task-info db fid %)) considerable)
+        result (.scheduleOnce requests leases)
+        assignments (.. result getResultMap values)]
+    (mapv (fn [assignment]
+            {:leases (.getLeasesUsed assignment)
+             :tasks (.getTasksAssigned assignment)
+             :hostname (.getHostname assignment)})
+          assignments)))
 
 (meters/defmeter [cook-mesos scheduler scheduler-offer-declined])
 
@@ -407,16 +399,17 @@
 (gauges/defgauge [cook-mesos scheduler front-of-job-queue-mem] (fn [] @front-of-job-queue-mem-atom))
 (gauges/defgauge [cook-mesos scheduler front-of-job-queue-cpus] (fn [] @front-of-job-queue-cpus-atom))
 
-(defn handle-resource-offer!
+(defn handle-resource-offers!
   "Gets a list of offers from mesos. Decides what to do with them all--they should all
    be accepted or rejected at the end of the function."
-  [conn driver fid pending-jobs offer]
-  (histograms/update!
-    offer-size-cpus
-    (get-in offer [:resources :cpus]))
-  (histograms/update!
-    offer-size-mem
-    (get-in offer [:resources :mem]))
+  [conn driver ^TaskScheduler fenzo fid pending-jobs offers]
+  (doseq [offer offers]
+    (histograms/update!
+      offer-size-cpus
+      (get-in offer [:resources :cpus]))
+    (histograms/update!
+      offer-size-mem
+      (get-in offer [:resources :mem])))
   (timers/time!
     handle-resource-offer!-duration
     (try
@@ -429,38 +422,48 @@
                                             true
                                             (catch clojure.lang.ExceptionInfo e
                                               false))
-                                          ;; ensure it always tries new hosts
-                                          (not-any? #(= % (:hostname offer))
+                                          ;; ensure it always tries new hosts TODO this is broken, and must be moved to a constraint in fenzo
+                                          #_(not-any? #(= % (:hostname offer))
                                                     (->> (:job/instance job)
                                                          (filter #(false? (:instance/preempted? %)))
                                                          (map :instance/hostname)))))
                                    scheduler-contents)
-              matches (match-offer-to-schedule considerable offer)
-              ;; We know that matches always form a prefix of the scheduler's contents
-              new-scheduler-contents (remove (set matches) scheduler-contents)
+              matches (match-offer-to-schedule fenzo considerable offers db fid)
+              matched-jobs (for [match matches
+                                 task (:tasks match)]
+                             (:job task))
+              matched-job-uuids (set (mapv :job/uuid matched-jobs))
+              new-scheduler-contents (remove (fn [pending-job]
+                                               (contains? matched-job-uuids (:job/uuid pending-job)))
+                                             scheduler-contents)
               first-considerable-resources (-> considerable first util/job-ent->resources)
-              match-resource-requirements (util/sum-resources-of-jobs matches)]
+              match-resource-requirements (util/sum-resources-of-jobs matched-jobs)]
           (reset! front-of-job-queue-mem-atom
                   (or (:mem first-considerable-resources) 0))
           (reset! front-of-job-queue-cpus-atom
                   (or (:cpus first-considerable-resources) 0))
           (cond
-            (empty? matches) (decline-offers driver (:ids offer))
+            (empty? matches) nil ;; Since Fenzo will manage declining offers, we'll do nothing here
             (not (compare-and-set! pending-jobs scheduler-contents new-scheduler-contents))
             (do (log/info "Pending job atom contention encountered")
                 (meters/mark! pending-job-atom-contended)
                 (recur))
             :else
-            (let [task-infos (map (fn [job]
-                                    (let [job-id (:db/id job)]
-                                      (assoc (job->task-info
-                                               db
-                                               fid
-                                               job-id)
-                                             :slave-id (:slave-id offer)
-                                             :job-id job-id)))
-                                  matches)]
-              ;TODO assign the ports to actual available ones, and configure the environment variables; look at the Fenzo API to match up with it
+            ;;TODO this construction of task-infos is legacy-oriented
+            ;;since now we treat "matches" as our primary structure,
+            ;;we should eventually remove this construction of task-infos
+            ;;as it's just a helper for building the datomic transaction
+            (let [task-infos (for [{:keys [tasks leases]} matches
+                                   :let [offers (mapv :offer leases)
+                                         slave-id (:slave-id (first offers))]
+                                   task tasks
+                                   :let [task-info (:task-info task)
+                                         job-id (get-in task [:jbo :db/id])]]
+                               (assoc task-info
+                                      :offers offers
+                                      :slave-id slave-id
+                                      :job-id job-id))]
+              ;TODO assign the ports to actual available ones; look at the Fenzo API to match up with it
               ;First we need to convince mesos to actually offer ports
               ;then, we need to allocate the ports (incremental or bulk?) copy from my book.
 
@@ -470,7 +473,7 @@
               ;; the pending-jobs atom is repopulated
               @(d/transact
                  conn
-                 (mapcat (fn [task-info]
+                 (mapcat (fn [{:keys [offer] :as task-info}]
                            [[:job/allowed-to-start? (:job-id task-info)]
                             {:db/id (d/tempid :db.part/user)
                              :job/_instance (:job-id task-info)
@@ -483,25 +486,36 @@
                                                      task-info
                                                      [:executor :executor-id]
                                                      (:task-id task-info))
-                             :instance/slave-id (:slave-id offer)
+                             :instance/slave-id (:slave-id task-info)
                              :instance/progress 0
                              :instance/status :instance.status/unknown
                              :instance/preempted? false}])
                          task-infos))
-              (log/info "Matched offer" offer "to tasks" task-infos)
+              (log/info "Matched tasks" task-infos)
               ;; This launch-tasks MUST happen after the above transaction in
               ;; order to allow a transaction failure (due to failed preconditions)
               ;; to block the launch
-              (meters/mark! scheduler-offer-matched (count (:ids offer)))
+              (meters/mark! scheduler-offer-matched
+                            (->> matches
+                                 (mapcat (comp :id :offer :leases))
+                                 (distinct)
+                                 (count)))
               (meters/mark! matched-tasks (count task-infos))
               (meters/mark! matched-tasks-cpus (:cpus match-resource-requirements))
               (meters/mark! matched-tasks-mem (:mem match-resource-requirements))
-              (mesos/launch-tasks
-                driver
-                (:ids offer)
-                (mapv #(dissoc % :job-id :num-ports) task-infos))))))
+              (doseq [{:keys [tasks leases]} matches
+                      :let [offers (mapv :offer leases)
+                            task-infos (mapv :task-info tasks)
+                            slave-id (:slave-id (first offers))]]
+                (mesos/launch-tasks
+                  driver
+                  (mapv :id offers)
+                  (mapv #(dissoc % :num-ports) task-infos))
+                (doseq [task tasks]
+                  (.. fenzo
+                      (getTaskAssigner)
+                      (call task (get-in (first leases) [:offer :hostname])))))))))
       (catch Throwable t
-        (decline-offers driver (:ids offer))
         (meters/mark! handle-resource-offer!-errors)
         (log/error t "Error in match:" (ex-data t))))))
 
@@ -759,177 +773,39 @@
                 (reset! pending-jobs-atom
                         (rank-jobs (db conn) offensive-job-filter))))))
 
-;;; Offer buffer Design
-;;; The offer buffer is used to store mesos resource offers made to cook until the matcher is
-;;; ready to use them.
-;;;
-;;; Reasons for doing this:
-;;;  <> We can combine offers between offer sets
-;;;  <> Provide the matcher with the best (biggest) offer of all possible offers currently ready
-;;;  <> Lay the foundation for additional criteria before the offer is ready for the matcher
-;;;  <> Centralize outstanding offers
-;;;
-;;; Structure:
-;;; We have three components that do the heavy lifting.
-;;;   1. offer-incubator: Accepts new offers from mesos and allows them to 'incubate',
-;;;                       meaning we wait some amount of time before we consider the
-;;;                       offer ready for the matcher. We delay the offers in the hopes
-;;;                       of combining them with other offers from the same host. When offers
-;;;                       are done incubating, we attempt to combine with other offers and
-;;;                       pass the combined offers to the prioritizer.
-;;;   2. offer-prioritizer: Accepts offers from the incubator that are ready and sorts them by size.
-;;;                         Ensures the largest offer is passed to the offer-matcher when requested.
-;;;   3. offer-matcher: Pulls offers from the offer-prioritizer and calls `handle-resource-offer!`
-;;;
-;;; Interesting design points:
-;;; <> The incubator puts a timer on each offer set (call `incubate!`) and once the timer is up,
-;;;    it puts the ids onto a channel to notify the incubator to attempt to combine offers and
-;;;    pass along to the prioritizer.
-;;; <> Once an offer has incubated, we take it, plus any offers that can combine with it out of
-;;;    the buffer and put it onto the `offer-ready-chan`. This means we can be in a position where
-;;;    a later timer fires and some of the offers are no longer in the buffer. We handle this by
-;;;    using `select-keys` as a set intersection between offers we are considering and offers that
-;;;    still exist in the buffer.
-;;; <> To avoid race conditions, the design is fully linearized using `async/alt!`. The sole exception
-;;;    is the incubate timers, however the firing of the timer is used only to notify that incubating
-;;;    is complete. Since the work of moving the incubated offers to the next stage of the pipeline is
-;;;    handled linearly through the `async/alt!` block, there is no concern of a race with the timers
-;;;    as well.
-
-(timers/deftimer [cook-mesos scheduler incubator-offer-received-duration])
-(timers/deftimer [cook-mesos scheduler incubator-offer-incubated-duration])
-(histograms/defhistogram [cook-mesos scheduler scheduler-offers-received])
-(counters/defcounter [cook-mesos scheduler incubating-size])
-
-(defn start-offer-incubator!
-  "Starts a thread to accept offers from mesos and 'incubate' them.
-   Offers that are ready are passed to the offer-ready-chan."
-  [offer-chan offer-ready-chan incubate-ms]
-  (let [ready-chan (async/chan)
-        view-offers-atom (atom [])
-        view-offers-fn (fn [] @view-offers-atom)
-        incubate! (fn incubate! [ids]
-                      (async/go
-                        (when ids
-                          (async/<! (async/timeout incubate-ms))
-                          (async/>! ready-chan ids))))]
-    (async/go
-     (try
-       (loop [incubating {}] ; key is offer-id, value is offer
-         (reset! view-offers-atom
-                (->> incubating
-                     (vals)))
-         (recur
-            (async/alt!
-              offer-chan ([[offers driver fid]] ; New offer
-                          (timers/start-stop-time! ; Use this in go blocks, time! doesn't play nice
-                            incubator-offer-received-duration
-                            (let [annotated-offers (map (fn [offer]
-                                                          (assoc offer
-                                                                 :time-received (time/now)
-                                                                 :driver driver
-                                                                 :fid fid))
-                                                        offers)
-                                  ids (map :id offers)]
-                              (incubate! ids)
-                              (histograms/update!
-                                scheduler-offers-received
-                                (count ids))
-                              (log/debug "Got " (count annotated-offers) " offers")
-                              (log/debug "Size of incubating: " (+ (count annotated-offers) (count incubating)))
-                              (counters/inc! incubating-size (count annotated-offers))
-                              (apply assoc incubating (interleave ids annotated-offers)))))
-              ready-chan ([offer-ids] ; Offer finished incubating
-                          ; Can have < (count offer-ids) elements if they were combine previously
-                          (timers/start-stop-time!
-                            incubator-offer-incubated-duration
-                            (let [matured-offers (vals (select-keys incubating offer-ids))
-                                  combine-offer-groups (group-by combine-offer-key (vals incubating))
-                                  matured-combine-offers (map #(-> %
-                                                                   combine-offer-key
-                                                                   combine-offer-groups
-                                                                   combine-offers
-                                                                   first)
-                                                              matured-offers)
-                                  ids-to-remove (mapcat :ids matured-combine-offers)]
-                              (doseq [offer matured-combine-offers]
-                              (async/>! offer-ready-chan offer))
-                            (log/debug (count offer-ids) " matured. "
-                                       (count ids-to-remove) " offers removed from incubating. "
-                                       (- (count incubating) (count ids-to-remove)) " offers in incubating")
-                            (counters/dec! incubating-size (count ids-to-remove))
-                            (apply dissoc incubating ids-to-remove)))))))
-        (catch Exception e
-          (log/error e "In start-offer-incubator"))))
-    view-offers-fn))
-
-(counters/defcounter [cook-mesos scheduler prioritizer-buffer-size])
-
-(defn start-offer-prioritizer!
-  "Starts a thread to accept offers that are done incubating. Maintains a sorted
-   buffer of these offers and passes the biggest one to the matcher when requested."
-  [offer-ready-chan matcher-chan]
-  (let [view-offers-atom (atom [])
-        view-offers-fn (fn [] @view-offers-atom)]
-    (async/go
-     (try
-       (loop [offers []]
-         (reset! view-offers-atom
-                 offers)
-         (recur
-          (if (seq offers)
-            (do
-              (log/debug (count offers) " offers in prioritizer buffer")
-              (async/alt!
-               offer-ready-chan ([offer]
-                                   (log/debug "Got new offer. Size of prioritizer buffer: "
-                                              (inc (count offers)))
-                                   (counters/inc! prioritizer-buffer-size)
-                                   (sort-offers (conj offers offer)))
-               [[matcher-chan (first offers)]] (do
-                                                 (log/debug "Offer sent to matcher. "
-                                                            (count (rest offers))
-                                                            " offers remaining")
-                                                 (counters/dec! prioritizer-buffer-size)
-                                                 (rest offers))))
-            (let [offer (async/<! offer-ready-chan)]
-              (log/debug "Got new offer. Size of prioritizer buffer: "
-                         (inc (count offers)))
-              (counters/inc! prioritizer-buffer-size)
-              (sort-offers (conj offers offer))))))
-       (catch Exception e
-         (log/error e "In start-offer-prioritizer"))))
-    view-offers-fn))
-
-(defn start-offer-matcher!
-  "Create a thread to repeatedly pull from matcher-chan and have the offer matched."
-  [conn pending-jobs-atom matcher-chan]
-  (async/thread
-    (log/debug "offer matcher started")
-    (try
-      (loop []
-        (log/debug "Preparing to pull offer (offer-matcher)")
-        (let [offer (async/<!! matcher-chan)
-              fid (:fid offer)
-              driver (:driver offer)]
-          (log/debug "(offer-matcher) Offer taken " offer)
-          (handle-resource-offer! conn driver fid pending-jobs-atom offer))
-        (log/debug "(offer matcher) Handled resource offer")
-        (recur))
-      (catch Exception e
-        (log/error e "Error in start-offer-matcher!")))))
-
-(meters/defmeter [cook-mesos scheduler offer-back-pressure])
 (meters/defmeter [cook-mesos scheduler mesos-error])
 
+(defn make-fenzo-scheduler
+  [driver offer-incubate-time-ms]
+  (.. (com.netflix.fenzo.TaskScheduler$Builder.)
+      (disableShortfallEvaluation) ;; We're not using the autoscaling features
+      (withLeaseOfferExpirySecs (max (quot offer-incubate-time-ms 1000) 1)) ;; Must convert from the ms, should be at least 1 second
+      (withLeaseRejectAction (reify com.netflix.fenzo.functions.Action1
+                               (call [_ lease]
+                                 (let [offer (:offer lease)
+                                       id (:id offer)]
+                                   (log/debug "Declining offer" offer)
+                                   (if-let [driver @driver]
+                                     (mesos/decline-offer driver id)
+                                     (log/error "Unable to decline offer; no current driver"))))))
+      (build)))
+
+(defn view-incubating-offers
+  [^TaskScheduler fenzo]
+  (for [^com.netflix.fenzo.VirtualMachineCurrentState state (.getVmCurrentStates fenzo)
+        :let [lease (.getCurrAvailableResources state)]]
+    {:hostname (.hostname lease)
+     :slave-id (.getVMID lease)
+     :resources {:cpus (.cpuCores lease)
+                 :mem (.memoryMB lease)}}))
+
 (defn create-datomic-scheduler
-  [conn set-framework-id pending-jobs-atom heartbeat-ch offer-incubate-time-ms task-constraints]
+  [conn set-framework-id driver-atom pending-jobs-atom heartbeat-ch offer-incubate-time-ms task-constraints]
   (let [fid (atom nil)
         offer-chan (async/chan 100)
         offer-ready-chan (async/chan 100)
         matcher-chan (async/chan) ; Don't want to buffer offers to the matcher chan. Only want when ready
-        view-incubating-offers (start-offer-incubator! offer-chan offer-ready-chan offer-incubate-time-ms)
-        view-mature-offers (start-offer-prioritizer! offer-ready-chan matcher-chan)
+        fenzo (make-fenzo-scheduler driver-atom offer-incubate-time-ms)
         _ (start-offer-matcher! conn pending-jobs-atom matcher-chan)
         _ (start-jobs-prioritizer! conn pending-jobs-atom task-constraints)
         ]
@@ -966,17 +842,7 @@
              (meters/mark! mesos-error)
              (log/error "Got a mesos error!!!!" message))
       (resourceOffers [driver offers]
-                      (case
-                          (async/alt!!
-                           [[offer-chan [offers driver @fid]]] (log/debug "Passed " (count offers) " to incubator")
-                           :default :back-pressure
-                           :priority true)
-                        :back-pressure (do
-                                         (log/warn "Back pressure on offer-incubator. Declining " (count offers) "offers")
-                                         (meters/mark! offer-back-pressure)
-                                         (decline-offers driver (map :id offers)))
-                        nil))
+                      (handle-resource-offers! conn driver fenzo @fid pending-jobs-atom offers))
       (statusUpdate [driver status]
-                    (handle-status-update conn driver status)))
-     :view-incubating-offers view-incubating-offers
-     :view-mature-offers view-mature-offers}))
+                    (handle-status-update conn driver fenzo status)))
+     :view-incubating-offers (partial view-incubating-offers fenzo)}))
