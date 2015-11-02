@@ -473,12 +473,12 @@
               ;; the pending-jobs atom is repopulated
               @(d/transact
                  conn
-                 (mapcat (fn [{:keys [offer] :as task-info}]
+                 (mapcat (fn [{:keys [offers] :as task-info}]
                            [[:job/allowed-to-start? (:job-id task-info)]
                             {:db/id (d/tempid :db.part/user)
                              :job/_instance (:job-id task-info)
                              :instance/task-id (:task-id task-info)
-                             :instance/hostname (:hostname offer)
+                             :instance/hostname (:hostname (first offers))
                              :instance/start-time (now)
                              ;; NB command executor uses the task-id
                              ;; as the executor-id
