@@ -21,4 +21,6 @@
        :levels {"datomic.db" :warn
                 "datomic.peer" :warn
                 "datomic.kv-cluster" :warn
+                "cook.mesos.scheduler" :debug
+                "com.netflix.fenzo.TaskScheduler" :debug
                 :default :info}}}

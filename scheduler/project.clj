@@ -42,7 +42,10 @@
                  [org.clojure/data.priority-map "0.0.5"]
                  [swiss-arrows "1.0.0"]
                  [riddley "0.1.10"]
-                 [com.netflix.fenzo/fenzo-core "0.7.10"]
+                 [com.netflix.fenzo/fenzo-core "0.8.2"
+                  :exclusions [org.apache.mesos/mesos
+                               org.slf4j/slf4j-api
+                               org.slf4j/slf4j-simple]]
 
                  ;;Logging
                  [org.clojure/tools.logging "0.2.6"]
