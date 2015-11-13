@@ -203,7 +203,7 @@
                (log/debug "Unassigning task" task-id "from" (:instance/hostname instance-ent))
                (.. fenzo
                    (getTaskUnAssigner)
-                   (call task-id (:instance/hostname instance-ent)))) ;;TODO is this hostname already in memory?
+                   (call task-id (:instance/hostname instance-ent))))
              (when (= instance-status :instance.status/success)
                (handle-throughput-metrics success-throughput-metrics
                                           job-resources
@@ -329,11 +329,22 @@
                           (com.netflix.fenzo.VirtualMachineLease$Range. begin end))
                         (get-in offer [:resources :ports]))))
 
+(defn novel-host-constraint
+  "This returns a Fenzo hard constraint that ensures the given job won't run on the same host again"
+  [job]
+  (reify com.netflix.fenzo.ConstraintEvaluator
+    (getName [_] "novel_host_constraint")
+    (evaluate [_ task-request target-vm task-tracker-state]
+      (not-any? #(= % (.getHostname target-vm))
+                (->> (:job/instance job)
+                     (filter #(false? (:instance/preempted? %)))
+                     (map :instance/hostname))))))
+
 (defrecord TaskRequestAdapter [job task-info]
   com.netflix.fenzo.TaskRequest
   (getCPUs [_] (get-in task-info [:resources :cpus]))
-  (getDisk [_] 0.0) ;;TODO
-  (getHardConstraints [_] []) ;;TODO
+  (getDisk [_] 0.0)
+  (getHardConstraints [_] [(novel-host-constraint job)])
   (getId [_] (:task-id task-info))
   (getMemory [_] (get-in task-info [:resources :mem]))
   (getNetworkMbps [_] 0.0)
@@ -381,26 +392,6 @@
     (meters/mark! scheduler-offer-declined)
     (mesos/decline-offer driver id)))
 
-(defn get-used-hosts
-  "Return a set of hosts that the job has already used"
-  [db job]
-  (->> (q '[:find ?host
-            :in $ ?j
-            :where
-            [?j :job/instance ?i]
-            [?i :instance/hostname ?host]]
-          db job)
-       (map (fn [[x]] x))
-       (into #{})))
-
-(defn sort-offers
-  "Sorts the offers such that the largest offers are in front"
-  ;; TODO: Use dru instead of mem as measure of largest
-  [offers]
-  (->> offers
-       (sort-by (fn [{{:keys [mem cpus]} :resources}] [mem cpus]))
-       reverse))
-
 (timers/deftimer  [cook-mesos scheduler handle-resource-offer!-duration])
 (meters/defmeter  [cook-mesos scheduler pending-job-atom-contended])
 (histograms/defhistogram [cook-mesos scheduler offer-size-mem])
@@ -444,13 +435,7 @@
               db (db conn)
               _ (log/debug "There are" (count scheduler-contents) "pending jobs")
               considerable (filter (fn [job]
-                                     (job-allowed-to-start? db job)
-                                     #_(and 
-                                          ;; ensure it always tries new hosts TODO this is broken, and must be moved to a constraint in fenzo
-                                          (not-any? #(= % (:hostname offer))
-                                                    (->> (:job/instance job)
-                                                         (filter #(false? (:instance/preempted? %)))
-                                                         (map :instance/hostname)))))
+                                     (job-allowed-to-start? db job))
                                    scheduler-contents)
               _ (log/debug "We'll consider scheduling" (count considerable) "of those pending jobs")
               matches (match-offer-to-schedule fenzo considerable offers db fid)
@@ -557,8 +542,8 @@
 
 (defn make-offer-handler
   [conn driver-atom fenzo fid-atom pending-jobs-atom]
-  (let [offers-chan (async/chan)
-        timer-chan (chime-ch (periodic/periodic-seq (time/now) (time/seconds 5))
+  (let [offers-chan (async/chan (async/buffer 5))
+        timer-chan (chime-ch (periodic/periodic-seq (time/now) (time/seconds 1))
                              {:ch (async/chan (async/sliding-buffer 1))})]
     (async/thread
       (loop []
@@ -898,9 +883,9 @@
              (meters/mark! mesos-error)
              (log/error "Got a mesos error!!!!" message))
       (resourceOffers [driver offers]
-                      ;;TODO handle failed puts
                       (log/debug "Got an offer, putting it into the offer channel:" offers)
-                      (async/>!! offers-chan offers))
+                      (when-not (async/offer! offers-chan offers)
+                        (decline-offers driver offers)))
       (statusUpdate [driver status]
                     (handle-status-update conn driver fenzo status)))
      :view-incubating-offers (partial view-incubating-offers fenzo)}))
