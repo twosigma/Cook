@@ -335,10 +335,18 @@
   (reify com.netflix.fenzo.ConstraintEvaluator
     (getName [_] "novel_host_constraint")
     (evaluate [_ task-request target-vm task-tracker-state]
-      (not-any? #(= % (.getHostname target-vm))
-                (->> (:job/instance job)
-                     (filter #(false? (:instance/preempted? %)))
-                     (map :instance/hostname))))))
+      (let [previous-hosts (->> (:job/instance job)
+                                (filter #(false? (:instance/preempted? %)))
+                                (mapv :instance/hostname))]
+        (log/info "Host constraint evaluation:" (str "Can't run on " (.getHostname target-vm)
+                                                     " since we already ran on that: " previous-hosts)
+                  "which gave the result" (not-any? #(= % (.getHostname target-vm))
+                                                    previous-hosts))
+        (com.netflix.fenzo.ConstraintEvaluator$Result.
+          (not-any? #(= % (.getHostname target-vm))
+                    previous-hosts)
+          (str "Can't run on " (.getHostname target-vm)
+               " since we already ran on that: " previous-hosts))))))
 
 (defrecord TaskRequestAdapter [job task-info]
   com.netflix.fenzo.TaskRequest
@@ -370,7 +378,8 @@
     (log/debug "Found this assigment:" result)
     (when (log/enabled? :debug)
       (log/debug "Task placement failure information follows:")
-      (doseq [failure (.. result getFailures values)
+      (doseq [failures (.. result getFailures values)
+              failure failures
               :let [_ (log/debug (str (.getConstraintFailure failure)))]
               f (.getFailures failure)]
         (log/debug (str f)))
@@ -540,9 +549,22 @@
         (meters/mark! handle-resource-offer!-errors)
         (log/error t "Error in match:" (ex-data t))))))
 
+(defn view-incubating-offers
+  [^TaskScheduler fenzo]
+  (let [pending-offers (for [^com.netflix.fenzo.VirtualMachineCurrentState state (.getVmCurrentStates fenzo)
+                             :let [lease (.getCurrAvailableResources state)]
+                             :when lease]
+                         {:hostname (.hostname lease)
+                          :slave-id (.getVMID lease)
+                          :resources {:cpus (.cpuCores lease)
+                                      :mem (.memoryMB lease)}})]
+    (log/debug "We have" (count pending-offers) "pending offers")
+    pending-offers))
+
 (defn make-offer-handler
   [conn driver-atom fenzo fid-atom pending-jobs-atom]
   (let [offers-chan (async/chan (async/buffer 5))
+        resources-atom (atom (view-incubating-offers fenzo))
         timer-chan (chime-ch (periodic/periodic-seq (time/now) (time/seconds 1))
                              {:ch (async/chan (async/sliding-buffer 1))})]
     (async/thread
@@ -552,9 +574,10 @@
                        timer-chan ([_] [])
                        :priority true)]
           (handle-resource-offers! conn @driver-atom fenzo @fid-atom pending-jobs-atom offers-chan offers)
+          (reset! resources-atom (view-incubating-offers fenzo))
           ;;TODO make this cancelable
           (recur))))
-    offers-chan))
+    [offers-chan resources-atom]))
 
 (defn reconcile-jobs
   "Ensure all jobs saw their final state change"
@@ -829,18 +852,6 @@
                                      (log/error "Unable to decline offer; no current driver"))))))
       (build)))
 
-(defn view-incubating-offers
-  [^TaskScheduler fenzo]
-  (let [pending-offers (for [^com.netflix.fenzo.VirtualMachineCurrentState state (.getVmCurrentStates fenzo)
-                             :let [lease (.getCurrAvailableResources state)]
-                             :when lease]
-                         {:hostname (.hostname lease)
-                          :slave-id (.getVMID lease)
-                          :resources {:cpus (.cpuCores lease)
-                                      :mem (.memoryMB lease)}})]
-    (log/debug "We have" (count pending-offers) "pending offers")
-    pending-offers))
-
 (defn create-datomic-scheduler
   [conn set-framework-id driver-atom pending-jobs-atom heartbeat-ch offer-incubate-time-ms task-constraints]
   (let [fid (atom nil)
@@ -848,7 +859,7 @@
         offer-ready-chan (async/chan 100)
         matcher-chan (async/chan) ; Don't want to buffer offers to the matcher chan. Only want when ready
         fenzo (make-fenzo-scheduler driver-atom offer-incubate-time-ms)
-        offers-chan (make-offer-handler conn driver-atom fenzo fid pending-jobs-atom)]
+        [offers-chan resources-atom] (make-offer-handler conn driver-atom fenzo fid pending-jobs-atom)]
     (start-jobs-prioritizer! conn pending-jobs-atom task-constraints)
     {:scheduler
      (mesos/scheduler
@@ -888,4 +899,4 @@
                         (decline-offers driver offers)))
       (statusUpdate [driver status]
                     (handle-status-update conn driver fenzo status)))
-     :view-incubating-offers (partial view-incubating-offers fenzo)}))
+     :view-incubating-offers (fn get-resources-atom [] @resources-atom)}))
