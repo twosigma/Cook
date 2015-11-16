@@ -351,17 +351,17 @@
                " since we already ran on that: " previous-hosts))))))
 
 ;;TODO we should not retain the job here; could hold the entire DB ref in memory [doesn't matter; cleared every loop]
-(defrecord TaskRequestAdapter [job-thunk task-info]
+(defrecord TaskRequestAdapter [job task-info]
   com.netflix.fenzo.TaskRequest
   (getCPUs [_] (get-in task-info [:resources :cpus]))
   (getDisk [_] 0.0)
-  (getHardConstraints [_] [(novel-host-constraint (job-thunk))])
+  (getHardConstraints [_] [(novel-host-constraint job)])
   (getId [_] (:task-id task-info))
   (getMemory [_] (get-in task-info [:resources :mem]))
   (getNetworkMbps [_] 0.0)
   (getPorts [_] (:num-ports task-info))
   (getSoftConstraints [_] [])
-  (taskGroupName [_] (str (:job/uuid (job-thunk)))))
+  (taskGroupName [_] (str (:job/uuid job))))
 
 (defn match-offer-to-schedule
   "Given an offer and a schedule, computes all the tasks should be launched as a result.
@@ -377,7 +377,7 @@
         ;;TODO this requests conversion could probably benefit from a 500-1000 element cache if constructing task-info is expensive
         requests (mapv (fn [job]
                          (let [job-id (:db/id job)]
-                           (->TaskRequestAdapter #(d/entity (d/db conn) job-id)
+                           (->TaskRequestAdapter job
                                                  (job->task-info db fid (:db/id job)))))
                        considerable)
         result (.scheduleOnce fenzo requests leases)
@@ -476,7 +476,7 @@
               matched-jobs (for [match matches
                                  ^TaskAssignmentResult task-result (:tasks match)
                                  :let [task-request (.getRequest task-result)]]
-                             ((:job-thunk (doto task-request log/info))))
+                             (:job task-request))
               matched-job-uuids (set (mapv :job/uuid matched-jobs))
               new-scheduler-contents (remove (fn [pending-job]
                                                (contains? matched-job-uuids (:job/uuid pending-job)))
@@ -509,7 +509,7 @@
                                    ^TaskAssignmentResult task tasks
                                    :let [request (.getRequest task)
                                          task-info (:task-info request)
-                                         job-id (:db/id ((:job-thunk request)))]]
+                                         job-id (get-in request [:job :db/id])]]
                                (assoc task-info
                                       :offers offers
                                       :slave-id slave-id
