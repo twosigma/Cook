@@ -234,6 +234,7 @@
                (mesos/kill-task driver task-id))
              (when-not (nil? instance)
                ;; (println "update:" task-id task-state job instance instance-status prior-job-state)
+               (log/debug "Transacting updated state for instance" instance "to status" instance-status)
                (transact-with-retries conn
                                       (concat
                                         [[:instance/update-state instance instance-status]]
@@ -329,6 +330,7 @@
                           (com.netflix.fenzo.VirtualMachineLease$Range. begin end))
                         (get-in offer [:resources :ports]))))
 
+;; TODO sometimes we see a job run twice...
 (defn novel-host-constraint
   "This returns a Fenzo hard constraint that ensures the given job won't run on the same host again"
   [job]
@@ -336,10 +338,10 @@
     (getName [_] "novel_host_constraint")
     (evaluate [_ task-request target-vm task-tracker-state]
       (let [previous-hosts (->> (:job/instance job)
-                                (filter #(false? (:instance/preempted? %)))
+                                (remove #(true? (:instance/preempted? %)))
                                 (mapv :instance/hostname))]
-        (log/info "Host constraint evaluation:" (str "Can't run on " (.getHostname target-vm)
-                                                     " since we already ran on that: " previous-hosts)
+        (log/info "Host constraint evaluation for host: " (.getHostname target-vm)
+                  "for instances " (mapv #(into {} %) (:job/instance job))
                   "which gave the result" (not-any? #(= % (.getHostname target-vm))
                                                     previous-hosts))
         (com.netflix.fenzo.ConstraintEvaluator$Result.
@@ -348,17 +350,18 @@
           (str "Can't run on " (.getHostname target-vm)
                " since we already ran on that: " previous-hosts))))))
 
-(defrecord TaskRequestAdapter [job task-info]
+;;TODO we should not retain the job here; could hold the entire DB ref in memory [doesn't matter; cleared every loop]
+(defrecord TaskRequestAdapter [job-thunk task-info]
   com.netflix.fenzo.TaskRequest
   (getCPUs [_] (get-in task-info [:resources :cpus]))
   (getDisk [_] 0.0)
-  (getHardConstraints [_] [(novel-host-constraint job)])
+  (getHardConstraints [_] [(novel-host-constraint (job-thunk))])
   (getId [_] (:task-id task-info))
   (getMemory [_] (get-in task-info [:resources :mem]))
   (getNetworkMbps [_] 0.0)
   (getPorts [_] (:num-ports task-info))
   (getSoftConstraints [_] [])
-  (taskGroupName [_] (str (:job/uuid job))))
+  (taskGroupName [_] (str (:job/uuid (job-thunk)))))
 
 (defn match-offer-to-schedule
   "Given an offer and a schedule, computes all the tasks should be launched as a result.
@@ -367,12 +370,16 @@
    the offer.
 
    Returns a list of tasks that got matched to the offer"
-  [^TaskScheduler fenzo considerable offers db fid]
+  [^TaskScheduler fenzo considerable offers db fid conn]
   (log/debug "Matching" (count offers) "offers to" (count considerable) "jobs with fenzo")
   (let [t (System/currentTimeMillis)
         leases (mapv #(->VirtualMachineLeaseAdapter % t) offers)
         ;;TODO this requests conversion could probably benefit from a 500-1000 element cache if constructing task-info is expensive
-        requests (mapv #(->TaskRequestAdapter % (job->task-info db fid (:db/id %))) considerable)
+        requests (mapv (fn [job]
+                         (let [job-id (:db/id job)]
+                           (->TaskRequestAdapter #(d/entity (d/db conn) job-id)
+                                                 (job->task-info db fid (:db/id job)))))
+                       considerable)
         result (.scheduleOnce fenzo requests leases)
         assignments (.. result getResultMap values)]
     (log/debug "Found this assigment:" result)
@@ -424,6 +431,24 @@
     (catch clojure.lang.ExceptionInfo e
       false)))
 
+;;TODO LOL
+#_(let [db (db (d/connect "datomic:mem://cook-jobs"))]
+  (doseq [[job status] (vec (q '[:find ?j ?status
+                                 :where
+                                 [?j :job/state ?s]
+                                 [?s :db/ident ?status]
+                                 ]
+                               db))]
+  (println job status (q '[:find ?i ?host ?status
+                           :in $ ?j
+                           :where
+                           [?j :job/instance ?i]
+                           [?i :instance/status ?s]
+                           [?i :instance/hostname ?host]
+                           [?s :db/ident ?status]
+                           ] db job))
+  ))
+
 (defn handle-resource-offers!
   "Gets a list of offers from mesos. Decides what to do with them all--they should all
    be accepted or rejected at the end of the function."
@@ -447,10 +472,11 @@
                                      (job-allowed-to-start? db job))
                                    scheduler-contents)
               _ (log/debug "We'll consider scheduling" (count considerable) "of those pending jobs")
-              matches (match-offer-to-schedule fenzo considerable offers db fid)
+              matches (match-offer-to-schedule fenzo considerable offers db fid conn)
               matched-jobs (for [match matches
-                                 task (:tasks match)]
-                             (:job task))
+                                 ^TaskAssignmentResult task-result (:tasks match)
+                                 :let [task-request (.getRequest task-result)]]
+                             ((:job-thunk (doto task-request log/info))))
               matched-job-uuids (set (mapv :job/uuid matched-jobs))
               new-scheduler-contents (remove (fn [pending-job]
                                                (contains? matched-job-uuids (:job/uuid pending-job)))
@@ -483,7 +509,7 @@
                                    ^TaskAssignmentResult task tasks
                                    :let [request (.getRequest task)
                                          task-info (:task-info request)
-                                         job-id (get-in request [:job :db/id])]]
+                                         job-id (:db/id ((:job-thunk request)))]]
                                (assoc task-info
                                       :offers offers
                                       :slave-id slave-id
@@ -594,6 +620,7 @@
                                                 [:job/update-state j])
                                               js))))))
 
+;; TODO this needs to dump into into fenzo, too
 (defn reconcile-tasks
   "Finds all non-completed tasks, and has Mesos let us know if any have changed."
   [db driver]
@@ -755,6 +782,7 @@
 
    A job is offensive if and only if its required memory or cpus exceeds the
    limits"
+  ;; TODO these limits should come from the largest observed host from Fenzo
   [{max-memory-gb :memory-gb max-cpus :cpus} offensive-jobs-ch jobs]
   (let [max-memory-mb (* 1024.0 max-memory-gb)
         categorized-jobs (group-by (fn [job]
