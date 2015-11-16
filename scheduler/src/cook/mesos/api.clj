@@ -252,6 +252,7 @@
                     end (:instance/end-time instance)
                     base {:task_id (:instance/task-id instance)
                           :hostname hostname
+                          :backfilled (:instance/backfilled? instance false)
                           :slave_id (:instance/slave-id instance)
                           :executor_id (:instance/executor-id instance)
                           :status (name (:instance/status instance))}

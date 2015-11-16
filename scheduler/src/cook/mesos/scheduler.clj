@@ -330,7 +330,6 @@
                           (com.netflix.fenzo.VirtualMachineLease$Range. begin end))
                         (get-in offer [:resources :ports]))))
 
-;; TODO sometimes we see a job run twice...
 (defn novel-host-constraint
   "This returns a Fenzo hard constraint that ensures the given job won't run on the same host again"
   [job]
@@ -340,17 +339,12 @@
       (let [previous-hosts (->> (:job/instance job)
                                 (remove #(true? (:instance/preempted? %)))
                                 (mapv :instance/hostname))]
-        (log/info "Host constraint evaluation for host: " (.getHostname target-vm)
-                  "for instances " (mapv #(into {} %) (:job/instance job))
-                  "which gave the result" (not-any? #(= % (.getHostname target-vm))
-                                                    previous-hosts))
         (com.netflix.fenzo.ConstraintEvaluator$Result.
           (not-any? #(= % (.getHostname target-vm))
                     previous-hosts)
           (str "Can't run on " (.getHostname target-vm)
                " since we already ran on that: " previous-hosts))))))
 
-;;TODO we should not retain the job here; could hold the entire DB ref in memory [doesn't matter; cleared every loop]
 (defrecord TaskRequestAdapter [job task-info]
   com.netflix.fenzo.TaskRequest
   (getCPUs [_] (get-in task-info [:resources :cpus]))
@@ -374,11 +368,9 @@
   (log/debug "Matching" (count offers) "offers to" (count considerable) "jobs with fenzo")
   (let [t (System/currentTimeMillis)
         leases (mapv #(->VirtualMachineLeaseAdapter % t) offers)
-        ;;TODO this requests conversion could probably benefit from a 500-1000 element cache if constructing task-info is expensive
         requests (mapv (fn [job]
                          (let [job-id (:db/id job)]
-                           (->TaskRequestAdapter job
-                                                 (job->task-info db fid (:db/id job)))))
+                           (->TaskRequestAdapter job (job->task-info db fid (:db/id job)))))
                        considerable)
         result (.scheduleOnce fenzo requests leases)
         assignments (.. result getResultMap values)]
@@ -449,6 +441,44 @@
                            ] db job))
   ))
 
+;;TODO test this
+(defn ids-of-backfilled-instances
+  "Returns a list of the ids of running, backfilled instances of the given job"
+  [job]
+  (->> (:job/instance job)
+       (filter #(and (= :instance.status/running (:instance/status %))
+                     (:instance/backfilled? %)))
+       (map :db/id)))
+
+;;TODO test this
+(defn process-matches-for-backfill
+  "This computes some sets:
+   
+   fully-processed: this is a set of job uuids that should be removed from the list scheduler jobs. These are not backfilled
+   upgrade-backfill: this is a set of instance datomic ids that should be upgraded to non-backfill
+   backfill-jobs: this is a set of job uuids for jobs that were matched, but are in the backfill QoS class
+   "
+  [scheduler-contents matched-jobs]
+  (let [matched-job-uuids (set (mapv :job/uuid matched-jobs))]
+    (loop [scheduler-contents scheduler-contents
+           backfilling? false
+           fully-processed #{}
+           upgrade-backfill #{}
+           backfill-jobs #{}]
+      (if (seq scheduler-contents)
+        (let [scheduler-contents' (rest scheduler-contents)
+              pending-job-uuid (:job/uuid (first scheduler-contents))]
+          (if (contains? matched-job-uuids pending-job-uuid)
+            (if backfilling?
+              (recur scheduler-contents' backfilling? fully-processed upgrade-backfill (conj backfill-jobs pending-job-uuid))
+              (recur scheduler-contents' backfilling? (conj fully-processed pending-job-uuid) upgrade-backfill backfill-jobs))
+            (if-let [backfilled-ids (and (not backfilling?) (seq (ids-of-backfilled-instances pending-job)))]
+              (recur scheduler-contents' backfilling? fully-processed (into upgrade-backfill backfilled-ids) backfill-jobs)
+              (recur scheduler-contents' true fully-processed upgrade-backfill backfill-jobs))))
+        {:fully-processed fully-processed
+         :upgrade-backfill upgrade-backfill
+         :backfill-jobs backfill-jobs}))))
+
 (defn handle-resource-offers!
   "Gets a list of offers from mesos. Decides what to do with them all--they should all
    be accepted or rejected at the end of the function."
@@ -477,9 +507,9 @@
                                  ^TaskAssignmentResult task-result (:tasks match)
                                  :let [task-request (.getRequest task-result)]]
                              (:job task-request))
-              matched-job-uuids (set (mapv :job/uuid matched-jobs))
+              processed-matches (process-matches-for-backfill scheduler-contents matched-jobs)
               new-scheduler-contents (remove (fn [pending-job]
-                                               (contains? matched-job-uuids (:job/uuid pending-job)))
+                                               (contains? (:fully-processed processed-matches) (:job/uuid pending-job)))
                                              scheduler-contents)
               first-considerable-resources (-> considerable first util/job-ent->resources)
               match-resource-requirements (util/sum-resources-of-jobs matched-jobs)]
@@ -503,46 +533,43 @@
             ;;since now we treat "matches" as our primary structure,
             ;;we should eventually remove this construction of task-infos
             ;;as it's just a helper for building the datomic transaction
-            (let [task-infos (for [{:keys [tasks leases]} matches
-                                   :let [offers (mapv :offer leases)
-                                         slave-id (:slave-id (first offers))]
-                                   ^TaskAssignmentResult task tasks
-                                   :let [request (.getRequest task)
-                                         task-info (:task-info request)
-                                         job-id (get-in request [:job :db/id])]]
-                               (assoc task-info
-                                      :offers offers
-                                      :slave-id slave-id
-                                      :job-id job-id))]
-              ;TODO assign the ports to actual available ones; look at the Fenzo API to match up with it
-              ;First we need to convince mesos to actually offer ports
-              ;then, we need to allocate the ports (incremental or bulk?) copy from my book.
-
+            (let [task-txns (for [{:keys [tasks leases]} matches
+                                  :let [offers (mapv :offer leases)
+                                        slave-id (:slave-id (first offers))]
+                                  ^TaskAssignmentResult task tasks
+                                  :let [request (.getRequest task)
+                                        task-info (:task-info request)
+                                        job-id (get-in request [:job :db/id])]]
+                              [[:job/allowed-to-start? job-id]
+                               {:db/id (d/tempid :db.part/user)
+                                :job/_instance job-id
+                                :instance/task-id (:task-id task-info)
+                                :instance/hostname (.getHostname task)
+                                :instance/start-time (now)
+                                ;; NB command executor uses the task-id
+                                ;; as the executor-id
+                                :instance/executor-id (get-in
+                                                        task-info
+                                                        [:executor :executor-id]
+                                                        (:task-id task-info))
+                                :instance/backfilled? (contains? (:backfill-jobs processed-matches) (get-in request [:job :job/uuid]))
+                                :instance/slave-id slave-id
+                                :instance/progress 0
+                                :instance/status :instance.status/unknown
+                                :instance/preempted? false}])
+                  upgrade-txns (map (fn [instance-id]
+                                      [:db/add instance-id :instance/backfilled? false])
+                                    (:upgrade-backfill processed-matches))]
               ;; Note that this transaction can fail if a job was scheduled
               ;; during a race. If that happens, then other jobs that should
               ;; be scheduled will not be eligible for rescheduling until
               ;; the pending-jobs atom is repopulated
               @(d/transact
                  conn
-                 (mapcat (fn [{:keys [offers] :as task-info}]
-                           [[:job/allowed-to-start? (:job-id task-info)]
-                            {:db/id (d/tempid :db.part/user)
-                             :job/_instance (:job-id task-info)
-                             :instance/task-id (:task-id task-info)
-                             :instance/hostname (:hostname (first offers))
-                             :instance/start-time (now)
-                             ;; NB command executor uses the task-id
-                             ;; as the executor-id
-                             :instance/executor-id (get-in
-                                                     task-info
-                                                     [:executor :executor-id]
-                                                     (:task-id task-info))
-                             :instance/slave-id (:slave-id task-info)
-                             :instance/progress 0
-                             :instance/status :instance.status/unknown
-                             :instance/preempted? false}])
-                         task-infos))
-              (log/info "Matched tasks" task-infos)
+                 (vec (apply concat upgrade-txns task-txns)))
+              (log/info "Launching" (count task-txns) "tasks")
+              (log/info "Upgrading" (count (:upgrade-backfill processed-matches)) "tasks from backfilled to proper")
+              (log/debug "Matched tasks" task-txns)
               ;; This launch-tasks MUST happen after the above transaction in
               ;; order to allow a transaction failure (due to failed preconditions)
               ;; to block the launch
@@ -551,7 +578,7 @@
                                  (mapcat (comp :id :offer :leases))
                                  (distinct)
                                  (count)))
-              (meters/mark! matched-tasks (count task-infos))
+              (meters/mark! matched-tasks (count task-txns))
               (meters/mark! matched-tasks-cpus (:cpus match-resource-requirements))
               (meters/mark! matched-tasks-mem (:mem match-resource-requirements))
               (doseq [{:keys [tasks leases]} matches
@@ -560,6 +587,7 @@
                                                (:task-info (.getRequest task)))
                                              tasks)
                             slave-id (:slave-id (first offers))]]
+                ;TODO if the ports are in the offer, then Fenzo is identifying the ports with a list .getAssignedPorts on the TaskAssignmentResult
                 (mesos/launch-tasks
                   driver
                   (mapv :id offers)
@@ -600,7 +628,8 @@
                        timer-chan ([_] [])
                        :priority true)]
           (handle-resource-offers! conn @driver-atom fenzo @fid-atom pending-jobs-atom offers-chan offers)
-          (reset! resources-atom (view-incubating-offers fenzo))
+          (when (seq offers)
+            (reset! resources-atom (view-incubating-offers fenzo)))
           ;;TODO make this cancelable
           (recur))))
     [offers-chan resources-atom]))
@@ -623,7 +652,7 @@
 ;; TODO this needs to dump into into fenzo, too
 (defn reconcile-tasks
   "Finds all non-completed tasks, and has Mesos let us know if any have changed."
-  [db driver]
+  [db driver fenzo]
   (let [running-tasks (q '[:find ?task-id ?status ?slave-id
                            :in $ [?status ...]
                            :where
@@ -648,8 +677,9 @@
 
 (timers/deftimer  [cook-mesos scheduler reconciler-duration])
 
+;; TODO this should be running and enabled
 (defn reconciler
-  [conn driver & {:keys [interval]
+  [conn driver fenzo & {:keys [interval]
                   :or {interval (* 30 60 1000)}}]
   (log/info "Starting reconciler. Interval millis:" interval)
   (chime-at (periodic/periodic-seq (time/now) (time/millis interval))
@@ -657,7 +687,7 @@
               (timers/time!
                 reconciler-duration
                 (reconcile-jobs conn)
-                (reconcile-tasks (db conn) driver)))))
+                (reconcile-tasks (db conn) driver fenzo)))))
 
 (defn get-lingering-tasks
   "Return a list of lingering tasks.
@@ -783,6 +813,7 @@
    A job is offensive if and only if its required memory or cpus exceeds the
    limits"
   ;; TODO these limits should come from the largest observed host from Fenzo
+  ;; .getResourceStatus on TaskScheduler will give a map of hosts to resources; we can compute the max over those
   [{max-memory-gb :memory-gb max-cpus :cpus} offensive-jobs-ch jobs]
   (let [max-memory-mb (* 1024.0 max-memory-gb)
         categorized-jobs (group-by (fn [job]
@@ -898,7 +929,7 @@
                   (future
                     (try
                       (reconcile-jobs conn)
-                      (reconcile-tasks (db conn) driver)
+                      (reconcile-tasks (db conn) driver fenzo)
                       (catch Exception e
                         (log/error e "Reconciliation error")))))
       (reregistered [driver master-info]
@@ -906,7 +937,7 @@
                     (future
                       (try
                         (reconcile-jobs conn)
-                        (reconcile-tasks (db conn) driver)
+                        (reconcile-tasks (db conn) driver fenzo)
                         (catch Exception e
                           (log/error e "Reconciliation error")))))
       ;; Ignore this--we can just wait for new offers
