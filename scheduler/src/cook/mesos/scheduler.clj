@@ -316,15 +316,15 @@
 
 (defrecord VirtualMachineLeaseAdapter [offer time]
   com.netflix.fenzo.VirtualMachineLease
-  (cpuCores [_] (get-in offer [:resources :cpus]))
-  (diskMB [_] (get-in offer [:resources :disk]))
+  (cpuCores [_] (get-in offer [:resources :cpus] 0.0))
+  (diskMB [_] (get-in offer [:resources :disk] 0.0))
   (getAttributeMap [_] {}) ;;TODO
   (getId [_] (:id offer))
   (getOffer [_] (throw (UnsupportedOperationException.)))
   (getOfferedTime [_] time)
   (getVMID [_] (:slave-id offer))
   (hostname [_] (:hostname offer))
-  (memoryMB [_] (get-in offer [:resources :mem]))
+  (memoryMB [_] (get-in offer [:resources :mem] 0.0))
   (networkMbps [_] 0.0)
   (portRanges [_] (mapv (fn [{:keys [begin end]}]
                           (com.netflix.fenzo.VirtualMachineLease$Range. begin end))
@@ -458,38 +458,44 @@
    upgrade-backfill: this is a set of instance datomic ids that should be upgraded to non-backfill
    backfill-jobs: this is a set of job uuids for jobs that were matched, but are in the backfill QoS class
    "
-  [scheduler-contents matched-jobs]
-  (let [matched-job-uuids (set (mapv :job/uuid matched-jobs))]
+  [scheduler-contents head-of-considerable matched-jobs]
+  (let [matched-job-uuids (set (mapv :job/uuid matched-jobs))
+        head-uuid (:job/uuid head-of-considerable)]
     (loop [scheduler-contents scheduler-contents
            backfilling? false
+           matched-head? false
            fully-processed #{}
            upgrade-backfill #{}
            backfill-jobs #{}]
       (if (seq scheduler-contents)
         (let [scheduler-contents' (rest scheduler-contents)
-              pending-job-uuid (:job/uuid (first scheduler-contents))]
+              pending-job (first scheduler-contents)
+              pending-job-uuid (:job/uuid pending-job)
+              pending=head? (= pending-job-uuid head-uuid)]
           (if (contains? matched-job-uuids pending-job-uuid)
             (if backfilling?
-              (recur scheduler-contents' backfilling? fully-processed upgrade-backfill (conj backfill-jobs pending-job-uuid))
-              (recur scheduler-contents' backfilling? (conj fully-processed pending-job-uuid) upgrade-backfill backfill-jobs))
+              (recur scheduler-contents' true matched-head? fully-processed upgrade-backfill (conj backfill-jobs pending-job-uuid))
+              (recur scheduler-contents' false (or pending=head? matched-head?) (conj fully-processed pending-job-uuid) upgrade-backfill backfill-jobs))
             (if-let [backfilled-ids (and (not backfilling?) (seq (ids-of-backfilled-instances pending-job)))]
-              (recur scheduler-contents' backfilling? fully-processed (into upgrade-backfill backfilled-ids) backfill-jobs)
-              (recur scheduler-contents' true fully-processed upgrade-backfill backfill-jobs))))
+              (recur scheduler-contents' false (or pending=head? matched-head?) fully-processed (into upgrade-backfill backfilled-ids) backfill-jobs)
+              (recur scheduler-contents' true matched-head? fully-processed upgrade-backfill backfill-jobs))))
         {:fully-processed fully-processed
          :upgrade-backfill upgrade-backfill
-         :backfill-jobs backfill-jobs}))))
+         :backfill-jobs backfill-jobs
+         :matched-head? matched-head?}))))
+;;TODO need to ensure that we exponentially converge to head of line blocking when we repeating come up with non-head solutions
 
 (defn handle-resource-offers!
   "Gets a list of offers from mesos. Decides what to do with them all--they should all
    be accepted or rejected at the end of the function."
-  [conn driver ^TaskScheduler fenzo fid pending-jobs offers-chan offers]
+  [conn driver ^TaskScheduler fenzo fid pending-jobs num-considerable offers-chan offers]
   (doseq [offer offers]
     (histograms/update!
       offer-size-cpus
-      (get-in offer [:resources :cpus]))
+      (get-in offer [:resources :cpus] 0))
     (histograms/update!
       offer-size-mem
-      (get-in offer [:resources :mem])))
+      (get-in offer [:resources :mem] 0)))
   (log/debug "invoked handle-resource-offers!")
   (timers/time!
     handle-resource-offer!-duration
@@ -498,16 +504,17 @@
         (let [scheduler-contents @pending-jobs
               db (db conn)
               _ (log/debug "There are" (count scheduler-contents) "pending jobs")
-              considerable (filter (fn [job]
-                                     (job-allowed-to-start? db job))
-                                   scheduler-contents)
-              _ (log/debug "We'll consider scheduling" (count considerable) "of those pending jobs")
+              considerable (->> scheduler-contents
+                                (filter (fn [job]
+                                          (job-allowed-to-start? db job)))
+                                (take num-considerable))
+              _ (log/debug "We'll consider scheduling" (count considerable) "of those pending jobs (limited to " num-considerable " due to backdown)")
               matches (match-offer-to-schedule fenzo considerable offers db fid conn)
               matched-jobs (for [match matches
                                  ^TaskAssignmentResult task-result (:tasks match)
                                  :let [task-request (.getRequest task-result)]]
                              (:job task-request))
-              processed-matches (process-matches-for-backfill scheduler-contents matched-jobs)
+              processed-matches (process-matches-for-backfill scheduler-contents (first considerable) matched-jobs)
               new-scheduler-contents (remove (fn [pending-job]
                                                (contains? (:fully-processed processed-matches) (:job/uuid pending-job)))
                                              scheduler-contents)
@@ -518,11 +525,13 @@
           (reset! front-of-job-queue-cpus-atom
                   (or (:cpus first-considerable-resources) 0))
           (cond
-            (empty? matches) nil ;; Since Fenzo will manage declining offers, we'll do nothing here
+            (empty? matches) (if (seq considerable)
+                               nil ;; This case means we failed to match anything. We need to start head of line blocking now
+                               true) ;; This case means there was nothing to match--don't penalize the scheduler for the next burst of submitted jobs
             (not (compare-and-set! pending-jobs scheduler-contents new-scheduler-contents))
-            (let [recycle-offers (for [{:keys [leases]} matches
-                                       lease leases]
-                                   (:offer lease))]
+            (let [recycle-offers (doall (for [{:keys [leases]} matches
+                                              lease leases]
+                                          (:offer lease)))]
               (log/debug "Pending job atom contention encountered, recycling offers:" recycle-offers)
               (async/go
                 (async/>! offers-chan recycle-offers))
@@ -598,7 +607,8 @@
                 (doseq [^TaskAssignmentResult task tasks]
                   (.. fenzo
                       (getTaskAssigner)
-                      (call (.getRequest task) (get-in (first leases) [:offer :hostname])))))))))
+                      (call (.getRequest task) (get-in (first leases) [:offer :hostname])))))
+              (:matched-head? processed-matches)))))
       (catch Throwable t
         (meters/mark! handle-resource-offer!-errors)
         (log/error t "Error in match:" (ex-data t))))))
@@ -620,18 +630,22 @@
   (let [offers-chan (async/chan (async/buffer 5))
         resources-atom (atom (view-incubating-offers fenzo))
         timer-chan (chime-ch (periodic/periodic-seq (time/now) (time/seconds 1))
-                             {:ch (async/chan (async/sliding-buffer 1))})]
+                             {:ch (async/chan (async/sliding-buffer 1))})
+        max-considerable 1000
+        ]
     (async/thread
-      (loop []
+      (loop [num-considerable max-considerable]
         (let [offers (async/alt!!
                        offers-chan ([offers] offers)
                        timer-chan ([_] [])
-                       :priority true)]
-          (handle-resource-offers! conn @driver-atom fenzo @fid-atom pending-jobs-atom offers-chan offers)
+                       :priority true)
+              matched-head? (handle-resource-offers! conn @driver-atom fenzo @fid-atom pending-jobs-atom num-considerable offers-chan offers)]
           (when (seq offers)
             (reset! resources-atom (view-incubating-offers fenzo)))
           ;;TODO make this cancelable
-          (recur))))
+          (recur (if matched-head?
+                   max-considerable
+                   (max 1 (quot num-considerable 2)))))))
     [offers-chan resources-atom]))
 
 (defn reconcile-jobs
