@@ -631,8 +631,7 @@
         resources-atom (atom (view-incubating-offers fenzo))
         timer-chan (chime-ch (periodic/periodic-seq (time/now) (time/seconds 1))
                              {:ch (async/chan (async/sliding-buffer 1))})
-        max-considerable 1000
-        ]
+        max-considerable 1000]
     (async/thread
       (loop [num-considerable max-considerable]
         (let [offers (async/alt!!
@@ -645,7 +644,7 @@
           ;;TODO make this cancelable
           (recur (if matched-head?
                    max-considerable
-                   (max 1 (quot num-considerable 2)))))))
+                   (max 1 (long (* 0.95 num-considerable)))))))) ;; With max=1000 and 1 iter/sec, this will take 88 seconds to reach 1
     [offers-chan resources-atom]))
 
 (defn reconcile-jobs
@@ -663,10 +662,11 @@
                                                 [:job/update-state j])
                                               js))))))
 
-;; TODO this needs to dump into into fenzo, too
+;; TODO test that this fenzo recovery system actually works
+;; TODO this may need a lock on the fenzo for the taskAssigner
 (defn reconcile-tasks
   "Finds all non-completed tasks, and has Mesos let us know if any have changed."
-  [db driver fenzo]
+  [db driver fid fenzo]
   (let [running-tasks (q '[:find ?task-id ?status ?slave-id
                            :in $ [?status ...]
                            :where
@@ -680,6 +680,13 @@
                       :instance.status/running :task-running}]
     (when (seq running-tasks)
       (log/info "Preparing to reconcile" (count running-tasks) "tasks")
+      (doseq [[task-id] running-tasks
+              :let [task-ent (d/entity db task-id)
+                    hostname (:instance/hostname task-ent)
+                    job (:job/_instance task-ent)]]
+        (.. fenzo
+            (getTaskAssigner)
+            (call (->TaskRequestAdapter job (job->task-info db fid (:db/id job))) hostname)))
       (doseq [ts (partition-all 50 running-tasks)]
         (log/info "Reconciling" (count ts) "tasks, including task" (first ts))
         (mesos/reconcile-tasks driver (mapv (fn [[task-id status slave-id]]
@@ -693,7 +700,7 @@
 
 ;; TODO this should be running and enabled
 (defn reconciler
-  [conn driver fenzo & {:keys [interval]
+  [conn driver fid fenzo & {:keys [interval]
                   :or {interval (* 30 60 1000)}}]
   (log/info "Starting reconciler. Interval millis:" interval)
   (chime-at (periodic/periodic-seq (time/now) (time/millis interval))
@@ -701,7 +708,7 @@
               (timers/time!
                 reconciler-duration
                 (reconcile-jobs conn)
-                (reconcile-tasks (db conn) driver fenzo)))))
+                (reconcile-tasks (db conn) driver fid fenzo)))))
 
 (defn get-lingering-tasks
   "Return a list of lingering tasks.
@@ -943,7 +950,7 @@
                   (future
                     (try
                       (reconcile-jobs conn)
-                      (reconcile-tasks (db conn) driver fenzo)
+                      (reconcile-tasks (db conn) driver @fid fenzo)
                       (catch Exception e
                         (log/error e "Reconciliation error")))))
       (reregistered [driver master-info]
@@ -951,7 +958,7 @@
                     (future
                       (try
                         (reconcile-jobs conn)
-                        (reconcile-tasks (db conn) driver fenzo)
+                        (reconcile-tasks (db conn) driver @fid fenzo)
                         (catch Exception e
                           (log/error e "Reconciliation error")))))
       ;; Ignore this--we can just wait for new offers
