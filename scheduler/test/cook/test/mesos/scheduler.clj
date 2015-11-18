@@ -178,9 +178,6 @@
     (is (= 1.0 (:cpus resources)))
     (is (= 1000.0 (:mem resources)))))
 
-(deftest test-prefixes
-  (is (= [[1] [1 2] [1 2 3] [1 2 3 4] [1 2 3 4 5]] (sched/prefixes [1 2 3 4 5]))))
-
 (deftest test-match-offer-to-schedule
   (let [schedule (map #(d/entity (db c) %) [j1 j2 j3 j4])] ; all 1gb 1 cpu
       (testing "Consume no schedule cases"
