@@ -218,6 +218,10 @@
   [{:keys [task->scored-task host->spare-resources] :as state}
    {:keys [min-dru-diff safe-dru-threshold] :as params}
    pending-job-ent]
+  ;;We need to rely on this being a priority map TODO check that this is true
+  (when-not (instance? clojure.data.priority_map.PersistentPriorityMap task->scored-task)
+    (log/fatal "Implementation detail failed; needed priority, got" (class task->scored-task))
+    (throw (ex-info "Implementation detail failed" {})))
   (let [{pending-job-mem :mem pending-job-cpus :cpus} (util/job-ent->resources pending-job-ent)
         pending-job-dru (compute-pending-job-dru state pending-job-ent)
 
@@ -225,12 +229,12 @@
         host->scored-tasks (->> task->scored-task
                                 ;;TODO maybe we can just change every backfilled task here to have the worst possible DRU
                                 ;;this should bias us towards always killing those tasks first...
+                                (reduce-kv (fn [m k {:keys [task] :as scored-task}]
+                                             (if (:instance/backfilled? task)
+                                               (assoc m k (assoc scored-task :dru Double/MAX_VALUE))
+                                               m))
+                                           task->scored-task)
                                 (vals)
-                                ;;TODO We might need to sort again with this change
-                                (map (fn [{:keys [task] :as scored-task}]
-                                       (if (:instance/backfilled? task)
-                                         (assoc scored-task :dru Double/MAX_VALUE)
-                                         scored-task)))
                                 (remove #(< (:dru %) safe-dru-threshold))
                                 (filter #(> (- (:dru %) pending-job-dru) min-dru-diff))
                                 (group-by (fn [{:keys [task]}]
