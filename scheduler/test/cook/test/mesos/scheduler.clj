@@ -179,20 +179,35 @@
     (is (= 1000.0 (:mem resources)))))
 
 (deftest test-match-offer-to-schedule
-  (let [schedule (map #(d/entity (db c) %) [j1 j2 j3 j4])] ; all 1gb 1 cpu
-      (testing "Consume no schedule cases"
-        (is (= [] (sched/match-offer-to-schedule [] {:resources {:cpus 0 :mem 0}})))
-        (is (= [] (sched/match-offer-to-schedule [] {:resources {:cpus 2 :mem 2000}})))
-        (is (= [] (sched/match-offer-to-schedule schedule {:resources {:cpus 0 :mem 0}})))
-        (is (= [] (sched/match-offer-to-schedule schedule {:resources {:cpus 0.5 :mem 100}})))
-        (is (= [] (sched/match-offer-to-schedule schedule {:resources {:cpus 0.5 :mem 1000}})))
-        (is (= [] (sched/match-offer-to-schedule schedule {:resources {:cpus 1 :mem 500}}))))
-      (testing "Consume Partial schedule cases"
-        (is (= (take 1 schedule) (sched/match-offer-to-schedule schedule {:resources {:cpus 1 :mem 1000}})))
-        (is (= (take 1 schedule) (sched/match-offer-to-schedule schedule {:resources {:cpus 1.5 :mem 1500}}))))
-      (testing "Consume full schedule cases"
-        (is (= schedule (sched/match-offer-to-schedule schedule {:resources {:cpus 4 :mem 4000}})))
-        (is (= schedule (sched/match-offer-to-schedule schedule {:resources {:cpus 5 :mem 5000}}))))))
+  (let [schedule (map #(d/entity (db c) %) [j1 j2 j3 j4]) ; all 1gb 1 cpu
+        offer-maker (fn [cpus mem]
+                      [{:resources {:cpus (double cpus) :mem (double mem)}
+                        :id (str "id-" (java.util.UUID/randomUUID))
+                        :slave-id (str "slave-" (java.util.UUID/randomUUID))
+                        :hostname (str "host-" (java.util.UUID/randomUUID))}])
+        fid (str "framework-id-" (java.util.UUID/randomUUID))
+        fenzo-maker #(sched/make-fenzo-scheduler nil 100000)] ; The params are for offer declining, which should never happen
+    (testing "Consume no schedule cases"
+      (are [schedule offers] (= [] (sched/match-offer-to-schedule (fenzo-maker) schedule offers (db c) fid))
+           [] (offer-maker 0 0)
+           [] (offer-maker 2 2000)
+           schedule (offer-maker 0 0)
+           schedule (offer-maker 0.5 100)
+           schedule (offer-maker 0.5 1000)
+           schedule (offer-maker 1 500)))
+    (testing "Consume Partial schedule cases"
+      ;; We're looking for one task to get assigned
+      (are [offers] (= 1 (count (mapcat :tasks (sched/match-offer-to-schedule
+                                                 (fenzo-maker) schedule offers (db c) fid))))
+           (offer-maker 1 1000)
+           (offer-maker 1.5 1500)))
+    (testing "Consume full schedule cases"
+      ;; We're looking for the entire schedule to get assigned
+      (are [offers] (= (count schedule)
+                       (count (mapcat :tasks (sched/match-offer-to-schedule
+                                               (fenzo-maker) schedule offers (db c) fid))))
+           (offer-maker 4 4000)
+           (offer-maker 5 5000)))))
 
 (deftest test-get-user->used-resources
   (let [uri "datomic:mem://test-get-used-resources"

@@ -366,7 +366,7 @@
    the offer.
 
    Returns a list of tasks that got matched to the offer"
-  [^TaskScheduler fenzo considerable offers db fid conn]
+  [^TaskScheduler fenzo considerable offers db fid]
   (log/debug "Matching" (count offers) "offers to" (count considerable) "jobs with fenzo")
   (let [t (System/currentTimeMillis)
         leases (mapv #(->VirtualMachineLeaseAdapter % t) offers)
@@ -511,7 +511,7 @@
                                           (job-allowed-to-start? db job)))
                                 (take num-considerable))
               _ (log/debug "We'll consider scheduling" (count considerable) "of those pending jobs (limited to " num-considerable " due to backdown)")
-              matches (match-offer-to-schedule fenzo considerable offers db fid conn)
+              matches (match-offer-to-schedule fenzo considerable offers db fid)
               matched-jobs (for [match matches
                                  ^TaskAssignmentResult task-result (:tasks match)
                                  :let [task-request (.getRequest task-result)]]
