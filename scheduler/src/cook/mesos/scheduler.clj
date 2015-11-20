@@ -434,7 +434,6 @@
                      (:instance/backfilled? %)))
        (map :db/id)))
 
-;;TODO test this
 (defn process-matches-for-backfill
   "This computes some sets:
    
@@ -467,7 +466,6 @@
          :upgrade-backfill upgrade-backfill
          :backfill-jobs backfill-jobs
          :matched-head? matched-head?}))))
-;;TODO need to ensure that we exponentially converge to head of line blocking when we repeating come up with non-head solutions
 
 (defn handle-resource-offers!
   "Gets a list of offers from mesos. Decides what to do with them all--they should all
