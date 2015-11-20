@@ -829,10 +829,12 @@
                           (timers/start-stop-time! ; Use this in go blocks, time! doesn't play nice
                             incubator-offer-received-duration
                             (let [annotated-offers (map (fn [offer]
-                                                          (assoc offer
-                                                                 :time-received (time/now)
-                                                                 :driver driver
-                                                                 :fid fid))
+                                                          (-> offer
+                                                              (assoc :time-received (time/now)
+                                                                     :driver driver
+                                                                     :fid fid)
+                                                              (update-in [:resources :cpus] #(or % 0.0))
+                                                              (update-in [:resources :mem] #(or % 0.0))))
                                                         offers)
                                   ids (map :id offers)]
                               (incubate! ids)
