@@ -200,12 +200,13 @@
                                      (.getTime (:instance/start-time instance-ent)))
                  job-resources (util/job-ent->resources job-ent)]
              (when (#{:instance.status/success :instance.status/failed} instance-status)
-               ;;TODO what if these messages came through a reconciliation & there's no task-id in fenzo already?
-               ;;Maybe we need to suppress such an exception
                (log/debug "Unassigning task" task-id "from" (:instance/hostname instance-ent))
-               (.. fenzo
-                   (getTaskUnAssigner)
-                   (call task-id (:instance/hostname instance-ent))))
+               (try
+                 (.. fenzo
+                     (getTaskUnAssigner)
+                     (call task-id (:instance/hostname instance-ent)))
+                 (catch Exception e
+                   (log/error e "Failed to unassign task" task-id "from" (:instance/hostname instance-ent)))))
              (when (= instance-status :instance.status/success)
                (handle-throughput-metrics success-throughput-metrics
                                           job-resources
