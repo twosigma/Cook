@@ -375,12 +375,13 @@
                            (->TaskRequestAdapter job (job->task-info db fid (:db/id job)))))
                        considerable)
         result (.scheduleOnce fenzo requests leases)
+        failure-results (.. result getFailures values)
         assignments (.. result getResultMap values)]
-    (log/debug "Found this assigment:" result)
-    (when (log/enabled? :debug)
+    (log/info "Found this assigment:" result)
+    (when (and (seq failure-results) (log/enabled? :debug))
       (log/debug "Task placement failure information follows:")
-      (doseq [failures (.. result getFailures values)
-              failure failures
+      (doseq [failure-result failure-results
+              failure failure-result
               :let [_ (log/debug (str (.getConstraintFailure failure)))]
               f (.getFailures failure)]
         (log/debug (str f)))
@@ -388,7 +389,6 @@
     (mapv (fn [assignment]
             {:leases (.getLeasesUsed assignment)
              :tasks (.getTasksAssigned assignment)
-             ;;TODO maybe we should pull the task requests out here, too?
              :hostname (.getHostname assignment)})
           assignments)))
 
@@ -425,25 +425,6 @@
     (catch clojure.lang.ExceptionInfo e
       false)))
 
-;;TODO LOL
-#_(let [db (db (d/connect "datomic:mem://cook-jobs"))]
-  (doseq [[job status] (vec (q '[:find ?j ?status
-                                 :where
-                                 [?j :job/state ?s]
-                                 [?s :db/ident ?status]
-                                 ]
-                               db))]
-  (println job status (q '[:find ?i ?host ?status
-                           :in $ ?j
-                           :where
-                           [?j :job/instance ?i]
-                           [?i :instance/status ?s]
-                           [?i :instance/hostname ?host]
-                           [?s :db/ident ?status]
-                           ] db job))
-  ))
-
-;;TODO test this
 (defn ids-of-backfilled-instances
   "Returns a list of the ids of running, backfilled instances of the given job"
   [job]

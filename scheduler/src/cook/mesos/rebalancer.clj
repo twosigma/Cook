@@ -314,7 +314,7 @@
         (try
           @(d/transact
             conn
-            ;; Make :instance/status and :instance/preempted consistent to simplify the state machine.
+            ;; Make :instance/status and :instance/preempted? consistent to simplify the state machine.
             ;; We don't want to deal with {:instance/status :instance.stats/running, :instance/preempted? true}
             ;; all over the places.
             (let [job-eid (:db/id (:job/_instance task-ent))

@@ -209,6 +209,23 @@
            (offer-maker 4 4000)
            (offer-maker 5 5000)))))
 
+(deftest test-ids-of-backfilled-instances
+  (let [uri "datomic:mem://test-ids-of-backfilled-instances"
+        conn (restore-fresh-database! uri)
+        jid (d/tempid :db.part/user)
+        tid1 (d/tempid :db.part/user)
+        tid2 (d/tempid :db.part/user)
+        {:keys [tempids db-after]} @(d/transact conn [[:db/add jid :job/instance tid1]
+                                                      [:db/add jid :job/instance tid2]
+                                                      [:db/add tid1 :instance/status :instance.status/running]
+                                                      [:db/add tid2 :instance/status :instance.status/running]
+                                                      [:db/add tid1 :instance/backfilled? false]
+                                                      [:db/add tid2 :instance/backfilled? true]])
+        jid' (d/resolve-tempid db-after tempids jid)
+        tid2' (d/resolve-tempid db-after tempids tid2)
+        backfilled-ids (sched/ids-of-backfilled-instances (d/entity db-after jid'))]
+    (is (= [tid2'] backfilled-ids))))
+
 (deftest test-get-user->used-resources
   (let [uri "datomic:mem://test-get-used-resources"
         conn (restore-fresh-database! uri)
