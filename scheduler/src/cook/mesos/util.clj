@@ -50,7 +50,7 @@
                                     :executable (:resource.uri/executable? r false)
                                     :value (:resource.uri/value r)
                                     :extract (:resource.uri/extract? r false)}))))
-          {:ports (:job/port job-ent)}
+          {:ports (:job/port job-ent 0)}
           (:job/resource job-ent)))
 
 (defn sum-resources-of-jobs
