@@ -34,11 +34,10 @@
    The first list is the correct list, which may be missing keys.
    The second list can be fully filled in by Cook with defaults."
   [gold-standard new-data]
-  (let [resp-uris (map (fn [gold copy]
-                         (select-keys copy (keys gold)))
-                       gold-standard
-                       new-data)]
-    (= gold-standard resp-uris)))
+  (let [paired-uris (group-by #(or (get % :value) (get % "value")) (concat gold-standard new-data))]
+    (doseq [[orig post :as uris] (vals paired-uris)]
+      (is (= 2 (count uris)) "There should be only 1 original and 1 roundtripped value for each URI")
+      (is (= orig (select-keys post (keys orig))) "The orig and new value should be equal, excluding defaults"))))
 
 (deftest handler-db-roundtrip
   (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
@@ -57,6 +56,7 @@
              "priority" 66
              "max_retries" 100
              "max_runtime" 1000000
+             "ports" 2
              "uris" uris
              "env" env
              "cpus" 2.0
@@ -76,7 +76,7 @@
       (is (= (util/job-ent->env ent) env))
       (is (= (:cpus resources) 2.0))
       (is (= (:mem resources) 2048.0))
-      (is (compare-uris (map kw-keys uris) (:uris resources))))
+      (compare-uris (map kw-keys uris) (:uris resources)))
     (let [resp (h {:request-method :get
                    :scheme :http
                    :uri "/rawscheduler"
@@ -90,7 +90,7 @@
                          uris
                          (get trimmed-body "uris"))]
       (is (= (dissoc job "uris") (dissoc trimmed-body "uris")))
-      (is (compare-uris uris (get trimmed-body "uris"))))
+      (compare-uris uris (get trimmed-body "uris")))
     (is (<= 400
             (:status (h {:request-method :delete
                          :scheme :http

@@ -55,7 +55,7 @@
    :max-retries (s/both s/Int (s/pred pos? 'pos?))
    :max-runtime (s/both s/Int (s/pred pos? 'pos?))
    (s/optional-key :uris) [Uri]
-   (s/optional-key :ports) (s/pred pos? 'pos?)
+   (s/optional-key :ports) (s/pred #(not (neg? %)) 'nonnegative?)
    (s/optional-key :env) {NonEmptyString s/Str}
    :cpus PosDouble
    :mem PosDouble
