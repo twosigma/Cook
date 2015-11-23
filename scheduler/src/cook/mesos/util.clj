@@ -108,15 +108,22 @@
 (def ^:const default-job-priority 50)
 
 (defn same-user-task-comparator
-  "Comparator to order same user's tasks"
-  [task1 task2]
-  (letfn [(task->feature-vector [task]
+  "Comparator to order same user's tasks
+
+   If consider-backfilled-jobs? is true, then we treat jobs which were backfilled as being the lowest priority"
+  [consider-backfilled-jobs?]
+  (letfn [(task->feature-vector
+            [task]
             ;; Last two elements are aribitary tie breakers.
             ;; Use :db/id because they guarantee uniqueness for different entities
             ;; (:db/id task) is not sufficient because synthetic task entities don't have :db/id
             ;; This assumes there are at most one synthetic task for a job, otherwise uniqueness invariant will break
-            [(- (:job/priority (:job/_instance task) default-job-priority))
+            [(if (and consider-backfilled-jobs? (:instance/backfilled? task))
+               Integer/MAX_VALUE
+               (- (:job/priority (:job/_instance task) default-job-priority)))
              (:instance/start-time task (java.util.Date. Long/MAX_VALUE))
              (:db/id task)
              (:db/id (:job/_instance task))])]
-    (compare (task->feature-vector task1) (task->feature-vector task2))))
+    (fn same-user-task-comparator-inner
+      [task1 task2]
+      (compare (task->feature-vector task1) (task->feature-vector task2)))))

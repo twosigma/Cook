@@ -170,7 +170,7 @@
         user->sorted-running-task-ents (->> running-task-ents
                                             (group-by util/task-ent->user)
                                             (map (fn [[user task-ents]]
-                                                   [user (into (sorted-set-by util/same-user-task-comparator) task-ents)]))
+                                                   [user (into (sorted-set-by (util/same-user-task-comparator true)) task-ents)]))
                                             (into {}))
         task->scored-task (dru/init-task->scored-task user->sorted-running-task-ents user->dru-divisors)]
     (->State task->scored-task user->sorted-running-task-ents host->spare-resources user->dru-divisors)))
@@ -195,7 +195,7 @@
         (reduce (fn [task-ents-by-user task-ent]
                   (let [user (util/task-ent->user task-ent)
                         f (if (= new-running-task-ent task-ent)
-                            (fnil conj (sorted-set-by util/same-user-task-comparator))
+                            (fnil conj (sorted-set-by (util/same-user-task-comparator true)))
                             disj)]
                     (update-in task-ents-by-user [user] f task-ent)))
                 user->sorted-running-task-ents
@@ -218,22 +218,11 @@
   [{:keys [task->scored-task host->spare-resources] :as state}
    {:keys [min-dru-diff safe-dru-threshold] :as params}
    pending-job-ent]
-  ;;We need to rely on this being a priority map TODO check that this is true
-  (when-not (instance? clojure.data.priority_map.PersistentPriorityMap task->scored-task)
-    (log/fatal "Implementation detail failed; needed priority, got" (class task->scored-task))
-    (throw (ex-info "Implementation detail failed" {})))
   (let [{pending-job-mem :mem pending-job-cpus :cpus} (util/job-ent->resources pending-job-ent)
         pending-job-dru (compute-pending-job-dru state pending-job-ent)
 
         ;; This will preserve the ordering of task->scored-task
         host->scored-tasks (->> task->scored-task
-                                ;;TODO maybe we can just change every backfilled task here to have the worst possible DRU
-                                ;;this should bias us towards always killing those tasks first...
-                                (reduce-kv (fn [m k {:keys [task] :as scored-task}]
-                                             (if (:instance/backfilled? task)
-                                               (assoc m k (assoc scored-task :dru Double/MAX_VALUE))
-                                               m))
-                                           task->scored-task)
                                 (vals)
                                 (remove #(< (:dru %) safe-dru-threshold))
                                 (filter #(> (- (:dru %) pending-job-dru) min-dru-diff))
