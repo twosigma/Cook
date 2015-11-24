@@ -224,10 +224,6 @@
         ;; This will preserve the ordering of task->scored-task
         host->scored-tasks (->> task->scored-task
                                 (vals)
-                                (map (fn [{:keys [task] :as scored-task}]
-                                       (if (:instance/backfilled? task)
-                                         (assoc scored-task :dru Double/MAX_VALUE)
-                                         scored-task)))
                                 (remove #(< (:dru %) safe-dru-threshold))
                                 (filter #(> (- (:dru %) pending-job-dru) min-dru-diff))
                                 (group-by (fn [{:keys [task]}]
