@@ -68,11 +68,14 @@
 (defn job->task-info
   "Takes a job entity, returns a taskinfo"
   [db fid job]
+  (clojure.pprint/pprint "=================")
+  (clojure.pprint/pprint "in job->task-info")
   (let [job-ent (d/entity db job)
         task-id (str (java.util.UUID/randomUUID))
         resources (util/job-ent->resources job-ent)
         ;; If the custom-executor attr isn't set, we default to using a custom
         ;; executor in order to support jobs submitted before we added this field
+        container (util/job-ent->container db job job-ent)
         custom-executor (:job/custom-executor job-ent true)
         environment (util/job-ent->env job-ent)
         command {:value (:job/command job-ent)
@@ -88,18 +91,25 @@
                           :name "cook agent executor"
                           :source "cook_scheduler"
                           :command command}
-                         command)]
-    ;; If the there is no value for key :job/name, the following name will contain a substring "null".
-    {:name (format "%s_%s_%s" (:job/name job-ent "cookjob") (:job/user job-ent) task-id)
-     :task-id task-id
-     :num-ports (count (:ports resources))
-     :resources (select-keys resources [:mem :cpus])
-     ;;TODO this data is a race-condition
-     :data (.getBytes
-             (pr-str
-               {:instance (str (count (:job/instance job-ent)))})
-             "UTF-8")
-     executor-key executor-value}))
+                         command)
+        ;; If the there is no value for key :job/name, the following name will contain a substring "null".
+        task (into {:name (format "%s_%s_%s" (:job/name job-ent "cookjob") (:job/user job-ent) task-id)
+                    :task-id task-id
+                    :num-ports (count (:ports resources))
+                    :resources (select-keys resources [:mem :cpus])
+                    ;;TODO this data is a race-condition
+                    :data (.getBytes
+                           (pr-str
+                            {:instance (str (count (:job/instance job-ent)))})
+                           "UTF-8")
+                    executor-key executor-value}
+                   (if (seq container) {:container container} {}))]
+    (clojure.pprint/pprint "==== job-ent ====")
+    (clojure.pprint/pprint job-ent)
+    (clojure.pprint/pprint "==== task =======")
+    (clojure.pprint/pprint task)
+    (clojure.pprint/pprint "=================")
+    task))
 
 (timers/deftimer [cook-mesos scheduler handle-status-update-duration])
 (meters/defmeter [cook-mesos scheduler tasks-killed-in-status-update])
@@ -121,7 +131,6 @@
 (meters/defmeter [cook-mesos scheduler tasks-failed-cpus])
 (histograms/defhistogram [cook-mesos scheduler hist-task-fail-times])
 (meters/defmeter [cook-mesos scheduler task-fail-times])
-
 
 (def success-throughput-metrics
   {:completion-rate tasks-succeeded
@@ -411,16 +420,12 @@
   "Gets a list of offers from mesos. Decides what to do with them all--they should all
    be accepted or rejected at the end of the function."
   [conn driver fid pending-jobs offer]
-  (try
-    (histograms/update!
-     offer-size-cpus
-     (get-in offer [:resources :cpus]))
-    (histograms/update!
-     offer-size-mem
-     (get-in offer [:resources :mem]))
-    (catch Throwable t
-      (log/warn t "Error in updating offer metrics:" (ex-data t))))
-
+  (histograms/update!
+    offer-size-cpus
+    (get-in offer [:resources :cpus]))
+  (histograms/update!
+    offer-size-mem
+    (get-in offer [:resources :mem]))
   (timers/time!
     handle-resource-offer!-duration
     (try
@@ -829,12 +834,10 @@
                           (timers/start-stop-time! ; Use this in go blocks, time! doesn't play nice
                             incubator-offer-received-duration
                             (let [annotated-offers (map (fn [offer]
-                                                          (-> offer
-                                                              (assoc :time-received (time/now)
-                                                                     :driver driver
-                                                                     :fid fid)
-                                                              (update-in [:resources :cpus] #(or % 0.0))
-                                                              (update-in [:resources :mem] #(or % 0.0))))
+                                                          (assoc offer
+                                                                 :time-received (time/now)
+                                                                 :driver driver
+                                                                 :fid fid))
                                                         offers)
                                   ids (map :id offers)]
                               (incubate! ids)

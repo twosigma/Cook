@@ -28,6 +28,49 @@
           db)
        (map first)))
 
+(defn job-ent->container
+  "Take a job entity and return its container"
+  [db job job-ent]
+  (clojure.pprint/pprint "=job-ent->container=")
+  (if (contains? job-ent :job/container)
+    (let [ceid (:db/id (:job/container job-ent))
+          cmap (d/pull db "[*]" ceid)
+          rm-dbids (fn rm-dbids [m]
+                     (cond
+                       (map? m)
+                       (let [sm (filter (fn [p]
+                                          (not(= :db/id (first p)))) m)]
+                         (into {} (map (fn [p]
+                                         [(first p) (rm-dbids (second p))])
+                                       sm)))
+                       (vector? m)
+                       (mapv rm-dbids m)
+                       :else
+                       m))
+          fixup-keywords (fn fixup-keywords [m]
+                           (cond
+                             (map? m)
+                             (into {} (map (fn [p]
+                                             (let [k (first p)
+                                                   v (second p)]
+                                               [ (if (keyword? k)
+                                                   (keyword(name k)) k)
+                                                (fixup-keywords v)]) )
+                                           m))
+                             (vector? m)
+                             (mapv fixup-keywords m)
+                             (keyword? m)
+                             (keyword(name m))
+                             :else
+                             m))]
+      (clojure.pprint/pprint "==== cmap ===========")
+      (clojure.pprint/pprint cmap)
+      (clojure.pprint/pprint "==== rm-dbids =======")
+      (clojure.pprint/pprint (fixup-keywords (rm-dbids cmap)))
+      (clojure.pprint/pprint "=====================")
+      (fixup-keywords (rm-dbids cmap)))
+    {}))
+
 (defn job-ent->env
   "Take a job entity and return the environment variable map"
   [job-ent]
