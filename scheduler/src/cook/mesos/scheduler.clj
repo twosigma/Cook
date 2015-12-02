@@ -132,6 +132,7 @@
 (histograms/defhistogram [cook-mesos scheduler hist-task-fail-times])
 (meters/defmeter [cook-mesos scheduler task-fail-times])
 
+
 (def success-throughput-metrics
   {:completion-rate tasks-succeeded
    :completion-mem tasks-succeeded-mem
@@ -420,12 +421,16 @@
   "Gets a list of offers from mesos. Decides what to do with them all--they should all
    be accepted or rejected at the end of the function."
   [conn driver fid pending-jobs offer]
-  (histograms/update!
-    offer-size-cpus
-    (get-in offer [:resources :cpus]))
-  (histograms/update!
-    offer-size-mem
-    (get-in offer [:resources :mem]))
+  (try
+    (histograms/update!
+     offer-size-cpus
+     (get-in offer [:resources :cpus]))
+    (histograms/update!
+     offer-size-mem
+     (get-in offer [:resources :mem]))
+    (catch Throwable t
+      (log/warn t "Error in updating offer metrics:" (ex-data t))))
+
   (timers/time!
     handle-resource-offer!-duration
     (try
@@ -834,10 +839,12 @@
                           (timers/start-stop-time! ; Use this in go blocks, time! doesn't play nice
                             incubator-offer-received-duration
                             (let [annotated-offers (map (fn [offer]
-                                                          (assoc offer
-                                                                 :time-received (time/now)
-                                                                 :driver driver
-                                                                 :fid fid))
+                                                          (-> offer
+                                                              (assoc :time-received (time/now)
+                                                                     :driver driver
+                                                                     :fid fid)
+                                                              (update-in [:resources :cpus] #(or % 0.0))
+                                                              (update-in [:resources :mem] #(or % 0.0))))
                                                         offers)
                                   ids (map :id offers)]
                               (incubate! ids)
