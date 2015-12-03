@@ -76,7 +76,7 @@
 
 (defn start-mesos-scheduler
   "Starts a leader elector that runs a mesos."
-  [mesos-master curator-framework mesos-datomic-conn mesos-datomic-mult zk-prefix mesos-failover-timeout mesos-principal mesos-role offer-incubate-time-ms task-constraints riemann-host riemann-port]
+  [mesos-master mesos-master-hosts curator-framework mesos-datomic-conn mesos-datomic-mult zk-prefix mesos-failover-timeout mesos-principal mesos-role offer-incubate-time-ms task-constraints riemann-host riemann-port]
   (let [zk-framework-id (str zk-prefix "/framework-id")
         datomic-report-chan (async/chan (async/sliding-buffer 4096))
         mesos-pending-jobs-atom (atom [])
@@ -135,7 +135,7 @@
                                     (swap! shutdown-hooks conj (cook.mesos.heartbeat/start-heartbeat-watcher! mesos-datomic-conn mesos-heartbeat-chan))
                                     (swap! shutdown-hooks conj (cook.mesos.rebalancer/start-rebalancer! {:conn  mesos-datomic-conn
                                                                                                          :driver driver
-                                                                                                         :mesos-master mesos-master
+                                                                                                         :mesos-master-hosts mesos-master-hosts
                                                                                                          :pending-jobs-atom mesos-pending-jobs-atom
                                                                                                          :view-incubating-offers view-incubating-offers}))
                                     (counters/inc! mesos-leader)

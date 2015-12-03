@@ -318,9 +318,8 @@
           (mesos/kill-task driver task-id))))))
 
 (defn get-mesos-utilization
-  [mesos-master]
-  (let [mesos-master-urls (->> (re-seq #"[0-9|a-z|A-Z|\.|\-]+\.twosigma\.com" mesos-master)
-                               (map #(str "http://" % ":5050/metrics/snapshot")))
+  [mesos-master-hosts]
+  (let [mesos-master-urls (map #(str "http://" % ":5050/metrics/snapshot") mesos-master-hosts)
         get-stats (fn [url] (some->> url
                                      (http/get)
                                      (:body)
@@ -335,7 +334,7 @@
     utilization))
 
 (defn start-rebalancer!
-  [{:keys [conn driver mesos-master pending-jobs-atom view-incubating-offers]}]
+  [{:keys [conn driver mesos-master-hosts pending-jobs-atom view-incubating-offers view-mature-offers]}]
   (let [rebalance-interval (time/minutes 5)
         observe-interval (time/seconds 5)
         observe-refreshness-threshold (time/seconds 30)
@@ -359,7 +358,7 @@
                                                       (map (fn [[k v]]
                                                              [(keyword (name (keyword k))) v]))
                                                       (into {}))
-                                              utilization (get-mesos-utilization mesos-master)
+                                              utilization (get-mesos-utilization mesos-master-hosts)
                                               host->spare-resources (->> @host->combined-offers-atom
                                                                          (map (fn [[k v]]
                                                                                 (when (time/before?
@@ -376,19 +375,6 @@
        (shutdown-rebalancer))))
 
 (comment
-  (let [mesos-master "zk://sf-test-zk1.pit.twosigma.com:2181,sf-test-zk2.pit.twosigma.com:2181,sf-test-zk3.pit.twosigma.com:2181/mesos"
-        utilization (get-mesos-utilization mesos-master)]
-    utilization)
-
-  ;; Prod params
-  (let [conn (d/connect "datomic:riak://ramkv.pit.twosigma.com:8098/datomic3/mesos-jobs2?interface=http")
-        db (d/db conn)]
-    @(d/transact conn [{:db/id :rebalancer/config
-                        :rebalancer.config/min-utilization-threshold 0.85
-                        :rebalancer.config/safe-dru-threshold 1.0
-                        :rebalancer.config/min-dru-diff 0.5
-                        :rebalancer.config/max-preemption 64.0}]))
-
   (let [conn (d/connect "datomic:mem://mesos-jobs")]
     (share/set-share! conn "default" :cpus 20.0 :mem 2500000.0))
 
