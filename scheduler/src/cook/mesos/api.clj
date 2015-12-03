@@ -176,45 +176,45 @@
   [conn jobs :- [Job]]
   (doseq [{:keys [uuid command max-retries max-runtime priority cpus mem user name ports uris env container]} jobs
           :let [id (d/tempid :db.part/user)
-          ports (mapv (fn [port]
-                         ;;TODO this schema might not work b/c all ports are zero
-                         [:db/add id :job/port port])
-                       ports)
-          uris (mapcat (fn [{:keys [value executable? cache? extract?]}]
-                          (let [uri-id (d/tempid :db.part/user)
-                                optional-params [:resource.uri/executable? executable?
-                                                 :resource.uri/extract? extract?
-                                                 :resource.uri/cache? cache?]]
-                            [[:db/add id :job/resource uri-id]
-                             (reduce-kv
-                              ;; This only adds the optional params to the DB if they were explicitly set
-                              (fn [txn-map k v]
-                                (if-not (nil? v)
-                                  (assoc txn-map k v)
-                                  txn-map))
-                              [:db/id uri-id
-                               :resource/type :resource.type/uri
-                               :resource.uri/value value]
-                              optional-params)]))
-                        uris)
-          env (mapcat (fn [[k v]]
-                         (let [env-var-id (d/tempid :db.part/user)]
-                           [:db/add id :job/environment env-var-id
-                            :db/id env-var-id
-                            :environment/name k
-                            :environment/value v]))
-                       env)
-           ;; Container info
-           container (if (nil? container) [] (build-container id container))
+                ports (mapv (fn [port]
+                              ;;TODO this schema might not work b/c all ports are zero
+                              [:db/add id :job/port port])
+                            ports)
+                uris (mapcat (fn [{:keys [value executable? cache? extract?]}]
+                               (let [uri-id (d/tempid :db.part/user)
+                                     optional-params [:resource.uri/executable? executable?
+                                                      :resource.uri/extract? extract?
+                                                      :resource.uri/cache? cache?]]
+                                 [[:db/add id :job/resource uri-id]
+                                  (reduce-kv
+                                   ;; This only adds the optional params to the DB if they were explicitly set
+                                   (fn [txn-map k v]
+                                     (if-not (nil? v)
+                                       (assoc txn-map k v)
+                                       txn-map))
+                                   [:db/id uri-id
+                                    :resource/type :resource.type/uri
+                                    :resource.uri/value value]
+                                   optional-params)]))
+                             uris)
+                env (mapcat (fn [[k v]]
+                              (let [env-var-id (d/tempid :db.part/user)]
+                                [:db/add id :job/environment env-var-id
+                                 :db/id env-var-id
+                                 :environment/name k
+                                 :environment/value v]))
+                            env)
+                ;; Container info
+                container (if (nil? container) [] (build-container id container))
 
-           ;; These are optionally set datoms w/ default values
-           maybe-datoms (concat
-                         (when (and name (not= name "cookjob"))
-                           [[:db/add id :job/name name]])
-                         (when (and priority (not= util/default-job-priority priority))
-                           [[:db/add id :job/priority priority]])
-                         (when (and max-runtime (not= Long/MAX_VALUE max-runtime))
-                           [[:db/add id :job/max-runtime max-runtime]]))
+                ;; These are optionally set datoms w/ default values
+                maybe-datoms (concat
+                              (when (and name (not= name "cookjob"))
+                                [[:db/add id :job/name name]])
+                              (when (and priority (not= util/default-job-priority priority))
+                                [[:db/add id :job/priority priority]])
+                              (when (and max-runtime (not= Long/MAX_VALUE max-runtime))
+                                [[:db/add id :job/max-runtime max-runtime]]))
                 txn [[:db/add id
                       :job/uuid uuid]
                      {:db/id id
@@ -227,15 +227,6 @@
                                       :resource/amount cpus}
                                      {:resource/type :resource.type/mem
                                       :resource/amount mem}]}]]]
-    (log/info  "submitting to datomic: ")
-    (doseq  [kvp {:id id :ports ports :uris uris :env env :container container :maybe-datoms maybe-datoms :txn txn }] (clojure.pprint/pprint kvp))
-    (clojure.pprint/pprint  "------------------------------------------")
-    (clojure.pprint/pprint ( -> ports
-                            (into maybe-datoms)
-                            (into env)
-                            (into uris)
-                            (into container)
-                            (into txn)))
     ;; TODO batch these transactions to improve performance
     @(d/transact conn (-> ports
                           (into maybe-datoms)
