@@ -72,11 +72,12 @@
                       (route/not-found "<h1>Not a valid route</h1>")))})
 
 (def mesos-scheduler
-  {:mesos-scheduler (fnk [[:settings mesos-master mesos-leader-path mesos-failover-timeout mesos-principal mesos-role offer-incubate-time-ms task-constraints riemann] mesos-datomic mesos-datomic-mult curator-framework]
+  {:mesos-scheduler (fnk [[:settings mesos-master mesos-master-hosts mesos-leader-path mesos-failover-timeout mesos-principal mesos-role offer-incubate-time-ms task-constraints riemann] mesos-datomic mesos-datomic-mult curator-framework]
                          (try
                            (Class/forName "org.apache.mesos.Scheduler")
                            ((lazy-load-var 'cook.mesos/start-mesos-scheduler)
                             mesos-master
+                            mesos-master-hosts
                             curator-framework
                             mesos-datomic
                             mesos-datomic-mult
@@ -291,6 +292,14 @@
                                   offer-incubate-ms)
      :mesos-master (fnk [[:config [:mesos master]]]
                         master)
+     :mesos-master-hosts (fnk [[:config [:mesos master {master-hosts nil}]]]
+                              (if master-hosts
+                                (if (and (sequential? master-hosts) (every? string? master-hosts))
+                                  master-hosts
+                                  (throw (ex-info ":mesos-master should be a list of hostnames (e.g. [\"host1.example.com\", ...])" {})))
+                                (->> master
+                                     (re-seq #"[/|,]?([^/,:]+):\d+")
+                                     (mapv second))))
      :mesos-failover-timeout (fnk [[:config [:mesos {failover-timeout-ms nil}]]]
                                   failover-timeout-ms)
      :mesos-leader-path (fnk [[:config [:mesos leader-path]]]
@@ -416,5 +425,4 @@
                                                (org.apache.log4j.PatternLayout.
                                                 "%d{ISO8601} %-5p %c [%t] - %m%n"))}
                            ["datomic.peer"]
-                           {:level :warn})
-  )
+                           {:level :warn}))
