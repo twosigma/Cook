@@ -31,7 +31,6 @@
 (defn job-ent->container
   "Take a job entity and return its container"
   [db job job-ent]
-  (clojure.pprint/pprint "=job-ent->container=")
   (if (contains? job-ent :job/container)
     (let [ceid (:db/id (:job/container job-ent))
           cmap (d/pull db "[*]" ceid)
@@ -63,11 +62,6 @@
                              (keyword(name m))
                              :else
                              m))]
-      (clojure.pprint/pprint "==== cmap ===========")
-      (clojure.pprint/pprint cmap)
-      (clojure.pprint/pprint "==== rm-dbids =======")
-      (clojure.pprint/pprint (fixup-keywords (rm-dbids cmap)))
-      (clojure.pprint/pprint "=====================")
       (fixup-keywords (rm-dbids cmap)))
     {}))
 
