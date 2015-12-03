@@ -187,15 +187,15 @@
                                                       :resource.uri/cache? cache?]]
                                  [[:db/add id :job/resource uri-id]
                                   (reduce-kv
-                                   ;; This only adds the optional params to the DB if they were explicitly set
-                                   (fn [txn-map k v]
-                                     (if-not (nil? v)
-                                       (assoc txn-map k v)
-                                       txn-map))
-                                   [:db/id uri-id
-                                    :resource/type :resource.type/uri
-                                    :resource.uri/value value]
-                                   optional-params)]))
+                                    ;; This only adds the optional params to the DB if they were explicitly set
+                                    (fn [txn-map k v]
+                                      (if-not (nil? v)
+                                        (assoc txn-map k v)
+                                        txn-map))
+                                    [:db/id uri-id
+                                     :resource/type :resource.type/uri
+                                     :resource.uri/value value]
+                                    optional-params)]))
                              uris)
                 env (mapcat (fn [[k v]]
                               (let [env-var-id (d/tempid :db.part/user)]
@@ -209,12 +209,12 @@
 
                 ;; These are optionally set datoms w/ default values
                 maybe-datoms (concat
-                              (when (and name (not= name "cookjob"))
-                                [[:db/add id :job/name name]])
-                              (when (and priority (not= util/default-job-priority priority))
-                                [[:db/add id :job/priority priority]])
-                              (when (and max-runtime (not= Long/MAX_VALUE max-runtime))
-                                [[:db/add id :job/max-runtime max-runtime]]))
+                               (when (and name (not= name "cookjob"))
+                                 [[:db/add id :job/name name]])
+                               (when (and priority (not= util/default-job-priority priority))
+                                 [[:db/add id :job/priority priority]])
+                               (when (and max-runtime (not= Long/MAX_VALUE max-runtime))
+                                 [[:db/add id :job/max-runtime max-runtime]]))
                 txn [[:db/add id
                       :job/uuid uuid]
                      {:db/id id
