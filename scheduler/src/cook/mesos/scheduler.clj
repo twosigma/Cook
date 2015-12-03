@@ -68,8 +68,6 @@
 (defn job->task-info
   "Takes a job entity, returns a taskinfo"
   [db fid job]
-  (clojure.pprint/pprint "=================")
-  (clojure.pprint/pprint "in job->task-info")
   (let [job-ent (d/entity db job)
         task-id (str (java.util.UUID/randomUUID))
         resources (util/job-ent->resources job-ent)
@@ -104,11 +102,6 @@
                            "UTF-8")
                     executor-key executor-value}
                    (if (seq container) {:container container} {}))]
-    (clojure.pprint/pprint "==== job-ent ====")
-    (clojure.pprint/pprint job-ent)
-    (clojure.pprint/pprint "==== task =======")
-    (clojure.pprint/pprint task)
-    (clojure.pprint/pprint "=================")
     task))
 
 (timers/deftimer [cook-mesos scheduler handle-status-update-duration])
