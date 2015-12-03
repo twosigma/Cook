@@ -426,5 +426,38 @@
     (is (= [task-id-2] (sched/get-lingering-tasks test-db now 120))))
   )
 
+(deftest test-upgrade-backfill-flow
+  ;; We need to create a DB and connect the tx monitor queue to it
+  ;; Then we'll put in some jobs
+  ;; Then pretend to launch them as backfilled
+  ;; Check here that they have the right properties (pending, not ready to run)
+  ;; Then we'll upgrade the jobs
+  ;; Check here that they have the right properties (running, not ready to run)
+  ;; Then shut it down
+  (let [uri "datomic:mem://test-backfill-upgrade"
+        conn (restore-fresh-database! uri)
+        check-count-of-pending-and-runnable-jobs
+        (fn check-count-of-pending-and-runnable-jobs [expected-pending expected-runnable msg]
+          (let [db (db conn)
+                pending-jobs (sched/rank-jobs db identity)
+                runnable-jobs (filter (fn [job] (sched/job-allowed-to-start? db job)) pending-jobs)]
+            (is (= expected-pending (count pending-jobs)) (str "Didn't match pending job count in " msg))
+            (is (= expected-runnable (count runnable-jobs)) (str "Didn't match runnable job count in " msg))))
+        job (create-dummy-job conn
+                              :user "tsram"
+                              :job-state :job.state/waiting
+                              :max-runtime Long/MAX_VALUE)
+        _ (check-count-of-pending-and-runnable-jobs 1 1 "job created")
+        instance (create-dummy-instance conn job
+                                        :job-state :job.state/waiting
+                                        :instance-status :instance.status/running
+                                        :backfilled? true)]
+    (check-count-of-pending-and-runnable-jobs 1 0 "job backfilled without update")
+    @(d/transact conn [[:job/update-state job]])
+    (check-count-of-pending-and-runnable-jobs 1 0 "job backfilled")
+    @(d/transact conn [[:db/add instance :instance/backfilled? false]])
+    @(d/transact conn [[:job/update-state job]])
+    (check-count-of-pending-and-runnable-jobs 0 0 "job promoted")))
+
 (comment
   (run-tests))
