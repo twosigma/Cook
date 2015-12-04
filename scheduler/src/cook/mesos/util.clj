@@ -46,24 +46,77 @@
                        (mapv rm-dbids m)
                        :else
                        m))
-          fixup-keywords (fn fixup-keywords [m]
-                           (cond
-                             (map? m)
-                             (into {} (map (fn [p]
-                                             (let [k (first p)
-                                                   v (second p)]
-                                               [ (if (keyword? k)
-                                                   (keyword(name k)) k)
-                                                (fixup-keywords v)]) )
-                                           m))
-                             (vector? m)
-                             (mapv fixup-keywords m)
-                             (keyword? m)
-                             (keyword(name m))
-                             :else
-                             m))]
-      (fixup-keywords (rm-dbids cmap)))
-    {}))
+          ;; fixup-keywords (fn fixup-keywords [m]
+          ;;                  (cond
+          ;;                    (map? m)
+          ;;                    (into {} (map (fn [p]
+          ;;                                    (let [k (first p)
+          ;;                                          v (second p)]
+          ;;                                      [ (if (keyword? k)
+          ;;                                          (keyword(name k)) k)
+          ;;                                       (fixup-keywords v)]) )
+          ;;                                  m))
+          ;;                    (vector? m)
+          ;;                    (mapv fixup-keywords m)
+          ;;                    (keyword? m)
+          ;;                    (keyword(name m))
+          ;;                    :else
+          ;;                    m))]
+          fixup-keywords (fn [container]
+                           (let [fix-vol-kw
+                                 (fn [xs]
+                                   (mapv #(into {} (map (fn [[k v]]
+                                           (cond
+                                             (= k :container.volume/host_path)
+                                             [:host_path v]
+                                             (= k :container.volume/container_path)
+                                             [:container_path v]
+                                             (= k :container.volume/mode)
+                                             [:mode v]
+                                             :else
+                                             [k v]))%)) xs))
+                                 fix-param-kw
+                                 (fn [xs]
+                                   (mapv #(into {} (map
+                                                (fn [[k v]]
+                                                  (cond
+                                                    (= k :docker.param/key)
+                                                    [:key v]
+                                                    (= k :docker.param/value)
+                                                    [:value v]
+                                                    :else
+                                                    [k v]))%)) xs ))
+                                 fix-docker-kw
+                                 (fn [m]
+                                   (into {} (map (fn [[k v]]
+                                                   (cond
+                                                     (= k :docker/image)
+                                                     [:image v]
+                                                     (= k :docker/parameters)
+                                                     [:parameters
+                                                       (fix-param-kw v)]
+                                                     (= k :docker/network)
+                                                     [:network v]
+                                                     :else
+                                                     [k v])) m)))
+                                 fix-container-kw
+                                 (fn [m]
+                                   (into {}
+                                         (map
+                                          (fn [[k v]]
+                                            (cond
+                                              (= k :container/type)
+                                              [:type v]
+                                              (= k :container/volumes)
+                                              [:volumes (fix-vol-kw v)]
+
+                                              (= k :container/docker)
+                                              [:docker (fix-docker-kw v)]
+                                              :else
+                                              [k v])) m )))]
+                             (fix-container-kw container)))]
+      (-> cmap rm-dbids fixup-keywords))
+      {}))
 
 (defn job-ent->env
   "Take a job entity and return the environment variable map"
