@@ -626,7 +626,7 @@
         max-considerable 1000]
     (async/thread
       (loop [num-considerable max-considerable]
-        ;;TODO make this cancelable
+        ;;TODO make this cancelable (if we want to be able to restart the server w/o restarting the JVM)
         (recur
           (try
             (let [offers (async/alt!!

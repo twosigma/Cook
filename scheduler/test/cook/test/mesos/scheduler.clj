@@ -434,6 +434,7 @@
   ;; Then we'll upgrade the jobs
   ;; Check here that they have the right properties (running, not ready to run)
   ;; Then shut it down
+
   (let [uri "datomic:mem://test-backfill-upgrade"
         conn (restore-fresh-database! uri)
         check-count-of-pending-and-runnable-jobs

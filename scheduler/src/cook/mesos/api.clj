@@ -250,7 +250,6 @@
                     end (:instance/end-time instance)
                     base {:task_id (:instance/task-id instance)
                           :hostname hostname
-                          ;;TODO validate that these show up in API
                           :backfilled (:instance/backfilled? instance false)
                           :preempted (:instance/preempted? instance false)
                           :slave_id (:instance/slave-id instance)

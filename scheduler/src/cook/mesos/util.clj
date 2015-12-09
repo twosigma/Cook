@@ -118,9 +118,8 @@
             ;; Use :db/id because they guarantee uniqueness for different entities
             ;; (:db/id task) is not sufficient because synthetic task entities don't have :db/id
             ;; This assumes there are at most one synthetic task for a job, otherwise uniqueness invariant will break
-            [(if (and consider-backfilled-jobs? (:instance/backfilled? task))
-               Integer/MAX_VALUE
-               (- (:job/priority (:job/_instance task) default-job-priority)))
+            [(and consider-backfilled-jobs? (:instance/backfilled? task)) ; true sorts higher than false
+             (- (:job/priority (:job/_instance task) default-job-priority))
              (:instance/start-time task (java.util.Date. Long/MAX_VALUE))
              (:db/id task)
              (:db/id (:job/_instance task))])]
