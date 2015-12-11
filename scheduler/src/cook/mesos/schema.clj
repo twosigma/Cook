@@ -158,6 +158,12 @@
      :db/cardinality :db.cardinality/one
      :db.install/_attribute :db.part/db}
     {:db/id (d/tempid :db.part/db)
+     :db/ident :instance/backfilled?
+     :db/doc "If this is true, then this instance doesn't count towards making a job running, and it should be preempted first. It's okay to upgrade an instance to be non-backfilled after a while."
+     :db/valueType :db.type/boolean
+     :db/cardinality :db.cardinality/one
+     :db.install/_attribute :db.part/db}
+    {:db/id (d/tempid :db.part/db)
      :db/ident :instance/hostname
      :db/valueType :db.type/string
      :db/cardinality :db.cardinality/one
@@ -219,6 +225,12 @@
   "This was written on 9-26-2014"
   [{:db/id :job/state
     :db/index true
+    :db.alter/_attribute :db.part/db}])
+
+(def migration-port-is-a-count
+  "This was written on 10-20-2015"
+  [{:db/id :job/port
+    :db/cardinality :db.cardinality/one
     :db.alter/_attribute :db.part/db}])
 
 (def rebalancer-configs
@@ -310,20 +322,20 @@
              - task succeeded => job completed
              - task failed, no other tasks, retries exceeded => job completed
              - task failed, no other tasks, retries remaining => job waiting
-             - task failed, other tasks running => job running"
+             - task failed, other tasks running => job running
+
+             Note that backfilled running instances are treated as if they don't exist."
     :db/fn #db/fn {:lang "clojure"
                    :params [db j]
                    :requires [[metatransaction.core :as mt]]
                    :code
                    (let [db (mt/filter-committed db)
                          job (d/entity db j)
-                         instance-states (mapv first (q '[:find ?state ?i
-                                                          :in $ ?j
-                                                          :where
-                                                          [?j :job/instance ?i]
-                                                          [?i :instance/status ?s]
-                                                          [?s :db/ident ?state]]
-                                                        db j))
+                         instance-states (mapcat (fn [instance]
+                                                   (when-not (and (= :instance.status/running (:instance/status instance))
+                                                                  (:instance/backfilled? instance))
+                                                     [(:instance/status instance)]))
+                                                 (:job/instance job))
                          any-success? (some #{:instance.status/success} instance-states)
                          any-running? (some #{:instance.status/running} instance-states)
                          all-failed? (every? #{:instance.status/failed} instance-states)
@@ -403,4 +415,4 @@
                        []))}}])
 
 (def work-item-schema
-  [schema-attributes state-enums rebalancer-configs migration-add-index-to-job-state db-fns])
+  [schema-attributes state-enums rebalancer-configs migration-add-index-to-job-state migration-port-is-a-count db-fns])
