@@ -125,7 +125,6 @@
 (histograms/defhistogram [cook-mesos scheduler hist-task-fail-times])
 (meters/defmeter [cook-mesos scheduler task-fail-times])
 
-
 (def success-throughput-metrics
   {:completion-rate tasks-succeeded
    :completion-mem tasks-succeeded-mem

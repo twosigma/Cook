@@ -19,186 +19,201 @@
 
 (def schema-attributes
   [;; Job attributes
-    {:db/id (d/tempid :db.part/db)
-     :db/ident :job/command
-     :db/valueType :db.type/string
-     :db/cardinality :db.cardinality/one
-     :db.install/_attribute :db.part/db}
-    {:db/id (d/tempid :db.part/db)
-     :db/ident :job/user
-     :db/valueType :db.type/string
-     :db/cardinality :db.cardinality/one
-     :db.install/_attribute :db.part/db}
-    {:db/id (d/tempid :db.part/db)
-     :db/ident :job/name
-     :db/valueType :db.type/string
-     :db/cardinality :db.cardinality/one
-     :db.install/_attribute :db.part/db}
-    {:db/id (d/tempid :db.part/db)
-     :db/ident :job/uuid
-     :db/valueType :db.type/uuid
-     :db/cardinality :db.cardinality/one
-     :db/unique :db.unique/identity
-     :db.install/_attribute :db.part/db}
-    {:db/id (d/tempid :db.part/db)
-     :db/ident :job/max-retries
-     :db/valueType :db.type/long
-     :db/cardinality :db.cardinality/one
-     :db.install/_attribute :db.part/db}
-    {:db/id (d/tempid :db.part/db)
-     :db/ident :job/max-runtime
-     :db/valueType :db.type/long
-     :db/cardinality :db.cardinality/one
-     :db.install/_attribute :db.part/db}
-    {:db/id (d/tempid :db.part/db)
-     :db/ident :job/environment
-     :db/valueType :db.type/ref
-     :db/cardinality :db.cardinality/many
-     :db.install/_attribute :db.part/db}
-    {:db/id (d/tempid :db.part/db)
-     :db/ident :job/state
-     :db/valueType :db.type/ref
-     :db/cardinality :db.cardinality/one
-     :db.install/_attribute :db.part/db}
-    {:db/id (d/tempid :db.part/db)
-     :db/ident :job/instance
-     :db/valueType :db.type/ref
-     :db/isComponent true
-     :db/cardinality :db.cardinality/many
-     :db.install/_attribute :db.part/db}
-    {:db/id (d/tempid :db.part/db)
-     :db/ident :job/resource
-     :db/valueType :db.type/ref
-     :db/isComponent true
-     :db/cardinality :db.cardinality/many
-     :db.install/_attribute :db.part/db}
-    {:db/id (d/tempid :db.part/db)
-     :db/ident :job/submit-time
-     :db/index true
-     :db/valueType :db.type/instant
-     :db/cardinality :db.cardinality/one
-     :db.install/_attribute :db.part/db}
-    {:db/id (d/tempid :db.part/db)
-     :db/doc "Determines if this job uses a custom executor (true) or the command
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :job/command
+    :db/valueType :db.type/string
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :job/user
+    :db/valueType :db.type/string
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :job/name
+    :db/valueType :db.type/string
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :job/uuid
+    :db/valueType :db.type/uuid
+    :db/cardinality :db.cardinality/one
+    :db/unique :db.unique/identity
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :job/max-retries
+    :db/valueType :db.type/long
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :job/max-runtime
+    :db/valueType :db.type/long
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :job/environment
+    :db/valueType :db.type/ref
+    :db/cardinality :db.cardinality/many
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :job/state
+    :db/valueType :db.type/ref
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :job/instance
+    :db/valueType :db.type/ref
+    :db/isComponent true
+    :db/cardinality :db.cardinality/many
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :job/resource
+    :db/valueType :db.type/ref
+    :db/isComponent true
+    :db/cardinality :db.cardinality/many
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :job/submit-time
+    :db/index true
+    :db/valueType :db.type/instant
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/doc "Determines if this job uses a custom executor (true) or the command
              executor (false). If unset, then uses a custom executor (for legacy
              compatibility)."
-     :db/ident :job/custom-executor
-     :db/valueType :db.type/boolean
-     :db/cardinality :db.cardinality/one
-     :db.install/_attribute :db.part/db}
-    {:db/id (d/tempid :db.part/db)
-     :db/ident :job/preemptions
-     :db/valueType :db.type/long
-     :db/cardinality :db.cardinality/one
-     :db.install/_attribute :db.part/db
-     :db/noHistory true}
-    {:db/id (d/tempid :db.part/db)
-     :db/ident :job/priority
-     :db/valueType :db.type/long
-     :db/cardinality :db.cardinality/one
-     :db.install/_attribute :db.part/db}
-    {:db/id (d/tempid :db.part/db)
-     :db/ident :job/port
-     :db/valueType :db.type/long
-     :db/cardinality :db.cardinality/many
-     :db.install/_attribute :db.part/db}
-    ;; Begin skd
-    ;; Containers: 0 or 1 of these
-    {:db/id (d/tempid :db.part/db)
-     :db/ident :job/container
-     :db/valueType :db.type/ref
-     ;; :db/isComponent true
-     :db/cardinality :db.cardinality/one
-     :db.install/_attribute :db.part/db}
-    ;; Container Attributes
-    {:db/id (d/tempid :db.part/db)
-     :db/doc "variant records based on container/type"
-     :db/ident :container/type
-     ;;:db/valueType :db.type/long
-     :db/valueType :db.type/string
-     :db/cardinality :db.cardinality/one
-     :db.install/_attribute :db.part/db}
-    {:db/id (d/tempid :db.part/db)
-     :db/ident :container/volumes
-     :db/valueType :db.type/ref
-     :db/isComponent true
-     :db/cardinality :db.cardinality/many
-     :db.install/_attribute :db.part/db}
-    {:db/id (d/tempid :db.part/db)
-     :db/ident :container/docker
-     :db/valueType :db.type/ref
-     :db/isComponent true
-     :db/cardinality :db.cardinality/one
-     :db.install/_attribute :db.part/db}
-    ;; Docker attributes
-    {:db/id (d/tempid :db.part/db)
-     :db/ident :docker/image
-     :db/valueType :db.type/string
-     :db/cardinality :db.cardinality/one
-     :db.install/_attribute :db.part/db}
-    {:db/id (d/tempid :db.part/db)
-     :db/ident :docker/parameters
-     :db/valueType :db.type/ref
-     :db/isComponent true
-     :db/cardinality :db.cardinality/many
-     :db.install/_attribute :db.part/db}
-    {:db/id (d/tempid :db.part/db)
-     :db/ident :docker/network
-     ;;     :db/valueType :db.type/long
-     :db/valueType :db.type/string
-     :db/cardinality :db.cardinality/one
-     :db.install/_attribute :db.part/db}
-    ;; Docker Parameters Attributes
-    {:db/id (d/tempid :db.part/db)
-     :db/ident :docker.param/key
-     :db/valueType :db.type/string
-     :db/cardinality :db.cardinality/one
-     :db.install/_attribute :db.part/db}
-    {:db/id (d/tempid :db.part/db)
-     :db/ident :docker.param/value
-     :db/valueType :db.type/string
-     :db/cardinality :db.cardinality/one
-     :db.install/_attribute :db.part/db}
-    ;; Container Volume Attributes
-    {:db/id (d/tempid :db.part/db)
-     :db/ident :container.volume/container_path
-     :db/valueType :db.type/string
-     :db/cardinality :db.cardinality/one
-     :db.install/_attribute :db.part/db}
-    {:db/id (d/tempid :db.part/db)
-     :db/ident :container.volume/host_path
-     :db/valueType :db.type/string
-     :db/cardinality :db.cardinality/one
-     :db.install/_attribute :db.part/db}
-    {:db/id (d/tempid :db.part/db)
-     :db/ident :container.volume/mode
-     ;;:db/valueType :db.type/long
-     :db/valueType :db.type/string
-     :db/cardinality :db.cardinality/one
-     :db.install/_attribute :db.part/db}
-   ;; End skd
-   ;; Environment Variable attributes
-    {:db/id (d/tempid :db.part/db)
-     :db/ident :environment/name
-     :db/valueType :db.type/string
-     :db/cardinality :db.cardinality/one
-     :db.install/_attribute :db.part/db}
-    {:db/id (d/tempid :db.part/db)
-     :db/ident :environment/value
-     :db/valueType :db.type/string
-     :db/cardinality :db.cardinality/one
-     :db.install/_attribute :db.part/db}
-    ;; Resource attributes
-    {:db/id (d/tempid :db.part/db)
-     :db/ident :resource/type
-     :db/valueType :db.type/ref
-     :db/cardinality :db.cardinality/one
-     :db.install/_attribute :db.part/db}
+    :db/ident :job/custom-executor
+    :db/valueType :db.type/boolean
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
    {:db/id (d/tempid :db.part/db)
-     :db/ident :resource/amount
-     :db/valueType :db.type/double
-     :db/cardinality :db.cardinality/one
-     :db.install/_attribute :db.part/db}
+    :db/ident :job/preemptions
+    :db/valueType :db.type/long
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db
+    :db/noHistory true}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :job/priority
+    :db/valueType :db.type/long
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :job/port
+    :db/valueType :db.type/long
+    :db/cardinality :db.cardinality/many
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :job/container
+    :db/valueType :db.type/ref
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   ;; Container Attributes
+   {:db/id (d/tempid :db.part/db)
+    :db/doc "variant records based on container/type"
+    :db/ident :container/type
+    :db/valueType :db.type/string
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :container/volumes
+    :db/valueType :db.type/ref
+    :db/isComponent true
+    :db/cardinality :db.cardinality/many
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :container/docker
+    :db/valueType :db.type/ref
+    :db/isComponent true
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   ;; Docker attributes
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :docker/image
+    :db/valueType :db.type/string
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :docker/parameters
+    :db/valueType :db.type/ref
+    :db/isComponent true
+    :db/cardinality :db.cardinality/many
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :docker/network
+    :db/valueType :db.type/string
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :docker/port-mapping
+    :db/valueType :db.type/ref
+    :db/isComponent true
+    :db/cardinality :db.cardinality/many
+    :db.install/_attribute :db.part/db}
+   ;; Docker parameters attributes
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :docker.param/key
+    :db/valueType :db.type/string
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :docker.param/value
+    :db/valueType :db.type/string
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   ;; Docker port-mapping attributes
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :docker.portmap/host-port
+    :db/valueType :db.type/long
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :docker.portmap/container-port
+    :db/valueType :db.type/long
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :docker.portmap/protocol
+    :db/valueType :db.type/string
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   ;; Container Volume Attributes
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :container.volume/container-path
+    :db/valueType :db.type/string
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :container.volume/host-path
+    :db/valueType :db.type/string
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :container.volume/mode
+    :db/valueType :db.type/string
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   ;; Environment Variable attributes
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :environment/name
+    :db/valueType :db.type/string
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :environment/value
+    :db/valueType :db.type/string
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   ;; Resource attributes
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :resource/type
+    :db/valueType :db.type/ref
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :resource/amount
+    :db/valueType :db.type/double
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
    {:db/id (d/tempid :db.part/db)
     :db/ident :resource.uri/executable?
     :db/valueType :db.type/boolean
@@ -219,40 +234,40 @@
     :db/valueType :db.type/boolean
     :db/cardinality :db.cardinality/one
     :db.install/_attribute :db.part/db}
-    ;; Instance attributes
-    {:db/id (d/tempid :db.part/db)
-     :db/ident :instance/task-id
-     :db/valueType :db.type/string
-     :db/unique :db.unique/identity
-     :db/cardinality :db.cardinality/one
-     :db.install/_attribute :db.part/db}
-    {:db/id (d/tempid :db.part/db)
-     :db/ident :instance/progress
-     :db/doc "represents the progress of the instance, from 0 to 100"
-     :db/valueType :db.type/long
-     :db/cardinality :db.cardinality/one
-     :db.install/_attribute :db.part/db}
-    {:db/id (d/tempid :db.part/db)
-     :db/ident :instance/hostname
-     :db/valueType :db.type/string
-     :db/cardinality :db.cardinality/one
-     :db.install/_attribute :db.part/db}
-    {:db/id (d/tempid :db.part/db)
-     :db/ident :instance/executor-id
-     :db/valueType :db.type/string
-     :db/cardinality :db.cardinality/one
-     :db.install/_attribute :db.part/db}
-    {:db/id (d/tempid :db.part/db)
-     :db/ident :instance/slave-id
-     :db/valueType :db.type/string
-     :db/cardinality :db.cardinality/one
-     :db.install/_attribute :db.part/db}
-    {:db/id (d/tempid :db.part/db)
-     :db/ident :instance/status
-     :db/index true
-     :db/valueType :db.type/ref
-     :db/cardinality :db.cardinality/one
-     :db.install/_attribute :db.part/db}
+   ;; Instance attributes
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :instance/task-id
+    :db/valueType :db.type/string
+    :db/unique :db.unique/identity
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :instance/progress
+    :db/doc "represents the progress of the instance, from 0 to 100"
+    :db/valueType :db.type/long
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :instance/hostname
+    :db/valueType :db.type/string
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :instance/executor-id
+    :db/valueType :db.type/string
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :instance/slave-id
+    :db/valueType :db.type/string
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :instance/status
+    :db/index true
+    :db/valueType :db.type/ref
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
    {:db/id (d/tempid :db.part/db)
     :db/ident :instance/start-time
     :db/valueType :db.type/instant
@@ -270,24 +285,24 @@
     :db.install/_attribute :db.part/db}
 
     ;; Share attributes
-    {:db/id (d/tempid :db.part/db)
-     :db/ident :share/resource
-     :db/valueType :db.type/ref
-     :db/isComponent true
-     :db/cardinality :db.cardinality/many
-     :db.install/_attribute :db.part/db}
-    {:db/id (d/tempid :db.part/db)
-     :db/ident :share/user
-     :db/valueType :db.type/string
-     :db/unique :db.unique/identity
-     :db/cardinality :db.cardinality/one
-     :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :share/resource
+    :db/valueType :db.type/ref
+    :db/isComponent true
+    :db/cardinality :db.cardinality/many
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :share/user
+    :db/valueType :db.type/string
+    :db/unique :db.unique/identity
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
    ;; Resource mapping attributes
-    {:db/id (d/tempid :db.part/db)
-     :db/ident :resource.type/mesos-name
-     :db/valueType :db.type/keyword
-     :db/cardinality :db.cardinality/one
-     :db.install/_attribute :db.part/db}])
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :resource.type/mesos-name
+    :db/valueType :db.type/keyword
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}])
 
 (def migration-add-index-to-job-state
   "This was written on 9-26-2014"

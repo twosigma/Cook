@@ -28,47 +28,54 @@
           db)
        (map first)))
 
-(defn fixup-keywords [container]
+(defn fixup-param-keywords
+  "helper function, handles docker parameters"
+  [m]
+  (mapv (fn [{kname :docker.param/key
+             value :docker.param/value}]
+         {:key kname :value value})m))
+
+(defn fixup-port-mapping-keywords
+  "helper function, handles docker container port mappings"
+  [m]
+  (mapv (fn [{container-port :docker.portmap/container-port
+              host-port :docker.portmap/host-port
+              protocol :docker.portmap/protocol}]
+          (into {:container-port container-port
+                 :host-port host-port}
+                           (when protocol {:protocol protocol})))m))
+
+(defn fixup-docker-keywords
+  "Helper function for fixup-keywords below, handles docker map"
+  [{image :docker/image
+    params :docker/parameters
+    port-mapping :docker/port-mapping
+    network :docker/network}]
+  (into {:image image :network network}
+        (concat (fixup-param-keywords params)
+                (fixup-port-mapping-keywords port-mapping))))
+
+(defn fixup-volume-keywords
+  "Helper funtion for fixup-keywords below, handles container volumes"
+  [m]
+  (mapv (fn [{container-path :container.volumes/container-path
+              host-path :container.volumes/host-path
+              mode :container.volumes/mode}]
+          (into {:host-path host-path}
+                (concat (when container-path
+                          {:container.volume/container-path
+                           container-path})
+                        (when mode {:mode mode}))))m))
+
+(defn fixup-keywords
   "Walk through a container from datomic, substituting keyords as needed"
-  (let [process-table-entry (fn [table [k v]]
-                              (if (contains? table k)
-                                (let [tablev (get table k)]
-                                  (if (vector? tablev)
-                                    (let [tkey (first tablev)
-                                          tfunc (second tablev)]
-                                      [tkey (tfunc v)])
-                                    [tablev v]))
-                                [k v]))
-
-        fix-map-kw (fn [table m]
-                     (into {} (map #(process-table-entry table %) m)))
-
-        fix-vec-kw (fn [table v]
-                     (mapv
-                      #(fix-map-kw table %) v))
-
-        ;; tables are { :datomic-kw :mesos-kw }
-        ;;             -- or --
-        ;;            { :datomic-kw [ mesos-kw fn-to-call-on-value ]}
-        ;; the functions are partially bound to the appropriate table to
-        ;; drive the parsing
-        volume-table {:container.volume/host_path :host_path
-                      :container.volume/container_path :container_path
-                      :container.volume/mode :mode}
-
-        param-table {:docker.param/key :key
-                     :docker.param/value :value}
-
-        docker-table {:docker/image :image
-                      :docker/parameters
-                      [:parameters (partial fix-vec-kw param-table)]
-                      :docker/network :network}
-
-        container-table {:container/type :type
-                         :container/volumes [:volumes (partial fix-vec-kw volume-table)]
-                         :container/docker [:docker (partial fix-map-kw docker-table)]}]
-
-    (fix-map-kw container-table container)))
+  [{ctype :container/type
+    volumes :container/volumes
+    docker :container/docker}]
+  (into {} (concat
+            (when ctype {:type ctype})
+            (when docker {:docker (fixup-docker-keywords docker)})
+            (when volumes {:volumes (fixup-volume-keywords volumes)}))))
 
 (defn job-ent->container
   "Take a job entity and return its container"
