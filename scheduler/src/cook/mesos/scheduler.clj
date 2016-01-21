@@ -88,6 +88,7 @@
                           :framework-id fid
                           :name "cook agent executor"
                           :source "cook_scheduler"
+                          :container container
                           :command command}
                          command)
         ;; If the there is no value for key :job/name, the following name will contain a substring "null".

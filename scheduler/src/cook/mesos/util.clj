@@ -31,19 +31,25 @@
 (defn fixup-param-keywords
   "helper function, handles docker parameters"
   [m]
-  (mapv (fn [{kname :docker.param/key
-             value :docker.param/value}]
-         {:key kname :value value})m))
+  (if (seq m)
+    { :parameters (mapv (fn [{kname :docker.param/key
+                              value :docker.param/value}]
+                          {:key kname :value value})m)}
+    {}))
 
 (defn fixup-port-mapping-keywords
   "helper function, handles docker container port mappings"
   [m]
-  (mapv (fn [{container-port :docker.portmap/container-port
-              host-port :docker.portmap/host-port
-              protocol :docker.portmap/protocol}]
-          (into {:container-port container-port
-                 :host-port host-port}
-                           (when protocol {:protocol protocol})))m))
+  (if (seq m)
+    { :port-mapping
+     (mapv
+      (fn [{container-port :docker.portmap/container-port
+            host-port :docker.portmap/host-port
+            protocol :docker.portmap/protocol}]
+        (into {:container-port container-port
+               :host-port host-port}
+              (when protocol {:protocol protocol}))) m) }
+    {}))
 
 (defn fixup-docker-keywords
   "Helper function for fixup-keywords below, handles docker map"
@@ -58,12 +64,12 @@
 (defn fixup-volume-keywords
   "Helper funtion for fixup-keywords below, handles container volumes"
   [m]
-  (mapv (fn [{container-path :container.volumes/container-path
-              host-path :container.volumes/host-path
-              mode :container.volumes/mode}]
+  (mapv (fn [{container-path :container.volume/container-path
+              host-path :container.volume/host-path
+              mode :container.volume/mode}]
           (into {:host-path host-path}
                 (concat (when container-path
-                          {:container.volume/container-path
+                          {:container-path
                            container-path})
                         (when mode {:mode mode}))))m))
 
@@ -80,9 +86,16 @@
 (defn job-ent->container
   "Take a job entity and return its container"
   [db job job-ent]
-  (if (contains? job-ent :job/container)
-    (let [ceid (:db/id (:job/container job-ent))
-          cmap (d/pull db "[*]" ceid)
+  (log/info "---- db -----")
+  (log/info (clojure.pprint/write db :stream nil))
+  (log/info "---- job ----")
+  (log/info (clojure.pprint/write job :stream nil))
+  (log/info "-- job-ent --")
+  (log/info (clojure.pprint/write job-ent :stream nil))
+  (log/info "-------------")
+  ;(if (contains? job-ent :job/container)
+  (if-let [ceid (:db/id (:job/container job-ent))]
+    (let [
           rm-dbids (fn rm-dbids [m]
                      (cond
                        (map? m)
@@ -94,9 +107,18 @@
                        (vector? m)
                        (mapv rm-dbids m)
                        :else
-                       m))]
-      (-> cmap rm-dbids fixup-keywords)
-      {})))
+                       m))
+          cmap (d/pull db "[*]" ceid)]
+      (log/info "---- ceid ----")
+      (log/info (clojure.pprint/write ceid :stream nil))
+      (log/info "---- cmap ----")
+      (log/info (clojure.pprint/write cmap :stream nil))
+      (log/info "---- final ----")
+      (log/info (clojure.pprint/write (-> cmap rm-dbids fixup-keywords) :stream nil))
+      (log/info "--------------")
+
+      (-> cmap rm-dbids fixup-keywords))
+    {}))
 
 (defn job-ent->env
   "Take a job entity and return the environment variable map"
