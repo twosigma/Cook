@@ -84,12 +84,14 @@
         ;; executor
         executor-key (if custom-executor :executor :command)
         executor-value (if custom-executor
-                         {:executor-id (str (java.util.UUID/randomUUID))
-                          :framework-id fid
-                          :name "cook agent executor"
-                          :source "cook_scheduler"
-                          :container container
-                          :command command}
+                         (into {:executor-id (str (java.util.UUID/randomUUID))
+                                :framework-id fid
+                                :name "cook agent executor"
+                                :source "cook_scheduler"
+                                :command command}
+                               (if (seq container)
+                                 {:container container}
+                                 {}))
                          command)
         ;; If the there is no value for key :job/name, the following name will contain a substring "null".
         task (into {:name (format "%s_%s_%s" (:job/name job-ent "cookjob") (:job/user job-ent) task-id)
@@ -102,7 +104,9 @@
                             {:instance (str (count (:job/instance job-ent)))})
                            "UTF-8")
                     executor-key executor-value}
-                   (if (seq container) {:container container} {}))]
+                   (if (and (seq container)(not custom-executor))
+                     {:container container}
+                     {}))]
     task))
 
 (timers/deftimer [cook-mesos scheduler handle-status-update-duration])
