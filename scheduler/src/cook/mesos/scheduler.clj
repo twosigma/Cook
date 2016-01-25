@@ -105,7 +105,7 @@
                            "UTF-8")
                     executor-key executor-value}
                    (if (and (seq container)(not custom-executor))
-                     {:container container}
+                   ;(if (seq container){:container container}
                      {}))]
     task))
 

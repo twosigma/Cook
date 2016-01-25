@@ -86,7 +86,7 @@
                  [liberator "0.13"]
 
                  ;;Databases
-                 [com.datomic/datomic-free "0.9.5206"
+                 [com.datomic/datomic-pro "0.9.5153"
                   :exclusions [org.slf4j/slf4j-api
                                com.fasterxml.jackson.core/jackson-core
                                org.slf4j/jcl-over-slf4j
@@ -94,6 +94,7 @@
                                org.slf4j/log4j-over-slf4j
                                org.slf4j/slf4j-nop
                                joda-time]]
+                 [com.basho.riak/riak-client "1.4.4"]
                  [org.apache.curator/curator-framework "2.7.1"
                   :exclusions [io.netty/netty]]
                  [org.apache.curator/curator-recipes "2.7.1"
@@ -138,7 +139,6 @@
   :main cook.components
 
   :jvm-opts ["-Dpython.cachedir.skip=true"
-             "-XX:MaxPermSize=500M"
              ;"-Dsun.security.jgss.native=true"
              ;"-Dsun.security.jgss.lib=/opt/mitkrb5/lib/libgssapi_krb5.so"
              ;"-Djavax.security.auth.useSubjectCredsOnly=false"
