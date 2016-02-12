@@ -393,10 +393,13 @@
        (sort-by (fn [{{:keys [mem cpus]} :resources}] [mem cpus]))
        reverse))
 
-(timers/deftimer  [cook-mesos scheduler handle-resource-offer!-duration])
-(meters/defmeter  [cook-mesos scheduler pending-job-atom-contended])
+(timers/deftimer [cook-mesos scheduler handle-resource-offer!-duration])
+(timers/deftimer [cook-mesos scheduler handler-resource-offer!-transact-task-duration])
+(timers/deftimer [cook-mesos scheduler handler-resource-offer!-match-duration])
+(meters/defmeter [cook-mesos scheduler pending-job-atom-contended])
 (histograms/defhistogram [cook-mesos scheduler offer-size-mem])
 (histograms/defhistogram [cook-mesos scheduler offer-size-cpus])
+(histograms/defhistogram [cook-mesos scheduler number-tasks-matched])
 (meters/defmeter [cook-mesos scheduler scheduler-offer-matched])
 (meters/defmeter [cook-mesos scheduler handle-resource-offer!-errors])
 (meters/defmeter [cook-mesos scheduler matched-tasks])
@@ -439,7 +442,9 @@
                                                          (filter #(false? (:instance/preempted? %)))
                                                          (map :instance/hostname)))))
                                    scheduler-contents)
-              matches (match-offer-to-schedule considerable offer)
+              matches (timers/time!
+                        handler-resource-offer!-match-duration
+                        (match-offer-to-schedule considerable offer))
               ;; We know that matches always form a prefix of the scheduler's contents
               new-scheduler-contents (remove (set matches) scheduler-contents)
               first-considerable-resources (-> considerable first util/job-ent->resources)
@@ -472,32 +477,35 @@
               ;; during a race. If that happens, then other jobs that should
               ;; be scheduled will not be eligible for rescheduling until
               ;; the pending-jobs atom is repopulated
-              @(d/transact
-                 conn
-                 (mapcat (fn [task-info]
-                           [[:job/allowed-to-start? (:job-id task-info)]
-                            {:db/id (d/tempid :db.part/user)
-                             :job/_instance (:job-id task-info)
-                             :instance/task-id (:task-id task-info)
-                             :instance/hostname (:hostname offer)
-                             :instance/start-time (now)
-                             ;; NB command executor uses the task-id
-                             ;; as the executor-id
-                             :instance/executor-id (get-in
-                                                     task-info
-                                                     [:executor :executor-id]
-                                                     (:task-id task-info))
-                             :instance/slave-id (:slave-id offer)
-                             :instance/progress 0
-                             :instance/status :instance.status/unknown
-                             :instance/preempted? false}])
-                         task-infos))
+              (timers/time!
+                handler-resource-offer!-transact-task-duration
+                @(d/transact
+                   conn
+                   (mapcat (fn [task-info]
+                             [[:job/allowed-to-start? (:job-id task-info)]
+                              {:db/id (d/tempid :db.part/user)
+                               :job/_instance (:job-id task-info)
+                               :instance/task-id (:task-id task-info)
+                               :instance/hostname (:hostname offer)
+                               :instance/start-time (now)
+                               ;; NB command executor uses the task-id
+                               ;; as the executor-id
+                               :instance/executor-id (get-in
+                                                       task-info
+                                                       [:executor :executor-id]
+                                                       (:task-id task-info))
+                               :instance/slave-id (:slave-id offer)
+                               :instance/progress 0
+                               :instance/status :instance.status/unknown
+                               :instance/preempted? false}])
+                           task-infos)))
               (log/info "Matched offer" offer "to tasks" task-infos)
               ;; This launch-tasks MUST happen after the above transaction in
               ;; order to allow a transaction failure (due to failed preconditions)
               ;; to block the launch
               (meters/mark! scheduler-offer-matched (count (:ids offer)))
               (meters/mark! matched-tasks (count task-infos))
+              (histograms/update! number-tasks-matched (count task-infos))
               (meters/mark! matched-tasks-cpus (:cpus match-resource-requirements))
               (meters/mark! matched-tasks-mem (:mem match-resource-requirements))
               (mesos/launch-tasks
