@@ -394,8 +394,8 @@
        reverse))
 
 (timers/deftimer [cook-mesos scheduler handle-resource-offer!-duration])
-(timers/deftimer [cook-mesos scheduler handler-resource-offer!-transact-task-duration])
-(timers/deftimer [cook-mesos scheduler handler-resource-offer!-match-duration])
+(timers/deftimer [cook-mesos scheduler handle-resource-offer!-transact-task-duration])
+(timers/deftimer [cook-mesos scheduler handle-resource-offer!-match-duration])
 (meters/defmeter [cook-mesos scheduler pending-job-atom-contended])
 (histograms/defhistogram [cook-mesos scheduler offer-size-mem])
 (histograms/defhistogram [cook-mesos scheduler offer-size-cpus])
