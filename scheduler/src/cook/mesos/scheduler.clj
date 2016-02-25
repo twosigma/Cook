@@ -443,7 +443,7 @@
                                                          (map :instance/hostname)))))
                                    scheduler-contents)
               matches (timers/time!
-                        handler-resource-offer!-match-duration
+                        handle-resource-offer!-match-duration
                         (match-offer-to-schedule considerable offer))
               ;; We know that matches always form a prefix of the scheduler's contents
               new-scheduler-contents (remove (set matches) scheduler-contents)
@@ -478,7 +478,7 @@
               ;; be scheduled will not be eligible for rescheduling until
               ;; the pending-jobs atom is repopulated
               (timers/time!
-                handler-resource-offer!-transact-task-duration
+                handle-resource-offer!-transact-task-duration
                 @(d/transact
                    conn
                    (mapcat (fn [task-info]
