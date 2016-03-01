@@ -250,12 +250,12 @@
                                      {:resource/type :resource.type/mem
                                       :resource/amount mem}]}]]]
                                         ;debug
-    (clojure.pprint/pprint (-> ports
-                               (into maybe-datoms)
-                               (into env)
-                               (into uris)
-                               (into container)
-                               (into txn)))
+    (log/info (clojure.pprint/write (-> ports
+                                        (into maybe-datoms)
+                                        (into env)
+                                        (into uris)
+                                        (into container)
+                                        (into txn)) :stream nil))
     ;; TODO batch these transactions to improve performance
     @(d/transact conn (-> ports
                           (into maybe-datoms)

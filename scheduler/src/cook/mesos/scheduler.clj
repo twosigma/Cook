@@ -197,8 +197,8 @@
                                      :task-killed
                                      :task-lost} :instance.status/failed)
                  prior-job-state (:job/state (d/entity db job))
-                 progress (when (:data status)
-                            (:percent (read-string (String. (:data status)))))
+                 progress nil #_(when (:data status)
+                                  (:percent (read-string (String. (:data status) ))))
                  instance-runtime (- (.getTime (now)) ; Used for reporting
                                      (.getTime (:instance/start-time (d/entity db instance))))
                  job-resources (util/job-ent->resources job-ent)]
