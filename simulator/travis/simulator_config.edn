@@ -1,0 +1,43 @@
+{:sim-db-uri "datomic:free://localhost:4334/cook-sim"
+ :cook-db-uri "datomic:free://localhost:4334/cook-jobs"
+ :cook-api-uri "http://localhost:12321"
+ :process-count 10
+ :sim-model {:label "Travis sim run"
+             :duration-seconds 30
+             :user-profiles
+             [{:description "Heavy Users"
+               :usernames ["heavy1" "heavy2" "heavy3" "heavy4" "heavy5"]
+               :seconds-between-jobs {:mean 2
+                                      :std-dev 1
+                                      :floor 1
+                                      :ceiling 120}
+               :job-duration {:mean 10
+                              :std-dev 2
+                              :floor 1
+                              :ceiling 120}
+               :job-memory {:mean 512
+                            :std-dev 200
+                            :floor 1
+                            :ceiling 2048}
+               :job-cpu {:mean 3.0
+                         :std-dev 1.0
+                         :floor 1.0
+                         :ceiling 6.0}}
+              {:description "Light Users"
+               :usernames ["light1" "light2" "light3" "light4" "light5"]
+               :seconds-between-jobs {:mean 6
+                                      :std-dev 1
+                                      :floor 1
+                                      :ceiling 120}
+               :job-duration {:mean 15
+                              :std-dev 2
+                              :floor 1
+                              :ceiling 120}
+               :job-memory {:mean 1024
+                            :std-dev 1000
+                            :floor 1
+                            :ceiling 4000}
+               :job-cpu {:mean 4.0
+                         :std-dev 2.0
+                         :floor 1.0
+                         :ceiling 6.0}}]}}
