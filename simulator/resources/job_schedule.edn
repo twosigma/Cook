@@ -1,0 +1,73 @@
+{:model
+ [[{:db/id #db/id[:db.part/db]
+    :db/ident :model.type/cook
+    :db/doc "Cook scheduling jobs for a Mesos cluster and reporting on results."}
+   {:db/id #db/id[:db.part/db]
+    :db/ident :model/num-researchers
+    :db/valueType :db.type/long
+    :db/doc "Number of researchers who schedule jobs"
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id #db/id[:db.part/db]
+    :db/ident :model/mean-seconds-between-jobs
+    :db/valueType :db.type/long
+    :db/doc "Mean time between jobs in seconds"
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id #db/id[:db.part/db]
+    :db/ident :model/mean-job-duration
+    :db/valueType :db.type/long
+    :db/doc "Mean job execution duration"
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id #db/id[:db.part/db]
+    :db/ident :model/mean-job-memory
+    :db/valueType :db.type/long
+    :db/doc "Mean job memory requirements in megabytes"
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id #db/id[:db.part/db]
+    :db/ident :model/mean-job-cpu
+    :db/valueType :db.type/float
+    :db/doc "Mean job CPU requirements"
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}]]
+ :test
+ [[{:db/id #db/id[:db.part/db]
+    :db/ident :test.type/cook}
+   {:db/id #db/id[:db.part/db]
+    :db/ident :agent.type/researcher}
+   {:db/id #db/id[:db.part/db]
+    :db/ident :action.type/job
+    :db/doc "metadata about a single intended cook job"}]]
+
+ :job
+ [[{:db/id #db/id[:db.part/db]
+    :db/ident :job/uuid
+    :db/unique :db.unique/identity
+    :db/valueType :db.type/uuid
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id #db/id[:db.part/db]
+    :db/ident :job/duration
+    :db/valueType :db.type/long
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id #db/id[:db.part/db]
+    :db/ident :job/memory
+    :db/valueType :db.type/long
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id #db/id[:db.part/db]
+    :db/ident :job/cpu
+    :db/valueType :db.type/float
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id #db/id[:db.part/db]
+    :db/ident :job/exit-code
+    :db/valueType :db.type/long
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   ]]
+
+ }
