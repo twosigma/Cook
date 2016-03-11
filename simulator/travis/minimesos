@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+
+MINIMESOS_TAG="0.10.2"
+DOCKER_BIN="$(command -v docker)"
+PARAMS="$@"
+MINIMESOS_CLI_IMAGE="containersol/minimesos-cli"
+
+command_exists() {
+    command -v "$@" > /dev/null 2>&1
+}
+
+DOCKER_VERSION=$(docker version --format "{{.Server.Version}}")
+SMALLEST_VERSION=$(printf "%s\n1.11.0\n" $DOCKER_VERSION | sort -t '.' -k 1,1 -k 2,2 -k 3,3 -k 4,4 -g | head -n 1)
+
+if ! command_exists docker || [ $SMALLEST_VERSION != "1.11.0" ]; then
+    echo "Minimesos requires Docker 1.11.0 or higher"
+    exit 1
+fi
+
+if [ "$DOCKER_HOST" != "" ] && [[ $DOCKER_HOST == tcp* ]]; then
+    DOCKER_HOST_IP=$(echo "$DOCKER_HOST" | grep -o '[0-9]\+[.][0-9]\+[.][0-9]\+[.][0-9]\+')
+elif command_exists docker-machine && [ "$DOCKER_MACHINE_NAME" != "" ]; then
+    DOCKER_HOST_IP=$(docker-machine ip ${DOCKER_MACHINE_NAME})
+elif [ $(uname) != "Darwin" ]; then
+    DOCKER_HOST_IP=$(ip addr show dev docker0 | grep inet | sed -r "s/.*inet\s([0-9\.]+)\/.*/\1/" | head -n 1)
+else
+    DOCKER_HOST_IP=""
+fi
+
+pullImage() {
+    if [ "$(docker images $1 | grep $2 2> /dev/null)" = "" ]; then
+	echo "Pulling $1:$2"
+	docker pull "$1:$2"
+    fi
+}
+
+if [ "$#" -gt 0 -a "$1" = up ]; then
+    pullImage ${MINIMESOS_CLI_IMAGE} ${MINIMESOS_TAG}
+fi
+
+MINIMESOS_HOST_DIR="$(pwd)"
+MINIMESOS_DIR="$(pwd)/.minimesos"
+if [ ! -d "${MINIMESOS_DIR}" ]; then
+    mkdir -p "${MINIMESOS_DIR}"
+    echo "# Created minimesos directory at ${MINIMESOS_DIR}."
+fi
+
+docker run --rm -v "${MINIMESOS_HOST_DIR}":"${MINIMESOS_HOST_DIR}" \
+       -v /var/run/docker.sock:/var/run/docker.sock \
+       -v /sys/fs/cgroup:/sys/fs/cgroup \
+       -v ${DOCKER_BIN}:/usr/bin/docker \
+       -i \
+       --env DOCKER_HOST_IP=${DOCKER_HOST_IP} \
+       --entrypoint java \
+       ${MINIMESOS_CLI_IMAGE}:${MINIMESOS_TAG} \
+       -Dminimesos.host.dir="${MINIMESOS_HOST_DIR}" \
+       -jar /usr/local/share/minimesos/minimesos-cli.jar ${PARAMS}

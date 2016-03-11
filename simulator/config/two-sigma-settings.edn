@@ -1,0 +1,65 @@
+{:sim-db-uri "datomic:free://localhost:4334/cook-sim"
+ :cook-db-uri "datomic:free://localhost:4334/cook-jobs"
+ :cook-api-uri "http://localhost:12321"
+ :process-count 10
+ :sim-model {:label "Two Sigma's cluster usage"
+             :duration-seconds 3600
+             :researcher-profiles
+             [{:description "Simulation runners"
+               :usernames ["simmer1" "simmer2" "simmer3" "simmer4" "simmer5"
+                           "simmer6" "simmer7" "simmer8" "simmer9" "simmer10"]
+               :seconds-between-jobs {:mean 7.2
+                                      :std-dev 0.72
+                                      :floor 1
+                                      :ceiling 120}
+               :job-duration {:mean 1800
+                              :std-dev 300
+                              :floor 1
+                              :ceiling 5400}
+               :job-memory {:mean 40960
+                            :std-dev 10240
+                            :floor 1024
+                            :ceiling 512000}
+               :job-cpu {:mean 3.0
+                         :std-dev 1.0
+                         :floor 1.0
+                         :ceiling 8.0}}
+
+              {:description "Fcat users"
+               :usernames ["fcat1" "fcat2" "fcat3" "fcat4" "fcat5"]
+               :seconds-between-jobs {:mean 36
+                                      :std-dev 1.8
+                                      :floor 1
+                                      :ceiling 600}
+               :job-duration {:mean 300
+                              :std-dev 50
+                              :floor 1
+                              :ceiling 2400}
+               :job-memory {:mean 10240
+                            :std-dev 2048
+                            :floor 512
+                            :ceiling 256000}
+               :job-cpu {:mean 1.0
+                         :std-dev 0.0
+                         :floor 1.0
+                         :ceiling 1.0}}
+
+              {:description "Spark users"
+               :usernames ["spark1" "spark2" "spark3" "spark4" "spark5"]
+               :seconds-between-jobs {:mean 18
+                                      :std-dev 1.8
+                                      :floor 1
+                                      :ceiling 600}
+               :job-duration {:mean 7200
+                              :std-dev 0
+                              :floor 7200
+                              :ceiling 7200}
+               :job-memory {:mean 20480
+                            :std-dev 2048
+                            :floor 512
+                            :ceiling 256000}
+               :job-cpu {:mean 8.0
+                         :std-dev 0.0
+                         :floor 8.0
+                         :ceiling 8.0}}
+              ]}}
