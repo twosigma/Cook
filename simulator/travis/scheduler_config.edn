@@ -1,0 +1,28 @@
+{:port 12321
+ :hostname "172.17.0.1"
+ :authorization {:http-basic true}
+ :database {:datomic-uri "datomic:free://localhost:4334/cook-jobs"}
+ :zookeeper {:local? true}
+ :scheduler {:offer-incubate-ms 15000
+             :dru-scale 1
+             :task-constraints {:timeout-hours 1
+                                :timeout-interval-minutes 1
+                                :memory-gb 48
+                                :cpus 6}}
+
+ :mesos {:master "zk://172.17.0.3:2181/mesos" ; minimesos zookeeper
+         :master-hosts ["172.17.0.4"] ; minimesos master
+         :failover-timeout-ms nil
+         :leader-path "/cook-scheduler"
+         :role "cook"}
+ :unhandled-exceptions {:log-level :error}
+ :metrics {:jmx true}
+ :nrepl {:enabled? true
+         :port 8888}
+ :log {:file "log/cook.log"
+       :levels {"datomic.db" :warn
+                "datomic.peer" :warn
+                "datomic.kv-cluster" :warn
+                "cook.mesos.rebalancer" :debug
+                "cook.mesos.scheduler" :debug
+                :default :info}}}
