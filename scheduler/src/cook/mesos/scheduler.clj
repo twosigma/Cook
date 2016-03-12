@@ -35,7 +35,8 @@
             [chime :refer [chime-at]]
             [cook.mesos.heartbeat :as heartbeat]
             [cook.mesos.share :as share]
-            [swiss.arrows :refer :all])
+            [swiss.arrows :refer :all]
+            [clojure.core.cache :as cache])
   (import java.util.concurrent.TimeUnit))
 
 (defn now
@@ -100,6 +101,14 @@
                {:instance (str (count (:job/instance job-ent)))})
              "UTF-8")
      executor-key executor-value}))
+
+(defn rescind-offer!
+  [rescinded-offer-id-cache offer-id]
+  (log/info "Rescinding offer" offer-id)
+  (swap! rescinded-offer-id-cache (fn [c]
+                                    (if (cache/has? c offer-id)
+                                      (cache/hit c offer-id)
+                                      (cache/miss c offer-id offer-id)))))
 
 (timers/deftimer [cook-mesos scheduler handle-status-update-duration])
 (meters/defmeter [cook-mesos scheduler tasks-killed-in-status-update])
@@ -917,7 +926,7 @@
 
 (defn start-offer-matcher!
   "Create a thread to repeatedly pull from matcher-chan and have the offer matched."
-  [conn pending-jobs-atom matcher-chan]
+  [conn pending-jobs-atom matcher-chan rescinded-offer-id-cache]
   (async/thread
     (log/debug "offer matcher started")
     (try
@@ -925,9 +934,12 @@
         (log/debug "Preparing to pull offer (offer-matcher)")
         (let [offer (async/<!! matcher-chan)
               fid (:fid offer)
+              offer-ids (:ids offer)
               driver (:driver offer)]
           (log/debug "(offer-matcher) Offer taken " offer)
-          (handle-resource-offer! conn driver fid pending-jobs-atom offer))
+          (if-let [invalid-offer-id (some #(cache/lookup @rescinded-offer-id-cache %) offer-ids)]
+            (log/info "Received rescinded offer" invalid-offer-id "in offer matcher")
+            (handle-resource-offer! conn driver fid pending-jobs-atom offer)))
         (log/debug "(offer matcher) Handled resource offer")
         (recur))
       (catch Exception e
@@ -939,14 +951,17 @@
 (defn create-datomic-scheduler
   [conn set-framework-id pending-jobs-atom heartbeat-ch offer-incubate-time-ms task-constraints]
   (let [fid (atom nil)
+        ;; Mesos can potentially rescind thousands of offers
+        rescinded-offer-id-cache (-> {}
+                                     (cache/fifo-cache-factory :threshold 10240)
+                                     atom)
         offer-chan (async/chan 100)
         offer-ready-chan (async/chan 100)
         matcher-chan (async/chan) ; Don't want to buffer offers to the matcher chan. Only want when ready
         view-incubating-offers (start-offer-incubator! offer-chan offer-ready-chan offer-incubate-time-ms)
         view-mature-offers (start-offer-prioritizer! offer-ready-chan matcher-chan)
-        _ (start-offer-matcher! conn pending-jobs-atom matcher-chan)
-        _ (start-jobs-prioritizer! conn pending-jobs-atom task-constraints)
-        ]
+        _ (start-offer-matcher! conn pending-jobs-atom matcher-chan rescinded-offer-id-cache)
+        _ (start-jobs-prioritizer! conn pending-jobs-atom task-constraints)]
     {:scheduler
      (mesos/scheduler
       (registered [driver framework-id master-info]
@@ -968,7 +983,8 @@
                         (catch Exception e
                           (log/error e "Reconciliation error")))))
       ;; Ignore this--we can just wait for new offers
-      (offerRescinded [driver offer-id])
+      (offerRescinded [driver offer-id]
+                      (rescind-offer! rescinded-offer-id-cache offer-id))
       (frameworkMessage [driver executor-id slave-id data]
                         (heartbeat/notify-heartbeat heartbeat-ch executor-id slave-id data))
       (disconnected [driver]
@@ -982,11 +998,11 @@
       (resourceOffers [driver offers]
                       (case
                           (async/alt!!
-                           [[offer-chan [offers driver @fid]]] (log/debug "Passed " (count offers) " to incubator")
+                           [[offer-chan [offers driver @fid]]] (log/debug "Passed" (count offers) "to incubator")
                            :default :back-pressure
                            :priority true)
                         :back-pressure (do
-                                         (log/warn "Back pressure on offer-incubator. Declining " (count offers) "offers")
+                                         (log/warn "Back pressure on offer-incubator. Declining" (count offers) "offers")
                                          (meters/mark! offer-back-pressure)
                                          (decline-offers driver (map :id offers)))
                         nil))
