@@ -69,26 +69,27 @@ final public class Instance {
         private Long _startTime;
         private Long _endTime;
         private Status _status;
+        private Long _reasonCode;
         private String _outputURL;
         private String _hostName;
 
         /**
          * The task id must be provided prior to {@code build()}. If the instance status is not
          * provided, it will use UNKNOWN as the default status.
-         * 
+         *
          * @return an instance of job instance.
          */
         public Instance build() {
             Preconditions.checkNotNull(_taskID, "TaskID can not be null!");
             if (_status == null)
                 _status = Status.UNKNOWN;
-            return new Instance(_taskID, _slaveID, _executorID, _startTime, _endTime, _status,
+            return new Instance(_taskID, _slaveID, _executorID, _startTime, _endTime, _status, _reasonCode,
                     _outputURL, _hostName);
         }
 
         /**
          * Set the unique identifier for the task expected to build.
-         * 
+         *
          * @param uuid {@link UUID} specifies the UUID of a task.
          * @return this builder.
          */
@@ -102,7 +103,7 @@ final public class Instance {
         /**
          * Set the slave ID for the task expected to build where a slave ID is the identifier for
          * the Mesos slave which the task is assigned to.
-         * 
+         *
          * @param slaveID {@link String} specifies the slave ID which the task is assign to.
          * @return this builder.
          */
@@ -114,7 +115,7 @@ final public class Instance {
 
         /**
          * Set the Mesos executor ID for the task expected to build.
-         * 
+         *
          * @param executorID {@link String} specifies the executor ID.
          * @return this builder.
          */
@@ -126,7 +127,7 @@ final public class Instance {
 
         /**
          * Set the the starting time in milliseconds for the task expected to build.
-         * 
+         *
          * @param startTime {@link Long} specifies the starting time in milliseconds.
          * @return this builder.
          */
@@ -138,7 +139,7 @@ final public class Instance {
 
         /**
          * Set the the ending time in milliseconds for the task expected to build.
-         * 
+         *
          * @param endTime {@link Long} specifies the ending time in milliseconds.
          * @return this builder.
          */
@@ -150,7 +151,7 @@ final public class Instance {
 
         /**
          * Set the the task status for the task expected to build.
-         * 
+         *
          * @param status {@link Status} specifies the task status.
          * @return this builder.
          */
@@ -160,9 +161,15 @@ final public class Instance {
             return this;
         }
 
+        public Builder setReasonCode(Long reasonCode) {
+            Preconditions.checkState(_reasonCode == null, "Reason code has been set!");
+            _reasonCode = reasonCode;
+            return this;
+        }
+
         /**
          * Set the task local output directory for the task expected to build.
-         * 
+         *
          * @param outputURL {@link String} specifies the task local output directory in the Mesos
          *        host.
          * @return this builder.
@@ -175,7 +182,7 @@ final public class Instance {
 
         /**
          * Set the Mesos host for the task expected to build.
-         * 
+         *
          * @param hostName {@link String} specifies the host where this task is assigned to.
          * @return this builder.
          */
@@ -195,24 +202,26 @@ final public class Instance {
     final private Long _startTime;
     final private Long _endTime;
     final private Status _status;
+    final private Long _reasonCode;
     final private String _outputURL;
     final private String _hostName;
 
     private Instance(UUID taskID, String slaveID, String executorID, Long startTime, Long endTime,
-            Status status, String outputURL, String hostName) {
+                     Status status, Long reasonCode, String outputURL, String hostName) {
         _taskID = taskID;
         _slaveID = slaveID;
         _executorID = executorID;
         _startTime = startTime;
         _endTime = endTime;
         _status = status;
+        _reasonCode = reasonCode;
         _outputURL = outputURL;
         _hostName = hostName;
     }
 
     /**
      * Parse a JSON string representing a list of {@link Instance}s, e.g.
-     * 
+     *
      * <pre>
      * <code>
      * [
@@ -228,7 +237,7 @@ final public class Instance {
      * ]
      * </code>
      * </pre>
-     * 
+     *
      * @param listOfInstances {@link String} specifies a string representing a list of
      *        {@link Instance}s.
      * @return a list of {@link Instance}s.
@@ -240,7 +249,7 @@ final public class Instance {
 
     /**
      * Parse a JSON array representing a list of {@link Instance}.
-     * 
+     *
      * @param listOfInstances specifies a JSON array representing a list of {@link Instance}s.
      * @return a list of {@link Instance}s.
      * @throws JSONException
@@ -260,6 +269,9 @@ final public class Instance {
                 instanceBuilder.setEndTime(json.getLong("end_time"));
             if (json.has("output_url"))
                 instanceBuilder.setOutputURL(json.getString("output_url"));
+            if (json.has("reason_code"))
+                instanceBuilder.setReasonCode(json.getLong("reason_code"));
+
             Instance instance = instanceBuilder.build();
             instances.add(instance);
         }
@@ -270,7 +282,7 @@ final public class Instance {
     public String toString() {
         return "Instance [_taskID=" + _taskID + ", _slaveID=" + _slaveID + ", _executorID="
                 + _executorID + ", _startTime=" + _startTime + ", _endTime=" + _endTime
-                + ", _status=" + _status + ", _outputURL=" + _outputURL + ", _hostName="
+                + ", _status=" + _status + ", _reasonCode=" + _reasonCode + ", _outputURL=" + _outputURL + ", _hostName="
                 + _hostName + "]";
     }
 
@@ -296,6 +308,10 @@ final public class Instance {
 
     public Status getStatus() {
         return _status;
+    }
+
+    public Long getReasonCode() {
+        return _reasonCode;
     }
 
     public String getOutputURL() {

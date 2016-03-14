@@ -18,6 +18,7 @@
             [cook.mesos.scheduler :as sched]
             [cook.mesos.util :as util]
             [cook.mesos.dru :as dru]
+            [cook.mesos.reason :refer [reason-preempted-by-rebalancer]]
             cook.mesos.schema
             [clojure.tools.logging :as log]
             [datomic.api :as d :refer (q)]
@@ -310,6 +311,7 @@
               [[:generic/ensure task-eid :instance/status (d/entid db :instance.status/running)]
                [:generic/atomic-inc job-eid :job/preemptions 1]
                [:instance/update-state task-eid :instance.status/failed]
+               [:instance/reason-code task-eid reason-preempted-by-rebalancer]
                [:db/add task-eid :instance/preempted? true]]))
           (catch Throwable e
             (log/warn e "Failed to transact preemption")))
