@@ -36,7 +36,8 @@
             [cook.mesos.heartbeat :as heartbeat]
             [cook.mesos.share :as share]
             [swiss.arrows :refer :all]
-            [clojure.core.cache :as cache])
+            [clojure.core.cache :as cache]
+            [cook.mesos.reason :refer :all])
   (import java.util.concurrent.TimeUnit))
 
 (defn now
@@ -179,7 +180,7 @@
     (timers/time!
       handle-status-update-duration
       (try (let [db (db conn)
-                 {:keys [task-id] task-state :state} status
+                 {:keys [task-id reason] task-state :state} status
                  [job instance prior-instance-status] (first (q '[:find ?j ?i ?status
                                                                   :in $ ?task-id
                                                                   :where
@@ -189,7 +190,9 @@
                                                                   [?j :job/instance ?i]]
                                                                 db task-id))
                  job-ent (d/entity db job)
+                 instance-ent (d/entity db instance)
                  retries-so-far (count (:job/instance job-ent))
+                 previous-reason (:instance/reason-code instance-ent)
                  instance-status (condp contains? task-state
                                    #{:task-staging} :instance.status/unknown
                                    #{:task-starting
@@ -237,6 +240,8 @@
                (transact-with-retries conn
                                       (concat
                                         [[:instance/update-state instance instance-status]]
+                                        (when (and (not previous-reason) reason)
+                                          [[:db/add instance :instance/reason-code (mesos-reason->cook-reason-code reason)]])
                                         (when (#{:instance.status/success
                                                  :instance.status/failed} instance-status)
                                           [[:db/add instance :instance/end-time (now)]])
@@ -621,7 +626,7 @@
               (fn [now]
                 (let [db (d/db conn)
                       lingering-tasks (get-lingering-tasks db now timeout-hours)]
-                  (when-not (zero? (count lingering-tasks))
+                  (when (seq lingering-tasks)
                     (log/info "Starting to kill lingering jobs running more than" timeout-hours
                               "hours. There are in total" (count lingering-tasks) "lingering tasks.")
                     (doseq [task-id lingering-tasks]
@@ -629,7 +634,12 @@
                       ;; Note that we probably should update db to mark a task failed as well.
                       ;; However in the case that we fail to kill a particular task in Mesos,
                       ;; we could lose the chances to kill this task again.
-                      (mesos/kill-task driver task-id)))))
+                      (mesos/kill-task driver task-id)
+                      @(d/transact
+                        conn
+                        [[:instance/update-state [:instance/task-id task-id] :instance/status/failed]
+                         [:instance/reason-code [:instance/task-id task-id] reason-max-runtime]])
+                      ))))
               {:error-handler (fn [e]
                                 (log/error e "Failed to reap timeout tasks!"))})))
 

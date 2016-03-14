@@ -250,6 +250,7 @@
                                  nil))
                     start (:instance/start-time instance)
                     end (:instance/end-time instance)
+                    reason-code (:instance/reason-code instance)
                     base {:task_id (:instance/task-id instance)
                           :hostname hostname
                           :slave_id (:instance/slave-id instance)
@@ -263,6 +264,9 @@
                            base)
                     base (if end
                            (assoc base :end_time (.getTime end))
+                           base)
+                    base (if reason-code
+                           (assoc base :reason_code reason-code)
                            base)]
                 base))
             (:job/instance job))})))

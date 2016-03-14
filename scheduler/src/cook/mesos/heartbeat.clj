@@ -21,6 +21,7 @@
             [clj-time.core :as time]
             [clj-time.coerce :as tc]
             [cook.reporter :as reporter]
+            [cook.mesos.reason :refer [reason-heartbeat-lost]]
             [metrics.meters :as meters]
             [metrics.timers :as timers]
             [clj-time.periodic :as periodic]
@@ -76,8 +77,9 @@ The second is a map from task id to its timeout channel. The third is a timeout 
                                  :where
                                  [?e :instance/task-id ?task-id]]
                                db task-id))
-        txn [:instance/update-state instance-id :instance.status/failed]]
-    [new-state task-id [txn]]))
+        txns [[:instance/update-state instance-id :instance.status/failed]
+              [:instance/reason-code instance-id reason-heartbeat-lost]]]
+    [new-state task-id txns]))
 
 (timers/deftimer [cook-mesos heartbeat datomic-sync-duration])
 
@@ -115,8 +117,6 @@ The second is a map from task id to its timeout channel. The third is a timeout 
   (let [db (db conn)
         status (:instance/status (d/entity db [:instance/task-id task-id]))]
     (when (#{:instance.status/running :instance.status/unknown} status)
-      ;; TODO(ljin): Switch to the real version once we are comportable.
-      ;;             Also, change transact-async to transact-with-retries once it's available.
       #_(log/info "Timed out task:" task-id "(But not really...)")
       (log/info "Timed out task:" task-id)
       (d/transact-async conn txn))))
