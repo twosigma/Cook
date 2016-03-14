@@ -1,6 +1,6 @@
 01xxx: Normal
-01000: Normal exit
-01001: Killed by user
+01000: Normal exit (Not Implemented)
+01001: Killed by user (Not Implemented)
 01002: Preempted by rebalancer
 01003: REASON_CONTAINER_PREEMPTED
 
