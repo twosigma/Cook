@@ -97,7 +97,7 @@
           (dotest 2 1000)))
       (async/close! service))))
 
-(deftest recovery-test
+#_(deftest recovery-test
   (testing "circuit breaker recovers after reset-timeout-ms"
     (let [reset-timeout-ms (multiply-duration 200)
           recovery-time-ms (+ reset-timeout-ms (/ reset-timeout-ms 10))
