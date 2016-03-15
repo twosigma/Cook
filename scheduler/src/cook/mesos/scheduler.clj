@@ -240,7 +240,7 @@
                (transact-with-retries conn
                                       (concat
                                         [[:instance/update-state instance instance-status]]
-                                        (when (and (not previous-reason) reason)
+                                        (when (and (#{:instance.status/failed} instance-status) (not previous-reason) reason)
                                           [[:db/add instance :instance/reason-code (mesos-reason->cook-reason-code reason)]])
                                         (when (#{:instance.status/success
                                                  :instance.status/failed} instance-status)
