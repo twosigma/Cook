@@ -25,13 +25,21 @@
   []
   (-> system :config :settings))
 
-(defn sdb
+(defn sim-db
   []
-  (-> system :sim-db :conn d/db))
+  (-> system :sim-db))
+
+(defn sim-db-val
+  []
+  (-> (sim-db) :conn d/db))
+
+(defn cook-db
+  []
+  (-> system :cook-db))
 
 (defn cook-db-val
   []
-  (-> system :cook-db :conn d/db))
+  (-> (cook-db) :conn d/db))
 
 (defn setup
   []
