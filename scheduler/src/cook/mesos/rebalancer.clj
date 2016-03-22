@@ -311,7 +311,7 @@
               [[:generic/ensure task-eid :instance/status (d/entid db :instance.status/running)]
                [:generic/atomic-inc job-eid :job/preemptions 1]
                [:instance/update-state task-eid :instance.status/failed]
-               [:instance/reason-code task-eid reason-preempted-by-rebalancer]
+               [:db/add task-eid :instance/reason-code reason-preempted-by-rebalancer]
                [:db/add task-eid :instance/preempted? true]]))
           (catch Throwable e
             (log/warn e "Failed to transact preemption")))
