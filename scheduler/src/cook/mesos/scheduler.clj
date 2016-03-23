@@ -638,7 +638,7 @@
                       @(d/transact
                         conn
                         [[:instance/update-state [:instance/task-id task-id] :instance/status/failed]
-                         [:instance/reason-code [:instance/task-id task-id] reason-max-runtime]])
+                         [:db/add [:instance/task-id task-id] :instance/reason-code reason-max-runtime]])
                       ))))
               {:error-handler (fn [e]
                                 (log/error e "Failed to reap timeout tasks!"))})))
