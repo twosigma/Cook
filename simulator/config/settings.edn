@@ -1,0 +1,12 @@
+{:sim-db-uri "datomic:free://localhost:4334/cook-sim"
+ :cook-db-uri "datomic:free://localhost:4334/cook-jobs"
+ :cook-api-uri "http://localhost:12321"
+ :process-count 10
+ :sim-duration-seconds 10
+ :num-researchers 1
+ :mean-seconds-between-jobs 3
+ :mean-job-duration 10
+ :mean-job-memory 512
+ :mean-job-cpu 2.0
+ :backup-after-seconds 10
+ :backup-directory "file:///tmp/"}
