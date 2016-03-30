@@ -225,6 +225,12 @@
   [{:db/id :job/state
     :db/index true
     :db.alter/_attribute :db.part/db}])
+  
+(def migration-add-index-to-job-user
+  "This was written on 3-30-2016"
+  [{:db/id :job/user
+    :db/index true
+    :db.alter/_attribute :db.part/db}])
 
 (def rebalancer-configs
   [{:db/id (d/tempid :db.part/user)
@@ -408,4 +414,4 @@
                        []))}}])
 
 (def work-item-schema
-  [schema-attributes state-enums rebalancer-configs migration-add-index-to-job-state db-fns])
+  [schema-attributes state-enums rebalancer-configs migration-add-index-to-job-state migration-add-index-to-job-user db-fns])
