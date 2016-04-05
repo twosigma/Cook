@@ -327,7 +327,7 @@
                                      (json/read-str)))
         utilization (some-<>> mesos-master-urls
                               (map get-stats)
-                              (filter #(= (get % "master/elected") 1))
+                              (filter #(pos? (get % "master/elected")))
                               (first)
                               (select-keys <> ["master/cpus_percent" "master/mem_percent"])
                               (vals)
