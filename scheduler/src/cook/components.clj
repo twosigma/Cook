@@ -35,7 +35,14 @@
             [cook.curator :as curator])
   (:import org.apache.curator.retry.BoundedExponentialBackoffRetry
            org.apache.curator.framework.state.ConnectionStateListener
-           org.apache.curator.framework.CuratorFrameworkFactory)
+           org.apache.curator.framework.CuratorFrameworkFactory
+           org.eclipse.jetty.server.handler.RequestLogHandler
+           org.eclipse.jetty.server.handler.HandlerCollection
+           org.eclipse.jetty.server.NCSARequestLog
+           org.eclipse.jetty.security.UserAuthentication
+           org.eclipse.jetty.security.DefaultUserIdentity
+           javax.security.auth.Subject
+           javax.security.auth.kerberos.KerberosPrincipal)
   (:gen-class))
 
 (defn wrap-no-cache
@@ -144,6 +151,35 @@
                        :max-threads 200})]
            (fn [] (.stop jetty))))))
 
+(defn tell-jetty-about-usename [h]
+  "Our auth in cook.spnego doesn't hook in to Jetty - this handler
+  does so to make sure it's available for Jetty to log"
+  (fn [req]
+    (do
+      (.setAuthentication (:servlet-request req)
+                          (UserAuthentication.
+                            "kerberos"
+                            (DefaultUserIdentity.
+                              (Subject.)
+                              (KerberosPrincipal. (:authorization/user req))
+                              (into-array String []))))
+      (h req))))
+
+(defn configure-jet-logging
+  "Set up access logs for Jet"
+  [server]
+  (doto server
+    (.setHandler (doto (HandlerCollection.)
+                   (.addHandler (.getHandler server))
+                   (.addHandler (doto (RequestLogHandler.)
+                                  (.setRequestLog (doto (NCSARequestLog.)
+                                                    (.setFilename "log/access_log-yyyy_mm_dd.log")
+                                                    (.setAppend true)
+                                                    (.setLogLatency true)
+                                                    (.setExtended true)
+                                                    (.setPreferProxiedForAddress true)))
+                                  (.setServer server)))))))
+
 (def scheduler-server
   (graph/eager-compile
     {:mesos-datomic mesos-datomic
@@ -154,12 +190,14 @@
                        (let [jetty ((lazy-load-var 'qbits.jet.server/run-jetty)
                                     {:port server-port
                                      :ring-handler (-> view
+                                                       tell-jetty-about-usename
                                                        authorization-middleware
                                                        wrap-stacktrace-web
                                                        wrap-no-cache
                                                        wrap-params
                                                        health-check-middleware)
                                      :join? false
+                                     :configurator configure-jet-logging
                                      :max-threads 200})]
                          (fn [] (.stop jetty))))
 
