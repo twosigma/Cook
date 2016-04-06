@@ -72,6 +72,8 @@ import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Lists;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
+import com.twosigma.cook.jobclient.auth.spnego.BasicSPNegoSchemeFactory;
+import com.twosigma.cook.jobclient.auth.spnego.GSSCredentialProvider;
 
 import org.apache.log4j.Logger;
 
@@ -140,7 +142,7 @@ public class JobClient implements Closeable {
         /**
          * Prior to {@code Build()}, host, port, and endpoint for the Cook scheduler must be specified either by user or
          * properties. If any of them is not specified, it will throw a {@link DeathError}.
-         * 
+         *
          * @return a {@link JobClient}.
          * @throws URISyntaxException
          */
@@ -181,29 +183,39 @@ public class JobClient implements Closeable {
         }
 
         public Builder setKerberosAuth() {
+            return setKerberosAuth(null);
+        }
+
+        public Builder setKerberosAuth(GSSCredentialProvider gssCrendentialProvider) {
             Credentials creds = new Credentials() {
                 @Override
-                    public String getPassword() {
-                        return null;
-                    }
+                public String getPassword() {
+                    return null;
+                }
 
                 @Override
-                    public Principal getUserPrincipal() {
-                        return null;
-                    }
+                public Principal getUserPrincipal() {
+                    return null;
+                }
             };
             CredentialsProvider credentialsProvider = new BasicCredentialsProvider();
-            credentialsProvider.setCredentials(AuthScope.ANY, creds);
-
+            credentialsProvider.setCredentials(new AuthScope(_host, _port,
+                    AuthScope.ANY_REALM, AuthSchemes.SPNEGO), creds);
             _httpClientBuilder.setDefaultCredentialsProvider(credentialsProvider);
-            _httpClientBuilder.setDefaultAuthSchemeRegistry(RegistryBuilder.<AuthSchemeProvider>create()
-                    .register(AuthSchemes.SPNEGO, new SPNegoSchemeFactory(true)).build());
+
+            AuthSchemeProvider authSchemaProvider = gssCrendentialProvider == null ?
+                    new SPNegoSchemeFactory(true) : new BasicSPNegoSchemeFactory(true, gssCrendentialProvider);
+
+            _httpClientBuilder.setDefaultAuthSchemeRegistry(RegistryBuilder
+                                                            .<AuthSchemeProvider>create()
+                                                            .register(AuthSchemes.SPNEGO, authSchemaProvider)
+                                                            .build());
             return this;
         }
 
         /**
          * Set the Cook scheduler host where the job client expected to build will connect to.
-         * 
+         *
          * @param host {@link String} specifies the Cook scheduler host.
          * @return this builder.
          */
@@ -219,7 +231,7 @@ public class JobClient implements Closeable {
 
         /**
          * Set the Cook scheduler port where the job client expected to build will connect to.
-         * 
+         *
          * @param port specifies the Cook scheduler port.
          * @return this builder.
          */
@@ -235,7 +247,7 @@ public class JobClient implements Closeable {
 
         /**
          * Set the Cook scheduler endpoint where the job client expected to build will send the requests to.
-         * 
+         *
          * @param endpoint {@link String} specifies the Cook scheduler endpoint.
          * @return this builder.
          */
@@ -262,7 +274,7 @@ public class JobClient implements Closeable {
          * <code>
          * max(intervalSeconds, DEFAULT_STATUS_UPDATE_INTERVAL_SECONDS)
          * </code>
-         * 
+         *
          * @param intervalSeconds specifies the status update interval in seconds.
          * @return this builder.
          */
@@ -280,7 +292,7 @@ public class JobClient implements Closeable {
         /**
          * Set the size of batch requests for the job client expected to build. This will limit the number of jobs per
          * any HTTP request through Cook scheduler rest endpoint.
-         * 
+         *
          * @param batchRequestSize specifies the maximum number of jobs per any http request.
          * @return this builder.
          */
@@ -297,7 +309,7 @@ public class JobClient implements Closeable {
         /**
          * Set HTTP request timeout in seconds expected to set SocketTimeout, ConnectionTimeout, and
          * ConnectionRequestTimeout for the HTTP client.
-         * 
+         *
          * @param timeoutSeconds specifies the request timeout seconds for HTTP requests.
          * @return this builder.
          */
@@ -445,7 +457,7 @@ public class JobClient implements Closeable {
      * Submit a list of jobs to Cook scheduler. It will <br>
      * -- firstly associate each job with the provided {@link JobListener}<br>
      * -- secondly submit these jobs to Cook scheduler and track them until they complete.
-     * 
+     *
      * @param jobs
      * @param listener
      * @param matcher
@@ -473,7 +485,7 @@ public class JobClient implements Closeable {
 
     /**
      * Generate a HTTP POST request for a given uri and a JSON object.
-     * 
+     *
      * @param uri {@link URI} specifies the uri for the request.
      * @param params {@link JSONObject} specifies the parameters used in the HTTP POST request.
      * @return {@link HttpPost} request.
@@ -494,7 +506,7 @@ public class JobClient implements Closeable {
     /**
      * Submit a list of jobs to Cook scheduler and start to track these jobs until they complete. Note that jobs
      * submitted through this API will not be listened by any listener.
-     * 
+     *
      * @param jobs specifies a list of {@link Job}s to be submitted.
      * @return the response string from Cook scheduler rest endpoint.
      * @throws JobClientException
@@ -576,7 +588,7 @@ public class JobClient implements Closeable {
      * Query jobs for a given list of job {@link UUID}s. If the size of the list is larger that the
      * {@code _batchRequestSize}, it will partition the list into smaller lists for query and return all query results
      * together.
-     * 
+     *
      * @param uuids specifies a list of job {@link UUID}s expected to query.
      * @return a {@link ImmutableMap} from job {@link UUID} to {@link Job}.
      * @throws JobClientException
@@ -632,7 +644,7 @@ public class JobClient implements Closeable {
     /**
      * Abort jobs for a given list of job {@link UUID}s. If the size of the list is larger that the
      * {@code _batchRequestSize}, it will partition the list into smaller lists to abort separately.
-     * 
+     *
      * @param uuids specifies a list of job {@link UUID}s expected to abort.
      * @throws JobClientException
      */
@@ -690,7 +702,7 @@ public class JobClient implements Closeable {
      * A wrapper for the function {@code execute(HttpRequestBase request)}. It retries using
      * exponential retry strategy with the following intervals:<br>
      * {@code baseIntervalSeconds, baseIntervalSeconds * 2, baseIntervalSeconds * 2^2, baseIntervalSeconds * 2^3 ...}
-     * 
+     *
      * @param request {@link HttpRequestBase} specifies the HTTP request expected to execute.
      * @param maxRetries specifies the maximum number of retries.
      * @param baseIntervalSeconds specifies the interval base for the exponential retry strategy
