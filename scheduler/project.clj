@@ -59,7 +59,10 @@
                  ;;Networking
                  [clj-http "2.0.0"]
                  [io.netty/netty "3.10.1.Final"]
-                 [cc.qbits/jet "0.5.4"]
+                 [cc.qbits/jet "0.5.7"]
+                 [org.eclipse.jetty/jetty-server "9.2.6.v20141205"]
+                 [org.eclipse.jetty/jetty-security "9.2.6.v20141205"]
+
 
                  ;;Metrics
                  [dgrnbrg/metrics-clojure "2.6.1"
