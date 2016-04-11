@@ -33,7 +33,7 @@
             [compojure.route :as route]
             [plumbing.graph :as graph]
             [cook.curator :as curator]
-            [metrics.ring.instrument] :refer (instrument))
+            [metrics.ring.instrument :refer (instrument)])
   (:import org.apache.curator.retry.BoundedExponentialBackoffRetry
            org.apache.curator.framework.state.ConnectionStateListener
            org.apache.curator.framework.CuratorFrameworkFactory
