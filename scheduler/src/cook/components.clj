@@ -32,7 +32,8 @@
             [compojure.core :refer (GET POST routes context)]
             [compojure.route :as route]
             [plumbing.graph :as graph]
-            [cook.curator :as curator])
+            [cook.curator :as curator]
+            [metrics.ring.instrument] :refer (instrument))
   (:import org.apache.curator.retry.BoundedExponentialBackoffRetry
            org.apache.curator.framework.state.ConnectionStateListener
            org.apache.curator.framework.CuratorFrameworkFactory
@@ -195,7 +196,8 @@
                                                        wrap-stacktrace-web
                                                        wrap-no-cache
                                                        wrap-params
-                                                       health-check-middleware)
+                                                       health-check-middleware
+                                                       instrument)
                                      :join? false
                                      :configurator configure-jet-logging
                                      :max-threads 200})]

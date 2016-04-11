@@ -65,9 +65,10 @@
 
 
                  ;;Metrics
-                 [dgrnbrg/metrics-clojure "2.6.1"
-                  :exclusions [io.netty/netty
-                               org.clojure/clojure]]
+                 [metrics-clojure "2.6.1"
+                  :exclusions [io.netty/netty org.clojure/clojure]]
+                 [metrics-clojure-ring "2.3.0"
+                  :exclusions [io.netty/netty org.clojure/clojure]]
                  [io.dropwizard.metrics/metrics-graphite "3.1.2"]
                  [com.aphyr/metrics3-riemann-reporter "0.4.0"]
                  [riemann-clojure-client "0.4.1"]
