@@ -34,6 +34,32 @@
 (def PosDouble
   (s/both double (s/pred pos? 'pos?)))
 
+(def PortMapping
+  "Schema for Docker Portmapping"
+  {:host-port (s/both s/Int (s/pred #(<= 0 % 65536) 'between-0-and-65536))
+   :container-port (s/both s/Int (s/pred #(<= 0 % 65536) 'between-0-and-65536))
+   (s/optional-key :protocol) s/Str
+  })
+
+(def DockerInfo
+  "Schema for a DockerInfo"
+  {:image s/Str
+   (s/optional-key :network) s/Str
+   (s/optional-key :parameters) [{:key s/Str :value s/Str  }]
+   (s/optional-key :port-mapping) [PortMapping]})
+
+(def Volume
+  "Schema for a Volume"
+  { (s/optional-key :container-path) s/Str
+    :host-path s/Str
+    (s/optional-key :mode) s/Str})
+
+(def Container
+  "Schema for a Mesos Container"
+  {:type s/Str
+   (s/optional-key :docker) DockerInfo
+   (s/optional-key :volumes) [Volume]})
+
 (def Uri
   "Schema for a Mesos fetch URI, which has many options"
   {:value s/Str
@@ -57,69 +83,187 @@
    (s/optional-key :uris) [Uri]
    (s/optional-key :ports) [(s/pred zero? 'zero)] ;;TODO add to docs the limited uri/port support
    (s/optional-key :env) {NonEmptyString s/Str}
+   (s/optional-key :container) Container
    :cpus PosDouble
    :mem PosDouble
    ;; Make sure the user name is valid. It must begin with a lower case character, end with
    ;; a lower case character or a digit, and has length between 2 to (62 + 2).
    :user (s/both s/Str (s/pred #(re-matches #"\A[a-z][a-z0-9_-]{0,62}[a-z0-9]\z" %) 'lowercase-alphanum?))})
 
+
+;;
+;;
+;; { :uuid  6e0eeb86-8c93-11e5-adfd-f8b156b232c9
+;;   :command "/bin/echo $MYENV Hello World"
+;;   :max-retries 3
+;;   :uris [{:value "file:///home/sdegler/0.pref"}]
+;;   :env "MYENV abc"
+;;   :container { :type "docker"
+;;     :docker {:image "bp4_res_20150904.patched"
+;;              :parameters [ {:env "KRB5CCNAME=${KRB5CCNAME}" } {:user "10138"}]
+;;              :network "HOST"
+;;             }
+;;   :volumes [ {:containerPath "/tmp/$KRB5CCNAME} :hostPath "/tmp/$KRB5CCNAME" :mode "RO"}]
+;;
+;; }
+;;
+;;
+;;
+
+(defn mk-container-params  [cid params]
+  "Helper for build-container.  Transforms parameters into the datomic schema."
+           (let [param-id (d/tempid :db.part/user)]
+             (if (empty? params) {}
+                 {:docker/parameters
+                  (mapv (fn [kvp]
+                          (let
+                              [k (:key kvp)
+                               v (:value kvp)
+                               ]
+                            {:docker.param/key k
+                             :docker.param/value v}
+                            )) params)})))
+
+(defn mkvolumes [cid vols]
+  "Helper for build-container.  Transforms volumes into the datomic schema."
+  (if (empty? vols) {}
+      {:container/volumes
+       (mapv
+        (fn [{:keys [container-path host-path mode]}]
+          (into {}
+                (concat
+                 (when container-path
+                   {:container.volume/container-path
+                    container-path})
+                 (when host-path
+                   {:container.volume/host-path
+                    host-path})
+                 (when mode
+                   {:container.volume/mode
+                    (clojure.string/upper-case mode)})))) vols)}))
+(defn mk-docker-ports [cid ports]
+  "Helper for build-container.  Transforms port-mappings into the datomic schema."
+  (if (empty? ports) {}
+      {:docker/port-mapping
+       (mapv
+        (fn [{container-port :container-port
+              host-port :host-port
+              protocol :protocol}]
+          (into {}
+                (concat
+                 (when container-port
+                   {:docker.portmap/container-port
+                    container-port})
+                 (when host-port
+                   {:docker.portmap/host-port
+                    host-port})
+                 (when protocol
+                   {:docker.portmap/protocol
+                    (clojure.string/upper-case protocol)})))) ports)}))
+
+;; helper for submit-jobs, deal with container structure
+(defn build-container [id container]
+  (let [container-id (d/tempid :db.part/user)
+        docker-id (d/tempid :db.part/user)
+        ctype (:type container)
+        volumes (if (contains? container :volumes)
+                  (:volumes container)
+                  [])]
+    (cond
+      (= (clojure.string/upper-case ctype) "DOCKER")
+      (let [docker (:docker container)
+            params (if (contains? docker :parameters)
+                     (:parameters docker)
+                     [])
+            port-mappings (if (contains? docker :port-mapping)
+                     (:port-mapping docker)
+                     [])]
+        [[:db/add id :job/container container-id]
+         (into {:db/id container-id
+                :container/type "DOCKER"}
+               ;;:container/type 1 }
+               (mkvolumes container-id volumes))
+         [:db/add container-id :container/docker docker-id]
+         (into {:db/id docker-id
+                :docker/image (:image docker)
+                :docker/network
+                (:network docker)}
+               (merge (mk-container-params docker-id params)
+                      (mk-docker-ports docker-id port-mappings)))
+              ])
+      :else
+      {})))
+
 (sm/defn submit-jobs
   [conn jobs :- [Job]]
-  (doseq [{:keys [uuid command max-retries max-runtime priority cpus mem user name ports uris env]} jobs
+  (doseq [{:keys [uuid command max-retries max-runtime priority cpus mem user name ports uris env container]} jobs
           :let [id (d/tempid :db.part/user)
-                ports (mapv (fn [port]
-                              ;;TODO this schema might not work b/c all ports are zero
-                              [:db/add id :job/port port])
-                            ports)
-                uris (mapcat (fn [{:keys [value executable? cache? extract?]}]
-                               (let [uri-id (d/tempid :db.part/user)
-                                     optional-params {:resource.uri/executable? executable?
-                                                      :resource.uri/extract? extract?
-                                                      :resource.uri/cache? cache?}]
-                                 [[:db/add id :job/resource uri-id]
-                                  (reduce-kv
-                                    ;; This only adds the optional params to the DB if they were explicitly set
-                                    (fn [txn-map k v]
-                                      (if-not (nil? v)
-                                        (assoc txn-map k v)
-                                        txn-map))
-                                    {:db/id uri-id
-                                     :resource/type :resource.type/uri
-                                     :resource.uri/value value}
-                                    optional-params)]))
-                             uris)
-                env (mapcat (fn [[k v]]
-                              (let [env-var-id (d/tempid :db.part/user)]
-                                [[:db/add id :job/environment env-var-id]
-                                 {:db/id env-var-id
-                                  :environment/name k
-                                  :environment/value v}]))
-                            env)
-                ;; These are optionally set datoms w/ default values
-                maybe-datoms (concat
-                               (when (and name (not= name "cookjob"))
-                                 [[:db/add id :job/name name]])
-                               (when (and priority (not= util/default-job-priority priority))
-                                 [[:db/add id :job/priority priority]])
-                               (when (and max-runtime (not= Long/MAX_VALUE max-runtime))
-                                 [[:db/add id :job/max-runtime max-runtime]]))
-                txn {:db/id id
-                     :job/uuid uuid
-                     :job/command command
-                     :job/custom-executor false
-                     :job/user user
-                     :job/max-retries max-retries
-                     :job/state :job.state/waiting
-                     :job/resource [{:resource/type :resource.type/cpus
-                                     :resource/amount cpus}
-                                    {:resource/type :resource.type/mem
-                                     :resource/amount mem}]}]]
+          ports (mapv (fn [port]
+                         ;;TODO this schema might not work b/c all ports are zero
+                         [:db/add id :job/port port])
+                       ports)
+          uris (mapcat (fn [{:keys [value executable? cache? extract?]}]
+                          (let [uri-id (d/tempid :db.part/user)
+                                optional-params [:resource.uri/executable? executable?
+                                                 :resource.uri/extract? extract?
+                                                 :resource.uri/cache? cache?]]
+                            [[:db/add id :job/resource uri-id]
+                             (reduce-kv
+                              ;; This only adds the optional params to the DB if they were explicitly set
+                              (fn [txn-map k v]
+                                (if-not (nil? v)
+                                  (assoc txn-map k v)
+                                  txn-map))
+                              [:db/id uri-id
+                               :resource/type :resource.type/uri
+                               :resource.uri/value value]
+                              optional-params)]))
+                        uris)
+          env (mapcat (fn [[k v]]
+                         (let [env-var-id (d/tempid :db.part/user)]
+                           [:db/add id :job/environment env-var-id
+                            :db/id env-var-id
+                            :environment/name k
+                            :environment/value v]))
+                       env)
+           ;; Container info
+           container (if (nil? container) [] (build-container id container))
+
+           ;; These are optionally set datoms w/ default values
+           maybe-datoms (concat
+                         (when (and name (not= name "cookjob"))
+                           [[:db/add id :job/name name]])
+                         (when (and priority (not= util/default-job-priority priority))
+                           [[:db/add id :job/priority priority]])
+                         (when (and max-runtime (not= Long/MAX_VALUE max-runtime))
+                           [[:db/add id :job/max-runtime max-runtime]]))
+                txn [[:db/add id
+                      :job/uuid uuid]
+                     {:db/id id
+                      :job/command command
+                      :job/custom-executor false
+                      :job/user user
+                      :job/max-retries max-retries
+                      :job/state :job.state/waiting
+                      :job/resource [{:resource/type :resource.type/cpus
+                                      :resource/amount cpus}
+                                     {:resource/type :resource.type/mem
+                                      :resource/amount mem}]}]]]
+                                        ;debug
+    (log/info (clojure.pprint/write (-> ports
+                                        (into maybe-datoms)
+                                        (into env)
+                                        (into uris)
+                                        (into container)
+                                        (into txn)) :stream nil))
     ;; TODO batch these transactions to improve performance
     @(d/transact conn (-> ports
-                          (into uris)
-                          (into env)
                           (into maybe-datoms)
-                          (conj txn))))
+                          (into env)
+                          (into uris)
+                          (into container)
+                          (into txn))))
+
   "ok")
 
 (defn unused-uuid?
@@ -135,8 +279,55 @@
 (defn validate-and-munge-job
   "Takes the user and the parsed json from the job and returns proper
    Job objects, or else throws an exception"
-  [db user task-constraints {:strs [cpus mem uuid command priority max_retries max_runtime name uris ports env] :as job}]
-  (let [munged (merge
+  [db user task-constraints {:strs [cpus mem uuid command priority max_retries max_runtime name uris ports env container] :as job}]
+  (let [make-docker
+        (fn [d]
+          (merge { :image (get d "image") }
+                 (if-let [network (get d "network")]
+                   {:network network}
+                   {})
+                 (if-let [portvec (get d "port-mapping")]
+                   { :port-mapping (mapv (fn [{:strs [container-port
+                                                      host-port
+                                                      protocol]}]
+                                           (into {}
+                                                 (concat
+                                                  (when container-port
+                                                    {:container-port
+                                                     container-port })
+                                                  (when host-port
+                                                    {:host-port
+                                                     host-port })
+                                                  (when protocol
+                                                    {:protocol
+                                                     protocol}))))
+                                         portvec)}
+                   {})
+                 (if-let [parmvec (get d "parameters")]
+                   {:parameters
+                    (mapv (fn [{:strs [key value]}]
+                            {:key key
+                             :value value})
+                          parmvec)}
+                   {})))
+        make-volumes (fn [v] (mapv (fn [{:strs [container-path,
+                                                host-path,
+                                                mode]}]
+                                     (into {}
+                                           (concat
+                                            (when container-path
+                                              {:container-path
+                                               container-path
+                                               })
+                                            (when host-path
+                                              {:host-path
+                                               host-path
+                                               })
+                                            (when mode
+                                              {:mode
+                                               mode
+                                               })))) v))
+        munged (merge
                  {:user user
                   :uuid (UUID/fromString uuid)
                   :name (or name "cookjob") ; Add default job name if user does not provide a name.
@@ -147,10 +338,22 @@
                   :ports (or ports [])
                   :cpus (double cpus)
                   :mem (double mem)}
+
+                 (when container
+                   {:container (merge { :type (get container "type")}
+                                      (if (= "docker" (get container "type"))
+                                        {:docker (make-docker
+                                                  (get container "docker"))}
+                                        {})
+                                      (if (contains? container "volumes")
+                                        {:volumes (make-volumes
+                                                   (get container "volumes"))}
+                                        {}))})
                  (when uris
                    {:uris (map (fn [{:strs [value executable cache extract]}]
                                  (merge {:value value}
-                                        (when executable {:executable? executable})
+                                        (when executable
+                                          {:executable? executable})
                                         (when cache {:cache? cache})
                                         (when extract {:extract? extract})))
                                uris)})
@@ -278,6 +481,21 @@
 ;;;            "cpus": 1.5,
 ;;;            "mem": 1000}]}
 ;;;
+;;; With a docker container ...
+;;; {"jobs": [{
+;;;  "command" : "/bin/echo $MYENV Hello World"
+;;;  "uuid"  : ""6e0eeb86-8c93-11e5-adfd-f8b156b232c9""
+;;;   "max-retries" : 3
+;;;   "uris" : [{"value" : "file:///home/sdegler/0.pref"}]
+;;;   "env" : "MYENV abc"
+;;;   "container" : { "type" : "docker",
+;;;                   "docker" : { "image" : "bp4_res_20150904.patched" ,
+;;;                                "parameters" : [ {"env" : "KRB5CCNAME=${KRB5CCNAME}" }, {"user" : "10138"}],
+;;;                                "network" : 1
+;;;                              },
+;;;                  "volumes" : [  {"containerPath" : "/$KRB5CCNAME", "hostPath" : "/$KRB5CCNAME", :mode "RO"}, ]}
+;;;   }]}
+
 ;;; On GET; use repeated job argument
 (defn job-resource
   [conn fid task-constraints]
@@ -300,7 +518,7 @@
                           (try
                             (cond
                               (empty? params)
-                              [true {::error "must supply at least on job to start. Are you specifying that this is application/json?"}]
+                              [true {::error "must supply at least one job to start. Are you specifying that this is application/json?"}]
                               :else
                               [false {::jobs (mapv #(validate-and-munge-job
                                                       (db conn)

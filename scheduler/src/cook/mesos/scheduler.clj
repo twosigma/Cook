@@ -75,6 +75,7 @@
         resources (util/job-ent->resources job-ent)
         ;; If the custom-executor attr isn't set, we default to using a custom
         ;; executor in order to support jobs submitted before we added this field
+        container (util/job-ent->container db job job-ent)
         custom-executor (:job/custom-executor job-ent true)
         environment (util/job-ent->env job-ent)
         command {:value (:job/command job-ent)
@@ -85,23 +86,30 @@
         ;; executor
         executor-key (if custom-executor :executor :command)
         executor-value (if custom-executor
-                         {:executor-id (str (java.util.UUID/randomUUID))
-                          :framework-id fid
-                          :name "cook agent executor"
-                          :source "cook_scheduler"
-                          :command command}
-                         command)]
-    ;; If the there is no value for key :job/name, the following name will contain a substring "null".
-    {:name (format "%s_%s_%s" (:job/name job-ent "cookjob") (:job/user job-ent) task-id)
-     :task-id task-id
-     :num-ports (count (:ports resources))
-     :resources (select-keys resources [:mem :cpus])
-     ;;TODO this data is a race-condition
-     :data (.getBytes
-             (pr-str
-               {:instance (str (count (:job/instance job-ent)))})
-             "UTF-8")
-     executor-key executor-value}))
+                         (into {:executor-id (str (java.util.UUID/randomUUID))
+                                :framework-id fid
+                                :name "cook agent executor"
+                                :source "cook_scheduler"
+                                :command command}
+                               (if (seq container)
+                                 {:container container}
+                                 {}))
+                         command)
+        ;; If the there is no value for key :job/name, the following name will contain a substring "null".
+        task (into {:name (format "%s_%s_%s" (:job/name job-ent "cookjob") (:job/user job-ent) task-id)
+                    :task-id task-id
+                    :num-ports (count (:ports resources))
+                    :resources (select-keys resources [:mem :cpus])
+                    ;;TODO this data is a race-condition
+                    :data (.getBytes
+                           (pr-str
+                            {:instance (str (count (:job/instance job-ent)))})
+                           "UTF-8")
+                    executor-key executor-value}
+                   (if (and (seq container)(not custom-executor))
+                     {:container container}
+                     {}))]
+    task))
 
 (defn rescind-offer!
   [rescinded-offer-id-cache offer-id]
@@ -131,7 +139,6 @@
 (meters/defmeter [cook-mesos scheduler tasks-failed-cpus])
 (histograms/defhistogram [cook-mesos scheduler hist-task-fail-times])
 (meters/defmeter [cook-mesos scheduler task-fail-times])
-
 
 (def success-throughput-metrics
   {:completion-rate tasks-succeeded
@@ -202,8 +209,8 @@
                                      :task-killed
                                      :task-lost} :instance.status/failed)
                  prior-job-state (:job/state (d/entity db job))
-                 progress (when (:data status)
-                            (:percent (read-string (String. (:data status)))))
+                 progress nil #_(when (:data status)
+                                  (:percent (read-string (String. (:data status) ))))
                  instance-runtime (- (.getTime (now)) ; Used for reporting
                                      (.getTime (:instance/start-time (d/entity db instance))))
                  job-resources (util/job-ent->resources job-ent)]

@@ -28,6 +28,98 @@
           db)
        (map first)))
 
+(defn fixup-param-keywords
+  "helper function, handles docker parameters"
+  [m]
+  (if (seq m)
+    { :parameters (mapv (fn [{kname :docker.param/key
+                              value :docker.param/value}]
+                          {:key kname :value value})m)}
+    {}))
+
+(defn fixup-port-mapping-keywords
+  "helper function, handles docker container port mappings"
+  [m]
+  (if (seq m)
+    { :port-mapping
+     (mapv
+      (fn [{container-port :docker.portmap/container-port
+            host-port :docker.portmap/host-port
+            protocol :docker.portmap/protocol}]
+        (into {:container-port container-port
+               :host-port host-port}
+              (when protocol {:protocol protocol}))) m) }
+    {}))
+
+(defn fixup-docker-keywords
+  "Helper function for fixup-keywords below, handles docker map"
+  [{image :docker/image
+    params :docker/parameters
+    port-mapping :docker/port-mapping
+    network :docker/network}]
+  (into {:image image :network network}
+        (concat (fixup-param-keywords params)
+                (fixup-port-mapping-keywords port-mapping))))
+
+(defn fixup-volume-keywords
+  "Helper funtion for fixup-keywords below, handles container volumes"
+  [m]
+  (mapv (fn [{container-path :container.volume/container-path
+              host-path :container.volume/host-path
+              mode :container.volume/mode}]
+          (into {:host-path host-path}
+                (concat (when container-path
+                          {:container-path
+                           container-path})
+                        (when mode {:mode mode}))))m))
+
+(defn fixup-keywords
+  "Walk through a container from datomic, substituting keyords as needed"
+  [{ctype :container/type
+    volumes :container/volumes
+    docker :container/docker}]
+  (into {} (concat
+            (when ctype {:type ctype})
+            (when docker {:docker (fixup-docker-keywords docker)})
+            (when volumes {:volumes (fixup-volume-keywords volumes)}))))
+
+(defn job-ent->container
+  "Take a job entity and return its container"
+  [db job job-ent]
+  (log/info "---- db -----")
+  (log/info (clojure.pprint/write db :stream nil))
+  (log/info "---- job ----")
+  (log/info (clojure.pprint/write job :stream nil))
+  (log/info "-- job-ent --")
+  (log/info (clojure.pprint/write job-ent :stream nil))
+  (log/info "-------------")
+  ;(if (contains? job-ent :job/container)
+  (if-let [ceid (:db/id (:job/container job-ent))]
+    (let [
+          rm-dbids (fn rm-dbids [m]
+                     (cond
+                       (map? m)
+                       (let [sm (filter (fn [p]
+                                          (not(= :db/id (first p)))) m)]
+                         (into {} (map (fn [p]
+                                         [(first p) (rm-dbids (second p))])
+                                       sm)))
+                       (vector? m)
+                       (mapv rm-dbids m)
+                       :else
+                       m))
+          cmap (d/pull db "[*]" ceid)]
+      (log/info "---- ceid ----")
+      (log/info (clojure.pprint/write ceid :stream nil))
+      (log/info "---- cmap ----")
+      (log/info (clojure.pprint/write cmap :stream nil))
+      (log/info "---- final ----")
+      (log/info (clojure.pprint/write (-> cmap rm-dbids fixup-keywords) :stream nil))
+      (log/info "--------------")
+
+      (-> cmap rm-dbids fixup-keywords))
+    {}))
+
 (defn job-ent->env
   "Take a job entity and return the environment variable map"
   [job-ent]

@@ -89,6 +89,7 @@ final public class Job {
         private List<Instance> _instances = Collections.synchronizedList(new ArrayList<Instance>());
         private List<FetchableURI> _uris = new ArrayList<>();
         private Map<String,String> _env = new HashMap<>();
+        private JSONObject _container;
 
         /**
          * Prior to {@code build()}, command, memory and cpus for a job must be provided.<br>
@@ -112,7 +113,7 @@ final public class Job {
                 _priority = 50;
             if (_status == null)
                 _status = Status.INITIALIZED;
-            return new Job(_uuid, _command, _memory, _cpus, _retries, _status, _priority, _instances, _env, _uris);
+            return new Job(_uuid, _command, _memory, _cpus, _retries, _status, _priority, _instances, _env, _uris, _container);
         }
 
         /**
@@ -128,6 +129,7 @@ final public class Job {
             setRetries(job.getRetries());
             setEnv(job.getEnv());
             setUris(job.getUris());
+            setContainer(job.getContainer());
             return this;
         }
 
@@ -249,6 +251,17 @@ final public class Job {
             return this;
         }
 
+	/**
+         * Set the container information of the job expected ot build.
+         * 
+         * @param container {@link JSONObject} specifies container information for the job
+         * @return this builder.
+         */
+        public Builder setContainer(JSONObject container) {
+            _container = container;
+            return this;
+        }
+	
         /**
          * Set the number of retires of the job expected to build.
          * 
@@ -316,9 +329,11 @@ final public class Job {
     final private List<Instance> _instances;
     final private Map<String, String> _env;
     final private List<FetchableURI> _uris;
+    final private JSONObject _container;
 
     private Job(UUID uuid, String command, Double memory, Double cpus, Integer retries, Status status,
-            Integer priority, List<Instance> instances, Map<String,String> env, List<FetchableURI> uris) {
+            Integer priority, List<Instance> instances, Map<String,String> env, List<FetchableURI> uris,
+            JSONObject container) {
         _uuid = uuid;
         _command = command;
         _memory = memory;
@@ -329,6 +344,11 @@ final public class Job {
         _instances = ImmutableList.copyOf(instances);
         _env = ImmutableMap.copyOf(env);
         _uris = ImmutableList.copyOf(uris);
+        /* This stringifies the JSON object and then reparses it.
+           which is inefficient but should be fine for testing. */
+        if(container != null) {
+            _container = new JSONObject(container.toString());
+        }
     }
 
     /**
@@ -371,6 +391,13 @@ final public class Job {
      */
     public Map<String,String> getEnv() {
         return _env;
+    }
+
+    /**
+     * @return the job's container
+     */
+    public JSONObject getContainer() {
+        return _container;
     }
 
     /**
@@ -440,6 +467,7 @@ final public class Job {
     public static JSONObject jsonizeJob(Job job)
         throws JSONException {
         final JSONObject env = new JSONObject(job.getEnv());
+        final JSONObject container = job.getContainer();
         final JSONObject object = new JSONObject();
         object.put("uuid", job.getUUID().toString());
         object.put("command", job.getCommand());
@@ -449,6 +477,9 @@ final public class Job {
         object.put("max_retries", job.getRetries());
         object.put("status", job.getStatus());
         object.put("env", env);
+        if(container != null) {
+            object.put("container", container);
+        }
         for (FetchableURI uri : job.getUris()) {
             object.append("uris", FetchableURI.jsonizeUri(uri));
         }
@@ -540,6 +571,9 @@ final public class Job {
             jobBuilder.setPriority(json.getInt("priority"));
             jobBuilder.setStatus(Status.fromString(json.getString("status")));
             jobBuilder.setRetries(json.getInt("max_retries"));
+            if(json.has("container")) {
+                jobBuilder.setContainer(json.getJSONObject("container"));
+            }
             JSONObject envJson = json.getJSONObject("env");
             Map<String,String> envMap = new HashMap<>();
             if (envJson.length() > 0) {
