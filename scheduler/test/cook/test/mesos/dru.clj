@@ -85,7 +85,7 @@
             ordered-drus [1.0 1.0 1.0 1.5 4.0 5.5]]
         (is (= ordered-drus
                (map (comp :dru second)
-                    (dru/sorted-task-scored-task-pairs (map-vals (partial sort-by identity util/same-user-task-comparator) 
+                    (dru/sorted-task-scored-task-pairs (map-vals (partial sort-by identity (util/same-user-task-comparator true)) 
                                                           (group-by util/task-ent->user task-ents))
                                                 {"ljin" share "wzhao" share "sunil" share}))))))))
 

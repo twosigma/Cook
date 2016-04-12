@@ -71,13 +71,14 @@
 
 (defn create-dummy-instance
   "Return the entity id for the created instance."
-  [conn job & {:keys [job-state instance-status start-time hostname task-id progress]
+  [conn job & {:keys [job-state instance-status start-time hostname task-id progress backfilled?]
                :or  {job-state :job.state/running
                      instance-status :instance.status/unknown
                      start-time (java.util.Date.)
                      hostname "localhost"
                      task-id (str (str (java.util.UUID/randomUUID)))
-                     progress 0}}]
+                     backfilled? false
+                     progress 0} :as cfg}]
   (let [id (d/tempid :db.part/user)
         val @(d/transact conn [{:db/id job
                                 :job/state job-state}
@@ -85,6 +86,7 @@
                                 :job/_instance job
                                 :instance/hostname hostname
                                 :instance/progress progress
+                                :instance/backfilled? backfilled?
                                 :instance/status instance-status
                                 :instance/start-time start-time
                                 :instance/task-id task-id}])]

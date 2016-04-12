@@ -178,24 +178,116 @@
     (is (= 1.0 (:cpus resources)))
     (is (= 1000.0 (:mem resources)))))
 
-(deftest test-prefixes
-  (is (= [[1] [1 2] [1 2 3] [1 2 3 4] [1 2 3 4 5]] (sched/prefixes [1 2 3 4 5]))))
-
 (deftest test-match-offer-to-schedule
-  (let [schedule (map #(d/entity (db c) %) [j1 j2 j3 j4])] ; all 1gb 1 cpu
-      (testing "Consume no schedule cases"
-        (is (= [] (sched/match-offer-to-schedule [] {:resources {:cpus 0 :mem 0}})))
-        (is (= [] (sched/match-offer-to-schedule [] {:resources {:cpus 2 :mem 2000}})))
-        (is (= [] (sched/match-offer-to-schedule schedule {:resources {:cpus 0 :mem 0}})))
-        (is (= [] (sched/match-offer-to-schedule schedule {:resources {:cpus 0.5 :mem 100}})))
-        (is (= [] (sched/match-offer-to-schedule schedule {:resources {:cpus 0.5 :mem 1000}})))
-        (is (= [] (sched/match-offer-to-schedule schedule {:resources {:cpus 1 :mem 500}}))))
-      (testing "Consume Partial schedule cases"
-        (is (= (take 1 schedule) (sched/match-offer-to-schedule schedule {:resources {:cpus 1 :mem 1000}})))
-        (is (= (take 1 schedule) (sched/match-offer-to-schedule schedule {:resources {:cpus 1.5 :mem 1500}}))))
-      (testing "Consume full schedule cases"
-        (is (= schedule (sched/match-offer-to-schedule schedule {:resources {:cpus 4 :mem 4000}})))
-        (is (= schedule (sched/match-offer-to-schedule schedule {:resources {:cpus 5 :mem 5000}}))))))
+  (let [schedule (map #(d/entity (db c) %) [j1 j2 j3 j4]) ; all 1gb 1 cpu
+        offer-maker (fn [cpus mem]
+                      [{:resources {:cpus (double cpus) :mem (double mem)}
+                        :id (str "id-" (java.util.UUID/randomUUID))
+                        :slave-id (str "slave-" (java.util.UUID/randomUUID))
+                        :hostname (str "host-" (java.util.UUID/randomUUID))}])
+        fid (str "framework-id-" (java.util.UUID/randomUUID))
+        fenzo-maker #(sched/make-fenzo-scheduler nil 100000)] ; The params are for offer declining, which should never happen
+    (testing "Consume no schedule cases"
+      (are [schedule offers] (= [] (sched/match-offer-to-schedule (fenzo-maker) schedule offers (db c) fid))
+           [] (offer-maker 0 0)
+           [] (offer-maker 2 2000)
+           schedule (offer-maker 0 0)
+           schedule (offer-maker 0.5 100)
+           schedule (offer-maker 0.5 1000)
+           schedule (offer-maker 1 500)))
+    (testing "Consume Partial schedule cases"
+      ;; We're looking for one task to get assigned
+      (are [offers] (= 1 (count (mapcat :tasks (sched/match-offer-to-schedule
+                                                 (fenzo-maker) schedule offers (db c) fid))))
+           (offer-maker 1 1000)
+           (offer-maker 1.5 1500)))
+    (testing "Consume full schedule cases"
+      ;; We're looking for the entire schedule to get assigned
+      (are [offers] (= (count schedule)
+                       (count (mapcat :tasks (sched/match-offer-to-schedule
+                                               (fenzo-maker) schedule offers (db c) fid))))
+           (offer-maker 4 4000)
+           (offer-maker 5 5000)))))
+
+(deftest test-ids-of-backfilled-instances
+  (let [uri "datomic:mem://test-ids-of-backfilled-instances"
+        conn (restore-fresh-database! uri)
+        jid (d/tempid :db.part/user)
+        tid1 (d/tempid :db.part/user)
+        tid2 (d/tempid :db.part/user)
+        {:keys [tempids db-after]} @(d/transact conn [[:db/add jid :job/instance tid1]
+                                                      [:db/add jid :job/instance tid2]
+                                                      [:db/add tid1 :instance/status :instance.status/running]
+                                                      [:db/add tid2 :instance/status :instance.status/running]
+                                                      [:db/add tid1 :instance/backfilled? false]
+                                                      [:db/add tid2 :instance/backfilled? true]])
+        jid' (d/resolve-tempid db-after tempids jid)
+        tid2' (d/resolve-tempid db-after tempids tid2)
+        backfilled-ids (sched/ids-of-backfilled-instances (d/entity db-after jid'))]
+    (is (= [tid2'] backfilled-ids))))
+
+(deftest test-process-matches-for-backfill
+  (letfn [(mock-job [& instances] ;;instances is a seq of booleans which denote the running instances that could be true or false
+            {:job/uuid (java.util.UUID/randomUUID)
+             :job/instance (for [backfill? instances]
+                             {:instance/status :instance.status/running
+                              :instance/backfilled? backfill?
+                              :db/id (java.util.UUID/randomUUID)})})]
+    (let [j1 (mock-job)
+          j2 (mock-job true)
+          j3 (mock-job false true true)
+          j4 (mock-job)
+          j5 (mock-job true)
+          j6 (mock-job false false)
+          j7 (mock-job false)]
+      (testing "Match nothing"
+        (let [result (sched/process-matches-for-backfill [j1 j4] j1 [])]
+          (is (zero? (count (:fully-processed result))))
+          (is (zero? (count (:upgrade-backfill result))))
+          (is (zero? (count (:backfill-jobs result))))
+          (is (not (:matched-head? result)))))
+      (testing "Match everything basic"
+        (let [result (sched/process-matches-for-backfill [j1 j4] j1 [j1 j4])]
+          (is (= 2 (count (:fully-processed result))))
+          (is (zero? (count (:upgrade-backfill result))))
+          (is (zero? (count (:backfill-jobs result))))
+          (is (:matched-head? result))))
+      (testing "Don't match head"
+        (let [result (sched/process-matches-for-backfill [j1 j4] j1 [j4])]
+          (is (zero? (count (:fully-processed result))))
+          (is (zero? (count (:upgrade-backfill result))))
+          (is (= 1 (count (:backfill-jobs result))))
+          (is (not (:matched-head? result)))))
+      (testing "Match the tail, but the head isn't considerable" ;;TODO is this even correct?
+        (let [result (sched/process-matches-for-backfill [j1 j4] j4 [j4])]
+          (is (zero? (count (:fully-processed result))))
+          (is (zero? (count (:upgrade-backfill result))))
+          (is (= 1 (count (:backfill-jobs result))))
+          (is (not (:matched-head? result)))))
+      (testing "Match the tail, and the head was backfilled"
+        (let [result (sched/process-matches-for-backfill [j2 j1 j4] j1 [j1 j4])]
+          (is (= 2 (count (:fully-processed result))))
+          (is (= 1 (count (:upgrade-backfill result))))
+          (is (zero? (count (:backfill-jobs result))))
+          (is (:matched-head? result))))
+      (testing "Match the tail, and the head was backfilled (multiple backfilled mixed in)"
+        (let [result (sched/process-matches-for-backfill [j2 j1 j3 j4] j1 [j1 j4])]
+          (is (= 2 (count (:fully-processed result))))
+          (is (= 3 (count (:upgrade-backfill result))))
+          (is (zero? (count (:backfill-jobs result))))
+          (is (:matched-head? result))))
+      (testing "Fail to match the head, but backfill several jobs"
+        (let [result (sched/process-matches-for-backfill [j1 j2 j3 j4 j5 j6 j7] j1 [j4 j6 j7])]
+          (is (zero? (count (:fully-processed result))))
+          (is (zero? (count (:upgrade-backfill result))))
+          (is (= 3 (count (:backfill-jobs result))))
+          (is (not (:matched-head? result)))))
+      (testing "Fail to match the head, but backfill several jobs"
+        (let [result (sched/process-matches-for-backfill [j1 j2 j3 j4 j5 j6 j7] j1 [j4 j6 j7])]
+          (is (zero? (count (:fully-processed result))))
+          (is (zero? (count (:upgrade-backfill result))))
+          (is (= 3 (count (:backfill-jobs result))))
+          (is (not (:matched-head? result))))))))
 
 (deftest test-get-user->used-resources
   (let [uri "datomic:mem://test-get-used-resources"
@@ -333,6 +425,40 @@
         ]
     (is (= [task-id-2] (sched/get-lingering-tasks test-db now 120))))
   )
+
+(deftest test-upgrade-backfill-flow
+  ;; We need to create a DB and connect the tx monitor queue to it
+  ;; Then we'll put in some jobs
+  ;; Then pretend to launch them as backfilled
+  ;; Check here that they have the right properties (pending, not ready to run)
+  ;; Then we'll upgrade the jobs
+  ;; Check here that they have the right properties (running, not ready to run)
+  ;; Then shut it down
+
+  (let [uri "datomic:mem://test-backfill-upgrade"
+        conn (restore-fresh-database! uri)
+        check-count-of-pending-and-runnable-jobs
+        (fn check-count-of-pending-and-runnable-jobs [expected-pending expected-runnable msg]
+          (let [db (db conn)
+                pending-jobs (sched/rank-jobs db db identity)
+                runnable-jobs (filter (fn [job] (sched/job-allowed-to-start? db job)) pending-jobs)]
+            (is (= expected-pending (count pending-jobs)) (str "Didn't match pending job count in " msg))
+            (is (= expected-runnable (count runnable-jobs)) (str "Didn't match runnable job count in " msg))))
+        job (create-dummy-job conn
+                              :user "tsram"
+                              :job-state :job.state/waiting
+                              :max-runtime Long/MAX_VALUE)
+        _ (check-count-of-pending-and-runnable-jobs 1 1 "job created")
+        instance (create-dummy-instance conn job
+                                        :job-state :job.state/waiting
+                                        :instance-status :instance.status/running
+                                        :backfilled? true)]
+    (check-count-of-pending-and-runnable-jobs 1 0 "job backfilled without update")
+    @(d/transact conn [[:job/update-state job]])
+    (check-count-of-pending-and-runnable-jobs 1 0 "job backfilled")
+    @(d/transact conn [[:db/add instance :instance/backfilled? false]])
+    @(d/transact conn [[:job/update-state job]])
+    (check-count-of-pending-and-runnable-jobs 0 0 "job promoted")))
 
 (comment
   (run-tests))

@@ -82,7 +82,7 @@
    :max-retries (s/both s/Int (s/pred pos? 'pos?))
    :max-runtime (s/both s/Int (s/pred pos? 'pos?))
    (s/optional-key :uris) [Uri]
-   (s/optional-key :ports) [(s/pred zero? 'zero)] ;;TODO add to docs the limited uri/port support
+   (s/optional-key :ports) (s/pred #(not (neg? %)) 'nonnegative?)
    (s/optional-key :env) {NonEmptyString s/Str}
    (s/optional-key :labels) {NonEmptyString s/Str}
    (s/optional-key :container) Container
@@ -156,10 +156,8 @@
   [conn jobs :- [Job]]
   (doseq [{:keys [uuid command max-retries max-runtime priority cpus mem user name ports uris env labels container]} jobs
           :let [id (d/tempid :db.part/user)
-                ports (mapv (fn [port]
-                              ;;TODO this schema might not work b/c all ports are zero
-                              [:db/add id :job/port port])
-                            ports)
+                ports (when (and ports (not (zero? ports)))
+                        [[:db/add id :job/port ports]])
                 uris (mapcat (fn [{:keys [value executable? cache? extract?]}]
                                (let [uri-id (d/tempid :db.part/user)
                                      optional-params {:resource.uri/executable? executable?
@@ -243,7 +241,7 @@
                   :priority (or priority util/default-job-priority)
                   :max-retries max_retries
                   :max-runtime (or max_runtime Long/MAX_VALUE)
-                  :ports (or ports [])
+                  :ports (or ports 0)
                   :cpus (double cpus)
                   :mem (double mem)}
                  (when container
@@ -344,7 +342,7 @@
        :uris (:uris resources)
        :env (util/job-ent->env job)
        :labels (util/job-ent->label job)
-       ;;TODO include ports
+       :ports (:job/port job 0)
        :instances
        (map (fn [instance]
               (let [hostname (:instance/hostname instance)
@@ -358,6 +356,8 @@
                     reason-code (:instance/reason-code instance)
                     base {:task_id (:instance/task-id instance)
                           :hostname hostname
+                          :backfilled (:instance/backfilled? instance false)
+                          :preempted (:instance/preempted? instance false)
                           :slave_id (:instance/slave-id instance)
                           :executor_id (:instance/executor-id instance)
                           :status (name (:instance/status instance))}

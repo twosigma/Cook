@@ -171,7 +171,7 @@
         user->sorted-running-task-ents (->> running-task-ents
                                             (group-by util/task-ent->user)
                                             (map (fn [[user task-ents]]
-                                                   [user (into (sorted-set-by util/same-user-task-comparator) task-ents)]))
+                                                   [user (into (sorted-set-by (util/same-user-task-comparator true)) task-ents)]))
                                             (into {}))
         task->scored-task (into (pm/priority-map-keyfn (comp - :dru))
                                 (dru/sorted-task-scored-task-pairs user->sorted-running-task-ents user->dru-divisors))]
@@ -197,7 +197,7 @@
         (reduce (fn [task-ents-by-user task-ent]
                   (let [user (util/task-ent->user task-ent)
                         f (if (= new-running-task-ent task-ent)
-                            (fnil conj (sorted-set-by util/same-user-task-comparator))
+                            (fnil conj (sorted-set-by (util/same-user-task-comparator true)))
                             disj)]
                     (update-in task-ents-by-user [user] f task-ent)))
                 user->sorted-running-task-ents
@@ -222,6 +222,7 @@
    pending-job-ent]
   (let [{pending-job-mem :mem pending-job-cpus :cpus} (util/job-ent->resources pending-job-ent)
         pending-job-dru (compute-pending-job-dru state pending-job-ent)
+
         ;; This will preserve the ordering of task->scored-task
         host->scored-tasks (->> task->scored-task
                                 (vals)
@@ -304,7 +305,7 @@
         (try
           @(d/transact
             conn
-            ;; Make :instance/status and :instance/preempted consistent to simplify the state machine.
+            ;; Make :instance/status and :instance/preempted? consistent to simplify the state machine.
             ;; We don't want to deal with {:instance/status :instance.stats/running, :instance/preempted? true}
             ;; all over the places.
             (let [job-eid (:db/id (:job/_instance task-ent))
@@ -345,7 +346,6 @@
                                     (fn [now]
                                       (let [host->combined-offers
                                             (-<>> (view-incubating-offers)
-                                                  (sched/combine-offers)
                                                   (map (fn [v]
                                                          [(:hostname v) (assoc v :time-observed now)]))
                                                   (into {}))]
