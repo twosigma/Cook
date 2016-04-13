@@ -23,6 +23,8 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -80,6 +82,7 @@ final public class Job {
     public static class Builder
     {
         private UUID _uuid;
+        private String _name;
         private String _command;
         private Double _memory;
         private Double _cpus;
@@ -95,7 +98,7 @@ final public class Job {
          * - If the job UUID is not provided, the job will be assigned a random UUID.<br>
          * - If the job status is not provided, the job status will set to INITIALIZED.<br>
          * - If the job retries is not provided, the job retries will set to 5.
-         * 
+         *
          * @return a instance of {@link Job}.
          */
         public Job build() {
@@ -112,12 +115,14 @@ final public class Job {
                 _priority = 50;
             if (_status == null)
                 _status = Status.INITIALIZED;
-            return new Job(_uuid, _command, _memory, _cpus, _retries, _status, _priority, _instances, _env, _uris);
+            if (_name == null)
+                _name = "cookjob";
+            return new Job(_uuid, _name, _command, _memory, _cpus, _retries, _status, _priority, _instances, _env, _uris);
         }
 
         /**
          * Set command, memory, cpus, env vars, uris, and retries from a job.
-         * 
+         *
          * @param job {@link Job} specifies a job.
          * @return this builder.
          */
@@ -207,7 +212,7 @@ final public class Job {
 
         /**
          * Set the UUID of the job expected to build.
-         * 
+         *
          * @param uuid {@link UUID} specifies the unique identifier for a job.
          * @return this builder.
          */
@@ -218,7 +223,7 @@ final public class Job {
 
         /**
          * Set the command of the job expected to build.
-         * 
+         *
          * @param command {@link String} specifies command for a job.
          * @return this builder.
          */
@@ -229,7 +234,7 @@ final public class Job {
 
         /**
          * Set the cpus of the job expected to build.
-         * 
+         *
          * @param cpus {@link Double} specifies cpus for a job.
          * @return this builder.
          */
@@ -240,7 +245,7 @@ final public class Job {
 
         /**
          * Set the memory of the job expected to build.
-         * 
+         *
          * @param memory {@link Double} specifies memory for a job.
          * @return this builder.
          */
@@ -251,7 +256,7 @@ final public class Job {
 
         /**
          * Set the number of retires of the job expected to build.
-         * 
+         *
          * @param Integer {@link Integer} specifies the number of retires for a job.
          * @return this builder.
          */
@@ -263,12 +268,26 @@ final public class Job {
 
         /**
          * Set the status of the job expected to build.
-         * 
+         *
          * @param status {@link Status} specifies the status for a job.
          * @return this builder.
          */
         public Builder setStatus(Status status) {
             _status = status;
+            return this;
+        }
+
+        /**
+         * Set the name of the job expected to build.
+         *
+         * @param name {@link Status} specifies the name for a job.
+         * @return this builder.
+         */
+        public Builder setName(String name) {
+            final Pattern pattern = Pattern.compile("[\\.a-zA-Z0-9_-]{0,128}");
+            Preconditions.checkArgument
+                (pattern.matcher(name).matches(),
+                 "Name can only contain '.', '_', '-' or any work characters has length at most 128");
             return this;
         }
 
@@ -285,7 +304,7 @@ final public class Job {
 
         /**
          * Add an instance to the job expected to build.
-         * 
+         *
          * @param instance {@link Instance} specifies an instance for a job.
          * @return this builder.
          */
@@ -296,7 +315,7 @@ final public class Job {
 
         /**
          * Add a list of instances to the job expected to build.
-         * 
+         *
          * @param instances specifies a list of instances for a job.
          * @return this builder
          */
@@ -307,6 +326,7 @@ final public class Job {
     }
 
     final private UUID _uuid;
+    final private String _name;
     final private String _command;
     final private Double _memory;
     final private Double _cpus;
@@ -317,9 +337,10 @@ final public class Job {
     final private Map<String, String> _env;
     final private List<FetchableURI> _uris;
 
-    private Job(UUID uuid, String command, Double memory, Double cpus, Integer retries, Status status,
+    private Job(UUID uuid, String name, String command, Double memory, Double cpus, Integer retries, Status status,
             Integer priority, List<Instance> instances, Map<String,String> env, List<FetchableURI> uris) {
         _uuid = uuid;
+        _name = name;
         _command = command;
         _memory = memory;
         _cpus = cpus;
@@ -388,7 +409,14 @@ final public class Job {
     }
 
     /**
-     * @return the job priority
+     * @return the job name.
+     */
+    public String getName() {
+        return _name;
+    }
+
+    /**
+     * @return the job priority.
      */
     public Integer getPriority(){
         return _priority;
@@ -403,7 +431,7 @@ final public class Job {
 
     /**
      * A job is successful if and only if the job is completed and one of its instances is successful.
-     * 
+     *
      * @return
      */
     public Boolean isSuccess() {
@@ -418,7 +446,7 @@ final public class Job {
 
     /**
      * Convert a job to a JSON object, e.g.
-     * 
+     *
      * <pre>
      * <code>
      * {
@@ -429,10 +457,10 @@ final public class Job {
      *     "priority" : 60,
      *     "command" : "echo hello world",
      *     "status" : "waiting"
-     * } 
+     * }
      * </code>
      * </pre>
-     * 
+     *
      * @param job specifies a job.
      * @return a JSON object which represents a job.
      * @throws JSONException
@@ -442,6 +470,7 @@ final public class Job {
         final JSONObject env = new JSONObject(job.getEnv());
         final JSONObject object = new JSONObject();
         object.put("uuid", job.getUUID().toString());
+        object.put("name", job.getName());
         object.put("command", job.getCommand());
         object.put("mem", job.getMemory());
         object.put("cpus", job.getCpus());
@@ -457,7 +486,7 @@ final public class Job {
 
     /**
      * Convert a list of job to a JSON object, e.g.
-     * 
+     *
      * <pre>
      * <code>
      * {
@@ -472,12 +501,12 @@ final public class Job {
      *          "status" : "waiting"
      *       }
      *    ]
-     * }        
+     * }
      * </code>
      * </pre>
-     * 
+     *
      * The converted JSON object could be used for job submission via Cook client.
-     * 
+     *
      * @param jobs specifies a collection of jobs.
      * @return a JSON object which represent a list jobs.
      * @throws JSONException
@@ -495,7 +524,7 @@ final public class Job {
 
     /**
      * Parse a JSON string representing a list of jobs, e.g.
-     * 
+     *
      * <pre>
      * <code>
      * [
@@ -521,7 +550,7 @@ final public class Job {
      * ]
      * </code>
      * </pre>
-     * 
+     *
      * @param listOfJobs {@link String} specifies a list of jobs.
      * @return a list of {@link Job}s.
      * @throws JSONException
@@ -539,6 +568,9 @@ final public class Job {
             jobBuilder.setCommand(json.getString("command"));
             jobBuilder.setPriority(json.getInt("priority"));
             jobBuilder.setStatus(Status.fromString(json.getString("status")));
+            if (json.has("name")) {
+                jobBuilder.setName(json.getString("name"));
+            }
             jobBuilder.setRetries(json.getInt("max_retries"));
             JSONObject envJson = json.getJSONObject("env");
             Map<String,String> envMap = new HashMap<>();
@@ -563,8 +595,9 @@ final public class Job {
     @Override
     public String toString() {
         StringBuilder stringBuilder = new StringBuilder(512);
-        stringBuilder.append("Job [_uuid=" + _uuid + ", _command=" + _command + ", _memory=" + _memory + ", _cpus="
-                + _cpus + ", _retries=" + _retries + ", _status=" + _status + ", _priority=" + _priority + "]");
+        stringBuilder
+            .append("Job [_uuid=" + _uuid + ", _name=" + _name + ", _command=" + _command + ", _memory=" + _memory
+                    + ", _cpus=" + _cpus + ", _retries=" + _retries + ", _status=" + _status + ", _priority=" + _priority + "]");
         stringBuilder.append('\n');
         for (Instance instance : getInstances())
             stringBuilder.append(instance.toString()).append('\n');
