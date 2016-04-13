@@ -344,11 +344,13 @@
     :db/index true
     :db.alter/_attribute :db.part/db}])
 
-(def migration-port-is-a-count
-  "This was written on 10-20-2015"
-  [{:db/id :job/port
+(def migration-add-port-count
+  "This was written on 04-12-2016"
+  [{:db/id (d/tempid :db.part/db)
+    :db/ident :job/ports
+    :db/valueType :db.type/long
     :db/cardinality :db.cardinality/one
-    :db.alter/_attribute :db.part/db}])
+    :db.install/_attribute :db.part/db}])
 
 (def rebalancer-configs
   [{:db/id (d/tempid :db.part/user)
@@ -532,4 +534,4 @@
                        []))}}])
 
 (def work-item-schema
-  [schema-attributes state-enums rebalancer-configs migration-add-index-to-job-state migration-add-index-to-job-user migration-port-is-a-count db-fns])
+  [schema-attributes state-enums rebalancer-configs migration-add-index-to-job-state migration-add-index-to-job-user migration-add-port-count db-fns])
