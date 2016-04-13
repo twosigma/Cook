@@ -157,7 +157,7 @@
   (doseq [{:keys [uuid command max-retries max-runtime priority cpus mem user name ports uris env labels container]} jobs
           :let [id (d/tempid :db.part/user)
                 ports (when (and ports (not (zero? ports)))
-                        [[:db/add id :job/port ports]])
+                        [[:db/add id :job/ports ports]])
                 uris (mapcat (fn [{:keys [value executable? cache? extract?]}]
                                (let [uri-id (d/tempid :db.part/user)
                                      optional-params {:resource.uri/executable? executable?
@@ -342,7 +342,7 @@
        :uris (:uris resources)
        :env (util/job-ent->env job)
        :labels (util/job-ent->label job)
-       :ports (:job/port job 0)
+       :ports (:job/ports job 0)
        :instances
        (map (fn [instance]
               (let [hostname (:instance/hostname instance)
