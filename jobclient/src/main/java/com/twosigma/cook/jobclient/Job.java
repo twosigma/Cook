@@ -604,17 +604,19 @@ final public class Job {
                 jobBuilder.setName(json.getString("name"));
             }
             jobBuilder.setRetries(json.getInt("max_retries"));
-            if(json.has("container")) {
+            if (json.has("container")) {
                 jobBuilder.setContainer(json.getJSONObject("container"));
             }
-            JSONObject envJson = json.getJSONObject("env");
-            Map<String,String> envMap = new HashMap<>();
-            if (envJson.length() > 0) {
-                for (String varName : JSONObject.getNames(envJson)) {
-                    envMap.put(varName, envJson.getString(varName));
+            if (json.has("env")) {
+                JSONObject envJson = json.getJSONObject("env");
+                Map<String, String> envMap = new HashMap<>();
+                if (envJson.length() > 0) {
+                    for (String varName : JSONObject.getNames(envJson)) {
+                        envMap.put(varName, envJson.getString(varName));
+                    }
                 }
+                jobBuilder.setEnv(envMap);
             }
-            jobBuilder.setEnv(envMap);
             JSONArray urisJson = json.optJSONArray("uris");
             if (urisJson != null) {
                 for (int j = 0; j < urisJson.length(); j++) {
