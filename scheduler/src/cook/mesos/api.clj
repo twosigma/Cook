@@ -28,7 +28,8 @@
             [ring.middleware.json]
             [liberator.core :refer [resource defresource]]
             [cook.mesos.util :as util]
-            [clj-time.core :as t])
+            [clj-time.core :as t]
+            [metrics.timers :as timers])
   (:import java.util.UUID))
 
 (def PosDouble
@@ -63,6 +64,7 @@
    ;; a lower case character or a digit, and has length between 2 to (62 + 2).
    :user (s/both s/Str (s/pred #(re-matches #"\A[a-z][a-z0-9_-]{0,62}[a-z0-9]\z" %) 'lowercase-alphanum?))})
 
+(timers/deftimer [cook scheduler submit-jobs-duration])
 (sm/defn submit-jobs
   [conn jobs :- [Job]]
   (doseq [{:keys [uuid command max-retries max-runtime priority cpus mem user name ports uris env]} jobs
@@ -115,11 +117,11 @@
                                     {:resource/type :resource.type/mem
                                      :resource/amount mem}]}]]
     ;; TODO batch these transactions to improve performance
-    @(d/transact conn (-> ports
-                          (into uris)
-                          (into env)
-                          (into maybe-datoms)
-                          (conj txn))))
+    (timers/time! @(d/transact conn (-> ports
+                                        (into uris)
+                                        (into env)
+                                        (into maybe-datoms)
+                                        (conj txn)))))
   "ok")
 
 (defn unused-uuid?

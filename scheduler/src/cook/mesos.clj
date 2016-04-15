@@ -20,7 +20,8 @@
             [metatransaction.utils :as dutils]
             [clojure.tools.logging :as log]
             [clj-mesos.scheduler]
-            [metrics.counters :as counters]
+            [metrics.counters :as counters
+            [metrics.timers :as timers]
             [cook.datomic :refer (transact-with-retries)]
             [cook.mesos.scheduler :as sched]
             [cook.mesos.heartbeat]
@@ -34,6 +35,7 @@
 ;; ============================================================================
 ;; mesos scheduler etc.
 
+(timers/deftimer [cook scheduler submit-to-mesos-duration])
 (defn submit-to-mesos
   "Takes a sequence of jobs in jobsystem format and submits them to the mesos
    DB."
@@ -61,7 +63,8 @@
                      base-wait 500 ; millis
                      opts {:retry-schedule (cook.util/rand-exponential-seq retries base-wait)}]]
          (if (and (<= memory 200000) (<= ncpus 32))
-           (dutils/transact-with-retries!! conn opts (concat [txn] additional-txns-per-job))
+           (timers/time! submit-to-mesos-duration
+             (dutils/transact-with-retries!! conn opts (concat [txn] additional-txns-per-job)))
            (log/error "We chose not to schedule the job" uuid
                       "because it required too many resources:" ncpus
                       "cpus and" memory "MB of memory"))))
