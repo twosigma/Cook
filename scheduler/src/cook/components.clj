@@ -43,7 +43,7 @@
            org.eclipse.jetty.security.UserAuthentication
            org.eclipse.jetty.security.DefaultUserIdentity
            javax.security.auth.Subject
-           javax.security.auth.kerberos.KerberosPrincipal)
+           java.security.Principal)
   (:gen-class))
 
 (defn wrap-no-cache
@@ -162,7 +162,13 @@
                             "kerberos"
                             (DefaultUserIdentity.
                               (Subject.)
-                              (KerberosPrincipal. (:authorization/user req))
+                              (reify Principal ; Shim principal to pass username along
+                                (equals [this another]
+                                  (= this another))
+                                (getName [this]
+                                  (:authorization/user req))
+                                (toString [this]
+                                  (str "Shim principal for user: " (:authorization/user req))))
                               (into-array String []))))
       (h req))))
 
