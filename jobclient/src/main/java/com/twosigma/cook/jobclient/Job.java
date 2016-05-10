@@ -93,6 +93,7 @@ final public class Job {
         private List<FetchableURI> _uris = new ArrayList<>();
         private Map<String,String> _env = new HashMap<>();
         private JSONObject _container;
+        private Map<String,String> _labels = new HashMap<>();
 
         /**
          * Prior to {@code build()}, command, memory and cpus for a job must be provided.<br>
@@ -118,7 +119,7 @@ final public class Job {
                 _status = Status.INITIALIZED;
             if (_name == null)
                 _name = "cookjob";
-            return new Job(_uuid, _name, _command, _memory, _cpus, _retries, _status, _priority, _instances, _env, _uris, _container);
+            return new Job(_uuid, _name, _command, _memory, _cpus, _retries, _status, _priority, _instances, _env, _uris, _container, _labels);
         }
 
         /**
@@ -135,6 +136,7 @@ final public class Job {
             setEnv(job.getEnv());
             setUris(job.getUris());
             setContainer(job.getContainer());
+            setLabels(job.getLabels());
             return this;
         }
 
@@ -209,6 +211,44 @@ final public class Job {
          */
         public Builder setEnv(Map<String,String> enviroment) {
             _env = ImmutableMap.copyOf(enviroment);
+            return this;
+        }
+
+        /**
+         * Add an label to the job
+         *
+         * @param key specifies the key of the label
+         * @param value specifies the value of the label
+         * @return this builder
+         */
+        public Builder addLabel(String key, String value) {
+            _labels.put(key, value);
+            return this;
+        }
+
+        /**
+         * Adds a collection of labels to the job.
+         *
+         * This adds the labels to the job; it won't remove labels that were previously set.
+         *
+         * @param labels specifies the labelironment to add to this job.
+         * @return this builder
+         */
+        public Builder addLabels(Map<String,String> labels) {
+            _labels.putAll(labels);
+            return this;
+        }
+
+        /**
+         * Adds a collection of label to the job.
+         *
+         * This resets the labels of the job; it will remove labels that were previously set.
+         *
+         * @param labels specifies the labels to set for this job.
+         * @return this builder
+         */
+        public Builder setLabels(Map<String,String> labels) {
+            _labels = ImmutableMap.copyOf(labels);
             return this;
         }
 
@@ -350,9 +390,11 @@ final public class Job {
     final private Map<String, String> _env;
     final private List<FetchableURI> _uris;
     final private JSONObject _container;
+    final private Map<String, String> _labels;
 
     private Job(UUID uuid, String name, String command, Double memory, Double cpus, Integer retries, Status status,
-                Integer priority, List<Instance> instances, Map<String,String> env, List<FetchableURI> uris, JSONObject container) {
+                Integer priority, List<Instance> instances, Map<String,String> env, List<FetchableURI> uris, JSONObject container,
+                Map<String,String> labels) {
         _uuid = uuid;
         _name = name;
         _command = command;
@@ -371,6 +413,7 @@ final public class Job {
         } else {
             _container = null;
         }
+        _labels = ImmutableMap.copyOf(labels);
     }
 
     /**
@@ -413,6 +456,13 @@ final public class Job {
      */
     public Map<String,String> getEnv() {
         return _env;
+    }
+
+    /**
+     * @return the job's labels
+     */
+    public Map<String,String> getLabels() {
+        return _labels;
     }
 
     /**
@@ -496,6 +546,7 @@ final public class Job {
     public static JSONObject jsonizeJob(Job job)
         throws JSONException {
         final JSONObject env = new JSONObject(job.getEnv());
+        final JSONObject labels = new JSONObject(job.getLabels());
         final JSONObject container = job.getContainer();
         final JSONObject object = new JSONObject();
         object.put("uuid", job.getUUID().toString());
@@ -507,6 +558,7 @@ final public class Job {
         object.put("max_retries", job.getRetries());
         object.put("status", job.getStatus());
         object.put("env", env);
+        object.put("labels", labels);
         if(container != null) {
             object.put("container", container);
         }
@@ -616,6 +668,16 @@ final public class Job {
                     }
                 }
                 jobBuilder.setEnv(envMap);
+            }
+            if (json.has("labels")) {
+                JSONObject labelsJson = json.getJSONObject("labels");
+                Map<String, String> labelsMap = new HashMap<>();
+                if (labelsJson.length() > 0) {
+                    for (String varName : JSONObject.getNames(labelsJson)) {
+                        labelsMap.put(varName, labelsJson.getString(varName));
+                    }
+                }
+                jobBuilder.setLabels(labelsMap);
             }
             JSONArray urisJson = json.optJSONArray("uris");
             if (urisJson != null) {
