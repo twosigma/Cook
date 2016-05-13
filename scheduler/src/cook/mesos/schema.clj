@@ -56,6 +56,11 @@
      :db/cardinality :db.cardinality/many
      :db.install/_attribute :db.part/db}
     {:db/id (d/tempid :db.part/db)
+     :db/ident :job/label
+     :db/valueType :db.type/ref
+     :db/cardinality :db.cardinality/many
+     :db.install/_attribute :db.part/db}
+    {:db/id (d/tempid :db.part/db)
      :db/ident :job/state
      :db/valueType :db.type/ref
      :db/cardinality :db.cardinality/one
@@ -110,6 +115,17 @@
      :db.install/_attribute :db.part/db}
     {:db/id (d/tempid :db.part/db)
      :db/ident :environment/value
+     :db/valueType :db.type/string
+     :db/cardinality :db.cardinality/one
+     :db.install/_attribute :db.part/db}
+   ;; Label attributes
+    {:db/id (d/tempid :db.part/db)
+     :db/ident :label/key
+     :db/valueType :db.type/string
+     :db/cardinality :db.cardinality/one
+     :db.install/_attribute :db.part/db}
+    {:db/id (d/tempid :db.part/db)
+     :db/ident :label/value
      :db/valueType :db.type/string
      :db/cardinality :db.cardinality/one
      :db.install/_attribute :db.part/db}
