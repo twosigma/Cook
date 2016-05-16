@@ -45,6 +45,8 @@
         uuid #uuid "386b374c-4c4a-444f-aca0-0c25384c6fa0"
         env {"MY_VAR" "one"
              "MY_OTHER_VAR" "two"}
+        labels {"key1" "value1"
+                "key2" "value2"}
         uris [{"value" "http://cool.com/data.txt"
                "extract" false}
               {"value" "ftp://bar.com/data.zip"
@@ -59,6 +61,7 @@
              "max_runtime" 1000000
              "uris" uris
              "env" env
+             "labels" labels
              "cpus" 2.0
              "mem" 2048.0}
         h (handler conn "my-framework-id" {:cpus 12 :memory-gb 100})]
@@ -74,6 +77,7 @@
           resources (util/job-ent->resources ent)]
       (is (= "hello world" (:job/command ent)))
       (is (= (util/job-ent->env ent) env))
+      (is (= (util/job-ent->label ent) labels))
       (is (= (:cpus resources) 2.0))
       (is (= (:mem resources) 2048.0))
       (is (compare-uris (map kw-keys uris) (:uris resources))))
