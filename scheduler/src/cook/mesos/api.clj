@@ -100,7 +100,7 @@
                               (let [label-var-id (d/tempid :db.part/user)]
                                 [[:db/add id :job/label label-var-id]
                                  {:db/id label-var-id
-                                  :label/name k
+                                  :label/key k
                                   :label/value v}]))
                             labels)
                 ;; These are optionally set datoms w/ default values
