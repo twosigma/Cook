@@ -26,7 +26,7 @@
             [clojure.tools.logging :as log]
             [clojure.pprint :refer (pprint)]
             [cook.spnego :as spnego]
-            [ring.middleware.stacktrace :refer (wrap-stacktrace-web)]
+            [ring.middleware.stacktrace :refer (wrap-stacktrace)]
             [ring.util.response :refer (response)]
             [ring.util.mime-type]
             [compojure.core :refer (GET POST routes context)]
@@ -199,7 +199,7 @@
                                      :ring-handler (-> view
                                                        tell-jetty-about-usename
                                                        authorization-middleware
-                                                       wrap-stacktrace-web
+                                                       wrap-stacktrace
                                                        wrap-no-cache
                                                        wrap-params
                                                        health-check-middleware

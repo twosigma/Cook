@@ -216,7 +216,7 @@
     [framework-id hostname]
     (let [run (delay (try (get-executor-states-impl framework-id hostname)
                           (catch Exception e
-                            (log/warn e "Failed to get executor state, purging from cache...")
+                            (log/debug e "Failed to get executor state, purging from cache...")
                             (swap! cache cache/evict hostname)
                             nil)))
           cs (swap! cache (fn [c]
