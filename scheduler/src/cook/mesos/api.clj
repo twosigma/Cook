@@ -57,6 +57,7 @@
    (s/optional-key :uris) [Uri]
    (s/optional-key :ports) [(s/pred zero? 'zero)] ;;TODO add to docs the limited uri/port support
    (s/optional-key :env) {NonEmptyString s/Str}
+   (s/optional-key :labels) {NonEmptyString s/Str}
    :cpus PosDouble
    :mem PosDouble
    ;; Make sure the user name is valid. It must begin with a lower case character, end with
@@ -65,7 +66,7 @@
 
 (sm/defn submit-jobs
   [conn jobs :- [Job]]
-  (doseq [{:keys [uuid command max-retries max-runtime priority cpus mem user name ports uris env]} jobs
+  (doseq [{:keys [uuid command max-retries max-runtime priority cpus mem user name ports uris env labels]} jobs
           :let [id (d/tempid :db.part/user)
                 ports (mapv (fn [port]
                               ;;TODO this schema might not work b/c all ports are zero
@@ -95,6 +96,13 @@
                                   :environment/name k
                                   :environment/value v}]))
                             env)
+                labels (mapcat (fn [[k v]]
+                              (let [label-var-id (d/tempid :db.part/user)]
+                                [[:db/add id :job/label label-var-id]
+                                 {:db/id label-var-id
+                                  :label/name k
+                                  :label/value v}]))
+                            labels)
                 ;; These are optionally set datoms w/ default values
                 maybe-datoms (concat
                                (when (and name (not= name "cookjob"))
@@ -118,6 +126,7 @@
     @(d/transact conn (-> ports
                           (into uris)
                           (into env)
+                          (into labels)
                           (into maybe-datoms)
                           (conj txn))))
   "ok")
@@ -135,7 +144,7 @@
 (defn validate-and-munge-job
   "Takes the user and the parsed json from the job and returns proper
    Job objects, or else throws an exception"
-  [db user task-constraints {:strs [cpus mem uuid command priority max_retries max_runtime name uris ports env] :as job}]
+  [db user task-constraints {:strs [cpus mem uuid command priority max_retries max_runtime name uris ports env labels] :as job}]
   (let [munged (merge
                  {:user user
                   :uuid (UUID/fromString uuid)
@@ -156,7 +165,10 @@
                                uris)})
                  (when env
                    ;; Remains strings
-                   {:env env}))]
+                   {:env env})
+                 (when labels 
+                   ;; Remains strings
+                   {:labels labels}))]
     (s/validate Job munged)
     (when (> cpus (:cpus task-constraints))
       (throw (ex-info (str "Requested " cpus " cpus, but only allowed to use " (:cpus task-constraints))
@@ -239,6 +251,7 @@
        :status (name (:job/state job))
        :uris (:uris resources)
        :env (util/job-ent->env job)
+       :labels (util/job-ent->label job)
        ;;TODO include ports
        :instances
        (map (fn [instance]
