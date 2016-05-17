@@ -56,6 +56,11 @@
      :db/cardinality :db.cardinality/many
      :db.install/_attribute :db.part/db}
     {:db/id (d/tempid :db.part/db)
+    :db/ident :job/host-constraints
+    :db/valueType :db.type/ref
+    :db/cardinality :db.cardinality/many
+    :db.install/_attribute :db.part/db}
+    {:db/id (d/tempid :db.part/db)
      :db/ident :job/state
      :db/valueType :db.type/ref
      :db/cardinality :db.cardinality/one
@@ -103,16 +108,27 @@
     :db/cardinality :db.cardinality/many
     :db.install/_attribute :db.part/db}
    ;; Environment Variable attributes
-    {:db/id (d/tempid :db.part/db)
-     :db/ident :environment/name
-     :db/valueType :db.type/string
-     :db/cardinality :db.cardinality/one
-     :db.install/_attribute :db.part/db}
-    {:db/id (d/tempid :db.part/db)
-     :db/ident :environment/value
-     :db/valueType :db.type/string
-     :db/cardinality :db.cardinality/one
-     :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :environment/name
+    :db/valueType :db.type/string
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :environment/value
+    :db/valueType :db.type/string
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   ;; Host Constraint attributes
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :host-constraint/attribute
+    :db/valueType :db.type/string
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :host-constraint/pattern
+    :db/valueType :db.type/string
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
     ;; Resource attributes
     {:db/id (d/tempid :db.part/db)
      :db/ident :resource/type

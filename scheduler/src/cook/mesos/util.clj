@@ -38,6 +38,16 @@
           {}
           (:job/environment job-ent)))
 
+(defn job-ent->host-constraints
+  "Take a job entity and return the host constraints map"
+  [job-ent]
+  (reduce (fn [m host-constraint]
+            (assoc m
+              (:host-constraint/attribute host-constraint)
+              (:host-constraint/pattern host-constraint)))
+          {}
+          (:job/host-constraints job-ent)))
+
 (defn job-ent->resources
   "Take a job entity and return a resource map. NOTE: the keys must be same as mesos resource keys"
   [job-ent]
