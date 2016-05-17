@@ -371,10 +371,12 @@
   [schedule {{:keys [cpus mem]} :resources :as offer}]
   (log/debug "Matching offer " offer " to the schedule" schedule)
   (loop [[candidates & remaining-prefixes] (prefixes schedule)
+         resources-so-far {:mem 0 :cpus 0}
          prev []]
-    (let [required (util/sum-resources-of-jobs candidates)]
+    (let [required (merge-with + resources-so-far
+                               (select-keys [:mem :cpus] (util/job-ent->resources (last candidates))))]
       (if (and candidates (>= cpus (:cpus required)) (>= mem (:mem required)))
-        (recur remaining-prefixes candidates)
+        (recur remaining-prefixes required candidates)
         prev))))
 
 (meters/defmeter [cook-mesos scheduler scheduler-offer-declined])
