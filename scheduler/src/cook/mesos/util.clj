@@ -38,6 +38,16 @@
           {}
           (:job/environment job-ent)))
 
+(defn job-ent->label
+  "Take a job entity and return the label map"
+  [job-ent]
+  (reduce (fn [m label-var]
+            (assoc m
+                   (:label/key label-var)
+                   (:label/value label-var)))
+          {}
+          (:job/label job-ent)))
+
 (defn job-ent->resources
   "Take a job entity and return a resource map. NOTE: the keys must be same as mesos resource keys"
   [job-ent]

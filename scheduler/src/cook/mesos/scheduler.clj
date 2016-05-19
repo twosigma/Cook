@@ -77,6 +77,7 @@
         ;; executor in order to support jobs submitted before we added this field
         custom-executor (:job/custom-executor job-ent true)
         environment (util/job-ent->env job-ent)
+        labels (util/job-ent->label job-ent)
         command {:value (:job/command job-ent)
                  :environment environment
                  :user (:job/user job-ent)
@@ -96,6 +97,7 @@
      :task-id task-id
      :num-ports (count (:ports resources))
      :resources (select-keys resources [:mem :cpus])
+     :labels labels
      ;;TODO this data is a race-condition
      :data (.getBytes
              (pr-str
