@@ -432,16 +432,12 @@
   "Gets a list of offers from mesos. Decides what to do with them all--they should all
    be accepted or rejected at the end of the function."
   [conn driver fid pending-jobs offer]
-  (try
-    (histograms/update!
-     offer-size-cpus
-     (get-in offer [:resources :cpus]))
-    (histograms/update!
-     offer-size-mem
-     (get-in offer [:resources :mem]))
-    (catch Throwable t
-      (log/warn t "Error in updating offer metrics:" (ex-data t))))
-
+  (histograms/update!
+    offer-size-cpus
+    (get-in offer [:resources :cpus]))
+  (histograms/update!
+    offer-size-mem
+    (get-in offer [:resources :mem]))
   (timers/time!
     handle-resource-offer!-duration
     (try
