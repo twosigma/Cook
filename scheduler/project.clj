@@ -16,7 +16,7 @@
 (defproject cook "1.0.1-SNAPSHOT"
   :description "This launches jobs on a Mesos cluster with fair sharing and preemption"
   :license {:name "Apache License, Version 2.0"}
-  :dependencies [[org.clojure/clojure "1.6.0"]
+  :dependencies [[org.clojure/clojure "1.7.0"]
 
                  ;;Data marshalling
                  [org.clojure/data.codec "0.1.0"]
@@ -81,7 +81,7 @@
 
                  ;;Ring
                  [ring/ring-core "1.4.0"]
-                 [ring/ring-devel "1.4.0"]
+                 [ring/ring-devel "1.4.0" :exclusions [org.clojure/tools.namespace]]
                  [compojure "1.4.0"]
                  [hiccup "1.0.5"]
                  [ring/ring-json "0.2.0"]

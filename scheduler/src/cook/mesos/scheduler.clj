@@ -75,6 +75,7 @@
         resources (util/job-ent->resources job-ent)
         ;; If the custom-executor attr isn't set, we default to using a custom
         ;; executor in order to support jobs submitted before we added this field
+        container (util/job-ent->container db job job-ent)
         custom-executor (:job/custom-executor job-ent true)
         environment (util/job-ent->env job-ent)
         labels (util/job-ent->label job-ent)
@@ -86,24 +87,28 @@
         ;; executor
         executor-key (if custom-executor :executor :command)
         executor-value (if custom-executor
-                         {:executor-id (str (java.util.UUID/randomUUID))
-                          :framework-id fid
-                          :name "cook agent executor"
-                          :source "cook_scheduler"
-                          :command command}
+                         (merge {:executor-id (str (java.util.UUID/randomUUID))
+                                 :framework-id fid
+                                 :name "cook agent executor"
+                                 :source "cook_scheduler"
+                                 :command command}
+                                (when (seq container)
+                                  {:container container}))
                          command)]
     ;; If the there is no value for key :job/name, the following name will contain a substring "null".
-    {:name (format "%s_%s_%s" (:job/name job-ent "cookjob") (:job/user job-ent) task-id)
-     :task-id task-id
-     :num-ports (count (:ports resources))
-     :resources (select-keys resources [:mem :cpus])
-     :labels labels
-     ;;TODO this data is a race-condition
-     :data (.getBytes
-             (pr-str
-               {:instance (str (count (:job/instance job-ent)))})
-             "UTF-8")
-     executor-key executor-value}))
+    (merge {:name (format "%s_%s_%s" (:job/name job-ent "cookjob") (:job/user job-ent) task-id)
+            :task-id task-id
+            :num-ports (count (:ports resources))
+            :resources (select-keys resources [:mem :cpus])
+            :labels labels
+            ;;TODO this data is a race-condition
+            :data (.getBytes
+                   (pr-str
+                    {:instance (str (count (:job/instance job-ent)))})
+                   "UTF-8")
+            executor-key executor-value}
+           (when (and (seq container) (not custom-executor))
+             {:container container}))))
 
 (defn rescind-offer!
   [rescinded-offer-id-cache offer-id]
