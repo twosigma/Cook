@@ -66,4 +66,25 @@
         (is (= {"ljin" {:mem 25.0 :cpus 25.0} "wzhao" {:mem 10.0 :cpus 10.0} "sunil" {:mem 25.0 :cpus 25.0}}
                (dru/init-user->dru-divisors db running-task-ents pending-job-ents)))))))
 
+(deftest test-init-task->scored-task
+  (testing "dru order correct"
+    (let [datomic-uri "datomic:mem://test-init-task_scored-task"
+          conn (schema/restore-fresh-database! datomic-uri)
+          jobs [(schema/create-dummy-job conn :user "ljin" :memory 10.0 :ncpus 10.0)
+                (schema/create-dummy-job conn :user "ljin" :memory 5.0  :ncpus 5.0)
+                (schema/create-dummy-job conn :user "ljin" :memory 15.0 :ncpus 25.0)
+                (schema/create-dummy-job conn :user "ljin" :memory 25.0 :ncpus 15.0)
+                (schema/create-dummy-job conn :user "wzhao" :memory 10.0 :ncpus 10.0)
+                (schema/create-dummy-job conn :user "sunil" :memory 10.0 :ncpus 10.0)]
+          tasks (doseq [job jobs]
+                  (schema/create-dummy-instance conn job :instance-status :instance.status/running))
+          db (d/db conn)
+          task-ents (util/get-running-task-ents db) ]
+      (let [share {:mem 10.0 :cpus 10.0}
+            ordered-drus [1.0 1.0 1.0 1.5 4.0 5.5]]
+        (is (= ordered-drus
+               (map (comp :dru second)
+                    (dru/init-task->scored-task (group-by util/task-ent->user task-ents)
+                                                {"ljin" share "wzhao" share "sunil" share}))))))))
+
 (comment (run-tests))

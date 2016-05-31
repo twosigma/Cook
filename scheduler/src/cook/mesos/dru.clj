@@ -14,8 +14,7 @@
 ;; limitations under the License.
 ;;
 (ns cook.mesos.dru
-  (:require [clj-mesos.scheduler :as mesos]
-            [cook.mesos.util :as util]
+  (:require [cook.mesos.util :as util]
             [clojure.tools.logging :as log]
             [clojure.core.async :as async]
             [cook.mesos.share :as share]
@@ -89,13 +88,14 @@
    (sorted-merge identity compare colls)))
 
 (defn init-task->scored-task
-  "Returns a priority-map from task to scored-task sorted by dru in ascending order"
-  [user->sorted-running-task-ents
-   user->dru-divisors]
+  "Returns a priority-map from task to scored-task sorted by dru in ascending order.
+   If jobs have the same dru, any ordering is allowed"
+  [user->sorted-running-task-ents user->dru-divisors]
   (->> user->sorted-running-task-ents
        (map (fn [[user task-ents]]
-                   (compute-task-scored-task-pairs task-ents (get user->dru-divisors user))))
-       (sorted-merge :dru))
+              (compute-task-scored-task-pairs task-ents (get user->dru-divisors user))))
+       (sorted-merge (comp :dru second))))
+
 
 (defn next-task->scored-task
   "Computes the priority-map from task to scored-task sorted by -dru for the next cycle.
