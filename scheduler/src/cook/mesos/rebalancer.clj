@@ -23,7 +23,9 @@
             [clojure.tools.logging :as log]
             [datomic.api :as d :refer (q)]
             [metatransaction.core :as mt]
+            [metrics.histograms :as histograms]
             [metrics.timers :as timers]
+            [clojure.math.numeric-tower :as math]
             [clojure.core.async :as async]
             [clj-time.core :as time]
             [clj-time.periodic :as periodic]
@@ -138,6 +140,21 @@
 
 (defrecord State [task->scored-task user->sorted-running-task-ents host->spare-resources user->dru-divisors])
 
+(timers/deftimer [cook-mesos rebalancer rebalance-duration])
+(timers/deftimer [cook-mesos rebalancer compute-preemption-decision-duration])
+
+(histograms/defhistogram [cook-mesos rebalancer pending-job-drus])
+(histograms/defhistogram [cook-mesos rebalancer nearest-task-drus])
+(histograms/defhistogram [cook-mesos rebalancer preemption-counts-for-host])
+(histograms/defhistogram [cook-mesos rebalancer positive-dru-diffs])
+(histograms/defhistogram [cook-mesos rebalancer task-counts-to-preempt])
+(histograms/defhistogram [cook-mesos rebalancer job-counts-to-run])
+
+(def dru-scale (math/expt 10 305))
+(defn dru-at-scale
+  [dru]
+  (* dru dru-scale))
+
 (defn compute-pending-job-dru
   "Takes state and a pending job entity, returns the dru of the pending-job. In the case where the pending job causes user's dominant
    resource type to change, the dru is not accurate and is only a upper bound. However, this inaccuracy won't affect the correctness
@@ -157,6 +174,9 @@
                            0.0)
         pending-job-dru (max (+ nearest-task-dru (/ mem-req mem-divisor))
                              (+ nearest-task-dru (/ cpus-req cpus-divisor)))]
+    (histograms/update! pending-job-drus (dru-at-scale pending-job-dru))
+    (histograms/update! nearest-task-drus (dru-at-scale nearest-task-dru))
+
     pending-job-dru))
 
 (defn init-state
@@ -213,6 +233,13 @@
         state' (->State task->scored-task' user->sorted-running-task-ents' host->spare-resources' user->dru-divisors')]
     state'))
 
+(defn exceeds-min-diff?
+  [pending-job-dru min-dru-diff task]
+  (let [diff (- (:dru task) pending-job-dru)]
+    (if (pos? diff)
+      (histograms/update! positive-dru-diffs (dru-at-scale diff)))
+    (> diff min-dru-diff)))
+
 (defn compute-preemption-decision
   "Takes state, parameters and a pending job entity, returns a preemption decision
    A preemption decision is a map that describes a possible way to perform preemption on a host. It has a hostname, a seq of tasks
@@ -220,14 +247,15 @@
   [{:keys [task->scored-task host->spare-resources] :as state}
    {:keys [min-dru-diff safe-dru-threshold] :as params}
    pending-job-ent]
-  (let [{pending-job-mem :mem pending-job-cpus :cpus} (util/job-ent->resources pending-job-ent)
+  (let [timer (timers/start compute-preemption-decision-duration)
+        {pending-job-mem :mem pending-job-cpus :cpus} (util/job-ent->resources pending-job-ent)
         pending-job-dru (compute-pending-job-dru state pending-job-ent)
 
         ;; This will preserve the ordering of task->scored-task
         host->scored-tasks (->> task->scored-task
                                 (vals)
                                 (remove #(< (:dru %) safe-dru-threshold))
-                                (filter #(> (- (:dru %) pending-job-dru) min-dru-diff))
+                                (filter (partial exceeds-min-diff? pending-job-dru min-dru-diff))
                                 (group-by (fn [{:keys [task]}]
                                             (:instance/hostname task))))
 
@@ -258,6 +286,8 @@
                                            (and (>= (:mem resource-sum) pending-job-mem)
                                                 (>= (:cpus resource-sum) pending-job-cpus))))
                                  (apply max-key (fnil :dru {:dru 0.0}) nil))]
+    (timers/stop timer)
+    (histograms/update! preemption-counts-for-host (-> preemption-decision :tasks count))
     preemption-decision))
 
 (defn compute-next-state-and-preemption-decision
@@ -271,7 +301,8 @@
   "Takes a db, a list of pending job entities, a map of spare resources and params.
    Returns a list of pending job entities to run and a list of task entities to preempt"
   [db pending-job-ents host->spare-resources {:keys [max-preemption] :as params}]
-  (let [init-state (init-state db (util/get-running-task-ents db) pending-job-ents host->spare-resources)]
+  (let [timer (timers/start rebalance-duration)
+        init-state (init-state db (util/get-running-task-ents db) pending-job-ents host->spare-resources)]
     (loop [state init-state
            remaining-preemption max-preemption
            [pending-job-ent & pending-job-ents] pending-job-ents
@@ -290,8 +321,14 @@
                    pending-job-ents
                    pending-job-ents-to-run
                    task-ents-to-preempt)))
-        ;; pending-job-ents-to-run is only for debugging purpose
-        [pending-job-ents-to-run task-ents-to-preempt]))))
+
+        (do
+          (timers/stop timer)
+          (histograms/update! task-counts-to-preempt (count task-ents-to-preempt))
+          (histograms/update! job-counts-to-run (count pending-job-ents-to-run))
+          ;; pending-job-ents-to-run is only for debugging purpose
+          [pending-job-ents-to-run task-ents-to-preempt]
+          )))))
 
 (defn rebalance!
   [conn driver pending-job-ents host->spare-resources params]

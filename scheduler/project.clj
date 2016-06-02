@@ -69,6 +69,7 @@
 
 
                  ;;Metrics
+                 [org.clojure/math.numeric-tower "0.0.4"]
                  [metrics-clojure "2.6.1"
                   :exclusions [io.netty/netty org.clojure/clojure]]
                  [metrics-clojure-ring "2.3.0"
