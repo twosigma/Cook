@@ -77,7 +77,7 @@
                       (route/not-found "<h1>Not a valid route</h1>")))})
 
 (def mesos-scheduler
-  {:mesos-scheduler (fnk [[:settings mesos-master mesos-master-hosts mesos-leader-path mesos-failover-timeout mesos-principal mesos-role offer-incubate-time-ms task-constraints riemann] mesos-datomic mesos-datomic-mult curator-framework mesos-pending-jobs-atom]
+  {:mesos-scheduler (fnk [[:settings mesos-master mesos-master-hosts mesos-leader-path mesos-failover-timeout mesos-principal mesos-role offer-incubate-time-ms task-constraints riemann dru-scale] mesos-datomic mesos-datomic-mult curator-framework mesos-pending-jobs-atom]
                          (try
                            (Class/forName "org.apache.mesos.Scheduler")
                            ((lazy-load-var 'cook.mesos/start-mesos-scheduler)
@@ -94,7 +94,8 @@
                             task-constraints
                             (:host riemann)
                             (:port riemann)
-                            mesos-pending-jobs-atom)
+                            mesos-pending-jobs-atom
+                            dru-scale)
                            (catch ClassNotFoundException e
                              (log/warn e "Not loading mesos support...")
                              nil)))})
@@ -353,6 +354,9 @@
                                                                 (java.net.InetAddress/getLocalHost))}
                                                  riemann)]
                                ((lazy-load-var 'cook.reporter/riemann-reporter) config))))
+     :dru-scale (fnk [[:config [:scheduler {dru-scale 1.0}]]]
+                     dru-scale)
+
      :nrepl-server (fnk [[:config [:nrepl {enabled? false} {port 0}]]]
                         (when enabled?
                           (when (zero? port)

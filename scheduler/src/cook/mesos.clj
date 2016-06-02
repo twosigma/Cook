@@ -76,7 +76,7 @@
 
 (defn start-mesos-scheduler
   "Starts a leader elector that runs a mesos."
-  [mesos-master mesos-master-hosts curator-framework mesos-datomic-conn mesos-datomic-mult zk-prefix mesos-failover-timeout mesos-principal mesos-role offer-incubate-time-ms task-constraints riemann-host riemann-port mesos-pending-jobs-atom]
+  [mesos-master mesos-master-hosts curator-framework mesos-datomic-conn mesos-datomic-mult zk-prefix mesos-failover-timeout mesos-principal mesos-role offer-incubate-time-ms task-constraints riemann-host riemann-port mesos-pending-jobs-atom dru-scale]
   (let [zk-framework-id (str zk-prefix "/framework-id")
         datomic-report-chan (async/chan (async/sliding-buffer 4096))
         mesos-heartbeat-chan (async/chan (async/buffer 4096))
@@ -136,6 +136,7 @@
                                                                                                          :driver driver
                                                                                                          :mesos-master-hosts mesos-master-hosts
                                                                                                          :pending-jobs-atom mesos-pending-jobs-atom
+                                                                                                         :dru-scale dru-scale
                                                                                                          :view-incubating-offers view-incubating-offers}))
                                     (counters/inc! mesos-leader)
                                     (async/tap mesos-datomic-mult datomic-report-chan)
