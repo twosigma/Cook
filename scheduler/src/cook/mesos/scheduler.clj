@@ -687,12 +687,17 @@
                (zipmap (util/get-all-resource-types db) (repeat 0.0)))})))
 
 (defn sort-jobs-by-dru
-  "Return a lazy list of job entities ordered by dru"
-  [db]
-  (let [pending-job-ents (util/get-pending-job-ents db)
+  "Return a list of job entities ordered by dru"
+  [filtered-db unfiltered-db]
+  ;; This function does not use the filtered db when it is not necessary in order to get better performance
+  ;; The filtered db is not necessary when an entity could only arrive at a given state if it was already committed
+  ;; e.g. running jobs or when it is always considered committed e.g. shares
+  ;; The unfiltered db can also be used on pending job entities once the filtered db is used to limit
+  ;; to only those jobs that have been committed.
+  (let [pending-job-ents (util/get-pending-job-ents filtered-db unfiltered-db)
         pending-task-ents (into #{} (map util/create-task-ent pending-job-ents))
-        running-task-ents (util/get-running-task-ents db)
-        user->dru-divisors (dru/init-user->dru-divisors db running-task-ents pending-job-ents)
+        running-task-ents (util/get-running-task-ents unfiltered-db)
+        user->dru-divisors (dru/init-user->dru-divisors unfiltered-db running-task-ents pending-job-ents)
         jobs (-<>> (concat running-task-ents pending-task-ents)
                    (group-by util/task-ent->user)
                    (map (fn [[user task-ents]]
@@ -765,11 +770,11 @@
   "Return a list of job entities ordered by dru.
 
    It ranks the jobs by dru first and then apply several filters if provided."
-  [db offensive-job-filter]
+  [filtered-db unfiltered-db offensive-job-filter]
   (timers/time!
     rank-jobs-duration
     (try
-      (let [jobs (->> (sort-jobs-by-dru db)
+      (let [jobs (->> (sort-jobs-by-dru filtered-db unfiltered-db)
                       ;; Apply the offensive job filter first before taking.
                       offensive-job-filter)]
         (log/debug "Total number of pending jobs is:" (count jobs)
@@ -787,7 +792,7 @@
     (chime-at (periodic/periodic-seq (time/now) (time/seconds 5))
               (fn [time]
                 (reset! pending-jobs-atom
-                        (rank-jobs (db conn) offensive-job-filter))))))
+                        (rank-jobs (db conn) (d/db conn) offensive-job-filter))))))
 
 ;;; Offer buffer Design
 ;;; The offer buffer is used to store mesos resource offers made to cook until the matcher is
