@@ -376,7 +376,7 @@
          resources-so-far {:mem 0 :cpus 0}
          prev []]
     (let [required (merge-with + resources-so-far
-                               (select-keys [:mem :cpus] (util/job-ent->resources (last candidates))))]
+                               (select-keys (util/job-ent->resources (last candidates)) [:mem :cpus]))]
       (if (and candidates (>= cpus (:cpus required)) (>= mem (:mem required)))
         (recur remaining-prefixes required candidates)
         prev))))
