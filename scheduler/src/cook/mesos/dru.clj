@@ -14,8 +14,7 @@
 ;; limitations under the License.
 ;;
 (ns cook.mesos.dru
-  (:require [clj-mesos.scheduler :as mesos]
-            [cook.mesos.util :as util]
+  (:require [cook.mesos.util :as util]
             [clojure.tools.logging :as log]
             [clojure.core.async :as async]
             [cook.mesos.share :as share]
@@ -64,19 +63,39 @@
                           task-resources)]
     scored-tasks))
 
-(defn scored-task->priority
-  "The higher the dru of task, the lower the priority"
-  [scored-task]
-  (- (:dru scored-task)))
+(defn sorted-merge
+  "Accepts a seq-able datastructure `colls` where each item is seq-able.
+   Each seq-able in `colls` is assumed to be sorted based on `key-fn`
+   Returns a lazy seq containing the sorted items of `colls`
+
+   Initial code from: http://blog.malcolmsparks.com/?p=42"
+  ([key-fn ^java.util.Comparator comp-fn colls]
+   (letfn [(next-item [[_ colls]]
+             (if (nil? colls)
+               [:end nil] ; Allow nil items in colls
+               (let [[[yield & remaining] & other-colls]
+                     (sort-by (comp key-fn first) comp-fn colls)]
+                 [yield (if remaining (cons remaining other-colls) other-colls)])))]
+     (->> colls
+       (vector :begin) ; next-item input is [item colls], need initial item
+       (iterate next-item)
+       (drop 1) ; Don't care about :begin
+       (map first)
+       (take-while (partial not= :end)))))
+  ([key-fn colls]
+   (sorted-merge key-fn compare colls))
+  ([colls]
+   (sorted-merge identity compare colls)))
 
 (defn init-task->scored-task
-  "Returns a priority-map from task to scored-task sorted by -dru"
-  [user->sorted-running-task-ents
-   user->dru-divisors]
+  "Returns a priority-map from task to scored-task sorted by dru in ascending order.
+   If jobs have the same dru, any ordering is allowed"
+  [user->sorted-running-task-ents user->dru-divisors]
   (->> user->sorted-running-task-ents
-       (r/mapcat (fn [[user task-ents]]
-                   (compute-task-scored-task-pairs task-ents (get user->dru-divisors user))))
-       (into (pm/priority-map-keyfn scored-task->priority))))
+       (map (fn [[user task-ents]]
+              (compute-task-scored-task-pairs task-ents (get user->dru-divisors user))))
+       (sorted-merge (comp :dru second))))
+
 
 (defn next-task->scored-task
   "Computes the priority-map from task to scored-task sorted by -dru for the next cycle.

@@ -687,7 +687,7 @@
                (zipmap (util/get-all-resource-types db) (repeat 0.0)))})))
 
 (defn sort-jobs-by-dru
-  "Return a list of job entities ordered by dru"
+  "Return a lazy list of job entities ordered by dru"
   [db]
   (let [pending-job-ents (util/get-pending-job-ents db)
         pending-task-ents (into #{} (map util/create-task-ent pending-job-ents))
@@ -702,8 +702,7 @@
                    (filter (fn [[task scored-task]]
                              (contains? pending-task-ents task)))
                    (map (fn [[task scored-task]]
-                          (:job/_instance task)))
-                   (reverse))]
+                          (:job/_instance task))))]
     jobs))
 
 (timers/deftimer [cook-mesos scheduler rank-jobs-duration])
@@ -772,11 +771,7 @@
     (try
       (let [jobs (->> (sort-jobs-by-dru db)
                       ;; Apply the offensive job filter first before taking.
-                      offensive-job-filter
-                      ;; Limit number of jobs returned.
-                      ;; This is merely defensive. It's very unlikely that we schedule more than 1024 jobs between two
-                      ;; rank-jobs. Even if we do, this only introduces a delay of seconds to schedule thousands of jobs.
-                      (take 1024))]
+                      offensive-job-filter)]
         (log/debug "Total number of pending jobs is:" (count jobs)
                    "The first 20 pending jobs:" (take 20 jobs))
         jobs)
