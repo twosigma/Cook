@@ -65,11 +65,12 @@
     (resolve var-sym)))
 
 (def raw-scheduler-routes
-  {:scheduler (fnk [mesos-datomic framework-id [:settings task-constraints]]
+  {:scheduler (fnk [mesos-datomic framework-id mesos-pending-jobs-atom [:settings task-constraints]]
                    ((lazy-load-var 'cook.mesos.api/handler)
                     mesos-datomic
                     framework-id
-                    task-constraints))
+                    task-constraints
+                    (fn [] @mesos-pending-jobs-atom)))
    :view (fnk [scheduler]
               scheduler)})
 
@@ -80,7 +81,7 @@
                       (route/not-found "<h1>Not a valid route</h1>")))})
 
 (def mesos-scheduler
-  {:mesos-scheduler (fnk [[:settings mesos-master mesos-master-hosts mesos-leader-path mesos-failover-timeout mesos-principal mesos-role offer-incubate-time-ms task-constraints riemann] mesos-datomic mesos-datomic-mult curator-framework]
+  {:mesos-scheduler (fnk [[:settings mesos-master mesos-master-hosts mesos-leader-path mesos-failover-timeout mesos-principal mesos-role offer-incubate-time-ms task-constraints riemann] mesos-datomic mesos-datomic-mult curator-framework mesos-pending-jobs-atom]
                          (try
                            (Class/forName "org.apache.mesos.Scheduler")
                            ((lazy-load-var 'cook.mesos/start-mesos-scheduler)
@@ -96,7 +97,8 @@
                             offer-incubate-time-ms
                             task-constraints
                             (:host riemann)
-                            (:port riemann))
+                            (:port riemann)
+                            mesos-pending-jobs-atom)
                            (catch ClassNotFoundException e
                              (log/warn e "Not loading mesos support...")
                              nil)))})
@@ -190,7 +192,6 @@
 (def scheduler-server
   (graph/eager-compile
     {:mesos-datomic mesos-datomic
-
      :route full-routes
      :http-server (fnk [[:settings server-port authorization-middleware] [:route view]]
                        (log/info "Launching http server")
@@ -220,6 +221,7 @@
                              (log/info "Starting local ZK server")
                              (.start zookeeper-server)))
      :mesos mesos-scheduler
+     :mesos-pending-jobs-atom (fnk [] (atom []))
      :curator-framework curator-framework}))
 
 (def simple-dns-name

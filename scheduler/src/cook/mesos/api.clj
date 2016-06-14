@@ -459,7 +459,34 @@
                           (::results ctx)))
       ring.middleware.json/wrap-json-params))
 
+(defn waiting-jobs
+  [mesos-pending-jobs-fn]
+  (-> (resource
+        :available-media-types ["application/json"]
+        :allowed-methods [:get]
+        :handle-ok (fn [ctx]
+                     (->> (mesos-pending-jobs-fn)
+                          (map d/touch)
+                          cheshire/generate-string)))
+      ring.middleware.json/wrap-json-params))
+
+(defn running-jobs
+  [conn]
+  (-> (resource
+        :available-media-types ["application/json"]
+        :allowed-methods [:get]
+        :handle-ok (fn [ctx]
+                     (->> (util/get-running-task-ents (db conn))
+                          (map d/touch)
+                          cheshire/generate-string)))
+      ring.middleware.json/wrap-json-params))
+
 (defn handler
-  [conn fid task-constraints]
-  (ANY "/rawscheduler" []
-       (job-resource conn fid task-constraints)))
+  [conn fid task-constraints mesos-pending-jobs-fn]
+  (routes
+    (ANY "/rawscheduler" []
+         (job-resource conn fid task-constraints))
+    (ANY "/queue" []
+         (waiting-jobs mesos-pending-jobs-fn))
+    (ANY "/running" []
+         (running-jobs conn))))
