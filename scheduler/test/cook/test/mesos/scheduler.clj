@@ -50,12 +50,12 @@
     (testing "test1"
       (let [_ (share/set-share! conn "default" :mem 10.0 :cpus 10.0)
             db (d/db conn)]
-        (is (= [j2 j3 j6 j4 j8] (map :db/id (sched/sort-jobs-by-dru db))))))
+        (is (= [j2 j3 j6 j4 j8] (map :db/id (sched/sort-jobs-by-dru db db))))))
     (testing "test2"
         (let [_ (share/set-share! conn "default" :mem 10.0 :cpus 10.0)
               _ (share/set-share! conn "sunil" :mem 100.0 :cpus 100.0)
               db (d/db conn)]
-          (is (= [j8 j2 j3 j6 j4] (map :db/id (sched/sort-jobs-by-dru db)))))))
+          (is (= [j8 j2 j3 j6 j4] (map :db/id (sched/sort-jobs-by-dru db db)))))))
 
   (let [uri "datomic:mem://test-sort-jobs-by-dru"
         conn (restore-fresh-database! uri)
@@ -80,7 +80,7 @@
 
         test-db (d/db conn)]
     (testing
-      (is (= [job-id-2 job-id-3 job-id-1 job-id-4] (map :db/id (sched/sort-jobs-by-dru test-db)))))))
+      (is (= [job-id-2 job-id-3 job-id-1 job-id-4] (map :db/id (sched/sort-jobs-by-dru test-db test-db)))))))
 
 (d/delete-database "datomic:mem://preemption-testdb")
 (d/create-database "datomic:mem://preemption-testdb")
@@ -310,7 +310,7 @@
         offensive-jobs #{job-entity-1 job-entity-2}
         offensive-jobs-ch (sched/make-offensive-job-stifler conn)
         offensive-job-filter (partial sched/filter-offensive-jobs constraints offensive-jobs-ch)]
-    (is (= #{job-entity-2} (set (sched/rank-jobs test-db offensive-job-filter))))))
+    (is (= #{job-entity-2} (set (sched/rank-jobs test-db test-db offensive-job-filter))))))
 
 (deftest test-get-lingering-tasks
   (let [uri "datomic:mem://test-lingering-tasks"

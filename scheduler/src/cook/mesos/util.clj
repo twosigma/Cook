@@ -80,15 +80,21 @@
 (timers/deftimer [cook-mesos scheduler get-pending-jobs-duration])
 
 (defn get-pending-job-ents
-  [db]
-  (timers/time!
-    get-pending-jobs-duration
-    (->> (q '[:find ?j
-              :in $ [?state ...]
-              :where
-              [?j :job/state ?state]]
-            db [:job.state/waiting])
-         (map (fn [[x]] (d/entity db x))))))
+  ([filtered-db]
+   (get-pending-job-ents filtered-db filtered-db))
+  ([filtered-db unfiltered-db]
+   (timers/time!
+     get-pending-jobs-duration
+     ;; This function can use an unfiltered db when creating entities
+     ;; because a job will either be fully committed or fully not committed,
+     ;; therefore if the :job/state attribute was committed the full entity
+     ;; is committed and we need not worry about checking commit status
+     (->> (q '[:find ?j
+               :in $ [?state ...]
+               :where
+               [?j :job/state ?state]]
+             filtered-db [:job.state/waiting])
+          (map (fn [[x]] (d/entity unfiltered-db x)))))))
 
 (timers/deftimer [cook-mesos scheduler get-running-tasks-duration])
 
