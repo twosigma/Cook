@@ -48,6 +48,7 @@ The second is a map from task id to its timeout channel. The third is a timeout 
              :default :dropped
              :priority true)
         :dropped (log/error "dropped heartbeat from task" task-id)
+        :success (log/debug "Received heartbeat from task" task-id)
         nil))
     (catch Throwable ex
       (log/error ex "Failed to handle heartbeat"))))
