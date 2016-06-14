@@ -377,7 +377,7 @@
                              (when-not (:host riemann)
                                (throw (ex-info "You must specific the :host to send the riemann metrics to!" {:riemann riemann})))
                              (when-not (every? string? (:tags riemann))
-                               (throw (ex-info "Riemann tags must be a [\"list\", \"of\", \"strings\"]") riemann))
+                               (throw (ex-info "Riemann tags must be a [\"list\", \"of\", \"strings\"]" riemann)))
                              (let [config (merge {:port 5555
                                                   :local-host (.getHostName
                                                                 (java.net.InetAddress/getLocalHost))}
