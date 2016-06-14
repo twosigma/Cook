@@ -24,15 +24,43 @@
             [clojure.tools.logging :as log]
             [clojure.string :as str]
             [clojure.core.cache :as cache]
+            [clojure.walk :as walk]
             [clj-http.client :as http]
             [ring.middleware.json]
+            [clojure.data.json :as json]
             [liberator.core :refer [resource defresource]]
+            [cheshire.core :as cheshire]
             [cook.mesos.util :as util]
             [clj-time.core :as t])
   (:import java.util.UUID))
 
 (def PosDouble
   (s/both double (s/pred pos? 'pos?)))
+
+(def PortMapping
+  "Schema for Docker Portmapping"
+  {:host-port (s/both s/Int (s/pred #(<= 0 % 65536) 'between-0-and-65536))
+   :container-port (s/both s/Int (s/pred #(<= 0 % 65536) 'between-0-and-65536))
+   (s/optional-key :protocol) s/Str})
+
+(def DockerInfo
+  "Schema for a DockerInfo"
+  {:image s/Str
+   (s/optional-key :network) s/Str
+   (s/optional-key :parameters) [{:key s/Str :value s/Str}]
+   (s/optional-key :port-mapping) [PortMapping]})
+
+(def Volume
+  "Schema for a Volume"
+  {(s/optional-key :container-path) s/Str
+   :host-path s/Str
+   (s/optional-key :mode) s/Str})
+
+(def Container
+  "Schema for a Mesos Container"
+  {:type s/Str
+   (s/optional-key :docker) DockerInfo
+   (s/optional-key :volumes) [Volume]})
 
 (def Uri
   "Schema for a Mesos fetch URI, which has many options"
@@ -58,15 +86,76 @@
    (s/optional-key :ports) [(s/pred zero? 'zero)] ;;TODO add to docs the limited uri/port support
    (s/optional-key :env) {NonEmptyString s/Str}
    (s/optional-key :labels) {NonEmptyString s/Str}
+   (s/optional-key :container) Container
    :cpus PosDouble
    :mem PosDouble
    ;; Make sure the user name is valid. It must begin with a lower case character, end with
    ;; a lower case character or a digit, and has length between 2 to (62 + 2).
    :user (s/both s/Str (s/pred #(re-matches #"\A[a-z][a-z0-9_-]{0,62}[a-z0-9]\z" %) 'lowercase-alphanum?))})
 
+(defn- mk-container-params
+  "Helper for build-container.  Transforms parameters into the datomic schema."
+  [cid params]
+  (when-not (empty? params)
+    {:docker/parameters (mapv (fn [{:keys [key value]}]
+                                {:docker.param/key key
+                                 :docker.param/value value})
+                              params)}))
+
+(defn- mkvolumes
+  "Helper for build-container.  Transforms volumes into the datomic schema."
+  [cid vols]
+  (when-not (empty? vols)
+    (let [vol-maps (mapv (fn [{:keys [container-path host-path mode]}]
+                           (merge (when container-path
+                                    {:container.volume/container-path container-path})
+                                  (when host-path
+                                    {:container.volume/host-path host-path})
+                                  (when mode
+                                    {:container.volume/mode (clojure.string/upper-case mode)})))
+                         vols)]
+      {:container/volumes vol-maps})))
+
+(defn- mk-docker-ports
+  "Helper for build-container.  Transforms port-mappings into the datomic schema."
+  [cid ports]
+  (when-not (empty? ports)
+    (let [port-maps (mapv (fn [{:keys [container-port host-port protocol]}]
+                            (merge (when container-port
+                                     {:docker.portmap/container-port container-port})
+                                   (when host-port
+                                     {:docker.portmap/host-port host-port})
+                                   (when protocol
+                                     {:docker.portmap/protocol (clojure.string/upper-case protocol)})))
+                          ports)]
+      {:docker/port-mapping port-maps})))
+
+(defn- build-container
+  "Helper for submit-jobs, deal with container structure."
+  [id container]
+  (let [container-id (d/tempid :db.part/user)
+        docker-id (d/tempid :db.part/user)
+        ctype (:type container)
+        volumes (or (:volumes container) [])]
+    (if (= (clojure.string/lower-case ctype) "docker")
+      (let [docker (:docker container)
+            params (or (:parameters docker) [])
+            port-mappings (or (:port-mapping docker) [])]
+        [[:db/add id :job/container container-id]
+         (merge {:db/id container-id
+                 :container/type "DOCKER"}
+                (mkvolumes container-id volumes))
+         [:db/add container-id :container/docker docker-id]
+         (merge {:db/id docker-id
+                 :docker/image (:image docker)
+                 :docker/network (:network docker)}
+                (mk-container-params docker-id params)
+                (mk-docker-ports docker-id port-mappings))])
+      {})))
+
 (sm/defn submit-jobs
   [conn jobs :- [Job]]
-  (doseq [{:keys [uuid command max-retries max-runtime priority cpus mem user name ports uris env labels]} jobs
+  (doseq [{:keys [uuid command max-retries max-runtime priority cpus mem user name ports uris env labels container]} jobs
           :let [id (d/tempid :db.part/user)
                 ports (mapv (fn [port]
                               ;;TODO this schema might not work b/c all ports are zero
@@ -103,6 +192,7 @@
                                   :label/key k
                                   :label/value v}]))
                             labels)
+                container (if (nil? container) [] (build-container id container))
                 ;; These are optionally set datoms w/ default values
                 maybe-datoms (concat
                                (when (and name (not= name "cookjob"))
@@ -127,6 +217,7 @@
                           (into uris)
                           (into env)
                           (into labels)
+                          (into container)
                           (into maybe-datoms)
                           (conj txn))))
   "ok")
@@ -144,7 +235,7 @@
 (defn validate-and-munge-job
   "Takes the user and the parsed json from the job and returns proper
    Job objects, or else throws an exception"
-  [db user task-constraints {:strs [cpus mem uuid command priority max_retries max_runtime name uris ports env labels] :as job}]
+  [db user task-constraints {:strs [cpus mem uuid command priority max_retries max_runtime name uris ports env labels container] :as job}]
   (let [munged (merge
                  {:user user
                   :uuid (UUID/fromString uuid)
@@ -156,6 +247,8 @@
                   :ports (or ports [])
                   :cpus (double cpus)
                   :mem (double mem)}
+                 (when container
+                   {:container (walk/keywordize-keys container)})
                  (when uris
                    {:uris (map (fn [{:strs [value executable cache extract]}]
                                  (merge {:value value}
@@ -313,7 +406,7 @@
                           (try
                             (cond
                               (empty? params)
-                              [true {::error "must supply at least on job to start. Are you specifying that this is application/json?"}]
+                              [true {::error "must supply at least one job to start. Are you specifying that this is application/json?"}]
                               :else
                               [false {::jobs (mapv #(validate-and-munge-job
                                                       (db conn)

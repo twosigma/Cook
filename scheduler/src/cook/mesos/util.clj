@@ -15,6 +15,7 @@
 ;;
 (ns cook.mesos.util
   (:require [clojure.tools.logging :as log]
+            [clojure.walk :as walk]
             [datomic.api :as d :refer (q)]
             [metatransaction.core :refer (db)]
             [metrics.timers :as timers]))
@@ -27,6 +28,31 @@
             [?e :resource.type/mesos-name ?ident]]
           db)
        (map first)))
+
+(defn without-ns
+  [k]
+  (if (keyword? k)
+    (keyword (name k))
+    k))
+
+(defn deep-transduce-kv
+  "Recursively applies the transducer xf over all kvs in the map or
+  any nested maps"
+  [xf m]
+  (walk/postwalk (fn [x]
+                   (if (map? x)
+                     (into {} xf x)
+                     x))
+                 m))
+
+(defn job-ent->container
+  "Take a job entity and return its container"
+  [db job job-ent]
+  (when-let [ceid (:db/id (:job/container job-ent))]
+    (->> (d/pull db "[*]" ceid)
+         (deep-transduce-kv (comp
+                             (filter (comp (partial not= :db/id) first))
+                             (map (juxt (comp without-ns first) second)))))))
 
 (defn job-ent->env
   "Take a job entity and return the environment variable map"
