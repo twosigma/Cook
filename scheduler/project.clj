@@ -16,7 +16,7 @@
 (defproject cook "1.0.1-SNAPSHOT"
   :description "This launches jobs on a Mesos cluster with fair sharing and preemption"
   :license {:name "Apache License, Version 2.0"}
-  :dependencies [[org.clojure/clojure "1.7.0"]
+  :dependencies [[org.clojure/clojure "1.8.0"]
 
                  ;;Data marshalling
                  [org.clojure/data.codec "0.1.0"]
