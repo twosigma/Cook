@@ -209,8 +209,11 @@
                                      :task-killed
                                      :task-lost} :instance.status/failed)
                  prior-job-state (:job/state (d/entity db job))
-                 progress (when (:data status)
-                            (:percent (read-string (String. (:data status)))))
+                 progress (try 
+                              (when (:data status)
+                                  (:percent (read-string (String. (:data status)))))
+                          (catch Exception e
+                              (log/debug e "Error parse mesos status data. Is it in the format we expect?")))
                  instance-runtime (- (.getTime (now)) ; Used for reporting
                                      (.getTime (:instance/start-time (d/entity db instance))))
                  job-resources (util/job-ent->resources job-ent)]
