@@ -19,6 +19,7 @@
            [cook.mesos.util :as util]
            [cook.mesos.share :as share]
            [cook.test.mesos.schema :as schema :refer (restore-fresh-database! create-dummy-job create-dummy-instance)]
+           [plumbing.core :refer [map-vals]]
            [datomic.api :as d :refer (q db)]))
 
 (deftest test-compute-task-scored-task-pairs
@@ -66,7 +67,7 @@
         (is (= {"ljin" {:mem 25.0 :cpus 25.0} "wzhao" {:mem 10.0 :cpus 10.0} "sunil" {:mem 25.0 :cpus 25.0}}
                (dru/init-user->dru-divisors db running-task-ents pending-job-ents)))))))
 
-(deftest test-init-task->scored-task
+(deftest test-sorted-task-scored-task-pairs
   (testing "dru order correct"
     (let [datomic-uri "datomic:mem://test-init-task_scored-task"
           conn (schema/restore-fresh-database! datomic-uri)
@@ -79,12 +80,13 @@
           tasks (doseq [job jobs]
                   (schema/create-dummy-instance conn job :instance-status :instance.status/running))
           db (d/db conn)
-          task-ents (util/get-running-task-ents db) ]
+          task-ents (util/get-running-task-ents db)]
       (let [share {:mem 10.0 :cpus 10.0}
             ordered-drus [1.0 1.0 1.0 1.5 4.0 5.5]]
         (is (= ordered-drus
                (map (comp :dru second)
-                    (dru/init-task->scored-task (group-by util/task-ent->user task-ents)
+                    (dru/sorted-task-scored-task-pairs (map-vals (partial sort-by identity util/same-user-task-comparator) 
+                                                          (group-by util/task-ent->user task-ents))
                                                 {"ljin" share "wzhao" share "sunil" share}))))))))
 
 (comment (run-tests))

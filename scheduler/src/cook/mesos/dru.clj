@@ -19,8 +19,7 @@
             [clojure.core.async :as async]
             [cook.mesos.share :as share]
             [clojure.core.reducers :as r]
-            [swiss.arrows :refer :all]
-            [clojure.data.priority-map :as pm]))
+            [swiss.arrows :refer :all]))
 
 (defrecord ScoredTask [task dru mem cpus])
 
@@ -87,8 +86,8 @@
   ([colls]
    (sorted-merge identity compare colls)))
 
-(defn init-task->scored-task
-  "Returns a priority-map from task to scored-task sorted by dru in ascending order.
+(defn sorted-task-scored-task-pairs
+  "Returns a lazy sequence of [task,scored-task] pairs sorted by dru in ascending order.
    If jobs have the same dru, any ordering is allowed"
   [user->sorted-running-task-ents user->dru-divisors]
   (->> user->sorted-running-task-ents

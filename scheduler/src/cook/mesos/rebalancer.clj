@@ -173,7 +173,8 @@
                                             (map (fn [[user task-ents]]
                                                    [user (into (sorted-set-by util/same-user-task-comparator) task-ents)]))
                                             (into {}))
-        task->scored-task (dru/init-task->scored-task user->sorted-running-task-ents user->dru-divisors)]
+        task->scored-task (into (pm/priority-map-keyfn (comp - :dru))
+                                (dru/sorted-task-scored-task-pairs user->sorted-running-task-ents user->dru-divisors))]
     (->State task->scored-task user->sorted-running-task-ents host->spare-resources user->dru-divisors)))
 
 (defn next-state

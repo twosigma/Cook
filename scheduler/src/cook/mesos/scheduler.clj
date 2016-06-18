@@ -711,7 +711,7 @@
                    (map (fn [[user task-ents]]
                           [user (into (sorted-set-by util/same-user-task-comparator) task-ents)]))
                    (into {})
-                   (dru/init-task->scored-task <> user->dru-divisors)
+                   (dru/sorted-task-scored-task-pairs <> user->dru-divisors)
                    (filter (fn [[task scored-task]]
                              (contains? pending-task-ents task)))
                    (map (fn [[task scored-task]]
