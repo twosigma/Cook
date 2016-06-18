@@ -34,7 +34,10 @@
    The first list is the correct list, which may be missing keys.
    The second list can be fully filled in by Cook with defaults."
   [gold-standard new-data]
-  (let [resp-uris (map (fn [gold copy]
+  ; URI is order independent
+  (let [gold-standard (sort-by #(or (get % :value) (get % "value")) gold-standard)
+        new-data (sort-by :value new-data)
+        resp-uris (map (fn [gold copy]
                          (select-keys copy (keys gold)))
                        gold-standard
                        new-data)]
@@ -64,7 +67,7 @@
              "labels" labels
              "cpus" 2.0
              "mem" 2048.0}
-        h (handler conn "my-framework-id" {:cpus 12 :memory-gb 100})]
+        h (handler conn "my-framework-id" {:cpus 12 :memory-gb 100} (fn [] []))]
     (is (<= 200
             (:status (h {:request-method :post
                          :scheme :http
@@ -120,7 +123,7 @@
                             "max_runtime" 1000000
                             "cpus" cpus
                             "mem" mem})
-        h (handler conn "my-framework-id" {:cpus 3.0 :memory-gb 2})]
+        h (handler conn "my-framework-id" {:cpus 3.0 :memory-gb 2} (fn [] []))]
     (testing "Within limits"
       (is (<= 200
               (:status (h {:request-method :post
