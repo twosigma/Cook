@@ -297,15 +297,23 @@
     [(next-state state pending-job preemption-decision) preemption-decision]
     [state nil]))
 
+(defn taskless?
+  "Returns true iff the job has no instances with status running or unknown."
+  [job]
+  (not-any? #(contains? #{:instance.status/running :instance.status/unknown}
+                        (:instance/status %))
+            (:job/instance job)))
+
 (defn rebalance
   "Takes a db, a list of pending job entities, a map of spare resources and params.
    Returns a list of pending job entities to run and a list of task entities to preempt"
   [db pending-job-ents host->spare-resources {:keys [max-preemption] :as params}]
   (let [timer (timers/start rebalance-duration)
-        init-state (init-state db (util/get-running-task-ents db) pending-job-ents host->spare-resources)]
+        jobs-to-make-room-for (filter taskless? pending-job-ents)
+        init-state (init-state db  (util/get-running-task-ents db) jobs-to-make-room-for host->spare-resources)]
     (loop [state init-state
            remaining-preemption max-preemption
-           [pending-job-ent & pending-job-ents] pending-job-ents
+           [pending-job-ent & jobs-to-make-room-for] jobs-to-make-room-for
            pending-job-ents-to-run []
            task-ents-to-preempt []]
       (if (and pending-job-ent (pos? remaining-preemption))
@@ -313,12 +321,12 @@
           (if preemption-decision
             (recur state'
                    (dec remaining-preemption)
-                   pending-job-ents
+                   jobs-to-make-room-for
                    (conj pending-job-ents-to-run pending-job-ent)
                    (into task-ents-to-preempt (:task preemption-decision)))
             (recur state'
                    remaining-preemption
-                   pending-job-ents
+                   jobs-to-make-room-for
                    pending-job-ents-to-run
                    task-ents-to-preempt)))
 
