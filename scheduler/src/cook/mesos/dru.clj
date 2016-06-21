@@ -19,14 +19,19 @@
             [clojure.core.async :as async]
             [cook.mesos.share :as share]
             [clojure.core.reducers :as r]
+            [metrics.timers :as timers]
             [swiss.arrows :refer :all]))
 
 (defrecord ScoredTask [task dru mem cpus])
 
+(timers/deftimer [cook-mesos dru init-user->dru-divisors-duration])
+
 (defn init-user->dru-divisors
   "Initializes dru divisors map. This map will contain all users that have a running task or pending job"
   [db running-task-ents pending-job-ents]
-  (let [all-running-users (->> running-task-ents
+  (timers/time!
+    init-user->dru-divisors-duration
+    (let [all-running-users (->> running-task-ents
                                (map util/task-ent->user)
                                (into #{}))
         all-pending-users (->> pending-job-ents
@@ -37,7 +42,7 @@
                                 (map (fn [user]
                                        [user (share/get-share db user)]))
                                 (into {}))]
-    user->dru-divisors))
+    user->dru-divisors)))
 
 (defn accumulate-resources
   "Takes a seq of task resources, returns a seq of accumulated resource usage the nth element is the sum of 0..n"
@@ -86,15 +91,18 @@
   ([colls]
    (sorted-merge identity compare colls)))
 
+(timers/deftimer [cook-mesos dru sorted-task-scored-task-pairs-duration])
+
 (defn sorted-task-scored-task-pairs
   "Returns a lazy sequence of [task,scored-task] pairs sorted by dru in ascending order.
    If jobs have the same dru, any ordering is allowed"
   [user->sorted-running-task-ents user->dru-divisors]
-  (->> user->sorted-running-task-ents
+  (timers/time!
+    sorted-task-scored-task-pairs-duration
+    (->> user->sorted-running-task-ents
        (map (fn [[user task-ents]]
               (compute-task-scored-task-pairs task-ents (get user->dru-divisors user))))
-       (sorted-merge (comp :dru second))))
-
+       (sorted-merge (comp :dru second)))))
 
 (defn next-task->scored-task
   "Computes the priority-map from task to scored-task sorted by -dru for the next cycle.

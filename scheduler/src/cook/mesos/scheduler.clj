@@ -694,6 +694,8 @@
                ;; Return all 0's for a user who does NOT have any running job.
                (zipmap (util/get-all-resource-types db) (repeat 0.0)))})))
 
+(timers/deftimer [cook-mesos scheduler sort-jobs-hierarchy-duration])
+
 (defn sort-jobs-by-dru
   "Return a list of job entities ordered by dru"
   [filtered-db unfiltered-db]
@@ -706,16 +708,18 @@
         pending-task-ents (into #{} (map util/create-task-ent pending-job-ents))
         running-task-ents (util/get-running-task-ents unfiltered-db)
         user->dru-divisors (dru/init-user->dru-divisors unfiltered-db running-task-ents pending-job-ents)
-        jobs (-<>> (concat running-task-ents pending-task-ents)
-                   (group-by util/task-ent->user)
-                   (map (fn [[user task-ents]]
-                          [user (into (sorted-set-by util/same-user-task-comparator) task-ents)]))
-                   (into {})
-                   (dru/sorted-task-scored-task-pairs <> user->dru-divisors)
-                   (filter (fn [[task scored-task]]
-                             (contains? pending-task-ents task)))
-                   (map (fn [[task scored-task]]
-                          (:job/_instance task))))]
+        jobs (timers/time!
+               sort-jobs-hierarchy-duration
+               (-<>> (concat running-task-ents pending-task-ents)
+                     (group-by util/task-ent->user)
+                     (map (fn [[user task-ents]]
+                            [user (into (sorted-set-by util/same-user-task-comparator) task-ents)]))
+                     (into {})
+                     (dru/sorted-task-scored-task-pairs <> user->dru-divisors)
+                     (filter (fn [[task scored-task]]
+                               (contains? pending-task-ents task)))
+                     (map (fn [[task scored-task]]
+                            (:job/_instance task)))))]
     jobs))
 
 (timers/deftimer [cook-mesos scheduler rank-jobs-duration])
