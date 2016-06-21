@@ -232,26 +232,9 @@
 #_(def dev-mem-settings
   {:server-port (fnk [] 12321)
    :authorization-middleware (fnk [] (fn [h] (fn [req] (h (assoc req :authorization/user (System/getProperty "user.name"))))))
-   ;:authorization-middleware (fnk [federation-privileged-principal]
-   ;                               (partial (lazy-load-var 'cook.spnego/require-gss) federation-privileged-principal))
    :sim-agent-path (fnk [] "/usr/bin/sim-agent") ;;TODO parameterize
    :mesos-datomic-uri (fnk [] "datomic:mem://mesos-jobs")
    :dns-name simple-dns-name
-   :federation-remotes (fnk [] [])
-   :federation-privileged-principal (fnk [] nil)
-   :federation-threads (fnk [] 4)
-   :federation-circuit-breaker-opts (fnk []
-                                         {:failure-threshold 0
-                                          :lifetime-ms (* 1000 60)
-                                          :response-timeout-ms (* 1000 60)
-                                          :reset-timeout-ms (* 1000 60)
-                                          :failure-logger-size 10000})
-   ;:federation-circuit-breaker-opts (fnk []
-   ;                                      {:failure-threshold 0
-   ;                                       :lifetime-ms (* 1000 60 10)
-   ;                                       :response-timeout-ms (* 1000 60 5)
-   ;                                       :reset-timeout-ms (* 1000 60)
-   ;                                       :failure-logger-size 10000})
    :zookeeper (fnk []
                    "localhost:3291")
    :zookeeper-server (fnk []
@@ -287,7 +270,7 @@
   (graph/eager-compile
     {:server-port (fnk [[:config port]]
                        port)
-     :authorization-middleware (fnk [[:config [:authorization {one-user false} {kerberos false} {http-basic false}]] federation-privileged-principal]
+     :authorization-middleware (fnk [[:config [:authorization {one-user false} {kerberos false} {http-basic false}]]]
                                     (cond
                                       http-basic (do
                                                    (log/info "Using http basic authentication")
@@ -299,7 +282,7 @@
                                                      (h (assoc req :authorization/user one-user)))))
                                       kerberos (do
                                                  (log/info "Using kerberos middleware")
-                                                 (partial (lazy-load-var 'cook.spnego/require-gss) federation-privileged-principal))
+                                                 (lazy-load-var 'cook.spnego/require-gss))
                                       :else (throw (ex-info "Missing authorization configuration" {}))))
      :sim-agent-path (fnk [] "/usr/bin/sim-agent")
      :mesos-datomic-uri (fnk [[:config [:database datomic-uri]]]
@@ -308,15 +291,6 @@
                              datomic-uri)
      :dns-name simple-dns-name
      :hostname (fnk [] (.getCanonicalHostName (java.net.InetAddress/getLocalHost)))
-     :federation-remotes (fnk [] [])
-     :federation-privileged-principal (fnk [] nil)
-     :federation-threads (fnk [] 4)
-     :federation-circuit-breaker-opts (fnk []
-                                           {:failure-threshold 0
-                                            :lifetime-ms (* 1000 60)
-                                            :response-timeout-ms (* 1000 60)
-                                            :reset-timeout-ms (* 1000 60)
-                                            :failure-logger-size 10000})
      :local-zk-port (fnk [[:config [:zookeeper {local-port 3291}]]]
                          local-port)
      :zookeeper-server (fnk [[:config [:zookeeper {local? false}]] local-zk-port]

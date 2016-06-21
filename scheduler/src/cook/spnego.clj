@@ -74,11 +74,8 @@
    authentication. If SPNEGO is successful then the handler `rh`
    will be run, otherwise the handler will not be run and 401
    returned instead.  This middleware doesn't handle cookies for
-   authentication, but that should be stacked before this handler.
-
-   The privileged-principal is allowed to act on behalf of other
-   users."
-  [privileged-principal rh]
+   authentication, but that should be stacked before this handler."
+  [rh]
   (fn [req]
     (if (get-in req [:headers "authorization"])
       (let [gss_context (gss-context-init)]
@@ -86,10 +83,7 @@
           (let [princ (gss-get-princ gss_context)]
             (-> req
                 (assoc :krb5-authenticated-princ princ
-                       :authorization/user (or (and (not (nil? privileged-principal))
-                                                    (= princ privileged-principal)
-                                                    (get-in req [:headers "x-cook-on-behalf-of"]))
-                                               (first (str/split princ #"@" 2))))
+                       :authorization/user (first (str/split princ #"@" 2)))
                 (rh)
                 (header "WWW-Authenticate" token)))
           (response-401-negotiate)))
