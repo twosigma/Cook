@@ -15,7 +15,6 @@
 ;;
 (ns cook.mesos.api
   (:require [datomic.api :as d :refer (q)]
-            [cook.rest.federation :as fed]
             [metatransaction.core :refer (db)]
             [schema.core :as s]
             [schema.macros :as sm]
