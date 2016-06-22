@@ -31,10 +31,10 @@
                  [amalloy/ring-buffer "1.1"]
                  [lonocloud/synthread "1.0.4"]
                  [org.clojure/tools.namespace "0.2.4"]
-                 [org.clojure/core.cache "0.6.3"]
-                 [org.clojure/core.memoize "0.5.6"]
+                 [org.clojure/core.cache "0.6.4"]
+                 [org.clojure/core.memoize "0.5.8"]
                  [clj-time "0.9.0"]
-                 [org.clojure/core.async "0.1.346.0-17112a-alpha"]
+                 [org.clojure/core.async "0.2.374"]
                  [prismatic/schema "0.2.1"
                   :exclusions [potemkin]]
                  [clojure-miniprofiler "0.4.0"]
@@ -42,6 +42,10 @@
                  [org.clojure/data.priority-map "0.0.5"]
                  [swiss-arrows "1.0.0"]
                  [riddley "0.1.10"]
+                 [com.netflix.fenzo/fenzo-core "0.8.2"
+                  :exclusions [org.apache.mesos/mesos
+                               org.slf4j/slf4j-api
+                               org.slf4j/slf4j-simple]]
 
                  ;;Logging
                  [org.clojure/tools.logging "0.2.6"]
@@ -65,6 +69,7 @@
 
 
                  ;;Metrics
+                 [org.clojure/math.numeric-tower "0.0.4"]
                  [metrics-clojure "2.6.1"
                   :exclusions [io.netty/netty org.clojure/clojure]]
                  [metrics-clojure-ring "2.3.0"

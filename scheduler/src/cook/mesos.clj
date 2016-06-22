@@ -80,7 +80,8 @@
   (let [zk-framework-id (str zk-prefix "/framework-id")
         datomic-report-chan (async/chan (async/sliding-buffer 4096))
         mesos-heartbeat-chan (async/chan (async/buffer 4096))
-        {:keys [scheduler view-incubating-offers view-mature-offers]}
+        current-driver (atom nil)
+        {:keys [scheduler view-incubating-offers]}
         (sched/create-datomic-scheduler
                    mesos-datomic-conn
                    (fn set-or-create-framework-id [framework-id]
@@ -88,13 +89,13 @@
                       curator-framework
                       zk-framework-id
                       (.getBytes framework-id "UTF-8")))
+                   current-driver
                    mesos-pending-jobs-atom
                    mesos-heartbeat-chan
                    offer-incubate-time-ms
                    task-constraints)
         framework-id (when-let [bytes (curator/get-or-nil curator-framework zk-framework-id)]
                        (String. bytes))
-        current-driver (atom nil)
         leader-selector (LeaderSelector.
                           curator-framework
                           zk-prefix
@@ -135,8 +136,7 @@
                                                                                                          :driver driver
                                                                                                          :mesos-master-hosts mesos-master-hosts
                                                                                                          :pending-jobs-atom mesos-pending-jobs-atom
-                                                                                                         :view-incubating-offers view-incubating-offers
-                                                                                                         :view-mature-offers view-mature-offers}))
+                                                                                                         :view-incubating-offers view-incubating-offers}))
                                     (counters/inc! mesos-leader)
                                     (async/tap mesos-datomic-mult datomic-report-chan)
                                     (let [kill-monitor (cook.mesos.scheduler/monitor-tx-report-queue datomic-report-chan mesos-datomic-conn current-driver)]
