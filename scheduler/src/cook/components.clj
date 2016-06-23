@@ -16,10 +16,6 @@
 (ns cook.components
   (:require [plumbing.core :refer (fnk)]
             [ring.middleware.params :refer (wrap-params)]
-            [clj-http-async-pool.core]
-            [clj-http-async-pool.circuit-breaker :as circuit-breaker]
-            [clj-http-async-pool.pool :as http-pool]
-            [clj-http-async-pool.router :as http-pool-router]
             [clj-pid.core :as pid]
             [clojure.java.io :as io]
             [clj-logging-config.log4j :as log4j-conf]
