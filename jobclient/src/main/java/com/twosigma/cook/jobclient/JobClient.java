@@ -44,6 +44,7 @@ import org.apache.http.auth.AuthSchemeProvider;
 import org.apache.http.auth.AuthScope;
 import org.apache.http.auth.Credentials;
 import org.apache.http.auth.UsernamePasswordCredentials;
+import org.apache.http.client.ClientProtocolException;
 import org.apache.http.client.CredentialsProvider;
 import org.apache.http.client.config.AuthSchemes;
 import org.apache.http.client.config.RequestConfig;
@@ -135,20 +136,20 @@ public class JobClient implements Closeable {
 
         private HttpClientBuilder _httpClientBuilder;
 
+        private InstanceDecorator _instanceDecorator;
+
         public Builder() {
             _httpClientBuilder = HttpClientBuilder.create();
         }
 
         /**
          * Prior to {@code Build()}, host, port, and endpoint for the Cook scheduler must be specified either by user or
-         * properties. If any of them is not specified, it will throw a {@link DeathError}.
+         * properties.
          *
          * @return a {@link JobClient}.
          * @throws URISyntaxException
          */
         public JobClient build() throws URISyntaxException {
-            // host, port, and endpoint MUST be specified either by user
-
             // The definition of the following parameters are optional.
             if (_statusUpdateIntervalSeconds == null) {
                 _statusUpdateIntervalSeconds = DEFAULT_STATUS_UPDATE_INTERVAL_SECONDS;
@@ -172,6 +173,7 @@ public class JobClient implements Closeable {
                     Preconditions.checkNotNull(_endpoint, "endpoint must be set"),
                     _statusUpdateIntervalSeconds,
                     _batchRequestSize,
+                    _instanceDecorator,
                     _httpClientBuilder.build());
         }
 
@@ -322,6 +324,19 @@ public class JobClient implements Closeable {
         public Integer getRequestTimeout() {
             return _requestTimeoutSeconds;
         }
+
+        /**
+         * Set the instance decorator which could be used to decorate job instances querying from this client.
+         *
+         * @param decorator specifies the {@link InstanceDecorator} which could be {@code null}.
+         * @return this builder.
+         */
+        public Builder setInstanceDecorator(InstanceDecorator decorator) {
+            _instanceDecorator = decorator;
+            return this;
+        }
+
+        public  InstanceDecorator getInstanceDecorator() { return  _instanceDecorator; }
     }
 
     /**
@@ -365,23 +380,21 @@ public class JobClient implements Closeable {
     private int _statusUpdateInterval;
 
     /**
-     * @param host
-     * @param port
-     * @param endpoint
-     * @param listenerManager
-     * @param statusUpdateInterval
-     * @throws URISyntaxException
+     * The job instance decorator which will be used to decorate job instances when querying from this client.
      */
+    private InstanceDecorator _instanceDecorator;
+
     private JobClient(String host, int port, String endpoint, int statusUpdateInterval, int batchSubmissionLimit,
-            CloseableHttpClient httpClient) throws URISyntaxException {
+            InstanceDecorator instanceDecorator, CloseableHttpClient httpClient) throws URISyntaxException {
         _statusUpdateInterval = statusUpdateInterval;
         _batchRequestSize = batchSubmissionLimit;
-        _activeUUIDToJob = new ConcurrentHashMap<UUID, Job>();
-        _activeUUIDToListener = new ConcurrentHashMap<UUID, JobListener>();
+        _activeUUIDToJob = new ConcurrentHashMap<>();
+        _activeUUIDToListener = new ConcurrentHashMap<>();
         _uri = new URIBuilder().setScheme("http").setHost(host).setPort(port).setPath(endpoint).build();
         _httpClient = httpClient;
         _log.info("Open ScheduledExecutorService for listener.");
         _listenerService = startListenService();
+        _instanceDecorator = instanceDecorator;
     }
 
     @Override
@@ -458,9 +471,8 @@ public class JobClient implements Closeable {
      * -- firstly associate each job with the provided {@link JobListener}<br>
      * -- secondly submit these jobs to Cook scheduler and track them until they complete.
      *
-     * @param jobs
-     * @param listener
-     * @param matcher
+     * @param jobs The list of jobs expected to submit.
+     * @param listener specifies an instance of {@link JobListener} listening all job status updates.
      * @throws JobClientException
      */
     public void submit(List<Job> jobs, JobListener listener)
@@ -533,13 +545,14 @@ public class JobClient implements Closeable {
         if (entity == null) {
             throw releaseAndCreateException(httpRequest, "The response entity is null!", null);
         }
-        String response;
+        String response = null;
         try {
             response = EntityUtils.toString(entity);
             // Ensure that the entity content has been fully consumed and the underlying stream has been closed.
             EntityUtils.consume(entity);
         } catch (ParseException | IOException e) {
-            throw releaseAndCreateException(httpRequest, "Can not parse the response for POST request " + json + " via uri " + _uri, e);
+            throw releaseAndCreateException(httpRequest, "Can not parse the response for POST request " + json +
+                    " via uri " + _uri, e);
         }
         if (_log.isDebugEnabled()) {
             _log.debug("Response String for submitting jobs" + json.toString() + " is " + response);
@@ -622,18 +635,19 @@ public class JobClient implements Closeable {
                         + statusLine.getReasonPhrase() + ", " + statusLine.getStatusCode(), null);
             }
             // Parse the response.
+            String response = null;
             try {
                 // parse the response to string.
                 final HttpEntity entity = httpResponse.getEntity();
-                final String response = EntityUtils.toString(entity);
+                response = EntityUtils.toString(entity);
                 // Ensure that the entity content has been fully consumed and the underlying stream has been closed.
                 EntityUtils.consume(entity);
-                for (Job job : Job.parseFromJSON(response)) {
+                for (Job job : Job.parseFromJSON(response, _instanceDecorator)) {
                     UUIDToJob.put(job.getUUID(), job);
                 }
             } catch (JSONException | ParseException | IOException e) {
-                throw new JobClientException("Can not parse the response for GET request " + params + " via uri "
-                        + _uri, e);
+                throw new JobClientException("Can not parse the response = " + response + " for GET request " + params +
+                        " via uri " + _uri, e);
             } finally {
                 httpRequest.releaseConnection();
             }
