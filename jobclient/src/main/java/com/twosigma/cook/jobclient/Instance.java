@@ -48,7 +48,7 @@ final public class Instance {
     public static enum Status {
         UNKNOWN("UNKNOWN"), RUNNING("RUNNING"), SUCCESS("SUCCESS"), FAILED("FAILED");
 
-        private Status(String name) {}
+        Status(String name) {}
 
         /**
          * @param name specifies a string representation of status.
@@ -81,8 +81,9 @@ final public class Instance {
          */
         public Instance build() {
             Preconditions.checkNotNull(_taskID, "TaskID can not be null!");
-            if (_status == null)
+            if (_status == null) {
                 _status = Status.UNKNOWN;
+            }
             return new Instance(_taskID, _slaveID, _executorID, _startTime, _endTime, _status, _reasonCode,
                     _outputURL, _hostName);
         }
@@ -95,7 +96,6 @@ final public class Instance {
          */
         public Builder setTaskID(UUID uuid) {
             Preconditions.checkNotNull(uuid, "TaskID can not be null!");
-            Preconditions.checkState(_taskID == null, "Task ID has been set!");
             _taskID = uuid;
             return this;
         }
@@ -108,7 +108,6 @@ final public class Instance {
          * @return this builder.
          */
         public Builder setSlaveID(String slaveID) {
-            Preconditions.checkState(_slaveID == null, "Slave ID has been set!");
             _slaveID = slaveID;
             return this;
         }
@@ -120,7 +119,6 @@ final public class Instance {
          * @return this builder.
          */
         public Builder setExecutorID(String executorID) {
-            Preconditions.checkState(_executorID == null, "Executor ID has been set!");
             _executorID = executorID;
             return this;
         }
@@ -132,7 +130,6 @@ final public class Instance {
          * @return this builder.
          */
         public Builder setStartTime(Long startTime) {
-            Preconditions.checkState(_startTime == null, "Start time has been set!");
             _startTime = startTime;
             return this;
         }
@@ -144,7 +141,6 @@ final public class Instance {
          * @return this builder.
          */
         public Builder setEndTime(Long endTime) {
-            Preconditions.checkState(_endTime == null, "End time has been set!");
             _endTime = endTime;
             return this;
         }
@@ -156,13 +152,11 @@ final public class Instance {
          * @return this builder.
          */
         public Builder setStatus(Status status) {
-            Preconditions.checkState(_status == null, "Status has been set!");
             _status = status;
             return this;
         }
 
         public Builder setReasonCode(Long reasonCode) {
-            Preconditions.checkState(_reasonCode == null, "Reason code has been set!");
             _reasonCode = reasonCode;
             return this;
         }
@@ -175,7 +169,6 @@ final public class Instance {
          * @return this builder.
          */
         public Builder setOutputURL(String outputURL) {
-            Preconditions.checkState(_outputURL == null, "Output URL has been set!");
             _outputURL = outputURL;
             return this;
         }
@@ -187,9 +180,40 @@ final public class Instance {
          * @return this builder.
          */
         public Builder setHostName(String hostName) {
-            Preconditions.checkState(_hostName == null, "Host name URL has been set!");
             _hostName = hostName;
             return this;
+        }
+
+        public UUID getTaskID() {
+            return _taskID;
+        }
+
+        public String getSlaveID() {
+            return _slaveID;
+        }
+
+        public String getExecutorID() {
+            return _executorID;
+        }
+
+        public Long getStartTime() {
+            return _startTime;
+        }
+
+        public Long getEndTime() {
+            return _endTime;
+        }
+
+        public Status getStatus() {
+            return _status;
+        }
+
+        public String getOutputURL() {
+            return _outputURL;
+        }
+
+        public String getHostName() {
+            return _hostName;
         }
     }
 
@@ -251,11 +275,14 @@ final public class Instance {
      * Parse a JSON array representing a list of {@link Instance}.
      *
      * @param listOfInstances specifies a JSON array representing a list of {@link Instance}s.
+     * @param decorator       specifies {@link InstanceDecorator} expected to decorate instances parsed from JSON.
+     *                        If it is {@code null}, it will do nothing.
      * @return a list of {@link Instance}s.
      * @throws JSONException
      */
-    public static List<Instance> parseFromJSON(JSONArray listOfInstances) throws JSONException {
-        List<Instance> instances = new ArrayList<Instance>(listOfInstances.length());
+    public static List<Instance> parseFromJSON(JSONArray listOfInstances, InstanceDecorator decorator)
+            throws JSONException {
+        final List<Instance> instances = new ArrayList<>(listOfInstances.length());
         for (int i = 0; i < listOfInstances.length(); ++i) {
             JSONObject json = listOfInstances.getJSONObject(i);
             Builder instanceBuilder = new Builder();
@@ -265,25 +292,43 @@ final public class Instance {
             instanceBuilder.setHostName(json.getString("hostname"));
             instanceBuilder.setStatus(Status.fromString(json.getString("status")));
             instanceBuilder.setStartTime(json.getLong("start_time"));
-            if (json.has("end_time"))
+            if (json.has("end_time")) {
                 instanceBuilder.setEndTime(json.getLong("end_time"));
-            if (json.has("output_url"))
+            }
+            if (json.has("output_url")) {
                 instanceBuilder.setOutputURL(json.getString("output_url"));
-            if (json.has("reason_code"))
+            }
+            if (json.has("reason_code")) {
                 instanceBuilder.setReasonCode(json.getLong("reason_code"));
-
+            }
+            if (decorator != null) {
+                instanceBuilder = decorator.decorate(instanceBuilder);
+            }
             Instance instance = instanceBuilder.build();
             instances.add(instance);
         }
         return instances;
     }
 
+    /**
+     * Similar to {@code List<Instance> parseFromJSON(JSONArray listOfInstances, InstanceDecorator decorator)} with
+     * {@code decorator} being null.
+     *
+     * @param listOfInstances specifies a JSON array representing a list of {@link Instance}s.
+     * @return a list of {@link Instance}s.
+     * @throws JSONException
+     */
+    public static List<Instance> parseFromJSON(JSONArray listOfInstances)
+            throws JSONException {
+        return parseFromJSON(listOfInstances, null);
+    }
+
     @Override
     public String toString() {
         return "Instance [_taskID=" + _taskID + ", _slaveID=" + _slaveID + ", _executorID="
                 + _executorID + ", _startTime=" + _startTime + ", _endTime=" + _endTime
-                + ", _status=" + _status + ", _reasonCode=" + _reasonCode + ", _outputURL=" + _outputURL + ", _hostName="
-                + _hostName + "]";
+                + ", _status=" + _status + ", _reasonCode=" + _reasonCode + ", _outputURL=" + _outputURL
+                + ", _hostName=" + _hostName + "]";
     }
 
     public UUID getTaskID() {

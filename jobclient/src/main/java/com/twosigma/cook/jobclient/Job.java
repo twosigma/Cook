@@ -23,7 +23,6 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
-import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import org.json.JSONArray;
@@ -196,8 +195,8 @@ final public class Job {
          * @param environment specifies the environment to add to this job.
          * @return this builder
          */
-        public Builder addEnv(Map<String,String> enviroment) {
-            _env.putAll(enviroment);
+        public Builder addEnv(Map<String,String> environment) {
+            _env.putAll(environment);
             return this;
         }
 
@@ -209,8 +208,8 @@ final public class Job {
          * @param environment specifies the environment to set for this job.
          * @return this builder
          */
-        public Builder setEnv(Map<String,String> enviroment) {
-            _env = ImmutableMap.copyOf(enviroment);
+        public Builder setEnv(Map<String,String> environment) {
+            _env = ImmutableMap.copyOf(environment);
             return this;
         }
 
@@ -310,7 +309,7 @@ final public class Job {
         /**
          * Set the number of retires of the job expected to build.
          *
-         * @param Integer {@link Integer} specifies the number of retires for a job.
+         * @param retries {@link Integer} specifies the number of retires for a job.
          * @return this builder.
          */
         public Builder setRetries(Integer retries) {
@@ -393,8 +392,8 @@ final public class Job {
     final private Map<String, String> _labels;
 
     private Job(UUID uuid, String name, String command, Double memory, Double cpus, Integer retries, Status status,
-                Integer priority, List<Instance> instances, Map<String,String> env, List<FetchableURI> uris, JSONObject container,
-                Map<String,String> labels) {
+                Integer priority, List<Instance> instances, Map<String,String> env, List<FetchableURI> uris,
+                JSONObject container, Map<String,String> labels) {
         _uuid = uuid;
         _name = name;
         _command = command;
@@ -406,10 +405,14 @@ final public class Job {
         _instances = ImmutableList.copyOf(instances);
         _env = ImmutableMap.copyOf(env);
         _uris = ImmutableList.copyOf(uris);
-        /* This stringifies the JSON object and then reparses it.
-           which is inefficient but should be fine for testing. */
+        // This take the string representation of the JSON object and then parses it again which is inefficient but
+        // that is most convenient way to deep copy a JSONObject and make this Job instance immutable.
         if (container != null) {
-            _container = new JSONObject(container.toString());
+            try {
+                _container = new JSONObject(container.toString());
+            } catch (JSONException e) {
+                throw new RuntimeException("Failed to parse the container string", e);
+            }
         } else {
             _container = null;
         }
@@ -636,10 +639,12 @@ final public class Job {
      * </pre>
      *
      * @param listOfJobs {@link String} specifies a list of jobs.
+     * @param decorator specifies an instance decorator expected to decorate instances parsed from JSON string.
+     *                  If it is null, it will do nothing with it.
      * @return a list of {@link Job}s.
      * @throws JSONException
      */
-    public static List<Job> parseFromJSON(String listOfJobs)
+    public static List<Job> parseFromJSON(String listOfJobs, InstanceDecorator decorator)
         throws JSONException {
         JSONArray jsonArray = new JSONArray(listOfJobs);
         List<Job> jobs = new ArrayList<Job>(jsonArray.length());
@@ -685,10 +690,22 @@ final public class Job {
                     jobBuilder.addUri(FetchableURI.parseFromJSON(urisJson.getJSONObject(j)));
                 }
             }
-            jobBuilder.addInstances(Instance.parseFromJSON(json.getJSONArray("instances")));
+            jobBuilder.addInstances(Instance.parseFromJSON(json.getJSONArray("instances"), decorator));
             jobs.add(jobBuilder.build());
         }
         return jobs;
+    }
+
+    /**
+     * Similar to {@code List<Job> parseFromJSON(String listOfJobs, InstanceDecorator decorator) with {@code decorator}
+     * being {@code null}.
+     *
+     * @param listOfJobs {@link String} specifies a list of jobs.
+     * @return a list of {@link Job}s.
+     * @throws JSONException
+     */
+    public static List<Job> parseFromJSON(String listOfJobs) throws JSONException {
+        return parseFromJSON(listOfJobs, null);
     }
 
     @Override
@@ -696,10 +713,12 @@ final public class Job {
         StringBuilder stringBuilder = new StringBuilder(512);
         stringBuilder
             .append("Job [_uuid=" + _uuid + ", _name=" + _name + ", _command=" + _command + ", _memory=" + _memory
-                    + ", _cpus=" + _cpus + ", _retries=" + _retries + ", _status=" + _status + ", _priority=" + _priority + "]");
+                    + ", _cpus=" + _cpus + ", _retries=" + _retries + ", _status=" + _status + ", _priority="
+                    + _priority + "]");
         stringBuilder.append('\n');
-        for (Instance instance : getInstances())
+        for (Instance instance : getInstances()) {
             stringBuilder.append(instance.toString()).append('\n');
+        }
         return stringBuilder.toString();
     }
 
