@@ -228,7 +228,7 @@
                                      :task-lost
                                      :task-error} :instance.status/failed)
                  prior-job-state (:job/state (d/entity db job))
-                 progress (try 
+                 progress (try
                               (when (:data status)
                                   (:percent (read-string (String. (:data status)))))
                           (catch Exception e
@@ -932,8 +932,14 @@
                             (:job/_instance task)))))]
     jobs))
 
-(timers/deftimer [cook-mesos scheduler rank-jobs-duration])
-(meters/defmeter [cook-mesos scheduler rank-jobs-failures])
+(timers/deftimer [cook-mesos scheduler filter-offensive-jobs-duration])
+
+(defn is-offensive?
+  [max-memory-mb max-cpus job]
+  (let [{memory-mb :mem
+         cpus :cpus} (util/job-ent->resources job)]
+    (or (> memory-mb max-memory-mb)
+        (> cpus max-cpus))))
 
 (defn filter-offensive-jobs
   "Base on the constraints on memory and cpus, given a list of job entities it
@@ -945,22 +951,19 @@
   ;; TODO these limits should come from the largest observed host from Fenzo
   ;; .getResourceStatus on TaskScheduler will give a map of hosts to resources; we can compute the max over those
   [{max-memory-gb :memory-gb max-cpus :cpus} offensive-jobs-ch jobs]
-  (let [max-memory-mb (* 1024.0 max-memory-gb)
-        categorized-jobs (group-by (fn [job]
-                                     (let [{memory-mb :mem
-                                            cpus :cpus} (util/job-ent->resources job)]
-                                       (if (or (> memory-mb max-memory-mb)
-                                               (> cpus max-cpus))
-                                         :offensive
-                                         :inoffensive)))
-                                   jobs)]
-    ;; Put offensive jobs asynchronically such that it could return the
-    ;; inoffensive jobs immediately.
-    (async/go
-      (when (seq (:offensive categorized-jobs))
-        (log/info "Found" (count (:offensive categorized-jobs)) "offensive jobs")
-        (async/>! offensive-jobs-ch (:offensive categorized-jobs))))
-    (:inoffensive categorized-jobs)))
+  (timers/time!
+    filter-offensive-jobs-duration
+    (let [max-memory-mb (* 1024.0 max-memory-gb)
+          is-offensive? (partial is-offensive? max-memory-mb max-cpus)
+          inoffensive (remove is-offensive? jobs)
+          offensive (filter is-offensive? jobs)]
+      ;; Put offensive jobs asynchronically such that it could return the
+      ;; inoffensive jobs immediately.
+      (async/go
+        (when (seq offensive)
+          (log/info "Found" (count offensive) "offensive jobs")
+          (async/>! offensive-jobs-ch offensive)))
+      inoffensive)))
 
 (defn make-offensive-job-stifler
   "It returns an async channel which will be used to receive offensive jobs expected
@@ -989,6 +992,9 @@
               (log/error e "Failed to kill the offensive job!")))
           (recur))))
     offensive-jobs-ch))
+
+(timers/deftimer [cook-mesos scheduler rank-jobs-duration])
+(meters/defmeter [cook-mesos scheduler rank-jobs-failures])
 
 (defn rank-jobs
   "Return a list of job entities ordered by dru.
