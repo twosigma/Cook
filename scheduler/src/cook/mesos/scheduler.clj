@@ -663,6 +663,11 @@
                   matched-head? (handle-resource-offers! conn @driver-atom fenzo @fid-atom pending-jobs-atom num-considerable offers-chan offers)]
               (when (seq offers)
                 (reset! resources-atom (view-incubating-offers fenzo)))
+              ;; This check ensures that, although we value Fenzo's optimizations,
+              ;; we also value Cook's sensibility of fairness when deciding which jobs
+              ;; to schedule.  If Fenzo produces a set of matches that doesn't include
+              ;; Cook's highest-priority job, on the next cycle, we give Fenzo it less
+              ;; freedom in the form of fewer jobs to consider.
               (if matched-head?
                 max-considerable
                 (max 1 (long (* 0.95 num-considerable))))) ;; With max=1000 and 1 iter/sec, this will take 88 seconds to reach 1
