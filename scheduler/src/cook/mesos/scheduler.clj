@@ -396,8 +396,7 @@
   (let [t (System/currentTimeMillis)
         leases (mapv #(->VirtualMachineLeaseAdapter % t) offers)
         requests (mapv (fn [job]
-                         (let [job-id (:db/id job)]
-                           (->TaskRequestAdapter job (job->task-info db fid (:db/id job)))))
+                         (->TaskRequestAdapter job (job->task-info db fid (:db/id job))))
                        considerable)
         result (.scheduleOnce fenzo requests leases)
         failure-results (.. result getFailures values)
