@@ -628,9 +628,9 @@
                 (:matched-head? processed-matches)))))
       (catch Throwable t
         (meters/mark! handle-resource-offer!-errors)
+        (log/error t "Error in match:" (ex-data t))
         (async/go
-          (async/>! offers-chan @offer-stash))
-        (log/error t "Error in match:" (ex-data t)))))))
+          (async/>! offers-chan @offer-stash)))))))
 
 (defn view-incubating-offers
   [^TaskScheduler fenzo]
