@@ -498,13 +498,6 @@
   "Gets a list of offers from mesos. Decides what to do with them all--they should all
    be accepted or rejected at the end of the function."
   [conn driver ^TaskScheduler fenzo fid pending-jobs num-considerable offers-chan offers]
-  (doseq [offer offers]
-    (histograms/update!
-      offer-size-cpus
-      (get-in offer [:resources :cpus] 0))
-    (histograms/update!
-      offer-size-mem
-      (get-in offer [:resources :mem] 0)))
   (log/debug "invoked handle-resource-offers!")
   (let [offer-stash (atom nil)] ;; This is a way to ensure we never lose offers fenzo assigned if an errors occures in the middle of processing
     (timers/time!
@@ -1019,6 +1012,14 @@
              (log/error "Got a mesos error!!!!" message))
       (resourceOffers [driver offers]
                       (log/debug "Got an offer, putting it into the offer channel:" offers)
+                      (doseq [offer offers]
+                        (histograms/update!
+                         offer-size-cpus
+                         (get-in offer [:resources :cpus] 0))
+                        (histograms/update!
+                         offer-size-mem
+                         (get-in offer [:resources :mem] 0)))
+
                       (when-not (async/offer! offers-chan offers)
                         (decline-offers driver offers)))
       (statusUpdate [driver status]
