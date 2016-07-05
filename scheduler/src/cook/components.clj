@@ -436,7 +436,7 @@
     (println "Started cook, stored variable in user/main-graph")
     (catch Throwable t
       (log/error t "Failed to start Cook")
-      (println "Failed to start Cook")
+      (println "Failed to start Cook" t)
       (System/exit 1))))
 
 (comment

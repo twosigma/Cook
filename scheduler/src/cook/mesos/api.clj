@@ -30,7 +30,8 @@
             [liberator.core :refer [resource defresource]]
             [cheshire.core :as cheshire]
             [cook.mesos.util :as util]
-            [clj-time.core :as t])
+            [clj-time.core :as t]
+            [cook.mesos.reason :as reason])
   (:import java.util.UUID))
 
 (def PosDouble
@@ -255,7 +256,7 @@
                  (when env
                    ;; Remains strings
                    {:env env})
-                 (when labels 
+                 (when labels
                    ;; Remains strings
                    {:labels labels}))]
     (s/validate Job munged)
@@ -352,7 +353,7 @@
                                  nil))
                     start (:instance/start-time instance)
                     end (:instance/end-time instance)
-                    reason-code (:instance/reason-code instance)
+                    reason (reason/instance-entity->reason-entity db instance)
                     base {:task_id (:instance/task-id instance)
                           :hostname hostname
                           :ports (:instance/ports instance)
@@ -370,8 +371,10 @@
                     base (if end
                            (assoc base :end_time (.getTime end))
                            base)
-                    base (if reason-code
-                           (assoc base :reason_code reason-code)
+                    base (if reason
+                           (assoc base
+                                  :reason_code (:reason/code reason)
+                                  :reason_string (:reason/string reason))
                            base)]
                 base))
             (:job/instance job))})))

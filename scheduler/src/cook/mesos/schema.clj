@@ -310,9 +310,14 @@
     :db/valueType :db.type/boolean
     :db/cardinality :db.cardinality/one
     :db.install/_attribute :db.part/db}
-   {:db/id (d/tempid :db.part/db)
+   {:db/id (d/tempid :db.part/db) ; this is deprecated in favor of the reason entity
     :db/ident :instance/reason-code
     :db/valueType :db.type/long
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :instance/reason
+    :db/valueType :db.type/ref
     :db/cardinality :db.cardinality/one
     :db.install/_attribute :db.part/db}
 
@@ -331,18 +336,43 @@
      :db.install/_attribute :db.part/db}
 
     ;; Resource mapping attributes
-    {:db/id (d/tempid :db.part/db)
-     :db/ident :resource.type/mesos-name
-     :db/valueType :db.type/keyword
-     :db/cardinality :db.cardinality/one
-     :db.install/_attribute :db.part/db}])
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :resource.type/mesos-name
+    :db/valueType :db.type/keyword
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+
+   ;; Reason entity
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :reason/code
+    :db/valueType :db.type/long
+    :db/cardinality :db.cardinality/one
+    :db/unique :db.unique/identity
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :reason/string
+    :db/valueType :db.type/string
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :reason/mesos-reason
+    :db/valueType :db.type/keyword
+    :db/cardinality :db.cardinality/one
+    :db/unique :db.unique/identity
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :reason/name
+    :db/valueType :db.type/keyword
+    :db/cardinality :db.cardinality/one
+    :db/unique :db.unique/identity
+    :db.install/_attribute :db.part/db}])
 
 (def migration-add-index-to-job-state
   "This was written on 9-26-2014"
   [{:db/id :job/state
     :db/index true
     :db.alter/_attribute :db.part/db}])
-  
+
 (def migration-add-index-to-job-user
   "This was written on 3-30-2016"
   [{:db/id :job/user
@@ -532,5 +562,153 @@
                        [[:db/add j :job/state :job.state/waiting]]
                        []))}}])
 
+(def reason-entities
+  [{:db/id (d/tempid :db.part/user)
+     :reason/code 1002
+     :reason/string "Preempted by rebalancer"
+     :reason/name :preempted-by-rebalancer}
+   {:db/id (d/tempid :db.part/user)
+    :reason/code 1003
+    :reason/string "Container preempted by Mesos"
+    :reason/name :mesos-container-preempted
+    :reason/mesos-reason :reason-executor-preempted}
+
+   {:db/id (d/tempid :db.part/user)
+    :reason/code 2000
+    :reason/string "Container limitation reached"
+    :reason/name :mesos-container-limitation
+    :reason/mesos-reason :reason-container-limitation}
+   {:db/id (d/tempid :db.part/user)
+    :reason/code 2001
+    :reason/string "Container disk limitation exceeded"
+    :reason/name :mesos-container-limitation-disk
+    :reason/mesos-reason :reason-container-limitation-disk}
+   {:db/id (d/tempid :db.part/user)
+    :reason/code 2002
+    :reason/string "Container memory limit exceeded"
+    :reason/name :mesos-container-limitation-memory
+    :reason/mesos-reason :reason-container-limitation-memory}
+   {:db/id (d/tempid :db.part/user)
+    :reason/code 2003
+    :reason/string "Task max runtime exceeded"
+    :reason/name :max-runtime-exceeded}
+
+   {:db/id (d/tempid :db.part/user)
+    :reason/code 3000
+    :reason/string "Mesos task reconciliation"
+    :reason/name :mesos-reconciliation
+    :reason/mesos-reason :reason-reconciliation}
+   {:db/id (d/tempid :db.part/user)
+    :reason/code 3001
+    :reason/string "Invalid Mesos framework id"
+    :reason/name :mesos-invalid-framework-id
+    :reason/mesos-reason :reason-invalid-frameworkid}
+   {:db/id (d/tempid :db.part/user)
+    :reason/code 3002
+    :reason/string "Invalid Mesos offer"
+    :reason/name :mesos-invalid-offers
+    :reason/mesos-reason :reason-invalid-offers}
+   {:db/id (d/tempid :db.part/user)
+    :reason/code 3003
+    :reason/string "Resource unknown"
+    :reason/name :mesos-resources-unknown
+    :reason/mesos-reason :reason-resources-unknown}
+   {:db/id (d/tempid :db.part/user)
+    :reason/code 3004
+    :reason/string "Invalid task"
+    :reason/name :mesos-task-invalid
+    :reason/mesos-reason :reason-task-invalid}
+   {:db/id (d/tempid :db.part/user)
+    :reason/code 3005
+    :reason/string "Unauthorized task"
+    :reason/name :mesos-task-unauthorized
+    :reason/mesos-reason :reason-task-unauthorized}
+   {:db/id (d/tempid :db.part/user)
+    :reason/code 3006
+    :reason/string "Unknown task"
+    :reason/name :mesos-task-unknown
+    :reason/mesos-reason :reason-task-unknown}
+   {:db/id (d/tempid :db.part/user)
+    :reason/code 3007
+    :reason/string "Agent unknown"
+    :reason/name :mesos-slave-unknown
+    :reason/mesos-reason :reason-slave-unknown}
+
+   {:db/id (d/tempid :db.part/user)
+    :reason/code 4000
+    :reason/string "Agent removed"
+    :reason/name :mesos-slave-removed
+    :reason/mesos-reason :reason-slave-removed}
+   {:db/id (d/tempid :db.part/user)
+    :reason/code 4001
+    :reason/string "Mesos agent restarted"
+    :reason/name :mesos-slave-restarted
+    :reason/mesos-reason :reason-slave-restarted}
+   {:db/id (d/tempid :db.part/user)
+    :reason/code 4002
+    :reason/string "Mesos agent GC error"
+    :reason/name :mesos-gc-error
+    :reason/mesos-reason :reason-gc-error}
+   {:db/id (d/tempid :db.part/user)
+    :reason/code 4003
+    :reason/string "Container launch failed"
+    :reason/name :mesos-container-launch-failed
+    :reason/mesos-reason :reason-container-launch-failed}
+   {:db/id (d/tempid :db.part/user)
+    :reason/code 4004
+    :reason/string "Container update failed"
+    :reason/name :mesos-container-update-failed
+    :reason/mesos-reason :reason-container-update-failed}
+   {:db/id (d/tempid :db.part/user)
+    :reason/code 4005
+    :reason/string "Agent disconnected"
+    :reason/name :mesos-slave-disconnected
+    :reason/mesos-reason :reason-slave-disconnected}
+   {:db/id (d/tempid :db.part/user)
+    :reason/code 4006
+    :reason/string "Unable to contact agent"
+    :reason/name :heartbeat-lost}
+
+   {:db/id (d/tempid :db.part/user)
+    :reason/code 5000
+    :reason/string "Mesos framework removed"
+    :reason/name :mesos-framework-removed
+    :reason/mesos-reason :reason-framework-removed}
+   {:db/id (d/tempid :db.part/user)
+    :reason/code 5001
+    :reason/string "Mesos master disconnected"
+    :reason/name :mesos-master-disconnected
+    :reason/mesos-reason :reason-master-disconnected}
+
+   {:db/id (d/tempid :db.part/user)
+    :reason/code 6000
+    :reason/string "Mesos executor registration timed out"
+    :reason/name :mesos-executor-registration-timeout
+    :reason/mesos-reason :reason-executor-registration-timeout}
+   {:db/id (d/tempid :db.part/user)
+    :reason/code 6001
+    :reason/string "Mesos executor re-registration timed out"
+    :reason/name :mesos-executor-reregistration-timeout
+    :reason/mesos-reason :reason-executor-reregistration-timeout}
+   {:db/id (d/tempid :db.part/user)
+    :reason/code 6002
+    :reason/string "Mesos executor unregistered"
+    :reason/name :mesos-executor-unregistered
+    :reason/mesos-reason :reason-executor-unregistered}
+
+   {:db/id (d/tempid :db.part/user)
+    :reason/code 99000
+    :reason/string "Unknown reason"
+    :reason/name :unknown}
+   {:db/id (d/tempid :db.part/user)
+    :reason/code 99001
+    :reason/string "Unknown mesos reason"
+    :reason/name :mesos-unknown}
+   {:db/id (d/tempid :db.part/user)
+    :reason/code 99002
+    :reason/string "Mesos executor terminated"
+    :reason/name :mesos-executor-terminated
+    :reason/mesos-reason :reason-executor-terminated}])
+
 (def work-item-schema
-  [schema-attributes state-enums rebalancer-configs migration-add-index-to-job-state migration-add-index-to-job-user migration-add-port-count db-fns])
+  [schema-attributes state-enums rebalancer-configs migration-add-index-to-job-state migration-add-index-to-job-user migration-add-port-count db-fns reason-entities])

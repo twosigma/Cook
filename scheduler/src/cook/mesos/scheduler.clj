@@ -37,7 +37,7 @@
             [cook.mesos.share :as share]
             [swiss.arrows :refer :all]
             [clojure.core.cache :as cache]
-            [cook.mesos.reason :refer :all])
+            [cook.mesos.reason :as reason])
   (import java.util.concurrent.TimeUnit
           com.netflix.fenzo.TaskAssignmentResult
           com.netflix.fenzo.TaskScheduler
@@ -217,7 +217,7 @@
                  job-ent (d/entity db job)
                  instance-ent (d/entity db instance)
                  retries-so-far (count (:job/instance job-ent))
-                 previous-reason (:instance/reason-code instance-ent)
+                 previous-reason (reason/instance-entity->reason-entity db instance-ent)
                  instance-status (condp contains? task-state
                                    #{:task-staging} :instance.status/unknown
                                    #{:task-starting
@@ -280,7 +280,7 @@
                                       (concat
                                         [[:instance/update-state instance instance-status]]
                                         (when (and (#{:instance.status/failed} instance-status) (not previous-reason) reason)
-                                          [[:db/add instance :instance/reason-code (mesos-reason->cook-reason-code reason)]])
+                                          [[:db/add instance :instance/reason (reason/mesos-reason->cook-reason-entity-id db reason)]])
                                         (when (#{:instance.status/success
                                                  :instance.status/failed} instance-status)
                                           [[:db/add instance :instance/end-time (now)]])
@@ -857,7 +857,7 @@
                       @(d/transact
                         conn
                         [[:instance/update-state [:instance/task-id task-id] :instance/status/failed]
-                         [:db/add [:instance/task-id task-id] :instance/reason-code reason-max-runtime]])
+                         [:db/add [:instance/task-id task-id] :instance/reason [:reason/name :max-runtime-exceeded]]])
                       ))))
               {:error-handler (fn [e]
                                 (log/error e "Failed to reap timeout tasks!"))})))
