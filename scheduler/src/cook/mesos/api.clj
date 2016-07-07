@@ -194,14 +194,13 @@
                 container (if (nil? container) [] (build-container id container))
                 ;; These are optionally set datoms w/ default values
                 maybe-datoms (concat
-                               (when (and name (not= name "cookjob"))
-                                 [[:db/add id :job/name name]])
                                (when (and priority (not= util/default-job-priority priority))
                                  [[:db/add id :job/priority priority]])
                                (when (and max-runtime (not= Long/MAX_VALUE max-runtime))
                                  [[:db/add id :job/max-runtime max-runtime]]))
                 txn {:db/id id
                      :job/uuid uuid
+                     :job/name (or name "cookjob") ; set the default job name if not provided.
                      :job/command command
                      :job/custom-executor false
                      :job/user user
