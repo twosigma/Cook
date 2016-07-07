@@ -340,6 +340,7 @@ final public class Job {
             Preconditions.checkArgument
                 (pattern.matcher(name).matches(),
                  "Name can only contain '.', '_', '-' or any work characters has length at most 128");
+            _name = name;
             return this;
         }
 
