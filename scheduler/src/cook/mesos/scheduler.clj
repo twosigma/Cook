@@ -943,7 +943,7 @@
   [driver offer-incubate-time-ms]
   (.. (com.netflix.fenzo.TaskScheduler$Builder.)
       (disableShortfallEvaluation) ;; We're not using the autoscaling features
-      (withLeaseOfferExpirySecs (max (quot offer-incubate-time-ms 1000) 1)) ;; Must convert from the ms, should be at least 1 second
+      (withLeaseOfferExpirySecs (max (-> offer-incubate-time-ms time/millis time/in-seconds) 1)) ;; should be at least 1 second
       (withRejectAllExpiredOffers)
       (withDebugEnabled)
       (withLeaseRejectAction (reify com.netflix.fenzo.functions.Action1
