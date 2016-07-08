@@ -614,7 +614,9 @@
         (meters/mark! handle-resource-offer!-errors)
         (log/error t "Error in match:" (ex-data t))
         (async/go
-          (async/>! offers-chan @offer-stash)))))))
+          (async/>! offers-chan @offer-stash))
+        true
+        )))))
 
 (defn view-incubating-offers
   [^TaskScheduler fenzo]
