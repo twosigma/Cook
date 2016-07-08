@@ -444,15 +444,6 @@
 (gauges/defgauge [cook-mesos scheduler front-of-job-queue-mem] (fn [] @front-of-job-queue-mem-atom))
 (gauges/defgauge [cook-mesos scheduler front-of-job-queue-cpus] (fn [] @front-of-job-queue-cpus-atom))
 
-(defn job-allowed-to-start?
-  "Converts the DB function :job/allowed-to-start? into a predicate"
-  [db job]
-  (try
-    (d/invoke db :job/allowed-to-start? db (:db/id job))
-    true
-    (catch clojure.lang.ExceptionInfo e
-      false)))
-
 (defn ids-of-backfilled-instances
   "Returns a list of the ids of running, backfilled instances of the given job"
   [job]
@@ -509,7 +500,7 @@
                 _ (log/debug "There are" (count scheduler-contents) "pending jobs")
                 considerable (->> scheduler-contents
                                   (filter (fn [job]
-                                            (job-allowed-to-start? db job)))
+                                            (util/job-allowed-to-start? db job)))
                                   (take num-considerable))
                 _ (log/debug "We'll consider scheduling" (count considerable) "of those pending jobs (limited to " num-considerable " due to backdown)")
                 matches (match-offer-to-schedule fenzo considerable offers db fid)

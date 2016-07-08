@@ -441,7 +441,7 @@
         (fn check-count-of-pending-and-runnable-jobs [expected-pending expected-runnable msg]
           (let [db (db conn)
                 pending-jobs (sched/rank-jobs db db identity)
-                runnable-jobs (filter (fn [job] (sched/job-allowed-to-start? db job)) pending-jobs)]
+                runnable-jobs (filter (fn [job] (util/job-allowed-to-start? db job)) pending-jobs)]
             (is (= expected-pending (count pending-jobs)) (str "Didn't match pending job count in " msg))
             (is (= expected-runnable (count runnable-jobs)) (str "Didn't match runnable job count in " msg))))
         job (create-dummy-job conn

@@ -136,6 +136,15 @@
             db [:instance.status/running :instance.status/unknown])
          (map (fn [[x]] (d/entity db x))))))
 
+(defn job-allowed-to-start?
+  "Converts the DB function :job/allowed-to-start? into a predicate"
+  [db job]
+  (try
+    (d/invoke db :job/allowed-to-start? db (:db/id job))
+    true
+    (catch clojure.lang.ExceptionInfo e
+      false)))
+
 (defn create-task-ent
   "Takes a pending job entity and returns a synthetic running task entity for that job"
   [pending-job-ent & {:keys [hostname] :or {hostname nil}}]
