@@ -842,7 +842,7 @@
                (-<>> (concat running-task-ents pending-task-ents)
                      (group-by util/task-ent->user)
                      (map (fn [[user task-ents]]
-                            [user (into (sorted-set-by (util/same-user-task-comparator false)) task-ents)]))
+                            [user (into (sorted-set-by (util/same-user-task-comparator)) task-ents)]))
                      (into {})
                      (dru/sorted-task-scored-task-pairs <> user->dru-divisors)
                      (filter (fn [[task scored-task]]

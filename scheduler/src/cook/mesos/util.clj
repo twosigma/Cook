@@ -158,22 +158,33 @@
 
 (def ^:const default-job-priority 50)
 
-(defn same-user-task-comparator
-  "Comparator to order same user's tasks
 
-   If consider-backfilled-jobs? is true, then we treat jobs which were backfilled as being the lowest priority"
-  [consider-backfilled-jobs?]
-  (letfn [(task->feature-vector
+(defn task->feature-vector
+  [task]
+  "Vector of comparable features of a task.
+   Last two elements are aribitary tie breakers.
+   Use :db/id because they guarantee uniqueness for different entities
+   (:db/id task) is not sufficient because synthetic task entities don't have :db/id
+    This assumes there are at most one synthetic task for a job, otherwise uniqueness invariant will break"
+  [(- (:job/priority (:job/_instance task) default-job-priority))
+   (:instance/start-time task (java.util.Date. Long/MAX_VALUE))
+   (:db/id task)
+   (:db/id (:job/_instance task))])
+
+(defn same-user-task-comparator
+  "Comparator to order same user's tasks"
+  []
+  (fn [task1 task2]
+      (compare (task->feature-vector task1) (task->feature-vector task2))))
+
+(defn same-user-task-comparator-penalize-backfill
+  "Same as same-user-task-comparator, but we treat jobs which were backfilled as being the lowest priority"
+  []
+  (letfn [(comparable-with-backfill
             [task]
-            ;; Last two elements are aribitary tie breakers.
-            ;; Use :db/id because they guarantee uniqueness for different entities
-            ;; (:db/id task) is not sufficient because synthetic task entities don't have :db/id
-            ;; This assumes there are at most one synthetic task for a job, otherwise uniqueness invariant will break
-            [(if (and consider-backfilled-jobs? (:instance/backfilled? task)) 1 0)
-             (- (:job/priority (:job/_instance task) default-job-priority))
-             (:instance/start-time task (java.util.Date. Long/MAX_VALUE))
-             (:db/id task)
-             (:db/id (:job/_instance task))])]
-    (fn same-user-task-comparator-inner
-      [task1 task2]
-      (compare (task->feature-vector task1) (task->feature-vector task2)))))
+            (vec (cons (if (:instance/backfilled? task) 1 0)
+                       (task->feature-vector task))))]
+    (fn [task1 task2]
+      (compare (comparable-with-backfill task1) (comparable-with-backfill task2)))))
+
+
