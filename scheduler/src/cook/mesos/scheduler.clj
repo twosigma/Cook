@@ -636,12 +636,11 @@
     pending-offers))
 
 (defn make-offer-handler
-  [conn driver-atom fenzo fid-atom pending-jobs-atom]
+  [conn driver-atom fenzo fid-atom pending-jobs-atom max-considerable scaleback]
   (let [offers-chan (async/chan (async/buffer 5))
         resources-atom (atom (view-incubating-offers fenzo))
         timer-chan (chime-ch (periodic/periodic-seq (time/now) (time/seconds 1))
-                             {:ch (async/chan (async/sliding-buffer 1))})
-        max-considerable 1000]
+                             {:ch (async/chan (async/sliding-buffer 1))})]
     (async/thread
       (loop [num-considerable max-considerable]
         ;;TODO make this cancelable (if we want to be able to restart the server w/o restarting the JVM)
@@ -661,7 +660,7 @@
               ;; freedom in the form of fewer jobs to consider.
               (if matched-head?
                 max-considerable
-                (max 1 (long (* 0.95 num-considerable))))) ;; With max=1000 and 1 iter/sec, this will take 88 seconds to reach 1
+                (max 1 (long (* scaleback num-considerable))))) ;; With max=1000 and 1 iter/sec, this will take 88 seconds to reach 1
             (catch Exception e
               (log/error e "Offer handler encountered exception; continuing")
               max-considerable)))))
@@ -962,7 +961,7 @@
       (build)))
 
 (defn create-datomic-scheduler
-  [conn set-framework-id driver-atom pending-jobs-atom heartbeat-ch offer-incubate-time-ms task-constraints]
+  [conn set-framework-id driver-atom pending-jobs-atom heartbeat-ch offer-incubate-time-ms fenzo-max-jobs-considered fenzo-scaleback task-constraints]
   (let [fid (atom nil)
         ;; Mesos can potentially rescind thousands of offers
         rescinded-offer-id-cache (-> {}
@@ -973,7 +972,7 @@
         matcher-chan (async/chan) ; Don't want to buffer offers to the matcher chan. Only want when ready
 
         fenzo (make-fenzo-scheduler driver-atom offer-incubate-time-ms)
-        [offers-chan resources-atom] (make-offer-handler conn driver-atom fenzo fid pending-jobs-atom)]
+        [offers-chan resources-atom] (make-offer-handler conn driver-atom fenzo fid pending-jobs-atom fenzo-max-jobs-considered fenzo-scaleback)]
     (start-jobs-prioritizer! conn pending-jobs-atom task-constraints)
     {:scheduler
      (mesos/scheduler

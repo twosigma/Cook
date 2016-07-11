@@ -77,7 +77,7 @@
                       (route/not-found "<h1>Not a valid route</h1>")))})
 
 (def mesos-scheduler
-  {:mesos-scheduler (fnk [[:settings mesos-master mesos-master-hosts mesos-leader-path mesos-failover-timeout mesos-principal mesos-role offer-incubate-time-ms task-constraints riemann dru-scale] mesos-datomic mesos-datomic-mult curator-framework mesos-pending-jobs-atom]
+  {:mesos-scheduler (fnk [[:settings mesos-master mesos-master-hosts mesos-leader-path mesos-failover-timeout mesos-principal mesos-role offer-incubate-time-ms fenzo-max-jobs-considered fenzo-scaleback task-constraints riemann dru-scale] mesos-datomic mesos-datomic-mult curator-framework mesos-pending-jobs-atom]
                          (try
                            (Class/forName "org.apache.mesos.Scheduler")
                            ((lazy-load-var 'cook.mesos/start-mesos-scheduler)
@@ -91,6 +91,8 @@
                             mesos-principal
                             mesos-role
                             offer-incubate-time-ms
+                            fenzo-max-jobs-considered
+                            fenzo-scaleback
                             task-constraints
                             (:host riemann)
                             (:port riemann)
@@ -309,6 +311,10 @@
                               task-constraints))
      :offer-incubate-time-ms (fnk [[:config [:scheduler {offer-incubate-ms 15000}]]]
                                   offer-incubate-ms)
+     :fenzo-max-jobs-considered (fnk [[:config [:scheduler {fenzo-max-jobs-considered 1000}]]]
+                                     fenzo-max-jobs-considered)
+     :fenzo-scaleback (fnk [[:config [:scheduler {fenzo-scaleback 0.95}]]]
+                           fenzo-scaleback)
      :mesos-master (fnk [[:config [:mesos master]]]
                         master)
      :mesos-master-hosts (fnk [[:config [:mesos master {master-hosts nil}]]]
