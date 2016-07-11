@@ -615,7 +615,7 @@
         (log/error t "Error in match:" (ex-data t))
         (async/go
           (async/>! offers-chan @offer-stash))
-        true
+        true  ; if an error happened, it doesn't mean we need to penalize Fenzo
         )))))
 
 (defn view-incubating-offers
