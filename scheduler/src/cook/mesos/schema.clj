@@ -443,7 +443,9 @@
              - task failed, no other tasks, retries remaining => job waiting
              - task failed, other tasks running => job running
 
-             Note that backfilled running instances are treated as if they don't exist."
+             Note that backfilled running instances are treated as if they don't exist.
+             In other words, if a job has running tasks that are all backfilled, the
+             state of the task itself will still be :waiting ."
     :db/fn #db/fn {:lang "clojure"
                    :params [db j]
                    :requires [[metatransaction.core :as mt]]
