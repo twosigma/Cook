@@ -515,6 +515,11 @@
                 new-scheduler-contents (remove (fn [pending-job]
                                                  (contains? (:fully-processed processed-matches) (:job/uuid pending-job)))
                                                scheduler-contents)
+                ;; We don't remove backfilled jobs here, because although backfilled
+                ;; jobs have already been scheduled in a sense, the scheduler still can't
+                ;; adjust the status of backfilled tasks.
+                ;; Backfilled tasks can be updgraded to non-backfilled after the jobs
+                ;; prioritized above them are also scheduled.
                 first-considerable-resources (-> considerable first util/job-ent->resources)
                 match-resource-requirements (util/sum-resources-of-jobs matched-jobs)]
             (reset! front-of-job-queue-mem-atom
