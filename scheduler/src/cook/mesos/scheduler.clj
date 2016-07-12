@@ -462,29 +462,35 @@
    "
   [scheduler-contents head-of-considerable matched-jobs]
   (let [matched-job-uuids (set (mapv :job/uuid matched-jobs))
-        head-uuid (:job/uuid head-of-considerable)]
-    (loop [scheduler-contents scheduler-contents
-           backfilling? false
-           matched-head? false
-           fully-processed #{}
-           upgrade-backfill #{}
-           backfill-jobs #{}]
-      (if (seq scheduler-contents)
-        (let [scheduler-contents' (rest scheduler-contents)
-              pending-job (first scheduler-contents)
-              pending-job-uuid (:job/uuid pending-job)
-              pending=head? (= pending-job-uuid head-uuid)]
-          (if (contains? matched-job-uuids pending-job-uuid)
-            (if backfilling?
-              (recur scheduler-contents' true matched-head? fully-processed upgrade-backfill (conj backfill-jobs pending-job-uuid))
-              (recur scheduler-contents' false (or pending=head? matched-head?) (conj fully-processed pending-job-uuid) upgrade-backfill backfill-jobs))
-            (if-let [backfilled-ids (and (not backfilling?) (seq (ids-of-backfilled-instances pending-job)))]
-              (recur scheduler-contents' false (or pending=head? matched-head?) fully-processed (into upgrade-backfill backfilled-ids) backfill-jobs)
-              (recur scheduler-contents' true matched-head? fully-processed upgrade-backfill backfill-jobs))))
-        {:fully-processed fully-processed
-         :upgrade-backfill upgrade-backfill
-         :backfill-jobs backfill-jobs
-         :matched-head? matched-head?}))))
+        ;; ids-of-backfilled-instances hits datomic; without memoization this would
+        ;; happen multiple times for the same job:
+        backfilled-ids-memo (memoize ids-of-backfilled-instances)
+        matched? (fn [job]
+                   (contains? matched-job-uuids (:job/uuid job)))
+        previously-backfilled? (fn [job]
+                                 (seq (backfilled-ids-memo job)))
+        index-if-never-matched (fn [index job]
+                                 (if (not (or
+                                           (matched? job)
+                                           (previously-backfilled? job)))
+                                   index))
+        last-index-before-backfill (->> scheduler-contents
+                                        (keep-indexed index-if-never-matched)
+                                        first)
+        num-before-backfilling (if last-index-before-backfill
+                                 (inc last-index-before-backfill)
+                                 (count scheduler-contents))
+        jobs-before-backfilling (take num-before-backfilling scheduler-contents)
+        jobs-after-backfilling (drop num-before-backfilling scheduler-contents)
+        jobs-to-backfill (filter matched? jobs-after-backfilling)
+        jobs-fully-processed (filter matched? jobs-before-backfilling)
+        jobs-to-upgrade (filter previously-backfilled? jobs-before-backfilling)
+        tasks-ids-to-upgrade (->> jobs-to-upgrade (mapv backfilled-ids-memo) (apply concat) vec)]
+
+    {:fully-processed (mapv :job/uuid jobs-fully-processed)
+     :upgrade-backfill tasks-ids-to-upgrade
+     :backfill-jobs (mapv :job/uuid jobs-to-backfill)
+     :matched-head? (matched? head-of-considerable)}))
 
 (defn handle-resource-offers!
   "Gets a list of offers from mesos. Decides what to do with them all--they should all
