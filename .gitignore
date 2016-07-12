@@ -26,3 +26,5 @@ pom.xml.asc
 .nrepl-port
 .minimesos/
 minimesosFile
+.lein-env
+log/
