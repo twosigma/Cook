@@ -445,10 +445,11 @@
 (gauges/defgauge [cook-mesos scheduler front-of-job-queue-cpus] (fn [] @front-of-job-queue-cpus-atom))
 
 (defn ids-of-backfilled-instances
-  "Returns a list of the ids of running, backfilled instances of the given job"
+  "Returns a list of the ids of running-or-unknown, backfilled instances of the given job"
   [job]
   (->> (:job/instance job)
-       (filter #(and (= :instance.status/running (:instance/status %))
+       (filter #(and (contains? #{:instance.status/running :instance.status/unknown}
+                                (:instance/status %))
                      (:instance/backfilled? %)))
        (map :db/id)))
 
