@@ -83,6 +83,19 @@ minimesos up --num-agents 2
 ```
 
 
+Finally, tell your networking stack to route packets for the Docker
+172.17.0.0/16 network to the virtual network interface exposed by the
+VM.
+
+```
+sudo route delete 172.17.0.0/16; sudo route -n add 172.17.0.0/16 $(docker-machine ip ${DOCKER_MACHINE_NAME})
+```
+
+You can verify that everything is working by doing `minimesos info`, then
+pinging the IP addresses returned and attempting to connect to the HTTP
+based services with curl or a web browser.
+
+
 
 Big Mesos
 ---------
@@ -116,9 +129,9 @@ mkdir build && cd build
 
 PYTHON=/usr/bin/python ../configure --with-svn=/opt/local/
 
-# Add MacPorts libraries to the linker search path:
+# Add MacPorts libraries to the linker search path and build.
+# This build takes a while...
 LIBRARY_PATH=/opt/local/lib make
-
 
 ```
 
@@ -126,4 +139,46 @@ LIBRARY_PATH=/opt/local/lib make
 Command Line Usage
 ==================
 
-1. Start
+To build and run the project at the command line, copy
+`$COOK_DIR/scheduler/dev-config.edn` and edit the copy so that the Mesos master ZooKeeper URL matches
+the one returned by `minimesos info`.
+
+Then run the following, replacing `$MESOS_DIR` with the actual path to your local
+Mesos build:
+
+
+```
+cd $COOK_DIR/scheduler
+lein uberjar
+MESOS_NATIVE_JAVA_LIBRARY=$MESOS_DIR/build/src/.libs/libmesos.dylib lein run ./local-dev-config.edn
+```
+
+Test that the server is running properly with:
+
+```
+curl http://localhost:12321/rawscheduler
+```
+
+If you get a reply like `"must supply at least one job query param"`, that means Cook is running.
+
+
+Emacs interactive startup
+===========================
+
+To start Cook interactively from within Emacs, first make sure you
+have Cider (the Clojure nrepl package) installed and working.
+
+Do `M-x setenv` and set `MESOS_NATIVE_JAVA_LIBRARY` to the full path
+to `libmesos.dylib`, as above (or otherwise make sure this env var is
+set for your Emacs process.) This must be done *before* you start Cider.
+
+Load `$COOK_DIR/scheduler/src/cook/components.clj` and jack in (`C-c M-j`) as usual.
+
+Once loaded, run:
+
+```
+cook.components> (-main "$COOK_DIR/scheduler/local-dev-config.edn")
+```
+
+
+
