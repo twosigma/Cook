@@ -142,6 +142,21 @@
 (histograms/defhistogram [cook-mesos scheduler hist-task-fail-times])
 (meters/defmeter [cook-mesos scheduler task-fail-times])
 
+(meters/defmeter [cook-mesos scheduler backfilled-count])
+(histograms/defhistogram [cook-mesos scheduler hist-backfilled-count])
+(meters/defmeter [cook-mesos scheduler backfilled-cpu])
+(meters/defmeter [cook-mesos scheduler backfilled-mem])
+
+(meters/defmeter [cook-mesos scheduler upgraded-count])
+(histograms/defhistogram [cook-mesos scheduler hist-upgraded-count])
+(meters/defmeter [cook-mesos scheduler upgraded-cpu])
+(meters/defmeter [cook-mesos scheduler upgraded-mem])
+
+(meters/defmeter [cook-mesos scheduler fully-processed-count])
+(histograms/defhistogram [cook-mesos scheduler hist-fully-processed-count])
+(meters/defmeter [cook-mesos scheduler fully-processed-cpu])
+(meters/defmeter [cook-mesos scheduler fully-processed-mem])
+
 
 (def success-throughput-metrics
   {:completion-rate tasks-succeeded
@@ -486,6 +501,24 @@
         jobs-fully-processed (filter matched? jobs-before-backfilling)
         jobs-to-upgrade (filter previously-backfilled? jobs-before-backfilling)
         tasks-ids-to-upgrade (->> jobs-to-upgrade (mapv backfilled-ids-memo) (apply concat) vec)]
+
+    (let [resources-backfilled (util/sum-resources-of-jobs jobs-to-backfill)
+          resources-fully-processed (util/sum-resources-of-jobs jobs-fully-processed)
+          resources-upgraded (util/sum-resources-of-jobs jobs-to-upgrade)]
+      (meters/mark! backfilled-count (count jobs-to-backfill))
+      (histograms/update! hist-backfilled-count (count jobs-to-backfill))
+      (meters/mark! backfilled-cpu (:cpus resources-backfilled))
+      (meters/mark! backfilled-mem (:mem resources-backfilled))
+
+      (meters/mark! fully-processed-count (count jobs-fully-processed))
+      (histograms/update! hist-fully-processed-count (count jobs-fully-processed))
+      (meters/mark! fully-processed-cpu (:cpus resources-fully-processed))
+      (meters/mark! fully-processed-mem (:mem resources-fully-processed))
+
+      (meters/mark! upgraded-count (count jobs-to-upgrade))
+      (histograms/update! hist-upgraded-count (count jobs-to-upgrade))
+      (meters/mark! upgraded-cpu (:cpus resources-upgraded))
+      (meters/mark! upgraded-mem (:mem resources-upgraded)))
 
     {:fully-processed (mapv :job/uuid jobs-fully-processed)
      :upgrade-backfill tasks-ids-to-upgrade
