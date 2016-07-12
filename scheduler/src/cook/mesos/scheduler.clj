@@ -513,8 +513,9 @@
                                    :let [task-request (.getRequest task-result)]]
                                (:job task-request))
                 processed-matches (process-matches-for-backfill scheduler-contents (first considerable) matched-jobs)
-                new-scheduler-contents (remove (fn [pending-job]
-                                                 (contains? (:fully-processed processed-matches) (:job/uuid pending-job)))
+                new-scheduler-contents (remove (fn [{pending-job-uuid :job/uuid}]
+                                                 (or (contains? (:fully-processed processed-matches) pending-job-uuid)
+                                                     (contains? (:upgrade-backfill processed-matches) pending-job-uuid)))
                                                scheduler-contents)
                 ;; We don't remove backfilled jobs here, because although backfilled
                 ;; jobs have already been scheduled in a sense, the scheduler still can't
