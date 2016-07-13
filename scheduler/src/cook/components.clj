@@ -14,7 +14,7 @@
 ;; limitations under the License.
 ;;
 (ns cook.components
-  (:require [plumbing.core :refer (fnk)]
+  (:require [plumbing.core :refer (fnk defnk)]
             [ring.middleware.params :refer (wrap-params)]
             [clj-pid.core :as pid]
             [clojure.java.io :as io]
@@ -103,6 +103,7 @@
   "This adds /debug to return 200 OK"
   [h]
   (fn healthcheck [req]
+    (log/debug "[health-check-middleware] Got request: " req)
     (if (and (= (:uri req) "/debug")
              (= (:request-method req) :get))
       {:status 200
@@ -185,26 +186,49 @@
                                                     (.setPreferProxiedForAddress true)))
                                   (.setServer server)))))))
 
-(def scheduler-server
+
+(defnk make-http-server!
+  "Given a configuration map  with :settings/:server-port, :settings/:authorization-middleware
+  and :route keys, creates a Jetty HTTP server.
+
+  Returns a function that will stop the server when called."
+  
+  [[:settings server-port authorization-middleware] [:route view]]
+  (log/info "Launching http server on port" server-port "...")
+  (let [jetty ((lazy-load-var 'qbits.jet.server/run-jetty)
+               {:port server-port
+                :ring-handler (-> view
+                                  tell-jetty-about-usename
+                                  authorization-middleware
+                                  wrap-stacktrace
+                                  wrap-no-cache
+                                  wrap-params
+                                  health-check-middleware
+                                  instrument)
+                :join? false
+                :configurator configure-jet-logging
+                :max-threads 200})]
+    (fn [] (.stop jetty))))
+
+
+
+(def make-top-level-server!
+  "Creates a function that, given a parsed configuration map (as returned by parse-settings),
+  instantiates the various components called for by that
+  configuration, and returns a map holding the instantiation artefacts.
+
+  This has side effects such as instantiating Java objects and making
+  network connections to external services."
   (graph/eager-compile
+   ;; This defines a function which accepts a map argument.  While
+   ;; creating the map to be returned, below, the nested input map is
+   ;; implicitly available from fnk's: for example, [:settings
+   ;; server-port] resolves to the value of the :server-port key of
+   ;; the value of the :settings key in the input map.
+
     {:mesos-datomic mesos-datomic
      :route full-routes
-     :http-server (fnk [[:settings server-port authorization-middleware] [:route view]]
-                       (log/info "Launching http server")
-                       (let [jetty ((lazy-load-var 'qbits.jet.server/run-jetty)
-                                    {:port server-port
-                                     :ring-handler (-> view
-                                                       tell-jetty-about-usename
-                                                       authorization-middleware
-                                                       wrap-stacktrace
-                                                       wrap-no-cache
-                                                       wrap-params
-                                                       health-check-middleware
-                                                       instrument)
-                                     :join? false
-                                     :configurator configure-jet-logging
-                                     :max-threads 200})]
-                         (fn [] (.stop jetty))))
+     :http-server make-http-server!
 
      :framework-id (fnk [curator-framework [:settings mesos-leader-path]]
                         (when-let [bytes (curator/get-or-nil curator-framework
@@ -261,8 +285,10 @@
    :exception-handler (fnk [] ((lazy-load-var 'cook.util/install-email-on-exception-handler))) ;;TODO parameterize
    })
 
-(def config-settings
-  "Parses the settings out of a config file"
+(def parse-settings
+  "Parses the raw settings out of a config file. Returns a
+  map (implemented as a Plumatic Plumbing graph) of various cooked
+  settings derived from the raw config file EDN."
   (graph/eager-compile
     {:server-port (fnk [[:config port]]
                        port)
@@ -395,7 +421,10 @@
                              ((lazy-load-var 'cook.util/install-email-on-exception-handler) log-level email))
      :logging (fnk [[:config log]]
                    (init-logger log))}))
-
+;;
+;; Main-graph stores the top-level application state.
+;; 
+(def main-graph (ref nil))
 
 ;;
 ;; (initialize!) is seperate from (-main), which exits the process
@@ -407,7 +436,6 @@
 ;; The command line invocation calls (-main) and exits the JVM process
 ;; on any startup error.
 ;;
-
 (defn initialize!
   "Reads the given config file and starts Cook.
    Throws an exception upon failure."
@@ -426,12 +454,16 @@
         base-init (pre-configuration literal-config)
         _ (println "Configured logging")
         _ (log/info "Configured logging")
-        settings {:settings (config-settings literal-config)}
+
+        parsed-settings {:settings (parse-settings literal-config)}
         _ (log/info "Interpreted settings")
-        server (scheduler-server settings)]
-    (intern 'user 'main-graph server)
-    (log/info "Started cook, stored variable in user/main-graph")
-    (println "Started cook, stored variable in user/main-graph")))
+
+        server (make-top-level-server! parsed-settings)]
+
+    (dosync (ref-set main-graph server))
+
+    (log/info "Started cook. Stored top-level state in cook.components/main-graph")
+    (println "Started cook. Stored top-level state in cook.components/main-graph")))
 
 
 (defn -main
@@ -445,7 +477,7 @@
 
 
 (comment
-  ;; Here are some helpful fragments for changing debug levels, especiall with datomic
+  ;; Here are some helpful fragments for changing debug levels, especially with datomic
   (require 'datomic.api)
   (log4j-conf/set-logger! :level :debug)
 
