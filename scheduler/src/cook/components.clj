@@ -396,13 +396,27 @@
      :logging (fnk [[:config log]]
                    (init-logger log))}))
 
-(defn -main
-  [config & args]
+
+;;
+;; (initialize!) is seperate from (-main), which exits the process
+;; upon errors, so that you can start a dev system from an interactive
+;; REPL by calling (initialize!). This allows you to retry if
+;; initialization fails, without having it terminate the JVM process
+;; if something goes wrong.
+;;
+;; The command line invocation calls (-main) and exits the JVM process
+;; on any startup error.
+;;
+
+(defn initialize!
+  "Reads the given config file and starts Cook.
+   Throws an exception upon failure."
+  [config]
   (when-not (.exists (java.io.File. config))
-    (.println System/err (str "The config file doesn't appear to exist: " config)))
+    (throw (Exception.  (str "The specified config file doesn't appear to exist: " config))))
+
   (println "Reading config from file:" config)
-  (try
-    (let [config-format (com.google.common.io.Files/getFileExtension config)
+  (let [config-format (com.google.common.io.Files/getFileExtension config)
         literal-config {:config
                         (case config-format
                           "edn" (read-string (slurp config))
@@ -416,12 +430,19 @@
         _ (log/info "Interpreted settings")
         server (scheduler-server settings)]
     (intern 'user 'main-graph server)
-    (log/info "Started cook, stored variable in user/main-graph"))
-    (println "Started cook, stored variable in user/main-graph")
+    (log/info "Started cook, stored variable in user/main-graph")
+    (println "Started cook, stored variable in user/main-graph")))
+
+
+(defn -main
+  [config & args]
+  (try
+    (initialize! config)
     (catch Throwable t
       (log/error t "Failed to start Cook")
-      (println "Failed to start Cook")
+      (println "Failed to start Cook: " (.getMessage t))
       (System/exit 1))))
+
 
 (comment
   ;; Here are some helpful fragments for changing debug levels, especiall with datomic
