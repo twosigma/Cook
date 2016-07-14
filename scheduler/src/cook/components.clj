@@ -79,22 +79,23 @@
     (require (symbol ns))
     (resolve var-sym)))
 
-(def raw-scheduler-routes
-  {:scheduler (fnk [mesos-datomic framework-id mesos-pending-jobs-atom [:settings task-constraints]]
-                   ((lazy-load-var 'cook.mesos.api/handler)
-                    mesos-datomic
-                    framework-id
-                    task-constraints
-                    (fn [] @mesos-pending-jobs-atom)))
-   :view (fnk [scheduler]
-              scheduler)})
 
-(def full-routes
-  {:raw-scheduler raw-scheduler-routes
-   :view (fnk [raw-scheduler]
-              (routes (:view raw-scheduler)
-                      (route/not-found "<h1>Not a valid route</h1>")))})
 
+(def auxiliary-routes
+  (routes 
+   (GET "/ping" [] (fn [req]
+                     (str "Hello, " req)))))
+(defn make-app-routes
+  [mesos-datomic framework-id task-constraints mesos-pending-jobs-atom]
+  (routes   ((lazy-load-var 'cook.mesos.api/handler)
+             mesos-datomic
+             framework-id
+             task-constraints
+             (fn [] @mesos-pending-jobs-atom))
+
+            auxiliary-routes
+
+            (route/not-found "<h1>Not a valid route</h1>")))
 
 
 (def mesos-scheduler
@@ -254,9 +255,12 @@
    ;; the value of the :settings key in the input map.
 
     {:mesos-datomic mesos-datomic
-     :route full-routes
-     :http-server (fnk [[:settings server-port authorization-middleware] [:route view]]
-                       (make-http-server! server-port authorization-middleware view))
+
+     :routes (fnk [mesos-datomic framework-id mesos-pending-jobs-atom [:settings task-constraints]] 
+                 (make-app-routes mesos-datomic framework-id task-constraints mesos-pending-jobs-atom))
+
+     :http-server (fnk [[:settings server-port authorization-middleware] routes]
+                       (make-http-server! server-port authorization-middleware routes))
 
      :framework-id (fnk [curator-framework [:settings mesos-leader-path]]
                         (when-let [bytes (curator/get-or-nil curator-framework
@@ -270,7 +274,9 @@
                              (.start zookeeper-server)))
      :mesos mesos-scheduler
      :mesos-pending-jobs-atom (fnk [] (atom []))
-     :curator-framework curator-framework}))
+     :curator-framework curator-framework
+
+}))
 
 (def simple-dns-name
   (fnk [] (str (System/getProperty "user.name")
@@ -519,7 +525,7 @@
            settings (:settings app-state)]
        (if-let [new-server (make-http-server! (:server-port settings)
                                               (:authorization-middleware settings)
-                                              (get-in app-state [:route :view]))]
+                                              (:routes app-state))]
          (dosync (alter app-state-ref assoc :http-server new-server))))))
 
 
