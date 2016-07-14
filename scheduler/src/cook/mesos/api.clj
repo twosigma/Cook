@@ -356,6 +356,7 @@
                     reason-code (:instance/reason-code instance)
                     base {:task_id (:instance/task-id instance)
                           :hostname hostname
+                          :ports (:instance/ports instance)
                           :backfilled (:instance/backfilled? instance false)
                           :preempted (:instance/preempted? instance false)
                           :slave_id (:instance/slave-id instance)

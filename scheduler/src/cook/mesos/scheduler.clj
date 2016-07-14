@@ -600,6 +600,7 @@
                                                           (:task-id task-info))
                                   :instance/backfilled? (contains? (:backfill-jobs processed-matches) (get-in request [:job :job/uuid]))
                                   :instance/slave-id slave-id
+                                  :instance/ports (.getAssignedPorts task)
                                   :instance/progress 0
                                   :instance/status :instance.status/unknown
                                   :instance/preempted? false}])

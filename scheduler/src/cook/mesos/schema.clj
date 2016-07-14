@@ -275,6 +275,11 @@
      :db/cardinality :db.cardinality/one
      :db.install/_attribute :db.part/db}
     {:db/id (d/tempid :db.part/db)
+     :db/ident :instance/ports
+     :db/valueType :db.type/long
+     :db/cardinality :db.cardinality/many
+     :db.install/_attribute :db.part/db}
+    {:db/id (d/tempid :db.part/db)
      :db/ident :instance/executor-id
      :db/valueType :db.type/string
      :db/cardinality :db.cardinality/one
