@@ -58,6 +58,12 @@
            java.security.Principal)
   (:gen-class))
 
+;;
+;; Main-graph stores the top-level application state at runtime..
+;; 
+(defonce main-graph (ref nil))
+
+
 ;; Make nrepl Server object printable:
 (prefer-method clojure.pprint/simple-dispatch clojure.lang.IPersistentMap clojure.lang.IDeref)
 
@@ -84,7 +90,19 @@
 (def auxiliary-routes
   (routes 
    (GET "/ping" [] (fn [req]
-                     (str "Hello, " req)))))
+                     (str "Hello, " (or (get req :authorization/user)
+                                        "anonymous"))))
+
+   (GET "/admin/ping" [] (fn [req]
+                           (let [user  (or (get req :authorization/user)
+                                           "anonymous")]
+                             (if (is-admin? main-graph user)
+                               (str "Hello, " user ", you're an admin.")
+                               {:status 403
+                                :body "Forbidden"}))))
+
+))
+
 (defn make-app-routes
   [mesos-datomic framework-id task-constraints mesos-pending-jobs-atom]
   (routes   ((lazy-load-var 'cook.mesos.api/handler)
@@ -163,19 +181,6 @@
          (.start curator-framework)
          curator-framework)))
 
-;; This function is apparently unused now - there are no other
-;; references to it in the code (7/2016)
-;;
-;; (def jet-runner
-;;   "This is the jet server constructor. It could be cool."
-;;   (fnk [[:settings server-port]]
-;;        (fn [handler]
-;;          (let [jetty ((lazy-load-var 'qbits.jet.server/run-jetty)
-;;                       {:port server-port
-;;                        :ring-handler handler
-;;                        :join? false
-;;                        :max-threads 200})]
-;;            (fn [] (.stop jetty))))))
 
 (defn tell-jetty-about-usename [h]
   "Our auth in cook.spnego doesn't hook in to Jetty - this handler
@@ -326,6 +331,8 @@
   (graph/eager-compile
     {:server-port (fnk [[:config port]]
                        port)
+     :user-privileges (fnk [[:config {user-privileges {}}]]
+                           user-privileges)
      :authorization-middleware (fnk [[:config [:authorization {one-user false} {kerberos false} {http-basic false}]]]
                                     (cond
                                       http-basic (do
@@ -455,10 +462,6 @@
                              ((lazy-load-var 'cook.util/install-email-on-exception-handler) log-level email))
      :logging (fnk [[:config log]]
                    (init-logger log))}))
-;;
-;; Main-graph stores the top-level application state.
-;; 
-(defonce main-graph (ref nil))
 
 ;;
 ;; (initialize!) is seperate from (-main), which exits the process
@@ -521,12 +524,17 @@
        (stopper-fn))
 
      ;; Make a new server (outside the transaction!) and swap it in.
-     (let [app-state @main-graph
-           settings (:settings app-state)]
+     (let [app-state  @main-graph
+           settings   (:settings app-state)
+           new-routes  ((fnk [mesos-datomic framework-id mesos-pending-jobs-atom [:settings task-constraints]] 
+                              (make-app-routes mesos-datomic framework-id task-constraints mesos-pending-jobs-atom))
+                        app-state)]
        (if-let [new-server (make-http-server! (:server-port settings)
                                               (:authorization-middleware settings)
-                                              (:routes app-state))]
-         (dosync (alter app-state-ref assoc :http-server new-server))))))
+                                              new-routes)]
+         (dosync
+          (alter app-state-ref assoc :http-server new-server)
+          (alter app-state-ref assoc :routes new-routes))))))
 
 
 (comment
