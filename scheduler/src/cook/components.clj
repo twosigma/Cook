@@ -42,6 +42,9 @@
            java.security.Principal)
   (:gen-class))
 
+;; Make nrepl Server object printable:
+(prefer-method clojure.pprint/simple-dispatch clojure.lang.IPersistentMap clojure.lang.IDeref)
+
 (defn wrap-no-cache
   [handler]
   (fn [req]
@@ -424,7 +427,7 @@
 ;;
 ;; Main-graph stores the top-level application state.
 ;; 
-(def main-graph (ref nil))
+(defonce main-graph (ref nil))
 
 ;;
 ;; (initialize!) is seperate from (-main), which exits the process
@@ -460,7 +463,8 @@
 
         server (make-top-level-server! parsed-settings)]
 
-    (dosync (ref-set main-graph server))
+    (dosync (ref-set main-graph 
+                     (conj server parsed-settings)))
 
     (log/info "Started cook. Stored top-level state in cook.components/main-graph")
     (println "Started cook. Stored top-level state in cook.components/main-graph")))
@@ -474,6 +478,21 @@
       (log/error t "Failed to start Cook")
       (println "Failed to start Cook: " (.getMessage t))
       (System/exit 1))))
+
+
+(defn cycle-webserver!
+  "Discards the old Jetty webserver and replaces it with a new one."
+  ([] (cycle-webserver! main-graph))
+  ([app-state-ref]
+
+     ;; Stop the old server, if any exists
+     (if-let [stopper-fn (:http-server @app-state-ref)]
+       (stopper-fn))
+
+     ;; Make a new server (outside the transaction!) and swap it in.
+     (if-let [new-server (make-http-server! {:settings (:settings @app-state-ref)
+                                             :route full-routes})]
+       (dosync (alter app-state-ref assoc :http-server new-server)))))
 
 
 (comment
