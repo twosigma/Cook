@@ -14,22 +14,38 @@
 ;; limitations under the License.
 ;;
 (ns cook.components
+            ;; Plumbing library
   (:require [plumbing.core :refer (fnk defnk)]
-            [ring.middleware.params :refer (wrap-params)]
+            [plumbing.graph :as graph]
+
+            ;; System and language extensions
             [clj-pid.core :as pid]
             [clojure.java.io :as io]
+
+            ;; Logging / printing
             [clj-logging-config.log4j :as log4j-conf]
             [clojure.tools.logging :as log]
             [clojure.pprint :refer (pprint)]
+
+            ;; Miscellaneous
             [cook.spnego :as spnego]
+
+            ;; Ring
             [ring.middleware.stacktrace :refer (wrap-stacktrace)]
+            [ring.middleware.params :refer (wrap-params)]
             [ring.util.response :refer (response)]
             [ring.util.mime-type]
+            [metrics.ring.instrument :refer (instrument)]
+            
+            ;; Compojure
             [compojure.core :refer (GET POST routes context)]
             [compojure.route :as route]
-            [plumbing.graph :as graph]
+            
+            ;; Cook subsystems
             [cook.curator :as curator]
-            [metrics.ring.instrument :refer (instrument)])
+            [cook.authorization :refer [is-admin?]]
+            [cook.mesos.api]
+)
   (:import org.apache.curator.retry.BoundedExponentialBackoffRetry
            org.apache.curator.framework.state.ConnectionStateListener
            org.apache.curator.framework.CuratorFrameworkFactory
@@ -79,6 +95,8 @@
               (routes (:view raw-scheduler)
                       (route/not-found "<h1>Not a valid route</h1>")))})
 
+
+
 (def mesos-scheduler
   {:mesos-scheduler (fnk [[:settings mesos-master mesos-master-hosts mesos-leader-path mesos-failover-timeout mesos-principal mesos-role offer-incubate-time-ms task-constraints riemann] mesos-datomic mesos-datomic-mult curator-framework mesos-pending-jobs-atom]
                          (try
@@ -106,15 +124,16 @@
   "This adds /debug to return 200 OK"
   [h]
   (fn healthcheck [req]
-    (log/debug "[health-check-middleware] Got request: " req)
     (if (and (= (:uri req) "/debug")
              (= (:request-method req) :get))
-      {:status 200
-       :headers {}
-       :body (str "Server is running: "
-                  (try (slurp (io/resource "git-log"))
-                       (catch Exception e
-                         "dev")))}
+      (do
+        (log/debug "[health-check-middleware] Got request: " req)
+        {:status 200
+         :headers {}
+         :body (str "Server is running: "
+                    (try (slurp (io/resource "git-log"))
+                         (catch Exception e
+                           "dev")))})
       (h req))))
 
 (def mesos-datomic
@@ -143,16 +162,19 @@
          (.start curator-framework)
          curator-framework)))
 
-(def jet-runner
-  "This is the jet server constructor. It could be cool."
-  (fnk [[:settings server-port]]
-       (fn [handler]
-         (let [jetty ((lazy-load-var 'qbits.jet.server/run-jetty)
-                      {:port server-port
-                       :ring-handler handler
-                       :join? false
-                       :max-threads 200})]
-           (fn [] (.stop jetty))))))
+;; This function is apparently unused now - there are no other
+;; references to it in the code (7/2016)
+;;
+;; (def jet-runner
+;;   "This is the jet server constructor. It could be cool."
+;;   (fnk [[:settings server-port]]
+;;        (fn [handler]
+;;          (let [jetty ((lazy-load-var 'qbits.jet.server/run-jetty)
+;;                       {:port server-port
+;;                        :ring-handler handler
+;;                        :join? false
+;;                        :max-threads 200})]
+;;            (fn [] (.stop jetty))))))
 
 (defn tell-jetty-about-usename [h]
   "Our auth in cook.spnego doesn't hook in to Jetty - this handler
@@ -190,17 +212,19 @@
                                   (.setServer server)))))))
 
 
-(defnk make-http-server!
-  "Given a configuration map  with :settings/:server-port, :settings/:authorization-middleware
-  and :route keys, creates a Jetty HTTP server.
+(defn make-http-server!
+  "Creates a Jetty HTTP server that listens on the given port and uses
+  the given auth middleware and routes.
 
   Returns a function that will stop the server when called."
   
-  [[:settings server-port authorization-middleware] [:route view]]
-  (log/info "Launching http server on port" server-port "...")
+  [server-port authorization-middleware app-routes]
+  (log/info "[make-http-server!] Launching http server on port" server-port 
+            "with authorization scheme" authorization-middleware
+            "...")
   (let [jetty ((lazy-load-var 'qbits.jet.server/run-jetty)
                {:port server-port
-                :ring-handler (-> view
+                :ring-handler (-> app-routes
                                   tell-jetty-about-usename
                                   authorization-middleware
                                   wrap-stacktrace
@@ -231,7 +255,8 @@
 
     {:mesos-datomic mesos-datomic
      :route full-routes
-     :http-server make-http-server!
+     :http-server (fnk [[:settings server-port authorization-middleware] [:route view]]
+                       (make-http-server! server-port authorization-middleware view))
 
      :framework-id (fnk [curator-framework [:settings mesos-leader-path]]
                         (when-let [bytes (curator/get-or-nil curator-framework
@@ -490,9 +515,12 @@
        (stopper-fn))
 
      ;; Make a new server (outside the transaction!) and swap it in.
-     (if-let [new-server (make-http-server! {:settings (:settings @app-state-ref)
-                                             :route full-routes})]
-       (dosync (alter app-state-ref assoc :http-server new-server)))))
+     (let [app-state @main-graph
+           settings (:settings app-state)]
+       (if-let [new-server (make-http-server! (:server-port settings)
+                                              (:authorization-middleware settings)
+                                              (get-in app-state [:route :view]))]
+         (dosync (alter app-state-ref assoc :http-server new-server))))))
 
 
 (comment
