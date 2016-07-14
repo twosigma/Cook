@@ -265,7 +265,7 @@
      :db.install/_attribute :db.part/db}
     {:db/id (d/tempid :db.part/db)
      :db/ident :instance/backfilled?
-     :db/doc "If this is true, then this instance doesn't count towards making a job running, and it should be preempted first. It's okay to upgrade an instance to be non-backfilled after a while."
+     :db/doc "If this is true, then this instance should be preempted first regardless of priority. It's okay to upgrade an instance to be non-backfilled after a while."
      :db/valueType :db.type/boolean
      :db/cardinality :db.cardinality/one
      :db.install/_attribute :db.part/db}
@@ -446,22 +446,14 @@
              - task succeeded => job completed
              - task failed, no other tasks, retries exceeded => job completed
              - task failed, no other tasks, retries remaining => job waiting
-             - task failed, other tasks running => job running
-
-             Note that backfilled running instances are treated as if they don't exist.
-             In other words, if a job has running tasks that are all backfilled, the
-             state of the task itself will still be :waiting ."
+             - task failed, other tasks running => job running"
     :db/fn #db/fn {:lang "clojure"
                    :params [db j]
                    :requires [[metatransaction.core :as mt]]
                    :code
                    (let [db (mt/filter-committed db)
                          job (d/entity db j)
-                         instance-states (mapcat (fn [instance]
-                                                   (when-not (and (= :instance.status/running (:instance/status instance))
-                                                                  (:instance/backfilled? instance))
-                                                     [(:instance/status instance)]))
-                                                 (:job/instance job))
+                         instance-states (map :instance/status (:job/instance job))
                          any-success? (some #{:instance.status/success} instance-states)
                          any-running? (some #{:instance.status/running} instance-states)
                          all-failed? (every? #{:instance.status/failed} instance-states)

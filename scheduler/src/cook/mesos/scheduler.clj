@@ -892,7 +892,8 @@
                      (into {})
                      (dru/sorted-task-scored-task-pairs <> user->dru-divisors)
                      (filter (fn [[task scored-task]]
-                               (contains? pending-task-ents task)))
+                               (or (contains? pending-task-ents task)
+                                   (:instance/backfilled? task))))
                      (map (fn [[task scored-task]]
                             (:job/_instance task)))))]
     jobs))

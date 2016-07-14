@@ -432,7 +432,7 @@
   ;; Then pretend to launch them as backfilled
   ;; Check here that they have the right properties (pending, not ready to run)
   ;; Then we'll upgrade the jobs
-  ;; Check here that they have the right properties (running, not ready to run)
+  ;; Check here that they have the right properties (not pending, not ready to run)
   ;; Then shut it down
 
   (let [uri "datomic:mem://test-backfill-upgrade"
@@ -453,7 +453,7 @@
                                         :job-state :job.state/waiting
                                         :instance-status :instance.status/running
                                         :backfilled? true)]
-    (check-count-of-pending-and-runnable-jobs 1 0 "job backfilled without update")
+    (check-count-of-pending-and-runnable-jobs 2 0 "job backfilled without update")
     @(d/transact conn [[:job/update-state job]])
     (check-count-of-pending-and-runnable-jobs 1 0 "job backfilled")
     @(d/transact conn [[:db/add instance :instance/backfilled? false]])
