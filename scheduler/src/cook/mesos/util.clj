@@ -98,8 +98,8 @@
          [job-ent & job-ents] job-ents]
     (if job-ent
       (let [{:keys [cpus mem]} (job-ent->resources job-ent)]
-        (recur (+ total-cpus cpus)
-               (+ total-mem mem)
+        (recur (+ total-cpus (or cpus 0))
+               (+ total-mem (or mem 0))
                job-ents))
       {:cpus total-cpus :mem total-mem})))
 
