@@ -90,7 +90,8 @@
                  [liberator "0.13"]
 
                  ;;Databases
-                 [com.datomic/datomic-free "0.9.5206"
+                 [;;com.datomic/datomic-free "0.9.5206"
+                  com.datomic/datomic-pro "0.9.5385"
                   :exclusions [org.slf4j/slf4j-api
                                com.fasterxml.jackson.core/jackson-core
                                org.slf4j/jcl-over-slf4j

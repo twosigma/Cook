@@ -104,12 +104,13 @@
 ))
 
 (defn make-app-routes
-  [mesos-datomic framework-id task-constraints mesos-pending-jobs-atom]
+  [mesos-datomic framework-id task-constraints mesos-pending-jobs-atom admins]
   (routes   ((lazy-load-var 'cook.mesos.api/handler)
              mesos-datomic
              framework-id
              task-constraints
-             (fn [] @mesos-pending-jobs-atom))
+             (fn [] @mesos-pending-jobs-atom)
+             admins)
 
             auxiliary-routes
 
@@ -261,8 +262,8 @@
 
     {:mesos-datomic mesos-datomic
 
-     :routes (fnk [mesos-datomic framework-id mesos-pending-jobs-atom [:settings task-constraints]] 
-                 (make-app-routes mesos-datomic framework-id task-constraints mesos-pending-jobs-atom))
+     :routes (fnk [mesos-datomic framework-id mesos-pending-jobs-atom [:settings task-constraints user-privileges]] 
+                 (make-app-routes mesos-datomic framework-id task-constraints mesos-pending-jobs-atom (:admin user-privileges)))
 
      :http-server (fnk [[:settings server-port authorization-middleware] routes]
                        (make-http-server! server-port authorization-middleware routes))
@@ -526,8 +527,8 @@
      ;; Make a new server (outside the transaction!) and swap it in.
      (let [app-state  @main-graph
            settings   (:settings app-state)
-           new-routes  ((fnk [mesos-datomic framework-id mesos-pending-jobs-atom [:settings task-constraints]] 
-                              (make-app-routes mesos-datomic framework-id task-constraints mesos-pending-jobs-atom))
+           new-routes  ((fnk [mesos-datomic framework-id mesos-pending-jobs-atom [:settings task-constraints user-privileges]] 
+                              (make-app-routes mesos-datomic framework-id task-constraints mesos-pending-jobs-atom (:admin user-privileges)))
                         app-state)]
        (if-let [new-server (make-http-server! (:server-port settings)
                                               (:authorization-middleware settings)

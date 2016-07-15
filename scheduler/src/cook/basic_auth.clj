@@ -41,7 +41,7 @@
   (fn [req]
     (if-let [[user pass] (parse-auth-from-request req)]
       (do
-        (log/info "Allowing user:" user)
+        (log/info "Request from user:" user)
         (log/debug "Got http basic auth:" user pass)
         (h (assoc req :authorization/user user)))
       (-> (response "malformed or missing authorization header in basic auth")
