@@ -1,6 +1,11 @@
 {:port 12321
  ;; We'll set the user to vagrant, since that's the default for many Vagrant-based Mesos setups
  :authorization {:one-user "vagrant"}
+
+ ;; These users have admin privileges -- they can view and modify other users' jobs.
+ :user-privileges {:admin #{"admin" "other-admin"}}
+
+
  :database {:datomic-uri "datomic:mem://cook-jobs"}
  :zookeeper {:local? true
              ;:local-port 3291 ; Uncomment to change the default port
