@@ -15,7 +15,8 @@
 ;;
 (ns cook.basic-auth
   (:require [clojure.tools.logging :as log]
-            [ring.util.response :refer (header status response)]))
+            [ring.util.response :refer (header status response)])
+  (:import org.apache.commons.codec.binary.Base64))
 
 (defn parse-auth-from-request
   "Given a request, extracts the HTTP basic auth username & password"
@@ -40,6 +41,7 @@
   (fn [req]
     (if-let [[user pass] (parse-auth-from-request req)]
       (do
+        (log/info "Request from user:" user)
         (log/debug "Got http basic auth:" user pass)
         (h (assoc req :authorization/user user)))
       (-> (response "malformed or missing authorization header in basic auth")

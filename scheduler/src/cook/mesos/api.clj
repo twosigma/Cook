@@ -29,6 +29,7 @@
             [clojure.data.json :as json]
             [liberator.core :refer [resource defresource]]
             [cheshire.core :as cheshire]
+            [cook.authorization :refer [is-admin?]]
             [cook.mesos.util :as util]
             [clj-time.core :as t])
   (:import java.util.UUID))
@@ -231,6 +232,22 @@
                 db uuid))
     (throw (ex-info (str "UUID " uuid " already used") {:uuid uuid}))))
 
+
+(defn job-owner-by-uuid
+  "Returns the username that owns the given UUID, or nil if no job with
+  that UUID exists."
+  [db uuid]
+  (let [uuid (if (string? uuid)
+               (UUID/fromString uuid)
+               uuid)]
+    (some-> (d/q '[:find ?owner
+                   :in $ ?uuid
+                   :where [?e :job/uuid ?uuid ] [?e :job/user ?owner]]
+                 db 
+                 uuid)
+            first first)))
+
+
 (defn validate-and-munge-job
   "Takes the user and the parsed json from the job and returns proper
    Job objects, or else throws an exception"
@@ -385,7 +402,7 @@
 ;;;
 ;;; On GET; use repeated job argument
 (defn job-resource
-  [conn fid task-constraints]
+  [conn fid task-constraints admins]
   (-> (resource
         :available-media-types ["application/json"]
         :allowed-methods [:post :get :delete]
@@ -419,18 +436,55 @@
         :allowed? (fn [ctx]
                     (condp contains? (get-in ctx [:request :request-method])
                       #{:get :delete}
-                      (letfn [(used? [uuid]
-                                (try
-                                  (unused-uuid? (db conn) uuid)
-                                  false
-                                  (catch Exception e
-                                    true)))]
-                        (or (every? used? (::jobs ctx))
-                          [false {::error (str "UUID "
-                                               (str/join
-                                                 \space
-                                                 (remove used? (::jobs ctx)))
-                                               " didn't correspond to a job")}]))
+                      (let [user  (get-in ctx [:request :authorization/user])
+                            is-admin (contains? admins user)
+
+                            uuids (::jobs ctx)
+
+                            datomic (db conn)
+                            used? (fn [uuid]
+                                    (try
+                                      (unused-uuid? datomic uuid)
+                                      false
+                                      (catch Exception e
+                                        true)))
+
+                            ;; Changes each UUID into a map describing
+                            ;; whether it's allowed, and if not, why
+                            ;; it's not allowed.
+                            uuid-filter (fn [uuid]
+                                          ;; Admins can see others' jobs, so we have to do a
+                                          ;; seperate existence check.
+                                          (let [not-found (not (used? uuid))
+                                                not-owner (not (= user (job-owner-by-uuid datomic uuid)))]
+
+                                            (if not-found (log/info "User" user "requested unknown job UUID " uuid ))
+                                            (if (and not-owner
+                                                     (not not-found)
+                                                     (not is-admin)) (log/info "User" user "requested non-owned job UUID " uuid ", denying."))
+                                            (if (and not-owner
+                                                     is-admin)  (log/info "User" user "is an admin; allowing them to view other user's job" uuid))
+
+                                            (cond
+                                             (or not-found 
+                                                 (and not-owner
+                                                      (not is-admin)))  {:is-allowed false
+                                                                         :message (str "No job found with UUID " uuid)
+                                                                         :uuid uuid}
+                                                      :else             {:is-allowed true
+                                                                         :uuid uuid})))
+
+                            uuids (map uuid-filter uuids)]
+                        ;; Return true if every UUID is in use, or
+                        ;; else return false with a list of
+                        ;; nonexistant UUIDs.
+                        (if (every? true? (map :is-allowed uuids))
+                          true
+                          (let [message  (->> (map :message uuids)
+                                                 (remove nil?)
+                                                 (str/join "; " ))]
+                            (log/info "Denying access:" message)
+                            [false {::error message}])))
                       #{:post}
                       true))
         :handle-malformed (fn [ctx]
@@ -481,10 +535,10 @@
       ring.middleware.json/wrap-json-params))
 
 (defn handler
-  [conn fid task-constraints mesos-pending-jobs-fn]
+  [conn fid task-constraints mesos-pending-jobs-fn admins]
   (routes
     (ANY "/rawscheduler" []
-         (job-resource conn fid task-constraints))
+         (job-resource conn fid task-constraints admins))
     (ANY "/queue" []
          (waiting-jobs mesos-pending-jobs-fn))
     (ANY "/running" []

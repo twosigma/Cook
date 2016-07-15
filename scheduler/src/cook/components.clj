@@ -14,22 +14,38 @@
 ;; limitations under the License.
 ;;
 (ns cook.components
-  (:require [plumbing.core :refer (fnk)]
-            [ring.middleware.params :refer (wrap-params)]
+            ;; Plumbing library
+  (:require [plumbing.core :refer (fnk defnk)]
+            [plumbing.graph :as graph]
+
+            ;; System and language extensions
             [clj-pid.core :as pid]
             [clojure.java.io :as io]
+
+            ;; Logging / printing
             [clj-logging-config.log4j :as log4j-conf]
             [clojure.tools.logging :as log]
             [clojure.pprint :refer (pprint)]
+
+            ;; Miscellaneous
             [cook.spnego :as spnego]
+
+            ;; Ring
             [ring.middleware.stacktrace :refer (wrap-stacktrace)]
+            [ring.middleware.params :refer (wrap-params)]
             [ring.util.response :refer (response)]
             [ring.util.mime-type]
+            [metrics.ring.instrument :refer (instrument)]
+            
+            ;; Compojure
             [compojure.core :refer (GET POST routes context)]
             [compojure.route :as route]
-            [plumbing.graph :as graph]
+            
+            ;; Cook subsystems
             [cook.curator :as curator]
-            [metrics.ring.instrument :refer (instrument)])
+            [cook.authorization :refer [is-admin?]]
+            [cook.mesos.api]
+)
   (:import org.apache.curator.retry.BoundedExponentialBackoffRetry
            org.apache.curator.framework.state.ConnectionStateListener
            org.apache.curator.framework.CuratorFrameworkFactory
@@ -41,6 +57,15 @@
            javax.security.auth.Subject
            java.security.Principal)
   (:gen-class))
+
+;;
+;; Main-graph stores the top-level application state at runtime..
+;; 
+(defonce main-graph (ref nil))
+
+
+;; Make nrepl Server object printable:
+(prefer-method clojure.pprint/simple-dispatch clojure.lang.IPersistentMap clojure.lang.IDeref)
 
 (defn wrap-no-cache
   [handler]
@@ -60,21 +85,37 @@
     (require (symbol ns))
     (resolve var-sym)))
 
-(def raw-scheduler-routes
-  {:scheduler (fnk [mesos-datomic framework-id mesos-pending-jobs-atom [:settings task-constraints]]
-                   ((lazy-load-var 'cook.mesos.api/handler)
-                    mesos-datomic
-                    framework-id
-                    task-constraints
-                    (fn [] @mesos-pending-jobs-atom)))
-   :view (fnk [scheduler]
-              scheduler)})
 
-(def full-routes
-  {:raw-scheduler raw-scheduler-routes
-   :view (fnk [raw-scheduler]
-              (routes (:view raw-scheduler)
-                      (route/not-found "<h1>Not a valid route</h1>")))})
+
+(def auxiliary-routes
+  (routes 
+   (GET "/ping" [] (fn [req]
+                     (str "Hello, " (or (get req :authorization/user)
+                                        "anonymous"))))
+
+   (GET "/admin/ping" [] (fn [req]
+                           (let [user  (or (get req :authorization/user)
+                                           "anonymous")]
+                             (if (is-admin? main-graph user)
+                               (str "Hello, " user ", you're an admin.")
+                               {:status 403
+                                :body "Forbidden"}))))
+
+))
+
+(defn make-app-routes
+  [mesos-datomic framework-id task-constraints mesos-pending-jobs-atom admins]
+  (routes   ((lazy-load-var 'cook.mesos.api/handler)
+             mesos-datomic
+             framework-id
+             task-constraints
+             (fn [] @mesos-pending-jobs-atom)
+             admins)
+
+            auxiliary-routes
+
+            (route/not-found "<h1>Not a valid route</h1>")))
+
 
 (def mesos-scheduler
   {:mesos-scheduler (fnk [[:settings mesos-master mesos-master-hosts mesos-leader-path mesos-failover-timeout mesos-principal mesos-role offer-incubate-time-ms task-constraints riemann] mesos-datomic mesos-datomic-mult curator-framework mesos-pending-jobs-atom]
@@ -105,12 +146,14 @@
   (fn healthcheck [req]
     (if (and (= (:uri req) "/debug")
              (= (:request-method req) :get))
-      {:status 200
-       :headers {}
-       :body (str "Server is running: "
-                  (try (slurp (io/resource "git-log"))
-                       (catch Exception e
-                         "dev")))}
+      (do
+        (log/debug "[health-check-middleware] Got request: " req)
+        {:status 200
+         :headers {}
+         :body (str "Server is running: "
+                    (try (slurp (io/resource "git-log"))
+                         (catch Exception e
+                           "dev")))})
       (h req))))
 
 (def mesos-datomic
@@ -139,16 +182,6 @@
          (.start curator-framework)
          curator-framework)))
 
-(def jet-runner
-  "This is the jet server constructor. It could be cool."
-  (fnk [[:settings server-port]]
-       (fn [handler]
-         (let [jetty ((lazy-load-var 'qbits.jet.server/run-jetty)
-                      {:port server-port
-                       :ring-handler handler
-                       :join? false
-                       :max-threads 200})]
-           (fn [] (.stop jetty))))))
 
 (defn tell-jetty-about-usename [h]
   "Our auth in cook.spnego doesn't hook in to Jetty - this handler
@@ -185,26 +218,55 @@
                                                     (.setPreferProxiedForAddress true)))
                                   (.setServer server)))))))
 
-(def scheduler-server
+
+(defn make-http-server!
+  "Creates a Jetty HTTP server that listens on the given port and uses
+  the given auth middleware and routes.
+
+  Returns a function that will stop the server when called."
+  
+  [server-port authorization-middleware app-routes]
+  (log/info "[make-http-server!] Launching http server on port" server-port 
+            "with authorization scheme" authorization-middleware
+            "...")
+  (let [jetty ((lazy-load-var 'qbits.jet.server/run-jetty)
+               {:port server-port
+                :ring-handler (-> app-routes
+                                  tell-jetty-about-usename
+                                  authorization-middleware
+                                  wrap-stacktrace
+                                  wrap-no-cache
+                                  wrap-params
+                                  health-check-middleware
+                                  instrument)
+                :join? false
+                :configurator configure-jet-logging
+                :max-threads 200})]
+    (fn [] (.stop jetty))))
+
+
+
+(def make-top-level-server!
+  "Creates a function that, given a parsed configuration map (as returned by parse-settings),
+  instantiates the various components called for by that
+  configuration, and returns a map holding the instantiation artefacts.
+
+  This has side effects such as instantiating Java objects and making
+  network connections to external services."
   (graph/eager-compile
+   ;; This defines a function which accepts a map argument.  While
+   ;; creating the map to be returned, below, the nested input map is
+   ;; implicitly available from fnk's: for example, [:settings
+   ;; server-port] resolves to the value of the :server-port key of
+   ;; the value of the :settings key in the input map.
+
     {:mesos-datomic mesos-datomic
-     :route full-routes
-     :http-server (fnk [[:settings server-port authorization-middleware] [:route view]]
-                       (log/info "Launching http server")
-                       (let [jetty ((lazy-load-var 'qbits.jet.server/run-jetty)
-                                    {:port server-port
-                                     :ring-handler (-> view
-                                                       tell-jetty-about-usename
-                                                       authorization-middleware
-                                                       wrap-stacktrace
-                                                       wrap-no-cache
-                                                       wrap-params
-                                                       health-check-middleware
-                                                       instrument)
-                                     :join? false
-                                     :configurator configure-jet-logging
-                                     :max-threads 200})]
-                         (fn [] (.stop jetty))))
+
+     :routes (fnk [mesos-datomic framework-id mesos-pending-jobs-atom [:settings task-constraints user-privileges]] 
+                 (make-app-routes mesos-datomic framework-id task-constraints mesos-pending-jobs-atom (:admin user-privileges)))
+
+     :http-server (fnk [[:settings server-port authorization-middleware] routes]
+                       (make-http-server! server-port authorization-middleware routes))
 
      :framework-id (fnk [curator-framework [:settings mesos-leader-path]]
                         (when-let [bytes (curator/get-or-nil curator-framework
@@ -218,7 +280,9 @@
                              (.start zookeeper-server)))
      :mesos mesos-scheduler
      :mesos-pending-jobs-atom (fnk [] (atom []))
-     :curator-framework curator-framework}))
+     :curator-framework curator-framework
+
+}))
 
 (def simple-dns-name
   (fnk [] (str (System/getProperty "user.name")
@@ -261,11 +325,15 @@
    :exception-handler (fnk [] ((lazy-load-var 'cook.util/install-email-on-exception-handler))) ;;TODO parameterize
    })
 
-(def config-settings
-  "Parses the settings out of a config file"
+(def parse-settings
+  "Parses the raw settings out of a config file. Returns a
+  map (implemented as a Plumatic Plumbing graph) of various cooked
+  settings derived from the raw config file EDN."
   (graph/eager-compile
     {:server-port (fnk [[:config port]]
                        port)
+     :user-privileges (fnk [[:config {user-privileges {}}]]
+                           user-privileges)
      :authorization-middleware (fnk [[:config [:authorization {one-user false} {kerberos false} {http-basic false}]]]
                                     (cond
                                       http-basic (do
@@ -396,13 +464,25 @@
      :logging (fnk [[:config log]]
                    (init-logger log))}))
 
-(defn -main
-  [config & args]
+;;
+;; (initialize!) is seperate from (-main), which exits the process
+;; upon errors, so that you can start a dev system from an interactive
+;; REPL by calling (initialize!). This allows you to retry if
+;; initialization fails, without having it terminate the JVM process
+;; if something goes wrong.
+;;
+;; The command line invocation calls (-main) and exits the JVM process
+;; on any startup error.
+;;
+(defn initialize!
+  "Reads the given config file and starts Cook.
+   Throws an exception upon failure."
+  [config]
   (when-not (.exists (java.io.File. config))
-    (.println System/err (str "The config file doesn't appear to exist: " config)))
+    (throw (Exception.  (str "The specified config file doesn't appear to exist: " config))))
+
   (println "Reading config from file:" config)
-  (try
-    (let [config-format (com.google.common.io.Files/getFileExtension config)
+  (let [config-format (com.google.common.io.Files/getFileExtension config)
         literal-config {:config
                         (case config-format
                           "edn" (read-string (slurp config))
@@ -412,19 +492,54 @@
         base-init (pre-configuration literal-config)
         _ (println "Configured logging")
         _ (log/info "Configured logging")
-        settings {:settings (config-settings literal-config)}
+
+        parsed-settings {:settings (parse-settings literal-config)}
         _ (log/info "Interpreted settings")
-        server (scheduler-server settings)]
-    (intern 'user 'main-graph server)
-    (log/info "Started cook, stored variable in user/main-graph"))
-    (println "Started cook, stored variable in user/main-graph")
+
+        server (make-top-level-server! parsed-settings)]
+
+    (dosync (ref-set main-graph 
+                     (conj server parsed-settings)))
+
+    (log/info "Started cook. Stored top-level state in cook.components/main-graph")
+    (println "Started cook. Stored top-level state in cook.components/main-graph")))
+
+
+(defn -main
+  [config & args]
+  (try
+    (initialize! config)
     (catch Throwable t
       (log/error t "Failed to start Cook")
-      (println "Failed to start Cook")
+      (println "Failed to start Cook: " (.getMessage t))
       (System/exit 1))))
 
+
+(defn cycle-webserver!
+  "Discards the old Jetty webserver and replaces it with a new one."
+  ([] (cycle-webserver! main-graph))
+  ([app-state-ref]
+
+     ;; Stop the old server, if any exists
+     (if-let [stopper-fn (:http-server @app-state-ref)]
+       (stopper-fn))
+
+     ;; Make a new server (outside the transaction!) and swap it in.
+     (let [app-state  @main-graph
+           settings   (:settings app-state)
+           new-routes  ((fnk [mesos-datomic framework-id mesos-pending-jobs-atom [:settings task-constraints user-privileges]] 
+                              (make-app-routes mesos-datomic framework-id task-constraints mesos-pending-jobs-atom (:admin user-privileges)))
+                        app-state)]
+       (if-let [new-server (make-http-server! (:server-port settings)
+                                              (:authorization-middleware settings)
+                                              new-routes)]
+         (dosync
+          (alter app-state-ref assoc :http-server new-server)
+          (alter app-state-ref assoc :routes new-routes))))))
+
+
 (comment
-  ;; Here are some helpful fragments for changing debug levels, especiall with datomic
+  ;; Here are some helpful fragments for changing debug levels, especially with datomic
   (require 'datomic.api)
   (log4j-conf/set-logger! :level :debug)
 

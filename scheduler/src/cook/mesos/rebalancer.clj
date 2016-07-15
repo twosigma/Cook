@@ -354,6 +354,7 @@
                                                host->combined-offers))))
         shutdown-rebalancer (chime-at (periodic/periodic-seq (time/now) rebalance-interval)
                                       (fn [now]
+                                        (log/debug "[shutdown-rebalancer] Connecting to db:" conn)
                                         (let [db (mt/db conn)
                                               params (-<>>
                                                       (d/pull db ["*"] :rebalancer/config)
