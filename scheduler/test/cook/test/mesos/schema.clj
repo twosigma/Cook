@@ -55,6 +55,7 @@
                   :job/uuid uuid
                   :job/command command
                   :job/user user
+                  :job/name name
                   :job/max-retries retry-count
                   :job/max-runtime max-runtime
                   :job/priority priority
