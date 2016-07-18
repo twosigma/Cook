@@ -258,8 +258,8 @@
           (is (zero? (count (:upgrade-backfill result))))
           (is (= 1 (count (:backfill-jobs result))))
           (is (not (:matched-head? result)))))
-      (testing "Match the tail, but the head isn't considerable" ;;TODO is this even correct?
-        (let [result (sched/process-matches-for-backfill [j1 j4] j4 [j4])]
+      (testing "Match the tail, but the head isn't considerable"
+        (let [result (sched/process-matches-for-backfill [j1 j4] j5 [j4])]
           (is (zero? (count (:fully-processed result))))
           (is (zero? (count (:upgrade-backfill result))))
           (is (= 1 (count (:backfill-jobs result))))
