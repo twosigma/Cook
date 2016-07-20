@@ -27,9 +27,6 @@
             [clojure.tools.logging :as log]
             [clojure.pprint :refer (pprint)]
 
-            ;; Miscellaneous
-            [cook.spnego :as spnego]
-
             ;; Ring
             [ring.middleware.stacktrace :refer (wrap-stacktrace)]
             [ring.middleware.params :refer (wrap-params)]
@@ -42,10 +39,14 @@
             [compojure.route :as route]
             
             ;; Cook subsystems
+            [cook.global-state :refer [global-state]]
+            [cook.util :refer [lazy-load-var]]
+            [cook.spnego :as spnego]
             [cook.curator :as curator]
-            [cook.authorization :refer [is-admin?]]
+            [cook.authorization]
+            [cook.mesos]
             [cook.mesos.api]
-)
+            )
   (:import org.apache.curator.retry.BoundedExponentialBackoffRetry
            org.apache.curator.framework.state.ConnectionStateListener
            org.apache.curator.framework.CuratorFrameworkFactory
@@ -58,10 +59,6 @@
            java.security.Principal)
   (:gen-class))
 
-;;
-;; Main-graph stores the top-level application state at runtime..
-;; 
-(defonce main-graph (ref nil))
 
 
 ;; Make nrepl Server object printable:
@@ -75,16 +72,6 @@
                 [:headers "Cache-control"]
                 "max-age=0"))))
 
-(defn lazy-load-var
-  "Takes a symbol name of a var, requires the ns if not yet required, and
-   returns the var."
-  [var-sym]
-  (let [ns (namespace var-sym)]
-    (when-not ns
-      (throw (ex-info "Can only load vars that are ns-qualified!" {})))
-    (require (symbol ns))
-    (resolve var-sym)))
-
 
 
 (def auxiliary-routes
@@ -93,13 +80,13 @@
                      (str "Hello, " (or (get req :authorization/user)
                                         "anonymous"))))
 
-   (GET "/admin/ping" [] (fn [req]
-                           (let [user  (or (get req :authorization/user)
-                                           "anonymous")]
-                             (if (is-admin? main-graph user)
-                               (str "Hello, " user ", you're an admin.")
-                               {:status 403
-                                :body "Forbidden"}))))
+   ;; (GET "/admin/ping" [] (fn [req]
+   ;;                         (let [user  (or (get req :authorization/user)
+   ;;                                         "anonymous")]
+   ;;                           (if (is-admin? global-state user)
+   ;;                             (str "Hello, " user ", you're an admin.")
+   ;;                             {:status 403
+   ;;                              :body "Forbidden"}))))
 
 ))
 
@@ -158,6 +145,7 @@
 
 (def mesos-datomic
   (fnk [[:settings mesos-datomic-uri]]
+       (log/info "Connecting to Datomic at" mesos-datomic-uri "...")
        ((lazy-load-var 'datomic.api/create-database) mesos-datomic-uri)
        (let [conn ((lazy-load-var 'datomic.api/connect) mesos-datomic-uri)]
          (doseq [txn (deref (lazy-load-var 'cook.mesos.schema/work-item-schema))]
@@ -334,6 +322,9 @@
                        port)
      :user-privileges (fnk [[:config {user-privileges {}}]]
                            user-privileges)
+     :authorization-fn (fnk [[:config authorization-fn]]
+                            (lazy-load-var authorization-fn))
+
      :authorization-middleware (fnk [[:config [:authorization {one-user false} {kerberos false} {http-basic false}]]]
                                     (cond
                                       http-basic (do
@@ -498,11 +489,11 @@
 
         server (make-top-level-server! parsed-settings)]
 
-    (dosync (ref-set main-graph 
+    (dosync (ref-set global-state 
                      (conj server parsed-settings)))
 
-    (log/info "Started cook. Stored top-level state in cook.components/main-graph")
-    (println "Started cook. Stored top-level state in cook.components/main-graph")))
+    (log/info "Started cook. Stored top-level state in cook.global-state/global-state")
+    (println "Started cook. Stored top-level state in cook.global-state/global-state")))
 
 
 (defn -main
@@ -517,7 +508,7 @@
 
 (defn cycle-webserver!
   "Discards the old Jetty webserver and replaces it with a new one."
-  ([] (cycle-webserver! main-graph))
+  ([] (cycle-webserver! global-state))
   ([app-state-ref]
 
      ;; Stop the old server, if any exists
@@ -525,7 +516,7 @@
        (stopper-fn))
 
      ;; Make a new server (outside the transaction!) and swap it in.
-     (let [app-state  @main-graph
+     (let [app-state  @global-state
            settings   (:settings app-state)
            new-routes  ((fnk [mesos-datomic framework-id mesos-pending-jobs-atom [:settings task-constraints user-privileges]] 
                               (make-app-routes mesos-datomic framework-id task-constraints mesos-pending-jobs-atom (:admin user-privileges)))

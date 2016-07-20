@@ -15,9 +15,12 @@
 ;;
 (ns cook.test.mesos.api
  (:use clojure.test)
- (:require [cook.mesos.api :refer (handler)]
+ (:require [cook.mesos.api :as api :refer (handler)]
            [cook.mesos.util :as util]
            [cook.test.mesos.schema :as schema :refer (restore-fresh-database! create-dummy-job create-dummy-instance)]
+
+           [schema.core :as s]
+
            [clojure.data.json :as json]
            [datomic.api :as d :refer (q db)]))
 
@@ -160,3 +163,95 @@
                            :authorization/user "dgrnbrg"
                            :params {"jobs" [(job 1 2050)]}}))
               499)))))
+
+
+(deftest job-validation
+  (testing "Job schematized record passes valid job specifications"
+    ;; Checks a record with none of the optional keys
+    (is (nil? (s/check cook.mesos.api.Job 
+                       (api/map->Job {:name "foo"
+                                            :uuid #uuid  "26719da8-394f-44f9-9e6d-8a17500f5111"
+                                            :command "echo hello"
+                                            :priority 10
+                                            :max-retries 2
+                                            :max-runtime 100
+                                            :cpus 1.0
+                                            :mem 512.0
+                                            :user "foobar"
+                                            }))))
+    ;; Checks a record with some optional keys
+    (is (nil? (s/check cook.mesos.api.Job 
+                       (api/map->Job {:name "foo"
+                                            :uuid #uuid  "26719da8-394f-44f9-9e6d-8a17500f5111"
+                                            :command "echo hello"
+                                            :priority 10
+                                            :max-retries 2
+                                            :max-runtime 100
+                                            :cpus 1.0
+                                            :mem 512.0
+                                            :user "foobar"
+                                            :env {"foo" "bar"}
+                                            :labels {"abc" "def"}
+                                            :container {:type "foo"
+                                                        :docker {:image "foobar"}}
+                                            :uris [{:value "https://example.com"
+                                                     :executable? true}
+                                                   {:value "https://other.example.com"
+                                                    :executable? false
+                                                    :cache? true}]
+                                            })))))
+
+  (testing "Job schematized record rejects invalid job specifications"
+    ;; Record is missing the required :name key
+    (is (not (nil? (s/check cook.mesos.api.Job 
+                            (api/map->Job {
+                                                 :uuid #uuid  "26719da8-394f-44f9-9e6d-8a17500f5111"
+                                                 :command "echo hello"
+                                                 :priority 10
+                                                 :max-retries 2
+                                                 :max-runtime 100
+                                                 :cpus 1.0
+                                                 :mem 512.0
+                                                 :user "foobar"
+                                                 })))))
+    ;; Record's uuid is not a valid uuid
+    (is (not (nil? (s/check cook.mesos.api.Job 
+                            (api/map->Job {:name "foo"
+                                                 :uuid "bar"
+                                                 :command "echo hello"
+                                                 :priority 10
+                                                 :max-retries 2
+                                                 :max-runtime 100
+                                                 :cpus 1.0
+                                                 :mem 512.0
+                                                 :user "foobar"
+                                                 })))))
+
+    ;; Record's command is not a string
+    (is (not (nil? (s/check cook.mesos.api.Job 
+                            (api/map->Job {:name "foo"
+                                                 :uuid  #uuid  "26719da8-394f-44f9-9e6d-8a17500f5111"
+                                                 :command 123
+                                                 :priority 10
+                                                 :max-retries 2
+                                                 :max-runtime 100
+                                                 :cpus 1.0
+                                                 :mem 512.0
+                                                 :user "foobar"
+                                                 })))))
+
+    ;; Record contains disallowed extra keys
+    (is (not (nil? (s/check cook.mesos.api.Job 
+                            (api/map->Job {:name "foo"
+                                                 :uuid  #uuid  "26719da8-394f-44f9-9e6d-8a17500f5111"
+                                                 :command "echo hello"
+
+                                                 :extra-key "abc"
+
+                                                 :priority 10
+                                                 :max-retries 2
+                                                 :max-runtime 100
+                                                 :cpus 1.0
+                                                 :mem 512.0
+                                                 :user "foobar"
+                                                 })))))))

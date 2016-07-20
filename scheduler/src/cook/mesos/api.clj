@@ -18,7 +18,7 @@
             [metatransaction.core :refer (db)]
             [schema.core :as s]
             [schema.macros :as sm]
-            [cook.mesos]
+
             [compojure.core :refer (routes ANY)]
             [clojure.tools.logging :as log]
             [clojure.string :as str]
@@ -29,9 +29,12 @@
             [clojure.data.json :as json]
             [liberator.core :refer [resource defresource]]
             [cheshire.core :as cheshire]
-            [cook.authorization :refer [is-admin?]]
+            [clj-time.core :as t]
+
+            [cook.mesos]
+            [cook.authorization :refer [Ownable]]
             [cook.mesos.util :as util]
-            [clj-time.core :as t])
+)
   (:import java.util.UUID))
 
 (def PosDouble
@@ -72,26 +75,32 @@
 (def NonEmptyString
   (s/both s/Str (s/pred #(not (zero? (count %))) 'empty-string)))
 
-(def Job
-  "A schema for a job"
-  {:uuid (s/pred #(instance? UUID %) 'uuid?)
-   :command s/Str
-   ;; Make sure the job name is a valid string which can only contain '.', '_', '-' or any word characters and has
-   ;; length at most 128.
-   :name (s/both s/Str (s/pred #(re-matches #"[\.a-zA-Z0-9_-]{0,128}" %) 'under-128-characters-and-alphanum?))
-   :priority (s/both s/Int (s/pred #(<= 0 % 100) 'between-0-and-100))
-   :max-retries (s/both s/Int (s/pred pos? 'pos?))
-   :max-runtime (s/both s/Int (s/pred pos? 'pos?))
+
+(s/defrecord Job
+    [uuid :- (s/pred #(instance? UUID %) 'uuid?)
+     command :- s/Str
+     ;; Make sure the job name is a valid string which can only contain '.', '_', '-' or any word characters and has
+     ;; length at most 128.
+     name :- (s/both s/Str (s/pred #(re-matches #"[\.a-zA-Z0-9_-]{0,128}" %) 'under-128-characters-and-alphanum?))
+     priority :- (s/both s/Int (s/pred #(<= 0 % 100) 'between-0-and-100))
+     max-retries :- (s/both s/Int (s/pred pos? 'pos?))
+     max-runtime :- (s/both s/Int (s/pred pos? 'pos?))
+     cpus :- PosDouble
+     mem :- PosDouble
+     ;; Make sure the user name is valid. It must begin with a lower case character, end with
+     ;; a lower case character or a digit, and has length between 2 to (62 + 2).
+     user :- (s/both s/Str (s/pred #(re-matches #"\A[a-z][a-z0-9_-]{0,62}[a-z0-9]\z" %) 'lowercase-alphanum?))     
+     ]
+  {  
    (s/optional-key :uris) [Uri]
    (s/optional-key :ports) [(s/pred zero? 'zero)] ;;TODO add to docs the limited uri/port support
    (s/optional-key :env) {NonEmptyString s/Str}
    (s/optional-key :labels) {NonEmptyString s/Str}
    (s/optional-key :container) Container
-   :cpus PosDouble
-   :mem PosDouble
-   ;; Make sure the user name is valid. It must begin with a lower case character, end with
-   ;; a lower case character or a digit, and has length between 2 to (62 + 2).
-   :user (s/both s/Str (s/pred #(re-matches #"\A[a-z][a-z0-9_-]{0,62}[a-z0-9]\z" %) 'lowercase-alphanum?))})
+   }
+
+  Ownable
+  (owner [this] (:user this)))
 
 (defn- mk-container-params
   "Helper for build-container.  Transforms parameters into the datomic schema."
@@ -250,7 +259,7 @@
 
 (defn validate-and-munge-job
   "Takes the user and the parsed json from the job and returns proper
-   Job objects, or else throws an exception"
+   Job instances, or else throws an exception"
   [db user task-constraints {:strs [cpus mem uuid command priority max_retries max_runtime name uris ports env labels container] :as job}]
   (let [munged (merge
                  {:user user
@@ -277,8 +286,9 @@
                    {:env env})
                  (when labels 
                    ;; Remains strings
-                   {:labels labels}))]
-    (s/validate Job munged)
+                   {:labels labels}))
+        record (map->Job munged)]
+    (s/validate Job record)
     (when (> cpus (:cpus task-constraints))
       (throw (ex-info (str "Requested " cpus " cpus, but only allowed to use " (:cpus task-constraints))
                       {:constraints task-constraints
@@ -292,7 +302,7 @@
             :when (and (not (nil? executable?)) (not (nil? extract?)))]
       (throw (ex-info "Uri cannot set executable and extract" uri)))
     (unused-uuid? db (:uuid munged))
-    munged))
+    record))
 
 (defn get-executor-states-impl
   "Builds an indexed version of all executor states on the specified slave. Has no cache; takes 100-500ms
