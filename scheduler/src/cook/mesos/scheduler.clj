@@ -893,6 +893,8 @@
                      (dru/sorted-task-scored-task-pairs <> user->dru-divisors)
                      (filter (fn [[task scored-task]]
                                (or (contains? pending-task-ents task)
+                                   ;; backfilled tasks can be upgraded to non-backfilled
+                                   ;; during scheduling, so they also need to be considered.
                                    (:instance/backfilled? task))))
                      (map (fn [[task scored-task]]
                             (:job/_instance task)))))]
