@@ -568,9 +568,12 @@
             (reset! front-of-job-queue-cpus-atom
                     (or (:cpus first-considerable-resources) 0))
             (cond
-              (empty? matches) (if (seq considerable)
-                                 nil ;; This case means we failed to match anything. We need to start head of line blocking now
-                                 true) ;; This case means there was nothing to match--don't penalize the scheduler for the next burst of submitted jobs
+              ;; Possible inocuous reasons for no matches: no offers, or no pending jobs.
+              ;; Even beyond that, if Fenzo fails to match ANYTHING, "penalizing" it in the form of giving
+              ;; it fewer jobs to look at is unlikely to improve the situation.
+              ;; "Penalization" should only be employed when Fenzo does successfully match,
+              ;; but the matches don't align with Cook's priorities.
+              (empty? matches) true
               (not (compare-and-set! pending-jobs scheduler-contents new-scheduler-contents))
               (do
                 (log/debug "Pending job atom contention encountered, recycling offers:" @offer-stash)
