@@ -41,8 +41,12 @@
   The `user` is a string username, the authenticated identity of the
   agent that initiated the attempt.
   
-  The `verb` is a keyword describing what the user is attempting to
-  do: one of #{ :create, :read, :update, :destroy }.
+  The `verb` is a keyword describing what the user is attempting to do:
+  one of #{ :create, :read, :update, :destroy, :access }. :access
+  implies all of the above. 
+
+  This set of verbs is not fixed per se; the exact interpretation of its 
+  values is up to the auth function.
 
   The `object` is an implementation of the `Ownable` protocol that the
   user is attempting to manipulate, such as a
@@ -86,11 +90,17 @@
             [plumbing.core :refer (fnk defnk)]))
 
 
-
-(defprotocol Ownable
-  "Functions to be defined on types that are able to be owned by a
-  specific user."
-  (owner [this] "Returns the username that owns this object."))
+;; The defonce is a kludge to work around
+;; https://groups.google.com/forum/#!topic/clojure/SYYYwZIrFiY -
+;; reloading a protocol causes existing objects of that type to become
+;; invalid as instances of the new protocol.
+;;
+;; If you redefine this protocol at runtime, you'll have to manually
+;; remove the defonce. Other than that, this should not cause issues.
+(defonce __ownable
+  (defprotocol Ownable
+    "Functions to be defined on types that are able to be owned by a specific user."
+    (owner [this] "Returns the username that owns this object.")))
 
 
 ;;
@@ -115,15 +125,19 @@
    ^String user
    ^clojure.lang.Keyword verb
    ^cook.authorization.Ownable object ]
-  (log/debug "[configfile-admins-auth] Checking whether user" user
-             "may perform" verb "on" (str object) "...")
-  (let [admins (:admins settings)
+  (let [admins    (:admins settings)
         is-admin? (contains? admins user)
-        owner  (owner object)]
+        owner     (owner object)]
+    (log/debug "[configfile-admins-auth] Checking whether user" user
+               "may perform" verb
+               "on object" (str object) "."
+               "Admins are:" admins)
     (cond is-admin? (do
-                      (log/debug "[configfile-admins-auth] User " user "is an admin, allowing.")
+                      (log/debug "[configfile-admins-auth] User" user "is an admin, allowing.")
                       true)
-          (= owner user) true
+          (= owner user) (do
+                           (log/debug "[configfile-admins-auth] Object is owned by user, allowing.")
+                           true)
           :else (do 
                   (log/info "[configfile-admins-auth] Unauthorized access attempt: user" user
                             "is not allowed to perform" verb "on" (str object ",") "denying.")
@@ -142,10 +156,12 @@
      (is-authorized? (-> @global-state :settings) user verb object))
 
   ([settings
-     ^String user
-     ^clojure.lang.Keyword verb
+    ^String user
+    ^clojure.lang.Keyword verb
     ^cook.authorization.Ownable object]
-     (let [authorization-fn (lazy-load-var (:authorization-fn settings))]
+     (log/debug "[is-authorized?] Checking whether user" user
+                "may perform" verb "on" (str object) "...")
+     (let [authorization-fn (:authorization-fn settings)]
        (authorization-fn settings user verb object))))
 
 

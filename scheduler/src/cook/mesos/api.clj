@@ -32,7 +32,7 @@
             [clj-time.core :as t]
 
             [cook.mesos]
-            [cook.authorization :refer [Ownable]]
+            [cook.authorization :as auth :refer [owner is-authorized?]]
             [cook.mesos.util :as util]
 )
   (:import java.util.UUID))
@@ -99,7 +99,7 @@
    (s/optional-key :container) Container
    }
 
-  Ownable
+  auth/Ownable
   (owner [this] (:user this)))
 
 (defn- mk-container-params
@@ -354,54 +354,57 @@
        (java.net.URLEncoder/encode (get executor-state "directory") "UTF-8")))
 
 (defn fetch-job-map
+  "Fetches metadata about the given job ID from Datomic.
+   Returns nil if there is no job with that UUID in datomic"
   [db fid job-uuid]
-  (let [job (d/entity db [:job/uuid job-uuid])
-        resources (util/job-ent->resources job)]
-    (merge
-      {:command (:job/command job)
-       :uuid (str (:job/uuid job))
-       :name (:job/name job "cookjob")
-       :priority (:job/priority job util/default-job-priority)
-       :cpus (:cpus resources)
-       :mem (:mem resources)
-       :max_retries  (:job/max-retries job) ; Consistent with input
-       :max_runtime (:job/max-runtime job Long/MAX_VALUE) ; Consistent with input
-       :framework_id fid
-       :status (name (:job/state job))
-       :uris (:uris resources)
-       :env (util/job-ent->env job)
-       :labels (util/job-ent->label job)
-       ;;TODO include ports
-       :instances
-       (map (fn [instance]
-              (let [hostname (:instance/hostname instance)
-                    executor-states (get-executor-states fid hostname)
-                    url-path (try
-                               (executor-state->url-path hostname (get executor-states (:instance/executor-id instance)))
-                               (catch Exception e
-                                 nil))
-                    start (:instance/start-time instance)
-                    end (:instance/end-time instance)
-                    reason-code (:instance/reason-code instance)
-                    base {:task_id (:instance/task-id instance)
-                          :hostname hostname
-                          :slave_id (:instance/slave-id instance)
-                          :executor_id (:instance/executor-id instance)
-                          :status (name (:instance/status instance))}
-                    base (if url-path
-                           (assoc base :output_url url-path)
-                           base)
-                    base (if start
-                           (assoc base :start_time (.getTime start))
-                           base)
-                    base (if end
-                           (assoc base :end_time (.getTime end))
-                           base)
-                    base (if reason-code
-                           (assoc base :reason_code reason-code)
-                           base)]
-                base))
-            (:job/instance job))})))
+  (if-let [job (d/entity db [:job/uuid job-uuid])]
+    (let [resources (util/job-ent->resources job)]
+      (map->Job
+       {:command (:job/command job)
+        :uuid (str (:job/uuid job))
+        :user (:job/user job)
+        :name (:job/name job "cookjob")
+        :priority (:job/priority job util/default-job-priority)
+        :cpus (:cpus resources)
+        :mem (:mem resources)
+        :max_retries  (:job/max-retries job) ; Consistent with input
+        :max_runtime (:job/max-runtime job Long/MAX_VALUE) ; Consistent with input
+        :framework_id fid
+        :status (name (:job/state job))
+        :uris (:uris resources)
+        :env (util/job-ent->env job)
+        :labels (util/job-ent->label job)
+        ;;TODO include ports
+        :instances
+        (map (fn [instance]
+               (let [hostname (:instance/hostname instance)
+                     executor-states (get-executor-states fid hostname)
+                     url-path (try
+                                (executor-state->url-path hostname (get executor-states (:instance/executor-id instance)))
+                                (catch Exception e
+                                  nil))
+                     start (:instance/start-time instance)
+                     end (:instance/end-time instance)
+                     reason-code (:instance/reason-code instance)
+                     base {:task_id (:instance/task-id instance)
+                           :hostname hostname
+                           :slave_id (:instance/slave-id instance)
+                           :executor_id (:instance/executor-id instance)
+                           :status (name (:instance/status instance))}
+                     base (if url-path
+                            (assoc base :output_url url-path)
+                            base)
+                     base (if start
+                            (assoc base :start_time (.getTime start))
+                            base)
+                     base (if end
+                            (assoc base :end_time (.getTime end))
+                            base)
+                     base (if reason-code
+                            (assoc base :reason_code reason-code)
+                            base)]
+                 base))
+             (:job/instance job))}))))
 
 ;;; On POST; JSON blob that looks like:
 ;;; {"jobs": [{"command": "echo hello world",
@@ -447,8 +450,6 @@
                     (condp contains? (get-in ctx [:request :request-method])
                       #{:get :delete}
                       (let [user  (get-in ctx [:request :authorization/user])
-                            is-admin (contains? admins user)
-
                             uuids (::jobs ctx)
 
                             datomic (db conn)
@@ -463,26 +464,16 @@
                             ;; whether it's allowed, and if not, why
                             ;; it's not allowed.
                             uuid-filter (fn [uuid]
-                                          ;; Admins can see others' jobs, so we have to do a
-                                          ;; seperate existence check.
-                                          (let [not-found (not (used? uuid))
-                                                not-owner (not (= user (job-owner-by-uuid datomic uuid)))]
-
-                                            (if not-found (log/info "User" user "requested unknown job UUID " uuid ))
-                                            (if (and not-owner
-                                                     (not not-found)
-                                                     (not is-admin)) (log/info "User" user "requested non-owned job UUID " uuid ", denying."))
-                                            (if (and not-owner
-                                                     is-admin)  (log/info "User" user "is an admin; allowing them to view other user's job" uuid))
-
-                                            (cond
-                                             (or not-found 
-                                                 (and not-owner
-                                                      (not is-admin)))  {:is-allowed false
-                                                                         :message (str "No job found with UUID " uuid)
-                                                                         :uuid uuid}
-                                                      :else             {:is-allowed true
-                                                                         :uuid uuid})))
+                                          (let [job (fetch-job-map (db conn)
+                                                                   fid
+                                                                   uuid)]
+                                            (if (or (nil? job) 
+                                                    (not (is-authorized? user :access job)))
+                                              {:is-allowed false
+                                               :message (str "No job found with UUID " uuid)
+                                               :uuid uuid}
+                                              {:is-allowed true
+                                               :uuid uuid})))
 
                             uuids (map uuid-filter uuids)]
                         ;; Return true if every UUID is in use, or

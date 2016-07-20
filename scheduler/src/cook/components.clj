@@ -325,6 +325,9 @@
      :authorization-fn (fnk [[:config authorization-fn]]
                             (lazy-load-var authorization-fn))
 
+     :admins (fnk [[:config admins]]
+                  admins)
+
      :authorization-middleware (fnk [[:config [:authorization {one-user false} {kerberos false} {http-basic false}]]]
                                     (cond
                                       http-basic (do
