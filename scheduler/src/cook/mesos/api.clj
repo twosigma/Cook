@@ -518,6 +518,14 @@
   (-> (resource
         :available-media-types ["application/json"]
         :allowed-methods [:get]
+        :allowed? (fn [ctx]
+                    (let [user  (get-in ctx [:request :authorization/user])]
+                      ;; Only allow superusers:
+                      (if (is-authorized? user :access cook.authorization/system)
+                        true
+                        (do
+                          (log/info "[waiting-jobs] Queried by non-admin" user "; denying access.")
+                          [false {::error "Unauthorized"}]))))
         :handle-ok (fn [ctx]
                      (->> (mesos-pending-jobs-fn)
                           (map d/touch)
@@ -529,6 +537,14 @@
   (-> (resource
         :available-media-types ["application/json"]
         :allowed-methods [:get]
+        :allowed? (fn [ctx]
+                    (let [user  (get-in ctx [:request :authorization/user])]
+                      ;; Only allow superusers:
+                      (if (is-authorized? user :access cook.authorization/system)
+                        true
+                        (do
+                          (log/info "[waiting-jobs] Queried by non-admin" user "; denying access.")
+                          [false {::error "Unauthorized"}]))))
         :handle-ok (fn [ctx]
                      (->> (util/get-running-task-ents (db conn))
                           (map d/touch)

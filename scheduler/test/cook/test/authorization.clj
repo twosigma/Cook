@@ -31,10 +31,10 @@
                              :user test-job-owner
                              }))
 
-(def configfile-admins-settings {:authorization-fn 'cook.authorization/configfile-admins-auth
+(def configfile-admins-settings {:authorization-fn cook.authorization/configfile-admins-auth
                                  :admins #{ admin-user "other-admin" }})
 
-(def open-auth-settings {:authorization-fn 'cook.authorization/open-auth})
+(def open-auth-settings {:authorization-fn cook.authorization/open-auth})
 
 
 (deftest open-auth-test
@@ -59,6 +59,18 @@
     (is (true? (auth/configfile-admins-auth configfile-admins-settings admin-user :read test-job)))
     (is (true? (auth/configfile-admins-auth configfile-admins-settings admin-user :update test-job)))
     (is (true? (auth/configfile-admins-auth configfile-admins-settings admin-user :destroy test-job))))
+  (testing "admins can manipulate the Cook system itself"
+    (is (true? (auth/configfile-admins-auth configfile-admins-settings admin-user :create cook.authorization/system)))
+    (is (true? (auth/configfile-admins-auth configfile-admins-settings admin-user :read cook.authorization/system)))
+    (is (true? (auth/configfile-admins-auth configfile-admins-settings admin-user :update cook.authorization/system)))
+    (is (true? (auth/configfile-admins-auth configfile-admins-settings admin-user :destroy test-job)))
+    (is (true? (auth/configfile-admins-auth configfile-admins-settings admin-user :access test-job))))
+  (testing "ordinary users cannot manipulate the Cook system itself"
+    (is (false? (auth/configfile-admins-auth configfile-admins-settings test-job-owner :create cook.authorization/system)))
+    (is (false? (auth/configfile-admins-auth configfile-admins-settings test-job-owner :read cook.authorization/system)))
+    (is (false? (auth/configfile-admins-auth configfile-admins-settings test-job-owner :update cook.authorization/system)))
+    (is (false? (auth/configfile-admins-auth configfile-admins-settings test-job-owner :destroy cook.authorization/system)))
+    (is (false? (auth/configfile-admins-auth configfile-admins-settings test-job-owner :access cook.authorization/system))))
   (testing "ordinary users cannot manipulate other users' objects"
     (is (false? (auth/configfile-admins-auth configfile-admins-settings "unauthorized-user" :create test-job)))
     (is (false? (auth/configfile-admins-auth configfile-admins-settings "unauthorized-user" :read test-job)))

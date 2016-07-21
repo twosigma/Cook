@@ -57,6 +57,18 @@
   whether the user is permitted to perform that verb on the object. If
   so, the function returns true, else false.
 
+  The special object cook.authorization/system represents, by
+  definition, access to the Cook system itself. Auth functions should
+  only allow users with superuser / admin access to manipulate this object.
+
+  For example, a call to `(is-authorized? \"foobar\" :access cook.authorization/system)` is
+  attempting to determine whether user `\"foobar\"` is a system
+  administrator with global access to everything.
+  
+  If a particular auth system has no notion of superusers or systemwide
+  admins, it should return false.
+
+
 
   Example authorization functions
   -------------------------------
@@ -102,6 +114,7 @@
     "Functions to be defined on types that are able to be owned by a specific user."
     (owner [this] "Returns the username that owns this object.")))
 
+(def system (reify Ownable (owner [this] ::system)))
 
 ;;
 ;; Authorization functions
