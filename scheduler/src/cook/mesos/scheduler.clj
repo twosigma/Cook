@@ -680,35 +680,63 @@
     (log/debug "We have" (count pending-offers) "pending offers")
     pending-offers))
 
+(def fenzo-num-considerable-atom (atom 0))
+(gauges/defgauge [cook-mesos scheduler fenzo-num-considerable] (fn [] @fenzo-num-considerable-atom))
+(counters/defcounter [cook-mesos scheduler iterations-at-fenzo-floor])
+(meters/defmeter [cook-mesos scheduler fenzo-abandon-and-reset-meter])
+
 (defn make-offer-handler
-  [conn driver-atom fenzo fid-atom pending-jobs-atom max-considerable scaleback]
+  [conn driver-atom fenzo fid-atom pending-jobs-atom
+   max-considerable scaleback
+   floor-iterations-before-warn floor-iterations-before-reset]
   (let [offers-chan (async/chan (async/buffer 5))
         resources-atom (atom (view-incubating-offers fenzo))
         timer-chan (chime-ch (periodic/periodic-seq (time/now) (time/seconds 1))
                              {:ch (async/chan (async/sliding-buffer 1))})]
     (async/thread
       (loop [num-considerable max-considerable]
+        (reset! fenzo-num-considerable-atom num-considerable)
+
         ;;TODO make this cancelable (if we want to be able to restart the server w/o restarting the JVM)
-        (recur
-          (try
-            (let [offers (async/alt!!
-                           offers-chan ([offers] offers)
-                           timer-chan ([_] [])
-                           :priority true)
-                  matched-head? (handle-resource-offers! conn @driver-atom fenzo @fid-atom pending-jobs-atom num-considerable offers-chan offers)]
-              (when (seq offers)
-                (reset! resources-atom (view-incubating-offers fenzo)))
-              ;; This check ensures that, although we value Fenzo's optimizations,
-              ;; we also value Cook's sensibility of fairness when deciding which jobs
-              ;; to schedule.  If Fenzo produces a set of matches that doesn't include
-              ;; Cook's highest-priority job, on the next cycle, we give Fenzo it less
-              ;; freedom in the form of fewer jobs to consider.
-              (if matched-head?
-                max-considerable
-                (max 1 (long (* scaleback num-considerable))))) ;; With max=1000 and 1 iter/sec, this will take 88 seconds to reach 1
-            (catch Exception e
-              (log/error e "Offer handler encountered exception; continuing")
-              max-considerable)))))
+        (let [next-considerable
+              (try
+                (let [offers (async/alt!!
+                               offers-chan ([offers] offers)
+                               timer-chan ([_] [])
+                               :priority true)
+                      matched-head? (handle-resource-offers! conn @driver-atom fenzo @fid-atom pending-jobs-atom num-considerable offers-chan offers)]
+                  (when (seq offers)
+                    (reset! resources-atom (view-incubating-offers fenzo)))
+                  ;; This check ensures that, although we value Fenzo's optimizations,
+                  ;; we also value Cook's sensibility of fairness when deciding which jobs
+                  ;; to schedule.  If Fenzo produces a set of matches that doesn't include
+                  ;; Cook's highest-priority job, on the next cycle, we give Fenzo it less
+                  ;; freedom in the form of fewer jobs to consider.
+                  (if matched-head?
+                    max-considerable
+                    (max 1 (long (* scaleback num-considerable))))) ;; With max=1000 and 1 iter/sec, this will take 88 seconds to reach 1
+                (catch Exception e
+                  (log/error e "Offer handler encountered exception; continuing")
+                  max-considerable))]
+
+          (if (= next-considerable 1)
+            (counters/inc! iterations-at-fenzo-floor)
+            (counters/clear! iterations-at-fenzo-floor))
+
+          (if (>= (counters/value iterations-at-fenzo-floor) floor-iterations-before-warn)
+            (log/warn "Offer handler has been showing Fenzo only 1 job for "
+                      (counters/value iterations-at-fenzo-floor) " iterations."))
+
+          (recur
+           (if (>= (counters/value iterations-at-fenzo-floor) floor-iterations-before-reset)
+             (do
+               (log/error "FENZO CANNOT MATCH THE MOST IMPORTANT JOB."
+                          "Fenzo has seen only 1 job for " (counters/value iterations-at-fenzo-floor)
+                          "iterations, and still hasn't matched it.  Cook is now giving up and will "
+                          "now give Fenzo " max-considerable " jobs to look at.")
+               (meters/mark! fenzo-abandon-and-reset-meter)
+               max-considerable)
+             next-considerable)))))
     [offers-chan resources-atom]))
 
 (defn reconcile-jobs
@@ -1009,7 +1037,7 @@
       (build)))
 
 (defn create-datomic-scheduler
-  [conn set-framework-id driver-atom pending-jobs-atom heartbeat-ch offer-incubate-time-ms fenzo-max-jobs-considered fenzo-scaleback task-constraints]
+  [conn set-framework-id driver-atom pending-jobs-atom heartbeat-ch offer-incubate-time-ms fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset task-constraints]
   (let [fid (atom nil)
         ;; Mesos can potentially rescind thousands of offers
         rescinded-offer-id-cache (-> {}
@@ -1020,7 +1048,7 @@
         matcher-chan (async/chan) ; Don't want to buffer offers to the matcher chan. Only want when ready
 
         fenzo (make-fenzo-scheduler driver-atom offer-incubate-time-ms)
-        [offers-chan resources-atom] (make-offer-handler conn driver-atom fenzo fid pending-jobs-atom fenzo-max-jobs-considered fenzo-scaleback)]
+        [offers-chan resources-atom] (make-offer-handler conn driver-atom fenzo fid pending-jobs-atom fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset)]
     (start-jobs-prioritizer! conn pending-jobs-atom task-constraints)
     {:scheduler
      (mesos/scheduler
