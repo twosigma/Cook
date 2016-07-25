@@ -415,7 +415,7 @@
 ;;;
 ;;; On GET; use repeated job argument
 (defn job-resource
-  [conn fid task-constraints admins]
+  [conn fid task-constraints]
   (-> (resource
         :available-media-types ["application/json"]
         :allowed-methods [:post :get :delete]
@@ -479,7 +479,7 @@
                         ;; Return true if every UUID is in use, or
                         ;; else return false with a list of
                         ;; nonexistant UUIDs.
-                        (if (every? true? (map :is-allowed uuids))
+                        (if (every? (map :is-allowed uuids))
                           true
                           (let [message  (->> (map :message uuids)
                                                  (remove nil?)
@@ -543,7 +543,7 @@
                       (if (is-authorized? user :access cook.authorization/system)
                         true
                         (do
-                          (log/info "[waiting-jobs] Queried by non-admin" user "; denying access.")
+                          (log/info "[running-jobs] Queried by non-admin" user "; denying access.")
                           [false {::error "Unauthorized"}]))))
         :handle-ok (fn [ctx]
                      (->> (util/get-running-task-ents (db conn))
@@ -552,10 +552,10 @@
       ring.middleware.json/wrap-json-params))
 
 (defn handler
-  [conn fid task-constraints mesos-pending-jobs-fn admins]
+  [conn fid task-constraints mesos-pending-jobs-fn]
   (routes
     (ANY "/rawscheduler" []
-         (job-resource conn fid task-constraints admins))
+         (job-resource conn fid task-constraints))
     (ANY "/queue" []
          (waiting-jobs mesos-pending-jobs-fn))
     (ANY "/running" []
