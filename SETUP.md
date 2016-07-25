@@ -1,7 +1,14 @@
 # Setting up your Cook dev environment
 
 This document tells you how to set up a Cook dev environment from
-scratch on a Macintosh computer.
+scratch on a Macintosh computer using MacPorts. We have to install
+Clojure itself, Datomic, Docker, and Mesos.
+
+The procedure is very similar with Homebrew on Mac, on Linux, and on
+other UNIX-like systems. If you're using another system, you should be
+able to follow along this guide with only minor modifications by
+substituting `brew`, `apt-get`, `yum`, or whatever your local package
+manager is called for the `port install`s in this guide.
 
 Prerequisites
 =============
@@ -25,8 +32,6 @@ those that Homebrew uses.
 
 Installing Cook-specific Infrastructure
 ========================================
-
-We need to install Datomic, Docker, and Mesos.
 
 
 Datomic
