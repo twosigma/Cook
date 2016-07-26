@@ -96,8 +96,7 @@
              mesos-datomic
              framework-id
              task-constraints
-             (fn [] @mesos-pending-jobs-atom)
-             admins)
+             (fn [] @mesos-pending-jobs-atom))
 
             auxiliary-routes
 
