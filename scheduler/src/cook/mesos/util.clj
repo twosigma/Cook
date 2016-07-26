@@ -18,7 +18,9 @@
             [clojure.walk :as walk]
             [datomic.api :as d :refer (q)]
             [metatransaction.core :refer (db)]
-            [metrics.timers :as timers]))
+            [cheshire.core :as cheshire]
+            [metrics.timers :as timers])
+  (:import java.util.UUID))
 
 (defn get-all-resource-types
   "Return a list of all supported resources types. Example, :cpus :mem ..."
@@ -162,3 +164,31 @@
              (:db/id task)
              (:db/id (:job/_instance task))])]
     (compare (task->feature-vector task1) (task->feature-vector task2))))
+
+
+(defn to-uuid
+  "Converts the given string into a UUID if it is not one already.
+   Throws an exception if s cannot be parsed as a UUID."
+  [s]
+  (assert s)
+  (if (instance? java.util.UUID s)
+    s
+    (java.util.UUID/fromString s)))
+
+
+(defn maybe-uuid
+  "Tries to parse a UUID from s, or returns nil if s is not parseable
+  as a UUID."
+  [s]
+  (try (to-uuid s)
+       (catch Throwable t
+         nil)))
+
+
+(defn maybe-json
+  "Tries to parse s as JSON. Returns nil if it is unparseable."
+  [s]
+  (try
+    (cheshire/decode s)
+    (catch Throwable t
+      nil)))

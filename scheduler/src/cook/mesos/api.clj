@@ -33,7 +33,7 @@
 
             [cook.mesos]
             [cook.authorization :as auth :refer [owner is-authorized?]]
-            [cook.mesos.util :as util]
+            [cook.mesos.util :as util :refer [maybe-uuid]]
 )
   (:import java.util.UUID))
 
@@ -577,12 +577,65 @@
                   (if-not job
                     "asked about a nonexistent job ID; denying."
                     (str "is not authorized to view job ID " job-id "; denying") ))
-        {:status 404
+        {:status  404
          :headers {"Content-Type" "application/json"}
-         :body (str "Job ID " job-id " not found.")})
-      {:status 200
+         :body    (str "Job ID " job-id " not found.")})
+      {:status  200
        :headers {"Content-Type" "application/json"}
-       :body (str (:max_retries job))})))
+       :body    (str (:max_retries job))})))
+
+
+(defn set-retries!
+  "Sets the number of retries for the given job-id to the given retries value,
+  if retries is parseable as a long integer and the current user is
+  authorized to modify that job."
+  [conn fid request job-id retries]
+  (let [user (:authorization/user request)
+        uuid (maybe-uuid job-id)
+        job  (fetch-job-map (db conn)
+                            fid
+                            job-id) 
+        authorized?  (and job
+                          (is-authorized? user :update job))
+        retries (try (Long/parseLong retries)
+                     (catch Throwable t
+                       (log/warn "[set-retries!] User" user
+                                 " submitted an unparseable 'retries' value: " retries
+                                 "Aborting request.")
+                       nil))]
+
+    (log/info "[set-retries!] User" user
+              "asked to set retries to" retries " for job-id" job-id)
+
+    (cond (nil? retries)    {:status  400
+                             :headers {"Content-Type" "application/json"}
+                             :body    (str "Couldn't parse the requested number of retries in your POST. POST value should be a long integer.")}
+
+          (not authorized?)  (do
+                               (log/info "[set-retries] User" user 
+                                         (if-not job
+                                           "asked about a nonexistent job ID; denying."
+                                           (str "is not authorized to view job ID " job-id "; denying") ))
+                               {:status  404
+                                :headers {"Content-Type" "application/json"}
+                                :body    (str "Job ID " job-id " not found.")})
+          
+          :else (try
+                  @(d/transact conn
+                               [[:db/add [:job/uuid uuid]
+                                 :job/max-retries retries]])
+
+                  {:status 200
+                   :headers {"Content-Type" "application/json"}
+                   :body (str "OK. Retries for job-id " job-id
+                              " set to " retries ".")}
+                  (catch Throwable t
+                    (log/error "[set-retries!] Error updating retries for job-id" job-id
+                               "to" retries ":" 
+                               t)
+                    {:status 500
+                     :headers {"Content-Type" "application/json"}
+                     :body "Internal server error."})) )))
 
 
 (defn handler
@@ -594,5 +647,10 @@
          (waiting-jobs mesos-pending-jobs-fn))
     (ANY "/running" []
          (running-jobs conn))
-    (GET "/jobs/:job-id/retries" [job-id :as request] (retries conn fid request job-id))
-    ))
+
+    (GET  "/jobs/:job-id/retries" [job-id :as request] (retries conn fid request job-id))
+    (POST "/jobs/:job-id/retries" [job-id :as request] (set-retries! conn fid request job-id
+                                                                     (some-> (:body request)
+                                                                             slurp
+                                                                             util/maybe-json
+                                                                             (get "retries"))))))
