@@ -175,8 +175,9 @@
     ^cook.authorization.Ownable object]
      (log/debug "[is-authorized?] Checking whether user" user
                 "may perform" verb "on" (str object) "...")
+     (log/debug "[is-authorized?] Settings are:" settings)
      (let [auth-settings    (:authorization-config settings)
-           authorization-fn (:authorization-fn auth-settings)]
+           authorization-fn (lazy-load-var (:authorization-fn auth-settings))]
        (authorization-fn auth-settings user verb object))))
 
 

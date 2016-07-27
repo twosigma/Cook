@@ -321,8 +321,9 @@
                        port)
      :user-privileges (fnk [[:config {user-privileges {}}]]
                            user-privileges)
-     :authorization-fn (fnk [[:config [:authorization-config authorization-fn]]]
-                            (lazy-load-var authorization-fn))
+
+     :authorization-config (fnk [[:config authorization-config]]
+                                authorization-config)
 
      :admins (fnk [[:config [:authorization-config admins]]]
                   admins)

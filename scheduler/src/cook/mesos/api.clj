@@ -467,24 +467,33 @@
                                           (let [job (fetch-job-map (db conn)
                                                                    fid
                                                                    uuid)]
-                                            (if (or (nil? job) 
-                                                    (not (is-authorized? user :access job)))
-                                              {:is-allowed false
-                                               :message (str "No job found with UUID " uuid)
-                                               :uuid uuid}
-                                              {:is-allowed true
-                                               :uuid uuid})))
+                                            (cond (nil? job) (do
+                                                               (log/info "[job-resource] Couldn't find a job with UUID" uuid)
+                                                               {:is-allowed false
+                                                                :message (str "No job found with UUID " uuid)
+                                                                :uuid uuid})
+                                                  (not (is-authorized? user
+                                                                       :access
+                                                                       job)) (do
+                                                                               (log/info "[job-resource] User" user " is not authorized to accesss job UUID" uuid)
+                                                                               {:is-allowed false
+                                                                                ;; Message does not tell user that they weren't allowed to access this job, to
+                                                                                ;; avoid leaking information about whether a given UUID exists in the system.
+                                                                                :message (str "No job found with UUID " uuid)
+                                                                                :uuid uuid})
+                                                                       :else {:is-allowed true
+                                                                              :uuid uuid})))
 
                             uuids (map uuid-filter uuids)]
                         ;; Return true if every UUID is in use, or
                         ;; else return false with a list of
                         ;; nonexistant UUIDs.
-                        (if (every? (map :is-allowed uuids))
+                        (if (every? true? (map :is-allowed uuids))
                           true
                           (let [message  (->> (map :message uuids)
                                                  (remove nil?)
                                                  (str/join "; " ))]
-                            (log/info "Denying access:" message)
+                            (log/info "[job-resource] Denying access:" message)
                             [false {::error message}])))
                       #{:post}
                       true))
