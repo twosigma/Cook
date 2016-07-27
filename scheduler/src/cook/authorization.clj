@@ -26,7 +26,8 @@
 
   An operator-selectable authorization function determines how users are
   authorized to manipulate objects. The specific function to use is
-  named by the value of the :authorization-fn key in the config file.
+  named by the value of the `:authorization-fn` key in
+  the `:authorization-config` section of the config file.
 
   An authorization function has the signature:
     `(fn ^boolean x [settings-map
@@ -34,9 +35,9 @@
                      ^clojure.lang.Keyword verb
                      ^cook.authorization.Ownable object])`
 
-  settings-map is the data parsed from the config file at startup. The
-  auth function can use this to pull in any arbitrary configuration data
-  it requires.
+  settings-map is the data in the `:authorization-config` section of the
+  config file. The auth function can use this to pull in any arbitrary
+  configuration data it requires.
 
   The `user` is a string username, the authenticated identity of the
   agent that initiated the attempt.
@@ -130,7 +131,7 @@
 
 (defn configfile-admins-auth
   "This authorization function consults the set of usernames specified
-  in the :admins key of the config file.
+  in the :admins key of the :authorization-config section of the config file.
 
   Usernames in this set are administrators, who are allowed to do anything to any object.
   Non-admins are only allowed to manipulate objects that they own."
@@ -174,7 +175,8 @@
     ^cook.authorization.Ownable object]
      (log/debug "[is-authorized?] Checking whether user" user
                 "may perform" verb "on" (str object) "...")
-     (let [authorization-fn (:authorization-fn settings)]
-       (authorization-fn settings user verb object))))
+     (let [auth-settings    (:authorization-config settings)
+           authorization-fn (:authorization-fn auth-settings)]
+       (authorization-fn auth-settings user verb object))))
 
 

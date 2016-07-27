@@ -321,10 +321,10 @@
                        port)
      :user-privileges (fnk [[:config {user-privileges {}}]]
                            user-privileges)
-     :authorization-fn (fnk [[:config authorization-fn]]
+     :authorization-fn (fnk [[:config [:authorization-config authorization-fn]]]
                             (lazy-load-var authorization-fn))
 
-     :admins (fnk [[:config admins]]
+     :admins (fnk [[:config [:authorization-config admins]]]
                   admins)
 
      :authorization-middleware (fnk [[:config [:authorization {one-user false} {kerberos false} {http-basic false}]]]

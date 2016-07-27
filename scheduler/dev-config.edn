@@ -2,16 +2,18 @@
  ;; We'll set the user to vagrant, since that's the default for many Vagrant-based Mesos setups
  :authorization {:one-user "vagrant"}
 
- ;; What function should be used to perform user authorization?
- ;; See the docstring in cook.authorization for details.
- :authorization-fn cook.authorization/configfile-admins-auth
 
- ;; These users have admin privileges when using
- ;; configfile-admins-auth -- that is, they can view and modify other
- ;; users' jobs.
- :admins #{"admin" "other-admin"}
-
-
+ :authorization-config {
+                        ;; What function should be used to perform user authorization?
+                        ;; See the docstring in cook.authorization for details.
+                        :authorization-fn cook.authorization/configfile-admins-auth
+                        
+                        
+                        ;; These users have admin privileges when using
+                        ;; configfile-admins-auth -- that is, they can view and modify other
+                        ;; users' jobs.
+                        :admins #{"admin" "other-admin"}}
+ 
  :database {:datomic-uri "datomic:mem://cook-jobs"}
  :zookeeper {:local? true
              ;:local-port 3291 ; Uncomment to change the default port
