@@ -32,8 +32,9 @@
             [clj-time.core :as t]
 
             [cook.mesos]
+            [cook.mesos.share :as share]
             [cook.authorization :as auth :refer [owner is-authorized?]]
-            [cook.mesos.util :as util :refer [maybe-uuid]]
+            [cook.mesos.util :as util :refer [maybe-uuid maybe-double mapply]]
 )
   (:import java.util.UUID))
 
@@ -659,6 +660,73 @@
                      :body "Internal server error."})) )))
 
 
+(defn get-resources
+  "Tells the user what resource types are available in the system, if
+  the current user is an admin."
+  [conn request]
+  (let [user (:authorization/user request)
+        authorized? (is-authorized? user :access cook.authorization/system)]
+    (if authorized?
+      {:status 200
+       :headers {"Content-Type" "application/json"}
+       :body (cheshire/encode (util/get-all-resource-types (d/db conn)))
+       }
+      {:status 403
+       :body "Forbidden"
+       })))
+
+
+(defn get-user-resources
+  "Tells the user what resource shares are in place for the given username, if
+  the current user is an admin."
+  [conn request username]
+  (let [user (:authorization/user request)
+        authorized? (is-authorized? user :access cook.authorization/system)]
+    (if authorized?
+      {:status 200
+       :headers {"Content-Type" "application/json"}
+       :body (cheshire/encode (share/get-share (d/db conn) username))
+       }
+      {:status 403
+       :body "Forbidden"
+       })))
+
+
+(defn set-user-resources!
+  "Sets the share for the given username, if the current user is an admin.
+   Shares is a map. Keys must be valid resource types as returned by (get-resources).
+   Values are doubles."
+  [conn request username shares]
+  (let [user           (:authorization/user request)
+        authorized?    (is-authorized? user :access cook.authorization/system)
+        resource-types (set (util/get-all-resource-types (d/db conn)))
+        shares          (into {} (for [[k v] shares] [k (maybe-double v)]))]
+
+    (if-not authorized?
+      {:status 403
+       :body "Forbidden"
+       }
+
+
+      (if  (or (not (map? shares))
+               (empty? shares)
+               (not (every? #(contains? resource-types %) (keys shares)))
+               (not (every? #(not (nil? %)) (vals shares))))
+        {:status  400
+         :headers {"Content-Type" "application/json"}
+         :body    (str "Invalid resource map requested. "
+                       "Got a request for: " shares ". "
+                       "Valid keys are: "  resource-types ". Valid values are doubles.")}
+        (do
+          (log/info "[set-user-resources!] Setting resource shares for user" username "to" shares "...")
+          (mapply share/set-share! conn username shares)
+          {:status 200
+           :headers {"Content-Type" "application/json"}
+           :body "OK"
+           })))))
+
+
+
 (defn handler
   [conn fid task-constraints mesos-pending-jobs-fn]
   (routes
@@ -669,6 +737,15 @@
     (ANY "/running" []
          (running-jobs conn))
 
+    ;; Resource shares:
+    (GET  "/resources/" request (get-resources conn request))
+    (GET  "/resources/users/:username" [username :as request] (get-user-resources conn request username))
+    (POST "/resources/users/:username" [username :as request] (set-user-resources! conn request username
+                                                                                   (some-> (:body request)
+                                                                                           slurp
+                                                                                           util/maybe-json)))
+
+    ;; Retrying jobs:
     (GET  "/jobs/:job-id/retries" [job-id :as request] (retries conn fid request job-id))
     (POST "/jobs/:job-id/retries" [job-id :as request] (set-retries! conn fid request job-id
                                                                      (some-> (:body request)

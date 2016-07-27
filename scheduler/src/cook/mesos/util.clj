@@ -189,6 +189,24 @@
   "Tries to parse s as JSON. Returns nil if it is unparseable."
   [s]
   (try
-    (cheshire/decode s)
+    (cheshire/parse-string s true)
     (catch Throwable t
       nil)))
+
+
+(defn maybe-double
+  "Tries to parse a Double from s, or returns nil if s is not parseable
+  as a UUID."
+  [s]
+  (try (Double/parseDouble s)
+       (catch Throwable t
+         nil)))
+
+
+(defn mapply
+  "Applies a function f to the argument list formed by concatenating
+  everything but the last element of args with the last element of
+  args.  This is useful for applying a function that accepts keyword
+  arguments to a map."
+  [f & args]
+  (apply f (apply concat (butlast args) (last args))))
