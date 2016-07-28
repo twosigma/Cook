@@ -134,7 +134,7 @@
                                     (if riemann-host
                                       (swap! shutdown-hooks conj (cook.mesos.monitor/riemann-reporter mesos-datomic-conn :riemann-host riemann-host :riemann-port riemann-port)))
                                     #_(swap! shutdown-hooks conj (cook.mesos.scheduler/reconciler mesos-datomic-conn driver))
-                                    (swap! shutdown-hooks conj (cook.mesos.scheduler/lingering-task-killer mesos-datomic-conn driver (select-keys task-constraints [:timeout-hours :timeout-interval-minutes])))
+                                    (swap! shutdown-hooks conj (cook.mesos.scheduler/lingering-task-killer mesos-datomic-conn driver task-constraints))
                                     (swap! shutdown-hooks conj (cook.mesos.heartbeat/start-heartbeat-watcher! mesos-datomic-conn mesos-heartbeat-chan))
                                     (swap! shutdown-hooks conj (cook.mesos.rebalancer/start-rebalancer! {:conn  mesos-datomic-conn
                                                                                                          :driver driver

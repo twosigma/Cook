@@ -807,23 +807,22 @@
   "Return a list of lingering tasks.
 
    A lingering task is a task that runs longer than timeout-hours."
-  [db now timeout-hours]
+  [db now max-timeout-hours default-timeout-hours]
   (->> (q '[:find ?task-id ?start-time ?max-runtime
-            :in $
+            :in $ ?default-runtime
             :where
             [(ground [:instance.status/unknown :instance.status/running]) [?status ...]]
             [?i :instance/status ?status]
             [?i :instance/task-id ?task-id]
             [?i :instance/start-time ?start-time]
             [?j :job/instance ?i]
-            [(get-else $ ?j :job/max-runtime Long/MAX_VALUE) ?max-runtime]]
-          db)
+            [(get-else $ ?j :job/max-runtime ?default-runtime) ?max-runtime]]
+          db (-> default-timeout-hours time/hours time/in-millis))
        (keep (fn [[task-id start-time max-runtime]]
                ;; The convertion between random time units is because time doesn't like
                ;; Long and Integer/MAX_VALUE is too small for milliseconds
-               (let [timeout-minutes (min (.toMinutes TimeUnit/MILLISECONDS max-runtime)
-                                          (.toMinutes TimeUnit/HOURS timeout-hours)
-                                          Integer/MAX_VALUE)]
+               (let [timeout-minutes (min (-> max-runtime time/millis time/in-minutes)
+                                          (-> max-timeout-hours time/hours time/in-minutes))]
                  (when (time/before?
                         (time/plus (tc/from-date start-time) (time/minutes timeout-minutes))
                         now)
@@ -837,17 +836,24 @@
    :timout-hours specifies the timeout hours for lingering tasks"
   [conn driver config]
   (let [{interval-minutes :timeout-interval-minutes
-         timeout-hours :timeout-hours}
+         max-timeout-hours :max-timeout-hours
+         default-timeout-hours :default-timeout-hours
+         timeout-hours :timout-hours}
         (merge {:timeout-interval-minutes 10
                 :timeout-hours (* 2 24)}
                config)]
     (chime-at (periodic/periodic-seq (time/now) (time/minutes interval-minutes))
               (fn [now]
                 (let [db (d/db conn)
-                      lingering-tasks (get-lingering-tasks db now timeout-hours)]
+                      ;; These defaults are for backwards compatibility
+                      max-timeout-hours (or max-timeout-hours timeout-hours)
+                      default-timeout-hours (or default-timeout-hours timeout-hours)
+                      lingering-tasks (get-lingering-tasks db now max-timeout-hours default-timeout-hours)]
                   (when (seq lingering-tasks)
-                    (log/info "Starting to kill lingering jobs running more than" timeout-hours
-                              "hours. There are in total" (count lingering-tasks) "lingering tasks.")
+                    (log/info "Starting to kill lingering jobs running more than their max-runtime."
+                              {:default-timeout-hours default-timeout-hours
+                               :max-timeout-hours max-timeout-hours}
+                              "There are in total" (count lingering-tasks) "lingering tasks.")
                     (doseq [task-id lingering-tasks]
                       (log/info "Killing lingering task" task-id)
                       ;; Note that we probably should update db to mark a task failed as well.
