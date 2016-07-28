@@ -23,6 +23,7 @@
             [clojure.tools.logging :as log]
             [datomic.api :as d :refer (q)]
             [metatransaction.core :as mt]
+            [metrics.histograms :as histograms]
             [metrics.timers :as timers]
             [clojure.core.async :as async]
             [clj-time.core :as time]
@@ -138,6 +139,23 @@
 
 (defrecord State [task->scored-task user->sorted-running-task-ents host->spare-resources user->dru-divisors])
 
+(timers/deftimer [cook-mesos rebalancer rebalance-duration])
+(timers/deftimer [cook-mesos rebalancer compute-preemption-decision-duration])
+
+(histograms/defhistogram [cook-mesos rebalancer pending-job-drus])
+(histograms/defhistogram [cook-mesos rebalancer nearest-task-drus])
+(histograms/defhistogram [cook-mesos rebalancer preemption-counts-for-host])
+(histograms/defhistogram [cook-mesos rebalancer positive-dru-diffs])
+(histograms/defhistogram [cook-mesos rebalancer task-counts-to-preempt])
+(histograms/defhistogram [cook-mesos rebalancer job-counts-to-run])
+
+;; If running on a cluster with very small DRU values,
+;; may need to change this scale to facilitate metrics to e.g. (math/expt 10 305)
+(def ^:dynamic  metrics-dru-scale 1)
+(defn dru-at-scale
+  [dru]
+  (* dru metrics-dru-scale))
+
 (defn compute-pending-job-dru
   "Takes state and a pending job entity, returns the dru of the pending-job. In the case where the pending job causes user's dominant
    resource type to change, the dru is not accurate and is only a upper bound. However, this inaccuracy won't affect the correctness
@@ -157,6 +175,9 @@
                            0.0)
         pending-job-dru (max (+ nearest-task-dru (/ mem-req mem-divisor))
                              (+ nearest-task-dru (/ cpus-req cpus-divisor)))]
+    (histograms/update! pending-job-drus (dru-at-scale pending-job-dru))
+    (histograms/update! nearest-task-drus (dru-at-scale nearest-task-dru))
+
     pending-job-dru))
 
 (defn init-state
@@ -171,7 +192,7 @@
         user->sorted-running-task-ents (->> running-task-ents
                                             (group-by util/task-ent->user)
                                             (map (fn [[user task-ents]]
-                                                   [user (into (sorted-set-by util/same-user-task-comparator) task-ents)]))
+                                                   [user (into (sorted-set-by (util/same-user-task-comparator-penalize-backfill)) task-ents)]))
                                             (into {}))
         task->scored-task (into (pm/priority-map-keyfn (comp - :dru))
                                 (dru/sorted-task-scored-task-pairs user->sorted-running-task-ents user->dru-divisors))]
@@ -197,7 +218,7 @@
         (reduce (fn [task-ents-by-user task-ent]
                   (let [user (util/task-ent->user task-ent)
                         f (if (= new-running-task-ent task-ent)
-                            (fnil conj (sorted-set-by util/same-user-task-comparator))
+                            (fnil conj (sorted-set-by (util/same-user-task-comparator-penalize-backfill)))
                             disj)]
                     (update-in task-ents-by-user [user] f task-ent)))
                 user->sorted-running-task-ents
@@ -213,6 +234,13 @@
         state' (->State task->scored-task' user->sorted-running-task-ents' host->spare-resources' user->dru-divisors')]
     state'))
 
+(defn exceeds-min-diff?
+  [pending-job-dru min-dru-diff task]
+  (let [diff (- (:dru task) pending-job-dru)]
+    (if (pos? diff)
+      (histograms/update! positive-dru-diffs (dru-at-scale diff)))
+    (> diff min-dru-diff)))
+
 (defn compute-preemption-decision
   "Takes state, parameters and a pending job entity, returns a preemption decision
    A preemption decision is a map that describes a possible way to perform preemption on a host. It has a hostname, a seq of tasks
@@ -220,44 +248,48 @@
   [{:keys [task->scored-task host->spare-resources] :as state}
    {:keys [min-dru-diff safe-dru-threshold] :as params}
    pending-job-ent]
-  (let [{pending-job-mem :mem pending-job-cpus :cpus} (util/job-ent->resources pending-job-ent)
-        pending-job-dru (compute-pending-job-dru state pending-job-ent)
-        ;; This will preserve the ordering of task->scored-task
-        host->scored-tasks (->> task->scored-task
-                                (vals)
-                                (remove #(< (:dru %) safe-dru-threshold))
-                                (filter #(> (- (:dru %) pending-job-dru) min-dru-diff))
-                                (group-by (fn [{:keys [task]}]
-                                            (:instance/hostname task))))
+  (timers/time!
+   compute-preemption-decision-duration
+   (let [{pending-job-mem :mem pending-job-cpus :cpus} (util/job-ent->resources pending-job-ent)
+         pending-job-dru (compute-pending-job-dru state pending-job-ent)
 
-        host->formatted-spare-resources (->> host->spare-resources
-                                             (map (fn [[host {:keys [mem cpus]}]]
-                                                    [host [{:dru Double/MAX_VALUE :task nil :mem mem :cpus cpus}]]))
-                                             (into {}))
+         ;; This will preserve the ordering of task->scored-task
+         host->scored-tasks (->> task->scored-task
+                                 (vals)
+                                 (remove #(< (:dru %) safe-dru-threshold))
+                                 (filter (partial exceeds-min-diff? pending-job-dru min-dru-diff))
+                                 (group-by (fn [{:keys [task]}]
+                                             (:instance/hostname task))))
 
-        ;; Here we do a greedy search instead of bin packing. A preemption decision contains a prefix of scored
-        ;; tasks on a specific host.
-        ;; We try to find a preemption decision where the minimum dru of tasks to be preempted is maximum
+         host->formatted-spare-resources (->> host->spare-resources
+                                              (map (fn [[host {:keys [mem cpus]}]]
+                                                     [host [{:dru Double/MAX_VALUE :task nil :mem mem :cpus cpus}]]))
+                                              (into {}))
 
-        preemption-decision (->> (merge-with concat host->formatted-spare-resources host->scored-tasks)
-                                 (mapcat (fn compute-aggregations [[host scored-tasks]]
-                                           (rest
-                                            (reductions
-                                             (fn aggregate-scored-tasks [aggregation {:keys [dru task mem cpus] :as scored-task}]
-                                               {:hostname host
-                                                :dru dru
-                                                :task (if task
-                                                        (conj (:task aggregation) task)
-                                                        (:task aggregation))
-                                                :mem (+ (:mem aggregation) mem)
-                                                :cpus (+ (:cpus aggregation) cpus)})
-                                             {:hostname host :task nil :mem 0.0 :cpus 0.0}
-                                             scored-tasks))))
-                                 (filter (fn has-enough-resource [resource-sum]
-                                           (and (>= (:mem resource-sum) pending-job-mem)
-                                                (>= (:cpus resource-sum) pending-job-cpus))))
-                                 (apply max-key (fnil :dru {:dru 0.0}) nil))]
-    preemption-decision))
+         ;; Here we do a greedy search instead of bin packing. A preemption decision contains a prefix of scored
+         ;; tasks on a specific host.
+         ;; We try to find a preemption decision where the minimum dru of tasks to be preempted is maximum
+
+         preemption-decision (->> (merge-with concat host->formatted-spare-resources host->scored-tasks)
+                                  (mapcat (fn compute-aggregations [[host scored-tasks]]
+                                            (rest
+                                             (reductions
+                                              (fn aggregate-scored-tasks [aggregation {:keys [dru task mem cpus] :as scored-task}]
+                                                {:hostname host
+                                                 :dru dru
+                                                 :task (if task
+                                                         (conj (:task aggregation) task)
+                                                         (:task aggregation))
+                                                 :mem (+ (:mem aggregation) mem)
+                                                 :cpus (+ (:cpus aggregation) cpus)})
+                                              {:hostname host :task nil :mem 0.0 :cpus 0.0}
+                                              scored-tasks))))
+                                  (filter (fn has-enough-resource [resource-sum]
+                                            (and (>= (:mem resource-sum) pending-job-mem)
+                                                 (>= (:cpus resource-sum) pending-job-cpus))))
+                                  (apply max-key (fnil :dru {:dru 0.0}) nil))]
+     (histograms/update! preemption-counts-for-host (-> preemption-decision :tasks count))
+     preemption-decision)))
 
 (defn compute-next-state-and-preemption-decision
   "Takes state, params and a pending job entity, returns new state and preemption decision"
@@ -270,10 +302,13 @@
   "Takes a db, a list of pending job entities, a map of spare resources and params.
    Returns a list of pending job entities to run and a list of task entities to preempt"
   [db pending-job-ents host->spare-resources {:keys [max-preemption] :as params}]
-  (let [init-state (init-state db (util/get-running-task-ents db) pending-job-ents host->spare-resources)]
+  (let [timer (timers/start rebalance-duration)
+        jobs-to-make-room-for (filter (partial util/job-allowed-to-start? db)
+                                      pending-job-ents)
+        init-state (init-state db  (util/get-running-task-ents db) jobs-to-make-room-for host->spare-resources)]
     (loop [state init-state
            remaining-preemption max-preemption
-           [pending-job-ent & pending-job-ents] pending-job-ents
+           [pending-job-ent & jobs-to-make-room-for] jobs-to-make-room-for
            pending-job-ents-to-run []
            task-ents-to-preempt []]
       (if (and pending-job-ent (pos? remaining-preemption))
@@ -281,16 +316,22 @@
           (if preemption-decision
             (recur state'
                    (dec remaining-preemption)
-                   pending-job-ents
+                   jobs-to-make-room-for
                    (conj pending-job-ents-to-run pending-job-ent)
                    (into task-ents-to-preempt (:task preemption-decision)))
             (recur state'
                    remaining-preemption
-                   pending-job-ents
+                   jobs-to-make-room-for
                    pending-job-ents-to-run
                    task-ents-to-preempt)))
-        ;; pending-job-ents-to-run is only for debugging purpose
-        [pending-job-ents-to-run task-ents-to-preempt]))))
+
+        (do
+          (timers/stop timer)
+          (histograms/update! task-counts-to-preempt (count task-ents-to-preempt))
+          (histograms/update! job-counts-to-run (count pending-job-ents-to-run))
+          ;; pending-job-ents-to-run is only for debugging purpose
+          [pending-job-ents-to-run task-ents-to-preempt]
+          )))))
 
 (defn rebalance!
   [conn driver pending-job-ents host->spare-resources params]
@@ -304,7 +345,7 @@
         (try
           @(d/transact
             conn
-            ;; Make :instance/status and :instance/preempted consistent to simplify the state machine.
+            ;; Make :instance/status and :instance/preempted? consistent to simplify the state machine.
             ;; We don't want to deal with {:instance/status :instance.stats/running, :instance/preempted? true}
             ;; all over the places.
             (let [job-eid (:db/id (:job/_instance task-ent))
@@ -336,46 +377,46 @@
     utilization))
 
 (defn start-rebalancer!
-  [{:keys [conn driver mesos-master-hosts pending-jobs-atom view-incubating-offers view-mature-offers]}]
-  (let [rebalance-interval (time/minutes 5)
-        observe-interval (time/seconds 5)
-        observe-refreshness-threshold (time/seconds 30)
-        host->combined-offers-atom (atom {})
-        shutdown-observer (chime-at (periodic/periodic-seq (time/now) observe-interval)
-                                    (fn [now]
-                                      (let [host->combined-offers
-                                            (-<>> (view-incubating-offers)
-                                                  (sched/combine-offers)
-                                                  (map (fn [v]
-                                                         [(:hostname v) (assoc v :time-observed now)]))
-                                                  (into {}))]
-                                        (swap! host->combined-offers-atom
-                                               merge
-                                               host->combined-offers))))
-        shutdown-rebalancer (chime-at (periodic/periodic-seq (time/now) rebalance-interval)
+  [{:keys [conn driver mesos-master-hosts pending-jobs-atom view-incubating-offers view-mature-offers dru-scale]}]
+  (binding [metrics-dru-scale dru-scale]
+    (let [rebalance-interval (time/minutes 5)
+          observe-interval (time/seconds 5)
+          observe-refreshness-threshold (time/seconds 30)
+          host->combined-offers-atom (atom {})
+          shutdown-observer (chime-at (periodic/periodic-seq (time/now) observe-interval)
                                       (fn [now]
-                                        (let [db (mt/db conn)
-                                              params (-<>>
-                                                      (d/pull db ["*"] :rebalancer/config)
-                                                      (dissoc <> ":db/id" ":db/ident")
-                                                      (map (fn [[k v]]
-                                                             [(keyword (name (keyword k))) v]))
-                                                      (into {}))
-                                              utilization (get-mesos-utilization mesos-master-hosts)
-                                              host->spare-resources (->> @host->combined-offers-atom
-                                                                         (map (fn [[k v]]
-                                                                                (when (time/before?
-                                                                                       (time/minus now observe-refreshness-threshold)
-                                                                                       (:time-observed v))
-                                                                                  [k (select-keys (:resources v) [:cpus :mem])])))
-                                                                         (into {}))]
-                                          (when (and (seq params)
-                                                     (> utilization (:min-utilization-threshold params)))
-                                            (rebalance! conn driver @pending-jobs-atom host->spare-resources params))))
-                                      {:error-handler (fn [ex] (log/error ex "Rebalance failed"))})]
-    #(do
-       (shutdown-observer)
-       (shutdown-rebalancer))))
+                                        (let [host->combined-offers
+                                              (-<>> (view-incubating-offers)
+                                                    (map (fn [v]
+                                                           [(:hostname v) (assoc v :time-observed now)]))
+                                                    (into {}))]
+                                          (swap! host->combined-offers-atom
+                                                 merge
+                                                 host->combined-offers))))
+          shutdown-rebalancer (chime-at (periodic/periodic-seq (time/now) rebalance-interval)
+                                        (fn [now]
+                                          (let [db (mt/db conn)
+                                                params (-<>>
+                                                        (d/pull db ["*"] :rebalancer/config)
+                                                        (dissoc <> ":db/id" ":db/ident")
+                                                        (map (fn [[k v]]
+                                                               [(keyword (name (keyword k))) v]))
+                                                        (into {}))
+                                                utilization (get-mesos-utilization mesos-master-hosts)
+                                                host->spare-resources (->> @host->combined-offers-atom
+                                                                           (map (fn [[k v]]
+                                                                                  (when (time/before?
+                                                                                         (time/minus now observe-refreshness-threshold)
+                                                                                         (:time-observed v))
+                                                                                    [k (select-keys (:resources v) [:cpus :mem])])))
+                                                                           (into {}))]
+                                            (when (and (seq params)
+                                                       (> utilization (:min-utilization-threshold params)))
+                                              (rebalance! conn driver @pending-jobs-atom host->spare-resources params))))
+                                        {:error-handler (fn [ex] (log/error ex "Rebalance failed"))})]
+      #(do
+         (shutdown-observer)
+         (shutdown-rebalancer)))))
 
 (comment
   (let [conn (d/connect "datomic:mem://mesos-jobs")]

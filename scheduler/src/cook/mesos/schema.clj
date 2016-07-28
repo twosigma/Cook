@@ -264,9 +264,20 @@
      :db/cardinality :db.cardinality/one
      :db.install/_attribute :db.part/db}
     {:db/id (d/tempid :db.part/db)
+     :db/ident :instance/backfilled?
+     :db/doc "If this is true, then this instance should be preempted first regardless of priority. It's okay to upgrade an instance to be non-backfilled after a while."
+     :db/valueType :db.type/boolean
+     :db/cardinality :db.cardinality/one
+     :db.install/_attribute :db.part/db}
+    {:db/id (d/tempid :db.part/db)
      :db/ident :instance/hostname
      :db/valueType :db.type/string
      :db/cardinality :db.cardinality/one
+     :db.install/_attribute :db.part/db}
+    {:db/id (d/tempid :db.part/db)
+     :db/ident :instance/ports
+     :db/valueType :db.type/long
+     :db/cardinality :db.cardinality/many
      :db.install/_attribute :db.part/db}
     {:db/id (d/tempid :db.part/db)
      :db/ident :instance/executor-id
@@ -337,6 +348,14 @@
   [{:db/id :job/user
     :db/index true
     :db.alter/_attribute :db.part/db}])
+
+(def migration-add-port-count
+  "This was written on 04-12-2016"
+  [{:db/id (d/tempid :db.part/db)
+    :db/ident :job/ports
+    :db/valueType :db.type/long
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}])
 
 (def rebalancer-configs
   [{:db/id (d/tempid :db.part/user)
@@ -434,13 +453,7 @@
                    :code
                    (let [db (mt/filter-committed db)
                          job (d/entity db j)
-                         instance-states (mapv first (q '[:find ?state ?i
-                                                          :in $ ?j
-                                                          :where
-                                                          [?j :job/instance ?i]
-                                                          [?i :instance/status ?s]
-                                                          [?s :db/ident ?state]]
-                                                        db j))
+                         instance-states (map :instance/status (:job/instance job))
                          any-success? (some #{:instance.status/success} instance-states)
                          any-running? (some #{:instance.status/running} instance-states)
                          all-failed? (every? #{:instance.status/failed} instance-states)
@@ -520,4 +533,4 @@
                        []))}}])
 
 (def work-item-schema
-  [schema-attributes state-enums rebalancer-configs migration-add-index-to-job-state migration-add-index-to-job-user db-fns])
+  [schema-attributes state-enums rebalancer-configs migration-add-index-to-job-state migration-add-index-to-job-user migration-add-port-count db-fns])
