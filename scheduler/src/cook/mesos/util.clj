@@ -195,8 +195,8 @@
 
 
 (defn maybe-double
-  "Tries to parse a Double from s, or returns nil if s is not parseable
-  as a UUID."
+  "Tries to parse a double from s, or returns nil if s is not parseable
+  as a double."
   [s]
   (try (Double/parseDouble s)
        (catch Throwable t
