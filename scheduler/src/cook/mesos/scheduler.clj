@@ -450,6 +450,7 @@
 (histograms/defhistogram [cook-mesos scheduler offer-size-mem])
 (histograms/defhistogram [cook-mesos scheduler offer-size-cpus])
 (histograms/defhistogram [cook-mesos scheduler number-tasks-matched])
+(histograms/defhistogram [cook-mesos-scheduler number-offers-matched])
 (meters/defmeter [cook-mesos scheduler scheduler-offer-matched])
 (meters/defmeter [cook-mesos scheduler handle-resource-offer!-errors])
 (meters/defmeter [cook-mesos scheduler matched-tasks])
@@ -471,7 +472,7 @@
 
 (defn process-matches-for-backfill
   "This computes some sets:
-   
+
    fully-processed: this is a set of job uuids that should be removed from the list scheduler jobs. These are not backfilled
    upgrade-backfill: this is a set of instance datomic ids that should be upgraded to non-backfill
    backfill-jobs: this is a set of job uuids for jobs that were matched, but are in the backfill QoS class
@@ -620,7 +621,7 @@
                    (vec (apply concat upgrade-txns task-txns)))
                 (log/info "Launching" (count task-txns) "tasks")
                 (log/info "Upgrading" (count (:upgrade-backfill processed-matches)) "tasks from backfilled to proper")
-                (log/debug "Matched tasks" task-txns)
+                (log/info "Matched tasks" task-txns)
                 ;; This launch-tasks MUST happen after the above transaction in
                 ;; order to allow a transaction failure (due to failed preconditions)
                 ;; to block the launch
@@ -629,6 +630,11 @@
                                    (mapcat (comp :id :offer :leases))
                                    (distinct)
                                    (count)))
+                (histograms/update! number-offers-matched
+                                    (->> matches
+                                         (mapcat (comp :id :offer :leases))
+                                         (distinct)
+                                         (count)))
                 (meters/mark! matched-tasks (count task-txns))
                 (meters/mark! matched-tasks-cpus (:cpus match-resource-requirements))
                 (meters/mark! matched-tasks-mem (:mem match-resource-requirements))
@@ -774,7 +780,7 @@
     (when (seq running-tasks)
       (log/info "Preparing to reconcile" (count running-tasks) "tasks")
       (doseq [[task-id] running-tasks
-              :let [task-ent (d/entity db task-id)
+              :let [task-ent (d/entity db [:instance/task-id task-id])
                     hostname (:instance/hostname task-ent)
                     job (:job/_instance task-ent)]]
         (.. fenzo
