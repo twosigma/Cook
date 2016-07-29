@@ -24,3 +24,7 @@ pom.xml.asc
 .lein-plugins
 .lein-repl-history
 .nrepl-port
+.minimesos/
+minimesosFile
+.lein-env
+log/
