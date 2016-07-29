@@ -670,8 +670,9 @@
                      :body "Internal server error."})) )))
 
 
-(defn get-resources
-  "Tells the user what resource types are available in the system, if
+
+(defn get-shares
+  "Tells the user what share resource types are available in the system, if
   the current user is an admin."
   [conn request]
   (let [user (:authorization/user request)
@@ -686,7 +687,7 @@
        })))
 
 
-(defn get-user-resources
+(defn get-user-shares
   "Tells the user what resource shares are in place for the given username, if
   the current user is an admin."
   [conn request username]
@@ -702,7 +703,7 @@
        })))
 
 
-(defn set-user-resources!
+(defn set-user-shares!
   "Sets the share for the given username, if the current user is an admin.
    Shares is a map. Keys must be valid resource types as returned by (get-resources).
    Values are doubles."
@@ -748,9 +749,9 @@
          (running-jobs conn auth-config))
 
     ;; Resource shares:
-    (GET  "/resources/" request (get-resources conn request))
-    (GET  "/resources/users/:username" [username :as request] (get-user-resources conn request username))
-    (POST "/resources/users/:username" [username :as request] (set-user-resources! conn request username
+    (GET  "/shares/" request (get-shares conn request))
+    (GET  "/shares/users/:username" [username :as request] (get-user-shares conn request username))
+    (POST "/shares/users/:username" [username :as request] (set-user-shares! conn request username
                                                                                    (some-> (:body request)
                                                                                            slurp
                                                                                            util/maybe-json)))
