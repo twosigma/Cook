@@ -39,7 +39,6 @@
             [compojure.route :as route]
             
             ;; Cook subsystems
-            [cook.global-state :refer [global-state]]
             [cook.util :refer [lazy-load-var]]
             [cook.spnego :as spnego]
             [cook.curator :as curator]
@@ -60,6 +59,10 @@
   (:gen-class))
 
 
+;; This ref holds unavoidable top-level global state, such as the Java
+;; objects that run the webserver.
+(defonce global-state (ref nil))
+
 
 ;; Make nrepl Server object printable:
 (prefer-method clojure.pprint/simple-dispatch clojure.lang.IPersistentMap clojure.lang.IDeref)
@@ -78,17 +81,7 @@
   (routes 
    (GET "/ping" [] (fn [req]
                      (str "Hello, " (or (get req :authorization/user)
-                                        "anonymous"))))
-
-   ;; (GET "/admin/ping" [] (fn [req]
-   ;;                         (let [user  (or (get req :authorization/user)
-   ;;                                         "anonymous")]
-   ;;                           (if (is-admin? global-state user)
-   ;;                             (str "Hello, " user ", you're an admin.")
-   ;;                             {:status 403
-   ;;                              :body "Forbidden"}))))
-
-))
+                                        "anonymous"))))))
 
 (defn make-app-routes
   [mesos-datomic framework-id task-constraints mesos-pending-jobs-atom admins auth-config]

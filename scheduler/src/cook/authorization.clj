@@ -97,8 +97,7 @@
   feature, where users are allowed to modify their teammates' jobs.
 
 "
-  (:require [cook.global-state :refer [global-state]]
-            [cook.util :refer [lazy-load-var]]
+  (:require [cook.util :refer [lazy-load-var]]
             [clojure.tools.logging :as log]
             [plumbing.core :refer (fnk defnk)]))
 
