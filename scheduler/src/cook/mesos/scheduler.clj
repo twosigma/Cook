@@ -225,7 +225,8 @@
                                    #{:task-finished} :instance.status/success
                                    #{:task-failed
                                      :task-killed
-                                     :task-lost} :instance.status/failed)
+                                     :task-lost
+                                     :task-error} :instance.status/failed)
                  prior-job-state (:job/state (d/entity db job))
                  progress (try 
                               (when (:data status)
