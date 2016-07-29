@@ -91,12 +91,13 @@
 ))
 
 (defn make-app-routes
-  [mesos-datomic framework-id task-constraints mesos-pending-jobs-atom admins]
+  [mesos-datomic framework-id task-constraints mesos-pending-jobs-atom admins auth-config]
   (routes   ((lazy-load-var 'cook.mesos.api/handler)
              mesos-datomic
              framework-id
              task-constraints
-             (fn [] @mesos-pending-jobs-atom))
+             (fn [] @mesos-pending-jobs-atom)
+             auth-config)
 
             auxiliary-routes
 
@@ -249,8 +250,8 @@
 
     {:mesos-datomic mesos-datomic
 
-     :routes (fnk [mesos-datomic framework-id mesos-pending-jobs-atom [:settings task-constraints user-privileges]] 
-                 (make-app-routes mesos-datomic framework-id task-constraints mesos-pending-jobs-atom (:admin user-privileges)))
+     :routes (fnk [mesos-datomic framework-id mesos-pending-jobs-atom [:settings task-constraints user-privileges authorization-config]] 
+                 (make-app-routes mesos-datomic framework-id task-constraints mesos-pending-jobs-atom (:admin user-privileges) authorization-config))
 
      :http-server (fnk [[:settings server-port authorization-middleware] routes]
                        (make-http-server! server-port authorization-middleware routes))
@@ -522,7 +523,12 @@
      (let [app-state  @global-state
            settings   (:settings app-state)
            new-routes  ((fnk [mesos-datomic framework-id mesos-pending-jobs-atom [:settings task-constraints user-privileges]] 
-                              (make-app-routes mesos-datomic framework-id task-constraints mesos-pending-jobs-atom (:admin user-privileges)))
+                              (make-app-routes mesos-datomic
+                                               framework-id
+                                               task-constraints
+                                               mesos-pending-jobs-atom
+                                               (:admin user-privileges)
+                                               (:authorization-config settings)))
                         app-state)]
        (if-let [new-server (make-http-server! (:server-port settings)
                                               (:authorization-middleware settings)

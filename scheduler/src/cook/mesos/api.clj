@@ -415,7 +415,7 @@
 ;;;
 ;;; On GET; use repeated job argument
 (defn job-resource
-  [conn fid task-constraints]
+  [conn fid task-constraints auth-config]
   (-> (resource
         :available-media-types ["application/json"]
         :allowed-methods [:post :get :delete]
@@ -472,7 +472,8 @@
                                                                {:is-allowed false
                                                                 :message (str "No job found with UUID " uuid)
                                                                 :uuid uuid})
-                                                  (not (is-authorized? user
+                                                  (not (is-authorized? auth-config
+                                                                       user
                                                                        :access
                                                                        job)) (do
                                                                                (log/info "[job-resource] User" user " is not authorized to accesss job UUID" uuid)
@@ -523,14 +524,14 @@
       ring.middleware.json/wrap-json-params))
 
 (defn waiting-jobs
-  [mesos-pending-jobs-fn]
+  [mesos-pending-jobs-fn auth-config]
   (-> (resource
         :available-media-types ["application/json"]
         :allowed-methods [:get]
         :allowed? (fn [ctx]
                     (let [user  (get-in ctx [:request :authorization/user])]
                       ;; Only allow superusers:
-                      (if (is-authorized? user :access cook.authorization/system)
+                      (if (is-authorized? auth-config user :access cook.authorization/system)
                         true
                         (do
                           (log/info "[waiting-jobs] Queried by non-admin" user "; denying access.")
@@ -542,7 +543,7 @@
       ring.middleware.json/wrap-json-params))
 
 (defn running-jobs
-  [conn]
+  [conn auth-config]
   (-> (resource
         :available-media-types ["application/json"]
         :allowed-methods [:get]
@@ -561,11 +562,11 @@
       ring.middleware.json/wrap-json-params))
 
 (defn handler
-  [conn fid task-constraints mesos-pending-jobs-fn]
+  [conn fid task-constraints mesos-pending-jobs-fn auth-config]
   (routes
     (ANY "/rawscheduler" []
-         (job-resource conn fid task-constraints))
+         (job-resource conn fid task-constraints auth-config))
     (ANY "/queue" []
-         (waiting-jobs mesos-pending-jobs-fn))
+         (waiting-jobs mesos-pending-jobs-fn auth-config))
     (ANY "/running" []
-         (running-jobs conn))))
+         (running-jobs conn auth-config))))

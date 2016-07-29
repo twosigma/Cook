@@ -164,20 +164,16 @@
   specified in the config file.
 
   Returns true if allowed, else false."
-  ([^String user
-     ^clojure.lang.Keyword verb
-     ^cook.authorization.Ownable object] 
-     (is-authorized? (-> @global-state :settings) user verb object))
+  [settings
+   ^String user
+   ^clojure.lang.Keyword verb
+   ^cook.authorization.Ownable object]
 
-  ([settings
-    ^String user
-    ^clojure.lang.Keyword verb
-    ^cook.authorization.Ownable object]
-     (log/debug "[is-authorized?] Checking whether user" user
-                "may perform" verb "on" (str object) "...")
-     (log/debug "[is-authorized?] Settings are:" settings)
-     (let [auth-settings    (:authorization-config settings)
-           authorization-fn (lazy-load-var (:authorization-fn auth-settings))]
-       (authorization-fn auth-settings user verb object))))
+  (log/debug "[is-authorized?] Checking whether user" user
+             "may perform" verb "on" (str object) "...")
+  (log/debug "[is-authorized?] Settings are:" settings)
+
+  (let [authorization-fn (lazy-load-var (:authorization-fn settings))]
+    (authorization-fn settings user verb object)))
 
 
