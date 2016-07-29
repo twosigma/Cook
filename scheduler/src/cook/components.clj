@@ -39,7 +39,6 @@
             [compojure.route :as route]
             
             ;; Cook subsystems
-            [cook.global-state :refer [global-state]]
             [cook.util :refer [lazy-load-var]]
             [cook.spnego :as spnego]
             [cook.curator :as curator]
@@ -60,6 +59,10 @@
   (:gen-class))
 
 
+;; This ref holds unavoidable top-level global state, such as the Java
+;; objects that run the webserver.
+(defonce global-state (ref nil))
+
 
 ;; Make nrepl Server object printable:
 (prefer-method clojure.pprint/simple-dispatch clojure.lang.IPersistentMap clojure.lang.IDeref)
@@ -78,25 +81,16 @@
   (routes 
    (GET "/ping" [] (fn [req]
                      (str "Hello, " (or (get req :authorization/user)
-                                        "anonymous"))))
-
-   ;; (GET "/admin/ping" [] (fn [req]
-   ;;                         (let [user  (or (get req :authorization/user)
-   ;;                                         "anonymous")]
-   ;;                           (if (is-admin? global-state user)
-   ;;                             (str "Hello, " user ", you're an admin.")
-   ;;                             {:status 403
-   ;;                              :body "Forbidden"}))))
-
-))
+                                        "anonymous"))))))
 
 (defn make-app-routes
-  [mesos-datomic framework-id task-constraints mesos-pending-jobs-atom admins]
+  [mesos-datomic framework-id task-constraints mesos-pending-jobs-atom admins auth-config]
   (routes   ((lazy-load-var 'cook.mesos.api/handler)
              mesos-datomic
              framework-id
              task-constraints
-             (fn [] @mesos-pending-jobs-atom))
+             (fn [] @mesos-pending-jobs-atom)
+             auth-config)
 
             auxiliary-routes
 
@@ -249,8 +243,8 @@
 
     {:mesos-datomic mesos-datomic
 
-     :routes (fnk [mesos-datomic framework-id mesos-pending-jobs-atom [:settings task-constraints user-privileges]] 
-                 (make-app-routes mesos-datomic framework-id task-constraints mesos-pending-jobs-atom (:admin user-privileges)))
+     :routes (fnk [mesos-datomic framework-id mesos-pending-jobs-atom [:settings task-constraints user-privileges authorization-config]] 
+                 (make-app-routes mesos-datomic framework-id task-constraints mesos-pending-jobs-atom (:admin user-privileges) authorization-config))
 
      :http-server (fnk [[:settings server-port authorization-middleware] routes]
                        (make-http-server! server-port authorization-middleware routes))
@@ -321,10 +315,11 @@
                        port)
      :user-privileges (fnk [[:config {user-privileges {}}]]
                            user-privileges)
-     :authorization-fn (fnk [[:config authorization-fn]]
-                            (lazy-load-var authorization-fn))
 
-     :admins (fnk [[:config admins]]
+     :authorization-config (fnk [[:config authorization-config]]
+                                authorization-config)
+
+     :admins (fnk [[:config [:authorization-config admins]]]
                   admins)
 
      :authorization-middleware (fnk [[:config [:authorization {one-user false} {kerberos false} {http-basic false}]]]
@@ -521,7 +516,12 @@
      (let [app-state  @global-state
            settings   (:settings app-state)
            new-routes  ((fnk [mesos-datomic framework-id mesos-pending-jobs-atom [:settings task-constraints user-privileges]] 
-                              (make-app-routes mesos-datomic framework-id task-constraints mesos-pending-jobs-atom (:admin user-privileges)))
+                              (make-app-routes mesos-datomic
+                                               framework-id
+                                               task-constraints
+                                               mesos-pending-jobs-atom
+                                               (:admin user-privileges)
+                                               (:authorization-config settings)))
                         app-state)]
        (if-let [new-server (make-http-server! (:server-port settings)
                                               (:authorization-middleware settings)
