@@ -600,7 +600,7 @@
   "Sets the number of retries for the given job-id to the given retries value,
   if retries is parseable as a long integer and the current user is
   authorized to modify that job."
-  [conn auth-config fid request job-id retries]
+  [conn auth-config fid request job-id requested-retries]
   (let [user (:authorization/user request)
         uuid (maybe-uuid job-id)
         job  (fetch-job-map (db conn)
@@ -608,19 +608,20 @@
                             job-id) 
         authorized?  (and job
                           (is-authorized? auth-config user :update job))
-        retries (try (Long/parseLong retries)
-                     (catch Throwable t
-                       (log/warn "[set-retries!] User" user
-                                 " submitted an unparseable 'retries' value: " retries
-                                 "Aborting request.")
-                       nil))]
+        retries      (try (Long/parseLong requested-retries)
+                          (catch Throwable t
+                            (log/warn "[set-retries!] User" user
+                                      " submitted an unparseable 'retries' value: " requested-retries
+                                      "Aborting request.")
+                            nil))]
 
     (log/info "[set-retries!] User" user
               "asked to set retries to" retries " for job-id" job-id)
 
     (cond (nil? retries)    {:status  400
                              :headers {"Content-Type" "application/json"}
-                             :body    (str "Couldn't parse the requested number of retries in your POST. POST value should be a long integer.")}
+                             :body    (str "Couldn't parse the requested number of retries in your POST. "
+                                           "POST value should be a long integer. Got: " requested-retries)}
 
           (not authorized?)  (do
                                (log/info "[set-retries] User" user 
