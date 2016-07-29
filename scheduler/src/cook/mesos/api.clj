@@ -557,7 +557,7 @@
         :allowed? (fn [ctx]
                     (let [user  (get-in ctx [:request :authorization/user])]
                       ;; Only allow superusers:
-                      (if (is-authorized? user :access cook.authorization/system)
+                      (if (is-authorized? auth-config user :access cook.authorization/system)
                         true
                         (do
                           (log/info "[running-jobs] Queried by non-admin" user "; denying access.")
@@ -573,13 +573,13 @@
 (defn retries
   "Returns the number of retries for the given job-id, if the current
   user is authorized to view it."
-  [conn fid request job-id]
+  [conn auth-config fid request job-id]
   (let [user (:authorization/user request)
         job   (fetch-job-map (db conn)
                              fid
                              job-id) 
         authorized?  (and job
-                          (is-authorized? user :read job))]
+                          (is-authorized? auth-config user :read job))]
     (log/info "[retries] User" user
               "asked how many retries there are for job-id" job-id)
     (if (not authorized?)
@@ -600,14 +600,14 @@
   "Sets the number of retries for the given job-id to the given retries value,
   if retries is parseable as a long integer and the current user is
   authorized to modify that job."
-  [conn fid request job-id retries]
+  [conn auth-config fid request job-id retries]
   (let [user (:authorization/user request)
         uuid (maybe-uuid job-id)
         job  (fetch-job-map (db conn)
                             fid
                             job-id) 
         authorized?  (and job
-                          (is-authorized? user :update job))
+                          (is-authorized? auth-config user :update job))
         retries (try (Long/parseLong retries)
                      (catch Throwable t
                        (log/warn "[set-retries!] User" user
@@ -674,9 +674,9 @@
 (defn get-shares
   "Tells the user what share resource types are available in the system, if
   the current user is an admin."
-  [conn request]
+  [conn auth-config request]
   (let [user (:authorization/user request)
-        authorized? (is-authorized? user :access cook.authorization/system)]
+        authorized? (is-authorized? auth-config user :access cook.authorization/system)]
     (if authorized?
       {:status 200
        :headers {"Content-Type" "application/json"}
@@ -690,9 +690,9 @@
 (defn get-user-shares
   "Tells the user what resource shares are in place for the given username, if
   the current user is an admin."
-  [conn request username]
+  [conn auth-config request username]
   (let [user (:authorization/user request)
-        authorized? (is-authorized? user :access cook.authorization/system)]
+        authorized? (is-authorized? auth-config user :access cook.authorization/system)]
     (if authorized?
       {:status 200
        :headers {"Content-Type" "application/json"}
@@ -707,9 +707,9 @@
   "Sets the share for the given username, if the current user is an admin.
    Shares is a map. Keys must be valid resource types as returned by (get-resources).
    Values are doubles."
-  [conn request username shares]
+  [conn auth-config request username shares]
   (let [user           (:authorization/user request)
-        authorized?    (is-authorized? user :access cook.authorization/system)
+        authorized?    (is-authorized? auth-config user :access cook.authorization/system)
         resource-types (set (util/get-all-resource-types (d/db conn)))
         shares          (into {} (for [[k v] shares] [k (maybe-double v)]))]
 
@@ -749,12 +749,13 @@
          (running-jobs conn auth-config))
 
     ;; Resource shares:
-    (GET  "/shares/" request (get-shares conn request))
-    (GET  "/shares/users/:username" [username :as request] (get-user-shares conn request username))
-    (POST "/shares/users/:username" [username :as request] (set-user-shares! conn request username
-                                                                                   (some-> (:body request)
-                                                                                           slurp
-                                                                                           util/maybe-json)))
+    (GET  "/shares/" request (get-shares conn auth-config request))
+    (GET  "/shares/users/:username" [username :as request] (get-user-shares conn auth-config request username))
+    (POST "/shares/users/:username" [username :as request] (set-user-shares! conn auth-config
+                                                                             request username
+                                                                             (some-> (:body request)
+                                                                                     slurp
+                                                                                     util/maybe-json)))
 
     ;; Retrying jobs:
     (GET  "/jobs/:job-id/retries" [job-id :as request] (retries conn fid request job-id))
