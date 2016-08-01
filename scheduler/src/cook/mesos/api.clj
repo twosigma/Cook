@@ -415,7 +415,7 @@
 ;;;
 ;;; On GET; use repeated job argument
 (defn job-resource
-  [conn fid task-constraints auth-config]
+  [conn fid task-constraints auth-fn]
   (-> (resource
         :available-media-types ["application/json"]
         :allowed-methods [:post :get :delete]
@@ -472,19 +472,19 @@
                                                                {:is-allowed false
                                                                 :message (str "No job found with UUID " uuid)
                                                                 :uuid uuid})
-                                                  (not (is-authorized? auth-config
-                                                                       user
-                                                                       :access
-                                                                       job)) (do
-                                                                               (log/info "[job-resource] User" user " is not authorized to accesss job UUID" uuid)
-                                                                               {:is-allowed false
-                                                                                ;; Message does not tell user that they weren't allowed to access this job, to
-                                                                                ;; avoid leaking information about whether a given UUID exists in the system.
-                                                                                :message (str "No job found with UUID " uuid)
-                                                                                :uuid uuid})
-                                                                       :else {:is-allowed true
-                                                                              :uuid uuid})))
-
+                                                  (not (auth-fn
+                                                        user
+                                                        :access
+                                                        job)) (do
+                                                                (log/info "[job-resource] User" user " is not authorized to accesss job UUID" uuid)
+                                                                {:is-allowed false
+                                                                 ;; Message does not tell user that they weren't allowed to access this job, to
+                                                                 ;; avoid leaking information about whether a given UUID exists in the system.
+                                                                 :message (str "No job found with UUID " uuid)
+                                                                 :uuid uuid})
+                                                        :else {:is-allowed true
+                                                               :uuid uuid})))
+                            
                             uuids (map uuid-filter uuids)]
                         ;; Return true if every UUID is in use, or
                         ;; else return false with a list of
@@ -524,14 +524,14 @@
       ring.middleware.json/wrap-json-params))
 
 (defn waiting-jobs
-  [mesos-pending-jobs-fn auth-config]
+  [mesos-pending-jobs-fn auth-fn]
   (-> (resource
         :available-media-types ["application/json"]
         :allowed-methods [:get]
         :allowed? (fn [ctx]
                     (let [user  (get-in ctx [:request :authorization/user])]
                       ;; Only allow superusers:
-                      (if (is-authorized? auth-config user :access cook.authorization/system)
+                      (if (auth-fn user :access cook.authorization/system)
                         true
                         (do
                           (log/info "[waiting-jobs] Queried by non-admin" user "; denying access.")
@@ -543,14 +543,14 @@
       ring.middleware.json/wrap-json-params))
 
 (defn running-jobs
-  [conn auth-config]
+  [conn auth-fn]
   (-> (resource
         :available-media-types ["application/json"]
         :allowed-methods [:get]
         :allowed? (fn [ctx]
                     (let [user  (get-in ctx [:request :authorization/user])]
                       ;; Only allow superusers:
-                      (if (is-authorized? user :access cook.authorization/system)
+                      (if (auth-fn user :access cook.authorization/system)
                         true
                         (do
                           (log/info "[running-jobs] Queried by non-admin" user "; denying access.")
@@ -561,12 +561,14 @@
                           cheshire/generate-string)))
       ring.middleware.json/wrap-json-params))
 
+
 (defn handler
   [conn fid task-constraints mesos-pending-jobs-fn auth-config]
-  (routes
-    (ANY "/rawscheduler" []
-         (job-resource conn fid task-constraints auth-config))
-    (ANY "/queue" []
-         (waiting-jobs mesos-pending-jobs-fn auth-config))
-    (ANY "/running" []
-         (running-jobs conn auth-config))))
+  (let [auth-fn (partial is-authorized? auth-config)]
+    (routes
+     (ANY "/rawscheduler" []
+          (job-resource conn fid task-constraints auth-fn))
+     (ANY "/queue" []
+          (waiting-jobs mesos-pending-jobs-fn auth-fn))
+     (ANY "/running" []
+          (running-jobs conn auth-fn)))))
