@@ -737,9 +737,9 @@
                                                                                       util/maybe-json)))
 
      ;; Retrying jobs:
-     (GET  "/jobs/:job-id/retries" [job-id :as request] (retries conn fid request job-id))
-     (POST "/jobs/:job-id/retries" [job-id :as request] (set-retries! conn fid request job-id
+     (GET  "/jobs/:job-id/retries" [job-id :as request] (retries conn auth-fn fid request job-id))
+     (POST "/jobs/:job-id/retries" [job-id :as request] (set-retries! conn auth-fn fid request job-id
                                                                       (some-> (:body request)
                                                                               slurp
                                                                               util/maybe-json
-                                                                              (get "retries")))))))
+                                                                              (get :retries)))))))
