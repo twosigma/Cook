@@ -44,11 +44,9 @@ import org.apache.http.auth.AuthSchemeProvider;
 import org.apache.http.auth.AuthScope;
 import org.apache.http.auth.Credentials;
 import org.apache.http.auth.UsernamePasswordCredentials;
-import org.apache.http.client.ClientProtocolException;
 import org.apache.http.client.CredentialsProvider;
 import org.apache.http.client.config.AuthSchemes;
 import org.apache.http.client.config.RequestConfig;
-import org.apache.http.client.entity.UrlEncodedFormEntity;
 import org.apache.http.client.methods.HttpDelete;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.methods.HttpPost;
@@ -56,9 +54,7 @@ import org.apache.http.client.methods.HttpRequestBase;
 import org.apache.http.client.utils.URIBuilder;
 import org.apache.http.config.RegistryBuilder;
 import org.apache.http.entity.StringEntity;
-import org.apache.http.client.methods.HttpRequestBase;
 import org.apache.http.HttpStatus;
-import org.apache.http.client.utils.URIBuilder;
 import org.apache.http.message.BasicNameValuePair;
 import org.apache.http.util.EntityUtils;
 import org.apache.http.impl.auth.SPNegoSchemeFactory;
@@ -82,17 +78,17 @@ import org.apache.log4j.Logger;
  * An implementation for the Cook job client.
  * <p>
  * This client supports the following three key operations<br>
- * -- submit: submit jobs to Cook<br>
- * -- query: query jobs status along with their instances from Cook<br>
- * -- abort: abort jobs from Cook<br>
+ * -- submit: submit jobs to Cook;<br>
+ * -- query: query jobs status along with their instances from Cook;<br>
+ * -- abort: abort jobs from Cook.<br>
  * <p>
- * Note that this client only tracks jobs submitted through this client. Periodically, it queries the Cook scheduler
+ * Note that this client only tracks jobs submitted through it. Periodically, it queries the Cook scheduler rest
  * endpoint for jobs status updates. If any job status changes, it will<br>
- * -- update internal map from UUID to job<br>
- * -- invoke listener call back method<br>
+ * -- update internal map from UUID to job object;<br>
+ * -- invoke listener call back method.<br>
  * <p>
- * Also note that, each job could potentially be associated with a {@link JobListener}. However, different jobs could
- * reference the same job client.
+ * Also note that, each job could potentially be associated with a different {@link JobListener} respectively. However,
+ * different jobs could reference the same job listener.
  * <p>
  * Created: March 14, 2015
  *
@@ -143,8 +139,7 @@ public class JobClient implements Closeable {
         }
 
         /**
-         * Prior to {@code Build()}, host, port, and endpoint for the Cook scheduler must be specified either by user or
-         * properties.
+         * Prior to {@code Build()}, host, port, and endpoint must be specified.
          *
          * @return a {@link JobClient}.
          * @throws URISyntaxException
@@ -208,10 +203,8 @@ public class JobClient implements Closeable {
             AuthSchemeProvider authSchemaProvider = gssCrendentialProvider == null ?
                     new SPNegoSchemeFactory(true) : new BasicSPNegoSchemeFactory(true, gssCrendentialProvider);
 
-            _httpClientBuilder.setDefaultAuthSchemeRegistry(RegistryBuilder
-                                                            .<AuthSchemeProvider>create()
-                                                            .register(AuthSchemes.SPNEGO, authSchemaProvider)
-                                                            .build());
+            _httpClientBuilder.setDefaultAuthSchemeRegistry(RegistryBuilder.<AuthSchemeProvider> create()
+                    .register(AuthSchemes.SPNEGO, authSchemaProvider).build());
             return this;
         }
 
@@ -437,14 +430,13 @@ public class JobClient implements Closeable {
                     if (!_activeUUIDToJob.get(uuid).equals(currentJob)) {
                         // Firstly, invoke listener if there is a listener associated to this job.
                         final JobListener listener = _activeUUIDToListener.get(uuid);
-                        if (null != listener) {
-                            // XXX It is completely debatable what should be the correct behavior
-                            // when have an exception from listener and we have the following possible options:
-                            // 1. throw a {@link DeathError} to kill the JVM;
-                            // 2. do not update {@code _activeUUIDToJob} and keep retrying in the
-                            // next cycle;
+                        if (listener != null) {
+                            // XXX It is completely debatable what should be the correct behavior here
+                            // when a listener throws an exception. We have the following possible options:
+                            // 1. simply propagate the exception;
+                            // 2. keep {@code _activeUUIDToJob} being unchanged and retrying in the next cycle;
                             // 3. simply log the error but the listener will miss this status
-                            // update (current behavior).
+                            // update (which is the current behavior).
                             try {
                                 listener.onStatusUpdate(currentJob);
                             } catch (Exception e) {
@@ -477,7 +469,8 @@ public class JobClient implements Closeable {
      */
     public void submit(List<Job> jobs, JobListener listener)
         throws JobClientException {
-        // It is ok to change the listeners map even if the actual submission fails.
+        // It is ok to change the listeners map even if the actual submission fails because it won't
+        // update the internal status map {@code _activeUUIDTOJob}.
         for (Job job : jobs) {
             _activeUUIDToListener.put(job.getUUID(), listener);
         }
@@ -598,9 +591,9 @@ public class JobClient implements Closeable {
     }
 
     /**
-     * Query jobs for a given list of job {@link UUID}s. If the size of the list is larger that the
-     * {@code _batchRequestSize}, it will partition the list into smaller lists for query and return all query results
-     * together.
+     * Query jobs for a given list of job {@link UUID}s. If the list size is larger that the
+     * {@code _batchRequestSize}, it will partition the list into smaller lists and query them
+     * respectively and return all query results together.
      *
      * @param uuids specifies a list of job {@link UUID}s expected to query.
      * @return a {@link ImmutableMap} from job {@link UUID} to {@link Job}.
