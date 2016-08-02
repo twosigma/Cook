@@ -649,7 +649,7 @@
 
 
 
-(defn get-shares
+(defn get-resources
   "Tells the user what share resource types are available in the system, if
   the current user is an admin."
   [conn auth-fn request]
@@ -728,7 +728,7 @@
           (running-jobs conn auth-fn))
 
      ;; Resource shares:
-     (GET  "/shares/" request (get-shares conn auth-fn request))
+     (GET  "/resources/" request (get-resources conn auth-fn request))
      (GET  "/shares/users/:username" [username :as request] (get-user-shares conn auth-fn request username))
      (POST "/shares/users/:username" [username :as request] (set-user-shares! conn auth-fn
                                                                               request username
