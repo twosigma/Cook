@@ -410,14 +410,20 @@
   [^TaskScheduler fenzo considerable offers db fid]
   (log/debug "Matching" (count offers) "offers to" (count considerable) "jobs with fenzo")
   (let [t (System/currentTimeMillis)
+        _ (log/debug "offer to scheduleOnce" offers)
+        _ (log/debug "tasks to scheduleOnce" considerable)
         leases (mapv #(->VirtualMachineLeaseAdapter % t) offers)
         requests (mapv (fn [job]
                          (->TaskRequestAdapter job (job->task-info db fid (:db/id job))))
                        considerable)
-        result (.scheduleOnce fenzo requests leases)
+        ;; Need to lock on fenzo when accessing scheduleOnce because scheduleOnce and
+        ;; task assigner can not be called at the same time.
+        ;; task assigner may be called when reconciling
+        result (locking fenzo
+                 (.scheduleOnce fenzo requests leases))
         failure-results (.. result getFailures values)
         assignments (.. result getResultMap values)]
-    (log/info "Found this assigment:" result)
+    (log/debug "Found this assigment:" result)
     (when (and (seq failure-results) (log/enabled? :debug))
       (log/debug "Task placement failure information follows:")
       (doseq [failure-result failure-results
@@ -783,9 +789,12 @@
               :let [task-ent (d/entity db [:instance/task-id task-id])
                     hostname (:instance/hostname task-ent)
                     job (:job/_instance task-ent)]]
-        (.. fenzo
-            (getTaskAssigner)
-            (call (->TaskRequestAdapter job (job->task-info db fid (:db/id job))) hostname)))
+        ;; Need to lock on fenzo when accessing taskAssigner because taskAssigner and
+        ;; scheduleOnce can not be called at the same time.
+        (locking fenzo
+          (.. fenzo
+              (getTaskAssigner)
+              (call (->TaskRequestAdapter job (job->task-info db fid (:db/id job))) hostname))))
       (doseq [ts (partition-all 50 running-tasks)]
         (log/info "Reconciling" (count ts) "tasks, including task" (first ts))
         (mesos/reconcile-tasks driver (mapv (fn [[task-id status slave-id]]
