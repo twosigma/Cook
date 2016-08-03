@@ -378,7 +378,10 @@
 (defn- init-logger
   ([] (init-logger {:levels {"datomic.db" :warn
                              "datomic.peer" :warn
-                             "datomic.kv-cluster" :warn}}))
+                             "datomic.kv-cluster" :warn
+                             "com.netflix.fenzo.AssignableVMs" :warn
+                             "com.netflix.fenzo.TaskScheduler" :warn
+                             "com.netflix.fenzo.AssignableVirtualMachine" :warn}}))
   ([{:keys [file] :or {file "log/cook.log"} {:keys [default] :or {default :info} :as overrides} :levels}]
    (try
      (.. (org.apache.log4j.Logger/getRootLogger)
