@@ -14,7 +14,7 @@
 ;; limitations under the License.
 ;;
 (ns cook.mesos.rebalancer
-  (:require [clj-mesos.scheduler :as mesos]
+  (:require [mesomatic.scheduler :as mesos]
             [cook.mesos.scheduler :as sched]
             [cook.mesos.util :as util]
             [cook.mesos.dru :as dru]
@@ -358,7 +358,7 @@
           (catch Throwable e
             (log/warn e "Failed to transact preemption")))
         (when-let [task-id (:instance/task-id task-ent)]
-          (mesos/kill-task driver task-id))))))
+          (mesos/kill-task! driver {:value task-id}))))))
 
 (defn get-mesos-utilization
   [mesos-master-hosts]
