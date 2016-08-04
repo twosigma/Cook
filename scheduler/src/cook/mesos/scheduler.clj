@@ -41,7 +41,8 @@
   (import java.util.concurrent.TimeUnit
           com.netflix.fenzo.TaskAssignmentResult
           com.netflix.fenzo.TaskScheduler
-          com.netflix.fenzo.VirtualMachineLease))
+          com.netflix.fenzo.VirtualMachineLease
+          com.netflix.fenzo.plugins.BinPackingFitnessCalculators))
 
 (defn now
   []
@@ -538,8 +539,6 @@
   (log/debug "invoked handle-resource-offers!")
   (let [offer-stash (atom nil)] ;; This is a way to ensure we never lose offers fenzo assigned if an errors occures in the middle of processing
     ;; TODO: It is possible to have an offer expire by mesos because we recycle it a bunch of times.
-    ;; TODO: We will see a lot of pending job contention as fenzo takes a long time to schedule. This is *probably* fine as long as some iterations are faster than ranking..
-    ;;       Can we *just* update the new job atom?
     ;; TODO: If there is an exception before offers are sent to fenzo (scheduleOnce) then the offers will be lost. This is fine with offer expiration, but not great.
     (timers/time!
       handle-resource-offer!-duration
@@ -563,10 +562,11 @@
                                  :let [task-request (.getRequest task-result)]]
                              (:job task-request))
               processed-matches (process-matches-for-backfill scheduler-contents (first considerable) matched-jobs)
-              new-scheduler-contents (remove (fn [{pending-job-uuid :job/uuid}]
+              update-scheduler-contents (fn update-scheduler-contents [scheduler-contents]
+                                          (remove (fn [{pending-job-uuid :job/uuid}]
                                                (or (contains? (:fully-processed processed-matches) pending-job-uuid)
                                                    (contains? (:upgrade-backfill processed-matches) pending-job-uuid)))
-                                             scheduler-contents)
+                                             scheduler-contents))
               ;; We don't remove backfilled jobs here, because although backfilled
               ;; jobs have already been scheduled in a sense, the scheduler still can't
               ;; adjust the status of backfilled tasks.
@@ -585,15 +585,9 @@
             ;; "Penalization" should only be employed when Fenzo does successfully match,
             ;; but the matches don't align with Cook's priorities.
             (empty? matches) true
-            (not (compare-and-set! pending-jobs scheduler-contents new-scheduler-contents))
-            (do
-              (log/warn "Pending job atom contention encountered, recycling offers:" @offer-stash)
-              (async/go
-                (async/>! offers-chan @offer-stash))
-              (meters/mark! pending-job-atom-contended)
-              true)
             :else
-            (let [task-txns (for [{:keys [tasks leases]} matches
+            (let [_ (swap! pending-jobs update-scheduler-contents)
+                  task-txns (for [{:keys [tasks leases]} matches
                                   :let [offers (mapv :offer leases)
                                         slave-id (:slave-id (first offers))]
                                   ^TaskAssignmentResult task tasks
