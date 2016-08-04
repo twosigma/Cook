@@ -485,7 +485,7 @@
                         ;; Return true if every UUID is in use, or
                         ;; else return false with a list of
                         ;; nonexistant UUIDs.
-                        (if (every? true? (map :is-allowed uuids))
+                        (if (every? :is-allowed uuids)
                           true
                           (let [message  (->> (map :message uuids)
                                                  (remove nil?)
