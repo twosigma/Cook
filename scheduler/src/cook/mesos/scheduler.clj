@@ -1067,6 +1067,7 @@
       (withLeaseOfferExpirySecs (max (-> offer-incubate-time-ms time/millis time/in-seconds) 1)) ;; should be at least 1 second
       (withRejectAllExpiredOffers)
       (withDebugEnabled)
+      (withFitnessCalculator BinPackingFitnessCalculators/cpuMemBinPacker)
       (withLeaseRejectAction (reify com.netflix.fenzo.functions.Action1
                                (call [_ lease]
                                  (let [offer (:offer lease)
