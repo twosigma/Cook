@@ -84,7 +84,7 @@
                                         "anonymous"))))))
 
 (defn make-app-routes
-  [mesos-datomic framework-id task-constraints mesos-pending-jobs-atom admins auth-config]
+  [mesos-datomic framework-id task-constraints mesos-pending-jobs-atom auth-config]
   (routes   ((lazy-load-var 'cook.mesos.api/handler)
              mesos-datomic
              framework-id
@@ -243,8 +243,8 @@
 
     {:mesos-datomic mesos-datomic
 
-     :routes (fnk [mesos-datomic framework-id mesos-pending-jobs-atom [:settings task-constraints user-privileges authorization-config]] 
-                 (make-app-routes mesos-datomic framework-id task-constraints mesos-pending-jobs-atom (:admin user-privileges) authorization-config))
+     :routes (fnk [mesos-datomic framework-id mesos-pending-jobs-atom [:settings task-constraints authorization-config]] 
+                 (make-app-routes mesos-datomic framework-id task-constraints mesos-pending-jobs-atom authorization-config))
 
      :http-server (fnk [[:settings server-port authorization-middleware] routes]
                        (make-http-server! server-port authorization-middleware routes))
@@ -313,8 +313,6 @@
   (graph/eager-compile
     {:server-port (fnk [[:config port]]
                        port)
-     :user-privileges (fnk [[:config {user-privileges {}}]]
-                           user-privileges)
 
      :authorization-config (fnk [[:config authorization-config]]
                                 authorization-config)
@@ -515,12 +513,11 @@
      ;; Make a new server (outside the transaction!) and swap it in.
      (let [app-state  @global-state
            settings   (:settings app-state)
-           new-routes  ((fnk [mesos-datomic framework-id mesos-pending-jobs-atom [:settings task-constraints user-privileges]] 
+           new-routes  ((fnk [mesos-datomic framework-id mesos-pending-jobs-atom [:settings task-constraints]] 
                               (make-app-routes mesos-datomic
                                                framework-id
                                                task-constraints
                                                mesos-pending-jobs-atom
-                                               (:admin user-privileges)
                                                (:authorization-config settings)))
                         app-state)]
        (if-let [new-server (make-http-server! (:server-port settings)
