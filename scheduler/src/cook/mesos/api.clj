@@ -250,12 +250,8 @@
   (let [uuid (if (string? uuid)
                (UUID/fromString uuid)
                uuid)]
-    (some-> (d/q '[:find ?owner
-                   :in $ ?uuid
-                   :where [?e :job/uuid ?uuid ] [?e :job/user ?owner]]
-                 db 
-                 uuid)
-            first first)))
+    (some->  (d/entity db [:job/uuid uuid])
+             (:job/user))))
 
 
 (defn validate-and-munge-job
@@ -496,7 +492,7 @@
                         ;; Return true if every UUID is in use, or
                         ;; else return false with a list of
                         ;; nonexistant UUIDs.
-                        (if (every? true? (map :is-allowed uuids))
+                        (if (every? :is-allowed uuids)
                           true
                           (let [message  (->> (map :message uuids)
                                                  (remove nil?)
