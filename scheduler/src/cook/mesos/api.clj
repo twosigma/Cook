@@ -94,7 +94,7 @@
      ]
   {  
    (s/optional-key :uris) [Uri]
-   (s/optional-key :ports) [(s/pred zero? 'zero)] ;;TODO add to docs the limited uri/port support
+   (s/optional-key :ports) (s/pred #(not (neg? %)) 'nonnegative?)
    (s/optional-key :env) {NonEmptyString s/Str}
    (s/optional-key :labels) {NonEmptyString s/Str}
    (s/optional-key :container) Container
@@ -167,10 +167,8 @@
   [conn jobs :- [Job]]
   (doseq [{:keys [uuid command max-retries max-runtime priority cpus mem user name ports uris env labels container]} jobs
           :let [id (d/tempid :db.part/user)
-                ports (mapv (fn [port]
-                              ;;TODO this schema might not work b/c all ports are zero
-                              [:db/add id :job/port port])
-                            ports)
+                ports (when (and ports (not (zero? ports)))
+                        [[:db/add id :job/ports ports]])
                 uris (mapcat (fn [{:keys [value executable? cache? extract?]}]
                                (let [uri-id (d/tempid :db.part/user)
                                      optional-params {:resource.uri/executable? executable?
@@ -205,14 +203,13 @@
                 container (if (nil? container) [] (build-container id container))
                 ;; These are optionally set datoms w/ default values
                 maybe-datoms (concat
-                               (when (and name (not= name "cookjob"))
-                                 [[:db/add id :job/name name]])
                                (when (and priority (not= util/default-job-priority priority))
                                  [[:db/add id :job/priority priority]])
                                (when (and max-runtime (not= Long/MAX_VALUE max-runtime))
                                  [[:db/add id :job/max-runtime max-runtime]]))
                 txn {:db/id id
                      :job/uuid uuid
+                     :job/name (or name "cookjob") ; set the default job name if not provided.
                      :job/command command
                      :job/custom-executor false
                      :job/user user
@@ -266,7 +263,7 @@
                   :priority (or priority util/default-job-priority)
                   :max-retries max_retries
                   :max-runtime (or max_runtime Long/MAX_VALUE)
-                  :ports (or ports [])
+                  :ports (or ports 0)
                   :cpus (double cpus)
                   :mem (double mem)}
                  (when container
@@ -377,7 +374,7 @@
           :uris (:uris resources)
           :env (util/job-ent->env job)
           :labels (util/job-ent->label job)
-          ;;TODO include ports
+          :ports (:job/ports job 0)
           :instances
           (map (fn [instance]
                  (let [hostname (:instance/hostname instance)

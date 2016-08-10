@@ -19,6 +19,7 @@
              ;:local-port 3291 ; Uncomment to change the default port
              }
  :scheduler {:offer-incubate-ms 15000
+             :dru-scale 1
              :task-constraints {:timeout-hours 1
                                 :timeout-interval-minutes 1
                                 :memory-gb 48

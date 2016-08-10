@@ -88,7 +88,7 @@
                                     :executable (:resource.uri/executable? r false)
                                     :value (:resource.uri/value r)
                                     :extract (:resource.uri/extract? r false)}))))
-          {:ports (:job/port job-ent)}
+          {:ports (:job/ports job-ent 0)}
           (:job/resource job-ent)))
 
 (defn sum-resources-of-jobs
@@ -100,8 +100,8 @@
          [job-ent & job-ents] job-ents]
     (if job-ent
       (let [{:keys [cpus mem]} (job-ent->resources job-ent)]
-        (recur (+ total-cpus cpus)
-               (+ total-mem mem)
+        (recur (+ total-cpus (or cpus 0))
+               (+ total-mem (or mem 0))
                job-ents))
       {:cpus total-cpus :mem total-mem})))
 
@@ -138,6 +138,15 @@
             db [:instance.status/running :instance.status/unknown])
          (map (fn [[x]] (d/entity db x))))))
 
+(defn job-allowed-to-start?
+  "Converts the DB function :job/allowed-to-start? into a predicate"
+  [db job]
+  (try
+    (d/invoke db :job/allowed-to-start? db (:db/id job))
+    true
+    (catch clojure.lang.ExceptionInfo e
+      false)))
+
 (defn create-task-ent
   "Takes a pending job entity and returns a synthetic running task entity for that job"
   [pending-job-ent & {:keys [hostname] :or {hostname nil}}]
@@ -151,19 +160,24 @@
 
 (def ^:const default-job-priority 50)
 
+
+(defn task->feature-vector
+  [task]
+  "Vector of comparable features of a task.
+   Last two elements are aribitary tie breakers.
+   Use :db/id because they guarantee uniqueness for different entities
+   (:db/id task) is not sufficient because synthetic task entities don't have :db/id
+    This assumes there are at most one synthetic task for a job, otherwise uniqueness invariant will break"
+  [(- (:job/priority (:job/_instance task) default-job-priority))
+   (:instance/start-time task (java.util.Date. Long/MAX_VALUE))
+   (:db/id task)
+   (:db/id (:job/_instance task))])
+
 (defn same-user-task-comparator
   "Comparator to order same user's tasks"
-  [task1 task2]
-  (letfn [(task->feature-vector [task]
-            ;; Last two elements are aribitary tie breakers.
-            ;; Use :db/id because they guarantee uniqueness for different entities
-            ;; (:db/id task) is not sufficient because synthetic task entities don't have :db/id
-            ;; This assumes there are at most one synthetic task for a job, otherwise uniqueness invariant will break
-            [(- (:job/priority (:job/_instance task) default-job-priority))
-             (:instance/start-time task (java.util.Date. Long/MAX_VALUE))
-             (:db/id task)
-             (:db/id (:job/_instance task))])]
-    (compare (task->feature-vector task1) (task->feature-vector task2))))
+  []
+  (fn [task1 task2]
+      (compare (task->feature-vector task1) (task->feature-vector task2))))
 
 
 (defn to-uuid
@@ -237,3 +251,14 @@
         @(d/transact conn
                      [[:db/add [:job/uuid uuid]
                        :job/max-retries retries]])))))
+
+(defn same-user-task-comparator-penalize-backfill
+  "Same as same-user-task-comparator, but we treat jobs which were backfilled as being the lowest priority"
+  []
+  (letfn [(comparable-with-backfill
+            [task]
+            (vec (cons (if (:instance/backfilled? task) 1 0)
+                       (task->feature-vector task))))]
+    (fn [task1 task2]
+      (compare (comparable-with-backfill task1) (comparable-with-backfill task2)))))
+

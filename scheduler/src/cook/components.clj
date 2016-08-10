@@ -98,7 +98,7 @@
 
 
 (def mesos-scheduler
-  {:mesos-scheduler (fnk [[:settings mesos-master mesos-master-hosts mesos-leader-path mesos-failover-timeout mesos-principal mesos-role offer-incubate-time-ms task-constraints riemann] mesos-datomic mesos-datomic-mult curator-framework mesos-pending-jobs-atom]
+  {:mesos-scheduler (fnk [[:settings mesos-master mesos-master-hosts mesos-leader-path mesos-failover-timeout mesos-principal mesos-role offer-incubate-time-ms fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset task-constraints riemann dru-scale] mesos-datomic mesos-datomic-mult curator-framework mesos-pending-jobs-atom]
                          (try
                            (Class/forName "org.apache.mesos.Scheduler")
                            ((lazy-load-var 'cook.mesos/start-mesos-scheduler)
@@ -112,10 +112,15 @@
                             mesos-principal
                             mesos-role
                             offer-incubate-time-ms
+                            fenzo-max-jobs-considered
+                            fenzo-scaleback
+                            fenzo-floor-iterations-before-warn
+                            fenzo-floor-iterations-before-reset
                             task-constraints
                             (:host riemann)
                             (:port riemann)
-                            mesos-pending-jobs-atom)
+                            mesos-pending-jobs-atom
+                            dru-scale)
                            (catch ClassNotFoundException e
                              (log/warn e "Not loading mesos support...")
                              nil)))})
@@ -362,6 +367,14 @@
                               task-constraints))
      :offer-incubate-time-ms (fnk [[:config [:scheduler {offer-incubate-ms 15000}]]]
                                   offer-incubate-ms)
+     :fenzo-max-jobs-considered (fnk [[:config [:scheduler {fenzo-max-jobs-considered 1000}]]]
+                                     fenzo-max-jobs-considered)
+     :fenzo-scaleback (fnk [[:config [:scheduler {fenzo-scaleback 0.95}]]]
+                           fenzo-scaleback)
+     :fenzo-floor-iterations-before-warn (fnk [[:config [:scheduler {fenzo-floor-iterations-before-warn 10}]]]
+                                              fenzo-floor-iterations-before-warn)
+     :fenzo-floor-iterations-before-reset (fnk [[:config [:scheduler {fenzo-floor-iterations-before-reset 1000}]]]
+                                               fenzo-floor-iterations-before-reset)
      :mesos-master (fnk [[:config [:mesos master]]]
                         master)
      :mesos-master-hosts (fnk [[:config [:mesos master {master-hosts nil}]]]
@@ -407,6 +420,9 @@
                                                                 (java.net.InetAddress/getLocalHost))}
                                                  riemann)]
                                ((lazy-load-var 'cook.reporter/riemann-reporter) config))))
+     :dru-scale (fnk [[:config [:scheduler {dru-scale 1.0}]]]
+                     dru-scale)
+
      :nrepl-server (fnk [[:config [:nrepl {enabled? false} {port 0}]]]
                         (when enabled?
                           (when (zero? port)

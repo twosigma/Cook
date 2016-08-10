@@ -65,6 +65,7 @@
              "priority" 66
              "max_retries" 100
              "max_runtime" 1000000
+             "ports" 2
              "uris" uris
              "env" env
              "labels" labels

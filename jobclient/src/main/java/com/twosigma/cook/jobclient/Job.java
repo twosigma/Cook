@@ -512,6 +512,18 @@ final public class Job {
     }
 
     /**
+     * @return the job instance with the running state or {@code null} if can't find one.
+     */
+    public Instance getRunningInstance() {
+        for (Instance instance : _instances) {
+            if (Instance.Status.RUNNING.equals(instance.getStatus())) {
+                return instance;
+            }
+        }
+        return null;
+    }
+
+    /**
      * A job is successful if and only if the job is completed and one of its instances is successful.
      *
      * @return
