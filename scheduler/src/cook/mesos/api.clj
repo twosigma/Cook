@@ -467,7 +467,7 @@
                             ;; whether it's allowed, and if not, why
                             ;; it's not allowed.
                             uuid-filter (fn [uuid]
-                                          (let [job (fetch-job-map (db conn)
+                                          (let [job (fetch-job-map datomic
                                                                    fid
                                                                    uuid)]
                                             (cond (nil? job) (do
