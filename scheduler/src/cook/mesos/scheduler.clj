@@ -856,14 +856,14 @@
    :interval-minutes specifies the frequency of killing
    :timout-hours specifies the timeout hours for lingering tasks"
   [conn driver config]
-  (let [{interval-minutes :timeout-interval-minutes
-         max-timeout-hours :max-timeout-hours
-         default-timeout-hours :default-timeout-hours
-         timeout-hours :timout-hours}
+  (let [{:keys [timeout-interval-minutes
+                max-timeout-hours
+                default-timeout-hours
+                timeout-hours]}
         (merge {:timeout-interval-minutes 10
                 :timeout-hours (* 2 24)}
                config)]
-    (chime-at (periodic/periodic-seq (time/now) (time/minutes interval-minutes))
+    (chime-at (periodic/periodic-seq (time/now) (time/minutes timeout-interval-minutes))
               (fn [now]
                 (let [db (d/db conn)
                       ;; These defaults are for backwards compatibility
