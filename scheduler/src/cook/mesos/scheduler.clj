@@ -408,9 +408,9 @@
    Returns a list of tasks that got matched to the offer"
   [^TaskScheduler fenzo considerable offers db fid]
   (log/debug "Matching" (count offers) "offers to" (count considerable) "jobs with fenzo")
+  (log/debug "offer to scheduleOnce" offers)
+  (log/debug "tasks to scheduleOnce" considerable)
   (let [t (System/currentTimeMillis)
-        _ (log/debug "offer to scheduleOnce" offers)
-        _ (log/debug "tasks to scheduleOnce" considerable)
         leases (mapv #(->VirtualMachineLeaseAdapter % t) offers)
         requests (mapv (fn [job]
                          (->TaskRequestAdapter job (job->task-info db fid (:db/id job))))
