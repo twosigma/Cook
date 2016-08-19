@@ -343,7 +343,7 @@
                                              :task-id task-id-3
                                              :start-time start-time-3)
         test-db (d/db conn)]
-    (is (= #{task-id-1 task-id-2} (set (sched/get-lingering-tasks test-db (t/now) timeout-hours))))))
+    (is (= #{task-id-1 task-id-2} (set (sched/get-lingering-tasks test-db (t/now) timeout-hours timeout-hours))))))
 
 (deftest test-filter-offensive-jobs
   (let [uri "datomic:mem://test-filter-offensive-jobs"
