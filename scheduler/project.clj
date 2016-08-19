@@ -34,7 +34,7 @@
                  [org.clojure/core.cache "0.6.4"]
                  [org.clojure/core.memoize "0.5.8"]
                  [clj-time "0.9.0"]
-                 [org.clojure/core.async "0.2.374"]
+                 [org.clojure/core.async "0.2.374" :exclusions [org.clojure/tools.reader]]
                  [prismatic/schema "0.2.1"
                   :exclusions [potemkin]]
                  [clojure-miniprofiler "0.4.0"]
@@ -44,6 +44,7 @@
                  [riddley "0.1.10"]
                  [com.netflix.fenzo/fenzo-core "0.8.2"
                   :exclusions [org.apache.mesos/mesos
+                               com.fasterxml.jackson.core/jackson-core
                                org.slf4j/slf4j-api
                                org.slf4j/slf4j-simple]]
 
@@ -63,7 +64,11 @@
                  ;;Networking
                  [clj-http "2.0.0"]
                  [io.netty/netty "3.10.1.Final"]
-                 [cc.qbits/jet "0.5.7"]
+                 [cc.qbits/jet "0.5.7" :exclusions [org.eclipse.jetty/jetty-io
+                                                    org.eclipse.jetty/jetty-security
+                                                    org.eclipse.jetty/jetty-server
+                                                    org.eclipse.jetty/jetty-http
+                                                    cheshire]]
                  [org.eclipse.jetty/jetty-server "9.2.6.v20141205"]
                  [org.eclipse.jetty/jetty-security "9.2.6.v20141205"]
 
@@ -71,8 +76,8 @@
                  ;;Metrics
                  [metrics-clojure "2.6.1"
                   :exclusions [io.netty/netty org.clojure/clojure]]
-                 [metrics-clojure-ring "2.3.0"
-                  :exclusions [io.netty/netty org.clojure/clojure]]
+                 [metrics-clojure-ring "2.3.0" :exclusions [com.codahale.metrics/metrics-core
+                                                            org.clojure/clojure io.netty/netty]]
                  [io.dropwizard.metrics/metrics-graphite "3.1.2"]
                  [com.aphyr/metrics3-riemann-reporter "0.4.0"]
                  [riemann-clojure-client "0.4.1"]
