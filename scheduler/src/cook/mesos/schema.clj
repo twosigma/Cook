@@ -340,6 +340,25 @@
      :db/cardinality :db.cardinality/one
      :db.install/_attribute :db.part/db}
 
+   ;; Quota attributes
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :quota/user
+    :db/valueType :db.type/string
+    :db/unique :db.unique/identity
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :quota/resource
+    :db/valueType :db.type/ref
+    :db/isComponent true
+    :db/cardinality :db.cardinality/many
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :quota/count
+    :db/valueType :db.type/long
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+
     ;; Resource mapping attributes
    {:db/id (d/tempid :db.part/db)
     :db/ident :resource.type/mesos-name

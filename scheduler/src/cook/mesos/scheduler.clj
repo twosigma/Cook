@@ -38,6 +38,8 @@
             [chime :refer [chime-at chime-ch]]
             [cook.mesos.heartbeat :as heartbeat]
             [cook.mesos.share :as share]
+            [cook.mesos.quota :as quota]
+            [plumbing.core :refer (map-vals)]
             [swiss.arrows :refer :all]
             [clojure.core.cache :as cache]
             [cook.mesos.reason :as reason])
@@ -604,10 +606,48 @@
      :backfill-jobs (set (mapv :job/uuid jobs-to-backfill))
      :matched-head? (matched? head-of-considerable)}))
 
+(defn below-quota?
+  "Returns true if the usage is below quota-constraints on all dimensions"
+  [{:keys [count cpus mem] :as quota}
+   {:keys [count cpus mem] :as usage}]
+  (every? true? (vals (merge-with <= usage quota))))
+
+(defn job->usage
+  "Takes a job-ent and returns a map of the usage of that job,
+   specifically :mem, :cpus, and :count (which is 1)"
+  [job-ent]
+  (let [{:keys [cpus mem]} (util/job-ent->resources job-ent)]
+    {:cpus cpus :mem mem :count 1}))
+
+(defn filter-based-on-quota
+  "Lazily filters jobs for which the sum of running jobs and jobs earlier in the queue exceeds one of the constraints,
+   max-jobs, max-cpus or max-mem"
+  [user->quota user->usage queue]
+  (letfn [(filter-with-quota [user->usage job]
+            (let [user (:job/user job)
+                  job-usage (job->usage job)
+                  user->usage' (update-in user->usage [user] #(merge-with + job-usage %))]
+              (log/debug "Quota check" {:user user
+                                       :usage (get user->usage' user)
+                                       :quota (user->quota user)})
+              [user->usage' (below-quota? (user->quota user) (get user->usage' user))]))]
+    (util/filter-sequential filter-with-quota user->usage queue)))
+
+(defn generate-user-usage-map
+  "Returns a mapping from user to usage stats"
+  [unfiltered-db]
+  (->> (time (util/get-running-task-ents unfiltered-db))
+       (map :job/_instance)
+       (group-by :job/user)
+       (map-vals (fn [jobs]
+                   (->> jobs
+                        (map job->usage)
+                        (reduce (partial merge-with +)))))))
+
 (defn handle-resource-offers!
   "Gets a list of offers from mesos. Decides what to do with them all--they should all
    be accepted or rejected at the end of the function."
-  [conn driver ^TaskScheduler fenzo fid pending-jobs num-considerable offers-chan offers]
+  [conn driver ^TaskScheduler fenzo fid pending-jobs user->usage user->quota num-considerable offers-chan offers]
   (log/debug "invoked handle-resource-offers!")
   (let [offer-stash (atom nil)] ;; This is a way to ensure we never lose offers fenzo assigned if an errors occures in the middle of processing
     ;; TODO: It is possible to have an offer expire by mesos because we recycle it a bunch of times.
@@ -618,12 +658,13 @@
         (let [scheduler-contents-by @pending-jobs
               db (db conn)
               _ (log/debug "There are" (apply + (map count scheduler-contents-by)) "pending jobs")
-              _ (log/info "scheduler-contents:" scheduler-contents-by)
+              _ (log/debug "scheduler-contents:" scheduler-contents-by)
               considerable-by (->> scheduler-contents-by
                                    (map (fn [[category jobs]]
                                           [category (->> jobs
                                                          (filter (fn [job]
                                                                    (util/job-allowed-to-start? db job)))
+                                                         (filter-based-on-quota user->quota user->usage)
                                                          (take num-considerable))]))
                                    (into {}))
               _ (log/debug "We'll consider scheduling" (map (fn [[k v]] [k (count v)]) considerable-by)
@@ -787,7 +828,25 @@
         ;;TODO make this cancelable (if we want to be able to restart the server w/o restarting the JVM)
         (let [next-considerable
               (try
-                (let [offers (async/alt!!
+                (let [;; There are implications to generating the user->usage here:
+                      ;;s ok  1. Currently cook has two oddities in state changes.
+                      ;;  We plan to correct both of these but are important for the time being.
+                      ;;    a. Cook doesn't mark as a job as running when it schedules a job.
+                      ;;       While this is technically correct, it confuses some process.
+                      ;;       For example, it will mean that the user->usage generated here
+                      ;;       may not include jobs that have been scheduled but haven't started.
+                      ;;       Since we do the filter for quota first, this is ok because those jobs
+                      ;;       show up in the queue. However, it is important to know about
+                      ;;    b. Cook doesn't updat ethe job state when cook hears from mesos about the
+                      ;;       state of an instance. Cook waits until it hears from datomic about the
+                      ;;       instance state change to change the state of the job. This means that it
+                      ;;       is possible to have large delays between when a instance changes status
+                      ;;       and the job reflects that change
+                      ;;  2. Once the above two items are addressed, user->usage should always correctly
+                      ;;     reflect *Cook*'s understanding of the state of the world at this point.
+                      ;;     When this happens, users should never exceed their quota
+                      user->usage-future (future (generate-user-usage-map (d/db conn)))
+                      offers (async/alt!!
                                offers-chan ([offers]
                                             (counters/dec! offer-chan-depth)
                                             offers)
@@ -798,7 +857,8 @@
                                   (filter nil?)
                                   (apply concat offers))
                       _ (log/debug "Passing following offers to handle-resource-offers!" offers)
-                      matched-head? (handle-resource-offers! conn @driver-atom fenzo @fid-atom pending-jobs-atom num-considerable offers-chan offers)]
+                      user->quota (quota/create-user->quota-fn (d/db conn))
+                      matched-head? (handle-resource-offers! conn @driver-atom fenzo @fid-atom pending-jobs-atom @user->usage-future user->quota num-considerable offers-chan offers)]
                   (when (seq offers)
                     (reset! resources-atom (view-incubating-offers fenzo)))
                   ;; This check ensures that, although we value Fenzo's optimizations,

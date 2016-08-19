@@ -221,3 +221,19 @@
         @(d/transact conn
                      [[:db/add [:job/uuid uuid]
                        :job/max-retries retries]])))))
+
+(defn filter-sequential
+  "This function allows for filtering when the filter function needs to consider previous elements
+   Lazily filters elements of coll.
+   f is assumed to take two parameters, state and an element, i.e. (f state element)
+   and return a pair [new-state should-keep?] where new-state will be passed to f when called on the next element.
+   The new-state is passed regardless of whether should-keep? is truth-y or not."
+  [f init-state coll]
+  (letfn [(fr [{:keys [state]} x]
+            (let [[state' should-keep?] (f state x)]
+              {:state state'
+               :x (when should-keep? x)}))]
+    (->> coll
+      (reductions fr {:state init-state :x nil})
+      (filter :x)
+      (map :x))))
