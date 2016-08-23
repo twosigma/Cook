@@ -32,6 +32,7 @@
             [cook.mesos.util :as util]
             [clj-time.core :as t]
             [cook.mesos.share :as share]
+            [cook.mesos.quota :as quota]
             [plumbing.core :refer (map-vals)]
             [cook.mesos.reason :as reason]
             [clojure.walk :refer (keywordize-keys)])
@@ -577,6 +578,51 @@
                           (share/get-share (db conn) (get-in ctx [:request :params "user"]))))
       ring.middleware.json/wrap-json-params))
 
+(defn quota
+  [conn is-authorized-fn]
+  (-> (resource
+        :available-media-types ["application/json"]
+        :allowed-methods [:get :delete :post]
+        :malformed? (fn [ctx]
+                      (if-let [user (get-in ctx [:request :params "user"])]
+                        (if (= :post (get-in ctx [:request :request-method]))
+                          (let [resource-types (set (conj (util/get-all-resource-types (d/db conn)) :count))
+                                quotas (->> (get-in ctx [:request :params "quota"])
+                                            keywordize-keys
+                                            (map-vals double))]
+                            (cond
+                              (not (seq quotas))
+                              [true {::error "No quotas set. Are you specifying that this is application/json?"}]
+                              (not (every? (partial contains? resource-types) (keys quotas)))
+                              [true {::error (str "Unknown resource type(s) " (str/join \space (remove (partial contains? resource-types) (keys quotas))))}]
+                              :else
+                              [false {::quotas quotas}]))
+                          false)
+                        [true {::error "Must set the user to operate on"}]))
+        :allowed? (fn [ctx]
+                    (let [request-user (get-in ctx [:request :authorization/user])
+                          request-method (get-in ctx [:request :request-method])]
+                      ;; Can't used :authorized? here (though I would like to) because TS assumes
+                      ;; that 401 means to retry with kerb creds which seems to break everything...
+                      (if-not (is-authorized-fn request-user request-method {:owner ::system :item :quota})
+                        [false {::error (str "You are not authorized to access quota information")}]
+                        true)))
+        :handle-forbidden (fn [ctx]
+                            (str (::error ctx)))
+        :handle-malformed (fn [ctx]
+                            (str (::error ctx)))
+        :post! (fn [ctx]
+                 (apply quota/set-quota! conn (get-in ctx [:request :params "user"]) (apply concat (::quotas ctx))))
+        :delete! (fn [ctx]
+                   (quota/retract-quota! conn (get-in ctx [:request :params "user"])))
+        :handle-ok (fn [ctx]
+                     (quota/get-quota (db conn) (get-in ctx [:request :params "user"])))
+        :handle-created (fn [ctx]
+                          (quota/get-quota (db conn) (get-in ctx [:request :params "user"])))
+        :handle-accepted (fn [ctx]
+                           (quota/get-quota (db conn) (get-in ctx [:request :params "user"]))))
+      ring.middleware.json/wrap-json-params))
+
 (defn retries
   [conn is-authorized-fn]
   (-> (resource
@@ -639,5 +685,7 @@
          (running-jobs conn is-authorized-fn))
     (ANY "/share" []
          (share conn is-authorized-fn))
+    (ANY "/quota" []
+         (quota conn is-authorized-fn))
     (ANY "/retry" []
          (retries conn is-authorized-fn))))
