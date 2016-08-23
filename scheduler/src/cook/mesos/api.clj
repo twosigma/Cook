@@ -645,9 +645,11 @@
                                           (catch Exception e
                                             true)))]
                             (when-not (used? job-uuid)
-                              (throw (ex-info (str "UUID" job " does not correspond to a job" ))))
+                              (throw (ex-info (str "UUID" job " does not correspond to a job" ) {})))
                             (if (= :post request-method)
                               (let [new-retries (Integer/parseInt new-retries)]
+                                (when-not (pos? new-retries)
+                                  (throw (ex-info (str "Retries (" new-retries ") must be positive") {})))
                                 [false {::retries new-retries ::job job-uuid}])
                               [false {::job job-uuid}])))
                         (catch Exception e
