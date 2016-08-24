@@ -589,7 +589,8 @@
                           (let [resource-types (set (conj (util/get-all-resource-types (d/db conn)) :count))
                                 quotas (->> (get-in ctx [:request :params "quota"])
                                             keywordize-keys
-                                            (map-vals double))]
+                                            (map-vals double))
+                                quotas (update-in quotas [:count] int)]
                             (cond
                               (not (seq quotas))
                               [true {::error "No quotas set. Are you specifying that this is application/json?"}]
