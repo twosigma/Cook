@@ -636,7 +636,7 @@
 (defn generate-user-usage-map
   "Returns a mapping from user to usage stats"
   [unfiltered-db]
-  (->> (time (util/get-running-task-ents unfiltered-db))
+  (->> (util/get-running-task-ents unfiltered-db)
        (map :job/_instance)
        (group-by :job/user)
        (map-vals (fn [jobs]
