@@ -84,8 +84,7 @@
 
                  ;;External system integrations
                  [me.raynes/conch "0.5.2"]
-                 [twosigma/clj-mesos "0.22.4-SNAPSHOT"]
-                 [com.google.protobuf/protobuf-java "2.6.1"] ; used by clj-mesos
+                 [spootnik/mesomatic "0.28.0-r0"]
                  [org.clojure/tools.nrepl "0.2.3"]
 
                  ;;Ring

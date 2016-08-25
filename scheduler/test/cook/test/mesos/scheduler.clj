@@ -19,6 +19,8 @@
   (:require [clj-time.coerce :as tc]
             [clj-time.core :as t]
             [clojure.core.async :as async]
+            [clojure.edn :as edn]
+            [mesomatic.types :as mtypes]
             [cook.mesos :as mesos]
             [cook.mesos.scheduler :as sched]
             [cook.mesos.share :as share]
@@ -30,9 +32,12 @@
 (def datomic-uri "datomic:mem://test-mesos-jobs")
 
 (deftest test-tuplify-offer
-  (is (= ["1234" 40.0 100.0] (sched/tuplify-offer {:slave-id "1234"
-                                                   :resources {:cpus 40.0
-                                                               :mem 100.0}}))))
+  (is (= ["1234" 40.0 100.0] (sched/tuplify-offer {:slave-id {:value "1234"}
+                                                   :resources [{:name "cpus"
+                                                                :scalar 40.0}
+                                                               {:name "mem"
+                                                                :scalar 100.0}
+                                                               ]}))))
 (deftest test-sort-jobs-by-dru
   (let [uri "datomic:mem://test-sort-jobs-by-dru"
         conn (restore-fresh-database! uri)
@@ -181,9 +186,10 @@
 (deftest test-match-offer-to-schedule
   (let [schedule (map #(d/entity (db c) %) [j1 j2 j3 j4]) ; all 1gb 1 cpu
         offer-maker (fn [cpus mem]
-                      [{:resources {:cpus (double cpus) :mem (double mem)}
-                        :id (str "id-" (java.util.UUID/randomUUID))
-                        :slave-id (str "slave-" (java.util.UUID/randomUUID))
+                      [{:resources [{:name "cpus" :scalar cpus}
+                                    {:name "mem" :scalar mem}]
+                        :id {:value (str "id-" (java.util.UUID/randomUUID))}
+                        :slave-id {:value (str "slave-" (java.util.UUID/randomUUID))}
                         :hostname (str "host-" (java.util.UUID/randomUUID))}])
         fid (str "framework-id-" (java.util.UUID/randomUUID))
         fenzo-maker #(sched/make-fenzo-scheduler nil 100000)] ; The params are for offer declining, which should never happen
@@ -459,6 +465,51 @@
     @(d/transact conn [[:db/add instance :instance/backfilled? false]])
     @(d/transact conn [[:job/update-state job]])
     (check-count-of-pending-and-runnable-jobs 0 0 "job promoted")))
+
+(deftest test-virtual-machine-lease-adapter
+  ;; ensure that the VirtualMachineLeaseAdapter can successfully handle an offer from Mesomatic.
+  (let [;; observed offer from Mesomatic API:
+        when (System/currentTimeMillis)
+        offer #mesomatic.types.Offer{:id #mesomatic.types.OfferID {:value "my-offer-id"}
+                                     :framework-id #mesomatic.types.FrameworkID{:value "my-framework-id"}
+                                     :slave-id #mesomatic.types.SlaveID{:value "my-slave-id"},
+                                     :hostname "slave3",
+                                     :resources [#mesomatic.types.Resource{:name "cpus", :type :value-scalar, :scalar 40.0, :ranges [], :set #{}, :role "*"}
+                                                 #mesomatic.types.Resource{:name "mem", :type :value-scalar, :scalar 5000.0, :ranges [], :set #{}, :role "*"}
+                                                 #mesomatic.types.Resource{:name "disk", :type :value-scalar, :scalar 6000.0, :ranges [], :set #{}, :role "*"}
+                                                 #mesomatic.types.Resource{:name "ports", :type :value-ranges, :scalar 0.0, :ranges [#mesomatic.types.ValueRange{:begin 31000, :end 32000}], :set #{}, :role "*"}],
+                                     :attributes [],
+                                     :executor-ids []}
+        adapter (sched/->VirtualMachineLeaseAdapter offer when)]
+
+    (is (= (.getId adapter) "my-offer-id"))
+    (is (= (.cpuCores adapter) 40.0))
+    (is (= (.diskMB adapter) 6000.0))
+    (is (= (.getOfferedTime adapter) when))
+    (is (= (.getVMID adapter) "my-slave-id"))
+    (is (= (.hostname adapter) "slave3"))
+    (is (= (.memoryMB adapter) 5000.0))
+    (is (= (-> adapter .portRanges first .getBeg) 31000))
+    (is (= (-> adapter .portRanges first .getEnd) 32000))))
+
+(deftest test-interpret-mesos-status
+  (let [mesos-status (mesomatic.types/map->TaskStatus {:task-id #mesomatic.types.TaskID{:value "a07708d8-7ab6-404d-b136-a3e2cb2567e3"},
+                                                       :state :task-lost,
+                                                       :message "Task launched with invalid offers: Offer mesomatic.types.OfferID@1d7408e3 is no longer valid",
+                                                       :source :source-master,
+                                                       :reason :reason-invalid-offers,
+                                                       :slave-id #mesomatic.types.SlaveID{:value "9c4f0a3f-d5e9-4430-809e-ec2e736f4cc3-S1"},
+                                                       :executor-id #mesomatic.types.ExecutorID{:value ""},
+                                                       :timestamp 1.470654131281046E9,
+                                                       :healthy false
+                                                       :data (com.google.protobuf.ByteString/copyFrom (.getBytes (pr-str {:percent 85.0}) "UTF-8"))
+                                                       :uuid (com.google.protobuf.ByteString/copyFrom (.getBytes "my-uuid" "UTF-8"))})
+        interpreted-status (sched/interpret-mesos-status mesos-status)]
+    (is (= (:progress interpreted-status) 85.0))
+    (is (= (:task-id interpreted-status) "a07708d8-7ab6-404d-b136-a3e2cb2567e3"))
+    (is (= (:task-state interpreted-status) :task-lost))
+    (is (= (:reason interpreted-status) :reason-invalid-offers))))
+
 
 (comment
   (run-tests))
