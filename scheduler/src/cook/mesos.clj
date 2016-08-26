@@ -111,8 +111,7 @@
                             (takeLeadership [_ client]
                               (log/warn "Taking mesos leadership")
                               ;; TODO: get the framework ID and try to reregister
-                              (let [normal-exit (atom true)
-                                    shutdown-hooks (atom ())]
+                              (let [normal-exit (atom true)]
                                 (try
                                   (let [driver (apply mesomatic.scheduler/scheduler-driver
                                                       scheduler
@@ -135,44 +134,43 @@
                                                         [{:principal mesos-principal}]))]
                                     (mesomatic.scheduler/start! driver)
                                     (reset! current-driver driver)
-                                    (if riemann-host
-                                      (swap! shutdown-hooks conj (cook.mesos.monitor/riemann-reporter mesos-datomic-conn :riemann-host riemann-host :riemann-port riemann-port)))
-                                    #_(swap! shutdown-hooks conj (cook.mesos.scheduler/reconciler mesos-datomic-conn driver))
-                                    (swap! shutdown-hooks conj (cook.mesos.scheduler/lingering-task-killer mesos-datomic-conn driver task-constraints))
-                                    (swap! shutdown-hooks conj (cook.mesos.heartbeat/start-heartbeat-watcher! mesos-datomic-conn mesos-heartbeat-chan))
-                                    (swap! shutdown-hooks conj (cook.mesos.rebalancer/start-rebalancer! {:conn  mesos-datomic-conn
-                                                                                                         :driver driver
-                                                                                                         :mesos-master-hosts mesos-master-hosts
-                                                                                                         :pending-jobs-atom mesos-pending-jobs-atom
-                                                                                                         :dru-scale dru-scale
-                                                                                                         :view-incubating-offers view-incubating-offers}))
+                                    (when riemann-host
+                                      (cook.mesos.monitor/riemann-reporter mesos-datomic-conn :riemann-host riemann-host :riemann-port riemann-port))
+                                    #_(cook.mesos.scheduler/reconciler mesos-datomic-conn driver)
+                                    (cook.mesos.scheduler/lingering-task-killer mesos-datomic-conn driver task-constraints)
+                                    (cook.mesos.heartbeat/start-heartbeat-watcher! mesos-datomic-conn mesos-heartbeat-chan)
+                                    (cook.mesos.rebalancer/start-rebalancer! {:conn  mesos-datomic-conn
+                                                                              :driver driver
+                                                                              :mesos-master-hosts mesos-master-hosts
+                                                                              :pending-jobs-atom mesos-pending-jobs-atom
+                                                                              :dru-scale dru-scale
+                                                                              :view-incubating-offers view-incubating-offers})
                                     (counters/inc! mesos-leader)
                                     (async/tap mesos-datomic-mult datomic-report-chan)
-                                    (let [kill-monitor (cook.mesos.scheduler/monitor-tx-report-queue datomic-report-chan mesos-datomic-conn current-driver)]
-                                      (swap! shutdown-hooks conj (fn []
-                                                                   (kill-monitor)
-                                                                   (async/untap mesos-datomic-mult datomic-report-chan))))
                                     (mesomatic.scheduler/join! driver)
+                                    (cook.mesos.scheduler/monitor-tx-report-queue datomic-report-chan mesos-datomic-conn current-driver)
                                     (reset! current-driver nil))
                                   (catch Exception e
                                     (log/error e "Lost mesos leadership due to exception")
                                     (reset! normal-exit false))
                                   (finally
                                     (counters/dec! mesos-leader)
-                                    (doseq [hook @shutdown-hooks]
-                                      (try
-                                        (hook)
-                                        (catch Exception e
-                                          (log/error e "Hook shutdown error"))))
                                     (when @normal-exit
-                                      (log/warn "Lost mesos leadership naturally"))))))
+                                      (log/warn "Lost mesos leadership naturally"))
+                                    ;; Better to fail over and rely on start up code we trust then rely on rarely run code
+                                    ;; to make sure we yield leadership correctly (and fully)
+                                    (log/fatal "Lost mesos leadership. Exitting. Expecting a supervisor to restart me!")
+                                    (System/exit 0)))))
                             (stateChanged [_ client newState]
                               ;; We will give up our leadership whenever it seems that we lost
                               ;; ZK connection
                               (when (#{ConnectionState/LOST ConnectionState/SUSPENDED} newState)
                                 (when-let [driver @current-driver]
-                                  (log/warn "Forfeiting mesos leadership")
-                                  (mesomatic.scheduler/stop! driver true))))))]
+                                  (counters/dec! mesos-leader)
+                                  ;; Better to fail over and rely on start up code we trust then rely on rarely run code
+                                  ;; to make sure we yield leadership correctly (and fully)
+                                  (log/fatal "Lost leadership in zookeeper. Exitting. Expecting a supervisor to restart me!")
+                                  (System/exit 0))))))]
     (.setId leader-selector (str (java.net.InetAddress/getLocalHost) \- (java.util.UUID/randomUUID)))
     (.autoRequeue leader-selector)
     (.start leader-selector)
