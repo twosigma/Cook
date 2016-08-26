@@ -497,6 +497,19 @@
   (-> (resource
         :available-media-types ["application/json"]
         :allowed-methods [:get]
+        :malformed? (fn [ctx]
+                      (try
+                        (if-let [limit (Integer/parseInt (get-in ctx [:request :params "limit"] "1000"))]
+                          (if-not (pos? limit)
+                            [true {::error (str "Limit " limit " most be positive")}]
+                            [false {::limit limit}]))
+                        (catch Exception e
+                          [true {::error (str (.getMessage e))}])))
+        (fn [ctx]
+                      (let [limit (get-in ctx [:request :params "limit"] 1000)]
+                        (if-not (pos? limit)
+                          [true {::error (str "Limit " limit " most be positive")}]
+                          [false {::limit limit}])))
         :allowed? (fn [ctx]
                        (let [user (get-in ctx [:request :authorization/user])]
                          (if (is-authorized-fn user :read {:owner ::system :item :queue})
@@ -507,11 +520,15 @@
         :handle-forbidden (fn [ctx]
                                (log/info (get-in ctx [:request :authorization/user]) " is not authorized to access queue")
                                (str (::error ctx)))
+        :handle-malformed (fn [ctx]
+                            (str (::error ctx)))
         :handle-ok (fn [ctx]
-                     (->> (mesos-pending-jobs-fn)
-                          (map (fn [[k v]] [k (map d/touch v)]))
-                          (into {})
-                          cheshire/generate-string)))
+                     (-> (map-vals (fn [queue]
+                                     (->> queue
+                                          (take (::limit ctx))
+                                          (map d/touch)))
+                                   (mesos-pending-jobs-fn))
+                         cheshire/generate-string)))
       ring.middleware.json/wrap-json-params))
 
 
@@ -520,6 +537,14 @@
   (-> (resource
         :available-media-types ["application/json"]
         :allowed-methods [:get]
+        :malformed? (fn [ctx]
+                      (try
+                        (if-let [limit (Integer/parseInt (get-in ctx [:request :params "limit"] "1000"))]
+                          (if-not (pos? limit)
+                            [true {::error (str "Limit " limit " most be positive")}]
+                            [false {::limit limit}]))
+                        (catch Exception e
+                          [true {::error (str (.getMessage e))}])))
         :allowed? (fn [ctx]
                        (let [user (get-in ctx [:request :authorization/user])]
                          (if (is-authorized-fn user :read {:owner ::system :item :running})
@@ -527,8 +552,11 @@
                            [false {::error "Unauthorized"}])))
         :handle-forbidden (fn [ctx]
                                (str (::error ctx)))
+        :handle-malformed (fn [ctx]
+                            (str (::error ctx)))
         :handle-ok (fn [ctx]
                      (->> (util/get-running-task-ents (db conn))
+                          (take (::limit ctx))
                           (map d/touch)
                           cheshire/generate-string)))
       ring.middleware.json/wrap-json-params))
