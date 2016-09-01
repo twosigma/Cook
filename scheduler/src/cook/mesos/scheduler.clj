@@ -314,7 +314,7 @@
                                         [[:db/add instance :instance/progress progress]])))))
       (catch Exception e
         (log/error e "Mesos scheduler status update error")))))
-     
+
 (timers/deftimer [cook-mesos scheduler tx-report-queue-processing-duration])
 (meters/defmeter [cook-mesos scheduler tx-report-queue-datoms])
 (meters/defmeter [cook-mesos scheduler tx-report-queue-update-job-state])
@@ -523,6 +523,8 @@
 
 (timers/deftimer [cook-mesos scheduler handle-resource-offer!-duration])
 (timers/deftimer [cook-mesos scheduler handle-resource-offer!-transact-task-duration])
+(timers/deftimer [cook-mesos scheduler handle-resource-offer!-process-matches-duration])
+(timers/deftimer [cook-mesos scheduler handle-resource-offer!-mesos-submit-duration])
 (timers/deftimer [cook-mesos scheduler handle-resource-offer!-match-duration])
 (meters/defmeter [cook-mesos scheduler pending-job-atom-contended])
 
@@ -663,13 +665,19 @@
                                    (map (fn [[category jobs]]
                                           [category (->> jobs
                                                          (filter (fn [job]
+                                                                   ;; Remove backfill jobs
+                                                                   (= (:job/state job)
+                                                                      :job.state/waiting)))
+                                                         (filter (fn [job]
                                                                    (util/job-allowed-to-start? db job)))
                                                          (filter-based-on-quota user->quota user->usage)
                                                          (take num-considerable))]))
                                    (into {}))
               _ (log/debug "We'll consider scheduling" (map (fn [[k v]] [k (count v)]) considerable-by)
                            "of those pending jobs (limited to " num-considerable " due to backdown)")
-              matches (match-offer-to-schedule fenzo (apply concat (vals considerable-by)) offers db fid)
+              matches (timers/time!
+                        handle-resource-offer!-match-duration
+                        (match-offer-to-schedule fenzo (apply concat (vals considerable-by)) offers db fid))
               offers-scheduled (for [{:keys [leases]} matches
                                      lease leases]
                                  (:offer lease))
@@ -686,7 +694,14 @@
                                                :when (= :gpu (util/categorize-job (:job task-request)))]
                                            (:job/uuid (:job task-request))))
               ;; Backfill only applies to normal (i.e. non-scarce resource dependent) jobs
-              processed-matches (process-matches-for-backfill (:normal scheduler-contents-by) (first (:normal considerable-by)) matched-normal-jobs)
+              processed-matches (timers/time!
+                                  handle-resource-offer!-process-matches-duration
+                                  ;; We take 10x num-considerable as a heuristic
+                                  ;; scheduler-contents can be very large and so we don't want to go through the whole thing
+                                  ;; it is better to be mostly right in back fill decisions and schedule fast
+                                  (process-matches-for-backfill (take (* 10 num-considerable) (:normal scheduler-contents-by)) 
+                                                                (first (:normal considerable-by)) 
+                                                                matched-normal-jobs))
               update-scheduler-contents (fn update-scheduler-contents [scheduler-contents-by]
                                           (-> scheduler-contents-by
                                               (update-in [:gpu] #(remove (fn [{pending-job-uuid :job/uuid}]
@@ -752,9 +767,11 @@
               ;; during a race. If that happens, then other jobs that should
               ;; be scheduled will not be eligible for rescheduling until
               ;; the pending-jobs atom is repopulated
-              @(d/transact
-                 conn
-                 (vec (apply concat upgrade-txns task-txns)))
+              (timers/time!
+                handle-resource-offer!-transact-task-duration
+                @(d/transact
+                   conn
+                   (vec (apply concat upgrade-txns task-txns))))
               (log/info "Launching" (count task-txns) "tasks")
               (log/info "Upgrading" (count (:upgrade-backfill processed-matches)) "tasks from backfilled to proper")
               (log/info "Matched tasks" task-txns)
@@ -774,7 +791,9 @@
               (meters/mark! matched-tasks (count task-txns))
               (meters/mark! matched-tasks-cpus (:cpus match-resource-requirements))
               (meters/mark! matched-tasks-mem (:mem match-resource-requirements))
-              (doseq [{:keys [tasks leases]} matches
+              (timers/time! 
+                handle-resource-offer!-mesos-submit-duration 
+                (doseq [{:keys [tasks leases]} matches
                       :let [offers (mapv :offer leases)
                             task-infos (task/compile-mesos-messages offers tasks)]]
 
@@ -784,7 +803,7 @@
                 (doseq [^TaskAssignmentResult task tasks]
                   (.. fenzo
                       (getTaskAssigner)
-                      (call (.getRequest task) (get-in (first leases) [:offer :hostname])))))
+                      (call (.getRequest task) (get-in (first leases) [:offer :hostname]))))))
               (:matched-head? processed-matches))))
         (catch Throwable t
           (meters/mark! handle-resource-offer!-errors)
@@ -1230,12 +1249,15 @@
 (meters/defmeter [cook-mesos scheduler offer-chan-full-error])
 
 (defn make-fenzo-scheduler
-  [driver offer-incubate-time-ms]
+  [driver offer-incubate-time-ms good-enough-fitness]
   (.. (com.netflix.fenzo.TaskScheduler$Builder.)
       (disableShortfallEvaluation) ;; We're not using the autoscaling features
       (withLeaseOfferExpirySecs (max (-> offer-incubate-time-ms time/millis time/in-seconds) 1)) ;; should be at least 1 second
       (withRejectAllExpiredOffers)
       (withFitnessCalculator BinPackingFitnessCalculators/cpuMemBinPacker)
+      (withFitnessGoodEnoughFunction (reify com.netflix.fenzo.functions.Func1
+                                       (call [_ fitness]
+                                         (> fitness good-enough-fitness))))
       (withLeaseRejectAction (reify com.netflix.fenzo.functions.Action1
                                (call [_ lease]
                                  (let [offer (:offer lease)
@@ -1250,13 +1272,13 @@
       (build)))
 
 (defn create-datomic-scheduler
-  [conn set-framework-id driver-atom pending-jobs-atom heartbeat-ch offer-incubate-time-ms fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset task-constraints gpu-enabled?]
+  [conn set-framework-id driver-atom pending-jobs-atom heartbeat-ch offer-incubate-time-ms fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset task-constraints gpu-enabled? good-enough-fitness]
   (let [fid (atom nil)
         ;; Mesos can potentially rescind thousands of offers
         rescinded-offer-id-cache (-> {}
                                      (cache/fifo-cache-factory :threshold 10240)
                                      atom)
-        fenzo (make-fenzo-scheduler driver-atom offer-incubate-time-ms)
+        fenzo (make-fenzo-scheduler driver-atom offer-incubate-time-ms good-enough-fitness)
         [offers-chan resources-atom] (make-offer-handler conn driver-atom fenzo fid pending-jobs-atom fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset)]
     (start-jobs-prioritizer! conn pending-jobs-atom task-constraints)
     {:scheduler
