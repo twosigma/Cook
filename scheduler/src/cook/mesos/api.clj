@@ -505,11 +505,6 @@
                             [false {::limit limit}]))
                         (catch Exception e
                           [true {::error (str (.getMessage e))}])))
-        (fn [ctx]
-                      (let [limit (get-in ctx [:request :params "limit"] 1000)]
-                        (if-not (pos? limit)
-                          [true {::error (str "Limit " limit " most be positive")}]
-                          [false {::limit limit}])))
         :allowed? (fn [ctx]
                        (let [user (get-in ctx [:request :authorization/user])]
                          (if (is-authorized-fn user :read {:owner ::system :item :queue})
