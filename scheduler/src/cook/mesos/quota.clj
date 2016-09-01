@@ -113,12 +113,13 @@
         user->quota-cache (->> all-quota-users
                                (map (fn [user]
                                       [user (get-quota db user)]))
+                               ;; In case default-user doesn't have an explicit quota
+                               (cons [default-user (get-quota db default-user)]) 
                                (into {}))]
     (fn user->quota
       [user]
       (or (get user->quota-cache user)
-          (get user->quota-cache default-user)
-          (get-quota db default-user))))) ;; The last case is if there is no users including default
+          (get user->quota-cache default-user)))))
 
 (comment
   ;; Adjust the quota.
