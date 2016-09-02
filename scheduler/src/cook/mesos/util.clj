@@ -131,6 +131,30 @@
              filtered-db [:job.state/waiting])
           (map (fn [[x]] (d/entity unfiltered-db x)))))))
 
+(defn get-jobs-by-user-and-state
+  "Returns all job entities for a particular user 
+   in a particular state."
+  [db user state]
+  (->> (if (= state :job.state/completed)
+         ;; Datomic query performance is based entirely on the size of the set
+         ;; of the first where clause. In the case of :job.state/completed
+         ;; the total number of jobs for a user should be smaller than
+         ;; all completed jobs by any user i.e.
+         ;; (waiting_user + running_user < completed - completed_user)
+         (q '[:find [?j ...]
+              :in $ ?user ?state
+              :where
+              [?j :job/user ?user]
+              [?j :job/state ?state]]
+            db user state)
+         (q '[:find [?j ...]
+              :in $ ?user ?state
+              :where
+              [?j :job/state ?state]
+              [?j :job/user ?user]]
+            db user state))
+       (map (partial d/entity db))))
+
 (timers/deftimer [cook-mesos scheduler get-running-tasks-duration])
 
 (defn get-running-task-ents
