@@ -25,6 +25,11 @@
      :db/cardinality :db.cardinality/one
      :db.install/_attribute :db.part/db}
     {:db/id (d/tempid :db.part/db)
+     :db/ident :job/commit-latch
+     :db/valueType :db.type/ref
+     :db/cardinality :db.cardinality/one
+     :db.install/_attribute :db.part/db}
+    {:db/id (d/tempid :db.part/db)
      :db/ident :job/user
      :db/valueType :db.type/string
      :db/cardinality :db.cardinality/one
@@ -112,6 +117,26 @@
     :db/valueType :db.type/ref
     :db/cardinality :db.cardinality/one
     :db.install/_attribute :db.part/db}
+   ;; commit-latch attributes
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :commit-latch/committed?
+    :db/valueType :db.type/boolean
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :commit-latch/uuid
+    :db/valueType :db.type/uuid
+    :db/unique :db.unique/identity
+    :db/index true
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db
+    :db/doc "A commit latch is used to determine if a job should be considered
+             for scheduling. Many jobs can share the same commit latch if they
+             should be considered schedulable at the same time. However, it is
+             recommended not to consider jobs that share a commit latch to hold
+             any semantic meaning other than they will be considered schedulable
+             at the same time. A primative of job group will be added to add
+             more semantic power in the future."}
    ;; Container Attributes
    {:db/id (d/tempid :db.part/db)
     :db/doc "variant records based on container/type"

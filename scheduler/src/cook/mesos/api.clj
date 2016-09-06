@@ -210,7 +210,12 @@
                                     {:db/id gpus-id
                                      :resource/type :resource.type/gpus
                                      :resource/amount (double gpus)}])))
+                commit-latch-id (d/tempid :db.part/user)
+                commit-latch {:db/id commit-latch-id
+                              :commit-latch/uuid (java.util.UUID/randomUUID)
+                              :commit-latch/committed? true}
                 txn {:db/id id
+                     :job/commit-latch commit-latch-id
                      :job/uuid uuid
                      :job/name (or name "cookjob") ; set the default job name if not provided.
                      :job/command command
@@ -229,7 +234,8 @@
                           (into labels)
                           (into container)
                           (into maybe-datoms)
-                          (conj txn))))
+                          (conj txn)
+                          (conj commit-latch))))
   "ok")
 
 (defn unused-uuid?
