@@ -89,6 +89,7 @@
    (s/optional-key :container) Container
    :cpus PosDouble
    :mem PosDouble
+   (s/optional-key :gpus) (s/both s/Int (s/pred pos? 'pos?))
    ;; Make sure the user name is valid. It must begin with a lower case character, end with
    ;; a lower case character or a digit, and has length between 2 to (62 + 2).
    :user (s/both s/Str (s/pred #(re-matches #"\A[a-z][a-z0-9_-]{0,62}[a-z0-9]\z" %) 'lowercase-alphanum?))})
@@ -155,7 +156,7 @@
 
 (sm/defn submit-jobs
   [conn jobs :- [Job]]
-  (doseq [{:keys [uuid command max-retries max-runtime priority cpus mem user name ports uris env labels container]} jobs
+  (doseq [{:keys [uuid command max-retries max-runtime priority cpus mem gpus user name ports uris env labels container]} jobs
           :let [id (d/tempid :db.part/user)
                 ports (when (and ports (not (zero? ports)))
                         [[:db/add id :job/ports ports]])
@@ -196,7 +197,13 @@
                                (when (and priority (not= util/default-job-priority priority))
                                  [[:db/add id :job/priority priority]])
                                (when (and max-runtime (not= Long/MAX_VALUE max-runtime))
-                                 [[:db/add id :job/max-runtime max-runtime]]))
+                                 [[:db/add id :job/max-runtime max-runtime]])
+                               (when (and gpus (not (zero? gpus)))
+                                 (let [gpus-id (d/tempid :db.part/user)]
+                                   [[:db/add id :job/resource gpus-id]
+                                    {:db/id gpus-id
+                                     :resource/type :resource.type/gpus
+                                     :resource/amount (double gpus)}])))
                 txn {:db/id id
                      :job/uuid uuid
                      :job/name (or name "cookjob") ; set the default job name if not provided.
@@ -232,7 +239,7 @@
 (defn validate-and-munge-job
   "Takes the user and the parsed json from the job and returns proper
    Job objects, or else throws an exception"
-  [db user task-constraints {:strs [cpus mem uuid command priority max_retries max_runtime name uris ports env labels container] :as job}]
+  [db user task-constraints gpu-enabled? {:strs [cpus mem gpus uuid command priority max_retries max_runtime name uris ports env labels container] :as job}]
   (let [munged (merge
                  {:user user
                   :uuid (UUID/fromString uuid)
@@ -244,6 +251,8 @@
                   :ports (or ports 0)
                   :cpus (double cpus)
                   :mem (double mem)}
+                 (when gpus
+                   {:gpus (int gpus)})
                  (when container
                    {:container (walk/keywordize-keys container)})
                  (when uris
@@ -259,6 +268,8 @@
                  (when labels
                    ;; Remains strings
                    {:labels labels}))]
+    (when (and (:gpus munged) (not gpu-enabled?))
+      (throw (ex-info (str "GPU support is not enabled") {:gpus gpus})))
     (s/validate Job munged)
     (when (> cpus (:cpus task-constraints))
       (throw (ex-info (str "Requested " cpus " cpus, but only allowed to use " (:cpus task-constraints))
@@ -335,6 +346,7 @@
        :priority (:job/priority job util/default-job-priority)
        :cpus (:cpus resources)
        :mem (:mem resources)
+       :gpus (int (:gpus resources 0))
        :max_retries  (:job/max-retries job) ; Consistent with input
        :max_runtime (:job/max-runtime job Long/MAX_VALUE) ; Consistent with input
        :framework_id fid
@@ -388,7 +400,7 @@
 ;;;
 ;;; On GET; use repeated job argument
 (defn job-resource
-  [conn fid task-constraints]
+  [conn fid task-constraints gpu-enabled?]
   (-> (resource
         :available-media-types ["application/json"]
         :allowed-methods [:post :get :delete]
@@ -414,6 +426,7 @@
                                                       (db conn)
                                                       user
                                                       task-constraints
+                                                      gpu-enabled?
                                                       %)
                                                    (get params "jobs"))}])
                             (catch Exception e
@@ -484,10 +497,10 @@
       ring.middleware.json/wrap-json-params))
 
 (defn handler
-  [conn fid task-constraints mesos-pending-jobs-fn]
+  [conn fid task-constraints gpu-enabled? mesos-pending-jobs-fn]
   (routes
     (ANY "/rawscheduler" []
-         (job-resource conn fid task-constraints))
+         (job-resource conn fid task-constraints gpu-enabled?))
     (ANY "/queue" []
          (waiting-jobs mesos-pending-jobs-fn))
     (ANY "/running" []

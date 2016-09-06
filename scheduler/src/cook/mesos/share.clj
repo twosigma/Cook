@@ -60,14 +60,14 @@
    \"default\" user. If there is NO \"default\" value for a specific type,
    return Double.MAX_VALUE."
   [db user]
-  (->> (util/get-all-resource-types db)
+  (->> [:cpus :mem]
        (map (fn [type] [type (get-share-by-type db type user)]))
        (into {})))
 
 (defn retract-share!
   [conn user]
   (let [db (db conn)]
-    (->> (util/get-all-resource-types db)
+    (->> [:cpus :mem]
          (map (fn [type]
                 [type (retract-share-by-type! conn type user)]))
          (into {}))))

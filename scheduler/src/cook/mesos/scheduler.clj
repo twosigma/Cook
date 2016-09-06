@@ -1084,7 +1084,7 @@
       (build)))
 
 (defn create-datomic-scheduler
-  [conn set-framework-id driver-atom pending-jobs-atom heartbeat-ch offer-incubate-time-ms fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset task-constraints]
+  [conn set-framework-id driver-atom pending-jobs-atom heartbeat-ch offer-incubate-time-ms fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset task-constraints gpu-enabled?]
   (let [fid (atom nil)
         ;; Mesos can potentially rescind thousands of offers
         rescinded-offer-id-cache (-> {}
@@ -1099,6 +1099,10 @@
                   (log/info "Registered with mesos with framework-id " framework-id)
                   (reset! fid framework-id)
                   (set-framework-id framework-id)
+                  (when (and gpu-enabled? (not (re-matches #"1\.\d+\.\d+" (:version master-info))))
+                    (log/error "Cannot enabled GPU support on pre-mesos 1.0. The version we found was " (:version master-info))
+                    (Thread/sleep 1000)
+                    (System/exit 1))
                   ;; Use future because the thread that runs mesos/scheduler doesn't load classes correctly. for reasons.
                   ;; As Sophie says, you want to future proof your code.
                   (future
