@@ -69,7 +69,7 @@
              "labels" labels
              "cpus" 2.0
              "mem" 2048.0}
-        h (handler conn "my-framework-id" {:cpus 12 :memory-gb 100} (fn [] []))]
+        h (handler conn "my-framework-id" {:cpus 12 :memory-gb 100} (fn [] []) false)]
     (is (<= 200
             (:status (h {:request-method :post
                          :scheme :http
@@ -98,6 +98,7 @@
                            (select-keys copy (keys gold)))
                          uris
                          (get trimmed-body "uris"))]
+      (is (zero? (get body "gpus")))
       (is (= (dissoc job "uris") (dissoc trimmed-body "uris")))
       (is (compare-uris uris (get trimmed-body "uris"))))
     (is (<= 400
@@ -125,7 +126,7 @@
                             "max_runtime" 1000000
                             "cpus" cpus
                             "mem" mem})
-        h (handler conn "my-framework-id" {:cpus 3.0 :memory-gb 2} (fn [] []))]
+        h (handler conn "my-framework-id" {:cpus 3.0 :memory-gb 2} (fn [] []) false)]
     (testing "Within limits"
       (is (<= 200
               (:status (h {:request-method :post
@@ -162,3 +163,53 @@
                            :authorization/user "dgrnbrg"
                            :params {"jobs" [(job 1 2050)]}}))
               499)))))
+
+(deftest gpus-api
+  (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
+        job (fn [gpus ] {"uuid" (str (java.util.UUID/randomUUID))
+                         "command" "hello world"
+                         "name" "my-cool-job"
+                         "priority" 66
+                         "max_retries" 100
+                         "max_runtime" 1000000
+                         "gpus" gpus
+                         "cpus" 1.0
+                         "mem" 1024.0})
+        h (handler conn "my-framework-id" {:cpus 12 :memory-gb 100} (fn [] []) true)]
+    (testing "negative gpus invalid"
+      (is (<= 400
+              (:status (h {:request-method :post
+                           :scheme :http
+                           :uri "/rawscheduler"
+                           :headers {"Content-Type" "application/json"}
+                           :authorization/user "dgrnbrg"
+                           :params {"jobs" [(job -3)]}}))
+              499)))
+    (testing "Zero gpus invalid"
+      (is (<= 400
+              (:status (h {:request-method :post
+                           :scheme :http
+                           :uri "/rawscheduler"
+                           :headers {"Content-Type" "application/json"}
+                           :authorization/user "dgrnbrg"
+                           :params {"jobs" [(job 0)]}}))
+              499)))
+    (let [successful-job (job 2)]
+      (testing "Positive GPUs ok"
+        (is (<= 200
+                (:status (h {:request-method :post
+                             :scheme :http
+                             :uri "/rawscheduler"
+                             :headers {"Content-Type" "application/json"}
+                             :authorization/user "dgrnbrg"
+                             :params {"jobs" [successful-job]}}))
+                299)))
+      (let [resp (h {:request-method :get
+                     :scheme :http
+                     :uri "/rawscheduler"
+                     :authorization/user "dgrnbrg"
+                     :params {"job" (str (get successful-job "uuid"))}})
+            _ (is (<= 200 (:status resp) 299))
+            [body] (json/read-str (:body resp))
+            trimmed-body (select-keys body (keys successful-job))]
+        (is (= (dissoc successful-job "uris") (dissoc trimmed-body "uris")))))))

@@ -8,7 +8,8 @@
   "Organizes the info Fenzo has already told us about the task we need to run"
   [^TaskAssignmentResult fenzo-result]
   (merge (:task-info (.getRequest fenzo-result))
-         {:ports-assigned (.getAssignedPorts fenzo-result)}))
+         {:ports-assigned (.getAssignedPorts fenzo-result)
+          :task-request (.getRequest fenzo-result)}))
 
 
 (defmulti combine-like-resources
@@ -18,7 +19,7 @@
   (->> resources (map :scalar) (apply +)))
 
 (defmethod combine-like-resources :value-ranges [resources]
-  (->> resources (map :ranges) (apply into)))
+  (->> resources (map :ranges) (reduce into)))
 
 (defn resources-by-role
   "Given a set of offers, combine all the available resources into a comprehensible
@@ -111,14 +112,14 @@
 (defn take-all-scalar-resources-for-task
   [resources task]
   (reduce
-   (fn [{:keys [remaining-resources mesos-messages]} [resource-keyword amount]]
-     (let [resource-name (name resource-keyword)
-           adjustment (take-resources remaining-resources resource-name amount)]
-       {:remaining-resources (assoc remaining-resources resource-name (:remaining-resources adjustment))
-        :mesos-messages (into mesos-messages (:mesos-messages adjustment))}))
-   {:remaining-resources resources
-    :mesos-messages []}
-   (-> task :resources vec)))
+    (fn [{:keys [remaining-resources mesos-messages]} [resource-keyword amount]]
+      (let [resource-name (name resource-keyword)
+            adjustment (take-resources remaining-resources resource-name amount)]
+        {:remaining-resources (assoc remaining-resources resource-name (:remaining-resources adjustment))
+         :mesos-messages (into mesos-messages (:mesos-messages adjustment))}))
+    {:remaining-resources resources
+     :mesos-messages []}
+    (.getScalarRequests ^com.netflix.fenzo.TaskRequest (:task-request task))))
 
 (defn add-scalar-resources-to-task-infos
   "Given a set of tasks and offers that were matched together by Fenzo,

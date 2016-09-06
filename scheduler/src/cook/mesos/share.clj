@@ -36,8 +36,10 @@
                               [?r :resource/type ?t]
                               [?r :resource/amount ?a]]
                             db user type))]
-    @(d/transact conn
-               [[:db.fn/retractEntity resource]])))
+    (if resource
+      @(d/transact conn
+                   [[:db.fn/retractEntity resource]])
+      :default)))
 
 (defn- get-share-by-type
   [db type user]

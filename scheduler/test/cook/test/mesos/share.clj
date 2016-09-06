@@ -27,17 +27,17 @@
     (share/set-share! conn "u1" :cpus 20.0 :mem 10.0)
     (share/set-share! conn "u1" :cpus 5.0)
     (share/set-share! conn "u2" :cpus 5.0  :mem 10.0)
-    (share/set-share! conn "default" :cpus 1.0 :mem 2.0)
+    (share/set-share! conn "default" :cpus 1.0 :mem 2.0 :gpus 1.0)
     (let [db (db conn)]
       (testing "set and query."
-        (is (= {:cpus 5.0 :mem 10.0} (share/get-share db "u2"))))
+        (is (= {:cpus 5.0 :mem 10.0 :gpus 1.0} (share/get-share db "u2"))))
       (testing "set and overide."
-        (is (= {:cpus 5.0 :mem 10.0} (share/get-share db "u1"))))
+        (is (= {:cpus 5.0 :mem 10.0 :gpus 1.0} (share/get-share db "u1"))))
       (testing "query default."
-        (is (= {:cpus 1.0 :mem 2.0} (share/get-share db "default"))))
+        (is (= {:cpus 1.0 :mem 2.0 :gpus 1.0} (share/get-share db "default"))))
       (testing "query unknown user."
         (is (= (share/get-share db "whoami") (share/get-share db "default"))))
       (testing "retract share"
         (share/retract-share! conn "u2")
         (let [db (mt/db conn)]
-          (is (= {:cpus 1.0 :mem 2.0} (share/get-share db "u2"))))))))
+          (is (= {:cpus 1.0 :mem 2.0 :gpus 1.0} (share/get-share db "u2"))))))))

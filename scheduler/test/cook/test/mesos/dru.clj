@@ -61,10 +61,10 @@
           db (d/db conn)
           running-task-ents (util/get-running-task-ents db)
           pending-job-ents [(d/entity db job3)]]
-      (let [_ (share/set-share! conn "default" :mem 25.0 :cpus 25.0)
+      (let [_ (share/set-share! conn "default" :mem 25.0 :cpus 25.0 :gpus 1.0)
             _ (share/set-share! conn "wzhao" :mem 10.0 :cpus 10.0)
             db (d/db conn)]
-        (is (= {"ljin" {:mem 25.0 :cpus 25.0} "wzhao" {:mem 10.0 :cpus 10.0} "sunil" {:mem 25.0 :cpus 25.0}}
+        (is (= {"ljin" {:mem 25.0 :cpus 25.0 :gpus 1.0} "wzhao" {:mem 10.0 :cpus 10.0 :gpus 1.0} "sunil" {:mem 25.0 :cpus 25.0 :gpus 1.0}}
                (dru/init-user->dru-divisors db running-task-ents pending-job-ents)))))))
 
 (deftest test-sorted-task-scored-task-pairs

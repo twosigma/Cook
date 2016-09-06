@@ -38,7 +38,7 @@
 
 (defn create-dummy-job
   "Return the entity id for the created dummy job."
-  [conn & {:keys [user uuid command ncpus memory name retry-count max-runtime priority job-state submit-time custom-executor?]
+  [conn & {:keys [user uuid command ncpus memory name retry-count max-runtime priority job-state submit-time custom-executor? gpus]
            :or {user (System/getProperty "user.name")
                 uuid (d/squuid)
                 command "dummy command"
@@ -65,6 +65,10 @@
                                   :resource/amount (double ncpus)}
                                  {:resource/type :resource.type/mem
                                   :resource/amount (double memory)}]}
+        job-info (if gpus
+                   (update-in job-info [:job/resource] conj {:resource/type :resource.type/gpus
+                                                             :resource/amount (double gpus)})
+                   job-info)
         val @(d/transact conn [(if (nil? custom-executor?)
                                  job-info
                                  (assoc job-info :job/custom-executor custom-executor?))])]

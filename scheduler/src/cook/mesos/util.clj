@@ -21,13 +21,22 @@
             [metrics.timers :as timers]))
 
 (defn get-all-resource-types
-  "Return a list of all supported resources types. Example, :cpus :mem ..."
+  "Return a list of all supported resources types. Example, :cpus :mem :gpus ..."
   [db]
   (->> (q '[:find ?ident
             :where
             [?e :resource.type/mesos-name ?ident]]
           db)
        (map first)))
+
+(defn categorize-job
+  "Return the category of the job. Currently jobs can be :normal or :gpu. This
+   is used to give separate queues for scarce & non-scarce resources"
+  [job]
+  (let [resources (:job/resource job)]
+    (if (some #(= :resource.type/gpus (:resource/type %)) resources)
+      :gpu
+      :normal)))
 
 (defn without-ns
   [k]
@@ -80,7 +89,7 @@
   (reduce (fn [m r]
             (let [resource (keyword (name (:resource/type r)))]
               (condp contains? resource
-                #{:cpus :mem} (assoc m resource (:resource/amount r))
+                #{:cpus :mem :gpus} (assoc m resource (:resource/amount r))
                 #{:uri} (update-in m [:uris] (fnil conj [])
                                    {:cache (:resource.uri/cache? r false)
                                     :executable (:resource.uri/executable? r false)
