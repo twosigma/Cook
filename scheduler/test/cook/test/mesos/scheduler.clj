@@ -423,7 +423,7 @@
         test-db (d/db conn)
         task-id-2 (-> (d/entity test-db instance-id-2) :instance/task-id)
         ]
-    (is (= [task-id-2] (sched/get-lingering-tasks test-db now 120))))
+    (is (= [task-id-2] (sched/get-lingering-tasks test-db now 120 120))))
   )
 
 (deftest test-upgrade-backfill-flow
