@@ -61,11 +61,12 @@
     (resolve var-sym)))
 
 (def raw-scheduler-routes
-  {:scheduler (fnk [mesos-datomic framework-id mesos-pending-jobs-atom [:settings task-constraints]]
+  {:scheduler (fnk [mesos-datomic framework-id mesos-pending-jobs-atom [:settings task-constraints mesos-gpu-enabled]]
                    ((lazy-load-var 'cook.mesos.api/handler)
                     mesos-datomic
                     framework-id
                     task-constraints
+                    mesos-gpu-enabled
                     (fn [] @mesos-pending-jobs-atom)))
    :view (fnk [scheduler]
               scheduler)})
@@ -77,7 +78,7 @@
                       (route/not-found "<h1>Not a valid route</h1>")))})
 
 (def mesos-scheduler
-  {:mesos-scheduler (fnk [[:settings mesos-master mesos-master-hosts mesos-leader-path mesos-failover-timeout mesos-principal mesos-role offer-incubate-time-ms fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset task-constraints riemann dru-scale] mesos-datomic mesos-datomic-mult curator-framework mesos-pending-jobs-atom]
+  {:mesos-scheduler (fnk [[:settings mesos-master mesos-master-hosts mesos-leader-path mesos-failover-timeout mesos-principal mesos-role offer-incubate-time-ms fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset task-constraints riemann dru-scale mesos-gpu-enabled] mesos-datomic mesos-datomic-mult curator-framework mesos-pending-jobs-atom]
                          (try
                            (Class/forName "org.apache.mesos.Scheduler")
                            ((lazy-load-var 'cook.mesos/start-mesos-scheduler)
@@ -99,7 +100,8 @@
                             (:host riemann)
                             (:port riemann)
                             mesos-pending-jobs-atom
-                            dru-scale)
+                            dru-scale
+                            mesos-gpu-enabled)
                            (catch ClassNotFoundException e
                              (log/warn e "Not loading mesos support...")
                              nil)))})
@@ -321,6 +323,8 @@
                                               fenzo-floor-iterations-before-warn)
      :fenzo-floor-iterations-before-reset (fnk [[:config [:scheduler {fenzo-floor-iterations-before-reset 1000}]]]
                                                fenzo-floor-iterations-before-reset)
+     :mesos-gpu-enabled (fnk [[:config [:mesos {enable-gpu-support false}]]]
+                             (boolean enable-gpu-support))
      :mesos-master (fnk [[:config [:mesos master]]]
                         master)
      :mesos-master-hosts (fnk [[:config [:mesos master {master-hosts nil}]]]

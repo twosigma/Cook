@@ -436,6 +436,9 @@
     :db/ident :resource.type/mem
     :resource.type/mesos-name :mem}
    {:db/id (d/tempid :db.part/user)
+    :db/ident :resource.type/gpus
+    :resource.type/mesos-name :gpus}
+   {:db/id (d/tempid :db.part/user)
     :db/ident :resource.type/uri}
    ;; Functions for database manipulation
    {:db/id (d/tempid :db.part/user)

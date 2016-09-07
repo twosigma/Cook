@@ -21,7 +21,7 @@
             [metrics.timers :as timers]))
 
 (defn get-all-resource-types
-  "Return a list of all supported resources types. Example, :cpus :mem ..."
+  "Return a list of all supported resources types. Example, :cpus :mem :gpus ..."
   [db]
   (->> (q '[:find ?ident
             :where
@@ -80,7 +80,7 @@
   (reduce (fn [m r]
             (let [resource (keyword (name (:resource/type r)))]
               (condp contains? resource
-                #{:cpus :mem} (assoc m resource (:resource/amount r))
+                #{:cpus :mem :gpus} (assoc m resource (:resource/amount r))
                 #{:uri} (update-in m [:uris] (fnil conj [])
                                    {:cache (:resource.uri/cache? r false)
                                     :executable (:resource.uri/executable? r false)
