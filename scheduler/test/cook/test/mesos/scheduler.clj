@@ -504,7 +504,7 @@
                                                        :healthy false
                                                        :data (com.google.protobuf.ByteString/copyFrom (.getBytes (pr-str {:percent 85.0}) "UTF-8"))
                                                        :uuid (com.google.protobuf.ByteString/copyFrom (.getBytes "my-uuid" "UTF-8"))})
-        interpreted-status (sched/interpret-mesos-status mesos-status)]
+        interpreted-status (sched/interpret-task-status mesos-status)]
     (is (= (:progress interpreted-status) 85.0))
     (is (= (:task-id interpreted-status) "a07708d8-7ab6-404d-b136-a3e2cb2567e3"))
     (is (= (:task-state interpreted-status) :task-lost))
