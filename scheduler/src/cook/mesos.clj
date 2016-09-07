@@ -19,7 +19,8 @@
             [metatransaction.core :as mt :refer (db)]
             [metatransaction.utils :as dutils]
             [clojure.tools.logging :as log]
-            [clj-mesos.scheduler]
+            [mesomatic.scheduler]
+            [mesomatic.types]
             [metrics.counters :as counters]
             [cook.datomic :refer (transact-with-retries)]
             [cook.mesos.scheduler :as sched]
@@ -88,7 +89,7 @@
                      (curator/set-or-create
                       curator-framework
                       zk-framework-id
-                      (.getBytes framework-id "UTF-8")))
+                      (.getBytes (-> framework-id mesomatic.types/pb->data :value) "UTF-8")))
                    current-driver
                    mesos-pending-jobs-atom
                    mesos-heartbeat-chan
@@ -112,7 +113,7 @@
                               (let [normal-exit (atom true)
                                     shutdown-hooks (atom ())]
                                 (try
-                                  (let [driver (apply clj-mesos.scheduler/driver
+                                  (let [driver (apply mesomatic.scheduler/scheduler-driver
                                                       scheduler
                                                       (merge
                                                         {:user ""
@@ -129,7 +130,7 @@
                                                       mesos-master
                                                       (when mesos-principal
                                                         [{:principal mesos-principal}]))]
-                                    (clj-mesos.scheduler/start driver)
+                                    (mesomatic.scheduler/start! driver)
                                     (reset! current-driver driver)
                                     (if riemann-host
                                       (swap! shutdown-hooks conj (cook.mesos.monitor/riemann-reporter mesos-datomic-conn :riemann-host riemann-host :riemann-port riemann-port)))
@@ -148,7 +149,7 @@
                                       (swap! shutdown-hooks conj (fn []
                                                                    (kill-monitor)
                                                                    (async/untap mesos-datomic-mult datomic-report-chan))))
-                                    (clj-mesos.scheduler/join driver)
+                                    (mesomatic.scheduler/join! driver)
                                     (reset! current-driver nil))
                                   (catch Exception e
                                     (log/error e "Lost mesos leadership due to exception")
@@ -168,7 +169,7 @@
                               (when (#{ConnectionState/LOST ConnectionState/SUSPENDED} newState)
                                 (when-let [driver @current-driver]
                                   (log/warn "Forfeiting mesos leadership")
-                                  (clj-mesos.scheduler/stop driver true))))))]
+                                  (mesomatic.scheduler/stop! driver true))))))]
     (.setId leader-selector (str (java.net.InetAddress/getLocalHost) \- (java.util.UUID/randomUUID)))
     (.autoRequeue leader-selector)
     (.start leader-selector)

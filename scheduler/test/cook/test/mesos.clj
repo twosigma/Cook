@@ -77,8 +77,8 @@
 (defn make-offer
   [cpus mem]
   {:slave-id "mycoolslave"
-   :resources {:cpus cpus
-               :mem mem}})
+   :resources [{:name "cpus" :scalar cpus}
+               {:name "mem" :scalar mem}]})
 
 (deftest test-resource-matching
   ;; Should have at least one match
