@@ -1,4 +1,4 @@
-(ns cook.test.mesos.task-test
+(ns cook.test.mesos.task
   (:use clojure.test)
   (:require [clojure.edn :as edn]
             [mesomatic.types :as mtypes]
