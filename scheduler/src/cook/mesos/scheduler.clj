@@ -14,9 +14,11 @@
 ;; limitations under the License.
 ;;
 (ns cook.mesos.scheduler
-  (:require [clj-mesos.scheduler :as mesos]
+  (:require [mesomatic.scheduler :as mesos]
+            [mesomatic.types :as mtypes]
             [cook.mesos.util :as util]
             [cook.mesos.dru :as dru]
+            [cook.mesos.task :as task]
             cook.mesos.schema
             [clojure.tools.logging :as log]
             [datomic.api :as d :refer (q)]
@@ -29,6 +31,7 @@
             [metrics.counters :as counters]
             [metrics.gauges :as gauges]
             [clojure.core.async :as async]
+            [clojure.edn :as edn]
             [clj-time.core :as time]
             [clj-time.periodic :as periodic]
             [clj-time.coerce :as tc]
@@ -39,6 +42,7 @@
             [clojure.core.cache :as cache]
             [cook.mesos.reason :as reason])
   (import java.util.concurrent.TimeUnit
+          org.apache.mesos.Protos$Offer
           com.netflix.fenzo.TaskAssignmentResult
           com.netflix.fenzo.TaskScheduler
           com.netflix.fenzo.VirtualMachineLease
@@ -48,12 +52,25 @@
   []
   (java.util.Date.))
 
+
+(defn offer-resource-values
+  [offer resource-name value-type]
+  (->> offer :resources (filter #(= (:name %) resource-name)) (map value-type)))
+
+(defn offer-resource-scalar
+  [offer resource-name]
+  (apply + (offer-resource-values offer resource-name :scalar)))
+
+(defn offer-resource-ranges
+  [offer resource-name]
+  (apply concat (offer-resource-values offer resource-name :ranges)))
+
 (defn tuplify-offer
-  "Takes an offer and converts it to a queryable format for datomic"
-  [{:as offer
-    :keys [slave-id]
-    {:keys [cpus mem]} :resources}]
-  [slave-id cpus mem])
+  "Takes an offer (from Mesomatic) and converts it to a queryable format for datomic"
+  [offer]
+  [(-> offer :slave-id :value)
+   (offer-resource-scalar offer "cpus")
+   (offer-resource-scalar offer "mem")])
 
 (defn get-job-resource-matches
   "Given an offer and a set of pending jobs, figure out which ones match the offer"
@@ -198,6 +215,18 @@
     completion-MA-run-times
     run-time))
 
+(defn interpret-task-status
+  "Converts the status packet from Mesomatic into a more friendly data structure"
+  [s]
+  {:task-id (-> s :task-id :value)
+   :reason (:reason s)
+   :task-state (:state s)
+   :progress (try
+               (when (:data s)
+                 (:percent (edn/read-string (String. (.toByteArray (:data s))))))
+               (catch Exception e
+                 (log/debug e "Error parse mesos status data. Is it in the format we expect?")))})
+
 (defn handle-status-update
   "Takes a status update from mesos."
   [conn driver ^TaskScheduler fenzo status]
@@ -205,7 +234,7 @@
   (timers/time!
     handle-status-update-duration
     (try (let [db (db conn)
-               {:keys [task-id reason] task-state :state} status
+               {:keys [task-id reason task-state progress]} (interpret-task-status status)
                [job instance prior-instance-status] (first (q '[:find ?j ?i ?status
                                                                 :in $ ?task-id
                                                                 :where
@@ -225,13 +254,9 @@
                                  #{:task-finished} :instance.status/success
                                  #{:task-failed
                                    :task-killed
-                                   :task-lost} :instance.status/failed)
+                                   :task-lost
+                                   :task-error} :instance.status/failed)
                prior-job-state (:job/state (d/entity db job))
-               progress (try
-                          (when (:data status)
-                            (:percent (read-string (String. (:data status)))))
-                          (catch Exception e
-                            (log/debug e "Error parse mesos status data. Is it in the format we expect?")))
                instance-ent (d/entity db instance)
                instance-runtime (- (.getTime (now)) ; Used for reporting
                                    (.getTime (:instance/start-time instance-ent)))
@@ -271,7 +296,7 @@
                        "as instance" instance "with" prior-job-state "and" prior-instance-status
                        "should've been put down already")
              (meters/mark! tasks-killed-in-status-update)
-             (mesos/kill-task driver task-id))
+             (mesos/kill-task! driver {:value task-id}))
            (when-not (nil? instance)
              ;; (println "update:" task-id task-state job instance instance-status prior-job-state)
              (log/debug "Transacting updated state for instance" instance "to status" instance-status)
@@ -334,7 +359,7 @@
                                        (if-let [driver @driver-ref]
                                          (do (log/debug "Attempting to kill task" task-id "due to job completion")
                                              (meters/mark! tx-report-queue-tasks-killed)
-                                             (mesos/kill-task driver task-id))
+                                             (mesos/kill-task! driver {:value task-id}))
                                          (log/error "Couldn't kill task" task-id "due to no Mesos driver!"))))
                                    (catch Exception e
                                      (log/error e "Unexpected exception on tx report queue processor")))))))
@@ -358,19 +383,19 @@
 
 (defrecord VirtualMachineLeaseAdapter [offer time]
   com.netflix.fenzo.VirtualMachineLease
-  (cpuCores [_] (get-in offer [:resources :cpus] 0.0))
-  (diskMB [_] (get-in offer [:resources :disk] 0.0))
+  (cpuCores [_] (or (offer-resource-scalar offer "cpus") 0.0))
+  (diskMB [_] (or (offer-resource-scalar offer "disk") 0.0))
   (getAttributeMap [_] {}) ;;TODO
-  (getId [_] (:id offer))
+  (getId [_] (-> offer :id :value))
   (getOffer [_] (throw (UnsupportedOperationException.)))
   (getOfferedTime [_] time)
-  (getVMID [_] (:slave-id offer))
+  (getVMID [_] (-> offer :slave-id :value))
   (hostname [_] (:hostname offer))
-  (memoryMB [_] (get-in offer [:resources :mem] 0.0))
+  (memoryMB [_] (or (offer-resource-scalar offer "mem") 0.0))
   (networkMbps [_] 0.0)
   (portRanges [_] (mapv (fn [{:keys [begin end]}]
                           (com.netflix.fenzo.VirtualMachineLease$Range. begin end))
-                        (get-in offer [:resources :ports]))))
+                        (offer-resource-ranges offer "ports"))))
 
 (defn novel-host-constraint
   "This returns a Fenzo hard constraint that ensures the given job won't run on the same host again"
@@ -589,7 +614,7 @@
             (let [_ (swap! pending-jobs update-scheduler-contents)
                   task-txns (for [{:keys [tasks leases]} matches
                                   :let [offers (mapv :offer leases)
-                                        slave-id (:slave-id (first offers))]
+                                        slave-id (-> offers first :slave-id :value)]
                                   ^TaskAssignmentResult task tasks
                                   :let [request (.getRequest task)
                                         task-info (:task-info request)
@@ -643,28 +668,11 @@
               (meters/mark! matched-tasks-mem (:mem match-resource-requirements))
               (doseq [{:keys [tasks leases]} matches
                       :let [offers (mapv :offer leases)
-                            task-infos (mapv (fn process-results [^TaskAssignmentResult task]
-                                               (reduce
-                                                 (fn add-ports-to-task-info [task-info [index port]]
-                                                   (log/debug "task-info" task-info [index port])
-                                                   (-> task-info
-                                                       (update-in [:resources :ports]
-                                                                  (fnil conj [])
-                                                                  {:begin port :end port})
-                                                       (assoc-in [:command :environment (str "PORT" index)]
-                                                                 (str port))))
-                                                 (:task-info (.getRequest task))
-                                                 (map-indexed (fn [index port] [index port])
-                                                              (.getAssignedPorts task))))
-                                             tasks)
-                            slave-id (:slave-id (first offers))]]
-                (mesos/launch-tasks
-                  driver
-                  (mapv :id offers)
-                  (mapv #(-> %
-                             (assoc :slave-id slave-id)
-                             (dissoc :num-ports))
-                        task-infos))
+                            task-infos (task/compile-mesos-messages offers tasks)]]
+
+                (log/debug "task-infos" task-infos)
+                (mesos/launch-tasks! driver (mapv :id offers) task-infos)
+
                 (doseq [^TaskAssignmentResult task tasks]
                   (.. fenzo
                       (getTaskAssigner)
@@ -880,7 +888,7 @@
                       ;; Note that we probably should update db to mark a task failed as well.
                       ;; However in the case that we fail to kill a particular task in Mesos,
                       ;; we could lose the chances to kill this task again.
-                      (mesos/kill-task driver task-id)
+                      (mesos/kill-task! driver {:value task-id})
                       @(d/transact
                         conn
                         [[:instance/update-state [:instance/task-id task-id] :instance/status/failed]
@@ -1087,7 +1095,7 @@
     (start-jobs-prioritizer! conn pending-jobs-atom task-constraints)
     {:scheduler
      (mesos/scheduler
-      (registered [driver framework-id master-info]
+      (registered [this driver framework-id master-info]
                   (log/info "Registered with mesos with framework-id " framework-id)
                   (reset! fid framework-id)
                   (set-framework-id framework-id)
@@ -1099,7 +1107,7 @@
                       (reconcile-tasks (db conn) driver @fid fenzo)
                       (catch Exception e
                         (log/error e "Reconciliation error")))))
-      (reregistered [driver master-info]
+      (reregistered [this driver master-info]
                     (log/info "Reregistered with new master")
                     (future
                       (try
@@ -1108,20 +1116,20 @@
                         (catch Exception e
                           (log/error e "Reconciliation error")))))
       ;; Ignore this--we can just wait for new offers
-      (offerRescinded [driver offer-id]
+      (offer-rescinded [this driver offer-id]
                       (rescind-offer! rescinded-offer-id-cache offer-id))
-      (frameworkMessage [driver executor-id slave-id data]
+      (framework-message [this driver executor-id slave-id data]
                         (heartbeat/notify-heartbeat heartbeat-ch executor-id slave-id data))
-      (disconnected [driver]
+      (disconnected [this driver]
                     (log/error "Disconnected from the previous master"))
       ;; We don't care about losing slaves or executors--only tasks
-      (slaveLost [driver slave-id])
-      (executorLost [driver executor-id slave-id status])
-      (error [driver message]
+      (slave-lost [this driver slave-id])
+      (executor-lost [this driver executor-id slave-id status])
+      (error [this driver message]
              (meters/mark! mesos-error)
              (log/error "Got a mesos error!!!!" message))
-      (resourceOffers [driver offers]
-                      (log/info "Got offers, putting them into the offer channel:" offers)
+      (resource-offers [this driver offers]
+                       (log/info "Got offers, putting them into the offer channel:" offers)
                       (doseq [offer offers]
                         (histograms/update!
                          offer-size-cpus
@@ -1136,9 +1144,9 @@
                             (meters/mark! offer-chan-full-error)
                             (future
                               (try
-                                (decline-offers driver (map :id offers))
+                                (decline-offers driver offers)
                                 (catch Exception e
                                   (log/error e "Unable to decline offers!")))))))
-      (statusUpdate [driver status]
-                    (future (handle-status-update conn driver fenzo status))))
+      (status-update [this driver status]
+                     (future (handle-status-update conn driver fenzo status))))
      :view-incubating-offers (fn get-resources-atom [] @resources-atom)}))
