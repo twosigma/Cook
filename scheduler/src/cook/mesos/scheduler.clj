@@ -850,8 +850,8 @@
        (keep (fn [[task-id start-time max-runtime]]
                ;; The convertion between random time units is because time doesn't like
                ;; Long and Integer/MAX_VALUE is too small for milliseconds
-               (let [timeout-minutes (min (-> max-runtime time/millis time/in-minutes)
-                                          (-> max-timeout-hours time/hours time/in-minutes))]
+               (let [timeout-minutes (min (.toMinutes TimeUnit/MILLISECONDS max-runtime)
+                                          (.toMinutes TimeUnit/HOURS max-timeout-hours))]
                  (when (time/before?
                         (time/plus (tc/from-date start-time) (time/minutes timeout-minutes))
                         now)

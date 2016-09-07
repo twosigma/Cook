@@ -18,6 +18,7 @@
  (:require [cook.mesos.api :refer (handler)]
            [cook.mesos.util :as util]
            [cook.test.mesos.schema :as schema :refer (restore-fresh-database! create-dummy-job create-dummy-instance)]
+           [clojure.walk :refer (keywordize-keys)]
            [clojure.data.json :as json]
            [datomic.api :as d :refer (q db)]))
 
@@ -35,8 +36,8 @@
    The second list can be fully filled in by Cook with defaults."
   [gold-standard new-data]
   ; URI is order independent
-  (let [gold-standard (sort-by #(or (get % :value) (get % "value")) gold-standard)
-        new-data (sort-by :value new-data)
+  (let [gold-standard (sort-by :value (keywordize-keys gold-standard))
+        new-data (sort-by :value (keywordize-keys new-data))
         resp-uris (map (fn [gold copy]
                          (select-keys copy (keys gold)))
                        gold-standard
