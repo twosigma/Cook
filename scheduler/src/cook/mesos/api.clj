@@ -403,6 +403,15 @@
                 base))
             (:job/instance job))})))
 
+(defn instance-uuid->job-uuid
+  "Queries for the job uuid from an instance uuid.
+   Returns nil if the instance uuid doesn't correspond
+   a job"
+  [db instance-uuid]
+  (->> (d/entity db [:instance/task-id instance-uuid])
+       :job/_instance
+       :job/uuid))
+
 ;;; On POST; JSON blob that looks like:
 ;;; {"jobs": [{"command": "echo hello world",
 ;;;            "uuid": "123898485298459823985",
@@ -420,23 +429,46 @@
                       (condp contains? (get-in ctx [:request :request-method])
                         #{:get :delete}
                         (try
-                          (if-let [jobs (get-in ctx [:request :params "job"])]
-                            (let [jobs (if-not (vector? jobs) [jobs] jobs)
-                                  jobs (mapv #(UUID/fromString %) jobs)
-                                  used? (fn used? [uuid]
-                                          (try
-                                            (unused-uuid? (db conn) uuid)
-                                            false
-                                            (catch Exception e
-                                              true)))]
-                              (if (every? used? jobs)
-                                [false {::jobs jobs}]
-                                [true {::error (str "UUID "
-                                                     (str/join
-                                                       \space
-                                                       (remove used? (::jobs ctx)))
-                                                     " didn't correspond to a job")}]))
-                            [true {::error "must supply at least one job query param"}])
+                          (let [jobs (get-in ctx [:request :params "job"])
+                                instances (get-in ctx [:request :params "instance"])]
+                            (if (or jobs instances)
+                              (let [instances (if (or (nil? instances) (vector? instances))
+                                                instances
+                                                [instances])
+                                    instance-uuid->job-uuid #(instance-uuid->job-uuid (d/db conn) %)
+                                    instance-jobs (mapv instance-uuid->job-uuid instances)
+                                    jobs (if (or (nil? jobs) (vector? jobs))
+                                           jobs
+                                           [jobs])
+                                    jobs (mapv #(UUID/fromString %) jobs)
+                                    used? (fn used? [uuid]
+                                            (try
+                                              (unused-uuid? (db conn) uuid)
+                                              false
+                                              (catch Exception e
+                                                true)))]
+                                (cond
+                                  (and (seq instance-jobs)
+                                       (= :delete (get-in ctx [:request :request-method])))
+                                  [true {::error "Aborting instances is currently not supported"}]
+                                  (and (every? used? jobs)
+                                       (every? (complement nil?) instance-jobs))
+                                  ;;Currently don't support delete of instance. May in future
+                                  [false {::jobs (concat jobs instance-jobs)}]
+                                  (some nil? instance-jobs)
+                                  [true {::error (str "UUID "
+                                                      (str/join
+                                                        \space
+                                                        (filter (comp nil? instance-uuid->job-uuid)
+                                                                instances))
+                                                      " didn't correspond to a instance")}]
+                                  :else
+                                  [true {::error (str "UUID "
+                                                      (str/join
+                                                        \space
+                                                        (remove used? jobs))
+                                                      " didn't correspond to a job")}]))
+                              [true {::error "must supply at least one job or instance query param"}]))
                           (catch Exception e
                             [true {::error e}]))
                         #{:post}
