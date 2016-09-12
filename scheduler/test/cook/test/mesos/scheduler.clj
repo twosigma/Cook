@@ -239,7 +239,8 @@
                              {:instance/status :instance.status/running
                               :instance/backfilled? backfill?
                               :db/id (java.util.UUID/randomUUID)})})]
-    (let [j1 (mock-job)
+    (let [validate-format! #(is (every? set? (vals (select-keys % [:fully-processed :upgrade-backfill :backfill-jobs]))))
+          j1 (mock-job)
           j2 (mock-job true)
           j3 (mock-job false true true)
           j4 (mock-job)
@@ -248,48 +249,56 @@
           j7 (mock-job false)]
       (testing "Match nothing"
         (let [result (sched/process-matches-for-backfill [j1 j4] j1 [])]
+          (validate-format! result)
           (is (zero? (count (:fully-processed result))))
           (is (zero? (count (:upgrade-backfill result))))
           (is (zero? (count (:backfill-jobs result))))
           (is (not (:matched-head? result)))))
       (testing "Match everything basic"
         (let [result (sched/process-matches-for-backfill [j1 j4] j1 [j1 j4])]
+          (validate-format! result)
           (is (= 2 (count (:fully-processed result))))
           (is (zero? (count (:upgrade-backfill result))))
           (is (zero? (count (:backfill-jobs result))))
           (is (:matched-head? result))))
       (testing "Don't match head"
         (let [result (sched/process-matches-for-backfill [j1 j4] j1 [j4])]
+          (validate-format! result)
           (is (zero? (count (:fully-processed result))))
           (is (zero? (count (:upgrade-backfill result))))
           (is (= 1 (count (:backfill-jobs result))))
           (is (not (:matched-head? result)))))
       (testing "Match the tail, but the head isn't considerable"
         (let [result (sched/process-matches-for-backfill [j1 j4] j5 [j4])]
+          (validate-format! result)
           (is (zero? (count (:fully-processed result))))
           (is (zero? (count (:upgrade-backfill result))))
           (is (= 1 (count (:backfill-jobs result))))
           (is (not (:matched-head? result)))))
       (testing "Match the tail, and the head was backfilled"
         (let [result (sched/process-matches-for-backfill [j2 j1 j4] j1 [j1 j4])]
+          (validate-format! result)
           (is (= 2 (count (:fully-processed result))))
           (is (= 1 (count (:upgrade-backfill result))))
           (is (zero? (count (:backfill-jobs result))))
           (is (:matched-head? result))))
       (testing "Match the tail, and the head was backfilled (multiple backfilled mixed in)"
         (let [result (sched/process-matches-for-backfill [j2 j1 j3 j4] j1 [j1 j4])]
+          (validate-format! result)
           (is (= 2 (count (:fully-processed result))))
           (is (= 3 (count (:upgrade-backfill result))))
           (is (zero? (count (:backfill-jobs result))))
           (is (:matched-head? result))))
       (testing "Fail to match the head, but backfill several jobs"
         (let [result (sched/process-matches-for-backfill [j1 j2 j3 j4 j5 j6 j7] j1 [j4 j6 j7])]
+          (validate-format! result)
           (is (zero? (count (:fully-processed result))))
           (is (zero? (count (:upgrade-backfill result))))
           (is (= 3 (count (:backfill-jobs result))))
           (is (not (:matched-head? result)))))
       (testing "Fail to match the head, but backfill several jobs"
         (let [result (sched/process-matches-for-backfill [j1 j2 j3 j4 j5 j6 j7] j1 [j4 j6 j7])]
+          (validate-format! result)
           (is (zero? (count (:fully-processed result))))
           (is (zero? (count (:upgrade-backfill result))))
           (is (= 3 (count (:backfill-jobs result))))

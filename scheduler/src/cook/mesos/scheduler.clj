@@ -552,9 +552,9 @@
       (meters/mark! upgraded-cpu (:cpus resources-upgraded))
       (meters/mark! upgraded-mem (:mem resources-upgraded)))
 
-    {:fully-processed (mapv :job/uuid jobs-fully-processed)
-     :upgrade-backfill tasks-ids-to-upgrade
-     :backfill-jobs (mapv :job/uuid jobs-to-backfill)
+    {:fully-processed (set (mapv :job/uuid jobs-fully-processed))
+     :upgrade-backfill (set tasks-ids-to-upgrade)
+     :backfill-jobs (set (mapv :job/uuid jobs-to-backfill))
      :matched-head? (matched? head-of-considerable)}))
 
 (defn handle-resource-offers!
