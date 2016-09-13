@@ -217,6 +217,7 @@
                 txn {:db/id id
                      :job/commit-latch commit-latch-id
                      :job/uuid uuid
+                     :job/submit-time (java.util.Date.)
                      :job/name (or name "cookjob") ; set the default job name if not provided.
                      :job/command command
                      :job/custom-executor false
@@ -356,6 +357,7 @@
        :uuid (str (:job/uuid job))
        :name (:job/name job "cookjob")
        :priority (:job/priority job util/default-job-priority)
+       :submit-time (str (:job/submit-time job))
        :cpus (:cpus resources)
        :mem (:mem resources)
        :gpus (int (:gpus resources 0))
