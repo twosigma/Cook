@@ -48,6 +48,7 @@ public class InstanceTest {
         instanceBuilder.setHostName("simfarm73.dft.twosigma.com");
         instanceBuilder.setExecutorID("f52fbacf-52a1-44a2-bda1-cbfa477cc163");
         instanceBuilder.setStatus(Instance.Status.SUCCESS);
+        instanceBuilder.setPreempted(false);
         _successfulInstance = instanceBuilder.build();
     }
 
@@ -58,6 +59,7 @@ public class InstanceTest {
         json.put("start_time", _successfulInstance.getStartTime());
         json.put("end_time", _successfulInstance.getEndTime());
         json.put("status", _successfulInstance.getStatus());
+        json.put("preempted", _successfulInstance.getPreempted());
         json.put("hostname", _successfulInstance.getHostName());
         json.put("task_id", _successfulInstance.getTaskID());
         json.put("executor_id", _successfulInstance.getExecutorID());
