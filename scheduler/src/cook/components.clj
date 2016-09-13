@@ -432,27 +432,33 @@
   [config & args]
   (when-not (.exists (java.io.File. config))
     (.println System/err (str "The config file doesn't appear to exist: " config)))
-  (println "Reading config from file:" config)
+  (.println System/err (str "Reading config from file:" config))
   (try
-    (let [config-format (com.google.common.io.Files/getFileExtension config)
-        literal-config {:config
-                        (case config-format
-                          "edn" (read-string (slurp config))
-                          (do
-                            (.println System/err (str "Invalid config file format " config-format))
-                            (System/exit 1)))}
-        base-init (pre-configuration literal-config)
-        _ (println "Configured logging")
-        _ (log/info "Configured logging")
-        settings {:settings (config-settings literal-config)}
-        _ (log/info "Interpreted settings")
-        server (scheduler-server settings)]
-    (intern 'user 'main-graph server)
-    (log/info "Started cook, stored variable in user/main-graph"))
-    (println "Started cook, stored variable in user/main-graph")
+    (let [config-format (try
+                          (com.google.common.io.Files/getFileExtension config)
+                          (catch Throwable t
+                            (.println System/err (str "Failed to start Cook" t))
+                            (System/exit 1)))
+          literal-config (try
+                           {:config
+                            (case config-format
+                              "edn" (read-string (slurp config))
+                              (do
+                                (.println System/err (str "Invalid config file format " config-format))
+                                (System/exit 1)))}
+                           (catch Throwable t
+                             (.println System/err (str "Failed to start Cook" t))
+                             (System/exit 1)))]
+      (pre-configuration literal-config)
+      (.println System/err "Configured logging")
+      (log/info "Configured logging")
+      (let [settings {:settings (config-settings literal-config)}
+            _ (log/info "Interpreted settings")
+            server (scheduler-server settings)]
+        (intern 'user 'main-graph server)
+        (log/info "Started cook, stored variable in user/main-graph")))
     (catch Throwable t
       (log/error t "Failed to start Cook")
-      (println "Failed to start Cook" t)
       (System/exit 1))))
 
 (comment
