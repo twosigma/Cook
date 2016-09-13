@@ -70,6 +70,7 @@ final public class Instance {
         private Long _endTime;
         private Status _status;
         private Long _reasonCode;
+        private Boolean _preempted;
         private String _outputURL;
         private String _hostName;
 
@@ -85,7 +86,7 @@ final public class Instance {
                 _status = Status.UNKNOWN;
             }
             return new Instance(_taskID, _slaveID, _executorID, _startTime, _endTime, _status, _reasonCode,
-                    _outputURL, _hostName);
+                    _preempted, _outputURL, _hostName);
         }
 
         /**
@@ -162,6 +163,17 @@ final public class Instance {
         }
 
         /**
+         * Sets whether the instance was preempted.
+         *
+         * @param preempted true if this Instance was preempted, false otherwise
+         * @return this builder.
+         */
+        public Builder setPreempted(Boolean preempted) {
+            _preempted = preempted;
+            return this;
+        }
+
+        /**
          * Set the task local output directory for the task expected to build.
          *
          * @param outputURL {@link String} specifies the task local output directory in the Mesos
@@ -227,11 +239,12 @@ final public class Instance {
     final private Long _endTime;
     final private Status _status;
     final private Long _reasonCode;
+    final private Boolean _preempted;
     final private String _outputURL;
     final private String _hostName;
 
     private Instance(UUID taskID, String slaveID, String executorID, Long startTime, Long endTime,
-                     Status status, Long reasonCode, String outputURL, String hostName) {
+                     Status status, Long reasonCode, Boolean preempted, String outputURL, String hostName) {
         _taskID = taskID;
         _slaveID = slaveID;
         _executorID = executorID;
@@ -239,6 +252,7 @@ final public class Instance {
         _endTime = endTime;
         _status = status;
         _reasonCode = reasonCode;
+        _preempted = preempted;
         _outputURL = outputURL;
         _hostName = hostName;
     }
@@ -256,7 +270,8 @@ final public class Instance {
      *      "start_time" : 1426632249597,
      *      "hostname" : "simfarm73.dft.twosigma.com",
      *      "executor_id" : "f52fbacf-52a1-44a2-bda1-cbfa477cc163",
-     *      "task_id" : "f52fbacf-52a1-44a2-bda1-cbfa477cc163"
+     *      "task_id" : "f52fbacf-52a1-44a2-bda1-cbfa477cc163",
+     *      "preempted": false
      *   }
      * ]
      * </code>
@@ -291,6 +306,7 @@ final public class Instance {
             instanceBuilder.setExecutorID(json.getString("executor_id"));
             instanceBuilder.setHostName(json.getString("hostname"));
             instanceBuilder.setStatus(Status.fromString(json.getString("status")));
+            instanceBuilder.setPreempted(json.getBoolean("preempted"));
             instanceBuilder.setStartTime(json.getLong("start_time"));
             if (json.has("end_time")) {
                 instanceBuilder.setEndTime(json.getLong("end_time"));
@@ -327,8 +343,8 @@ final public class Instance {
     public String toString() {
         return "Instance [_taskID=" + _taskID + ", _slaveID=" + _slaveID + ", _executorID="
                 + _executorID + ", _startTime=" + _startTime + ", _endTime=" + _endTime
-                + ", _status=" + _status + ", _reasonCode=" + _reasonCode + ", _outputURL=" + _outputURL
-                + ", _hostName=" + _hostName + "]";
+                + ", _status=" + _status + ", _reasonCode=" + _reasonCode + ", _preempted=" + _preempted
+                + ", _outputURL=" + _outputURL + ", _hostName=" + _hostName + "]";
     }
 
     public UUID getTaskID() {
@@ -357,6 +373,10 @@ final public class Instance {
 
     public Long getReasonCode() {
         return _reasonCode;
+    }
+
+    public Boolean getPreempted() {
+        return _preempted;
     }
 
     public String getOutputURL() {
