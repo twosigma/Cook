@@ -193,7 +193,7 @@
                         :slave-id {:value (str "slave-" (java.util.UUID/randomUUID))}
                         :hostname (str "host-" (java.util.UUID/randomUUID))}])
         fid (str "framework-id-" (java.util.UUID/randomUUID))
-        fenzo-maker #(sched/make-fenzo-scheduler nil 100000)] ; The params are for offer declining, which should never happen
+        fenzo-maker #(sched/make-fenzo-scheduler nil 100000 1)] ; The params are for offer declining, which should never happen
     (testing "Consume no schedule cases"
       (are [schedule offers] (= [] (sched/match-offer-to-schedule (fenzo-maker) schedule offers (db c) fid))
            [] (offer-maker 0 0)
