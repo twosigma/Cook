@@ -47,6 +47,7 @@
   "Schema for a DockerInfo"
   {:image s/Str
    (s/optional-key :network) s/Str
+   (s/optional-key :force-pull-image) s/Bool
    (s/optional-key :parameters) [{:key s/Str :value s/Str}]
    (s/optional-key :port-mapping) [PortMapping]})
 
@@ -148,6 +149,7 @@
          [:db/add container-id :container/docker docker-id]
          (merge {:db/id docker-id
                  :docker/image (:image docker)
+                 :docker/force-pull-image (:force-pull-image docker)
                  :docker/network (:network docker)}
                 (mk-container-params docker-id params)
                 (mk-docker-ports docker-id port-mappings))])
