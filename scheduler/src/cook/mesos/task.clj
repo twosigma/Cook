@@ -18,7 +18,7 @@
   (->> resources (map :scalar) (apply +)))
 
 (defmethod combine-like-resources :value-ranges [resources]
-  (->> resources (map :ranges) (apply into)))
+  (->> resources (map :ranges) (reduce into)))
 
 (defn resources-by-role
   "Given a set of offers, combine all the available resources into a comprehensible
