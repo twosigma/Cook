@@ -581,7 +581,7 @@
                                      lease leases]
                                  (:offer lease))
               offers-not-scheduled (clojure.set/intersection (set offers) (set offers-scheduled))
-              _ (reset! offer-stash @offer-stash)
+              _ (reset! offer-stash offers-scheduled)
               matched-jobs (for [match matches
                                  ^TaskAssignmentResult task-result (:tasks match)
                                  :let [task-request (.getRequest task-result)]]
