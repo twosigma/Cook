@@ -315,3 +315,14 @@
             (postal/send-message (-> email-config
                                      (update-in [:subject] str " on thread " (.getName thread))
                                      (assoc :body stacktrace)))))))))
+
+(defn lazy-load-var
+  "Takes a symbol name of a var, requires the ns if not yet required, and
+   returns the var."
+  [var-sym]
+  (let [ns (namespace var-sym)]
+    (when-not ns
+      (throw (ex-info "Can only load vars that are ns-qualified!" {})))
+    (require (symbol ns))
+    (resolve var-sym)))
+

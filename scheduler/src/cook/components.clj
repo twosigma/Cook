@@ -61,13 +61,14 @@
     (resolve var-sym)))
 
 (def raw-scheduler-routes
-  {:scheduler (fnk [mesos-datomic framework-id mesos-pending-jobs-atom [:settings task-constraints mesos-gpu-enabled]]
+  {:scheduler (fnk [mesos-datomic framework-id mesos-pending-jobs-atom [:settings task-constraints mesos-gpu-enabled is-authorized-fn]]
                    ((lazy-load-var 'cook.mesos.api/handler)
                     mesos-datomic
                     framework-id
                     task-constraints
                     mesos-gpu-enabled
-                    (fn [] @mesos-pending-jobs-atom)))
+                    (fn [] @mesos-pending-jobs-atom)
+                    is-authorized-fn))
    :view (fnk [scheduler]
               scheduler)})
 
@@ -268,15 +269,20 @@
    :exception-handler (fnk [] ((lazy-load-var 'cook.util/install-email-on-exception-handler))) ;;TODO parameterize
    })
 
+(def default-authorization {:authorization-fn 'cook.authorization/open-auth})
+
 (def config-settings
   "Parses the settings out of a config file"
   (graph/eager-compile
     {:server-port (fnk [[:config port]]
                        port)
+     :is-authorized-fn (fnk [[:config {authorization-config default-authorization}]]
+                                (partial (lazy-load-var 'cook.authorization/is-authorized?)
+                                         authorization-config))
      :authorization-middleware (fnk [[:config [:authorization {one-user false} {kerberos false} {http-basic false}]]]
                                     (cond
                                       http-basic (do
-                                                   (log/info "Using http basic authentication")
+                                                   (log/info "Using http basic authorization")
                                                    (lazy-load-var 'cook.basic-auth/http-basic-middleware))
                                       one-user (do
                                                  (log/info "Using single user authorization")

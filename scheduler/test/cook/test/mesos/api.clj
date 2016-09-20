@@ -15,10 +15,12 @@
 ;;
 (ns cook.test.mesos.api
  (:use clojure.test)
- (:require [cook.mesos.api :refer (handler)]
+ (:require [cook.mesos.api :as api :refer (handler)]
            [cook.mesos.util :as util]
            [cook.test.mesos.schema :as schema :refer (restore-fresh-database! create-dummy-job create-dummy-instance)]
            [clojure.walk :refer (keywordize-keys)]
+           [cook.authorization :as auth]
+           [schema.core :as s]
            [clojure.data.json :as json]
            [datomic.api :as d :refer (q db)]))
 
@@ -43,6 +45,8 @@
                        gold-standard
                        new-data)]
     (= gold-standard resp-uris)))
+
+(def authorized-fn auth/open-auth)
 
 (deftest handler-db-roundtrip
   (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
@@ -69,7 +73,8 @@
              "labels" labels
              "cpus" 2.0
              "mem" 2048.0}
-        h (handler conn "my-framework-id" {:cpus 12 :memory-gb 100} (fn [] []) false)]
+        h (handler conn "my-framework-id" {:cpus 12 :memory-gb 100} false (fn [] []) authorized-fn)]
+    (println )
     (is (<= 200
             (:status (h {:request-method :post
                          :scheme :http
@@ -126,7 +131,7 @@
                             "max_runtime" 1000000
                             "cpus" cpus
                             "mem" mem})
-        h (handler conn "my-framework-id" {:cpus 3.0 :memory-gb 2} (fn [] []) false)]
+        h (handler conn "my-framework-id" {:cpus 3.0 :memory-gb 2} false (fn [] []) authorized-fn)]
     (testing "Within limits"
       (is (<= 200
               (:status (h {:request-method :post
@@ -175,7 +180,7 @@
                          "gpus" gpus
                          "cpus" 1.0
                          "mem" 1024.0})
-        h (handler conn "my-framework-id" {:cpus 12 :memory-gb 100} (fn [] []) true)]
+        h (handler conn "my-framework-id" {:cpus 12 :memory-gb 100} true (fn [] []) authorized-fn)]
     (testing "negative gpus invalid"
       (is (<= 400
               (:status (h {:request-method :post

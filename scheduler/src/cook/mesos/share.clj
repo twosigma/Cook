@@ -39,7 +39,7 @@
     (if resource
       @(d/transact conn
                    [[:db.fn/retractEntity resource]])
-      :default)))
+      (log/warn "Resource" type "for user" user "does not exist, could not retract"))))
 
 (defn- get-share-by-type
   [db type user]

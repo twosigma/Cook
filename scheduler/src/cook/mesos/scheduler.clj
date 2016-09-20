@@ -312,7 +312,7 @@
                                         [[:db/add instance :instance/progress progress]])))))
       (catch Exception e
         (log/error e "Mesos scheduler status update error")))))
-
+     
 (timers/deftimer [cook-mesos scheduler tx-report-queue-processing-duration])
 (meters/defmeter [cook-mesos scheduler tx-report-queue-datoms])
 (meters/defmeter [cook-mesos scheduler tx-report-queue-update-job-state])
@@ -481,6 +481,8 @@
   (log/debug "offer to scheduleOnce" offers)
   (log/debug "tasks to scheduleOnce" considerable)
   (let [t (System/currentTimeMillis)
+        _ (log/debug "offer to scheduleOnce" offers)
+        _ (log/debug "tasks to scheduleOnce" considerable)
         leases (mapv #(->VirtualMachineLeaseAdapter % t) offers)
         requests (mapv (fn [job]
                          (->TaskRequestAdapter job (job->task-info db fid (:db/id job)) (atom nil)))
@@ -955,9 +957,9 @@
                       ;; we could lose the chances to kill this task again.
                       (mesos/kill-task! driver {:value task-id})
                       @(d/transact
-                        conn
-                        [[:instance/update-state [:instance/task-id task-id] :instance/status/failed]
-                         [:db/add [:instance/task-id task-id] :instance/reason [:reason/name :max-runtime-exceeded]]])
+                         conn
+                         [[:instance/update-state [:instance/task-id task-id] :instance/status/failed]
+                          [:db/add [:instance/task-id task-id] :instance/reason [:reason/name :max-runtime-exceeded]]])
                       ))))
               {:error-handler (fn [e]
                                 (log/error e "Failed to reap timeout tasks!"))})))

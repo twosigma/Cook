@@ -196,4 +196,28 @@
     (fn [task1 task2]
       (compare (comparable-with-backfill task1) (comparable-with-backfill task2)))))
 
+(defn retry-job!
+  "Sets :job/max-retries to the given value for the given job UUID.
+   Throws an exception if there is no job with that UUID."
+  [conn uuid retries]
+  (try
+    (let [eid (-> (d/entity (d/db conn) [:job/uuid uuid])
+                  :db/id)]
+      @(d/transact conn
+                   [
+                    [:db/add [:job/uuid uuid]
+                     :job/max-retries retries]
 
+                    ;; If the job is in the "completed" state, put it back into
+                    ;; "waiting":
+                    [:db.fn/cas [:job/uuid uuid]
+                     :job/state (d/entid (d/db conn) :job.state/completed) :job.state/waiting]]))
+    ;; :db.fn/cas throws an exception if the job is not already in the "completed" state.
+    ;; If that happens, that's fine. We just set "retries" only and continue.
+    (catch java.util.concurrent.ExecutionException e
+      (if-not (.startsWith (.getMessage e)
+                           "java.lang.IllegalStateException: :db.error/cas-failed Compare failed:")
+        (throw e)
+        @(d/transact conn
+                     [[:db/add [:job/uuid uuid]
+                       :job/max-retries retries]])))))
