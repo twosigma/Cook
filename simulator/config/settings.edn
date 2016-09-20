@@ -1,0 +1,25 @@
+{:sim-db-uri "datomic:free://localhost:4334/cook-sim"
+ :cook-db-uri "datomic:free://localhost:4334/cook-jobs"
+ :cook-api-uri "http://localhost:12321"
+ :process-count 10
+ :sim-model {:label "Ten second test"
+             :duration-seconds 10
+             :user-profiles
+             [{:description "Profile 1"
+               :usernames ["testuser1" "testuser2"]
+               :seconds-between-jobs {:mean 3
+                                      :std-dev 1
+                                      :floor 1
+                                      :ceiling 120}
+               :job-duration {:mean 10
+                              :std-dev 2
+                              :floor 1
+                              :ceiling 120}
+               :job-memory {:mean 512
+                            :std-dev 200
+                            :floor 1
+                            :ceiling 2048}
+               :job-cpu {:mean 2.0
+                         :std-dev 1.0
+                         :floor 1.0
+                         :ceiling 4.0}}]}}
