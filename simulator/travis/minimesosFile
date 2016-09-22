@@ -1,0 +1,291 @@
+minimesos {
+    clusterName = "Cook Simulation Cluster"
+    loggingLevel = "INFO"
+    mapAgentSandboxVolume = false
+    mapPortsToHost = false
+    mesosVersion = "1.0.0"
+    timeout = 60
+
+    agent {
+        imageName = "containersol/mesos-agent"
+        imageTag = "1.0.0-0.1.0"
+        loggingLevel = "# INHERIT FROM CLUSTER"
+        portNumber = 5051
+
+        resources {
+            cpu {
+                role = "*"
+                value = 4
+            }
+            cpu {
+                role = "cook"
+                value = 4
+            }
+
+            disk {
+                role = "*"
+                value = 10000
+            }
+            disk {
+                role = "cook"
+                value = 10000
+            }
+
+            mem {
+                role = "*"
+                value = 4096
+            }
+            mem {
+                role = "cook"
+                value = 4096
+            }
+
+            ports {
+                role = "*"
+                value = "[31000-32000]"
+            }
+            ports {
+                role = "*"
+                value = "[32000-33000]"
+            }
+        }
+    }
+
+    agent {
+        imageName = "containersol/mesos-agent"
+        imageTag = "1.0.0-0.1.0"
+        loggingLevel = "# INHERIT FROM CLUSTER"
+        portNumber = 5052
+
+        resources {
+            cpu {
+                role = "*"
+                value = 4
+            }
+            cpu {
+                role = "cook"
+                value = 4
+            }
+
+            disk {
+                role = "*"
+                value = 10000
+            }
+            disk {
+                role = "cook"
+                value = 10000
+            }
+
+            mem {
+                role = "*"
+                value = 4096
+            }
+            mem {
+                role = "cook"
+                value = 4096
+            }
+
+            ports {
+                role = "*"
+                value = "[31000-32000]"
+            }
+            ports {
+                role = "*"
+                value = "[32000-33000]"
+            }
+        }
+    }
+
+    agent {
+        imageName = "containersol/mesos-agent"
+        imageTag = "1.0.0-0.1.0"
+        loggingLevel = "# INHERIT FROM CLUSTER"
+        portNumber = 5053
+
+        resources {
+            cpu {
+                role = "*"
+                value = 4
+            }
+            cpu {
+                role = "cook"
+                value = 4
+            }
+
+            disk {
+                role = "*"
+                value = 10000
+            }
+            disk {
+                role = "cook"
+                value = 10000
+            }
+
+            mem {
+                role = "*"
+                value = 4096
+            }
+            mem {
+                role = "cook"
+                value = 4096
+            }
+
+            ports {
+                role = "*"
+                value = "[31000-32000]"
+            }
+            ports {
+                role = "*"
+                value = "[32000-33000]"
+            }
+        }
+    }
+
+    agent {
+        imageName = "containersol/mesos-agent"
+        imageTag = "1.0.0-0.1.0"
+        loggingLevel = "# INHERIT FROM CLUSTER"
+        portNumber = 5053
+
+        resources {
+            cpu {
+                role = "*"
+                value = 4
+            }
+            cpu {
+                role = "cook"
+                value = 4
+            }
+
+            disk {
+                role = "*"
+                value = 10000
+            }
+            disk {
+                role = "cook"
+                value = 10000
+            }
+
+            mem {
+                role = "*"
+                value = 4096
+            }
+            mem {
+                role = "cook"
+                value = 4096
+            }
+
+            ports {
+                role = "*"
+                value = "[31000-32000]"
+            }
+            ports {
+                role = "*"
+                value = "[32000-33000]"
+            }
+        }
+    }
+
+    agent {
+        imageName = "containersol/mesos-agent"
+        imageTag = "1.0.0-0.1.0"
+        loggingLevel = "# INHERIT FROM CLUSTER"
+        portNumber = 5054
+
+        resources {
+            cpu {
+                role = "*"
+                value = 4
+            }
+            cpu {
+                role = "cook"
+                value = 4
+            }
+
+            disk {
+                role = "*"
+                value = 10000
+            }
+            disk {
+                role = "cook"
+                value = 10000
+            }
+
+            mem {
+                role = "*"
+                value = 4096
+            }
+            mem {
+                role = "cook"
+                value = 4096
+            }
+
+            ports {
+                role = "*"
+                value = "[31000-32000]"
+            }
+            ports {
+                role = "*"
+                value = "[32000-33000]"
+            }
+        }
+    }
+
+    agent {
+        imageName = "containersol/mesos-agent"
+        imageTag = "1.0.0-0.1.0"
+        loggingLevel = "# INHERIT FROM CLUSTER"
+        portNumber = 5055
+
+        resources {
+            cpu {
+                role = "*"
+                value = 4
+            }
+            cpu {
+                role = "cook"
+                value = 4
+            }
+
+            disk {
+                role = "*"
+                value = 10000
+            }
+            disk {
+                role = "cook"
+                value = 10000
+            }
+
+            mem {
+                role = "*"
+                value = 4096
+            }
+            mem {
+                role = "cook"
+                value = 4096
+            }
+
+            ports {
+                role = "*"
+                value = "[31000-32000]"
+            }
+            ports {
+                role = "*"
+                value = "[32000-33000]"
+            }
+        }
+    }
+
+    master {
+        aclJson = null
+        authenticate = false
+        imageName = "containersol/mesos-master"
+        imageTag = "1.0.0-0.1.0"
+        loggingLevel = "# INHERIT FROM CLUSTER"
+    }
+
+    zookeeper {
+        imageName = "jplock/zookeeper"
+        imageTag = "3.4.6"
+    }
+}
