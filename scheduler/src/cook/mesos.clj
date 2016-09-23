@@ -134,7 +134,7 @@
                                                         (when mesos-failover-timeout
                                                           {:failover-timeout mesos-failover-timeout})
                                                         (when framework-id
-                                                          {:id framework-id}))
+                                                          {:id {:value framework-id}}))
                                                       mesos-master
                                                       (when mesos-principal
                                                         [{:principal mesos-principal}]))]
@@ -153,8 +153,8 @@
                                                                               :view-incubating-offers view-incubating-offers})
                                     (counters/inc! mesos-leader)
                                     (async/tap mesos-datomic-mult datomic-report-chan)
-                                    (mesomatic.scheduler/join! driver)
                                     (cook.mesos.scheduler/monitor-tx-report-queue datomic-report-chan mesos-datomic-conn current-driver)
+                                    (mesomatic.scheduler/join! driver)
                                     (reset! current-driver nil))
                                   (catch Exception e
                                     (log/error e "Lost mesos leadership due to exception")
