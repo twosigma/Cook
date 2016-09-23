@@ -56,7 +56,7 @@
 
 (defn job-ent->container
   "Take a job entity and return its container"
-  [db job job-ent]
+  [db job-ent]
   (when-let [ceid (:db/id (:job/container job-ent))]
     (->> (d/pull db "[*]" ceid)
          (deep-transduce-kv (comp
