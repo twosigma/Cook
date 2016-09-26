@@ -1,0 +1,5 @@
+*.pyc
+stdout.*
+stderr.*
+.cache
+__pycache__
