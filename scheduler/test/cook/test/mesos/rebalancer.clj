@@ -699,4 +699,32 @@
             pending-job-ents (util/get-pending-job-ents db)
             [pending-job-ents-to-run task-ents-to-preempt] (time (rebalancer/rebalance db pending-job-ents {} {:max-preemption 128 :safe-dru-threshold 1.0 :min-dru-diff 0.5 :category :normal}))]))))
 
+
+(deftest test-update-datomic-params-via-config!
+  (let [datomic-uri "datomic:mem://test-init-state"
+        conn (schema/restore-fresh-database! datomic-uri)
+        all-params {:min-utilization-threshold 0.75
+                    :safe-dru-threshold 1.0
+                    :min-dru-diff 0.5
+                    :max-preemption 64.0}
+        updated-params {:min-dru-diff 0.75 :max-preemption 128.0}
+        merged-params (merge all-params updated-params)]
+
+    (testing "no config"
+      (rebalancer/update-datomic-params-from-config! conn nil)
+      (is (= (rebalancer/read-datomic-params conn) {})))
+
+    (testing "all config params specified"
+      (rebalancer/update-datomic-params-from-config! conn all-params)
+      (is (= (rebalancer/read-datomic-params conn) all-params))
+
+    (testing "partial config"
+      (rebalancer/update-datomic-params-from-config! conn updated-params)
+      (is (= (rebalancer/read-datomic-params conn) merged-params)))
+
+    (testing "unrecognized config params discarded"
+      (rebalancer/update-datomic-params-from-config! conn {:foo "bar" :ding 2})
+      (is (= (rebalancer/read-datomic-params conn) merged-params))))))
+
+
 (comment (run-tests))
