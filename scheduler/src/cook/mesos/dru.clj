@@ -54,18 +54,20 @@
 (defn compute-task-scored-task-pairs
   "Takes a sorted seq of task entities and dru-divisors, returns a list of [task scored-task], preserving the same order of input tasks"
   [task-ents {mem-divisor :mem cpus-divisor :cpus}]
-  (let [task-resources (->> task-ents
-                            (map (comp #(select-keys % [:cpus :mem]) util/job-ent->resources :job/_instance)))
-        task-drus (->> task-resources
-                       (accumulate-resources)
-                       (map (fn [{:keys [mem cpus]}]
-                              (max (/ mem mem-divisor) (/ cpus cpus-divisor)))))
-        scored-tasks (map (fn [task dru {:keys [mem cpus]}]
-                            [task (->ScoredTask task dru mem cpus)])
-                          task-ents
-                          task-drus
-                          task-resources)]
-    scored-tasks))
+  (if (seq task-ents)
+    (let [task-resources (->> task-ents
+                              (map (comp #(select-keys % [:cpus :mem]) util/job-ent->resources :job/_instance)))
+          task-drus (->> task-resources
+                         (accumulate-resources)
+                         (map (fn [{:keys [mem cpus]}]
+                                (max (/ mem mem-divisor) (/ cpus cpus-divisor)))))
+          scored-tasks (map (fn [task dru {:keys [mem cpus]}]
+                              [task (->ScoredTask task dru mem cpus)])
+                            task-ents
+                            task-drus
+                            task-resources)]
+      scored-tasks)
+    '()))
 
 (defn compute-gpu-task-scored-task-pair
   "Takes a sorted seq of task entities and the gpu divisor, returns a list of [task cumulative-gpus], preserving the same order of input tasks"
