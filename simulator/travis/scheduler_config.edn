@@ -9,6 +9,12 @@
                                 :timeout-interval-minutes 1
                                 :memory-gb 48
                                 :cpus 6}}
+ :rebalancer {:interval-seconds 20
+              :min-utilization-threshold 0.0
+              :safe-dru-threshold 0.0
+              ;; virtually ANY improvement in DRU balance should provoke preemption:
+              :min-dru-diff 1E-309
+              :max-preemption 64.0}
 
  :mesos {:master "zk://172.17.0.3:2181/mesos" ; minimesos zookeeper
          :master-hosts ["172.17.0.4"] ; minimesos master
