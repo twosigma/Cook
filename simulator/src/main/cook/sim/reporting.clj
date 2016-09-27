@@ -112,6 +112,21 @@
           ;;(println "details from Cook DB:" (:details job))
           )))))
 
+(defn summarize-preemption
+  "This function prints out to STDOUT (for the cli).
+  It summarizes the amount of preemption that happened for a collection of jobs.
+  The total number of preemptions is also returned."
+  [jobs]
+  (let [preemption-count (comp count
+                               (partial filter :instance/preempted?)
+                               :job/instance :details)
+        preemption-counts (into (sorted-map) (group-by preemption-count jobs))
+        total-preemptions (apply + (map preemption-count jobs))]
+    (println "There were" total-preemptions "total preemptions.")
+    (doseq [[number js] preemption-counts]
+      (println "  " (count js) "jobs preempted" number "times."))
+    total-preemptions))
+
 (defn average-of-metric
   "Given a collection of job-results and a metric (function, that accepts a
   job-result as a single argument and returns a number), returns the average
@@ -350,7 +365,8 @@
     (warn-about-unfinished job-results)
     (show-average-wait job-results)
     (show-average-turnaround job-results)
-    (show-average-overhead job-results)))
+    (show-average-overhead job-results)
+    (summarize-preemption job-results)))
 
 (defn- format-sim-result
   "Prepares a simulation id result from db/pull for output via print-table"
