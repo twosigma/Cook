@@ -32,6 +32,7 @@
             [chime :refer [chime-at]]
             [clojure.data.priority-map :as pm]
             [swiss.arrows :refer :all]
+            [plumbing.core :refer [map-keys]]
             [clojure.data.json :as json]
             [clj-http.client :as http]))
 
@@ -432,6 +433,11 @@
                               (apply max))]
     utilization))
 
+(def datomic-params [:min-utilization-threshold
+                     :safe-dru-threshold
+                     :min-dru-diff
+                     :max-preemption])
+
 (defn read-datomic-params
   [conn]
   (-<>>
@@ -439,10 +445,22 @@
    (dissoc <> ":db/id" ":db/ident")
    (map-keys #(keyword (name (keyword %))))))
 
+(defn update-datomic-params-from-config!
+  [conn config]
+  (let [recognized-params (select-keys config datomic-params)]
+    (if (not-empty recognized-params)
+      (do
+        (log/info "Updating rebalancer params to" recognized-params)
+        @(d/transact conn [(into {:db/id :rebalancer/config}
+                                 (map-keys #(keyword "rebalancer.config" (name %))
+                                           recognized-params))])))))
+
 (defn start-rebalancer!
-  [{:keys [conn driver mesos-master-hosts pending-jobs-atom view-incubating-offers view-mature-offers dru-scale]}]
+  [{:keys [conn driver mesos-master-hosts pending-jobs-atom view-incubating-offers view-mature-offers dru-scale config]}]
   (binding [metrics-dru-scale dru-scale]
-    (let [rebalance-interval (time/minutes 5)
+    (update-datomic-params-from-config! conn config)
+
+    (let [rebalance-interval (time/seconds (:interval-seconds config))
           observe-interval (time/seconds 5)
           observe-refreshness-threshold (time/seconds 30)
           host->combined-offers-atom (atom {})
