@@ -21,6 +21,7 @@
             [clojure.core.async :as async]
             [clojure.edn :as edn]
             [mesomatic.types :as mtypes]
+            [mesomatic.scheduler :as msched]
             [cook.mesos :as mesos]
             [cook.mesos.scheduler :as sched]
             [cook.mesos.share :as share]
@@ -42,13 +43,13 @@
 (deftest test-sort-jobs-by-dru
   (let [uri "datomic:mem://test-sort-jobs-by-dru"
         conn (restore-fresh-database! uri)
-        j1 (create-dummy-job conn :user "ljin" :ncpus 1.0 :memory 3.0)
+        j1 (create-dummy-job conn :user "ljin" :ncpus 1.0 :memory 3.0 :job-state :job.state/running)
         j2 (create-dummy-job conn :user "ljin" :ncpus 1.0 :memory 5.0)
         j3 (create-dummy-job conn :user "ljin" :ncpus 1.0 :memory 2.0)
         j4 (create-dummy-job conn :user "ljin" :ncpus 5.0 :memory 5.0)
-        j5 (create-dummy-job conn :user "wzhao" :ncpus 6.0 :memory 6.0)
+        j5 (create-dummy-job conn :user "wzhao" :ncpus 6.0 :memory 6.0 :job-state :job.state/running)
         j6 (create-dummy-job conn :user "wzhao" :ncpus 5.0 :memory 5.0)
-        j7 (create-dummy-job conn :user "sunil" :ncpus 5.0 :memory 10.0)
+        j7 (create-dummy-job conn :user "sunil" :ncpus 5.0 :memory 10.0 :job-state :job.state/running)
         j8 (create-dummy-job conn :user "sunil" :ncpus 5.0 :memory 10.0)
         _ (create-dummy-instance conn j1)
         _ (create-dummy-instance conn j5)
@@ -354,12 +355,85 @@
                                              :instance-status :instance.status/running
                                              :task-id task-id-2
                                              :start-time start-time-2)
-        instance-id-3 (create-dummy-instance conn job-id-2
+        instance-id-3 (create-dummy-instance conn job-id-3
                                              :instance-status :instance.status/running
                                              :task-id task-id-3
                                              :start-time start-time-3)
         test-db (d/db conn)]
     (is (= #{task-id-1 task-id-2} (set (sched/get-lingering-tasks test-db (t/now) timeout-hours timeout-hours))))))
+
+(deftest test-kill-lingering-tasks
+  ;; Ensure that lingering tasks are killed properly
+   (let [uri "datomic:mem://test-kill-lingering-tasks"
+         conn (restore-fresh-database! uri)
+         ;; a job has been timeout
+         job-id-1 (create-dummy-job conn :user "tsram" :job-state :job.state/running)
+         ;; a job has been timeout
+         job-id-2 (create-dummy-job conn :user "tsram" :job-state :job.state/running)
+         ;; a job is not timeout
+         job-id-3 (create-dummy-job conn :user "tsram" :job-state :job.state/running)
+         timeout-hours 4
+         start-time-1 (joda-datetime->java-date
+                        (t/minus (t/now) (t/hours (+ timeout-hours 1))))
+         start-time-2 (joda-datetime->java-date
+                        (t/minus (t/now) (t/hours (+ timeout-hours 1))))
+         start-time-3 (joda-datetime->java-date
+                        (t/minus (t/now) (t/hours (- timeout-hours 1))))
+         instance-id-1 (create-dummy-instance conn job-id-1
+                                              :instance-status :instance.status/unknown
+                                              :task-id "task-1"
+                                              :start-time start-time-1)
+         instance-id-2 (create-dummy-instance conn job-id-2
+                                              :instance-status :instance.status/running
+                                              :task-id "task-2"
+                                              :start-time start-time-2)
+         instance-id-3 (create-dummy-instance conn job-id-3
+                                              :instance-status :instance.status/running
+                                              :task-id "task-3"
+                                              :start-time start-time-3)
+         test-db (d/db conn)
+         config {:timeout-hours timeout-hours}
+         dummy-driver (reify msched/SchedulerDriver (kill-task! [_ _] nil))] 
+
+     (sched/kill-lingering-tasks (t/now) conn dummy-driver config)
+     
+     (is (= :instance.status/failed
+            (ffirst (q '[:find ?status
+                         :in $ ?i
+                         :where
+                         [?i :instance/status ?s]
+                         [?s :db/ident ?status]]
+                       (db conn) instance-id-1))))
+     (is (= :max-runtime-exceeded
+            (ffirst (q '[:find ?reason-name
+                         :in $ ?i
+                         :where
+                         [?i :instance/reason ?r]
+                         [?r :reason/name ?reason-name]]
+                       (db conn) instance-id-1))))
+
+     (is (= :instance.status/failed
+            (ffirst (q '[:find ?status
+                         :in $ ?i
+                         :where
+                         [?i :instance/status ?s]
+                         [?s :db/ident ?status]]
+                       (db conn) instance-id-2))))
+     (is (= :max-runtime-exceeded
+            (ffirst (q '[:find ?reason-name
+                         :in $ ?i
+                         :where
+                         [?i :instance/reason ?r]
+                         [?r :reason/name ?reason-name]]
+                       (db conn) instance-id-2))))
+     
+     (is (= :instance.status/running
+            (ffirst (q '[:find ?status
+                         :in $ ?i
+                         :where
+                         [?i :instance/status ?s]
+                         [?s :db/ident ?status]]
+                       (db conn) instance-id-3))))))
 
 (deftest test-filter-offensive-jobs
   (let [uri "datomic:mem://test-filter-offensive-jobs"
@@ -635,7 +709,10 @@
         ljin-4 (create-dummy-job conn :user "ljin" :ncpus 5.0 :memory 5.0 :gpus 1.0)
         wzhao-1 (create-dummy-job conn :user "wzhao" :ncpus 5.0 :memory 5.0 :gpus 1.0)
         wzhao-2 (create-dummy-job conn :user "wzhao" :ncpus 5.0 :memory 5.0 :gpus 1.0)
-        _ (create-dummy-instance conn ljin-1)
+        ; Update ljin-1 to running
+        inst (create-dummy-instance conn ljin-1 :instance-status :instance.status/unknown)
+        _ @(d/transact conn [[:instance/update-state inst :instance.status/running [:reason/name :unknown]]])
+
         _ (share/set-share! conn "default" :cpus 1.0 :mem 2.0 :gpus 1.0)]
     (testing "test1"
       (let [_ (share/set-share! conn "ljin" :gpus 2.0)
@@ -645,6 +722,102 @@
         (let [_ (share/set-share! conn "ljin" :gpus 1.0)
               db (d/db conn)]
           (is (= [wzhao-1 wzhao-2 ljin-2 ljin-3 ljin-4] (map :db/id (:gpu (sched/sort-jobs-by-dru db db)))))))))
+
+(deftest test-handle-status-update
+  (let [uri "datomic:mem://test-handle-status-update"
+        conn (restore-fresh-database! uri)
+        tasks-killed (atom #{})
+        driver (reify msched/SchedulerDriver
+                 (kill-task! [_ task] (swap! tasks-killed conj (:value task)))) ; Conjoin the task-id
+        driver-atom (atom nil)
+        fenzo (sched/make-fenzo-scheduler driver-atom 1500 0.8)
+        make-dummy-status-update (fn [task-id reason state & {:keys [progress] :or {progress nil}}]
+                                   (let [task {:task-id {:value task-id}
+                                                :reason reason
+                                                :state state}]
+                                     task))]
+    (testing "Mesos task death"
+      (let [job-id (create-dummy-job conn :user "tsram" :job-state :job.state/running)
+            task-id "task1"
+            instance-id (create-dummy-instance conn job-id
+                            :instance-status :instance.status/running
+                            :task-id task-id)]
+        ; Wait for async database transaction inside handle-status-update
+        (async/<!! (sched/handle-status-update conn driver fenzo
+                     (make-dummy-status-update task-id :reason-gc-error :task-killed)))
+        (is (= :instance.status/failed
+             (ffirst (q '[:find ?status
+                          :in $ ?i
+                          :where
+                          [?i :instance/status ?s]
+                          [?s :db/ident ?status]]
+                         (db conn) instance-id))))
+        (is (= :mesos-gc-error
+               (ffirst (q '[:find ?reason-name
+                            :in $ ?i
+                            :where
+                            [?i :instance/reason ?r]
+                            [?r :reason/name ?reason-name]]
+                           (db conn) instance-id))))))  
+    (testing "Pre-existing reason is not mea-culpa. New reason is. Job still out of retries because non-mea-culpa takes preference"
+      (let [job-id (create-dummy-job conn
+                     :user "tsram"
+                     :job-state :job.state/completed
+                     :retry-count 3)
+            task-id "task2"
+            _ (create-dummy-instance conn job-id
+                            :instance-status :instance.status/failed
+                            :reason :unknown)
+            _ (create-dummy-instance conn job-id
+                            :instance-status :instance.status/failed
+                            :reason :unknown)
+            _ (create-dummy-instance conn job-id
+                            :instance-status :instance.status/failed
+                            :reason :mesos-master-disconnected) ; Mea-culpa
+            instance-id (create-dummy-instance conn job-id
+                            :instance-status :instance.status/failed
+                            :task-id task-id
+                            :reason :max-runtime-exceeded)] ; Previous reason is not mea-culpa
+        ; Status update says slave got restarted (mea-culpa)
+        (async/<!! (sched/handle-status-update conn driver fenzo
+                     (make-dummy-status-update task-id :mesos-slave-restarted :task-killed)))
+        ; Assert old reason persists
+        (is (= :max-runtime-exceeded
+               (ffirst (q '[:find ?reason-name
+                            :in $ ?i
+                            :where
+                            [?i :instance/reason ?r]
+                            [?r :reason/name ?reason-name]]
+                           (db conn) instance-id))))
+        ; Assert job still marked as out of retries 
+        (is (= :job.state/completed
+               (ffirst (q '[:find ?state
+                            :in $ ?j
+                            :where
+                            [?j :job/state ?s] 
+                            [?s :db/ident ?state]]
+                           (db conn) job-id))))
+        ))
+    (testing "Tasks of completed jobs are killed"
+      (let [job-id (create-dummy-job conn
+                     :user "tsram"
+                     :job-state :job.state/completed
+                     :retry-count 3)
+            task-id-a "taska"
+            task-id-b "taskb"
+            instance-id-a (create-dummy-instance conn job-id
+                            :instance-status :instance.status/running
+                            :task-id task-id-a
+                            :reason :unknown)
+            instance-id-b (create-dummy-instance conn job-id
+                            :instance-status :instance.status/success
+                            :task-id task-id-b
+                            :reason :unknown)] 
+        (async/<!! (sched/handle-status-update conn driver fenzo
+                     (make-dummy-status-update task-id-a :mesos-slave-restarted :task-running)))
+        (is (true? (contains? @tasks-killed task-id-a)))
+        ))
+    ))
 
 (comment
   (run-tests))

@@ -98,6 +98,32 @@
           {:ports (:job/ports job-ent 0)}
           (:job/resource job-ent)))
 
+(defn reasons->attempts-consumed
+  "Helper for job-ent->attempts-consumed, Takes a list of reasons.
+   This allows finding a job's attempts consumed during transactions, where an up-to-date job
+   entity might not be available. IMPORTANT: Note that instances failed due to mea-culpa reasons
+   do not count towards attempts consumed."
+  [reasons]
+  (->> reasons
+       (remove :reason/mea-culpa?) ; Note a nil reason counts as a non-mea-culpa failure! 
+       count))
+
+(defn job-ent->attempts-consumed
+  "Determines the amount of attempts consumed by a job-ent."
+  [job-ent]
+  (let [done-statuses #{:instance.status/success :instance.status/failed}]
+    (->> job-ent
+       :job/instance
+       (filter #(done-statuses (:instance/status %)))
+       (map :instance/reason)
+       (reasons->attempts-consumed))))
+
+(defn job-ent->all-attempts-consumed?
+  "True if a job-ent is out of retries."
+  [job-ent]
+  (<= (:job/max-retries job-ent)
+      (job-ent->attempts-consumed job-ent)))
+
 (defn sum-resources-of-jobs
   "Given a collections of job entities, returns the total resources they use
    {:cpus cpu :mem mem}"
@@ -134,7 +160,7 @@
 (defn get-jobs-by-user-and-state
   "Returns all job entities for a particular user 
    in a particular state."
-  [db user state]
+  [db user state start end]
   (->> (if (= state :job.state/completed)
          ;; Datomic query performance is based entirely on the size of the set
          ;; of the first where clause. In the case of :job.state/completed
@@ -142,17 +168,25 @@
          ;; all completed jobs by any user i.e.
          ;; (waiting_user + running_user < completed - completed_user)
          (q '[:find [?j ...]
-              :in $ ?user ?state
+              :in $ ?user ?state ?start ?end
               :where
               [?j :job/user ?user]
-              [?j :job/state ?state]]
-            db user state)
+              [?j :job/state ?state]
+              [?j :job/submit-time ?t]
+              [(< ?start ?t)]
+              [(< ?t ?end)]
+              [?j :job/custom-executor false]]
+            db user state start end)
          (q '[:find [?j ...]
-              :in $ ?user ?state
+              :in $ ?user ?state ?start ?end
               :where
               [?j :job/state ?state]
-              [?j :job/user ?user]]
-            db user state))
+              [?j :job/user ?user]
+              [?j :job/submit-time ?t]
+              [(< ?start ?t)]
+              [(< ?t ?end)]
+              [?j :job/custom-executor false]]
+            db user state start end))
        (map (partial d/entity db))))
 
 (timers/deftimer [cook-mesos scheduler get-running-tasks-duration])
@@ -228,8 +262,7 @@
     (let [eid (-> (d/entity (d/db conn) [:job/uuid uuid])
                   :db/id)]
       @(d/transact conn
-                   [
-                    [:db/add [:job/uuid uuid]
+                   [[:db/add [:job/uuid uuid]
                      :job/max-retries retries]
 
                     ;; If the job is in the "completed" state, put it back into
@@ -241,7 +274,7 @@
     (catch java.util.concurrent.ExecutionException e
       (if-not (.startsWith (.getMessage e)
                            "java.lang.IllegalStateException: :db.error/cas-failed Compare failed:")
-        (throw e)
+        (throw (ex-info "Exception while retrying job" {:uuid uuid :retries retries} e))
         @(d/transact conn
                      [[:db/add [:job/uuid uuid]
                        :job/max-retries retries]])))))

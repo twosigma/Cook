@@ -409,7 +409,9 @@
                   task-eid (:db/id task-ent)]
               [[:generic/ensure task-eid :instance/status (d/entid db :instance.status/running)]
                [:generic/atomic-inc job-eid :job/preemptions 1]
-               [:instance/update-state task-eid :instance.status/failed]
+               ;; The database can become inconsistent if we make multiple calls to :instance/update-state in a single
+               ;; transaction; see the comment in the definition of :instance/update-state for more details
+               [:instance/update-state task-eid :instance.status/failed [:reason/name :preempted-by-rebalancer]]
                [:db/add task-eid :instance/reason [:reason/name :preempted-by-rebalancer]]
                [:db/add task-eid :instance/preempted? true]]))
           (catch Throwable e
@@ -500,6 +502,36 @@
          (shutdown-rebalancer)))))
 
 (comment
+
+  ; Useful function to simulate preemptions
+  (defn update-task-by-name
+    [name reason-name]
+    (let [conn (d/connect "datomic:mem://mesos-jobs")
+        running (ffirst (q '[:find ?status
+                         :in $ ?ident
+                         :where
+                         [?status :db/ident ?ident]
+                         ] (d/db conn) :instance.status/running))
+        task-eid (ffirst (q '[:find ?inst
+                         :in $ ?name ?status
+                         :where
+                         [?j :job/name ?name]
+                         [?j :job/instance ?inst]
+                         [?inst :instance/status ?status]
+                         ] (d/db conn) name running))
+        ]
+    @(d/transact
+        conn
+        [;; The database can become inconsistent if we make multiple calls to :instance/update-state in a single
+         ;; transaction; see the comment in the definition of :instance/update-state for more details
+         [:instance/update-state task-eid :instance.status/failed [:reason/name reason-name]]
+         [:db/add task-eid :instance/reason [:reason/name reason-name]]
+         [:db/add task-eid :instance/preempted? true]
+         ])))
+
+  (update-task-by-name "sometask" :unknown)
+  (update-task-by-name "sometask" :preempted-by-rebalancer)
+  
   (let [conn (d/connect "datomic:mem://mesos-jobs")]
     (share/set-share! conn "default" :cpus 20.0 :mem 2500000.0))
 

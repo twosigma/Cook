@@ -38,7 +38,7 @@
             timeout-ch (async/chan)
             state [#{timeout-ch} {task-id timeout-ch} {timeout-ch task-id}]
             db [[instance-id :instance/task-id task-id]]]
-        (is (= [[#{} {} {}] [:instance/update-state instance-id :instance.status/failed]])
+        (is (= [[#{} {} {}] [:instance/update-state instance-id :instance.status/failed [:reason/name :heartbeat-lost]]])
             (heartbeat/handle-timeout state db timeout-ch)))))
 
 (deftest test-sync-with-datomic

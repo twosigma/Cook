@@ -124,13 +124,14 @@
 (defn test-fake-job
   "Takes the initial and target state of the job, and the statuses of the instances. Uses
    `is` to validate."
-  [conn init-job-state final-job-state & task-states]
-  (let [j (apply make-fake-job-with-tasks
+  [testname conn init-job-state final-job-state & task-states]
+  (testing testname
+    (let [j (apply make-fake-job-with-tasks
                  conn
                  init-job-state
                  task-states)]
     @(d/transact conn [[:job/update-state j]])
-    (is (= final-job-state (:job/state (d/entity (db conn) j))))))
+    (is (= final-job-state (:job/state (d/entity (db conn) j)))))))
 
 (deftest test-job-update-state
   (let [test-db-uri "datomic:mem://test-update-state-db"
@@ -140,11 +141,13 @@
       @(d/transact conn init))
     ;; Success means we're done
     (test-fake-job
+      "Waiting to completed"
       conn
       :job.state/waiting
       :job.state/completed
       :instance.status/success)
     (test-fake-job
+      "Completed in multiple tries"
       conn
       :job.state/waiting
       :job.state/completed
@@ -153,64 +156,71 @@
       :instance.status/success)
     ;; Start running
     (test-fake-job
+      "Running to still running"
       conn
       :job.state/running
       :job.state/running
       :instance.status/running)
     (test-fake-job
+      "Waiting to running"
       conn
       :job.state/waiting
       :job.state/running
       :instance.status/running)
     (test-fake-job
+      "Waiting to running, some fails"
       conn
       :job.state/waiting
       :job.state/running
       :instance.status/failed
       :instance.status/failed
       :instance.status/running)
-    ;; Not done yet? back to waiting
     (test-fake-job
+      "Not done yet, back to waiting"
       conn
       :job.state/waiting
       :job.state/waiting
       :instance.status/failed)
     (test-fake-job
-      conn
-      :job.state/running
-      :job.state/waiting
-      :instance.status/failed
-      :instance.status/failed)
-    (test-fake-job
-      conn
-      :job.state/waiting
-      :job.state/waiting
-      :instance.status/failed
-      :instance.status/failed)
-    ;; max retries means we're done
-    (test-fake-job
-      conn
-      :job.state/waiting
-      :job.state/completed
-      :instance.status/failed
-      :instance.status/failed
-      :instance.status/failed)
-    (test-fake-job
-      conn
-      :job.state/completed
-      :job.state/completed
-      :instance.status/failed
-      :instance.status/failed
-      :instance.status/failed)
-    (test-fake-job
+      "Running to waiting due to fail"
       conn
       :job.state/running
+      :job.state/waiting
+      :instance.status/failed
+      :instance.status/failed)
+    (test-fake-job
+      "Waiting to still waiting due to fails"
+      conn
+      :job.state/waiting
+      :job.state/waiting
+      :instance.status/failed
+      :instance.status/failed)
+    (test-fake-job
+      "Waiting and out of retries means done"
+      conn
+      :job.state/waiting
       :job.state/completed
       :instance.status/failed
       :instance.status/failed
       :instance.status/failed)
-    ;; Never leave completed
     (test-fake-job
+      "Completed and out of retries means still done"
+      conn
+      :job.state/completed
+      :job.state/completed
+      :instance.status/failed
+      :instance.status/failed
+      :instance.status/failed)
+    (test-fake-job
+      "Running and out of retries means done"
+      conn
+      :job.state/running
+      :job.state/completed
+      :instance.status/failed
+      :instance.status/failed
+      :instance.status/failed)
+    (test-fake-job
+      "Always stay completed"
       conn
       :job.state/completed
       :job.state/completed
@@ -286,28 +296,6 @@
                (async/alt!! chan ([c] (recur (+ 1 seen)))
                             (async/timeout 100) ([_] seen)))))
       (finally
-        (kill-thread)
-        (async/untap mult chan)
-        (async/close! chan)
-        (d/delete-database test-db-uri)))))
-
-(deftest test-tx-report-queue-monitor
-  (let [test-db-uri "datomic:mem://test-transact-db"
-        _ (d/create-database test-db-uri)
-        conn (d/connect test-db-uri)
-        [mult kill-thread] (cook.datomic/create-tx-report-mult conn)
-        chan (async/chan)
-        shutdown-monitor (sched/monitor-tx-report-queue chan conn (atom nil))]
-    (try
-      (async/tap mult chan)
-      (doseq [init cook.mesos.schema/work-item-schema]
-        @(d/transact conn init))
-      ;; This only tests that the :job/update-state db-fn was invoked (not whether it's correct)
-      (let [j (make-fake-job-with-tasks conn :job.state/waiting :instance.status/running)]
-        (Thread/sleep 1000)
-        (is (= :job.state/running (:job/state (d/entity (db conn) j)))))
-      (finally
-        (shutdown-monitor)
         (kill-thread)
         (async/untap mult chan)
         (async/close! chan)

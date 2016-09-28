@@ -33,7 +33,7 @@
 
 (defn compare-uris
   "Takes 2 lists of URIs and makes sure they're the same.
-   
+
    The first list is the correct list, which may be missing keys.
    The second list can be fully filled in by Cook with defaults."
   [gold-standard new-data]
@@ -60,8 +60,8 @@
    "mem" 2048.0})
 
 (defn basic-handler
-  [conn & {:keys [cpus mem gpus-enabled] :or {cpus 12 mem 100 gpus-enabled false}}]
-  (main-handler conn "my-framework-id" {:cpus cpus :memory-gb mem} gpus-enabled
+  [conn & {:keys [cpus mem gpus-enabled retry-limit] :or {cpus 12 mem 100 gpus-enabled false retry-limit 200}}]
+  (main-handler conn "my-framework-id" {:cpus cpus :memory-gb mem :retry-limit retry-limit} gpus-enabled
                 (fn [] []) authorized-fn))
 
 (deftest handler-db-roundtrip
@@ -84,7 +84,6 @@
                     "env" env
                     "labels" labels})
         h (basic-handler conn)]
-    (println )
     (is (<= 200
             (:status (h {:request-method :post
                          :scheme :http
@@ -133,25 +132,33 @@
 
 (deftest job-validator
   (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
-        job (fn [cpus mem] (merge (basic-job) {:cpus cpus :mem mem}))
-        h (basic-handler conn :cpus 3.0 :mem 2)]
-    (testing "Within limits"
+        job (fn [cpus mem max-retries] {"uuid" (str (java.util.UUID/randomUUID))
+                            "command" "hello world"
+                            "name" "my-cool-job"
+                            "priority" 66
+                            "max_retries" max-retries
+                            "max_runtime" 1000000
+                            "cpus" cpus
+                            "mem" mem})
+        h (main-handler conn "my-framework-id" {:cpus 3.0 :memory-gb 2 :retry-limit 200}
+                        false (fn [] []) authorized-fn)]
+    (testing "All within limits"
       (is (<= 200
               (:status (h {:request-method :post
                            :scheme :http
                            :uri "/rawscheduler"
                            :headers {"Content-Type" "application/json"}
                            :authorization/user "dgrnbrg"
-                           :body-params {:jobs [(job 1 500)]}}))
+                           :body-params {"jobs" [(job 1 500 100)]}}))
               299)))
-    (testing "At limits"
+    (testing "All at limits"
       (is (<= 200
               (:status (h {:request-method :post
                            :scheme :http
                            :uri "/rawscheduler"
                            :headers {"Content-Type" "application/json"}
                            :authorization/user "dgrnbrg"
-                           :body-params {:jobs [(job 3 2048)]}}))
+                           :body-params {"jobs" [(job 3 2048 200)]}}))
               299)))
     (testing "Beyond limits cpus"
       (is (<= 400
@@ -160,7 +167,7 @@
                            :uri "/rawscheduler"
                            :headers {"Content-Type" "application/json"}
                            :authorization/user "dgrnbrg"
-                           :body-params {"jobs" [(job 3.1 100)]}}))
+                           :body-params {"jobs" [(job 3.1 100 100)]}}))
               499)))
     (testing "Beyond limits mem"
       (is (<= 400
@@ -169,7 +176,16 @@
                            :uri "/rawscheduler"
                            :headers {"Content-Type" "application/json"}
                            :authorization/user "dgrnbrg"
-                           :body-params {"jobs" [(job 1 2050)]}}))
+                           :body-params {"jobs" [(job 1 2050 100)]}}))
+              499)))
+    (testing "Beyond limits retries"
+      (is (<= 400
+              (:status (h {:request-method :post
+                           :scheme :http
+                           :uri "/rawscheduler"
+                           :headers {"Content-Type" "application/json"}
+                           :authorization/user "dgrnbrg"
+                           :body-params {"jobs" [(job 1 100 202)]}}))
               499)))))
 
 (deftest gpus-api
@@ -325,3 +341,154 @@
                                 :query-params {:user "foo"}}))
             get-body (-> get-resp :body slurp json/read-str)]
         (is (= get-body initial-get-body))))))
+
+(deftest retry-validator
+  (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
+        uuid (str (java.util.UUID/randomUUID))
+        job (merge (basic-job) {"uuid" (str uuid)})
+        h (basic-handler conn :retry-limit 200)]
+        (testing "Initial job creation"
+          (is (= 201
+                 (:status (h {:request-method :post
+                  :scheme :http
+                  :uri "/rawscheduler"
+                  :headers {"Content-Type" "application/json"}
+                  :authorization/user "dgrnbrg"
+                  :body-params {"jobs" [job]}})))))
+
+        (testing "Within limits"
+          (is (<= 200
+                  (:status (h {:request-method :post
+                               :scheme :http
+                               :uri "/retry"
+                               :headers {"Content-Type" "application/json"}
+                               :authorization/user "dgrnbrg"
+                               :body-params {"job" uuid
+                                        "retries" 199}}))
+                  299)))
+        (testing "At limits"
+          (is (<= 200
+                  (:status (h {:request-method :post
+                               :scheme :http
+                               :uri "/retry"
+                               :headers {"Content-Type" "application/json"}
+                               :authorization/user "dgrnbrg"
+                               :body-params {"job" uuid
+                                        "retries" 200}}))
+                  299)))
+        (testing "Over limit"
+          (is (<= 400
+                  (:status (h {:request-method :post
+                               :scheme :http
+                               :uri "/retry"
+                               :headers {"Content-Type" "application/json"}
+                               :authorization/user "dgrnbrg"
+                               :body-params {"job" uuid
+                                        "retries" 201}}))
+                  499)))))
+
+(deftest list-validator
+  (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
+        uuid #uuid "386b374c-4c4a-444f-aca0-0c25384c6fa0"
+        env {"MY_VAR" "one"
+             "MY_OTHER_VAR" "two"}
+        labels {"key1" "value1"
+                "key2" "value2"}
+        uris [{"value" "http://cool.com/data.txt"
+               "extract" false}
+              {"value" "ftp://bar.com/data.zip"
+               "extract" true
+               "cache" true
+               "executable" false}]
+        job {"uuid" (str uuid)
+             "command" "hello world"
+             "name" "my-cool-job"
+             "priority" 66
+             "max_retries" 100
+             "max_runtime" 1000000
+             "ports" 2
+             "uris" uris
+             "env" env
+             "labels" labels
+             "cpus" 2.0
+             "mem" 2048.0}
+        h (basic-handler conn :cpus 12 :memory-gb 100 :retry-limit 500)]
+    (is (= "[]"
+          (:body (h {:request-method :get
+            :scheme :http
+            :uri "/list"
+            :authorization/user "wyegelwe"
+            :body-params {"start-ms" (str (System/currentTimeMillis))
+                          "end-ms" (str (+ (System/currentTimeMillis) 10))
+                          "state" "running"
+                          "user" "wyegelwe"}}))))
+
+    ; Fail because missing user
+    (is (<= 400
+           (:status (h {:request-method :get
+                      :scheme :http
+                      :uri "/list"
+                      :authorization/user "wyegelwe"
+                      :body-params {"start-ms" (str (System/currentTimeMillis))
+                               "end-ms" (str (+ (System/currentTimeMillis) 10))
+                               "state" "running"
+                               }}))
+            499))
+
+    ; Fail because missing state
+    (is (<= 400
+            (:status (h {:request-method :get
+                       :scheme :http
+                       :uri "/list"
+                       :authorization/user "wyegelwe"
+                       :body-params {"start-ms" (str (System/currentTimeMillis))
+                                "end-ms" (str (+ (System/currentTimeMillis) 10))
+                                "user" "wyegelwe"}}))
+            499))
+
+    ; Fail because start is after end
+    (is (<= 400
+            (:status (h {:request-method :get
+                       :scheme :http
+                       :uri "/list"
+                       :authorization/user "wyegelwe"
+                       :body-params {"start-ms" (str (+ (System/currentTimeMillis) 1000))
+                                "end-ms" (str (+ (System/currentTimeMillis) 10))
+                                "state" "running"
+                                "user" "wyegelwe"
+                                }}))
+            499))
+
+    (is (<= 200
+        (:status (h {:request-method :post
+                     :scheme :http
+                     :uri "/rawscheduler"
+                     :headers {"Content-Type" "application/json"}
+                     :authorization/user "dgrnbrg"
+                     :body-params {"jobs" [job]}}))
+        299))
+
+    (let [list-str (:body (h {:request-method :get
+                              :scheme :http
+                              :uri "/list"
+                              :authorization/user "wyegelwe"
+                              :body-params {"start-ms" (str (- (System/currentTimeMillis) 1000))
+                                       "end-ms" (str (+ (System/currentTimeMillis) 1000))
+                                       "state" "running+waiting+completed"
+                                       "user" "dgrnbrg"
+                                       }
+                              }))
+          jobs (json/read-str list-str)]
+      (is (= 1 (count jobs)))
+      (is (= (str uuid) (-> jobs first (get "uuid")))))
+
+    (let [list-str (:body (h {:request-method :get
+                              :scheme :http
+                              :uri "/list"
+                              :authorization/user "wyegelwe"
+                              :body-params {"start-ms" (str (+ (System/currentTimeMillis) 1000))
+                                       "end-ms" (str (+ (System/currentTimeMillis) 1000))
+                                       "state" "running+waiting+completed"
+                                       "user" "dgrnbrg"}}))
+          jobs (json/read-str list-str)]
+      (is (= 0 (count jobs))))))
