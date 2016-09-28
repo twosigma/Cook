@@ -252,16 +252,20 @@
            (when-not (nil? instance)
              ;; (println "update:" task-id task-state job instance instance-status prior-job-state)
              (log/debug "Transacting updated state for instance" instance "to status" instance-status)
+             ;; The database can become inconsistent if we make multiple calls to :instance/update-state in a single
+             ;; transaction; see the comment in the definition of :instance/update-state for more details
              (transact-with-retries conn
-                                    (reduce into
-                                            [[:instance/update-state instance instance-status]]
-                                            [(when (and (#{:instance.status/failed} instance-status) (not previous-reason) reason)
-                                               [[:db/add instance :instance/reason (reason/mesos-reason->cook-reason-entity-id db reason)]])
-                                             (when (#{:instance.status/success
-                                                      :instance.status/failed} instance-status)
-                                               [[:db/add instance :instance/end-time (now)]])
-                                             (when progress
-                                               [[:db/add instance :instance/progress progress]])]))))
+               (reduce into
+                 [[:instance/update-state instance instance-status (or (:db/id previous-reason)
+                                                                       (reason/mesos-reason->cook-reason-entity-id db reason)
+                                                                       [:reason.name :unknown])]] ; Warning: Default is not mea-culpa
+                 [(when (and (#{:instance.status/failed} instance-status) (not previous-reason) reason)
+                    [[:db/add instance :instance/reason (reason/mesos-reason->cook-reason-entity-id db reason)]])
+                  (when (#{:instance.status/success
+                           :instance.status/failed} instance-status)
+                    [[:db/add instance :instance/end-time (now)]])
+                  (when progress
+                    [[:db/add instance :instance/progress progress]])]))))
       (catch Exception e
         (log/error e "Mesos scheduler status update error")))))
 
@@ -286,15 +290,6 @@
                              (let [{:keys [tx-data db-before]} tx-report
                                    db (db conn)]
                                (meters/mark! tx-report-queue-datoms (count tx-data))
-                               ;; Monitoring whether an instance status is updated.
-                               (doseq [e (set (map :e tx-data))]
-                                 (try
-                                   (when-let [job (:job/_instance (d/entity db e))]
-                                     (log/debug "Updating state of job" job "due to update of instance" e)
-                                     (meters/mark! tx-report-queue-update-job-state)
-                                     (transact-with-retries conn [[:job/update-state (:db/id job)]]))
-                                   (catch Exception e
-                                     (log/error e "Unexpected exception on tx report queue processor"))))
                                ;; Monitoring whether a job is completed.
                                (doseq [{:keys [e a v]} tx-data]
                                  (try
@@ -612,6 +607,13 @@
               considerable-by (->> scheduler-contents-by
                                    (map (fn [[category jobs]]
                                           [category (->> jobs
+                                                         ;; Refresh cached job entity data to prevent cases where stale
+                                                         ;; data lingers for too long.  This is problematic in the case
+                                                         ;; of backfilled jobs because they remain in the queue after
+                                                         ;; they are scheduled in the hopes that the job will be
+                                                         ;; upgraded. However, this means it is possible the instance
+                                                         ;; will fail and it will be considered again.
+                                                         (map #(d/entity db (:db/id %)))
                                                          (filter (fn [job]
                                                                    ;; Remove backfill jobs
                                                                    (= (:job/state job)
@@ -691,6 +693,10 @@
                                         task-id (:task-id request)
                                         job-id (get-in request [:job :db/id])]]
                               [[:job/allowed-to-start? job-id]
+                               ;; NB we set any job with an instance in a non-terminal
+                               ;; state to running to prevent scheduling the same job
+                               ;; twice; see schema definition for state machine
+                               [:db/add job-id :job/state :job.state/running]
                                {:db/id (d/tempid :db.part/user)
                                 :job/_instance job-id
                                 :instance/task-id task-id
@@ -953,6 +959,34 @@
                         now)
                    task-id))))))
 
+(defn kill-lingering-tasks
+  [now conn driver config]
+  (let [{:keys [max-timeout-hours
+                default-timeout-hours
+                timeout-hours]} config
+        db (d/db conn)
+        ;; These defaults are for backwards compatibility
+        max-timeout-hours (or max-timeout-hours timeout-hours)
+        default-timeout-hours (or default-timeout-hours timeout-hours)
+        lingering-tasks (get-lingering-tasks db now max-timeout-hours default-timeout-hours)]
+    (when (seq lingering-tasks)
+      (log/info "Starting to kill lingering jobs running more than their max-runtime."
+                {:default-timeout-hours default-timeout-hours
+                 :max-timeout-hours max-timeout-hours}
+                "There are in total" (count lingering-tasks) "lingering tasks.")
+      (doseq [task-id lingering-tasks]
+        (log/info "Killing lingering task" task-id)
+        ;; Note that we probably should update db to mark a task failed as well.
+        ;; However in the case that we fail to kill a particular task in Mesos,
+        ;; we could lose the chances to kill this task again.
+        (mesos/kill-task! driver {:value task-id})
+        @(d/transact
+           conn
+           [[:instance/update-state [:instance/task-id task-id] :instance.status/failed [:reason/name :max-runtime-exceeded]]
+            [:db/add [:instance/task-id task-id] :instance/reason [:reason/name :max-runtime-exceeded]]])
+        )))
+  )
+
 (defn lingering-task-killer
   "Periodically kill lingering tasks.
 
@@ -960,36 +994,11 @@
    :interval-minutes specifies the frequency of killing
    :timout-hours specifies the timeout hours for lingering tasks"
   [conn driver config]
-  (let [{:keys [timeout-interval-minutes
-                max-timeout-hours
-                default-timeout-hours
-                timeout-hours]}
-        (merge {:timeout-interval-minutes 10
-                :timeout-hours (* 2 24)}
-               config)]
-    (chime-at (periodic/periodic-seq (time/now) (time/minutes timeout-interval-minutes))
-              (fn [now]
-                (let [db (d/db conn)
-                      ;; These defaults are for backwards compatibility
-                      max-timeout-hours (or max-timeout-hours timeout-hours)
-                      default-timeout-hours (or default-timeout-hours timeout-hours)
-                      lingering-tasks (get-lingering-tasks db now max-timeout-hours default-timeout-hours)]
-                  (when (seq lingering-tasks)
-                    (log/info "Starting to kill lingering jobs running more than their max-runtime."
-                              {:default-timeout-hours default-timeout-hours
-                               :max-timeout-hours max-timeout-hours}
-                              "There are in total" (count lingering-tasks) "lingering tasks.")
-                    (doseq [task-id lingering-tasks]
-                      (log/info "Killing lingering task" task-id)
-                      ;; Note that we probably should update db to mark a task failed as well.
-                      ;; However in the case that we fail to kill a particular task in Mesos,
-                      ;; we could lose the chances to kill this task again.
-                      (mesos/kill-task! driver {:value task-id})
-                      @(d/transact
-                         conn
-                         [[:instance/update-state [:instance/task-id task-id] :instance/status/failed]
-                          [:db/add [:instance/task-id task-id] :instance/reason [:reason/name :max-runtime-exceeded]]])
-                      ))))
+  (let [config (merge {:timeout-interval-minutes 10
+                       :timeout-hours (* 2 24)}
+                      config)]
+    (chime-at (periodic/periodic-seq (time/now) (time/minutes (:timeout-interval-minutes config)))
+              (fn [now] (kill-lingering-tasks now conn driver config))
               {:error-handler (fn [e]
                                 (log/error e "Failed to reap timeout tasks!"))})))
 

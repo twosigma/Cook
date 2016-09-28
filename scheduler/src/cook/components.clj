@@ -15,6 +15,7 @@
 ;;
 (ns cook.components
   (:require [plumbing.core :refer (fnk)]
+            [ring.middleware.cookies :refer (wrap-cookies)]
             [ring.middleware.params :refer (wrap-params)]
             [clj-pid.core :as pid]
             [clojure.java.io :as io]
@@ -207,6 +208,7 @@
                                                        authorization-middleware
                                                        wrap-stacktrace
                                                        wrap-no-cache
+                                                       wrap-cookies
                                                        wrap-params
                                                        health-check-middleware
                                                        instrument)
@@ -251,7 +253,8 @@
                           {:timeout-hours 1
                            :timeout-interval-minutes 1
                            :memory-gb 48
-                           :cpus 6})
+                           :cpus 6
+                           :retry-limit 5})
    ;:task-constraints (fnk []
    ;                       {:timeout-hours (* 5 24)
    ;                        :timeout-interval-minutes 10

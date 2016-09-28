@@ -34,7 +34,9 @@
             [liberator.util :refer [combine]]
             [cheshire.core :as cheshire]
             [cook.mesos.util :as util]
+            [me.raynes.conch :as sh]
             [clj-time.core :as t]
+            [metrics.timers :as timers]
             [cook.mesos.share :as share]
             [cook.mesos.quota :as quota]
             [plumbing.core :refer (map-vals)]
@@ -42,14 +44,13 @@
             [clojure.walk :refer (keywordize-keys)])
   (:import java.util.UUID))
 
-(def PosNum
-  (s/both s/Num (s/pred pos? 'pos?)))
-
-(def PosInt
-  (s/both s/Int (s/pred pos? 'pos?)))
-
-(def PosDouble
-  (s/both double (s/pred pos? 'pos?)))
+;; This is necessary to prevent a user from requesting a uid:gid
+;; pair other than their own (for example, root)
+(sh/let-programs [_id "/usr/bin/id"]
+  (defn uid [user-name]
+    (clojure.string/trim (_id "-u" user-name)))
+  (defn gid [user-name]
+    (clojure.string/trim (_id "-g" user-name))))
 
 (defn render-error
   [ctx]
@@ -73,6 +74,18 @@
 ;;
 ;; /rawscheduler
 ;;
+
+(def PosNum
+  (s/both s/Num (s/pred pos? 'pos?)))
+
+(def PosInt
+  (s/both s/Int (s/pred pos? 'pos?)))
+
+(def NonNegInt
+  (s/both s/Int (s/pred (comp not neg?) 'non-negative?)))
+
+(def PosDouble
+  (s/both double (s/pred pos? 'pos?)))
 
 (def PortMapping
   "Schema for Docker Portmapping"
@@ -168,6 +181,7 @@
    (s/optional-key :start_time) s/Int
    (s/optional-key :end_time) s/Int
    (s/optional-key :reason_code) s/Int
+   (s/optional-key :output_url) s/Str
    (s/optional-key :reason_string) s/Str})
 
 (def JobResponse
@@ -177,7 +191,8 @@
   (merge (dissoc JobRequest :user)
          {:framework_id (s/maybe s/Str)
           :status s/Str
-          :submit-time s/Str
+          :submit_time PosInt
+          :retries_remaining NonNegInt
           (s/optional-key :gpus) s/Int
           (s/optional-key :instances) [Instance]}))
 
@@ -220,7 +235,7 @@
 
 (defn- build-container
   "Helper for submit-jobs, deal with container structure."
-  [id container]
+  [user id container]
   (let [container-id (d/tempid :db.part/user)
         docker-id (d/tempid :db.part/user)
         ctype (:type container)
@@ -228,7 +243,13 @@
     (if (= (clojure.string/lower-case ctype) "docker")
       (let [docker (:docker container)
             params (or (:parameters docker) [])
-            port-mappings (or (:port-mapping docker) [])]
+            port-mappings (or (:port-mapping docker) [])
+            user-params (filter #(= (:key %) "user") params)
+            expected-user-param (str (uid user) ":" (gid user))]
+        (when (some #(not= expected-user-param (:value %)) user-params)
+          (throw (ex-info "user parameter must match uid and gid of user submitting."
+                          {:expected-user-param expected-user-param
+                           :user-params-submitted user-params})))
         [[:db/add id :job/container container-id]
          (merge {:db/id container-id
                  :container/type "DOCKER"}
@@ -279,7 +300,7 @@
                                   :label/key k
                                   :label/value v}]))
                             labels)
-                container (if (nil? container) [] (build-container id container))
+                container (if (nil? container) [] (build-container user id container))
                 ;; These are optionally set datoms w/ default values
                 maybe-datoms (concat
                                (when (and priority (not= util/default-job-priority priority))
@@ -310,7 +331,7 @@
                                      :resource/amount cpus}
                                     {:resource/type :resource.type/mem
                                      :resource/amount mem}]}]]
-    
+
     ;; TODO batch these transactions to improve performance
     @(d/transact conn (-> ports
                           (into uris)
@@ -373,6 +394,10 @@
                            (* 1024 (:memory-gb task-constraints)))
                       {:constraints task-constraints
                        :job job})))
+    (when (> max_retries (:retry-limit task-constraints))
+      (throw (ex-info (str "Requested " max_retries " exceeds the maximum retry limit")
+                      {:constraints task-constraints
+                       :job job})))
     (doseq [{:keys [executable? extract?] :as uri} (:uris munged)
             :when (and (not (nil? executable?)) (not (nil? extract?)))]
       (throw (ex-info "Uri cannot set executable and extract" uri)))
@@ -390,12 +415,12 @@
                                       :conn-timeout timeout-millis
                                       :as :json-string-keys
                                       :spnego-auth true}))
-        framework-executors (for [framework (reduce into 
-                                                    [] 
+        framework-executors (for [framework (reduce into
+                                                    []
                                                     [(get slave-state "frameworks")
                                                      (get slave-state "completed_frameworks")])
                                   :when (= framework-id (get framework "id"))
-                                  e (reduce into 
+                                  e (reduce into
                                             []
                                             [(get framework "executors")
                                              (get framework "completed_executors")])]
@@ -441,11 +466,13 @@
        :uuid (str (:job/uuid job))
        :name (:job/name job "cookjob")
        :priority (:job/priority job util/default-job-priority)
-       :submit-time (str (:job/submit-time job))
+       :submit_time (when (:job/submit-time job) ; Due to a bug, submit time may not exist for some jobs
+                      (.getTime (:job/submit-time job)))
        :cpus (:cpus resources)
        :mem (:mem resources)
        :gpus (int (:gpus resources 0))
        :max_retries  (:job/max-retries job) ; Consistent with input
+       :retries_remaining (- (:job/max-retries job) (util/job-ent->attempts-consumed job))
        :max_runtime (:job/max-runtime job Long/MAX_VALUE) ; Consistent with input
        :framework_id fid
        :status (name (:job/state job))
@@ -509,20 +536,20 @@
       (cond
         (and (every? used? jobs)
              (every? (complement nil?) instance-jobs))
-        [true {::jobs (into jobs instance-jobs)}]
+          [true {::jobs (into jobs instance-jobs)}]
         (some nil? instance-jobs)
-        [false {::error (str "UUID "
-                             (str/join
-                              \space
-                              (filter (comp nil? instance-uuid->job-uuid)
-                                      instances))
-                             " didn't correspond to an instance")}]
+          [false {::error (str "UUID "
+                               (str/join
+                                \space
+                                (filter (comp nil? instance-uuid->job-uuid)
+                                        instances))
+                               " didn't correspond to an instance")}]
         :else
-        [false {::error (str "UUID "
-                             (str/join
-                              \space
-                              (remove used? jobs))
-                             " didn't correspond to a job")}]))))
+          [false {::error (str "UUID "
+                               (str/join
+                                \space
+                                (remove used? jobs))
+                               " didn't correspond to a job")}]))))
 
 (defn check-job-params-present
   [ctx]
@@ -554,11 +581,11 @@
 (defn read-jobs-handler
   [conn fid task-constraints gpu-enabled? is-authorized-fn]
   (base-cook-handler
-   {:allowed-methods [:get]
-    :malformed? check-job-params-present
-    :allowed? (partial job-request-allowed? conn is-authorized-fn)
-    :exists? (partial retrieve-jobs conn true)
-    :handle-ok (partial render-jobs-for-response conn fid)}))
+    {:allowed-methods [:get]
+     :malformed? check-job-params-present
+     :allowed? (partial job-request-allowed? conn is-authorized-fn)
+     :exists? (partial retrieve-jobs conn true)
+     :handle-ok (partial render-jobs-for-response conn fid)}))
 
 
 ;;; On DELETE; use repeated job argument
@@ -705,6 +732,20 @@
       [true {::job job}]
       [false {::error (str "UUID " job " does not correspond to a job" )}])))
 
+(defn validate-retries
+  [conn task-constraints ctx]
+  (let [retries (or (get-in ctx [:request :query-params :retries])
+                (get-in ctx [:request :body-params :retries]))]
+    (cond
+      (nil? retries)
+        [true {::error (str "'retries' parameter is required")}]
+      (not (pos? retries))
+        [true {::error (str "'retries' must be positive")}]
+      (> retries (:retry-limit task-constraints))
+        [true {::error (str "'retries' exceeds the maximum retry limit of " (:retry-limit task-constraints))}]
+      :else
+        [false {::retries retries}])))
+
 (defn check-retry-allowed
   [conn is-authorized-fn ctx]
   (let [request-user (get-in ctx [:request :authorization/user])
@@ -729,32 +770,29 @@
     :handle-ok (partial display-retries conn)}))
 
 (defn post-retries-handler
-  [conn is-authorized-fn]
+  [conn is-authorized-fn task-constraints]
   (base-retries-handler
    conn is-authorized-fn
    {:allowed-methods [:post]
     ;; we need to check if it's a valid job UUID in malformed? here,
     ;; because this endpoint currently isn't restful (POST used for what is
     ;; actually an idempotent update; it should be PUT).
-    :malformed? (fn [ctx]
-                  ;; negate the first element of vec returned by exists?
-                  (let [exists (check-job-exists conn ctx)]
-                        (assoc exists 0 (not (first exists)))))
+    :exists? (partial check-job-exists conn)
+    :malformed? (partial validate-retries conn task-constraints)
     :handle-created (partial display-retries conn)
     :post! (fn [ctx]
-             (util/retry-job! conn (::job ctx)
-                              (get-in ctx [:request :body-params :retries])))}))
+             (util/retry-job! conn (::job ctx) (::retries ctx)))}))
 
 (defn put-retries-handler
-  [conn is-authorized-fn]
+  [conn is-authorized-fn task-constraints]
   (base-retries-handler
    conn is-authorized-fn
    {:allowed-methods [:put]
     :exists? (partial check-job-exists conn)
+    :malformed? (partial validate-retries conn task-constraints)
     :handle-created (partial display-retries conn)
     :put! (fn [ctx]
-            (util/retry-job! conn (::job ctx)
-                             (get-in ctx [:request :body-params :retries])))}))
+            (util/retry-job! conn (::job ctx) (ctx ::retries)))}))
 
 
 ;; /share and /quota
@@ -832,11 +870,110 @@
     :post! (fn [ctx]
              (apply set-limit-fn conn (get-in ctx [:request :body-params :user]) (reduce into [] (::limits ctx))))}))
 
+(defn- str->state-attr
+  [state-str]
+  (when (contains? #{"running" "waiting" "completed"} state-str)
+    (keyword (format "job.state/%s" state-str))))
+
+(defn- parse-int-default
+  [s d]
+  (if (nil? s)
+    d
+    (Integer/parseInt s)))
+
+(defn- parse-long-default
+  [s d]
+  (if (nil? s)
+    d
+    (Long/parseLong s)))
+
+(timers/deftimer [order-wheel handler fetch-jobs])
+(timers/deftimer [order-wheel handler list-endpoint])
+
+(defn list-resource
+  [db framework-id is-authorized-fn]
+  (-> (liberator/resource
+        :available-media-types ["application/json"]
+        :allowed-methods [:get]
+        :malformed? (fn [ctx]
+                      ;; since-hours-ago is included for backwards compatibility but is deprecated
+                      ;; please use start-ms and end-ms instead
+                      (let [{:keys [state user since-hours-ago start-ms end-ms limit]
+                             :as params}
+                              (keywordize-keys (or (get-in ctx [:request :query-params])
+                                                   (get-in ctx [:request :body-params])))]
+                        (if (and state user)
+                          (let [state-strs (clojure.string/split state #"\+")
+                                states (->> state-strs
+                                            (map str->state-attr)
+                                            (filter (comp not nil?)))]
+                            (if (= (count state-strs) (count states))
+                              (try
+                                [false {::states states
+                                        ::user user
+                                        ::since-hours-ago (parse-int-default since-hours-ago 24)
+                                        ::start-ms (parse-long-default start-ms nil)
+                                        ::limit (parse-int-default limit Integer/MAX_VALUE)
+                                        ::end-ms (parse-long-default end-ms (System/currentTimeMillis))}]
+                                (catch NumberFormatException e
+                                  [true {::error (.toString e)}]))
+                              [true {::error (str "unsupported state in " state ", must be running, waiting, or completed")}]))
+                          [true {::error "must supply the state and the user name"}])))
+        :allowed? (fn [ctx]
+                    (let [{limit ::limit
+                           user ::user
+                           since-hours-ago ::since-hours-ago
+                           start-ms ::start-ms
+                           end-ms ::end-ms} ctx
+                          request-user (get-in ctx [:request :authorization/user])]
+                      (cond
+                        (not (is-authorized-fn request-user :get {:owner user :item :job}))
+                        [false {::error (str "You are not authorized to list jobs for " user)}]
+                        (or (< 168 since-hours-ago)
+                            (> 0 since-hours-ago))
+                        [false {::error (str "since-hours-ago must be between 0 and 168 (7 days)")}]
+                        (> 1 limit)
+                        [false {::error (str "limit must be positive")}]
+                        (and start-ms (> start-ms end-ms))
+                        [false {::error (str "start-ms (" start-ms ") must be before end-ms (" end-ms ")")}]
+                        :else true)))
+        :handle-malformed ::error
+        :handle-forbidden ::error
+        :handle-ok (fn [ctx]
+                     (timers/time!
+                       list-endpoint
+                       (let [{states ::states
+                              user ::user
+                              start-ms ::start-ms
+                              end-ms ::end-ms
+                              since-hours-ago ::since-hours-ago
+                              limit ::limit} ctx
+                             start (if start-ms
+                                     (java.util.Date. start-ms)
+                                     (java.util.Date. (- end-ms (-> since-hours-ago t/hours t/in-millis))))
+                             end (java.util.Date. end-ms)
+                             job-uuids (->> (timers/time!
+                                              fetch-jobs
+                                              ;; Get valid timings
+                                              (doall
+                                                (mapcat #(util/get-jobs-by-user-and-state db
+                                                                                          user
+                                                                                          %
+                                                                                          start
+                                                                                          end)
+                                                        states)))
+                                            (sort-by :job/submit-time)
+                                            reverse
+                                            (map :job/uuid))
+                             job-uuids (if (nil? limit)
+                                         job-uuids
+                                         (take limit job-uuids))]
+                         (mapv (partial fetch-job-map db framework-id) job-uuids)))))
+      ring.middleware.json/wrap-json-params))
 
 ;;
 ;; "main" - the entry point that routes to other handlers
 ;;
-
 (defn main-handler
   [conn fid task-constraints gpu-enabled? mesos-pending-jobs-fn is-authorized-fn]
   (routes
@@ -922,7 +1059,7 @@
        :put
        {:summary "Change a job's retry count"
         :parameters {:body-params UpdateRetriesRequest}
-        :handler (put-retries-handler conn is-authorized-fn)
+        :handler (put-retries-handler conn is-authorized-fn task-constraints)
         :responses {201 {:schema PosInt
                          :description "The number of retries for the job"}
                     400 {:description "Invalid request format."}
@@ -931,7 +1068,7 @@
        :post
        {:summary "Change a job's retry count (deprecated)"
         :parameters {:body-params UpdateRetriesRequest}
-        :handler (post-retries-handler conn is-authorized-fn)
+        :handler (post-retries-handler conn is-authorized-fn task-constraints)
         :responses {201 {:schema PosInt
                          :description "The number of retries for the job"}
                     400 {:description "Invalid request format or bad job UUID."}
@@ -941,5 +1078,5 @@
          (waiting-jobs mesos-pending-jobs-fn is-authorized-fn))
     (ANY "/running" []
          (running-jobs conn is-authorized-fn))
-    ))
-
+    (ANY "/list" []
+         (list-resource (db conn) fid is-authorized-fn))))

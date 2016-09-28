@@ -77,7 +77,7 @@ The second is a map from task id to its timeout channel. The third is a timeout 
                                  :where
                                  [?e :instance/task-id ?task-id]]
                                db task-id))
-        txns [[:instance/update-state instance-id :instance.status/failed]
+        txns [[:instance/update-state instance-id :instance.status/failed [:reason/name :hearbeat-lost]] 
               [:db/add instance-id :instance/reason [:reason/name :heartbeat-lost]]]]
     [new-state task-id txns]))
 
