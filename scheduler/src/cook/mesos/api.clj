@@ -154,7 +154,7 @@
          [:db/add container-id :container/docker docker-id]
          (merge {:db/id docker-id
                  :docker/image (:image docker)
-                 :docker/force-pull-image (:force-pull-image docker)
+                 :docker/force-pull-image (:force-pull-image docker false)
                  :docker/network (:network docker)}
                 (mk-container-params docker-id params)
                 (mk-docker-ports docker-id port-mappings))])
@@ -228,6 +228,7 @@
                                      :resource/amount cpus}
                                     {:resource/type :resource.type/mem
                                      :resource/amount mem}]}]]
+    
     ;; TODO batch these transactions to improve performance
     @(d/transact conn (-> ports
                           (into uris)
