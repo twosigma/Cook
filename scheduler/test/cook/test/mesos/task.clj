@@ -88,7 +88,8 @@
 (deftest test-take-scalar-resources-for-task
   (let [available {"cpus" {"cook" 8.0 "*" 6.0}
                    "mem" {"cook" 800.0 "*" 700.0}}
-        task {:resources {:cpus 12 :mem 900}}
+        task {:task-request (reify com.netflix.fenzo.TaskRequest
+                                (getScalarRequests [_] {:cpus 12.0 :mem 900.0}))}
         result (task/take-all-scalar-resources-for-task available task)]
     (is (= (:remaining-resources result)
            {"cpus" {"cook" 0.0 "*" 2.0}
@@ -102,7 +103,8 @@
 (deftest test-add-scalar-resources-to-task-infos
   (let [available {"cpus" {"cook" 8.0 "*" 6.0}
                    "mem" {"cook" 800.0 "*" 700.0}}
-        tasks [{:resources {:cpus 12 :mem 900}}]
+        tasks [{:task-request (reify com.netflix.fenzo.TaskRequest
+                                (getScalarRequests [_] {:cpus 12.0 :mem 900.0}))}]
         results (task/add-scalar-resources-to-task-infos available tasks)]
     (is (= (-> results first :scalar-resource-messages)
            [{:name "cpus", :type :value-scalar, :role "cook", :scalar 8.0}

@@ -42,7 +42,8 @@
                  [org.clojure/data.priority-map "0.0.5"]
                  [swiss-arrows "1.0.0"]
                  [riddley "0.1.10"]
-                 [com.netflix.fenzo/fenzo-core "0.8.2"
+                 [org.apache.mesos/mesos "1.0.1"]
+                 [com.netflix.fenzo/fenzo-core "0.9.4-SNAPSHOT"
                   :exclusions [org.apache.mesos/mesos
                                com.fasterxml.jackson.core/jackson-core
                                org.slf4j/slf4j-api
@@ -56,6 +57,7 @@
                  [com.draines/postal "1.11.0"
                   :exclusions [commons-codec]]
                  [prismatic/plumbing "0.1.1"]
+                 [log4j "1.2.17"]
                  [instaparse "1.4.0"]
                  [org.codehaus.jsr166-mirror/jsr166y "1.7.0"]
                  [clj-pid "0.1.1"]
@@ -84,7 +86,7 @@
 
                  ;;External system integrations
                  [me.raynes/conch "0.5.2"]
-                 [wyegelwe/mesomatic "0.28.0-r0-SNAPSHOT"]
+                 [spootnik/mesomatic "1.0.1-r0"]
                  [org.clojure/tools.nrepl "0.2.3"]
 
                  ;;Ring
@@ -134,6 +136,7 @@
 
    :dev
    {:dependencies [[clj-http-fake "1.0.1"]
+                   [org.mockito/mockito-core "1.10.19"]
                    [org.clojure/test.check "0.6.1"]]
     :jvm-opts ["-Xms2G"
                "-XX:-OmitStackTraceInFastThrow"

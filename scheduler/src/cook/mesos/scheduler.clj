@@ -385,6 +385,15 @@
   com.netflix.fenzo.VirtualMachineLease
   (cpuCores [_] (or (offer-resource-scalar offer "cpus") 0.0))
   (diskMB [_] (or (offer-resource-scalar offer "disk") 0.0))
+  (getScalarValue [_ name] (or (double (offer-resource-scalar offer name)) 0.0))
+  (getScalarValues [_]
+    (reduce (fn [result resource]
+                 (if-let [value (:scalar resource)]
+                   ;; Do not remove the following fnil--either arg to + can be nil!
+                   (update-in result [(:name resource)] (fnil + 0.0 0.0) value)
+                   result))
+               {}
+               (:resources offer)))
   (getAttributeMap [_] {}) ;;TODO
   (getId [_] (-> offer :id :value))
   (getOffer [_] (throw (UnsupportedOperationException.)))
@@ -412,12 +421,48 @@
           (str "Can't run on " (.getHostname target-vm)
                " since we already ran on that: " previous-hosts))))))
 
-(defrecord TaskRequestAdapter [job task-info]
+(defn gpu-host-constraint
+  "This returns a Fenzo hard constraint that ensure that if the givn job requires gpus, it will be assigned
+   to a GPU host, and if it doesn't require gpus, it will be assigned to a non-GPU host."
+  [job]
+  (let [job-needs-gpus? (fn [job]
+                      (delay (->> (:job/resource job)
+                                  (filter (fn gpu-resource? [res]
+                                            (and (= (:resource/type res) :resource.type/gpus)
+                                                 (pos? (:resource/amount res)))))
+                                  (seq)
+                                  (boolean))))
+        needs-gpus? (job-needs-gpus? job)]
+    (reify com.netflix.fenzo.ConstraintEvaluator
+      (getName [_] (str (if @needs-gpus? "" "non_") "gpu_host_constraint"))
+      (evaluate [_ task-request target-vm task-tracker-state]
+        (let [has-gpus? (boolean (or (> (or (.getScalarValue (.getCurrAvailableResources target-vm) "gpus") 0.0) 0)
+                                     (some (fn gpu-task? [req]
+                                             @(job-needs-gpus? (:job req)))
+                                           (concat (.getRunningTasks target-vm)
+                                                   (mapv #(.getRequest %) (.getTasksCurrentlyAssigned target-vm))))))]
+          (com.netflix.fenzo.ConstraintEvaluator$Result.
+            (if @needs-gpus?
+              has-gpus?
+              (not has-gpus?))
+            (str "The machine " (.getHostname target-vm) (if @needs-gpus? " doesn't have" " has") " gpus")))))))
+
+(defrecord TaskRequestAdapter [job task-info assigned-resources]
   com.netflix.fenzo.TaskRequest
   (getCPUs [_] (get-in task-info [:resources :cpus]))
   (getDisk [_] 0.0)
-  (getHardConstraints [_] [(novel-host-constraint job)])
+  (getHardConstraints [_] [(novel-host-constraint job) (gpu-host-constraint job)])
   (getId [_] (:task-id task-info))
+  (getScalarRequests [_]
+    (reduce (fn [result resource]
+                 (if-let [value (:resource/amount resource)]
+                   (assoc result (name (:resource/type resource)) value)
+                   result))
+               {}
+               (:job/resource job)))
+  (getAssignedResources [_] @assigned-resources)
+  (setAssignedResources [_ v] (reset! assigned-resources v))
+  (getCustomNamedResources [_] {})
   (getMemory [_] (get-in task-info [:resources :mem]))
   (getNetworkMbps [_] 0.0)
   (getPorts [_] (:num-ports task-info))
@@ -438,7 +483,7 @@
   (let [t (System/currentTimeMillis)
         leases (mapv #(->VirtualMachineLeaseAdapter % t) offers)
         requests (mapv (fn [job]
-                         (->TaskRequestAdapter job (job->task-info db fid (:db/id job))))
+                         (->TaskRequestAdapter job (job->task-info db fid (:db/id job)) (atom nil)))
                        considerable)
         ;; Need to lock on fenzo when accessing scheduleOnce because scheduleOnce and
         ;; task assigner can not be called at the same time.
@@ -568,37 +613,57 @@
     (timers/time!
       handle-resource-offer!-duration
       (try
-        (let [scheduler-contents @pending-jobs
+        (let [scheduler-contents-by @pending-jobs
               db (db conn)
-              _ (log/debug "There are" (count scheduler-contents) "pending jobs")
-              considerable (->> scheduler-contents
-                                (filter (fn [job]
-                                          (util/job-allowed-to-start? db job)))
-                                (take num-considerable))
-              _ (log/debug "We'll consider scheduling" (count considerable) "of those pending jobs (limited to " num-considerable " due to backdown)")
-              matches (match-offer-to-schedule fenzo considerable offers db fid)
+              _ (log/debug "There are" (apply + (map count scheduler-contents-by)) "pending jobs")
+              _ (log/info "scheduler-contents:" scheduler-contents-by)
+              considerable-by (->> scheduler-contents-by
+                                   (map (fn [[category jobs]]
+                                          [category (->> jobs
+                                                         (filter (fn [job]
+                                                                   (util/job-allowed-to-start? db job)))
+                                                         (take num-considerable))]))
+                                   (into {}))
+              _ (log/debug "We'll consider scheduling" (map (fn [[k v]] [k (count v)]) considerable-by)
+                           "of those pending jobs (limited to " num-considerable " due to backdown)")
+              matches (match-offer-to-schedule fenzo (apply concat (vals considerable-by)) offers db fid)
               offers-scheduled (for [{:keys [leases]} matches
                                      lease leases]
                                  (:offer lease))
               offers-not-scheduled (clojure.set/intersection (set offers) (set offers-scheduled))
               _ (reset! offer-stash offers-scheduled)
-              matched-jobs (for [match matches
-                                 ^TaskAssignmentResult task-result (:tasks match)
-                                 :let [task-request (.getRequest task-result)]]
-                             (:job task-request))
-              processed-matches (process-matches-for-backfill scheduler-contents (first considerable) matched-jobs)
-              update-scheduler-contents (fn update-scheduler-contents [scheduler-contents]
-                                          (remove (fn [{pending-job-uuid :job/uuid}]
-                                               (or (contains? (:fully-processed processed-matches) pending-job-uuid)
-                                                   (contains? (:upgrade-backfill processed-matches) pending-job-uuid)))
-                                             scheduler-contents))
+              matched-normal-jobs (for [match matches
+                                        ^TaskAssignmentResult task-result (:tasks match)
+                                        :let [task-request (.getRequest task-result)]
+                                        :when (= :normal (util/categorize-job (:job task-request)))]
+                                    (:job task-request))
+              matched-gpu-job-uuids (set (for [match matches
+                                               ^TaskAssignmentResult task-result (:tasks match)
+                                               :let [task-request (.getRequest task-result)]
+                                               :when (= :gpu (util/categorize-job (:job task-request)))]
+                                           (:job/uuid (:job task-request))))
+              ;; Backfill only applies to normal (i.e. non-scarce resource dependent) jobs
+              processed-matches (process-matches-for-backfill (:normal scheduler-contents-by) (first (:normal considerable-by)) matched-normal-jobs)
+              update-scheduler-contents (fn update-scheduler-contents [scheduler-contents-by]
+                                          (-> scheduler-contents-by
+                                              (update-in [:gpu] #(remove (fn [{pending-job-uuid :job/uuid}]
+                                                                           (contains? matched-gpu-job-uuids pending-job-uuid))
+                                                                         %))
+                                              (update-in [:normal] #(remove (fn [{pending-job-uuid :job/uuid}]
+                                                                              (or (contains? (:fully-processed processed-matches) pending-job-uuid)
+                                                                                  (contains? (:upgrade-backfill processed-matches) pending-job-uuid)))
+                                                                            %))))
               ;; We don't remove backfilled jobs here, because although backfilled
               ;; jobs have already been scheduled in a sense, the scheduler still can't
               ;; adjust the status of backfilled tasks.
               ;; Backfilled tasks can be updgraded to non-backfilled after the jobs
               ;; prioritized above them are also scheduled.
-              first-considerable-resources (-> considerable first util/job-ent->resources)
-              match-resource-requirements (util/sum-resources-of-jobs matched-jobs)]
+              first-considerable-resources (-> considerable-by :normal first util/job-ent->resources)
+              match-resource-requirements (util/sum-resources-of-jobs matched-normal-jobs)]
+          (log/debug "got matches:" matches)
+          (log/debug "matched normal jobs:" (count matched-normal-jobs))
+          (log/debug "matched gpu jobs:" (count matched-gpu-job-uuids))
+          (log/debug "updated-scheduler-contents:" (update-scheduler-contents @pending-jobs))
           (reset! front-of-job-queue-mem-atom
                   (or (:mem first-considerable-resources) 0))
           (reset! front-of-job-queue-cpus-atom
@@ -681,8 +746,9 @@
         (catch Throwable t
           (meters/mark! handle-resource-offer!-errors)
           (log/error t "Error in match:" (ex-data t))
-          (async/go
-            (async/>! offers-chan @offer-stash))
+          (when-let [offers @offer-stash]
+            (async/go
+              (async/>! offers-chan offers)))
           true  ; if an error happened, it doesn't mean we need to penalize Fenzo
           )))))
 
@@ -693,8 +759,7 @@
                              :when lease]
                          {:hostname (.hostname lease)
                           :slave-id (.getVMID lease)
-                          :resources {:cpus (.cpuCores lease)
-                                      :mem (.memoryMB lease)}})]
+                          :resources (.getScalarValues lease)})]
     (log/debug "We have" (count pending-offers) "pending offers")
     pending-offers))
 
@@ -808,7 +873,7 @@
         (locking fenzo
           (.. fenzo
               (getTaskAssigner)
-              (call (->TaskRequestAdapter job (job->task-info db fid (:db/id job))) hostname))))
+              (call (->TaskRequestAdapter job (job->task-info db fid (:db/id job))) hostname (atom nil)))))
       (doseq [ts (partition-all 50 running-tasks)]
         (log/info "Reconciling" (count ts) "tasks, including task" (first ts))
         (mesos/reconcile-tasks driver (mapv (fn [[task-id status slave-id]]
@@ -938,19 +1003,10 @@
 
 (timers/deftimer [cook-mesos scheduler sort-jobs-hierarchy-duration])
 
-(defn sort-jobs-by-dru
-  "Return a list of job entities ordered by dru"
-  [filtered-db unfiltered-db]
-  ;; This function does not use the filtered db when it is not necessary in order to get better performance
-  ;; The filtered db is not necessary when an entity could only arrive at a given state if it was already committed
-  ;; e.g. running jobs or when it is always considered committed e.g. shares
-  ;; The unfiltered db can also be used on pending job entities once the filtered db is used to limit
-  ;; to only those jobs that have been committed.
-  (let [pending-job-ents (util/get-pending-job-ents filtered-db unfiltered-db)
-        pending-task-ents (into #{} (map util/create-task-ent pending-job-ents))
-        running-task-ents (util/get-running-task-ents unfiltered-db)
-        user->dru-divisors (dru/init-user->dru-divisors unfiltered-db running-task-ents pending-job-ents)
-        jobs (timers/time!
+(defn sort-normal-jobs-by-dru
+  "Return a list of normal job entities ordered by dru"
+  [pending-task-ents running-task-ents user->dru-divisors]
+  (let [jobs (timers/time!
                sort-jobs-hierarchy-duration
                (-<>> (concat running-task-ents pending-task-ents)
                      (group-by util/task-ent->user)
@@ -966,6 +1022,51 @@
                      (map (fn [[task scored-task]]
                             (:job/_instance task)))))]
     jobs))
+
+(timers/deftimer [cook-mesos scheduler sort-gpu-jobs-hierarchy-duration])
+
+(defn sort-gpu-jobs-by-dru
+  "Return a list of gpu job entities ordered by dru"
+  [pending-task-ents running-task-ents user->dru-divisors]
+  (let [jobs (timers/time!
+               sort-gpu-jobs-hierarchy-duration
+               (-<>> (concat running-task-ents pending-task-ents)
+                     (group-by util/task-ent->user)
+                     (map (fn [[user task-ents]]
+                            [user (into (sorted-set-by (util/same-user-task-comparator)) task-ents)]))
+                     (into {})
+                     (dru/gpu-task-scored-task-pairs <> user->dru-divisors)
+                     (filter (fn [[task _]]
+                               (contains? pending-task-ents task)))
+                     (map (fn [[task _]]
+                            (:job/_instance task)))))]
+    jobs))
+
+(defn sort-jobs-by-dru
+  "Returns a map from job category to a list of job entities, ordered by dru"
+  [filtered-db unfiltered-db]
+  ;; This function does not use the filtered db when it is not necessary in order to get better performance
+  ;; The filtered db is not necessary when an entity could only arrive at a given state if it was already committed
+  ;; e.g. running jobs or when it is always considered committed e.g. shares
+  ;; The unfiltered db can also be used on pending job entities once the filtered db is used to limit
+  ;; to only those jobs that have been committed.
+  (let [pending-job-ents-by (group-by util/categorize-job (util/get-pending-job-ents filtered-db unfiltered-db))
+        pending-task-ents-by (reduce-kv (fn [m category pending-job-ents]
+                                          (assoc m category
+                                                 (into #{}
+                                                       (map util/create-task-ent)
+                                                       pending-job-ents)))
+                                        {}
+                                        pending-job-ents-by)
+        running-task-ents-by (group-by (comp util/categorize-job :job/_instance)
+                                       (util/get-running-task-ents unfiltered-db))
+        user->dru-divisors (dru/init-user->dru-divisors unfiltered-db (apply concat (vals running-task-ents-by)) (apply concat (vals pending-job-ents-by)))]
+    {:normal (sort-normal-jobs-by-dru (:normal pending-task-ents-by)
+                                      (:normal running-task-ents-by)
+                                      user->dru-divisors)
+     :gpu (sort-gpu-jobs-by-dru (:gpu pending-task-ents-by)
+                                (:gpu running-task-ents-by)
+                                user->dru-divisors)}))
 
 (timers/deftimer [cook-mesos scheduler filter-offensive-jobs-duration])
 
@@ -1032,7 +1133,7 @@
 (meters/defmeter [cook-mesos scheduler rank-jobs-failures])
 
 (defn rank-jobs
-  "Return a list of job entities ordered by dru.
+  "Return a map of lists of job entities ordered by dru, keyed by category.
 
    It ranks the jobs by dru first and then apply several filters if provided."
   [filtered-db unfiltered-db offensive-job-filter]
@@ -1041,14 +1142,18 @@
     (try
       (let [jobs (->> (sort-jobs-by-dru filtered-db unfiltered-db)
                       ;; Apply the offensive job filter first before taking.
-                      offensive-job-filter)]
-        (log/debug "Total number of pending jobs is:" (count jobs)
-                   "The first 20 pending jobs:" (take 20 jobs))
+                      (map (fn [[category jobs]]
+                             (log/info "filtering category" category jobs)
+                             [category (offensive-job-filter jobs)]))
+                      (into {} ))]
+        (log/debug "Total number of pending jobs is:" (apply + (map count (vals jobs)))
+                   "The first 20 pending normal jobs:" (take 20 (:normal jobs))
+                   "The first 5 pending gpu jobs:" (take 5 (:gpu jobs)))
         jobs)
       (catch Throwable t
         (log/error t "Failed to rank jobs")
         (meters/mark! rank-jobs-failures)
-        []))))
+        {}))))
 
 (defn- start-jobs-prioritizer!
   [conn pending-jobs-atom task-constraints]
@@ -1068,7 +1173,6 @@
       (disableShortfallEvaluation) ;; We're not using the autoscaling features
       (withLeaseOfferExpirySecs (max (-> offer-incubate-time-ms time/millis time/in-seconds) 1)) ;; should be at least 1 second
       (withRejectAllExpiredOffers)
-      (withDebugEnabled)
       (withFitnessCalculator BinPackingFitnessCalculators/cpuMemBinPacker)
       (withLeaseRejectAction (reify com.netflix.fenzo.functions.Action1
                                (call [_ lease]
@@ -1084,7 +1188,7 @@
       (build)))
 
 (defn create-datomic-scheduler
-  [conn set-framework-id driver-atom pending-jobs-atom heartbeat-ch offer-incubate-time-ms fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset task-constraints]
+  [conn set-framework-id driver-atom pending-jobs-atom heartbeat-ch offer-incubate-time-ms fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset task-constraints gpu-enabled?]
   (let [fid (atom nil)
         ;; Mesos can potentially rescind thousands of offers
         rescinded-offer-id-cache (-> {}
@@ -1099,6 +1203,12 @@
                   (log/info "Registered with mesos with framework-id " framework-id)
                   (reset! fid framework-id)
                   (set-framework-id framework-id)
+                  (when (and gpu-enabled? (not (re-matches #"1\.\d+\.\d+" (:version master-info))))
+                    (binding [*out* *err*]
+                      (println "Cannot enable GPU support on pre-mesos 1.0. The version we found was " (:version master-info)))
+                    (log/error "Cannot enable GPU support on pre-mesos 1.0. The version we found was " (:version master-info))
+                    (Thread/sleep 1000)
+                    (System/exit 1))
                   ;; Use future because the thread that runs mesos/scheduler doesn't load classes correctly. for reasons.
                   ;; As Sophie says, you want to future proof your code.
                   (future
