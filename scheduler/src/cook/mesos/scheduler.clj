@@ -16,7 +16,6 @@
 (ns cook.mesos.scheduler
   (:require [mesomatic.scheduler :as mesos]
             [mesomatic.types :as mtypes]
-            [cook.mesos.util :as util]
             [cook.mesos.dru :as dru]
             [cook.mesos.task :as task]
             cook.mesos.schema
@@ -39,6 +38,7 @@
             [cook.mesos.heartbeat :as heartbeat]
             [cook.mesos.share :as share]
             [cook.mesos.quota :as quota]
+            [cook.mesos.util :as util]
             [plumbing.core :refer (map-vals)]
             [swiss.arrows :refer :all]
             [clojure.core.cache :as cache]
@@ -89,49 +89,6 @@
        [?r-mem :resource/amount ?mem-req]
        [(>= ?mem ?mem-req)]]
      db pending-jobs (tuplify-offer offer)))
-
-(defn job->task-info
-  "Takes a job entity, returns a taskinfo"
-  [db fid job]
-  (let [job-ent (d/entity db job)
-        task-id (str (java.util.UUID/randomUUID))
-        resources (util/job-ent->resources job-ent)
-        ;; If the custom-executor attr isn't set, we default to using a custom
-        ;; executor in order to support jobs submitted before we added this field
-        container (util/job-ent->container db job job-ent)
-        custom-executor (:job/custom-executor job-ent true)
-        environment (util/job-ent->env job-ent)
-        labels (util/job-ent->label job-ent)
-        command {:value (:job/command job-ent)
-                 :environment environment
-                 :user (:job/user job-ent)
-                 :uris (:uris resources [])}
-        ;; executor-{key,value} configure whether this is a command or custom
-        ;; executor
-        executor-key (if custom-executor :executor :command)
-        executor-value (if custom-executor
-                         (merge {:executor-id (str (java.util.UUID/randomUUID))
-                                 :framework-id fid
-                                 :name "cook agent executor"
-                                 :source "cook_scheduler"
-                                 :command command}
-                                (when (seq container)
-                                  {:container container}))
-                         command)]
-    ;; If the there is no value for key :job/name, the following name will contain a substring "null".
-    (merge {:name (format "%s_%s_%s" (:job/name job-ent "cookjob") (:job/user job-ent) task-id)
-            :task-id task-id
-            :num-ports (:ports resources)
-            :resources (select-keys resources [:mem :cpus])
-            :labels labels
-            ;;TODO this data is a race-condition
-            :data (.getBytes
-                   (pr-str
-                    {:instance (str (count (:job/instance job-ent)))})
-                   "UTF-8")
-            executor-key executor-value}
-           (when (and (seq container) (not custom-executor))
-             {:container container}))))
 
 (defn rescind-offer!
   [rescinded-offer-id-cache offer-id]
@@ -324,6 +281,7 @@
 (defn monitor-tx-report-queue
   "Takes an async channel that will have tx report queue elements on it"
   [tx-report-chan conn driver-ref]
+  (log/info "Starting tx-report-queue")
   (let [kill-chan (async/chan)]
     (async/go
       (loop []
@@ -359,7 +317,7 @@
                                                           db e [:instance.status/unknown
                                                                 :instance.status/running])]
                                        (if-let [driver @driver-ref]
-                                         (do (log/debug "Attempting to kill task" task-id "due to job completion")
+                                         (do (log/info "Attempting to kill task" task-id "due to job completion")
                                              (meters/mark! tx-report-queue-tasks-killed)
                                              (mesos/kill-task! driver {:value task-id}))
                                          (log/error "Couldn't kill task" task-id "due to no Mesos driver!"))))
@@ -368,16 +326,6 @@
                           (recur))
           kill-chan ([_] nil))))
     #(async/close! kill-chan)))
-
-(defn job-uuid->job
-  "Return the job entity id from a string or java.util.UUID representation of a
-   job uuid."
-  [db uuid]
-  (ffirst (q '[:find ?j
-               :in $ ?uuid
-               :where
-               [?j :job/uuid ?uuid]]
-             db (java.util.UUID/fromString (str uuid)))))
 
 ;;; ===========================================================================
 ;;; API for matcher
@@ -449,12 +397,12 @@
               (not has-gpus?))
             (str "The machine " (.getHostname target-vm) (if @needs-gpus? " doesn't have" " has") " gpus")))))))
 
-(defrecord TaskRequestAdapter [job task-info assigned-resources]
+(defrecord TaskRequestAdapter [job resources task-id assigned-resources]
   com.netflix.fenzo.TaskRequest
-  (getCPUs [_] (get-in task-info [:resources :cpus]))
+  (getCPUs [_] (:cpus resources))
   (getDisk [_] 0.0)
   (getHardConstraints [_] [(novel-host-constraint job) (gpu-host-constraint job)])
-  (getId [_] (:task-id task-info))
+  (getId [_] task-id)
   (getScalarRequests [_]
     (reduce (fn [result resource]
                  (if-let [value (:resource/amount resource)]
@@ -465,9 +413,9 @@
   (getAssignedResources [_] @assigned-resources)
   (setAssignedResources [_ v] (reset! assigned-resources v))
   (getCustomNamedResources [_] {})
-  (getMemory [_] (get-in task-info [:resources :mem]))
+  (getMemory [_] (:mem resources))
   (getNetworkMbps [_] 0.0)
-  (getPorts [_] (:num-ports task-info))
+  (getPorts [_] (:ports resources))
   (getSoftConstraints [_] [])
   (taskGroupName [_] (str (:job/uuid job))))
 
@@ -478,7 +426,7 @@
    the offer.
 
    Returns a list of tasks that got matched to the offer"
-  [^TaskScheduler fenzo considerable offers db fid]
+  [^TaskScheduler fenzo considerable offers]
   (log/debug "Matching" (count offers) "offers to" (count considerable) "jobs with fenzo")
   (log/debug "offer to scheduleOnce" offers)
   (log/debug "tasks to scheduleOnce" considerable)
@@ -487,7 +435,10 @@
         _ (log/debug "tasks to scheduleOnce" considerable)
         leases (mapv #(->VirtualMachineLeaseAdapter % t) offers)
         requests (mapv (fn [job]
-                         (->TaskRequestAdapter job (job->task-info db fid (:db/id job)) (atom nil)))
+                         (->TaskRequestAdapter job 
+                                               (util/job-ent->resources job) 
+                                               (str (java.util.UUID/randomUUID)) 
+                                               (atom nil))) 
                        considerable)
         ;; Need to lock on fenzo when accessing scheduleOnce because scheduleOnce and
         ;; task assigner can not be called at the same time.
@@ -677,7 +628,7 @@
                            "of those pending jobs (limited to " num-considerable " due to backdown)")
               matches (timers/time!
                         handle-resource-offer!-match-duration
-                        (match-offer-to-schedule fenzo (apply concat (vals considerable-by)) offers db fid))
+                        (match-offer-to-schedule fenzo (apply concat (vals considerable-by)) offers))
               offers-scheduled (for [{:keys [leases]} matches
                                      lease leases]
                                  (:offer lease))
@@ -740,20 +691,17 @@
                                         slave-id (-> offers first :slave-id :value)]
                                   ^TaskAssignmentResult task tasks
                                   :let [request (.getRequest task)
-                                        task-info (:task-info request)
+                                        task-id (:task-id request)
                                         job-id (get-in request [:job :db/id])]]
                               [[:job/allowed-to-start? job-id]
                                {:db/id (d/tempid :db.part/user)
                                 :job/_instance job-id
-                                :instance/task-id (:task-id task-info)
+                                :instance/task-id task-id
                                 :instance/hostname (.getHostname task)
                                 :instance/start-time (now)
                                 ;; NB command executor uses the task-id
                                 ;; as the executor-id
-                                :instance/executor-id (get-in
-                                                        task-info
-                                                        [:executor :executor-id]
-                                                        (:task-id task-info))
+                                :instance/executor-id task-id
                                 :instance/backfilled? (contains? (:backfill-jobs processed-matches) (get-in request [:job :job/uuid]))
                                 :instance/slave-id slave-id
                                 :instance/ports (.getAssignedPorts task)
@@ -791,13 +739,15 @@
               (meters/mark! matched-tasks (count task-txns))
               (meters/mark! matched-tasks-cpus (:cpus match-resource-requirements))
               (meters/mark! matched-tasks-mem (:mem match-resource-requirements))
-              (timers/time! 
-                handle-resource-offer!-mesos-submit-duration 
+              (timers/time!
+                handle-resource-offer!-mesos-submit-duration
                 (doseq [{:keys [tasks leases]} matches
                       :let [offers (mapv :offer leases)
-                            task-infos (task/compile-mesos-messages offers tasks)]]
+                            task-data-maps (map #(task/TaskAssignmentResult->task-metadata db fid %)
+                                                    tasks)
+                            task-infos (task/compile-mesos-messages offers task-data-maps)]]
 
-                (log/debug "task-infos" task-infos)
+                (log/debug "Matched task-infos" task-infos)
                 (mesos/launch-tasks! driver (mapv :id offers) task-infos)
 
                 (doseq [^TaskAssignmentResult task tasks]
@@ -945,6 +895,7 @@
                       :instance.status/running :task-running}]
     (when (seq running-tasks)
       (log/info "Preparing to reconcile" (count running-tasks) "tasks")
+      ;; TODO: When turning on periodic reconcilation, probably want to move this to startup
       (doseq [[task-id] running-tasks
               :let [task-ent (d/entity db [:instance/task-id task-id])
                     hostname (:instance/hostname task-ent)
@@ -954,13 +905,13 @@
         (locking fenzo
           (.. fenzo
               (getTaskAssigner)
-              (call (->TaskRequestAdapter job (job->task-info db fid (:db/id job))) hostname (atom nil)))))
+              (call (->TaskRequestAdapter job (util/job-ent->resources job) task-id (atom nil)) hostname))))
       (doseq [ts (partition-all 50 running-tasks)]
         (log/info "Reconciling" (count ts) "tasks, including task" (first ts))
         (mesos/reconcile-tasks driver (mapv (fn [[task-id status slave-id]]
-                                              {:task-id task-id
+                                              {:task-id {:value task-id}
                                                :state (sched->mesos status)
-                                               :slave-id slave-id})
+                                               :slave-id {:value slave-id}})
                                             ts)))
       (log/info "Finished reconciling all tasks"))))
 
