@@ -77,7 +77,7 @@
 
 (defn start-mesos-scheduler
   "Starts a leader elector that runs a mesos."
-  [mesos-master mesos-master-hosts curator-framework mesos-datomic-conn mesos-datomic-mult zk-prefix mesos-failover-timeout mesos-principal mesos-role offer-incubate-time-ms fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset task-constraints riemann-host riemann-port mesos-pending-jobs-atom dru-scale gpu-enabled? rebalancer-config]
+  [mesos-master mesos-master-hosts curator-framework mesos-datomic-conn mesos-datomic-mult zk-prefix mesos-failover-timeout mesos-principal mesos-role offer-incubate-time-ms fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset task-constraints riemann-host riemann-port mesos-pending-jobs-atom gpu-enabled? rebalancer-config]
   (let [zk-framework-id (str zk-prefix "/framework-id")
         datomic-report-chan (async/chan (async/sliding-buffer 4096))
         mesos-heartbeat-chan (async/chan (async/buffer 4096))
@@ -144,7 +144,6 @@
                                                                                                          :driver driver
                                                                                                          :mesos-master-hosts mesos-master-hosts
                                                                                                          :pending-jobs-atom mesos-pending-jobs-atom
-                                                                                                         :dru-scale dru-scale
                                                                                                          :config rebalancer-config
                                                                                                          :view-incubating-offers view-incubating-offers}))
                                     (counters/inc! mesos-leader)

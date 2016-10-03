@@ -456,8 +456,8 @@
                                            recognized-params))])))))
 
 (defn start-rebalancer!
-  [{:keys [conn driver mesos-master-hosts pending-jobs-atom view-incubating-offers view-mature-offers dru-scale config]}]
-  (binding [metrics-dru-scale dru-scale]
+  [{:keys [conn driver mesos-master-hosts pending-jobs-atom view-incubating-offers view-mature-offers config]}]
+  (binding [metrics-dru-scale (:dru-scale config)]
     (update-datomic-params-from-config! conn config)
 
     (let [rebalance-interval (time/seconds (:interval-seconds config))
