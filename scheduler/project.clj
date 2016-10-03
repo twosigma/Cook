@@ -43,7 +43,7 @@
                  [swiss-arrows "1.0.0"]
                  [riddley "0.1.10"]
                  [org.apache.mesos/mesos "1.0.1"]
-                 [com.netflix.fenzo/fenzo-core "0.9.4-SNAPSHOT"
+                 [com.netflix.fenzo/fenzo-core "0.11.0"
                   :exclusions [org.apache.mesos/mesos
                                com.fasterxml.jackson.core/jackson-core
                                org.slf4j/slf4j-api
