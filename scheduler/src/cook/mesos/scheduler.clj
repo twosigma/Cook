@@ -563,7 +563,11 @@
   "Returns true if the usage is below quota-constraints on all dimensions"
   [{:keys [count cpus mem] :as quota}
    {:keys [count cpus mem] :as usage}]
-  (every? true? (vals (merge-with <= usage quota))))
+  ;; The select-keys on quota was added because if there is a
+  ;; resource in quota that the current usage doesn't use below-quota?
+  ;; will incorrectly return false
+  (every? true? (vals (merge-with <= usage
+                                  (select-keys quota (keys usage))))))
 
 (defn job->usage
   "Takes a job-ent and returns a map of the usage of that job,
@@ -619,9 +623,9 @@
                                                                    ;; Remove backfill jobs
                                                                    (= (:job/state job)
                                                                       :job.state/waiting)))
+                                                         (filter-based-on-quota user->quota user->usage)
                                                          (filter (fn [job]
                                                                    (util/job-allowed-to-start? db job)))
-                                                         (filter-based-on-quota user->quota user->usage)
                                                          (take num-considerable))]))
                                    (into {}))
               _ (log/debug "We'll consider scheduling" (map (fn [[k v]] [k (count v)]) considerable-by)
