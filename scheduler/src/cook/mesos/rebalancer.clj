@@ -325,8 +325,8 @@
                                                          (conj (:task aggregation) task)
                                                          (:task aggregation))
                                                  :gpus (+ (:gpus aggregation) (or gpus 0.0))
-                                                 :mem (+ (:mem aggregation) mem)
-                                                 :cpus (+ (:cpus aggregation) cpus)})
+                                                 :mem (+ (:mem aggregation) (or mem 0))
+                                                 :cpus (+ (:cpus aggregation) (or cpus 0))})
                                               {:hostname host :task nil :mem 0.0 :cpus 0.0 :gpus 0.0}
                                               scored-tasks))))
                                   (filter (fn has-enough-resource [resource-sum]
