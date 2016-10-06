@@ -40,4 +40,22 @@
                :job-cpu {:mean 4.0
                          :std-dev 2.0
                          :floor 1.0
+                         :ceiling 6.0}}
+              {:description "Unschedulable Users"
+               :usernames ["unsched1"]
+               :seconds-between-jobs {:mean 10
+                                      :std-dev 3
+                                      :floor 1
+                                      :ceiling 120}
+               :job-duration {:mean 15
+                              :std-dev 2
+                              :floor 1
+                              :ceiling 120}
+               :job-memory {:mean 10240
+                            :std-dev 1000
+                            :floor 9000
+                            :ceiling 20000}
+               :job-cpu {:mean 4.0
+                         :std-dev 2.0
+                         :floor 1.0
                          :ceiling 6.0}}]}}

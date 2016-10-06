@@ -1,5 +1,6 @@
 (ns cook.sim.travis
-  (:require [clojure.string :as string]
+  (:require [clojure.set :refer [intersection]]
+            [clojure.string :as string]
             [clojure.tools.cli :refer [parse-opts]]
             [clj-http.client :as http]
             [cook.sim.database :as db]
@@ -21,17 +22,50 @@
                  ;; will still throw exception on connection refused.
                  http/get (:cook-api-uri settings) {:throw-exceptions false}))
 
+(defn schedulable?
+  "Returns true iff the job is intended to be schedulable according to the
+  configuration of the Minimesos cluster on travis.  We're accomplishing this
+  by means of a usage profile and and minimesos config that we know to be incompatible
+  - see minimesosFile and simulator_config.clj"
+  [job]
+  (not (string/starts-with? (:username job) "unsched")))
 
-(defn sim-finished?
+(defn sim-progress
+  "Given both database system components and the id of a simulation, return a data
+  structure that represents the overall progress of the simulation.   The two top
+  level keys are :schedulable and :unschedulable, each containing summaries of the
+  jobs that fall into those categories. :total is the total number of jobs in the sim
+  that fall into the category; :unscheduled is the number of jobs that haven't yet been
+  launched by Cook scheduler; :unfinished is the number of jobs that haven't yet
+  completed successfully."
   [sim-db cook-db sim-id]
   (let [jobs (reporting/job-results-from-components sim-db cook-db sim-id)
-        count-unscheduled (count (remove :wait-time jobs))
-        count-unfinished (count (reporting/unfinished-jobs jobs))]
-    (println count-unscheduled "unscheduled jobs.")
-    (println count-unfinished "unfinished jobs.")
-    (and (zero? count-unscheduled) (zero? count-unfinished))))
+        [schedulable-jobs unschedulable-jobs] ((juxt filter remove) schedulable? jobs)
+        [scheduled-jobs unscheduled-jobs] ((juxt filter remove) :wait-time jobs)
+        [finished-jobs unfinished-jobs] ((juxt filter remove) :turnaround jobs)]
+    {:schedulable {:total (count schedulable-jobs)
+                   :unscheduled (count (intersection (set schedulable-jobs) (set unscheduled-jobs)))
+                   :unfinished (count (intersection (set schedulable-jobs) (set unfinished-jobs)))}
+     :unschedulable {:total (count unschedulable-jobs)
+                     :unscheduled (count (intersection (set unschedulable-jobs) (set unscheduled-jobs)))
+                     :unfinished (count (intersection (set unschedulable-jobs) (set unscheduled-jobs)))}}))
+
+(defn sim-finished?
+  "Given a data structure of the type returned by sim-progress above, return true iff
+  the simulation appears finished (meaning that there are no schedulable jobs that
+  aren't finished)."
+  [sim-db cook-db sim-id]
+  (let [progress (sim-progress sim-db cook-db sim-id)
+        count-unscheduled (-> progress :schedulable :unscheduled)
+        count-unfinished (-> progress :schedulable :unfinished)]
+    (println count-unscheduled "unscheduled schedulable jobs.")
+    (println count-unfinished "unfinished schedulable jobs.")
+    (if (zero? count-unfinished) progress false)))
 
 (defn wait-for-sim-to-finish
+  "Given both databases, a simulation, and a number of seconds to wait, waits
+  for the specified simulation to become finished.  An exception will be raised
+  if the specified amount of time passes and the sim still isn't finished."
   [sim-db cook-db sim-id timeout-seconds]
   (let [sleep-seconds 5]
     (try-try-again {:sleep (* 1000 sleep-seconds)
@@ -56,6 +90,12 @@
         schedule-id (schedule/import-schedule! sim-db file)
         _ (wait-for-cook settings)
         sim-id (runner/simulate! settings sim-db schedule-id "Travis run")
-        finished? (wait-for-sim-to-finish sim-db cook-db sim-id timeout-secs)]
+        final-progress (wait-for-sim-to-finish sim-db cook-db sim-id timeout-secs)
+        unschedulable-jobs (:unschedulable final-progress)
+        num-scheduled-unschedulable (- (:total unschedulable-jobs) (:unscheduled unschedulable-jobs))]
     (reporting/analyze settings sim-db cook-db sim-id)
-    (if (not finished?) (throw (Exception. "Sim never finished.")))))
+    (if (not final-progress)
+      (throw (Exception. "Sim never finished.")))
+    (if (zero? num-scheduled-unschedulable)
+      (println (:total unschedulable-jobs) " intentionally unschedulable jobs were never scheduled.  Perfect!")
+      (throw (Exception. (str num-scheduled-unschedulable " supposedly unschedulable jobs were scheduled."))))))
