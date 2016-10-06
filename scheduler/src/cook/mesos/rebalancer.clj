@@ -233,7 +233,7 @@
                                             (into {}))
         task->scored-task (into (pm/priority-map-keyfn (case category
                                                          :normal (comp - :dru)
-                                                         :gpu -))
+                                                         :gpu (fnil - 0)))
                                 (case category
                                   :normal (dru/sorted-task-scored-task-pairs user->sorted-running-task-ents user->dru-divisors)
                                   :gpu (dru/gpu-task-scored-task-pairs user->sorted-running-task-ents user->dru-divisors)))]
