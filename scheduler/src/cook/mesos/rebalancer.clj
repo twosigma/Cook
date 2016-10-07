@@ -368,7 +368,13 @@
                    (dec remaining-preemption)
                    jobs-to-make-room-for
                    (conj pending-job-ents-to-run pending-job-ent)
-                   (into task-ents-to-preempt (:task preemption-decision)))
+                   (into task-ents-to-preempt
+                         ;; If a task has no id, it must be a synthetic task.
+                         ;; This means that on one iteration of (compute-next-state-and-preemption-decision),
+                         ;; the rebalancer decided to make room for a certain hypothetical task,
+                         ;; but on a subsequent iteration, it became clear that OTHER hypothetical tasks would be an even better outcome.
+                         ;; We shouldn't try to actually preempt tasks that were never scheduled.
+                         (filter :db/id (:task preemption-decision))))
             (recur state'
                    remaining-preemption
                    jobs-to-make-room-for
