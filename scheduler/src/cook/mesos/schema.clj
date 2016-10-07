@@ -760,7 +760,12 @@
     :reason/code 99002
     :reason/string "Mesos executor terminated"
     :reason/name :mesos-executor-terminated
-    :reason/mesos-reason :reason-executor-terminated}])
+    :reason/mesos-reason :reason-executor-terminated}
+   {:db/id (d/tempid :db.part/user)
+    :reason/code 99003
+    :reason/string "Mesos command executor failed"
+    :reason/name :mesos-command-executor-failed
+    :reason/mesos-reason :reason-command-executor-failed}])
 
 (def work-item-schema
   [schema-attributes state-enums rebalancer-configs migration-add-index-to-job-state migration-add-index-to-job-user migration-add-port-count db-fns reason-entities])
