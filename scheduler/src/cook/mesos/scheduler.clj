@@ -223,9 +223,10 @@
            (when (#{:instance.status/success :instance.status/failed} instance-status)
              (log/debug "Unassigning task" task-id "from" (:instance/hostname instance-ent))
              (try
-               (.. fenzo
-                   (getTaskUnAssigner)
-                   (call task-id (:instance/hostname instance-ent)))
+               (locking fenzo
+                 (.. fenzo
+                     (getTaskUnAssigner)
+                     (call task-id (:instance/hostname instance-ent))))
                (catch Exception e
                  (log/error e "Failed to unassign task" task-id "from" (:instance/hostname instance-ent)))))
            (when (= instance-status :instance.status/success)
@@ -755,9 +756,10 @@
                 (mesos/launch-tasks! driver (mapv :id offers) task-infos)
 
                 (doseq [^TaskAssignmentResult task tasks]
-                  (.. fenzo
-                      (getTaskAssigner)
-                      (call (.getRequest task) (get-in (first leases) [:offer :hostname]))))))
+                  (locking fenzo
+                    (.. fenzo
+                        (getTaskAssigner)
+                        (call (.getRequest task) (get-in (first leases) [:offer :hostname])))))))
               (:matched-head? processed-matches))))
         (catch Throwable t
           (meters/mark! handle-resource-offer!-errors)
@@ -770,7 +772,7 @@
 
 (defn view-incubating-offers
   [^TaskScheduler fenzo]
-  (let [pending-offers (for [^com.netflix.fenzo.VirtualMachineCurrentState state (.getVmCurrentStates fenzo)
+  (let [pending-offers (for [^com.netflix.fenzo.VirtualMachineCurrentState state (locking fenzo (.getVmCurrentStates fenzo))
                              :let [lease (.getCurrAvailableResources state)]
                              :when lease]
                          {:hostname (.hostname lease)
@@ -903,13 +905,14 @@
       (doseq [[task-id] running-tasks
               :let [task-ent (d/entity db [:instance/task-id task-id])
                     hostname (:instance/hostname task-ent)
-                    job (:job/_instance task-ent)]]
+                    job (:job/_instance task-ent)
+                    task-request (->TaskRequestAdapter job (util/job-ent->resources job) task-id)]]
         ;; Need to lock on fenzo when accessing taskAssigner because taskAssigner and
         ;; scheduleOnce can not be called at the same time.
         (locking fenzo
           (.. fenzo
               (getTaskAssigner)
-              (call (->TaskRequestAdapter job (util/job-ent->resources job) task-id (atom nil)) hostname))))
+              (call task-request hostname))))
       (doseq [ts (partition-all 50 running-tasks)]
         (log/info "Reconciling" (count ts) "tasks, including task" (first ts))
         (mesos/reconcile-tasks driver (mapv (fn [[task-id status slave-id]]
