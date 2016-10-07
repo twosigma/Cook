@@ -58,7 +58,10 @@
                          :tcp (RiemannClient/tcp host port)
                          :udp (RiemannClient/udp addr)
                          (throw (ex-info "Mode must be :tcp or :udp" cfg)))]
-    (.connect riemann-client)
+    (try
+      (.connect riemann-client)
+      (catch Exception e
+        (log/warn e "Couldn't immediately connect to riemann. It will try to reconnect but for now no metrics are being sent.")))
     (doto (.. (RiemannReporter/forRegistry metrics/default-registry)
               (localHost local-host)
               (prefixedWith prefix)
