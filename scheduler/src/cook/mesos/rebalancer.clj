@@ -233,7 +233,7 @@
                                             (into {}))
         task->scored-task (into (pm/priority-map-keyfn (case category
                                                          :normal (comp - :dru)
-                                                         :gpu -))
+                                                         :gpu (fnil - 0)))
                                 (case category
                                   :normal (dru/sorted-task-scored-task-pairs user->sorted-running-task-ents user->dru-divisors)
                                   :gpu (dru/gpu-task-scored-task-pairs user->sorted-running-task-ents user->dru-divisors)))]
@@ -325,8 +325,8 @@
                                                          (conj (:task aggregation) task)
                                                          (:task aggregation))
                                                  :gpus (+ (:gpus aggregation) (or gpus 0.0))
-                                                 :mem (+ (:mem aggregation) mem)
-                                                 :cpus (+ (:cpus aggregation) cpus)})
+                                                 :mem (+ (:mem aggregation) (or mem 0))
+                                                 :cpus (+ (:cpus aggregation) (or cpus 0))})
                                               {:hostname host :task nil :mem 0.0 :cpus 0.0 :gpus 0.0}
                                               scored-tasks))))
                                   (filter (fn has-enough-resource [resource-sum]
