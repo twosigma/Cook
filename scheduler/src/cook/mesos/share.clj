@@ -102,7 +102,7 @@
                     :share/user user
                     :share/resource [{:resource/type type
                                       :resource/amount amount}]}])]
-        (recur kvs (concat txns txn)))
+        (recur kvs (into txn txns)))
       @(d/transact conn txns))))
 
 (comment

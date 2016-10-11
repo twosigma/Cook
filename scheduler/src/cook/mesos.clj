@@ -62,7 +62,7 @@
                      base-wait 500 ; millis
                      opts {:retry-schedule (cook.util/rand-exponential-seq retries base-wait)}]]
          (if (and (<= memory 200000) (<= ncpus 32))
-           (dutils/transact-with-retries!! conn opts (concat [txn] additional-txns-per-job))
+           (dutils/transact-with-retries!! conn opts (into [txn] additional-txns-per-job))
            (log/error "We chose not to schedule the job" uuid
                       "because it required too many resources:" ncpus
                       "cpus and" memory "MB of memory"))))
@@ -199,4 +199,4 @@
                                  (fn [job-uuid]
                                    [:db/add [:job/uuid job-uuid] :job/state :job.state/completed])
                                  uuids)
-                               (concat (repeat 10 500) (repeat 10 1000)))))))
+                               (into (repeat 10 500) (repeat 10 1000)))))))

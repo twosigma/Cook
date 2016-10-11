@@ -144,7 +144,7 @@
                               e))
               ;; Update exception state
               exception-occurred (isa? (type transaction) Exception)
-              exceptions (concat exceptions (when exception-occurred [transaction]))]
+              exceptions (into exceptions (when exception-occurred [transaction]))]
           (println "finished txns")
           (if-not (and sleep exception-occurred)
             (let [resp (if exception-occurred

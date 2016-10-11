@@ -61,11 +61,11 @@
 
 (defn offer-resource-scalar
   [offer resource-name]
-  (apply + (offer-resource-values offer resource-name :scalar)))
+  (reduce + 0.0 (offer-resource-values offer resource-name :scalar)))
 
 (defn offer-resource-ranges
   [offer resource-name]
-  (apply concat (offer-resource-values offer resource-name :ranges)))
+  (reduce into [] (offer-resource-values offer resource-name :ranges)))
 
 (defn tuplify-offer
   "Takes an offer (from Mesomatic) and converts it to a queryable format for datomic"
@@ -89,14 +89,6 @@
        [?r-mem :resource/amount ?mem-req]
        [(>= ?mem ?mem-req)]]
      db pending-jobs (tuplify-offer offer)))
-
-(defn rescind-offer!
-  [rescinded-offer-id-cache offer-id]
-  (log/info "Rescinding offer" offer-id)
-  (swap! rescinded-offer-id-cache (fn [c]
-                                    (if (cache/has? c offer-id)
-                                      (cache/hit c offer-id)
-                                      (cache/miss c offer-id offer-id)))))
 
 (timers/deftimer [cook-mesos scheduler handle-status-update-duration])
 (meters/defmeter [cook-mesos scheduler tasks-killed-in-status-update])
@@ -261,15 +253,15 @@
              ;; (println "update:" task-id task-state job instance instance-status prior-job-state)
              (log/debug "Transacting updated state for instance" instance "to status" instance-status)
              (transact-with-retries conn
-                                    (concat
-                                      [[:instance/update-state instance instance-status]]
-                                      (when (and (#{:instance.status/failed} instance-status) (not previous-reason) reason)
-                                        [[:db/add instance :instance/reason (reason/mesos-reason->cook-reason-entity-id db reason)]])
-                                      (when (#{:instance.status/success
-                                               :instance.status/failed} instance-status)
-                                        [[:db/add instance :instance/end-time (now)]])
-                                      (when progress
-                                        [[:db/add instance :instance/progress progress]])))))
+                                    (reduce into
+                                            [[:instance/update-state instance instance-status]]
+                                            [(when (and (#{:instance.status/failed} instance-status) (not previous-reason) reason)
+                                               [[:db/add instance :instance/reason (reason/mesos-reason->cook-reason-entity-id db reason)]])
+                                             (when (#{:instance.status/success
+                                                      :instance.status/failed} instance-status)
+                                               [[:db/add instance :instance/end-time (now)]])
+                                             (when progress
+                                               [[:db/add instance :instance/progress progress]])]))))
       (catch Exception e
         (log/error e "Mesos scheduler status update error")))))
 
@@ -535,7 +527,7 @@
         jobs-to-backfill (filter matched? jobs-after-backfilling)
         jobs-fully-processed (filter matched? jobs-before-backfilling)
         jobs-to-upgrade (filter previously-backfilled? jobs-before-backfilling)
-        tasks-ids-to-upgrade (->> jobs-to-upgrade (mapv backfilled-ids-memo) (apply concat) vec)]
+        tasks-ids-to-upgrade (->> jobs-to-upgrade (mapv backfilled-ids-memo) (reduce into []))]
 
     (let [resources-backfilled (util/sum-resources-of-jobs jobs-to-backfill)
           resources-fully-processed (util/sum-resources-of-jobs jobs-fully-processed)
@@ -713,7 +705,7 @@
                                 :instance/progress 0
                                 :instance/status :instance.status/unknown
                                 :instance/preempted? false}])
-                  upgrade-txns (map (fn [instance-id]
+                  upgrade-txns (mapv (fn [instance-id]
                                       [:db/add instance-id :instance/backfilled? false])
                                     (:upgrade-backfill processed-matches))]
               ;; Note that this transaction can fail if a job was scheduled
@@ -724,7 +716,7 @@
                 handle-resource-offer!-transact-task-duration
                 @(d/transact
                    conn
-                   (vec (apply concat upgrade-txns task-txns))))
+                   (reduce into upgrade-txns task-txns)))
               (log/info "Launching" (count task-txns) "tasks")
               (log/info "Upgrading" (count (:upgrade-backfill processed-matches)) "tasks from backfilled to proper")
               (log/info "Matched tasks" task-txns)
@@ -830,7 +822,7 @@
                       ;; Try to clear the channel
                       offers (->> (repeatedly chan-length #(async/poll! offers-chan))
                                   (filter nil?)
-                                  (apply concat offers))
+                                  (reduce into offers))
                       _ (log/debug "Passing following offers to handle-resource-offers!" offers)
                       user->quota (quota/create-user->quota-fn (d/db conn))
                       matched-head? (handle-resource-offers! conn @driver-atom fenzo @fid-atom pending-jobs-atom @user->usage-future user->quota num-considerable offers-chan offers)]
@@ -1047,7 +1039,7 @@
   [pending-task-ents running-task-ents user->dru-divisors]
   (let [jobs (timers/time!
                sort-jobs-hierarchy-duration
-               (-<>> (concat running-task-ents pending-task-ents)
+               (-<>> (into running-task-ents pending-task-ents)
                      (group-by util/task-ent->user)
                      (map (fn [[user task-ents]]
                             [user (into (sorted-set-by (util/same-user-task-comparator)) task-ents)]))
@@ -1232,10 +1224,6 @@
 (defn create-datomic-scheduler
   [conn set-framework-id driver-atom pending-jobs-atom heartbeat-ch offer-incubate-time-ms fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset task-constraints gpu-enabled? good-enough-fitness]
   (let [fid (atom nil)
-        ;; Mesos can potentially rescind thousands of offers
-        rescinded-offer-id-cache (-> {}
-                                     (cache/fifo-cache-factory :threshold 10240)
-                                     atom)
         fenzo (make-fenzo-scheduler driver-atom offer-incubate-time-ms good-enough-fitness)
         [offers-chan resources-atom] (make-offer-handler conn driver-atom fenzo fid pending-jobs-atom fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset)]
     (start-jobs-prioritizer! conn pending-jobs-atom task-constraints)
@@ -1269,7 +1257,8 @@
                           (log/error e "Reconciliation error")))))
       ;; Ignore this--we can just wait for new offers
       (offer-rescinded [this driver offer-id]
-                      (rescind-offer! rescinded-offer-id-cache offer-id))
+                       ;; TODO: Rescind the offer in fenzo
+                       )
       (framework-message [this driver executor-id slave-id data]
                         (heartbeat/notify-heartbeat heartbeat-ch executor-id slave-id data))
       (disconnected [this driver]

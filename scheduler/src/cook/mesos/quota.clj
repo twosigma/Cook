@@ -79,9 +79,10 @@
          txns []]
     (if (and amount (pos? amount))
       (if (= type :count)
-        (recur kvs (concat txns [{:db/id (d/tempid :db.part/user)
+        (recur kvs (into [{:db/id (d/tempid :db.part/user)
                                   :quota/user user
-                                  :quota/count amount}]))
+                                  :quota/count amount}]
+                         txns))
         (let [type (resource-type->datomic-resource-type type)
               resource (-> (q '[:find ?r
                                 :in $ ?user ?type
@@ -97,7 +98,7 @@
                       :quota/user user
                       :quota/resource [{:resource/type type
                                         :resource/amount amount}]}])]
-          (recur kvs (concat txns txn))))
+          (recur kvs (into txn txns))))
       @(d/transact conn txns))))
 
 (defn create-user->quota-fn

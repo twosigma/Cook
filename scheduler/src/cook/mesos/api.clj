@@ -311,11 +311,15 @@
                                       :conn-timeout timeout-millis
                                       :as :json-string-keys
                                       :spnego-auth true}))
-        framework-executors (for [framework (concat (get slave-state "frameworks")
-                                                    (get slave-state "completed_frameworks"))
+        framework-executors (for [framework (reduce into 
+                                                    [] 
+                                                    [(get slave-state "frameworks")
+                                                     (get slave-state "completed_frameworks")])
                                   :when (= framework-id (get framework "id"))
-                                  e (concat (get framework "executors")
-                                            (get framework "completed_executors"))]
+                                  e (reduce into 
+                                            []
+                                            [(get framework "executors")
+                                             (get framework "completed_executors")])]
                               e)]
     (reduce (fn [m {:strs [id] :as executor-state}]
               (assoc m id executor-state))
@@ -457,7 +461,7 @@
                                   (and (every? used? jobs)
                                        (every? (complement nil?) instance-jobs))
                                   ;;Currently don't support delete of instance. May in future
-                                  [false {::jobs (concat jobs instance-jobs)}]
+                                  [false {::jobs (into jobs instance-jobs)}]
                                   (some nil? instance-jobs)
                                   [true {::error (str "UUID "
                                                       (str/join
@@ -631,7 +635,7 @@
         :handle-malformed (fn [ctx]
                             (str (::error ctx)))
         :post! (fn [ctx]
-                 (apply share/set-share! conn (get-in ctx [:request :params "user"]) (apply concat (::shares ctx))))
+                 (apply share/set-share! conn (get-in ctx [:request :params "user"]) (reduce into [] (::shares ctx))))
         :delete! (fn [ctx]
                    (share/retract-share! conn (get-in ctx [:request :params "user"])))
         :handle-ok (fn [ctx]
@@ -677,7 +681,7 @@
         :handle-malformed (fn [ctx]
                             (str (::error ctx)))
         :post! (fn [ctx]
-                 (apply quota/set-quota! conn (get-in ctx [:request :params "user"]) (apply concat (::quotas ctx))))
+                 (apply quota/set-quota! conn (get-in ctx [:request :params "user"]) (reduce into [] (::quotas ctx))))
         :delete! (fn [ctx]
                    (quota/retract-quota! conn (get-in ctx [:request :params "user"])))
         :handle-ok (fn [ctx]
