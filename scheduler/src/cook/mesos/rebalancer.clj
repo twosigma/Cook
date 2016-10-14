@@ -314,7 +314,7 @@
          ;; tasks on a specific host.
          ;; We try to find a preemption decision where the minimum dru of tasks to be preempted is maximum
 
-         preemption-decision (->> (merge-with concat host->formatted-spare-resources host->scored-tasks)
+         preemption-decision (->> (merge-with into host->formatted-spare-resources host->scored-tasks)
                                   (mapcat (fn compute-aggregations [[host scored-tasks]]
                                             (rest
                                              (reductions

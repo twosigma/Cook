@@ -61,13 +61,14 @@
     (resolve var-sym)))
 
 (def raw-scheduler-routes
-  {:scheduler (fnk [mesos-datomic framework-id mesos-pending-jobs-atom [:settings task-constraints mesos-gpu-enabled]]
+  {:scheduler (fnk [mesos-datomic framework-id mesos-pending-jobs-atom [:settings task-constraints mesos-gpu-enabled is-authorized-fn]]
                    ((lazy-load-var 'cook.mesos.api/handler)
                     mesos-datomic
                     framework-id
                     task-constraints
                     mesos-gpu-enabled
-                    (fn [] @mesos-pending-jobs-atom)))
+                    (fn [] @mesos-pending-jobs-atom)
+                    is-authorized-fn))
    :view (fnk [scheduler]
               scheduler)})
 
@@ -78,7 +79,7 @@
                       (route/not-found "<h1>Not a valid route</h1>")))})
 
 (def mesos-scheduler
-  {:mesos-scheduler (fnk [[:settings mesos-master mesos-master-hosts mesos-leader-path mesos-failover-timeout mesos-principal mesos-role offer-incubate-time-ms fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset task-constraints riemann dru-scale mesos-gpu-enabled] mesos-datomic mesos-datomic-mult curator-framework mesos-pending-jobs-atom]
+  {:mesos-scheduler (fnk [[:settings mesos-master mesos-master-hosts mesos-leader-path mesos-failover-timeout mesos-principal mesos-role offer-incubate-time-ms fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset task-constraints riemann dru-scale mesos-gpu-enabled good-enough-fitness] mesos-datomic mesos-datomic-mult curator-framework mesos-pending-jobs-atom]
                          (try
                            (Class/forName "org.apache.mesos.Scheduler")
                            ((lazy-load-var 'cook.mesos/start-mesos-scheduler)
@@ -92,16 +93,17 @@
                             mesos-principal
                             mesos-role
                             offer-incubate-time-ms
-                            fenzo-max-jobs-considered
-                            fenzo-scaleback
-                            fenzo-floor-iterations-before-warn
-                            fenzo-floor-iterations-before-reset
                             task-constraints
                             (:host riemann)
                             (:port riemann)
                             mesos-pending-jobs-atom
                             dru-scale
-                            mesos-gpu-enabled)
+                            mesos-gpu-enabled 
+                            {:fenzo-max-jobs-considered fenzo-max-jobs-considered
+                             :fenzo-scaleback fenzo-scaleback
+                             :fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-warn
+                             :fenzo-floor-iterations-before-reset fenzo-floor-iterations-before-reset
+                             :good-enough-fitness good-enough-fitness})
                            (catch ClassNotFoundException e
                              (log/warn e "Not loading mesos support...")
                              nil)))})
@@ -268,15 +270,20 @@
    :exception-handler (fnk [] ((lazy-load-var 'cook.util/install-email-on-exception-handler))) ;;TODO parameterize
    })
 
+(def default-authorization {:authorization-fn 'cook.authorization/open-auth})
+
 (def config-settings
   "Parses the settings out of a config file"
   (graph/eager-compile
     {:server-port (fnk [[:config port]]
                        port)
+     :is-authorized-fn (fnk [[:config {authorization-config default-authorization}]]
+                                (partial (lazy-load-var 'cook.authorization/is-authorized?)
+                                         authorization-config))
      :authorization-middleware (fnk [[:config [:authorization {one-user false} {kerberos false} {http-basic false}]]]
                                     (cond
                                       http-basic (do
-                                                   (log/info "Using http basic authentication")
+                                                   (log/info "Using http basic authorization")
                                                    (lazy-load-var 'cook.basic-auth/http-basic-middleware))
                                       one-user (do
                                                  (log/info "Using single user authorization")
@@ -325,6 +332,8 @@
                                                fenzo-floor-iterations-before-reset)
      :mesos-gpu-enabled (fnk [[:config [:mesos {enable-gpu-support false}]]]
                              (boolean enable-gpu-support))
+     :good-enough-fitness (fnk [[:config [:scheduler {good-enough-fitness 0.8}]]]
+                               good-enough-fitness)
      :mesos-master (fnk [[:config [:mesos master]]]
                         master)
      :mesos-master-hosts (fnk [[:config [:mesos master {master-hosts nil}]]]
@@ -423,27 +432,33 @@
   [config & args]
   (when-not (.exists (java.io.File. config))
     (.println System/err (str "The config file doesn't appear to exist: " config)))
-  (println "Reading config from file:" config)
+  (.println System/err (str "Reading config from file:" config))
   (try
-    (let [config-format (com.google.common.io.Files/getFileExtension config)
-        literal-config {:config
-                        (case config-format
-                          "edn" (read-string (slurp config))
-                          (do
-                            (.println System/err (str "Invalid config file format " config-format))
-                            (System/exit 1)))}
-        base-init (pre-configuration literal-config)
-        _ (println "Configured logging")
-        _ (log/info "Configured logging")
-        settings {:settings (config-settings literal-config)}
-        _ (log/info "Interpreted settings")
-        server (scheduler-server settings)]
-    (intern 'user 'main-graph server)
-    (log/info "Started cook, stored variable in user/main-graph"))
-    (println "Started cook, stored variable in user/main-graph")
+    (let [config-format (try
+                          (com.google.common.io.Files/getFileExtension config)
+                          (catch Throwable t
+                            (.println System/err (str "Failed to start Cook" t))
+                            (System/exit 1)))
+          literal-config (try
+                           {:config
+                            (case config-format
+                              "edn" (read-string (slurp config))
+                              (do
+                                (.println System/err (str "Invalid config file format " config-format))
+                                (System/exit 1)))}
+                           (catch Throwable t
+                             (.println System/err (str "Failed to start Cook" t))
+                             (System/exit 1)))]
+      (pre-configuration literal-config)
+      (.println System/err "Configured logging")
+      (log/info "Configured logging")
+      (let [settings {:settings (config-settings literal-config)}
+            _ (log/info "Interpreted settings")
+            server (scheduler-server settings)]
+        (intern 'user 'main-graph server)
+        (log/info "Started cook, stored variable in user/main-graph")))
     (catch Throwable t
       (log/error t "Failed to start Cook")
-      (println "Failed to start Cook" t)
       (System/exit 1))))
 
 (comment

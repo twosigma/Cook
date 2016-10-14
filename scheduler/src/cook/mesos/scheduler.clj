@@ -16,7 +16,6 @@
 (ns cook.mesos.scheduler
   (:require [mesomatic.scheduler :as mesos]
             [mesomatic.types :as mtypes]
-            [cook.mesos.util :as util]
             [cook.mesos.dru :as dru]
             [cook.mesos.task :as task]
             cook.mesos.schema
@@ -38,6 +37,9 @@
             [chime :refer [chime-at chime-ch]]
             [cook.mesos.heartbeat :as heartbeat]
             [cook.mesos.share :as share]
+            [cook.mesos.quota :as quota]
+            [cook.mesos.util :as util]
+            [plumbing.core :refer (map-vals)]
             [swiss.arrows :refer :all]
             [clojure.core.cache :as cache]
             [cook.mesos.reason :as reason])
@@ -59,11 +61,11 @@
 
 (defn offer-resource-scalar
   [offer resource-name]
-  (apply + (offer-resource-values offer resource-name :scalar)))
+  (reduce + 0.0 (offer-resource-values offer resource-name :scalar)))
 
 (defn offer-resource-ranges
   [offer resource-name]
-  (apply concat (offer-resource-values offer resource-name :ranges)))
+  (reduce into [] (offer-resource-values offer resource-name :ranges)))
 
 (defn tuplify-offer
   "Takes an offer (from Mesomatic) and converts it to a queryable format for datomic"
@@ -87,57 +89,6 @@
        [?r-mem :resource/amount ?mem-req]
        [(>= ?mem ?mem-req)]]
      db pending-jobs (tuplify-offer offer)))
-
-(defn job->task-info
-  "Takes a job entity, returns a taskinfo"
-  [db fid job]
-  (let [job-ent (d/entity db job)
-        task-id (str (java.util.UUID/randomUUID))
-        resources (util/job-ent->resources job-ent)
-        ;; If the custom-executor attr isn't set, we default to using a custom
-        ;; executor in order to support jobs submitted before we added this field
-        container (util/job-ent->container db job job-ent)
-        custom-executor (:job/custom-executor job-ent true)
-        environment (util/job-ent->env job-ent)
-        labels (util/job-ent->label job-ent)
-        command {:value (:job/command job-ent)
-                 :environment environment
-                 :user (:job/user job-ent)
-                 :uris (:uris resources [])}
-        ;; executor-{key,value} configure whether this is a command or custom
-        ;; executor
-        executor-key (if custom-executor :executor :command)
-        executor-value (if custom-executor
-                         (merge {:executor-id (str (java.util.UUID/randomUUID))
-                                 :framework-id fid
-                                 :name "cook agent executor"
-                                 :source "cook_scheduler"
-                                 :command command}
-                                (when (seq container)
-                                  {:container container}))
-                         command)]
-    ;; If the there is no value for key :job/name, the following name will contain a substring "null".
-    (merge {:name (format "%s_%s_%s" (:job/name job-ent "cookjob") (:job/user job-ent) task-id)
-            :task-id task-id
-            :num-ports (:ports resources)
-            :resources (select-keys resources [:mem :cpus])
-            :labels labels
-            ;;TODO this data is a race-condition
-            :data (.getBytes
-                   (pr-str
-                    {:instance (str (count (:job/instance job-ent)))})
-                   "UTF-8")
-            executor-key executor-value}
-           (when (and (seq container) (not custom-executor))
-             {:container container}))))
-
-(defn rescind-offer!
-  [rescinded-offer-id-cache offer-id]
-  (log/info "Rescinding offer" offer-id)
-  (swap! rescinded-offer-id-cache (fn [c]
-                                    (if (cache/has? c offer-id)
-                                      (cache/hit c offer-id)
-                                      (cache/miss c offer-id offer-id)))))
 
 (timers/deftimer [cook-mesos scheduler handle-status-update-duration])
 (meters/defmeter [cook-mesos scheduler tasks-killed-in-status-update])
@@ -264,9 +215,10 @@
            (when (#{:instance.status/success :instance.status/failed} instance-status)
              (log/debug "Unassigning task" task-id "from" (:instance/hostname instance-ent))
              (try
-               (.. fenzo
-                   (getTaskUnAssigner)
-                   (call task-id (:instance/hostname instance-ent)))
+               (locking fenzo
+                 (.. fenzo
+                     (getTaskUnAssigner)
+                     (call task-id (:instance/hostname instance-ent))))
                (catch Exception e
                  (log/error e "Failed to unassign task" task-id "from" (:instance/hostname instance-ent)))))
            (when (= instance-status :instance.status/success)
@@ -301,15 +253,15 @@
              ;; (println "update:" task-id task-state job instance instance-status prior-job-state)
              (log/debug "Transacting updated state for instance" instance "to status" instance-status)
              (transact-with-retries conn
-                                    (concat
-                                      [[:instance/update-state instance instance-status]]
-                                      (when (and (#{:instance.status/failed} instance-status) (not previous-reason) reason)
-                                        [[:db/add instance :instance/reason (reason/mesos-reason->cook-reason-entity-id db reason)]])
-                                      (when (#{:instance.status/success
-                                               :instance.status/failed} instance-status)
-                                        [[:db/add instance :instance/end-time (now)]])
-                                      (when progress
-                                        [[:db/add instance :instance/progress progress]])))))
+                                    (reduce into
+                                            [[:instance/update-state instance instance-status]]
+                                            [(when (and (#{:instance.status/failed} instance-status) (not previous-reason) reason)
+                                               [[:db/add instance :instance/reason (reason/mesos-reason->cook-reason-entity-id db reason)]])
+                                             (when (#{:instance.status/success
+                                                      :instance.status/failed} instance-status)
+                                               [[:db/add instance :instance/end-time (now)]])
+                                             (when progress
+                                               [[:db/add instance :instance/progress progress]])]))))
       (catch Exception e
         (log/error e "Mesos scheduler status update error")))))
 
@@ -322,6 +274,7 @@
 (defn monitor-tx-report-queue
   "Takes an async channel that will have tx report queue elements on it"
   [tx-report-chan conn driver-ref]
+  (log/info "Starting tx-report-queue")
   (let [kill-chan (async/chan)]
     (async/go
       (loop []
@@ -357,7 +310,7 @@
                                                           db e [:instance.status/unknown
                                                                 :instance.status/running])]
                                        (if-let [driver @driver-ref]
-                                         (do (log/debug "Attempting to kill task" task-id "due to job completion")
+                                         (do (log/info "Attempting to kill task" task-id "due to job completion")
                                              (meters/mark! tx-report-queue-tasks-killed)
                                              (mesos/kill-task! driver {:value task-id}))
                                          (log/error "Couldn't kill task" task-id "due to no Mesos driver!"))))
@@ -366,16 +319,6 @@
                           (recur))
           kill-chan ([_] nil))))
     #(async/close! kill-chan)))
-
-(defn job-uuid->job
-  "Return the job entity id from a string or java.util.UUID representation of a
-   job uuid."
-  [db uuid]
-  (ffirst (q '[:find ?j
-               :in $ ?uuid
-               :where
-               [?j :job/uuid ?uuid]]
-             db (java.util.UUID/fromString (str uuid)))))
 
 ;;; ===========================================================================
 ;;; API for matcher
@@ -447,12 +390,12 @@
               (not has-gpus?))
             (str "The machine " (.getHostname target-vm) (if @needs-gpus? " doesn't have" " has") " gpus")))))))
 
-(defrecord TaskRequestAdapter [job task-info assigned-resources]
+(defrecord TaskRequestAdapter [job resources task-id assigned-resources]
   com.netflix.fenzo.TaskRequest
-  (getCPUs [_] (get-in task-info [:resources :cpus]))
+  (getCPUs [_] (:cpus resources))
   (getDisk [_] 0.0)
   (getHardConstraints [_] [(novel-host-constraint job) (gpu-host-constraint job)])
-  (getId [_] (:task-id task-info))
+  (getId [_] task-id)
   (getScalarRequests [_]
     (reduce (fn [result resource]
                  (if-let [value (:resource/amount resource)]
@@ -463,9 +406,9 @@
   (getAssignedResources [_] @assigned-resources)
   (setAssignedResources [_ v] (reset! assigned-resources v))
   (getCustomNamedResources [_] {})
-  (getMemory [_] (get-in task-info [:resources :mem]))
+  (getMemory [_] (:mem resources))
   (getNetworkMbps [_] 0.0)
-  (getPorts [_] (:num-ports task-info))
+  (getPorts [_] (:ports resources))
   (getSoftConstraints [_] [])
   (taskGroupName [_] (str (:job/uuid job))))
 
@@ -476,14 +419,19 @@
    the offer.
 
    Returns a list of tasks that got matched to the offer"
-  [^TaskScheduler fenzo considerable offers db fid]
+  [^TaskScheduler fenzo considerable offers]
   (log/debug "Matching" (count offers) "offers to" (count considerable) "jobs with fenzo")
   (log/debug "offer to scheduleOnce" offers)
   (log/debug "tasks to scheduleOnce" considerable)
   (let [t (System/currentTimeMillis)
+        _ (log/debug "offer to scheduleOnce" offers)
+        _ (log/debug "tasks to scheduleOnce" considerable)
         leases (mapv #(->VirtualMachineLeaseAdapter % t) offers)
         requests (mapv (fn [job]
-                         (->TaskRequestAdapter job (job->task-info db fid (:db/id job)) (atom nil)))
+                         (->TaskRequestAdapter job 
+                                               (util/job-ent->resources job) 
+                                               (str (java.util.UUID/randomUUID)) 
+                                               (atom nil))) 
                        considerable)
         ;; Need to lock on fenzo when accessing scheduleOnce because scheduleOnce and
         ;; task assigner can not be called at the same time.
@@ -519,6 +467,8 @@
 
 (timers/deftimer [cook-mesos scheduler handle-resource-offer!-duration])
 (timers/deftimer [cook-mesos scheduler handle-resource-offer!-transact-task-duration])
+(timers/deftimer [cook-mesos scheduler handle-resource-offer!-process-matches-duration])
+(timers/deftimer [cook-mesos scheduler handle-resource-offer!-mesos-submit-duration])
 (timers/deftimer [cook-mesos scheduler handle-resource-offer!-match-duration])
 (meters/defmeter [cook-mesos scheduler pending-job-atom-contended])
 
@@ -577,7 +527,7 @@
         jobs-to-backfill (filter matched? jobs-after-backfilling)
         jobs-fully-processed (filter matched? jobs-before-backfilling)
         jobs-to-upgrade (filter previously-backfilled? jobs-before-backfilling)
-        tasks-ids-to-upgrade (->> jobs-to-upgrade (mapv backfilled-ids-memo) (apply concat) vec)]
+        tasks-ids-to-upgrade (->> jobs-to-upgrade (mapv backfilled-ids-memo) (reduce into []))]
 
     (let [resources-backfilled (util/sum-resources-of-jobs jobs-to-backfill)
           resources-fully-processed (util/sum-resources-of-jobs jobs-fully-processed)
@@ -602,10 +552,52 @@
      :backfill-jobs (set (mapv :job/uuid jobs-to-backfill))
      :matched-head? (matched? head-of-considerable)}))
 
+(defn below-quota?
+  "Returns true if the usage is below quota-constraints on all dimensions"
+  [{:keys [count cpus mem] :as quota}
+   {:keys [count cpus mem] :as usage}]
+  ;; The select-keys on quota was added because if there is a
+  ;; resource in quota that the current usage doesn't use below-quota?
+  ;; will incorrectly return false
+  (every? true? (vals (merge-with <= usage
+                                  (select-keys quota (keys usage))))))
+
+(defn job->usage
+  "Takes a job-ent and returns a map of the usage of that job,
+   specifically :mem, :cpus, and :count (which is 1)"
+  [job-ent]
+  (let [{:keys [cpus mem]} (util/job-ent->resources job-ent)]
+    {:cpus cpus :mem mem :count 1}))
+
+(defn filter-based-on-quota
+  "Lazily filters jobs for which the sum of running jobs and jobs earlier in the queue exceeds one of the constraints,
+   max-jobs, max-cpus or max-mem"
+  [user->quota user->usage queue]
+  (letfn [(filter-with-quota [user->usage job]
+            (let [user (:job/user job)
+                  job-usage (job->usage job)
+                  user->usage' (update-in user->usage [user] #(merge-with + job-usage %))]
+              (log/debug "Quota check" {:user user
+                                       :usage (get user->usage' user)
+                                       :quota (user->quota user)})
+              [user->usage' (below-quota? (user->quota user) (get user->usage' user))]))]
+    (util/filter-sequential filter-with-quota user->usage queue)))
+
+(defn generate-user-usage-map
+  "Returns a mapping from user to usage stats"
+  [unfiltered-db]
+  (->> (util/get-running-task-ents unfiltered-db)
+       (map :job/_instance)
+       (group-by :job/user)
+       (map-vals (fn [jobs]
+                   (->> jobs
+                        (map job->usage)
+                        (reduce (partial merge-with +)))))))
+
 (defn handle-resource-offers!
   "Gets a list of offers from mesos. Decides what to do with them all--they should all
    be accepted or rejected at the end of the function."
-  [conn driver ^TaskScheduler fenzo fid pending-jobs num-considerable offers-chan offers]
+  [conn driver ^TaskScheduler fenzo fid pending-jobs user->usage user->quota num-considerable offers-chan offers]
   (log/debug "invoked handle-resource-offers!")
   (let [offer-stash (atom nil)] ;; This is a way to ensure we never lose offers fenzo assigned if an errors occures in the middle of processing
     ;; TODO: It is possible to have an offer expire by mesos because we recycle it a bunch of times.
@@ -616,17 +608,24 @@
         (let [scheduler-contents-by @pending-jobs
               db (db conn)
               _ (log/debug "There are" (apply + (map count scheduler-contents-by)) "pending jobs")
-              _ (log/info "scheduler-contents:" scheduler-contents-by)
+              _ (log/debug "scheduler-contents:" scheduler-contents-by)
               considerable-by (->> scheduler-contents-by
                                    (map (fn [[category jobs]]
                                           [category (->> jobs
+                                                         (filter (fn [job]
+                                                                   ;; Remove backfill jobs
+                                                                   (= (:job/state job)
+                                                                      :job.state/waiting)))
+                                                         (filter-based-on-quota user->quota user->usage)
                                                          (filter (fn [job]
                                                                    (util/job-allowed-to-start? db job)))
                                                          (take num-considerable))]))
                                    (into {}))
               _ (log/debug "We'll consider scheduling" (map (fn [[k v]] [k (count v)]) considerable-by)
                            "of those pending jobs (limited to " num-considerable " due to backdown)")
-              matches (match-offer-to-schedule fenzo (apply concat (vals considerable-by)) offers db fid)
+              matches (timers/time!
+                        handle-resource-offer!-match-duration
+                        (match-offer-to-schedule fenzo (apply concat (vals considerable-by)) offers))
               offers-scheduled (for [{:keys [leases]} matches
                                      lease leases]
                                  (:offer lease))
@@ -643,7 +642,14 @@
                                                :when (= :gpu (util/categorize-job (:job task-request)))]
                                            (:job/uuid (:job task-request))))
               ;; Backfill only applies to normal (i.e. non-scarce resource dependent) jobs
-              processed-matches (process-matches-for-backfill (:normal scheduler-contents-by) (first (:normal considerable-by)) matched-normal-jobs)
+              processed-matches (timers/time!
+                                  handle-resource-offer!-process-matches-duration
+                                  ;; We take 10x num-considerable as a heuristic
+                                  ;; scheduler-contents can be very large and so we don't want to go through the whole thing
+                                  ;; it is better to be mostly right in back fill decisions and schedule fast
+                                  (process-matches-for-backfill (take (* 10 num-considerable) (:normal scheduler-contents-by)) 
+                                                                (first (:normal considerable-by)) 
+                                                                matched-normal-jobs))
               update-scheduler-contents (fn update-scheduler-contents [scheduler-contents-by]
                                           (-> scheduler-contents-by
                                               (update-in [:gpu] #(remove (fn [{pending-job-uuid :job/uuid}]
@@ -682,36 +688,35 @@
                                         slave-id (-> offers first :slave-id :value)]
                                   ^TaskAssignmentResult task tasks
                                   :let [request (.getRequest task)
-                                        task-info (:task-info request)
+                                        task-id (:task-id request)
                                         job-id (get-in request [:job :db/id])]]
                               [[:job/allowed-to-start? job-id]
                                {:db/id (d/tempid :db.part/user)
                                 :job/_instance job-id
-                                :instance/task-id (:task-id task-info)
+                                :instance/task-id task-id
                                 :instance/hostname (.getHostname task)
                                 :instance/start-time (now)
                                 ;; NB command executor uses the task-id
                                 ;; as the executor-id
-                                :instance/executor-id (get-in
-                                                        task-info
-                                                        [:executor :executor-id]
-                                                        (:task-id task-info))
+                                :instance/executor-id task-id
                                 :instance/backfilled? (contains? (:backfill-jobs processed-matches) (get-in request [:job :job/uuid]))
                                 :instance/slave-id slave-id
                                 :instance/ports (.getAssignedPorts task)
                                 :instance/progress 0
                                 :instance/status :instance.status/unknown
                                 :instance/preempted? false}])
-                  upgrade-txns (map (fn [instance-id]
+                  upgrade-txns (mapv (fn [instance-id]
                                       [:db/add instance-id :instance/backfilled? false])
                                     (:upgrade-backfill processed-matches))]
               ;; Note that this transaction can fail if a job was scheduled
               ;; during a race. If that happens, then other jobs that should
               ;; be scheduled will not be eligible for rescheduling until
               ;; the pending-jobs atom is repopulated
-              @(d/transact
-                 conn
-                 (vec (apply concat upgrade-txns task-txns)))
+              (timers/time!
+                handle-resource-offer!-transact-task-duration
+                @(d/transact
+                   conn
+                   (reduce into upgrade-txns task-txns)))
               (log/info "Launching" (count task-txns) "tasks")
               (log/info "Upgrading" (count (:upgrade-backfill processed-matches)) "tasks from backfilled to proper")
               (log/info "Matched tasks" task-txns)
@@ -731,17 +736,22 @@
               (meters/mark! matched-tasks (count task-txns))
               (meters/mark! matched-tasks-cpus (:cpus match-resource-requirements))
               (meters/mark! matched-tasks-mem (:mem match-resource-requirements))
-              (doseq [{:keys [tasks leases]} matches
+              (timers/time!
+                handle-resource-offer!-mesos-submit-duration
+                (doseq [{:keys [tasks leases]} matches
                       :let [offers (mapv :offer leases)
-                            task-infos (task/compile-mesos-messages offers tasks)]]
+                            task-data-maps (map #(task/TaskAssignmentResult->task-metadata db fid %)
+                                                    tasks)
+                            task-infos (task/compile-mesos-messages offers task-data-maps)]]
 
-                (log/debug "task-infos" task-infos)
+                (log/debug "Matched task-infos" task-infos)
                 (mesos/launch-tasks! driver (mapv :id offers) task-infos)
 
                 (doseq [^TaskAssignmentResult task tasks]
-                  (.. fenzo
-                      (getTaskAssigner)
-                      (call (.getRequest task) (get-in (first leases) [:offer :hostname])))))
+                  (locking fenzo
+                    (.. fenzo
+                        (getTaskAssigner)
+                        (call (.getRequest task) (get-in (first leases) [:offer :hostname])))))))
               (:matched-head? processed-matches))))
         (catch Throwable t
           (meters/mark! handle-resource-offer!-errors)
@@ -754,7 +764,7 @@
 
 (defn view-incubating-offers
   [^TaskScheduler fenzo]
-  (let [pending-offers (for [^com.netflix.fenzo.VirtualMachineCurrentState state (.getVmCurrentStates fenzo)
+  (let [pending-offers (for [^com.netflix.fenzo.VirtualMachineCurrentState state (locking fenzo (.getVmCurrentStates fenzo))
                              :let [lease (.getCurrAvailableResources state)]
                              :when lease]
                          {:hostname (.hostname lease)
@@ -785,7 +795,25 @@
         ;;TODO make this cancelable (if we want to be able to restart the server w/o restarting the JVM)
         (let [next-considerable
               (try
-                (let [offers (async/alt!!
+                (let [;; There are implications to generating the user->usage here:
+                      ;;s ok  1. Currently cook has two oddities in state changes.
+                      ;;  We plan to correct both of these but are important for the time being.
+                      ;;    a. Cook doesn't mark as a job as running when it schedules a job.
+                      ;;       While this is technically correct, it confuses some process.
+                      ;;       For example, it will mean that the user->usage generated here
+                      ;;       may not include jobs that have been scheduled but haven't started.
+                      ;;       Since we do the filter for quota first, this is ok because those jobs
+                      ;;       show up in the queue. However, it is important to know about
+                      ;;    b. Cook doesn't updat ethe job state when cook hears from mesos about the
+                      ;;       state of an instance. Cook waits until it hears from datomic about the
+                      ;;       instance state change to change the state of the job. This means that it
+                      ;;       is possible to have large delays between when a instance changes status
+                      ;;       and the job reflects that change
+                      ;;  2. Once the above two items are addressed, user->usage should always correctly
+                      ;;     reflect *Cook*'s understanding of the state of the world at this point.
+                      ;;     When this happens, users should never exceed their quota
+                      user->usage-future (future (generate-user-usage-map (d/db conn)))
+                      offers (async/alt!!
                                offers-chan ([offers]
                                             (counters/dec! offer-chan-depth)
                                             offers)
@@ -794,9 +822,10 @@
                       ;; Try to clear the channel
                       offers (->> (repeatedly chan-length #(async/poll! offers-chan))
                                   (filter nil?)
-                                  (apply concat offers))
+                                  (reduce into offers))
                       _ (log/debug "Passing following offers to handle-resource-offers!" offers)
-                      matched-head? (handle-resource-offers! conn @driver-atom fenzo @fid-atom pending-jobs-atom num-considerable offers-chan offers)]
+                      user->quota (quota/create-user->quota-fn (d/db conn))
+                      matched-head? (handle-resource-offers! conn @driver-atom fenzo @fid-atom pending-jobs-atom @user->usage-future user->quota num-considerable offers-chan offers)]
                   (when (seq offers)
                     (reset! resources-atom (view-incubating-offers fenzo)))
                   ;; This check ensures that, although we value Fenzo's optimizations,
@@ -864,22 +893,24 @@
                       :instance.status/running :task-running}]
     (when (seq running-tasks)
       (log/info "Preparing to reconcile" (count running-tasks) "tasks")
+      ;; TODO: When turning on periodic reconcilation, probably want to move this to startup
       (doseq [[task-id] running-tasks
               :let [task-ent (d/entity db [:instance/task-id task-id])
                     hostname (:instance/hostname task-ent)
-                    job (:job/_instance task-ent)]]
+                    job (:job/_instance task-ent)
+                    task-request (->TaskRequestAdapter job (util/job-ent->resources job) task-id)]]
         ;; Need to lock on fenzo when accessing taskAssigner because taskAssigner and
         ;; scheduleOnce can not be called at the same time.
         (locking fenzo
           (.. fenzo
               (getTaskAssigner)
-              (call (->TaskRequestAdapter job (job->task-info db fid (:db/id job))) hostname (atom nil)))))
+              (call task-request hostname))))
       (doseq [ts (partition-all 50 running-tasks)]
         (log/info "Reconciling" (count ts) "tasks, including task" (first ts))
         (mesos/reconcile-tasks driver (mapv (fn [[task-id status slave-id]]
-                                              {:task-id task-id
+                                              {:task-id {:value task-id}
                                                :state (sched->mesos status)
-                                               :slave-id slave-id})
+                                               :slave-id {:value slave-id}})
                                             ts)))
       (log/info "Finished reconciling all tasks"))))
 
@@ -955,9 +986,9 @@
                       ;; we could lose the chances to kill this task again.
                       (mesos/kill-task! driver {:value task-id})
                       @(d/transact
-                        conn
-                        [[:instance/update-state [:instance/task-id task-id] :instance/status/failed]
-                         [:db/add [:instance/task-id task-id] :instance/reason [:reason/name :max-runtime-exceeded]]])
+                         conn
+                         [[:instance/update-state [:instance/task-id task-id] :instance/status/failed]
+                          [:db/add [:instance/task-id task-id] :instance/reason [:reason/name :max-runtime-exceeded]]])
                       ))))
               {:error-handler (fn [e]
                                 (log/error e "Failed to reap timeout tasks!"))})))
@@ -1008,7 +1039,7 @@
   [pending-task-ents running-task-ents user->dru-divisors]
   (let [jobs (timers/time!
                sort-jobs-hierarchy-duration
-               (-<>> (concat running-task-ents pending-task-ents)
+               (-<>> (into running-task-ents pending-task-ents)
                      (group-by util/task-ent->user)
                      (map (fn [[user task-ents]]
                             [user (into (sorted-set-by (util/same-user-task-comparator)) task-ents)]))
@@ -1168,12 +1199,15 @@
 (meters/defmeter [cook-mesos scheduler offer-chan-full-error])
 
 (defn make-fenzo-scheduler
-  [driver offer-incubate-time-ms]
+  [driver offer-incubate-time-ms good-enough-fitness]
   (.. (com.netflix.fenzo.TaskScheduler$Builder.)
       (disableShortfallEvaluation) ;; We're not using the autoscaling features
       (withLeaseOfferExpirySecs (max (-> offer-incubate-time-ms time/millis time/in-seconds) 1)) ;; should be at least 1 second
       (withRejectAllExpiredOffers)
       (withFitnessCalculator BinPackingFitnessCalculators/cpuMemBinPacker)
+      (withFitnessGoodEnoughFunction (reify com.netflix.fenzo.functions.Func1
+                                       (call [_ fitness]
+                                         (> fitness good-enough-fitness))))
       (withLeaseRejectAction (reify com.netflix.fenzo.functions.Action1
                                (call [_ lease]
                                  (let [offer (:offer lease)
@@ -1188,13 +1222,9 @@
       (build)))
 
 (defn create-datomic-scheduler
-  [conn set-framework-id driver-atom pending-jobs-atom heartbeat-ch offer-incubate-time-ms fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset task-constraints gpu-enabled?]
+  [conn set-framework-id driver-atom pending-jobs-atom heartbeat-ch offer-incubate-time-ms fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset task-constraints gpu-enabled? good-enough-fitness]
   (let [fid (atom nil)
-        ;; Mesos can potentially rescind thousands of offers
-        rescinded-offer-id-cache (-> {}
-                                     (cache/fifo-cache-factory :threshold 10240)
-                                     atom)
-        fenzo (make-fenzo-scheduler driver-atom offer-incubate-time-ms)
+        fenzo (make-fenzo-scheduler driver-atom offer-incubate-time-ms good-enough-fitness)
         [offers-chan resources-atom] (make-offer-handler conn driver-atom fenzo fid pending-jobs-atom fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset)]
     (start-jobs-prioritizer! conn pending-jobs-atom task-constraints)
     {:scheduler
@@ -1227,7 +1257,8 @@
                           (log/error e "Reconciliation error")))))
       ;; Ignore this--we can just wait for new offers
       (offer-rescinded [this driver offer-id]
-                      (rescind-offer! rescinded-offer-id-cache offer-id))
+                       ;; TODO: Rescind the offer in fenzo
+                       )
       (framework-message [this driver executor-id slave-id data]
                         (heartbeat/notify-heartbeat heartbeat-ch executor-id slave-id data))
       (disconnected [this driver]
