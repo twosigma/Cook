@@ -113,3 +113,7 @@ Comparing overhead for sims (387028093003501) to baseline 387028093003449 ...
 Outputting comparison image to comparison.png
 </code></pre>
 
+## Developing
+
+If you'd like to extend the Simulator or just run a lot of sims quickly via
+the REPL, [this document](doc/development.md) will help you get started.
