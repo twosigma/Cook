@@ -1,4 +1,10 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
+
+"""
+An implementation of a Mesos scheduler, using the agent HTTP API via pymesos.
+
+It exists only to test the custom executor, and assumes Mesos is running locally.
+"""
 
 import os
 import sys
@@ -6,108 +12,106 @@ import time
 import uuid
 import json
 import signal
+import logging
 
 from threading import Thread
 
-from mesos.scheduler import MesosSchedulerDriver
-from mesos.interface import Scheduler, mesos_pb2
+from pymesos import MesosSchedulerDriver, Scheduler, encode_data, decode_data
 
 def new_framework_info(name):
-    framework = mesos_pb2.FrameworkInfo()
-    framework.user = ''
-    framework.name = name
-
-    return framework
+    return {
+        'user': '',
+        'name': name
+    }
 
 def new_executor_info():
     root = os.path.dirname(os.path.realpath(__file__))
-    uris = [
-        'executor.py',
-        'command.py'
-    ]
+    uris = ['__main__.py', 'executor.py', 'launcher.py', 'store.py', 'server.py']
 
-    executor = mesos_pb2.ExecutorInfo()
-    executor.name = 'cook-executor'
-    executor.executor_id.value = 'cook-executor'
-    executor.command.value = 'python executor.py'
-
-    for uri in uris:
-        u = executor.command.uris.add()
-        u.value = root + '/' + uri
-        u.extract = False
-
-    return executor
+    return {
+        'name': 'cook-executor',
+        'executor_id': {'value': 'cook-executor'},
+        'command': {
+            'value': 'python3 -u __main__.py',
+            'uris': [{
+                'extract': False,
+                'value': root + '/' + u
+            } for u in uris]
+        }
+    }
 
 def new_task_info(offer):
-    task = mesos_pb2.TaskInfo()
-
     id = uuid.uuid4()
 
-    commands = [{
-        'value': 'echo 1'
-    }]
+    commands = [
+        {'name': '0', 'value': 'sleep 10', 'async': True},
+        {'name': '1', 'value': 'echo 1'},
+        {'name': '2', 'value': 'echo 2'},
+        {'value': 'echo default'},
+    ]
 
-    task.task_id.value = str(id)
-    task.slave_id.value = offer.slave_id.value
-    task.name = 'task {}'.format(str(id))
-    task.data = json.dumps(commands, separators=(',', ':'))
+    return {
+        'task_id': {'value': str(id)},
+        'agent_id': offer['agent_id'],
+        'name': 'task {}'.format(str(id)),
+        'data': encode_data(json.dumps({'commands': commands}).encode('utf8')).decode('utf8'),
+        'resources': [
+            dict(name = 'mem', type = 'SCALAR', scalar = {'value': 1}),
+            dict(name = 'cpus', type = 'SCALAR', scalar = {'value': 1})
+        ],
+        'executor': new_executor_info()
+    }
 
-    cpus = task.resources.add()
-    cpus.name = 'cpus'
-    cpus.type = mesos_pb2.Value.SCALAR
-    cpus.scalar.value = 1
+TERMINAL_TASK_STATES = set([
+    'TASK_LOST',
+    'TASK_ERROR',
+    'TASK_FAILED',
+    'TASK_KILLED',
+    'TASK_FINISHED'
+])
 
-    mem = task.resources.add()
-    mem.name = 'mem'
-    mem.type = mesos_pb2.Value.SCALAR
-    mem.scalar.value = 1
-
-    task.executor.MergeFrom(new_executor_info())
-
-    return task
+def decode_payload(p):
+    return json.loads(decode_data(p).decode('utf8'))
 
 class CookScheduler(Scheduler):
     def __init__(self):
         self.task = None
 
-    def registered(self, driver, frameworkId, masterInfo):
-        print 'CookScheduler registered'
-
-    def reregistered(self, driver, masterInfo):
-        print 'CookScheduler reregistered'
-
     def resourceOffers(self, driver, offers):
-        print 'CookScheduler resourceOffers'
+        logging.info('CookScheduler:resourceOffers')
 
         if not self.task:
             self.task = new_task_info(offers[0])
             time.sleep(1)
-            driver.launchTasks(offers[0].id, [self.task])
+            driver.launchTasks(offers[0]['id'], [self.task])
 
-    def disconnected(self, driver):
-        print 'CookScheduler disconnected'
-        pass
+    def statusUpdate(self, driver, status):
+        task_id = status['task_id']['value']
+
+        logging.info('CookScheduler:statusupdate: %s %s' %
+                     (status['state'], status.get('data') and decode_payload(status['data'])))
+
+        # if status.state in TERMINAL_TASK_STATES:
+        #     driver.stop()
 
 if __name__ == '__main__':
-    print 'Starting Cook Scheduler'
+    logging.basicConfig(level = "DEBUG")
+    logging.info('Starting Cook Scheduler')
 
     scheduler = CookScheduler()
     framework = new_framework_info('cook-scheduler')
-    master = 'zk://localhost:2181/mesos'
+    # master = 'zk://localhost:2181/mesos'
+    master = 'localhost'
     driver = MesosSchedulerDriver(scheduler, framework, master)
 
-    def run_driver():
-        status = 0 if driver.run() == mesos_pb2.DRIVER_STOPPED else 1
-        driver.stop()
-        sys.exit(status)
-
-    driver_thread = Thread(target = run_driver, args = ())
+    driver_thread = Thread(target = lambda: driver.run(), args = ())
     driver_thread.start()
 
-    print '(Listening for Ctrl-C)'
+    print('(Listening for Ctrl-C)')
     signal.signal(signal.SIGINT, lambda *_: driver.stop())
+
     while driver_thread.is_alive():
         time.sleep(1)
 
-    print 'Goodbye!'
+    print('Goodbye!')
     sys.exit(0)
