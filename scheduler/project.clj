@@ -97,6 +97,8 @@
                  [ring-edn "0.1.0"]
                  [com.duelinmarkers/ring-request-logging "0.2.0"]
                  [liberator "0.13"]
+                 [metosin/ring-swagger "0.22.11"]
+                 [metosin/ring-swagger-ui "2.2.5-0"]
 
                  ;;Databases
                  [com.datomic/datomic-free "0.9.5206"
