@@ -17,7 +17,6 @@
   (:require [datomic.api :as d :refer (q)]
             [metatransaction.core :refer (db)]
             [schema.core :as s]
-            [schema.macros :as sm]
             [cook.mesos]
             [compojure.core :refer (routes ANY)]
             [clojure.tools.logging :as log]
@@ -156,7 +155,7 @@
                 (mk-docker-ports docker-id port-mappings))])
       {})))
 
-(sm/defn submit-jobs
+(s/defn submit-jobs
   [conn jobs :- [Job]]
   (doseq [{:keys [uuid command max-retries max-runtime priority cpus mem gpus user name ports uris env labels container]} jobs
           :let [id (d/tempid :db.part/user)
