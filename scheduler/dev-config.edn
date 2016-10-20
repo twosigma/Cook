@@ -6,11 +6,11 @@
              ;:local-port 3291 ; Uncomment to change the default port
              }
  :scheduler {:offer-incubate-ms 15000
-             :dru-scale 1
              :task-constraints {:timeout-hours 1
                                 :timeout-interval-minutes 1
                                 :memory-gb 48
                                 :cpus 6}}
+ :rebalancer {:dru-scale 1}
  :mesos {:master "zk://localhost:2181/mesos" ; Assuming Mesos is configured to use Zookeeper and is running locally
          :failover-timeout-ms nil ; When we close the instance of Cook, all its tasks are killed by Mesos
          :leader-path "/cook-scheduler"}

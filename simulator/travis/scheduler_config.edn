@@ -1,0 +1,34 @@
+{:port 12321
+ :hostname "172.17.0.1"
+ :authorization {:http-basic true}
+ :database {:datomic-uri "datomic:free://localhost:4334/cook-jobs"}
+ :zookeeper {:local? true}
+ :scheduler {:offer-incubate-ms 15000
+             :task-constraints {:timeout-hours 1
+                                :timeout-interval-minutes 1
+                                :memory-gb 48
+                                :cpus 6}}
+ :rebalancer {:interval-seconds 20
+              :min-utilization-threshold 0.0
+              :safe-dru-threshold 0.0
+              ;; virtually ANY improvement in DRU balance should provoke preemption:
+              :min-dru-diff 1E-309
+              :max-preemption 64.0
+              :dru-scale 1}
+
+ :mesos {:master "zk://172.17.0.3:2181/mesos" ; minimesos zookeeper
+         :master-hosts ["172.17.0.4"] ; minimesos master
+         :failover-timeout-ms nil
+         :leader-path "/cook-scheduler"
+         :role "cook"}
+ :unhandled-exceptions {:log-level :error}
+ :metrics {:jmx true}
+ :nrepl {:enabled? true
+         :port 8888}
+ :log {:file "log/cook.log"
+       :levels {"datomic.db" :warn
+                "datomic.peer" :warn
+                "datomic.kv-cluster" :warn
+                "cook.mesos.rebalancer" :debug
+                "cook.mesos.scheduler" :debug
+                :default :info}}}

@@ -23,6 +23,10 @@
            [datomic.api :as d :refer (q db)]))
 
 (deftest test-compute-task-scored-task-pairs
+  (testing "return empty set on input empty set"
+    (is (= []
+           (dru/compute-task-scored-task-pairs '() {:mem 25.0 :cpus 25.0}))))
+
   (testing "test1"
     (let [datomic-uri "datomic:mem://test-score-tasks"
           conn (schema/restore-fresh-database! datomic-uri)
