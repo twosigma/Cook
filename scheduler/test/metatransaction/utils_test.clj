@@ -104,7 +104,7 @@
                                              :job/id "1"
                                              :job/name "uno"}]))
           resp-chan (update-async conn opts exception-when-a-true)]
-          (async/<!! (async/timeout 10)) ; Let run update fail at least once
+          (async/<!! (async/timeout 50)) ; Let run update fail at least once
           (reset! a false)
           (let [resp (async/<!! resp-chan)]
             (is (instance? clojure.lang.ExceptionInfo resp))
