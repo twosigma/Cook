@@ -17,17 +17,21 @@
   (:require [datomic.api :as d :refer (q)]
             [metatransaction.core :refer (db)]
             [schema.core :as s]
-            [schema.macros :as sm]
             [cook.mesos]
-            [compojure.core :refer (routes ANY)]
+            [compojure.core :as compc :refer (routes ANY)]
+            [compojure.api.sweet :as comp-api]
+;;            [compojure.api.meta :as compm] 
+;;            [plumbing.fnk.impl :as fnk-impl]
             [clojure.tools.logging :as log]
             [clojure.string :as str]
             [clojure.core.cache :as cache]
             [clojure.walk :as walk]
             [clj-http.client :as http]
             [ring.middleware.json]
+            [ring.swagger.swagger2 :as swagger]
+            [ring.swagger.ui :as swagger-ui]
             [clojure.data.json :as json]
-            [liberator.core :refer [resource defresource]]
+            [liberator.core :as liberator]
             [cheshire.core :as cheshire]
             [cook.mesos.util :as util]
             [clj-time.core :as t]
@@ -35,7 +39,7 @@
   (:import java.util.UUID))
 
 (def PosDouble
-  (s/both double (s/pred pos? 'pos?)))
+  (s/both s/Num (s/pred pos? 'pos?)))
 
 (def PortMapping
   "Schema for Docker Portmapping"
@@ -75,7 +79,7 @@
 
 (def Job
   "A schema for a job"
-  {:uuid (s/pred #(instance? UUID %) 'uuid?)
+  {:uuid s/Uuid
    :command s/Str
    ;; Make sure the job name is a valid string which can only contain '.', '_', '-' or any word characters and has
    ;; length at most 128.
@@ -94,6 +98,43 @@
    ;; Make sure the user name is valid. It must begin with a lower case character, end with
    ;; a lower case character or a digit, and has length between 2 to (62 + 2).
    :user (s/both s/Str (s/pred #(re-matches #"\A[a-z][a-z0-9_-]{0,62}[a-z0-9]\z" %) 'lowercase-alphanum?))})
+
+(def JobUuids
+  "Schema for one or more job uuids in params"
+  {:job [s/Uuid]})
+
+(def JobParams
+  "Schema for acceptable request params to identify one or more jobs"
+  {:query JobUuids})
+
+(def JobRequest
+  "Schema for a request request to launch one or more jobs."
+  {:jobs [(merge Job
+                 {(s/optional-key :uris) [Uri]
+                  (s/optional-key :env) {NonEmptyString s/Str}
+                  (s/optional-key :labels) {NonEmptyString s/Str}
+                  (s/optional-key :container) Container})]})
+
+(def Instance
+  "Schema for a description of a single job instance."
+  {:status s/Str
+   :task-id s/Uuid
+   :executor-id s/Uuid
+   :slave-id s/Uuid
+   :hostname s/Str
+   :preempted s/Bool
+   :backfilled s/Bool
+   :ports [s/Int]
+   (s/optional-key :start-time) s/Int
+   (s/optional-key :end-time) s/Int
+   (s/optional-key :reason-code) s/Int
+   (s/optional-key :reason-string) s/Str})
+
+(def JobResponse
+  "Schema for a description of a job (as returned by the API).
+  The structure is the same as for JobRequest, but it can also
+  include descriptions of instances for the job."
+  (merge JobRequest {(s/optional-key :instances) [Instance]}))
 
 (defn- mk-container-params
   "Helper for build-container.  Transforms parameters into the datomic schema."
@@ -156,7 +197,7 @@
                 (mk-docker-ports docker-id port-mappings))])
       {})))
 
-(sm/defn submit-jobs
+(s/defn submit-jobs
   [conn jobs :- [Job]]
   (doseq [{:keys [uuid command max-retries max-runtime priority cpus mem gpus user name ports uris env labels container]} jobs
           :let [id (d/tempid :db.part/user)
@@ -403,19 +444,17 @@
 ;;; On GET; use repeated job argument
 (defn job-resource
   [conn fid task-constraints gpu-enabled?]
-  (-> (resource
+  (-> (liberator/resource
         :available-media-types ["application/json"]
         :allowed-methods [:post :get :delete]
         :malformed? (fn [ctx]
                       (condp contains? (get-in ctx [:request :request-method])
-                        #{:get :delete}
-                        (if-let [jobs (get-in ctx [:request :params "job"])]
-                          (let [jobs (if-not (vector? jobs) [jobs] jobs)]
-                            (try
-                              [false {::jobs (mapv #(UUID/fromString %) jobs)}]
-                              (catch Exception e
-                                [true {::error e}])))
-                          [true {::error "must supply at least one job query param"}])
+                        ;; schema will already validate.
+                        #{:get :delete} false
+                        ;; (do
+                        ;;   (if-let [jobs (get-in ctx [:request :query-params :job])]
+                        ;;     [false {::jobs jobs}]
+                        ;;     [true {::error "must supply at least one job query param"}]))
                         #{:post}
                         (let [params (get-in ctx [:request :params])
                               user (get-in ctx [:request :authorization/user])]
@@ -478,7 +517,7 @@
 
 (defn waiting-jobs
   [mesos-pending-jobs-fn]
-  (-> (resource
+  (-> (liberator/resource
         :available-media-types ["application/json"]
         :allowed-methods [:get]
         :handle-ok (fn [ctx]
@@ -490,7 +529,7 @@
 
 (defn running-jobs
   [conn]
-  (-> (resource
+  (-> (liberator/resource
         :available-media-types ["application/json"]
         :allowed-methods [:get]
         :handle-ok (fn [ctx]
@@ -499,12 +538,132 @@
                           cheshire/generate-string)))
       ring.middleware.json/wrap-json-params))
 
+(def SwaggerApiDocs
+  "This schema describes the entire API."
+  (s/with-fn-validation
+    (swagger/swagger-json
+     {:info {:version "1.1.0"
+            :title "Cook Scheduler"
+            :description "Cook Scheduler's HTTP API"
+            :license {:name "Apache License"
+                      :url "http://www.apache.org/licenses/LICENSE-2.0.html"}}
+      :paths {"/rawscheduler" {:get {:summary "Job status"
+                                     :description "Check the status of specific jobs"
+                                     :parameters JobParams
+                                     :responses {200 {:schema [JobResponse]
+                                                      :description "The jobs and their instances were returned."}
+                                                 400 {:description "Non-UUID values were passed as jobs."}
+                                                 403 {:description "The supplied UUIDs don't correspond to valid jobs."}}}
+
+                               :delete {:summary "Delete jobs"
+                                        :description "Cancel and halt the execution of one or more specific jobs"
+                                        :parameters JobParams
+                                        :responses {204 {:description "The job has been marked for termination."}
+                                                    400 {:description "Non-UUID values were passed as jobs."}
+                                                    403 {:description "The supplied UUIDs don't correspond to valid jobs."}}}
+                               :post {:summary "Schedule jobs"
+                                      :description "Submit requests for new jobs."
+                                      :parameters {:body JobRequest}
+                                      :responses {201 {:description "Job has been successfully created."}
+                                                  400 {:description "This will be returned if the UUID is already used or the requst syntax is not correct."}
+                                                  401 {:description "Returned if authentpication fails or user is not authorized to run jobs on the system."}
+                                                  422 {:description "Returned if there is an error committing jobs to the Cook database."}}}}}})))
+
+
+(defn swagger-docs
+  "A Ring endpoint that returns the JSON version of SwaggerApiDocs;
+  will be interpreted successfully by Swagger tools such as SwaggerUI."
+  []
+  (-> (liberator/resource
+       :available-media-types ["application/json"]
+       :allowed-methods [:get]
+       :handle-ok (fn [ctx]
+                    (cheshire/generate-string SwaggerApiDocs)))
+      ring.middleware.json/wrap-json-params))
+
+
+(def rawscheduler-resource
+  (comp-api/resource
+   {
+    ;; :parameters {:path-params {:id Long}}
+    :get {:parameters {:query-params JobUuids}
+          :responses {200 {:schema [JobResponse]
+                           :description "The jobs and their instances were returned."}
+                      400 {:description "Non-UUID values were passed as jobs."}
+                      403 {:description "The supplied UUIDs don't correspond to valid jobs."}}
+          :summary "returns a set of Jobs"}
+    :post {:parameters {:body-params [JobRequest]}
+           :responses {200 {:schema [JobResponse]}}
+           :summary "Schedules jobs"}
+    :delete {:summary "Deletes jobs"}
+    :handler job-resource
+    }
+                                        ; add this if you just want the swagger-docs
+   ;; {:coercion (constantly nil)}
+   ))
+
+
+(defn app
+  []
+  (comp-api/api
+   {:swagger
+    {:ui "/swagger-ui"
+     :spec "/swagger-docs"
+     :data {:info {:title "Cook API"
+                   :description "How to Cook things"}
+            :tags [{:name "api", :description "some apis"}]}}}
+   (comp-api/context "/rawscheduler" []
+     rawscheduler-resource
+     )
+   )
+  )
+
+
 (defn handler
   [conn fid task-constraints gpu-enabled? mesos-pending-jobs-fn]
   (routes
-    (ANY "/rawscheduler" []
-         (job-resource conn fid task-constraints gpu-enabled?))
-    (ANY "/queue" []
+   (comp-api/api
+    {:swagger
+     {:ui "/swagger-ui"
+      :spec "/swagger-docs"
+      :data {:info {:title "Cook API"
+                    :description "How to Cook things"}
+             :tags [{:name "api", :description "some apis"}]}}}
+    (comp-api/context "/rawscheduler" []
+      (comp-api/resource
+       {
+        ;; :parameters {:path-params {:id Long}}
+        :get {:parameters {:query-params JobUuids}
+              :responses {200 {:schema [JobResponse]
+                               :description "The jobs and their instances were returned."}
+                          400 {:description "Non-UUID values were passed as jobs."}
+                          403 {:description "The supplied UUIDs don't correspond to valid jobs."}}
+              :summary "returns a set of Jobs"}
+        :post {:parameters {:body-params [JobRequest]}
+               :responses {200 {:schema [JobResponse]}}
+               :summary "Schedules jobs"}
+        :delete {:summary "Deletes jobs"}
+        :handler (job-resource conn fid task-constraints gpu-enabled?)
+        }
+       ;; add this if you just want the swagger-docs
+       ;;{:coercion (constantly nil)}
+       )
+      )
+    )
+   ;; (ANY "/rawscheduler" []
+   ;;   ;;(job-resource conn fid task-constraints gpu-enabled?)
+   ;;   )
+   (ANY "/queue" []
          (waiting-jobs mesos-pending-jobs-fn))
     (ANY "/running" []
-         (running-jobs conn))))
+      (running-jobs conn))
+    ;; (ANY "/swagger-docs" []
+    ;;   (swagger-docs))
+    ;; (ring.swagger.ui/swagger-ui
+    ;;  "/swagger-ui"
+    ;;  :swagger-docs "/swagger-docs")
+    )
+  )
+
+
+

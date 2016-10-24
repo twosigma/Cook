@@ -35,8 +35,7 @@
                  [org.clojure/core.memoize "0.5.8"]
                  [clj-time "0.9.0"]
                  [org.clojure/core.async "0.2.374" :exclusions [org.clojure/tools.reader]]
-                 [prismatic/schema "0.2.1"
-                  :exclusions [potemkin]]
+                 [prismatic/schema "1.1.3"]
                  [clojure-miniprofiler "0.4.0"]
                  [jarohen/chime "0.1.6"]
                  [org.clojure/data.priority-map "0.0.5"]
@@ -56,7 +55,7 @@
                  [org.slf4j/slf4j-log4j12 "1.7.12"]
                  [com.draines/postal "1.11.0"
                   :exclusions [commons-codec]]
-                 [prismatic/plumbing "0.1.1"]
+                 [prismatic/plumbing "0.5.3"]
                  [log4j "1.2.17"]
                  [instaparse "1.4.0"]
                  [org.codehaus.jsr166-mirror/jsr166y "1.7.0"]
@@ -93,11 +92,14 @@
                  [ring/ring-core "1.4.0"]
                  [ring/ring-devel "1.4.0" :exclusions [org.clojure/tools.namespace]]
                  [compojure "1.4.0"]
+                 [metosin/compojure-api "1.1.8"]
                  [hiccup "1.0.5"]
                  [ring/ring-json "0.2.0"]
                  [ring-edn "0.1.0"]
                  [com.duelinmarkers/ring-request-logging "0.2.0"]
                  [liberator "0.13"]
+                 [metosin/ring-swagger "0.22.11"]
+                 [metosin/ring-swagger-ui "2.2.5-0"]
 
                  ;;Databases
                  [com.datomic/datomic-free "0.9.5206"
@@ -141,7 +143,7 @@
     :jvm-opts ["-Xms2G"
                "-XX:-OmitStackTraceInFastThrow"
                "-Xmx2G"
-               "-Dcom.sun.management.jmxremote.port=5555"
+;;               "-Dcom.sun.management.jmxremote.port=5555"
                "-Dcom.sun.management.jmxremote.authenticate=false"
                "-Dcom.sun.management.jmxremote.ssl=false"]
     :source-paths []}}

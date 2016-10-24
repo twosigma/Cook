@@ -223,7 +223,7 @@
                            (when zookeeper-server
                              (log/info "Starting local ZK server")
                              (.start zookeeper-server)))
-     :mesos mesos-scheduler
+     ;; :mesos mesos-scheduler
      :mesos-pending-jobs-atom (fnk [] (atom {}))
      :curator-framework curator-framework}))
 
