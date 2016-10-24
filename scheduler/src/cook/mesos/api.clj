@@ -18,7 +18,10 @@
             [metatransaction.core :refer (db)]
             [schema.core :as s]
             [cook.mesos]
-            [compojure.core :refer (routes ANY)]
+            [compojure.core :as compc :refer (routes ANY)]
+            [compojure.api.sweet :as comp-api]
+;;            [compojure.api.meta :as compm] 
+;;            [plumbing.fnk.impl :as fnk-impl]
             [clojure.tools.logging :as log]
             [clojure.string :as str]
             [clojure.core.cache :as cache]
@@ -28,7 +31,7 @@
             [ring.swagger.swagger2 :as swagger]
             [ring.swagger.ui :as swagger-ui]
             [clojure.data.json :as json]
-            [liberator.core :refer [resource defresource]]
+            [liberator.core :as liberator]
             [cheshire.core :as cheshire]
             [cook.mesos.util :as util]
             [clj-time.core :as t]
@@ -96,9 +99,13 @@
    ;; a lower case character or a digit, and has length between 2 to (62 + 2).
    :user (s/both s/Str (s/pred #(re-matches #"\A[a-z][a-z0-9_-]{0,62}[a-z0-9]\z" %) 'lowercase-alphanum?))})
 
+(def JobUuids
+  "Schema for one or more job uuids in params"
+  {:job [s/Uuid]})
+
 (def JobParams
   "Schema for acceptable request params to identify one or more jobs"
-  {:query {:job #{s/Uuid}}})
+  {:query JobUuids})
 
 (def JobRequest
   "Schema for a request request to launch one or more jobs."
@@ -437,19 +444,17 @@
 ;;; On GET; use repeated job argument
 (defn job-resource
   [conn fid task-constraints gpu-enabled?]
-  (-> (resource
+  (-> (liberator/resource
         :available-media-types ["application/json"]
         :allowed-methods [:post :get :delete]
         :malformed? (fn [ctx]
                       (condp contains? (get-in ctx [:request :request-method])
-                        #{:get :delete}
-                        (if-let [jobs (get-in ctx [:request :params "job"])]
-                          (let [jobs (if-not (vector? jobs) [jobs] jobs)]
-                            (try
-                              [false {::jobs (mapv #(UUID/fromString %) jobs)}]
-                              (catch Exception e
-                                [true {::error e}])))
-                          [true {::error "must supply at least one job query param"}])
+                        ;; schema will already validate.
+                        #{:get :delete} false
+                        ;; (do
+                        ;;   (if-let [jobs (get-in ctx [:request :query-params :job])]
+                        ;;     [false {::jobs jobs}]
+                        ;;     [true {::error "must supply at least one job query param"}]))
                         #{:post}
                         (let [params (get-in ctx [:request :params])
                               user (get-in ctx [:request :authorization/user])]
@@ -512,7 +517,7 @@
 
 (defn waiting-jobs
   [mesos-pending-jobs-fn]
-  (-> (resource
+  (-> (liberator/resource
         :available-media-types ["application/json"]
         :allowed-methods [:get]
         :handle-ok (fn [ctx]
@@ -524,7 +529,7 @@
 
 (defn running-jobs
   [conn]
-  (-> (resource
+  (-> (liberator/resource
         :available-media-types ["application/json"]
         :allowed-methods [:get]
         :handle-ok (fn [ctx]
@@ -569,24 +574,96 @@
   "A Ring endpoint that returns the JSON version of SwaggerApiDocs;
   will be interpreted successfully by Swagger tools such as SwaggerUI."
   []
-  (-> (resource
+  (-> (liberator/resource
        :available-media-types ["application/json"]
        :allowed-methods [:get]
        :handle-ok (fn [ctx]
                     (cheshire/generate-string SwaggerApiDocs)))
       ring.middleware.json/wrap-json-params))
 
+
+(def rawscheduler-resource
+  (comp-api/resource
+   {
+    ;; :parameters {:path-params {:id Long}}
+    :get {:parameters {:query-params JobUuids}
+          :responses {200 {:schema [JobResponse]
+                           :description "The jobs and their instances were returned."}
+                      400 {:description "Non-UUID values were passed as jobs."}
+                      403 {:description "The supplied UUIDs don't correspond to valid jobs."}}
+          :summary "returns a set of Jobs"}
+    :post {:parameters {:body-params [JobRequest]}
+           :responses {200 {:schema [JobResponse]}}
+           :summary "Schedules jobs"}
+    :delete {:summary "Deletes jobs"}
+    :handler job-resource
+    }
+                                        ; add this if you just want the swagger-docs
+   ;; {:coercion (constantly nil)}
+   ))
+
+
+(defn app
+  []
+  (comp-api/api
+   {:swagger
+    {:ui "/swagger-ui"
+     :spec "/swagger-docs"
+     :data {:info {:title "Cook API"
+                   :description "How to Cook things"}
+            :tags [{:name "api", :description "some apis"}]}}}
+   (comp-api/context "/rawscheduler" []
+     rawscheduler-resource
+     )
+   )
+  )
+
+
 (defn handler
   [conn fid task-constraints gpu-enabled? mesos-pending-jobs-fn]
   (routes
-    (ANY "/rawscheduler" []
-         (job-resource conn fid task-constraints gpu-enabled?))
-    (ANY "/queue" []
+   (comp-api/api
+    {:swagger
+     {:ui "/swagger-ui"
+      :spec "/swagger-docs"
+      :data {:info {:title "Cook API"
+                    :description "How to Cook things"}
+             :tags [{:name "api", :description "some apis"}]}}}
+    (comp-api/context "/rawscheduler" []
+      (comp-api/resource
+       {
+        ;; :parameters {:path-params {:id Long}}
+        :get {:parameters {:query-params JobUuids}
+              :responses {200 {:schema [JobResponse]
+                               :description "The jobs and their instances were returned."}
+                          400 {:description "Non-UUID values were passed as jobs."}
+                          403 {:description "The supplied UUIDs don't correspond to valid jobs."}}
+              :summary "returns a set of Jobs"}
+        :post {:parameters {:body-params [JobRequest]}
+               :responses {200 {:schema [JobResponse]}}
+               :summary "Schedules jobs"}
+        :delete {:summary "Deletes jobs"}
+        :handler (job-resource conn fid task-constraints gpu-enabled?)
+        }
+       ;; add this if you just want the swagger-docs
+       ;;{:coercion (constantly nil)}
+       )
+      )
+    )
+   ;; (ANY "/rawscheduler" []
+   ;;   ;;(job-resource conn fid task-constraints gpu-enabled?)
+   ;;   )
+   (ANY "/queue" []
          (waiting-jobs mesos-pending-jobs-fn))
     (ANY "/running" []
       (running-jobs conn))
-    (ANY "/swagger-docs" []
-      (swagger-docs))
-    (ring.swagger.ui/swagger-ui
-     "/swagger-ui"
-     :swagger-docs "/swagger-docs")))
+    ;; (ANY "/swagger-docs" []
+    ;;   (swagger-docs))
+    ;; (ring.swagger.ui/swagger-ui
+    ;;  "/swagger-ui"
+    ;;  :swagger-docs "/swagger-docs")
+    )
+  )
+
+
+
