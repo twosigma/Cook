@@ -117,6 +117,7 @@ Could make the group ref a multi (a job references multiple groups)
 We want to allow users to specify how jobs in a group should be placed. 
 
 Some choices a user could specify are:
+
 1. Unique hosts 
 2. Balanced across hosts
 3. All on one host
@@ -126,6 +127,7 @@ Some choices a user could specify are:
 In all cases a user accepts that putting a restriction on where the group should be scheduled can negatively impact scheduling latency. 
 
 Here are some use cases for the following semantics:
+
 1. I have a job that measures something about the host. Having multiple jobs on the same host is fine, but wasteful and makes it harder to decide how many jobs to schedule
 2. I have a group of jobs that are network bound. Putting many jobs on the same host will negatively impact the performance of all of them.
 3. My jobs have a lot of cross communication, having them connect on the loopback device is good for peformance
