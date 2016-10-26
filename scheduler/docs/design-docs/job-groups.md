@@ -93,13 +93,11 @@ This reduces the number of requests a client needs to make (and reduces the fail
 
 ####Choice: No
 
-The explicit handshake of creating a group first makes it the multiple submission batches case simplier.
+The explicit handshake of creating a group first makes the multiple submission batches case simplier.
 
  
 
 ## Changes to the database
-
- 
 
 ### Open question: Have a `group` entity which has a list of `job` entities or have the `job` entity have a ref to a group
 
@@ -112,4 +110,44 @@ This complicates some of the other preference logic.
 #### Choice: `job` entity has `group` ref
 
 This is more intuitive and makes handling of preference logic simplier. Adding multiple groups will likely require more code changes.
+Could make the group ref a multi (a job references multiple groups)
+
+## Host placement semantics
+
+We want to allow users to specify how jobs in a group should be placed. 
+
+Some choices a user could specify are:
+1. Unique hosts 
+2. Balanced across hosts
+3. All on one host
+4. All hosts must have the same attribute value (as in, once you schedule the first job, all other jobs must be put on hosts with the same attribute/value pair)
+5. No preference (this is the default)
+
+In all cases a user accepts that putting a restriction on where the group should be scheduled can negatively impact scheduling latency. 
+
+Here are some use cases for the following semantics:
+1. I have a job that measures something about the host. Having multiple jobs on the same host is fine, but wasteful and makes it harder to decide how many jobs to schedule
+2. I have a group of jobs that are network bound. Putting many jobs on the same host will negatively impact the performance of all of them.
+3. My jobs have a lot of cross communication, having them connect on the loopback device is good for peformance
+4. I'm running on Amazon and I get charged for cross AZ communication. Having all the jobs run in the same AZ (I don't care which) is important to reduce unnecessary costs
+5. My jobs are completely independent, they can run anywhere
+
+An important note is that all of these choices don't create an artifical heterogenuous cluster (including 4!) because Cook is still given flexibility on WHICH hosts or subset of hosts the jobs are placed on. Adding a constraint for all hosts must have a particular attribute value (i.e. AZ=us-east-1a) *would* create the issues with a heterogenuous cluster.
+
+### Changes to db
+
+Add attribute on groups entity, `group/host-placement` which will be a ref to an entity with two fields:
+
+1. `host-placement/type` will be of type datomic enum
+2. `host-placement/parameters` will be a ref
+
+The type will be take one of the following values:
+
+* `host-placement.type/unique`
+* `host-placement.type/balanced`
+* `host-placement.type/one`
+* `host-placement.type/attribute-equals`
+* `host-placement.type/all`
+
+And parameters will point to either nil in the case of all the type except `host-placement.type/attribute-equals` which will point to a entity with a single attribute `host-placement.attribute-equals/attribute` which will be a string.
 
