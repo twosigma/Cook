@@ -126,6 +126,8 @@ Some choices a user could specify are:
 
 In all cases a user accepts that putting a restriction on where the group should be scheduled can negatively impact scheduling latency. 
 
+In the case of (3), it is *not* guarenteed that the full group will run on the host concurrently.
+
 Here are some use cases for the following semantics:
 
 1. I have a job that measures something about the host. Having multiple jobs on the same host is fine, but wasteful and makes it harder to decide how many jobs to schedule
@@ -134,7 +136,7 @@ Here are some use cases for the following semantics:
 4. I'm running on Amazon and I get charged for cross AZ communication. Having all the jobs run in the same AZ (I don't care which) is important to reduce unnecessary costs
 5. My jobs are completely independent, they can run anywhere
 
-An important note is that all of these choices don't create an artifical heterogenuous cluster (including 4!) because Cook is still given flexibility on WHICH hosts or subset of hosts the jobs are placed on. Adding a constraint for all hosts must have a particular attribute value (i.e. AZ=us-east-1a) *would* create the issues with a heterogenuous cluster.
+An important note is that all of these choices create a quasi-heterogenuous cluster in that once one job is placed, the remaining jobs must only consider a subset of the hosts. However, unlike in a fully heterogenuous cluster, Cook has some freedom in deciding where to place the job which can help mitigate some of the fairness concerns with a heterogenuous cluster. Therefore, there is no change needed to ranking for this, but we should change the rebalancer to avoid preempting jobs on a host when the job that we are making room for won't run on the host.
 
 ### Changes to db
 
@@ -153,3 +155,8 @@ The type will be take one of the following values:
 
 And parameters will point to either nil in the case of all the type except `host-placement.type/attribute-equals` which will point to a entity with a single attribute `host-placement.attribute-equals/attribute` which will be a string.
 
+### Changes to the api
+
+The group entity will have a field "host_placement" which will be a map with a field "type" and a field "parameters". "type" will take a value in the set {"unique", "balanced", "one", "attribute-equals" and "all"}. "parameters" will be a map and the keys in the map will be dependent on the "type". At the moment, the only valid key will be "attribute" and applies to "attribute-equals". If "attribute" is not defined when using "attribute-equals", we should throw an exception.
+
+If "host-placement" is not defined, it defaults to {"type": "all"}.
