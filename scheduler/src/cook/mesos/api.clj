@@ -19,6 +19,10 @@
             [schema.core :as s]
             [cook.mesos]
             [compojure.core :refer (routes ANY)]
+            [compojure.api.sweet :as c-api]
+            [compojure.api.middleware :as c-mw]
+            [plumbing.core :refer [map-keys]]
+            [camel-snake-kebab.core :refer [->snake_case]]
             [clojure.tools.logging :as log]
             [clojure.string :as str]
             [clojure.core.cache :as cache]
@@ -26,12 +30,16 @@
             [clj-http.client :as http]
             [ring.middleware.json]
             [clojure.data.json :as json]
-            [liberator.core :refer [resource defresource]]
+            [liberator.core :as liberator]
+            [liberator.util :refer [combine]]
             [cheshire.core :as cheshire]
             [cook.mesos.util :as util]
             [clj-time.core :as t]
             [cook.mesos.reason :as reason])
   (:import java.util.UUID))
+
+(def PosNum
+  (s/both s/Num (s/pred pos? 'pos?)))
 
 (def PosDouble
   (s/both double (s/pred pos? 'pos?)))
@@ -69,12 +77,20 @@
    (s/optional-key :extract?) s/Bool
    (s/optional-key :cache?) s/Bool})
 
+(def UriRequest
+  "Schema for a Mesos fetch URI as it would be included in JSON requests
+  or responses.  Avoids question-marks in the key names."
+  {:value s/Str
+   (s/optional-key :executable) s/Bool
+   (s/optional-key :extract) s/Bool
+   (s/optional-key :cache) s/Bool})
+
 (def NonEmptyString
   (s/both s/Str (s/pred #(not (zero? (count %))) 'empty-string)))
 
 (def Job
   "A schema for a job"
-  {:uuid (s/pred #(instance? UUID %) 'uuid?)
+  {:uuid s/Uuid
    :command s/Str
    ;; Make sure the job name is a valid string which can only contain '.', '_', '-' or any word characters and has
    ;; length at most 128.
@@ -93,6 +109,45 @@
    ;; Make sure the user name is valid. It must begin with a lower case character, end with
    ;; a lower case character or a digit, and has length between 2 to (62 + 2).
    :user (s/both s/Str (s/pred #(re-matches #"\A[a-z][a-z0-9_-]{0,62}[a-z0-9]\z" %) 'lowercase-alphanum?))})
+
+(def JobRequest
+  "Schema for the part of a request that launches a single job."
+  (-> (map-keys #(if (keyword? %) (->snake_case %) %) Job)
+      (dissoc :user)
+      (merge {(s/optional-key :env) {s/Keyword s/Str}
+              (s/optional-key :labels) {s/Keyword s/Str}
+              (s/optional-key :uris) [UriRequest]
+              :cpus PosNum
+              :mem PosNum})))
+
+(def JobUuids
+  "Schema for one or more job uuids in params"
+  {:job [s/Uuid]})
+
+(def Instance
+  "Schema for a description of a single job instance."
+  {:status s/Str
+   :task_id s/Uuid
+   :executor_id s/Uuid
+   :slave_id s/Str
+   :hostname s/Str
+   :preempted s/Bool
+   :backfilled s/Bool
+   :ports [s/Int]
+   (s/optional-key :start_time) s/Int
+   (s/optional-key :end_time) s/Int
+   (s/optional-key :reason_code) s/Int
+   (s/optional-key :reason_string) s/Str})
+
+(def JobResponse
+  "Schema for a description of a job (as returned by the API).
+  The structure is similar to JobRequest, but has some differences.
+  For example, it can include descriptions of instances for the job."
+  (merge (dissoc JobRequest :user)
+         {:framework_id (s/maybe s/Str)
+          :status s/Str
+          (s/optional-key :gpus) s/Int
+          (s/optional-key :instances) [Instance]}))
 
 (defn- mk-container-params
   "Helper for build-container.  Transforms parameters into the datomic schema."
@@ -240,12 +295,11 @@
 (defn validate-and-munge-job
   "Takes the user and the parsed json from the job and returns proper
    Job objects, or else throws an exception"
-  [db user task-constraints gpu-enabled? {:strs [cpus mem gpus uuid command priority max_retries max_runtime name uris ports env labels container] :as job}]
+  [db user task-constraints gpu-enabled? {:keys [cpus mem gpus uuid command priority max_retries max_runtime name uris ports env labels container] :as job}]
   (let [munged (merge
+                (dissoc job :max_retries :max_runtime)
                  {:user user
-                  :uuid (UUID/fromString uuid)
                   :name (or name "cookjob") ; Add default job name if user does not provide a name.
-                  :command command
                   :priority (or priority util/default-job-priority)
                   :max-retries max_retries
                   :max-runtime (or max_runtime Long/MAX_VALUE)
@@ -254,21 +308,17 @@
                   :mem (double mem)}
                  (when gpus
                    {:gpus (int gpus)})
-                 (when container
-                   {:container (walk/keywordize-keys container)})
+                 (when env
+                   {:env (walk/stringify-keys env)})
                  (when uris
-                   {:uris (map (fn [{:strs [value executable cache extract]}]
+                   {:uris (map (fn [{:keys [value executable cache extract]}]
                                  (merge {:value value}
                                         (when executable {:executable? executable})
                                         (when cache {:cache? cache})
                                         (when extract {:extract? extract})))
                                uris)})
-                 (when env
-                   ;; Remains strings
-                   {:env env})
                  (when labels
-                   ;; Remains strings
-                   {:labels labels}))]
+                   {:labels (walk/stringify-keys labels)}))]
     (when (and (:gpus munged) (not gpu-enabled?))
       (throw (ex-info (str "GPU support is not enabled") {:gpus gpus})))
     (s/validate Job munged)
@@ -402,21 +452,16 @@
 ;;; On GET; use repeated job argument
 (defn job-resource
   [conn fid task-constraints gpu-enabled?]
-  (-> (resource
-        :available-media-types ["application/json"]
-        :allowed-methods [:post :get :delete]
-        :malformed? (fn [ctx]
-                      (condp contains? (get-in ctx [:request :request-method])
-                        #{:get :delete}
-                        (if-let [jobs (get-in ctx [:request :params "job"])]
-                          (let [jobs (if-not (vector? jobs) [jobs] jobs)]
-                            (try
-                              [false {::jobs (mapv #(UUID/fromString %) jobs)}]
-                              (catch Exception e
-                                [true {::error e}])))
-                          [true {::error "must supply at least one job query param"}])
+  (-> (liberator/resource
+       :available-media-types ["application/json"]
+       :allowed-methods [:post :get :delete]
+       :malformed? (fn [ctx]
+                     (condp contains? (get-in ctx [:request :request-method])
+                       ;; schema will already validate.
+                       #{:get :delete}
+                       [false {::jobs (get-in ctx [:request :query-params :job])}]
                         #{:post}
-                        (let [params (get-in ctx [:request :params])
+                        (let [params (get-in ctx [:request :body-params])
                               user (get-in ctx [:request :authorization/user])]
                           (try
                             (cond
@@ -429,7 +474,7 @@
                                                       task-constraints
                                                       gpu-enabled?
                                                       %)
-                                                   (get params "jobs"))}])
+                                                   (get params :jobs))}])
                             (catch Exception e
                               (log/warn e "Malformed raw api request")
                               [true {::error e}])))))
@@ -472,12 +517,16 @@
         :handle-ok (fn [ctx]
                      (mapv (partial fetch-job-map (db conn) fid) (::jobs ctx)))
         :handle-created (fn [ctx]
-                          (::results ctx)))
-      ring.middleware.json/wrap-json-params))
+                          (::results ctx))
+
+        ;; necessary to play well with as-response below
+        :handle-no-content (fn [ctx] "No content.")
+        ;; Don't serialize the response; leave that to compojure-api
+        :as-response (fn [data ctx] (combine {:body data} ctx)))))
 
 (defn waiting-jobs
   [mesos-pending-jobs-fn]
-  (-> (resource
+  (-> (liberator/resource
         :available-media-types ["application/json"]
         :allowed-methods [:get]
         :handle-ok (fn [ctx]
@@ -489,7 +538,7 @@
 
 (defn running-jobs
   [conn]
-  (-> (resource
+  (-> (liberator/resource
         :available-media-types ["application/json"]
         :allowed-methods [:get]
         :handle-ok (fn [ctx]
@@ -501,9 +550,30 @@
 (defn handler
   [conn fid task-constraints gpu-enabled? mesos-pending-jobs-fn]
   (routes
-    (ANY "/rawscheduler" []
-         (job-resource conn fid task-constraints gpu-enabled?))
+   (c-api/api
+    {:swagger {:ui "/swagger-ui"
+               :spec "/swagger-docs"
+               :data {:info {:title "Cook API"
+                             :description "How to Cook things"}
+                      :tags [{:name "api", :description "some apis"}]}}}
+    (c-api/context "/rawscheduler" []
+                   (c-api/resource
+                    {:get {:summary "Returns info about a set of Jobs"
+                           :parameters {:query-params JobUuids}
+                           :responses {200 {:schema [JobResponse]
+                                            :description "The jobs and their instances were returned."}
+                                       400 {:description "Non-UUID values were passed as jobs."}
+                                       403 {:description "The supplied UUIDs don't correspond to valid jobs."}}}
+                     :post {:summary "Schedules one or more jobs."
+                            :parameters {:body-params {:jobs [JobRequest]}}
+                            :responses {200 {:schema [JobResponse]}}}
+                     :delete {:summary "Cancels jobs, halting execution when possible."
+                              :responses {204 {:description "The jobs have been marked for termination."}
+                                          400 {:description "Non-UUID values were passed as jobs."}
+                                          403 {:description "The supplied UUIDs don't correspond to valid jobs."}}
+                              :parameters {:query-params JobUuids}}
+                     :handler (job-resource conn fid task-constraints gpu-enabled?)}))
     (ANY "/queue" []
          (waiting-jobs mesos-pending-jobs-fn))
     (ANY "/running" []
-         (running-jobs conn))))
+         (running-jobs conn)))))
