@@ -122,10 +122,11 @@
         starved-users (set (keys starved-stats))
         hungry-users (difference waiting-users starved-users)]
     (conj
-      (concat
-        (make-stats-events db "running" running-stats)
-        (make-stats-events db "waiting" waiting-stats)
-        (make-stats-events db "starved" starved-stats))
+      (reduce into
+              []
+              [(make-stats-events db "running" running-stats)
+               (make-stats-events db "waiting" waiting-stats)
+               (make-stats-events db "starved" starved-stats)])
       (assoc event
              :service "cook scheduler total users count"
              :metric (count (union running-users waiting-users)))

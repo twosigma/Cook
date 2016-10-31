@@ -56,7 +56,7 @@
 
 (defn job-ent->container
   "Take a job entity and return its container"
-  [db job job-ent]
+  [db job-ent]
   (when-let [ceid (:db/id (:job/container job-ent))]
     (->> (d/pull db "[*]" ceid)
          (deep-transduce-kv (comp
@@ -131,6 +131,30 @@
              filtered-db [:job.state/waiting])
           (map (fn [[x]] (d/entity unfiltered-db x)))))))
 
+(defn get-jobs-by-user-and-state
+  "Returns all job entities for a particular user 
+   in a particular state."
+  [db user state]
+  (->> (if (= state :job.state/completed)
+         ;; Datomic query performance is based entirely on the size of the set
+         ;; of the first where clause. In the case of :job.state/completed
+         ;; the total number of jobs for a user should be smaller than
+         ;; all completed jobs by any user i.e.
+         ;; (waiting_user + running_user < completed - completed_user)
+         (q '[:find [?j ...]
+              :in $ ?user ?state
+              :where
+              [?j :job/user ?user]
+              [?j :job/state ?state]]
+            db user state)
+         (q '[:find [?j ...]
+              :in $ ?user ?state
+              :where
+              [?j :job/state ?state]
+              [?j :job/user ?user]]
+            db user state))
+       (map (partial d/entity db))))
+
 (timers/deftimer [cook-mesos scheduler get-running-tasks-duration])
 
 (defn get-running-task-ents
@@ -196,4 +220,44 @@
     (fn [task1 task2]
       (compare (comparable-with-backfill task1) (comparable-with-backfill task2)))))
 
+(defn retry-job!
+  "Sets :job/max-retries to the given value for the given job UUID.
+   Throws an exception if there is no job with that UUID."
+  [conn uuid retries]
+  (try
+    (let [eid (-> (d/entity (d/db conn) [:job/uuid uuid])
+                  :db/id)]
+      @(d/transact conn
+                   [
+                    [:db/add [:job/uuid uuid]
+                     :job/max-retries retries]
 
+                    ;; If the job is in the "completed" state, put it back into
+                    ;; "waiting":
+                    [:db.fn/cas [:job/uuid uuid]
+                     :job/state (d/entid (d/db conn) :job.state/completed) :job.state/waiting]]))
+    ;; :db.fn/cas throws an exception if the job is not already in the "completed" state.
+    ;; If that happens, that's fine. We just set "retries" only and continue.
+    (catch java.util.concurrent.ExecutionException e
+      (if-not (.startsWith (.getMessage e)
+                           "java.lang.IllegalStateException: :db.error/cas-failed Compare failed:")
+        (throw e)
+        @(d/transact conn
+                     [[:db/add [:job/uuid uuid]
+                       :job/max-retries retries]])))))
+
+(defn filter-sequential
+  "This function allows for filtering when the filter function needs to consider previous elements
+   Lazily filters elements of coll.
+   f is assumed to take two parameters, state and an element, i.e. (f state element)
+   and return a pair [new-state should-keep?] where new-state will be passed to f when called on the next element.
+   The new-state is passed regardless of whether should-keep? is truth-y or not."
+  [f init-state coll]
+  (letfn [(fr [{:keys [state]} x]
+            (let [[state' should-keep?] (f state x)]
+              {:state state'
+               :x (when should-keep? x)}))]
+    (->> coll
+      (reductions fr {:state init-state :x nil})
+      (filter :x)
+      (map :x))))

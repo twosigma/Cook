@@ -39,7 +39,7 @@
     (if resource
       @(d/transact conn
                    [[:db.fn/retractEntity resource]])
-      :default)))
+      (log/warn "Resource" type "for user" user "does not exist, could not retract"))))
 
 (defn- get-share-by-type
   [db type user]
@@ -68,7 +68,7 @@
 
 (defn retract-share!
   [conn user]
-  (let [db (db conn)]
+  (let [db (d/db conn)]
     (->> (util/get-all-resource-types db)
          (map (fn [type]
                 [type (retract-share-by-type! conn type user)]))
@@ -94,7 +94,7 @@
                               [?e :share/user ?user]
                               [?e :share/resource ?r]
                               [?r :resource/type ?type]]
-                            (db conn) user type)
+                            (d/db conn) user type)
                      ffirst)
             txn (if resource
                   [[:db/add resource :resource/amount amount]]
@@ -102,7 +102,7 @@
                     :share/user user
                     :share/resource [{:resource/type type
                                       :resource/amount amount}]}])]
-        (recur kvs (concat txns txn)))
+        (recur kvs (into txn txns)))
       @(d/transact conn txns))))
 
 (comment

@@ -142,7 +142,7 @@
     :jvm-opts ["-Xms2G"
                "-XX:-OmitStackTraceInFastThrow"
                "-Xmx2G"
-               "-Dcom.sun.management.jmxremote.port=5555"
+;               "-Dcom.sun.management.jmxremote.port=5555"
                "-Dcom.sun.management.jmxremote.authenticate=false"
                "-Dcom.sun.management.jmxremote.ssl=false"]
     :source-paths []}}
@@ -152,7 +152,6 @@
                    :all (constantly true)}
 
   :main cook.components
-
   :jvm-opts ["-Dpython.cachedir.skip=true"
              "-XX:MaxPermSize=500M"
              ;"-Dsun.security.jgss.native=true"
