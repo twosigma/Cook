@@ -76,7 +76,7 @@
                          :uri "/rawscheduler"
                          :headers {"Content-Type" "application/json"}
                          :authorization/user "dgrnbrg"
-                         :params {"jobs" [job]}}))
+                         :body-params {"jobs" [job]}}))
             299))
     (let [ent (d/entity (db conn) [:job/uuid uuid])
           resources (util/job-ent->resources ent)]
@@ -90,9 +90,9 @@
                    :scheme :http
                    :uri "/rawscheduler"
                    :authorization/user "dgrnbrg"
-                   :params {"job" (str uuid)}})
+                   :query-params {"job" (str uuid)}})
           _ (is (<= 200 (:status resp) 299))
-          [body] (json/read-str (:body resp))
+          [body] (-> resp :body slurp json/read-str)
           trimmed-body (select-keys body (keys job))
           resp-uris (map (fn [gold copy]
                            (select-keys copy (keys gold)))
@@ -106,14 +106,14 @@
                          :scheme :http
                          :uri "/rawscheduler"
                          :authorization/user "dgrnbrg"
-                         :params {"job" (str (java.util.UUID/randomUUID))}}))
+                         :query-params {"job" (str (java.util.UUID/randomUUID))}}))
             499))
     (is (<= 200
             (:status (h {:request-method :delete
                          :scheme :http
                          :uri "/rawscheduler"
                          :authorization/user "dgrnbrg"
-                         :params {"job" (str uuid)}}))
+                         :query-params {"job" (str uuid)}}))
             299))))
 
 (deftest job-validator
@@ -134,7 +134,7 @@
                            :uri "/rawscheduler"
                            :headers {"Content-Type" "application/json"}
                            :authorization/user "dgrnbrg"
-                           :params {"jobs" [(job 1 500)]}}))
+                           :body-params {:jobs [(job 1 500)]}}))
               299)))
     (testing "At limits"
       (is (<= 200
@@ -143,7 +143,7 @@
                            :uri "/rawscheduler"
                            :headers {"Content-Type" "application/json"}
                            :authorization/user "dgrnbrg"
-                           :params {"jobs" [(job 3 2048)]}}))
+                           :body-params {:jobs [(job 3 2048)]}}))
               299)))
     (testing "Beyond limits cpus"
       (is (<= 400
@@ -152,7 +152,7 @@
                            :uri "/rawscheduler"
                            :headers {"Content-Type" "application/json"}
                            :authorization/user "dgrnbrg"
-                           :params {"jobs" [(job 3.1 100)]}}))
+                           :body-params {"jobs" [(job 3.1 100)]}}))
               499)))
     (testing "Beyond limits mem"
       (is (<= 400
@@ -161,7 +161,7 @@
                            :uri "/rawscheduler"
                            :headers {"Content-Type" "application/json"}
                            :authorization/user "dgrnbrg"
-                           :params {"jobs" [(job 1 2050)]}}))
+                           :body-params {"jobs" [(job 1 2050)]}}))
               499)))))
 
 (deftest gpus-api
@@ -183,7 +183,7 @@
                            :uri "/rawscheduler"
                            :headers {"Content-Type" "application/json"}
                            :authorization/user "dgrnbrg"
-                           :params {"jobs" [(job -3)]}}))
+                           :body-params {"jobs" [(job -3)]}}))
               499)))
     (testing "Zero gpus invalid"
       (is (<= 400
@@ -192,7 +192,7 @@
                            :uri "/rawscheduler"
                            :headers {"Content-Type" "application/json"}
                            :authorization/user "dgrnbrg"
-                           :params {"jobs" [(job 0)]}}))
+                           :body-params {"jobs" [(job 0)]}}))
               499)))
     (let [successful-job (job 2)]
       (testing "Positive GPUs ok"
@@ -202,14 +202,14 @@
                              :uri "/rawscheduler"
                              :headers {"Content-Type" "application/json"}
                              :authorization/user "dgrnbrg"
-                             :params {"jobs" [successful-job]}}))
+                             :body-params {"jobs" [successful-job]}}))
                 299)))
       (let [resp (h {:request-method :get
                      :scheme :http
                      :uri "/rawscheduler"
                      :authorization/user "dgrnbrg"
-                     :params {"job" (str (get successful-job "uuid"))}})
+                     :query-params {"job" (str (get successful-job "uuid"))}})
             _ (is (<= 200 (:status resp) 299))
-            [body] (json/read-str (:body resp))
+            [body] (-> resp :body slurp json/read-str)
             trimmed-body (select-keys body (keys successful-job))]
         (is (= (dissoc successful-job "uris") (dissoc trimmed-body "uris")))))))
