@@ -86,7 +86,7 @@
 
                  ;;External system integrations
                  [me.raynes/conch "0.5.2"]
-                 [spootnik/mesomatic "1.0.1-r0"]
+                 [wyegelwe/mesomatic "1.0.1-r0-SNAPSHOT"]
                  [org.clojure/tools.nrepl "0.2.3"]
 
                  ;;Ring
