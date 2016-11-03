@@ -486,8 +486,8 @@
                       (condp contains? (get-in ctx [:request :request-method])
                         #{:get :delete}
                         (try
-                          (let [jobs (get-in ctx [:request :params "job"])
-                                instances (get-in ctx [:request :params "instance"])]
+                          (let [jobs (get-in ctx [:request :query-params "job"])
+                                instances (get-in ctx [:request :query-params "instance"])]
                             (if (or jobs instances)
                               (let [instances (if (or (nil? instances) (vector? instances))
                                                 instances
