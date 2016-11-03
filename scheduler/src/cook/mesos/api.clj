@@ -150,6 +150,7 @@
   (merge (dissoc JobRequest :user)
          {:framework_id (s/maybe s/Str)
           :status s/Str
+          :submit-time s/Str
           (s/optional-key :gpus) s/Int
           (s/optional-key :instances) [Instance]}))
 
