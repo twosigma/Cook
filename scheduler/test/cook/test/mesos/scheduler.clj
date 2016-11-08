@@ -193,9 +193,9 @@
                         :slave-id {:value (str "slave-" (java.util.UUID/randomUUID))}
                         :hostname (str "host-" (java.util.UUID/randomUUID))}])
         fid (str "framework-id-" (java.util.UUID/randomUUID))
-        fenzo-maker #(sched/make-fenzo-scheduler nil 100000)] ; The params are for offer declining, which should never happen
+        fenzo-maker #(sched/make-fenzo-scheduler nil 100000 1)] ; The params are for offer declining, which should never happen
     (testing "Consume no schedule cases"
-      (are [schedule offers] (= [] (sched/match-offer-to-schedule (fenzo-maker) schedule offers (db c) fid))
+      (are [schedule offers] (= [] (sched/match-offer-to-schedule (fenzo-maker) schedule offers))
            [] (offer-maker 0 0)
            [] (offer-maker 2 2000)
            schedule (offer-maker 0 0)
@@ -205,14 +205,14 @@
     (testing "Consume Partial schedule cases"
       ;; We're looking for one task to get assigned
       (are [offers] (= 1 (count (mapcat :tasks (sched/match-offer-to-schedule
-                                                 (fenzo-maker) schedule offers (db c) fid))))
+                                                 (fenzo-maker) schedule offers))))
            (offer-maker 1 1000)
            (offer-maker 1.5 1500)))
     (testing "Consume full schedule cases"
       ;; We're looking for the entire schedule to get assigned
       (are [offers] (= (count schedule)
                        (count (mapcat :tasks (sched/match-offer-to-schedule
-                                               (fenzo-maker) schedule offers (db c) fid))))
+                                               (fenzo-maker) schedule offers))))
            (offer-maker 4 4000)
            (offer-maker 5 5000)))))
 
@@ -555,7 +555,10 @@
         other-gpu-job (d/entity db other-gpu-job-id)
         non-gpu-job (d/entity db non-gpu-job-id)
         mock-gpu-assignment #(-> (Mockito/when (.getRequest (Mockito/mock com.netflix.fenzo.TaskAssignmentResult)))
-                                 (.thenReturn (sched/->TaskRequestAdapter other-gpu-job (sched/job->task-info db fid (:db/id other-gpu-job)) (atom nil)))
+                                 (.thenReturn (sched/->TaskRequestAdapter other-gpu-job
+                                                                          (util/job-ent->resources other-gpu-job)
+                                                                          (str (java.util.UUID/randomUUID))
+                                                                          (atom nil)))
                                  (.getMock))]
     (doseq [[type gpu-lease] [["gpu avail"
                                (reify com.netflix.fenzo.VirtualMachineCurrentState
@@ -566,7 +569,10 @@
                               ["running gpu"
                                (reify com.netflix.fenzo.VirtualMachineCurrentState
                                 (getHostname [_] "test-host")
-                                (getRunningTasks [_] [(sched/->TaskRequestAdapter other-gpu-job (sched/job->task-info db fid (:db/id other-gpu-job)) (atom nil))])
+                                (getRunningTasks [_] [(sched/->TaskRequestAdapter other-gpu-job
+                                                                          (util/job-ent->resources other-gpu-job)
+                                                                          (str (java.util.UUID/randomUUID))
+                                                                          (atom nil))])
                                 (getTasksCurrentlyAssigned [_] [])
                                 (getCurrAvailableResources [_]  (sched/->VirtualMachineLeaseAdapter non-gpu-offer 0)))]
                               ["gpu assigned"
@@ -577,19 +583,28 @@
                                 (getCurrAvailableResources [_]  (sched/->VirtualMachineLeaseAdapter non-gpu-offer 0)))]]]
       (is (.isSuccessful
             (.evaluate (sched/gpu-host-constraint gpu-job)
-                       (sched/->TaskRequestAdapter gpu-job (sched/job->task-info db fid (:db/id gpu-job)) (atom nil))
+                       (sched/->TaskRequestAdapter gpu-job
+                                                   (util/job-ent->resources gpu-job)
+                                                   (str (java.util.UUID/randomUUID))
+                                                   (atom nil))
                        gpu-lease
                        nil))
           (str "GPU task on GPU host with " type " should succeed"))
       (is (not (.isSuccessful
                  (.evaluate (sched/gpu-host-constraint non-gpu-job)
-                            (sched/->TaskRequestAdapter non-gpu-job (sched/job->task-info db fid (:db/id non-gpu-job)) (atom nil))
+                            (sched/->TaskRequestAdapter non-gpu-job
+                                                        (util/job-ent->resources non-gpu-job)
+                                                        (str (java.util.UUID/randomUUID))
+                                                        (atom nil))
                             gpu-lease
                             nil)))
           (str "GPU task on GPU host with " type " should fail") )
       (is (not (.isSuccessful
                  (.evaluate (sched/gpu-host-constraint gpu-job)
-                            (sched/->TaskRequestAdapter gpu-job (sched/job->task-info db fid (:db/id gpu-job)) (atom nil))
+                            (sched/->TaskRequestAdapter gpu-job
+                                                        (util/job-ent->resources gpu-job)
+                                                        (str (java.util.UUID/randomUUID))
+                                                        (atom nil))
                             (reify com.netflix.fenzo.VirtualMachineCurrentState
                               (getHostname [_] "test-host")
                               (getRunningTasks [_] [])
@@ -599,7 +614,10 @@
           "GPU task on non GPU host should fail")
       (is (.isSuccessful
           (.evaluate (sched/gpu-host-constraint non-gpu-job)
-                   (sched/->TaskRequestAdapter non-gpu-job (sched/job->task-info db fid (:db/id non-gpu-job)) (atom nil))
+                     (sched/->TaskRequestAdapter non-gpu-job
+                                                 (util/job-ent->resources non-gpu-job)
+                                                 (str (java.util.UUID/randomUUID))
+                                                 (atom nil))
                    (reify com.netflix.fenzo.VirtualMachineCurrentState
                      (getHostname [_] "test-host")
                      (getRunningTasks [_] [])

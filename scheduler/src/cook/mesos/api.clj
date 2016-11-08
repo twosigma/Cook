@@ -35,7 +35,11 @@
             [cheshire.core :as cheshire]
             [cook.mesos.util :as util]
             [clj-time.core :as t]
-            [cook.mesos.reason :as reason])
+            [cook.mesos.share :as share]
+            [cook.mesos.quota :as quota]
+            [plumbing.core :refer (map-vals)]
+            [cook.mesos.reason :as reason]
+            [clojure.walk :refer (keywordize-keys)])
   (:import java.util.UUID))
 
 (def PosNum
@@ -146,6 +150,7 @@
   (merge (dissoc JobRequest :user)
          {:framework_id (s/maybe s/Str)
           :status s/Str
+          :submit-time s/Str
           (s/optional-key :gpus) s/Int
           (s/optional-key :instances) [Instance]}))
 
@@ -204,7 +209,7 @@
          [:db/add container-id :container/docker docker-id]
          (merge {:db/id docker-id
                  :docker/image (:image docker)
-                 :docker/force-pull-image (:force-pull-image docker)
+                 :docker/force-pull-image (:force-pull-image docker false)
                  :docker/network (:network docker)}
                 (mk-container-params docker-id params)
                 (mk-docker-ports docker-id port-mappings))])
@@ -260,8 +265,14 @@
                                     {:db/id gpus-id
                                      :resource/type :resource.type/gpus
                                      :resource/amount (double gpus)}])))
+                commit-latch-id (d/tempid :db.part/user)
+                commit-latch {:db/id commit-latch-id
+                              :commit-latch/uuid (java.util.UUID/randomUUID)
+                              :commit-latch/committed? true}
                 txn {:db/id id
+                     :job/commit-latch commit-latch-id
                      :job/uuid uuid
+                     :job/submit-time (java.util.Date.)
                      :job/name (or name "cookjob") ; set the default job name if not provided.
                      :job/command command
                      :job/custom-executor false
@@ -272,6 +283,7 @@
                                      :resource/amount cpus}
                                     {:resource/type :resource.type/mem
                                      :resource/amount mem}]}]]
+    
     ;; TODO batch these transactions to improve performance
     @(d/transact conn (-> ports
                           (into uris)
@@ -279,7 +291,8 @@
                           (into labels)
                           (into container)
                           (into maybe-datoms)
-                          (conj txn))))
+                          (conj txn)
+                          (conj commit-latch))))
   "ok")
 
 (defn unused-uuid?
@@ -348,11 +361,15 @@
                                       :conn-timeout timeout-millis
                                       :as :json-string-keys
                                       :spnego-auth true}))
-        framework-executors (for [framework (concat (get slave-state "frameworks")
-                                                    (get slave-state "completed_frameworks"))
+        framework-executors (for [framework (reduce into 
+                                                    [] 
+                                                    [(get slave-state "frameworks")
+                                                     (get slave-state "completed_frameworks")])
                                   :when (= framework-id (get framework "id"))
-                                  e (concat (get framework "executors")
-                                            (get framework "completed_executors"))]
+                                  e (reduce into 
+                                            []
+                                            [(get framework "executors")
+                                             (get framework "completed_executors")])]
                               e)]
     (reduce (fn [m {:strs [id] :as executor-state}]
               (assoc m id executor-state))
@@ -395,6 +412,7 @@
        :uuid (str (:job/uuid job))
        :name (:job/name job "cookjob")
        :priority (:job/priority job util/default-job-priority)
+       :submit-time (str (:job/submit-time job))
        :cpus (:cpus resources)
        :mem (:mem resources)
        :gpus (int (:gpus resources 0))
@@ -442,6 +460,15 @@
                 base))
             (:job/instance job))})))
 
+(defn instance-uuid->job-uuid
+  "Queries for the job uuid from an instance uuid.
+   Returns nil if the instance uuid doesn't correspond
+   a job"
+  [db instance-uuid]
+  (->> (d/entity db [:instance/task-id instance-uuid])
+       :job/_instance
+       :job/uuid))
+
 ;;; On POST; JSON blob that looks like:
 ;;; {"jobs": [{"command": "echo hello world",
 ;;;            "uuid": "123898485298459823985",
@@ -451,15 +478,56 @@
 ;;;
 ;;; On GET; use repeated job argument
 (defn job-resource
-  [conn fid task-constraints gpu-enabled?]
+  [conn fid task-constraints gpu-enabled? is-authorized-fn]
   (-> (liberator/resource
-       :available-media-types ["application/json"]
-       :allowed-methods [:post :get :delete]
-       :malformed? (fn [ctx]
-                     (condp contains? (get-in ctx [:request :request-method])
-                       ;; schema will already validate.
-                       #{:get :delete}
-                       [false {::jobs (get-in ctx [:request :query-params :job])}]
+        :available-media-types ["application/json"]
+        :allowed-methods [:post :get :delete]
+        :malformed? (fn [ctx]
+                      (condp contains? (get-in ctx [:request :request-method])
+                        #{:get :delete}
+                        (try
+                          (let [jobs (get-in ctx [:request :query-params "job"])
+                                instances (get-in ctx [:request :query-params "instance"])]
+                            (if (or jobs instances)
+                              (let [instances (if (or (nil? instances) (vector? instances))
+                                                instances
+                                                [instances])
+                                    instance-uuid->job-uuid #(instance-uuid->job-uuid (d/db conn) %)
+                                    instance-jobs (mapv instance-uuid->job-uuid instances)
+                                    jobs (if (or (nil? jobs) (vector? jobs))
+                                           jobs
+                                           [jobs])
+                                    jobs (mapv #(UUID/fromString %) jobs)
+                                    used? (fn used? [uuid]
+                                            (try
+                                              (unused-uuid? (db conn) uuid)
+                                              false
+                                              (catch Exception e
+                                                true)))]
+                                (cond
+                                  (and (seq instance-jobs)
+                                       (= :delete (get-in ctx [:request :request-method])))
+                                  [true {::error "Aborting instances is currently not supported"}]
+                                  (and (every? used? jobs)
+                                       (every? (complement nil?) instance-jobs))
+                                  ;;Currently don't support delete of instance. May in future
+                                  [false {::jobs (into jobs instance-jobs)}]
+                                  (some nil? instance-jobs)
+                                  [true {::error (str "UUID "
+                                                      (str/join
+                                                        \space
+                                                        (filter (comp nil? instance-uuid->job-uuid)
+                                                                instances))
+                                                      " didn't correspond to a instance")}]
+                                  :else
+                                  [true {::error (str "UUID "
+                                                      (str/join
+                                                        \space
+                                                        (remove used? jobs))
+                                                      " didn't correspond to a job")}]))
+                              [true {::error "must supply at least one job or instance query param"}]))
+                          (catch Exception e
+                            [true {::error e}]))
                         #{:post}
                         (let [params (get-in ctx [:request :body-params])
                               user (get-in ctx [:request :authorization/user])]
@@ -481,18 +549,17 @@
         :allowed? (fn [ctx]
                     (condp contains? (get-in ctx [:request :request-method])
                       #{:get :delete}
-                      (letfn [(used? [uuid]
-                                (try
-                                  (unused-uuid? (db conn) uuid)
-                                  false
-                                  (catch Exception e
-                                    true)))]
-                        (or (every? used? (::jobs ctx))
-                          [false {::error (str "UUID "
-                                               (str/join
-                                                 \space
-                                                 (remove used? (::jobs ctx)))
-                                               " didn't correspond to a job")}]))
+                      (let [uuids (::jobs ctx)
+                            user (get-in ctx [:request :authorization/user])
+                            job-user (fn [uuid]
+                                       (:job/user (d/entity (db conn) [:job/uuid uuid])))
+                            authorized? (fn [uuid]
+                                          (is-authorized-fn user (get-in ctx [:request :request-method]) {:owner (job-user uuid) :item :job}))]
+                        (if (every? authorized? uuids)
+                          true
+                          [false {::error (str "You are not authorized to view access the following jobs "
+                                               (str/join \space (remove authorized? uuids)))}]))
+
                       #{:post}
                       true))
         :handle-malformed (fn [ctx]
@@ -525,30 +592,215 @@
         :as-response (fn [data ctx] (combine {:body data} ctx)))))
 
 (defn waiting-jobs
-  [mesos-pending-jobs-fn]
+  [mesos-pending-jobs-fn is-authorized-fn]
   (-> (liberator/resource
         :available-media-types ["application/json"]
         :allowed-methods [:get]
+        :malformed? (fn [ctx]
+                      (try
+                        (if-let [limit (Integer/parseInt (get-in ctx [:request :params "limit"] "1000"))]
+                          (if-not (pos? limit)
+                            [true {::error (str "Limit " limit " most be positive")}]
+                            [false {::limit limit}]))
+                        (catch Exception e
+                          [true {::error (str (.getMessage e))}])))
+        :allowed? (fn [ctx]
+                       (let [user (get-in ctx [:request :authorization/user])]
+                         (if (is-authorized-fn user :read {:owner ::system :item :queue})
+                           true
+                           (do
+                             (log/info user " has failed auth")
+                             [false {::error "Unauthorized"}]))))
+        :handle-forbidden (fn [ctx]
+                               (log/info (get-in ctx [:request :authorization/user]) " is not authorized to access queue")
+                               (str (::error ctx)))
+        :handle-malformed (fn [ctx]
+                            (str (::error ctx)))
         :handle-ok (fn [ctx]
-                     (->> (mesos-pending-jobs-fn)
-                          (map (fn [[k v]] [k (map d/touch v)]))
-                          (into {})
-                          cheshire/generate-string)))
+                     (-> (map-vals (fn [queue]
+                                     (->> queue
+                                          (take (::limit ctx))
+                                          (map d/touch)))
+                                   (mesos-pending-jobs-fn))
+                         cheshire/generate-string)))
       ring.middleware.json/wrap-json-params))
 
+
 (defn running-jobs
-  [conn]
+  [conn is-authorized-fn]
   (-> (liberator/resource
         :available-media-types ["application/json"]
         :allowed-methods [:get]
+        :malformed? (fn [ctx]
+                      (try
+                        (if-let [limit (Integer/parseInt (get-in ctx [:request :params "limit"] "1000"))]
+                          (if-not (pos? limit)
+                            [true {::error (str "Limit " limit " most be positive")}]
+                            [false {::limit limit}]))
+                        (catch Exception e
+                          [true {::error (str (.getMessage e))}])))
+        :allowed? (fn [ctx]
+                       (let [user (get-in ctx [:request :authorization/user])]
+                         (if (is-authorized-fn user :read {:owner ::system :item :running})
+                           true
+                           [false {::error "Unauthorized"}])))
+        :handle-forbidden (fn [ctx]
+                               (str (::error ctx)))
+        :handle-malformed (fn [ctx]
+                            (str (::error ctx)))
         :handle-ok (fn [ctx]
                      (->> (util/get-running-task-ents (db conn))
+                          (take (::limit ctx))
                           (map d/touch)
                           cheshire/generate-string)))
       ring.middleware.json/wrap-json-params))
 
+(defn share
+  [conn is-authorized-fn]
+  (-> (liberator/resource
+        :available-media-types ["application/json"]
+        :allowed-methods [:get :delete :post]
+        :malformed? (fn [ctx]
+                      (if-let [user (get-in ctx [:request :params "user"])]
+                        (if (= :post (get-in ctx [:request :request-method]))
+                          (let [resource-types (set (util/get-all-resource-types (d/db conn)))
+                                shares (->> (get-in ctx [:request :params "share"])
+                                            keywordize-keys
+                                            (map-vals double))]
+                            (cond
+                              (not (seq shares))
+                              [true {::error "No shares set. Are you specifying that this is application/json?"}]
+                              (not (every? (partial contains? resource-types) (keys shares)))
+                              [true {::error (str "Unknown resource type(s)" (str/join \space (remove (partial contains? resource-types) (keys shares))))}]
+                              :else
+                              [false {::shares shares}]))
+                          false)
+                        [true {::error "Must set the user to operate on"}]))
+        :allowed? (fn [ctx]
+                    (let [request-user (get-in ctx [:request :authorization/user])
+                          request-method (get-in ctx [:request :request-method])]
+                      ;; Can't used :authorized? here (though I would like to) because TS assumes
+                      ;; that 401 means to retry with kerb creds which seems to break everything...
+                      (if-not (is-authorized-fn request-user request-method {:owner ::system :item :share})
+                        [false {::error (str "You are not authorized to access share information")}]
+                        true)))
+        :handle-forbidden (fn [ctx]
+                            (str (::error ctx)))
+        :handle-malformed (fn [ctx]
+                            (str (::error ctx)))
+        :post! (fn [ctx]
+                 (apply share/set-share! conn (get-in ctx [:request :params "user"]) (reduce into [] (::shares ctx))))
+        :delete! (fn [ctx]
+                   (share/retract-share! conn (get-in ctx [:request :params "user"])))
+        :handle-ok (fn [ctx]
+                     (share/get-share (db conn) (get-in ctx [:request :params "user"])))
+        :handle-created (fn [ctx]
+                          (share/get-share (db conn) (get-in ctx [:request :params "user"])))
+        :handle-accepted (fn [ctx]
+                          (share/get-share (db conn) (get-in ctx [:request :params "user"]))))
+      ring.middleware.json/wrap-json-params))
+
+(defn quota
+  [conn is-authorized-fn]
+  (-> (liberator/resource
+        :available-media-types ["application/json"]
+        :allowed-methods [:get :delete :post]
+        :malformed? (fn [ctx]
+                      (if-let [user (get-in ctx [:request :params "user"])]
+                        (if (= :post (get-in ctx [:request :request-method]))
+                          (let [resource-types (set (conj (util/get-all-resource-types (d/db conn)) :count))
+                                quotas (->> (get-in ctx [:request :params "quota"])
+                                            keywordize-keys
+                                            (map-vals double))
+                                quotas (update-in quotas [:count] int)]
+                            (cond
+                              (not (seq quotas))
+                              [true {::error "No quotas set. Are you specifying that this is application/json?"}]
+                              (not (every? (partial contains? resource-types) (keys quotas)))
+                              [true {::error (str "Unknown resource type(s) " (str/join \space (remove (partial contains? resource-types) (keys quotas))))}]
+                              :else
+                              [false {::quotas quotas}]))
+                          false)
+                        [true {::error "Must set the user to operate on"}]))
+        :allowed? (fn [ctx]
+                    (let [request-user (get-in ctx [:request :authorization/user])
+                          request-method (get-in ctx [:request :request-method])]
+                      ;; Can't used :authorized? here (though I would like to) because TS assumes
+                      ;; that 401 means to retry with kerb creds which seems to break everything...
+                      (if-not (is-authorized-fn request-user request-method {:owner ::system :item :quota})
+                        [false {::error (str "You are not authorized to access quota information")}]
+                        true)))
+        :handle-forbidden (fn [ctx]
+                            (str (::error ctx)))
+        :handle-malformed (fn [ctx]
+                            (str (::error ctx)))
+        :post! (fn [ctx]
+                 (apply quota/set-quota! conn (get-in ctx [:request :params "user"]) (reduce into [] (::quotas ctx))))
+        :delete! (fn [ctx]
+                   (quota/retract-quota! conn (get-in ctx [:request :params "user"])))
+        :handle-ok (fn [ctx]
+                     (quota/get-quota (db conn) (get-in ctx [:request :params "user"])))
+        :handle-created (fn [ctx]
+                          (quota/get-quota (db conn) (get-in ctx [:request :params "user"])))
+        :handle-accepted (fn [ctx]
+                           (quota/get-quota (db conn) (get-in ctx [:request :params "user"]))))
+      ring.middleware.json/wrap-json-params))
+
+(defn retries
+  [conn is-authorized-fn]
+  (-> (liberator/resource
+        :available-media-types ["application/json"]
+        :allowed-methods [:get :post]
+        :malformed? (fn [ctx]
+                      (try
+                        (let [job (get-in ctx [:request :params "job"])
+                              new-retries (get-in ctx [:request :params "retries"])
+                              request-method (get-in ctx [:request :request-method])]
+                          (when-not job
+                            (throw (ex-info (str "'job' must be provided") {})))
+                          (when (and (= :post request-method) (not new-retries))
+                            (throw (ex-info "'retries' must be provided" {})))
+                          (let [job-uuid (UUID/fromString job)
+                                used? (fn used? [uuid]
+                                        (try
+                                          (unused-uuid? (db conn) uuid)
+                                          false
+                                          (catch Exception e
+                                            true)))]
+                            (when-not (used? job-uuid)
+                              (throw (ex-info (str "UUID" job " does not correspond to a job" ) {})))
+                            (if (= :post request-method)
+                              (let [new-retries (Integer/parseInt new-retries)]
+                                (when-not (pos? new-retries)
+                                  (throw (ex-info (str "Retries (" new-retries ") must be positive") {})))
+                                [false {::retries new-retries ::job job-uuid}])
+                              [false {::job job-uuid}])))
+                        (catch Exception e
+                          [true {::error (.getMessage e)}])))
+        :allowed? (fn [ctx]
+                    (let [request-user (get-in ctx [:request :authorization/user])
+                          request-method (get-in ctx [:request :request-method])
+                          job (::job ctx)
+                          job-owner (:job/user (d/entity (db conn) [:job/uuid job]))]
+                      ;; Can't used :authorized? here (though I would like to) because TS assumes
+                      ;; that 401 means to retry with kerb creds which seems to break everything...
+                      (if-not (is-authorized-fn request-user :retry {:owner job-owner :item :job})
+                        [false {::error (str "You are not authorized to access that job")}]
+                        true)))
+        :handle-forbidden (fn [ctx]
+                            (str (::error ctx)))
+        :handle-malformed (fn [ctx]
+                            (str (::error ctx)))
+        :post! (fn [ctx]
+                 (util/retry-job! conn (::job ctx) (::retries ctx)))
+        :handle-ok (fn [ctx]
+                     (str (:job/max-retries (d/entity (db conn) [:job/uuid (::job ctx)]))))
+        :handle-created (fn [ctx]
+                          (str (:job/max-retries (d/entity (db conn) [:job/uuid (::job ctx)])))))
+      ring.middleware.json/wrap-json-params))
+
 (defn handler
-  [conn fid task-constraints gpu-enabled? mesos-pending-jobs-fn]
+  [conn fid task-constraints gpu-enabled? mesos-pending-jobs-fn is-authorized-fn]
   (routes
    (c-api/api
     {:swagger {:ui "/swagger-ui"
@@ -572,8 +824,15 @@
                                           400 {:description "Non-UUID values were passed as jobs."}
                                           403 {:description "The supplied UUIDs don't correspond to valid jobs."}}
                               :parameters {:query-params JobUuids}}
-                     :handler (job-resource conn fid task-constraints gpu-enabled?)}))
+                     :handler (job-resource conn fid task-constraints gpu-enabled? is-authorized-fn)})))
+
     (ANY "/queue" []
-         (waiting-jobs mesos-pending-jobs-fn))
+         (waiting-jobs mesos-pending-jobs-fn is-authorized-fn))
     (ANY "/running" []
-         (running-jobs conn)))))
+         (running-jobs conn is-authorized-fn))
+    (ANY "/share" []
+         (share conn is-authorized-fn))
+    (ANY "/quota" []
+         (quota conn is-authorized-fn))
+    (ANY "/retry" []
+         (retries conn is-authorized-fn))))

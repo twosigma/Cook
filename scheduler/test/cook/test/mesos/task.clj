@@ -116,30 +116,55 @@
 
 (deftest test-task-info->mesos-message
   (let [task {:name "yaiqlzwhfm_andalucien_4425e656-2278-4f91-b1e4-9a2e942e6e82",
-              :task-id "4425e656-2278-4f91-b1e4-9a2e942e6e82",
-              :role "4425e656-2278-4f91-b1e4-9a2e942e6e82",
               :slave-id {:value "foobar"},
-              :num-ports 0,
-              :resources {:mem 623.0
-                          :cpus 1.0
-                          :ports [{:begin 31000, :end 31002}]},
+              :task-id "4425e656-2278-4f91-b1e4-9a2e942e6e82",
               :scalar-resource-messages [{:name "mem", :type :value-scalar, :scalar 623.0, :role "cook"}
                                         {:name "cpus", :type :value-scalar, :scalar 1.0, :role "cook"}]
               :ports-resource-messages [{:name "ports" :type :value-ranges :role "cook" :ranges [{:begin 31000 :end 31002}]}]
-              :labels {"foo" "bar", "doo" "dar"},
-              :data (.getBytes (pr-str {:instance "5"}) "UTF-8"),
+              :executor-key :command
               :command {:value "sleep 26; exit 0",
                         :environment {"MYENV" "VAR"},
                         :user "andalucien",
                         :uris [{:value "http://www.yahoo.com"
                                 :executable true
                                 :cache true
-                                :extract true}]}}
+                                :extract true}]}
+              :labels {"foo" "bar", "doo" "dar"},
+              :data (.getBytes (pr-str {:instance "5"}) "UTF-8"),
+              :framework-id {:value "4425e656-2278-4f91-b1e4-9a2e942e6e81"}
+              :role "4425e656-2278-4f91-b1e4-9a2e942e6e82",
+              :num-ports 0,
+              :resources {:mem 623.0
+                          :cpus 1.0
+                          :ports [{:begin 31000, :end 31002}]}}
+        container {:type "DOCKER"
+                   :volumes [{:container-path "/var/lib/sss"
+                              :host-path "/var/lib/sss"
+                              :mode "RW"}]
+                   :docker {:image "nvidia/cuda"
+                            :network "HOST"
+                            :force-pull-image false
+                            :parameters [{:key "user" :value "100:5"}]
+                            :port-mapping [{:host-port 0
+                                            :container-port 1
+                                            :protocol "tcp"}]}}
+        custom-executor-task (assoc task :executor-key :executor)
+        container-task (assoc task :container container)
         ;; roundrip to and from Mesos protobuf to validate clojure data format
         msg (->> task
                  task/task-info->mesos-message
                  (mtypes/->pb :TaskInfo)
-                 mtypes/pb->data)]
+                 mtypes/pb->data)
+        custom-executor-msg (->> custom-executor-task
+                                 task/task-info->mesos-message
+                                 (mtypes/->pb :TaskInfo)
+                                 mtypes/pb->data)
+        ;; TODO: Check values of container-msg.
+        ;; mesomatic doesn't do conversion to map for containerinfo so holding off for now
+        container-msg (->> container-task
+                           task/task-info->mesos-message
+                           (mtypes/->pb :TaskInfo)
+                           mtypes/pb->data)]
 
     (is (= (:name msg) (:name task)))
     (is (= (-> msg :slave-id :value) (-> task :slave-id :value)))
@@ -176,4 +201,12 @@
     ;; It's not a problem for Cook, except for the purposes of this unit test.
     (let [msg-env (-> task task/task-info->mesos-message :command :environment)]
       (is (= (-> msg-env :variables first :name) "MYENV"))
-      (is (= (-> msg-env :variables first :value) "VAR")))))
+      (is (= (-> msg-env :variables first :value) "VAR")))
+
+    ;; Check custom executor built correctly
+    (is (= (-> custom-executor-msg :executor :executor-id :value) (:task-id task)))
+    (is (= (-> custom-executor-msg :executor :framework-id :value) (-> task :framework-id :value)))
+    (is (= (-> custom-executor-msg :executor :name) task/custom-executor-name))
+    (is (= (-> custom-executor-msg :executor :source) task/custom-executor-source))
+    (is (= (-> custom-executor-msg :executor :command :value)
+           (-> task :command :value)))))
