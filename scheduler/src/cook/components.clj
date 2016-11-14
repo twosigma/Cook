@@ -83,7 +83,7 @@
                       (route/not-found "<h1>Not a valid route</h1>")))})
 
 (def mesos-scheduler
-  {:mesos-scheduler (fnk [[:settings mesos-master mesos-master-hosts mesos-leader-path mesos-failover-timeout mesos-principal mesos-role mesos-framework-name offer-incubate-time-ms mea-culpa-failure-limit fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset task-constraints riemann mesos-gpu-enabled rebalancer good-enough-fitness] mesos-datomic mesos-datomic-mult curator-framework mesos-pending-jobs-atom]
+  {:mesos-scheduler (fnk [[:settings mesos-master mesos-master-hosts mesos-leader-path mesos-failover-timeout mesos-principal mesos-role mesos-framework-name offer-incubate-time-ms mea-culpa-failure-limit fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset task-constraints executor-command riemann mesos-gpu-enabled rebalancer good-enough-fitness] mesos-datomic mesos-datomic-mult curator-framework mesos-pending-jobs-atom]
                          (try
                            (Class/forName "org.apache.mesos.Scheduler")
                            ((lazy-load-var 'cook.mesos/start-mesos-scheduler)
@@ -100,6 +100,7 @@
                             offer-incubate-time-ms
                             mea-culpa-failure-limit
                             task-constraints
+                            executor-command
                             (:host riemann)
                             (:port riemann)
                             mesos-pending-jobs-atom
@@ -294,21 +295,21 @@
                                          authorization-config))
      :authorization-middleware (fnk [[:config [:authorization {one-user false} {kerberos false} {http-basic false}]]]
                                     (cond
-                                      http-basic 
+                                      http-basic
                                       (let [validation (get http-basic :validation :none)
-                                            user-password-valid? 
+                                            user-password-valid?
                                             ((lazy-load-var 'cook.basic-auth/make-user-password-valid?) validation http-basic)]
                                         (log/info "Using http basic authorization with validation" validation)
                                         ((lazy-load-var 'cook.basic-auth/create-http-basic-middleware) user-password-valid?))
 
-                                      one-user 
+                                      one-user
                                       (do
                                         (log/info "Using single user authorization")
                                         (fn one-user-middleware [h]
                                           (fn one-user-auth-wrapper [req]
                                             (h (assoc req :authorization/user one-user)))))
 
-                                      kerberos 
+                                      kerberos
                                       (do
                                         (log/info "Using kerberos middleware")
                                         (lazy-load-var 'cook.spnego/require-gss))
@@ -344,6 +345,8 @@
                                :memory-gb 12
                                :cpus 4}
                               task-constraints))
+     :executor-command (fnk [[:config [:scheduler {executor-command "echo NO EXECUTOR CONFIGURED"}]]]
+                            executor-command)
      :offer-incubate-time-ms (fnk [[:config [:scheduler {offer-incubate-ms 15000}]]]
                                   offer-incubate-ms)
      :mea-culpa-failure-limit (fnk [[:config [:scheduler {mea-culpa-failure-limit nil}]]]

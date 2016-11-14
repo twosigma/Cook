@@ -456,7 +456,8 @@
     (is (= (-> adapter .portRanges first .getEnd) 32000))))
 
 (deftest test-interpret-mesos-status
-  (let [mesos-status (mesomatic.types/map->TaskStatus {:task-id #mesomatic.types.TaskID{:value "a07708d8-7ab6-404d-b136-a3e2cb2567e3"},
+  (let [data (com.google.protobuf.ByteString/copyFrom (.getBytes (pr-str {:percent 85.0}) "UTF-8"))
+        mesos-status (mesomatic.types/map->TaskStatus {:task-id #mesomatic.types.TaskID{:value "a07708d8-7ab6-404d-b136-a3e2cb2567e3"},
                                                        :state :task-lost,
                                                        :message "Task launched with invalid offers: Offer mesomatic.types.OfferID@1d7408e3 is no longer valid",
                                                        :source :source-master,
@@ -465,10 +466,10 @@
                                                        :executor-id #mesomatic.types.ExecutorID{:value ""},
                                                        :timestamp 1.470654131281046E9,
                                                        :healthy false
-                                                       :data (com.google.protobuf.ByteString/copyFrom (.getBytes (pr-str {:percent 85.0}) "UTF-8"))
+                                                       :data data
                                                        :uuid (com.google.protobuf.ByteString/copyFrom (.getBytes "my-uuid" "UTF-8"))})
         interpreted-status (sched/interpret-task-status mesos-status)]
-    (is (= (:progress interpreted-status) 85.0))
+    (is (= (:data interpreted-status) data))
     (is (= (:task-id interpreted-status) "a07708d8-7ab6-404d-b136-a3e2cb2567e3"))
     (is (= (:task-state interpreted-status) :task-lost))
     (is (= (:reason interpreted-status) :reason-invalid-offers))))

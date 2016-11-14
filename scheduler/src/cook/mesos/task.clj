@@ -1,15 +1,26 @@
 (ns cook.mesos.task
   (:require [cook.mesos.util :as util]
             [plumbing.core :refer (map-vals)]
-            [clojure.tools.logging :as log])
+            [clojure.tools.logging :as log]
+            [cheshire.core :as json])
   (import com.netflix.fenzo.TaskAssignmentResult))
 
 (defonce custom-executor-name "cook_agent_executor")
 (defonce custom-executor-source "cook_scheduler")
 
+(defn build-task-status-data [job-ent]
+  (.getBytes
+   (if (:job/custom-executor job-ent true)
+     ;;TODO this data is a race-condition
+     (pr-str
+      {:instance (str (count (:job/instance job-ent)))})
+     (json/generate-string
+      {:commands (util/job-ent->commands job-ent)}))
+   "UTF-8"))
+
 (defn job->task-metadata
   "Takes a job entity, returns task metadata"
-  [db fid job-ent task-id]
+  [db fid executor-command job-ent task-id]
   (let [resources (util/job-ent->resources job-ent)
         ;; If the custom-executor attr isn't set, we default to using a custom
         ;; executor in order to support jobs submitted before we added this field
@@ -17,34 +28,30 @@
         custom-executor (:job/custom-executor job-ent true)
         environment (util/job-ent->env job-ent)
         labels (util/job-ent->label job-ent)
-        command {:value (:job/command job-ent)
+        command {:value (if custom-executor
+                          (:job/command job-ent)
+                          executor-command)
                  :environment environment
                  :user (:job/user job-ent)
-                 :uris (:uris resources [])}
-        ;; executor-key configure whether this is a command or custom executor
-        executor-key (if custom-executor :executor :command)]
+                 :uris (:uris resources [])}]
     ;; If the there is no value for key :job/name, the following name will contain a substring "null".
     {:name (format "%s_%s_%s" (:job/name job-ent "cookjob") (:job/user job-ent) task-id)
      :task-id task-id
      :labels labels
      :num-ports  (:ports resources)
      :resources  (select-keys resources  [:mem :cpus])
-     ;;TODO this data is a race-condition
-     :data (.getBytes
-             (pr-str
-               {:instance (str (count (:job/instance job-ent)))})
-             "UTF-8")
+     :data (build-task-status-data job-ent)
      :environment environment
      :command command
-     :executor-key executor-key
+     :custom-executor custom-executor
      :container container
      :framework-id fid}))
 
 (defn TaskAssignmentResult->task-metadata
   "Organizes the info Fenzo has already told us about the task we need to run"
-  [db fid ^TaskAssignmentResult fenzo-result]
+  [db fid executor-command ^TaskAssignmentResult fenzo-result]
   (let [task-request (.getRequest fenzo-result)]
-    (merge (job->task-metadata db fid (:job task-request) (:task-id task-request))
+    (merge (job->task-metadata db fid executor-command (:job task-request) (:task-id task-request))
            {:ports-assigned (.getAssignedPorts fenzo-result)
             :task-request task-request})))
 
@@ -204,7 +211,7 @@
    which has already been decorated with everything we need to know about
    a task, return a Mesos message that will actually launch that task"
   [{:keys [name slave-id task-id scalar-resource-messages ports-resource-messages
-           executor-key command labels data container framework-id] :as t}]
+           command labels data container framework-id] :as t}]
   (let [command (update command
                         :environment
                         (fn [env] {:variables (map->mesos-kv env :name)}))
@@ -220,25 +227,21 @@
                                    (fn [volumes]
                                      (map #(update % :mode cook-volume-mode->mesomatic-volume-mode)
                                           volumes)))))]
-    (merge {:name name
-            :task-id {:value task-id}
-            :resources (into scalar-resource-messages
-                             ports-resource-messages)
-            :labels {:labels (map->mesos-kv labels :key)}
-            :data (com.google.protobuf.ByteString/copyFrom data)
-            executor-key (if (= executor-key :executor)
-                            ;; executor-id matches txn code in handle-resource-offer
-                            (merge {:executor-id {:value (str task-id)}
-                                    :framework-id framework-id
-                                    :name custom-executor-name
-                                    :source custom-executor-source
-                                    :command command}
-                                   (when (seq container)
-                                     {:container container}))
-                            command)
-            :slave-id slave-id}
-           (when (and (seq container) (not= executor-key :executor))
-             {:container container}))))
+    {:name name
+     :task-id {:value task-id}
+     :resources (into scalar-resource-messages
+                      ports-resource-messages)
+     :labels {:labels (map->mesos-kv labels :key)}
+     :data (com.google.protobuf.ByteString/copyFrom data)
+     ;; executor-id matches txn code in handle-resource-offer
+     :executor (merge {:executor-id {:value (str task-id)}
+                       :framework-id framework-id
+                       :name custom-executor-name
+                       :source custom-executor-source
+                       :command command}
+                      (when (seq container)
+                        {:container container}))
+     :slave-id slave-id}))
 
 (defn compile-mesos-messages
   "Given Mesos offers and partial task-infos created from calling

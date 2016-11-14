@@ -18,7 +18,8 @@
                                 :timeout-interval-minutes 10
                                 :memory-gb 96
                                 :retry-limit 15
-                                :cpus 20}}
+                                :cpus 20}
+             :executor-command "python3 -u cook"}
  :mesos {:master "zk://zk1.example.com:2181,zk2.example.com:2181,zk3.example.com:2181/cook"
          :failover-timeout-ms 1209600000
          :leader-path "/cook-scheduler"}

@@ -151,6 +151,48 @@
   [db job-ent]
   (d/invoke db :job/attempts-consumed db job-ent))
 
+(defn command-ents->commands
+  [command-ents suffix]
+  (->> command-ents
+       (sort-by :command/order)
+       (map
+        (fn [c]
+          {:name (str suffix "." (:command/order c))
+           :value (:command/value c)
+           :async (:command/async? c false)
+           :guard (:command/guard? c false)}))))
+
+(defn job-ent->before-commands
+  [job-ent]
+  (command-ents->commands
+   (:job/before-command job-ent) "before"))
+
+(defn job-ent->after-commands
+  [job-ent]
+  (command-ents->commands
+   (:job/after-command job-ent) "after"))
+
+(defn job-ent->commands
+  [job-ent]
+  (concat
+   (job-ent->before-commands job-ent)
+   [{:value (:job/command job-ent)
+     :async false
+     :guard false}]
+   (job-ent->after-commands job-ent)))
+
+(defn code-ents->codes
+  [code-ents]
+  (->> code-ents (sort-by :code/order) (map :code/value)))
+
+(defn instance-ent->before-codes
+  [instance-ent]
+  (-> instance-ent :instance/before-code code-ents->codes))
+
+(defn instance-ent->after-codes
+  [instance-ent]
+  (-> instance-ent :instance/after-code code-ents->codes))
+
 (defn sum-resources-of-jobs
   "Given a collections of job entities, returns the total resources they use
    {:cpus cpu :mem mem}"
