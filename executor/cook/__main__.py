@@ -33,7 +33,7 @@ if __name__ == "__main__":
 
     store = Store({
         'task': {
-            'reason': str,
+            'message': str,
             'progress': float,
             'env': {str: str},
             'commands': [{

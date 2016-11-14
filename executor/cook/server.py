@@ -1,6 +1,6 @@
 """
 An HTTP server exposing a simple API for updating task data. It is meant to be consumed by
-the processes of a task's commands. It allows setting custom failure reasons and updating
+the processes of a task's commands. It allows setting custom failure messages and updating
 task progress.
 """
 
