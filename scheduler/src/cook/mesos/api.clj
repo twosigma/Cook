@@ -165,6 +165,20 @@
    (s/optional-key :cancelled) s/Bool
    (s/optional-key :reason_string) s/Str})
 
+(def Command
+  "Schema for a command"
+  {:value s/Str
+   :order s/Num
+   (s/optional-key :async?) s/Bool
+   (s/optional-key :guard?) s/Bool})
+
+(def CommandRequest
+  "Schema for a command in request"
+  {:value s/Str
+   (s/optional-key :name) s/Str
+   (s/optional-key :async) s/Bool
+   (s/optional-key :guard) s/Bool})
+
 (def Job
   "A schema for a job"
   {:uuid s/Uuid
@@ -181,6 +195,8 @@
    (s/optional-key :labels) {NonEmptyString s/Str}
    (s/optional-key :container) Container
    (s/optional-key :group) s/Uuid
+   (s/optional-key :before-commands) [Command]
+   (s/optional-key :after-commands) [Command]
    :cpus PosDouble
    :mem PosDouble
    (s/optional-key :gpus) (s/both s/Int (s/pred pos? 'pos?))
@@ -199,8 +215,33 @@
             (s/optional-key :env) {s/Keyword s/Str}
             (s/optional-key :labels) {s/Keyword s/Str}
             (s/optional-key :max-runtime) PosInt
+            (s/optional-key :before_commands) [CommandRequest]
+            (s/optional-key :after_commands) [CommandRequest]
             :cpus PosNum
             :mem PosNum})))
+
+(def JobUuids
+  "Schema for one or more job uuids in params"
+  {:job [s/Uuid]})
+
+(def Instance
+  "Schema for a description of a single job instance."
+  {:status s/Str
+   :task_id s/Uuid
+   :executor_id s/Uuid
+   :slave_id s/Str
+   :hostname s/Str
+   :preempted s/Bool
+   :backfilled s/Bool
+   :ports [s/Int]
+   (s/optional-key :start_time) s/Int
+   (s/optional-key :end_time) s/Int
+   (s/optional-key :reason_code) s/Int
+   (s/optional-key :reason_string) s/Str
+   (s/optional-key :code) s/Int
+   (s/optional-key :message) s/Str
+   (s/optional-key :before_codes) [s/Int]
+   (s/optional-key :after_codes) [s/Int]})
 
 (def JobResponse
   "Schema for a description of a job (as returned by the API).
@@ -278,7 +319,7 @@
 
 
 (defn- mk-container-params
-  "Helper for build-container.  Transforms parameters into the datomic schema."
+  "Helper for mk-container.  Transforms parameters into the datomic schema."
   [cid params]
   (when-not (empty? params)
     {:docker/parameters (mapv (fn [{:keys [key value]}]
@@ -286,8 +327,8 @@
                                  :docker.param/value value})
                               params)}))
 
-(defn- mkvolumes
-  "Helper for build-container.  Transforms volumes into the datomic schema."
+(defn- mk-volumes
+  "Helper for mk-container.  Transforms volumes into the datomic schema."
   [cid vols]
   (when-not (empty? vols)
     (let [vol-maps (mapv (fn [{:keys [container-path host-path mode]}]
@@ -301,7 +342,7 @@
       {:container/volumes vol-maps})))
 
 (defn- mk-docker-ports
-  "Helper for build-container.  Transforms port-mappings into the datomic schema."
+  "Helper for mk-container.  Transforms port-mappings into the datomic schema."
   [cid ports]
   (when-not (empty? ports)
     (let [port-maps (mapv (fn [{:keys [container-port host-port protocol]}]
@@ -314,7 +355,7 @@
                           ports)]
       {:docker/port-mapping port-maps})))
 
-(defn- build-container
+(defn- mk-container
   "Helper for submit-jobs, deal with container structure."
   [user id container]
   (let [container-id (d/tempid :db.part/user)
@@ -334,7 +375,7 @@
         [[:db/add id :job/container container-id]
          (merge {:db/id container-id
                  :container/type "DOCKER"}
-                (mkvolumes container-id volumes))
+                (mk-volumes container-id volumes))
          [:db/add container-id :container/docker docker-id]
          (merge {:db/id docker-id
                  :docker/image (:image docker)
@@ -344,12 +385,23 @@
                 (mk-docker-ports docker-id port-mappings))])
       {})))
 
+(defn- mk-command
+  "Convert command structure into datomic transaction data"
+  [id attr command]
+  (let [command-id (d/tempid :db.part/user)]
+    [[:db/add id attr command-id]
+     (reduce-kv
+      (fn [m k v]
+        (assoc m (keyword "command" (name k)) v))
+      {:db/id command-id}
+      command)]))
+
 (s/defn make-job-txn
   "Creates the necessary txn data to insert a job into the database"
   [job :- Job]
-  (let [{:keys [uuid command max-retries max-runtime priority cpus mem gpus user name ports uris env labels container group]
-         :or {group nil}
-         } job
+  (let [{:keys [uuid command max-retries max-runtime priority cpus mem gpus user name ports uris env labels container group
+                before-commands after-commands]
+         :or {group nil}} job
         db-id (d/tempid :db.part/user)
         ports (when (and ports (not (zero? ports)))
                 [[:db/add db-id :job/ports ports]])
@@ -384,7 +436,7 @@
                           :label/key k
                           :label/value v}]))
                     labels)
-        container (if (nil? container) [] (build-container user db-id container))
+        container (if (nil? container) [] (mk-container user db-id container))
         ;; These are optionally set datoms w/ default values
         maybe-datoms (reduce into
                              []
@@ -402,6 +454,8 @@
         commit-latch {:db/id commit-latch-id
                       :commit-latch/uuid (java.util.UUID/randomUUID)
                       :commit-latch/committed? true}
+        before-commands (mapcat (partial mk-command id :job/before-command) before-commands)
+        after-commands (mapcat (partial mk-command id :job/after-command) after-commands)
         txn {:db/id db-id
              :job/commit-latch commit-latch-id
              :job/uuid uuid
@@ -423,6 +477,8 @@
         (into env)
         (into labels)
         (into container)
+        (into before-commands)
+        (into after-commands)
         (into maybe-datoms)
         (conj txn)
         (conj commit-latch))))
@@ -499,13 +555,19 @@
    :host-placement (make-default-host-placement)
    :straggler-handling default-straggler-handling})
 
+(defn munge-command [i {:keys [value async guard]}]
+  (merge {:order i
+          :value value}
+         (when async {:async? async})
+         (when guard {:guard? guard})))
+
 (defn validate-and-munge-job
   "Takes the user, the parsed json from the job and a list of the uuids of
    new-groups (submitted in the same request as the job). Returns proper Job
    objects, or else throws an exception"
   [db user task-constraints gpu-enabled? new-group-uuids
    {:keys [cpus mem gpus uuid command priority max-retries max-runtime name
-           uris ports env labels container group]
+           uris ports env labels container group before-commands after-commands]
     :or {group nil}
     :as job}
    & {:keys [commit-latch-id override-group-immutability?]
@@ -513,7 +575,7 @@
            override-group-immutability? false}}]
   (let [group-uuid (when group group)
         munged (merge
-                 {:user user
+                {:user user
                   :uuid uuid
                   :command command
                   :name (or name "cookjob") ; Add default job name if user does not provide a name.
@@ -539,7 +601,11 @@
                  (when group-uuid
                    {:group group-uuid})
                  (when container
-                   {:container container}))]
+                   {:container container})
+                 (when before-commands
+                   {:before-commands (map-indexed munge-command before-commands)})
+                 (when after-commands
+                   {:after-commands (map-indexed munge-command after-commands)}))]
     (s/validate Job munged)
     (when (and (:gpus munged) (not gpu-enabled?))
       (throw (ex-info (str "GPU support is not enabled") {:gpus gpus})))
@@ -674,6 +740,8 @@
        :env (util/job-ent->env job)
        :labels (util/job-ent->label job)
        :ports (:job/ports job 0)
+       :before_commands (util/job-ent->before-commands job)
+       :after_commands (util/job-ent->after-commands job)
        :instances
        (map (fn [instance]
               (let [hostname (:instance/hostname instance)
@@ -686,32 +754,28 @@
                     end (:instance/end-time instance)
                     cancelled (:instance/cancelled instance)
                     reason (reason/instance-entity->reason-entity db instance)
-                    base {:task_id (:instance/task-id instance)
-                          :hostname hostname
-                          :ports (:instance/ports instance)
-                          :backfilled false ;; Backfill has been deprecated
-                          :preempted (:instance/preempted? instance false)
-                          :slave_id (:instance/slave-id instance)
-                          :executor_id (:instance/executor-id instance)
-                          :status (name (:instance/status instance))}
-                    base (if url-path
-                           (assoc base :output_url url-path)
-                           base)
-                    base (if start
-                           (assoc base :start_time (.getTime start))
-                           base)
-                    base (if end
-                           (assoc base :end_time (.getTime end))
-                           base)
-                    base (if cancelled
-                           (assoc base :cancelled cancelled)
-                           base)
-                    base (if reason
-                           (assoc base
-                                  :reason_code (:reason/code reason)
-                                  :reason_string (:reason/string reason))
-                           base)]
-                base))
+                    code (:instance/code instance)
+                    message (:instance/message instance)
+                    before-codes (util/instance-ent->before-codes instance)
+                    after-codes (util/instance-ent->after-codes instance)]
+                (cond-> {:task_id (:instance/task-id instance)
+                         :hostname hostname
+                         :ports (:instance/ports instance)
+                         :backfilled false ;; Backfill has been deprecated
+                         :preempted (:instance/preempted? instance false)
+                         :slave_id (:instance/slave-id instance)
+                         :executor_id (:instance/executor-id instance)
+                         :status (name (:instance/status instance))}
+                  url-path (assoc :output_url url-path)
+                  start (assoc :start_time (.getTime start))
+                  end (assoc :end_time (.getTime end))
+                  reason (assoc :reason_code (:reason/code reason)
+                                :reason_string (:reason/string reason))
+                  cancelled (assoc :cancelled cancelled)
+                  code (assoc :code code)
+                  message (assoc :message message)
+                  (not-empty before-codes) (assoc :before_codes before-codes)
+                  (not-empty after-codes) (assoc :after_codes after-codes))))
             (:job/instance job))}
       (when groups
         {:groups (map #(str (:group/uuid %)) groups)}))))
