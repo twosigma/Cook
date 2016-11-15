@@ -15,7 +15,7 @@
 ;;
 (ns cook.test.mesos.api
  (:use clojure.test)
- (:require [cook.mesos.api :as api :refer (handler)]
+ (:require [cook.mesos.api :as api :refer (main-handler)]
            [cook.mesos.util :as util]
            [cook.test.mesos.schema :as schema :refer (restore-fresh-database! create-dummy-job create-dummy-instance)]
            [clojure.walk :refer (keywordize-keys)]
@@ -48,6 +48,22 @@
 
 (def authorized-fn auth/open-auth)
 
+(defn basic-job
+  []
+  {"uuid" (str (java.util.UUID/randomUUID))
+   "command" "hello world"
+   "name" "my-cool-job"
+   "priority" 66
+   "max_retries" 100
+   "max_runtime" 1000000
+   "cpus" 2.0
+   "mem" 2048.0})
+
+(defn basic-handler
+  [conn & {:keys [cpus mem gpus-enabled] :or {cpus 12 mem 100 gpus-enabled false}}]
+  (main-handler conn "my-framework-id" {:cpus cpus :memory-gb mem} gpus-enabled
+                (fn [] []) authorized-fn))
+
 (deftest handler-db-roundtrip
   (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
         uuid #uuid "386b374c-4c4a-444f-aca0-0c25384c6fa0"
@@ -61,19 +77,13 @@
                "extract" true
                "cache" true
                "executable" false}]
-        job {"uuid" (str uuid)
-             "command" "hello world"
-             "name" "my-cool-job"
-             "priority" 66
-             "max_retries" 100
-             "max_runtime" 1000000
-             "ports" 2
-             "uris" uris
-             "env" env
-             "labels" labels
-             "cpus" 2.0
-             "mem" 2048.0}
-        h (handler conn "my-framework-id" {:cpus 12 :memory-gb 100} false (fn [] []) authorized-fn)]
+        job (merge (basic-job)
+                   {"uuid" (str uuid)
+                    "ports" 2
+                    "uris" uris
+                    "env" env
+                    "labels" labels})
+        h (basic-handler conn)]
     (println )
     (is (<= 200
             (:status (h {:request-method :post
@@ -123,15 +133,8 @@
 
 (deftest job-validator
   (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
-        job (fn [cpus mem] {"uuid" (str (java.util.UUID/randomUUID))
-                            "command" "hello world"
-                            "name" "my-cool-job"
-                            "priority" 66
-                            "max_retries" 100
-                            "max_runtime" 1000000
-                            "cpus" cpus
-                            "mem" mem})
-        h (handler conn "my-framework-id" {:cpus 3.0 :memory-gb 2} false (fn [] []) authorized-fn)]
+        job (fn [cpus mem] (merge (basic-job) {:cpus cpus :mem mem}))
+        h (basic-handler conn :cpus 3.0 :mem 2)]
     (testing "Within limits"
       (is (<= 200
               (:status (h {:request-method :post
@@ -171,16 +174,8 @@
 
 (deftest gpus-api
   (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
-        job (fn [gpus ] {"uuid" (str (java.util.UUID/randomUUID))
-                         "command" "hello world"
-                         "name" "my-cool-job"
-                         "priority" 66
-                         "max_retries" 100
-                         "max_runtime" 1000000
-                         "gpus" gpus
-                         "cpus" 1.0
-                         "mem" 1024.0})
-        h (handler conn "my-framework-id" {:cpus 12 :memory-gb 100} true (fn [] []) authorized-fn)]
+        job (fn [gpus ] (merge (basic-job) {"gpus" gpus}))
+        h (basic-handler conn :gpus-enabled true)]
     (testing "negative gpus invalid"
       (is (<= 400
               (:status (h {:request-method :post
@@ -218,3 +213,115 @@
             [body] (-> resp :body slurp json/read-str)
             trimmed-body (select-keys body (keys successful-job))]
         (is (= (dissoc successful-job "uris") (dissoc trimmed-body "uris")))))))
+
+(deftest retries-api
+  (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
+        h (basic-handler conn)
+        uuid (str (java.util.UUID/randomUUID))
+        create-response (h {:request-method :post
+                            :scheme :http
+                            :uri "/rawscheduler"
+                            :headers {"Content-Type" "application/json"}
+                            :authorization/user "mforsyth"
+                            :body-params {"jobs" [(merge (basic-job)
+                                                         {"uuid" uuid
+                                                          "max_retries" 42})]}})
+        retry-req-attrs {:scheme :http
+                         :uri "/retry"
+                         :authorization/user "mforsyth"}]
+    (testing "read retry count"
+      (let [resp (h (merge retry-req-attrs  {:request-method :get
+                                             :query-params {"job" uuid}}))
+            _ (is (<= 200 (:status resp) 299))
+            body (-> resp :body slurp json/read-str)]
+        (is (= body 42))))
+
+    (testing "update retry count"
+      (let [update-resp (h (merge retry-req-attrs
+                                  {:request-method :put
+                                   :body-params {"job" uuid "retries" 70}}))
+            _ (is (<= 200 (:status update-resp) 299))
+            read-resp (h (merge retry-req-attrs  {:request-method :get
+                                                  :query-params {"job" uuid}}))
+            read-body (-> read-resp :body slurp json/read-str)]
+        (is (= read-body 70))))))
+
+(deftest quota-api
+  (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
+        h (basic-handler conn)
+        quota-req-attrs {:scheme :http
+                         :uri "/quota"
+                         :authorization/user "mforsyth"
+                         :headers {"Content-Type" "application/json"}}
+        initial-get-resp (h (merge quota-req-attrs
+                                   {:request-method :get
+                                    :query-params {:user "foo"}}))
+        initial-get-body (-> initial-get-resp :body slurp json/read-str)]
+
+    (testing "initial get successful"
+      (is (<= 200 (:status initial-get-resp) 299)))
+
+    (testing "update changes quota"
+      (let [new-quota {:cpus 9.0 :mem 4323.0 :count 43 :gpus 3.0}
+            update-resp (h (merge quota-req-attrs
+                                  {:request-method :post
+                                   :body-params {:user "foo" :quota new-quota}}))
+            update-body (-> update-resp :body slurp json/read-str)
+            _ (is (<= 200 (:status update-resp) 299))
+            _ (is (= (kw-keys update-body) new-quota))
+            get-resp (h (merge quota-req-attrs
+                               {:request-method :get
+                                :query-params {:user "foo"}}))
+            get-body (-> get-resp :body slurp json/read-str)]
+        (is (= get-body update-body))))
+
+    (testing "delete resets quota"
+      (let [delete-resp (h (merge quota-req-attrs
+                                  {:request-method :delete
+                                   :query-params {:user "foo"}}))
+            _ (is (<= 200 (:status delete-resp) 299))
+            get-resp (h (merge quota-req-attrs
+                               {:request-method :get
+                                :query-params {:user "foo"}}))
+            get-body (-> get-resp :body slurp json/read-str)]
+        (is (= get-body initial-get-body))))))
+
+(deftest share-api
+  (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
+        h (basic-handler conn)
+        share-req-attrs {:scheme :http
+                         :uri "/share"
+                         :authorization/user "mforsyth"
+                         :headers {"Content-Type" "application/json"}}
+        initial-get-resp (h (merge share-req-attrs
+                                   {:request-method :get
+                                    :query-params {:user "foo"}}))
+        initial-get-body (-> initial-get-resp :body slurp json/read-str)]
+
+    (testing "initial get successful"
+      (is (<= 200 (:status initial-get-resp) 299)))
+
+    (testing "update changes share"
+      (let [new-share {:cpus 9.0 :mem 4323.0 :gpus 3.0}
+            update-resp (h (merge share-req-attrs
+                                  {:request-method :post
+                                   :body-params {:user "foo" :share new-share}}))
+            update-body (-> update-resp :body slurp json/read-str)
+            _ (is (<= 200 (:status update-resp) 299))
+            _ (is (= (kw-keys update-body) new-share))
+            get-resp (h (merge share-req-attrs
+                               {:request-method :get
+                                :query-params {:user "foo"}}))
+            get-body (-> get-resp :body slurp json/read-str)]
+        (is (= get-body update-body))))
+
+    (testing "delete resets share"
+      (let [delete-resp (h (merge share-req-attrs
+                                  {:request-method :delete
+                                   :query-params {:user "foo"}}))
+            _ (is (<= 200 (:status delete-resp) 299))
+            get-resp (h (merge share-req-attrs
+                               {:request-method :get
+                                :query-params {:user "foo"}}))
+            get-body (-> get-resp :body slurp json/read-str)]
+        (is (= get-body initial-get-body))))))

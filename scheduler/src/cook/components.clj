@@ -62,7 +62,7 @@
 
 (def raw-scheduler-routes
   {:scheduler (fnk [mesos-datomic framework-id mesos-pending-jobs-atom [:settings task-constraints mesos-gpu-enabled is-authorized-fn]]
-                   ((lazy-load-var 'cook.mesos.api/handler)
+                   ((lazy-load-var 'cook.mesos.api/main-handler)
                     mesos-datomic
                     framework-id
                     task-constraints
