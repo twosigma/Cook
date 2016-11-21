@@ -168,7 +168,6 @@
 (def Command
   "Schema for a command"
   {:value s/Str
-   :order s/Num
    (s/optional-key :async?) s/Bool
    (s/optional-key :guard?) s/Bool})
 
@@ -387,18 +386,18 @@
 
 (defn- mk-command
   "Convert command structure into datomic transaction data"
-  [id attr command]
+  [id attr i command]
   (let [command-id (d/tempid :db.part/user)]
     [[:db/add id attr command-id]
      (reduce-kv
       (fn [m k v]
         (assoc m (keyword "command" (name k)) v))
-      {:db/id command-id}
+      {:db/id command-id :command/order i}
       command)]))
 
 (s/defn make-job-txn
   "Creates the necessary txn data to insert a job into the database"
-  [job :- Job]
+  [job-defaults job :- Job]
   (let [{:keys [uuid command max-retries max-runtime priority cpus mem gpus user name ports uris env labels container group
                 before-commands after-commands]
          :or {group nil}} job
@@ -454,8 +453,16 @@
         commit-latch {:db/id commit-latch-id
                       :commit-latch/uuid (java.util.UUID/randomUUID)
                       :commit-latch/committed? true}
-        before-commands (mapcat (partial mk-command id :job/before-command) before-commands)
-        after-commands (mapcat (partial mk-command id :job/after-command) after-commands)
+        before-commands (->>
+                         ;; Default before-commands run first
+                         (concat (:before-commands job-defaults) before-commands)
+                         (map-indexed (partial mk-command id :job/before-command))
+                         (apply concat))
+        after-commands (->>
+                        ;; Default after-commands run last
+                        (concat after-commands (:after-commands job-defaults))
+                        (map-indexed (partial mk-command id :job/after-command))
+                        (apply concat))
         txn {:db/id db-id
              :job/commit-latch commit-latch-id
              :job/uuid uuid
@@ -555,9 +562,8 @@
    :host-placement (make-default-host-placement)
    :straggler-handling default-straggler-handling})
 
-(defn munge-command [i {:keys [value async guard]}]
-  (merge {:order i
-          :value value}
+(defn munge-command [{:keys [value async guard]}]
+  (merge {:value value}
          (when async {:async? async})
          (when guard {:guard? guard})))
 
@@ -603,9 +609,9 @@
                  (when container
                    {:container container})
                  (when before-commands
-                   {:before-commands (map-indexed munge-command before-commands)})
+                   {:before-commands (map munge-command before-commands)})
                  (when after-commands
-                   {:after-commands (map-indexed munge-command after-commands)}))]
+                   {:after-commands (map munge-command after-commands)}))]
     (s/validate Job munged)
     (when (and (:gpus munged) (not gpu-enabled?))
       (throw (ex-info (str "GPU support is not enabled") {:gpus gpus})))
@@ -930,7 +936,7 @@
 ;;;            "mem": 1000}]}
 ;;;
 (defn create-jobs-handler
-  [conn fid task-constraints gpu-enabled? is-authorized-fn]
+  [conn fid task-constraints gpu-enabled? is-authorized-fn job-defaults]
   (base-cook-handler
    {:allowed-methods [:post]
     :malformed? (fn [ctx]
@@ -973,7 +979,7 @@
                                                  (remove #(contains? group-uuids %))
                                                  (map make-default-group))
                             groups (concat implicit-groups (::groups ctx))
-                            job-txns (mapcat #(make-job-txn %) jobs)
+                            job-txns (mapcat #(make-job-txn job-defaults %) jobs)
                             job-uuids->dbids (->> job-txns
                                                   ;; Not all txns are for the top level job
                                                   (filter :job/uuid)
@@ -1004,7 +1010,6 @@
                                                            (map (comp str :uuid) (::groups ctx))))))})
 
     :handle-created (fn [ctx] (::results ctx))}))
-
 
 (defn read-groups-handler
   [conn fid task-constraints is-authorized-fn]
@@ -1428,7 +1433,7 @@
 ;; "main" - the entry point that routes to other handlers
 ;;
 (defn main-handler
-  [conn fid task-constraints gpu-enabled? mesos-pending-jobs-fn is-authorized-fn]
+  [conn fid task-constraints gpu-enabled? mesos-pending-jobs-fn is-authorized-fn job-defaults]
   (routes
    (c-api/api
     {:swagger {:ui "/swagger-ui"
@@ -1451,7 +1456,7 @@
        :post {:summary "Schedules one or more jobs."
               :parameters {:body-params RawSchedulerRequest}
               :responses {200 {:schema [JobResponse]}}
-              :handler (create-jobs-handler conn fid task-constraints gpu-enabled? is-authorized-fn)}
+              :handler (create-jobs-handler conn fid task-constraints gpu-enabled? is-authorized-fn job-defaults)}
        :delete {:summary "Cancels jobs, halting execution when possible."
                 :responses {204 {:description "The jobs have been marked for termination."}
                             400 {:description "Non-UUID values were passed as jobs."}

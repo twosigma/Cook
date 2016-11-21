@@ -61,7 +61,7 @@
 (defn basic-handler
   [conn & {:keys [cpus memory-gb gpus-enabled retry-limit] :or {cpus 12 memory-gb 100 gpus-enabled false retry-limit 200}}]
   (main-handler conn "my-framework-id" {:cpus cpus :memory-gb memory-gb :retry-limit retry-limit} gpus-enabled
-                (fn [] []) authorized-fn))
+                (fn [] []) authorized-fn {}))
 
 (deftest handler-db-roundtrip
   (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
@@ -225,7 +225,7 @@
 
 (deftest gpus-api
   (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
-        job (fn [gpus ] (merge (basic-job) {"gpus" gpus}))
+        job (fn [gpus] (merge (basic-job) {"gpus" gpus}))
         h (basic-handler conn :gpus-enabled true)]
     (testing "negative gpus invalid"
       (is (<= 400

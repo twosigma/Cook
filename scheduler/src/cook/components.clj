@@ -65,14 +65,15 @@
     (resolve var-sym)))
 
 (def raw-scheduler-routes
-  {:scheduler (fnk [mesos-datomic framework-id mesos-pending-jobs-atom [:settings task-constraints mesos-gpu-enabled is-authorized-fn]]
+  {:scheduler (fnk [mesos-datomic framework-id mesos-pending-jobs-atom [:settings task-constraints mesos-gpu-enabled is-authorized-fn job-defaults]]
                    ((lazy-load-var 'cook.mesos.api/main-handler)
                     mesos-datomic
                     framework-id
                     task-constraints
                     mesos-gpu-enabled
                     (fn [] @mesos-pending-jobs-atom)
-                    is-authorized-fn))
+                    is-authorized-fn
+                    job-defaults))
    :view (fnk [scheduler]
               scheduler)})
 
@@ -347,6 +348,8 @@
                               task-constraints))
      :executor-command (fnk [[:config [:scheduler {executor-command "echo NO EXECUTOR CONFIGURED"}]]]
                             executor-command)
+     :job-defaults (fnk [[:config [:scheduler {job-defaults {}}]]]
+                        job-defaults)
      :offer-incubate-time-ms (fnk [[:config [:scheduler {offer-incubate-ms 15000}]]]
                                   offer-incubate-ms)
      :mea-culpa-failure-limit (fnk [[:config [:scheduler {mea-culpa-failure-limit nil}]]]
