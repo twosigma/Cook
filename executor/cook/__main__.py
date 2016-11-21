@@ -11,6 +11,7 @@ Components:
     * server - An HTTP server handling requests from command processes
 """
 
+import os
 import sys
 import time
 import signal
@@ -29,6 +30,8 @@ def main(args=None):
 
     logging.info("Starting Cook Executor")
 
+    port = int(os.environ.get('EXECUTOR_PORT0', 8080))
+
     event = Event()
 
     store = Store({
@@ -46,8 +49,7 @@ def main(args=None):
         }})
 
     threads = [
-        Thread(target = run_server, args = (store, event)),
-        # TODO: rename this to driver in order to avoid confusion?
+        Thread(target = run_server, args = (store, event, port)),
         Thread(target = run_executor, args = (store, event)),
         Thread(target = run_launcher, args = (store, event))
     ]

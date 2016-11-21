@@ -38,8 +38,8 @@
     {:name (format "%s_%s_%s" (:job/name job-ent "cookjob") (:job/user job-ent) task-id)
      :task-id task-id
      :labels labels
-     :num-ports  (:ports resources)
-     :resources  (select-keys resources  [:mem :cpus])
+     :num-ports (:ports resources)
+     :resources (select-keys resources [:mem :cpus])
      :data (build-task-status-data job-ent)
      :environment environment
      :command command
@@ -115,8 +115,15 @@
   (let [available-ports (available-resources "ports")]
     (map (fn [task]
            (let [ports (:ports-assigned task)
-                 port-env-vars (into {} (map-indexed (fn [i p] [(str "PORT" i) (str p)])
-                                                     ports))]
+                 [executor-ports
+                  task-ports] (split-at
+                               (if (:custom-executor task) 0 1)
+                               ports)
+                 port-env-vars (merge
+                                (into {} (map-indexed (fn [i p] [(str "PORT" i) (str p)])
+                                                      task-ports))
+                                (into {} (map-indexed (fn [i p] [(str "EXECUTOR_PORT" i) (str p)])
+                                                      executor-ports)))]
              (-> task
                  (assoc :ports-resource-messages (take-ports available-ports ports))
                  (update-in [:command :environment] merge port-env-vars))))

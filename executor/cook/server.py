@@ -58,7 +58,6 @@ def run_server(store, stop = None, port = 8080):
     """
     Run a web server on the specified port until the stop event is set.
     """
-    # TODO: get port from executor info?
     server = HTTPServer(('', port), CookExecutorHTTPRequestHandler)
     server.store = store
     server.timeout = 1

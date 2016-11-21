@@ -143,7 +143,15 @@
                                     :executable (:resource.uri/executable? r false)
                                     :value (:resource.uri/value r)
                                     :extract (:resource.uri/extract? r false)}))))
-          {:ports (:job/ports job-ent 0)}
+          {:ports (let [ports (:job/ports job-ent 0)]
+                    (if (:job/custom-executor job-ent true)
+                      ports
+                      ;; XXX: The cook executor needs a port for its web API
+                      ;; Rather than adding a port at write time, which could
+                      ;; break bacwkard compatability for jobs created with the
+                      ;; datomic API, add a port at read time. That being said,
+                      ;; this feels a little dirty.
+                      (+ ports 1)))}
           (:job/resource job-ent)))
 
 (defn job-ent->attempts-consumed
