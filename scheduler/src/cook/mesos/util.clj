@@ -189,17 +189,17 @@
      :guard false}]
    (job-ent->after-commands job-ent)))
 
-(defn code-ents->codes
-  [code-ents]
-  (->> code-ents (sort-by :code/order) (map :code/value)))
+(defn exit-code-ents->exit-codes
+  [exit-code-ents]
+  (->> exit-code-ents (sort-by :exit-code/order) (map :exit-code/value)))
 
-(defn instance-ent->before-codes
+(defn instance-ent->before-exit-codes
   [instance-ent]
-  (-> instance-ent :instance/before-code code-ents->codes))
+  (-> instance-ent :instance/before-exit-code exit-code-ents->exit-codes))
 
-(defn instance-ent->after-codes
+(defn instance-ent->after-exit-codes
   [instance-ent]
-  (-> instance-ent :instance/after-code code-ents->codes))
+  (-> instance-ent :instance/after-exit-code exit-code-ents->exit-codes))
 
 (defn sum-resources-of-jobs
   "Given a collections of job entities, returns the total resources they use

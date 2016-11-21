@@ -237,10 +237,10 @@
    (s/optional-key :end_time) s/Int
    (s/optional-key :reason_code) s/Int
    (s/optional-key :reason_string) s/Str
-   (s/optional-key :code) s/Int
    (s/optional-key :message) s/Str
-   (s/optional-key :before_codes) [s/Int]
-   (s/optional-key :after_codes) [s/Int]})
+   (s/optional-key :exit_code) s/Int
+   (s/optional-key :before_exit_codes) [s/Int]
+   (s/optional-key :after_exit_codes) [s/Int]})
 
 (def JobResponse
   "Schema for a description of a job (as returned by the API).
@@ -760,10 +760,10 @@
                     end (:instance/end-time instance)
                     cancelled (:instance/cancelled instance)
                     reason (reason/instance-entity->reason-entity db instance)
-                    code (:instance/code instance)
+                    exit-code (:instance/exit-code instance)
                     message (:instance/message instance)
-                    before-codes (util/instance-ent->before-codes instance)
-                    after-codes (util/instance-ent->after-codes instance)]
+                    before-exit-codes (util/instance-ent->before-exit-codes instance)
+                    after-exit-codes (util/instance-ent->after-exit-codes instance)]
                 (cond-> {:task_id (:instance/task-id instance)
                          :hostname hostname
                          :ports (seq (:instance/ports instance))
@@ -778,10 +778,10 @@
                   reason (assoc :reason_code (:reason/code reason)
                                 :reason_string (:reason/string reason))
                   cancelled (assoc :cancelled cancelled)
-                  code (assoc :code code)
+                  exit-code (assoc :exit_code exit-code)
                   message (assoc :message message)
-                  (not-empty before-codes) (assoc :before_codes before-codes)
-                  (not-empty after-codes) (assoc :after_codes after-codes))))
+                  (not-empty before-exit-codes) (assoc :before_exit_codes before-exit-codes)
+                  (not-empty after-exit-codes) (assoc :after_exit_codes after-exit-codes))))
             (:job/instance job))}
       (when groups
         {:groups (map #(str (:group/uuid %)) groups)}))))

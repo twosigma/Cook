@@ -183,29 +183,29 @@
              (log/debug e "Error reading a string from mesos status data. Is it in the format we expect?")))
       {})))
 
-(defn munge-codes
+(defn munge-exit-codes
   [job-ent codes]
   (let [n (count (:job/before-command job-ent))
         m (count (:job/after-command job-ent))]
-    {:before-codes (take n codes)
-     :code (->> codes (drop n) first)
-     :after-codes (->> codes (drop n) rest (take m))}))
+    {:before-exit-codes (take n codes)
+     :exit-code (->> codes (drop n) first)
+     :after-exit-codes (->> codes (drop n) rest (take m))}))
 
-(defn code->tx
+(defn exit-code->tx
   [instance attr i c]
   (let [id (d/tempid :db.part/user)]
     [[:db/add instance attr id]
      {:db/id id
-      :code/order i
-      :code/value c}]))
+      :exit-code/order i
+      :exit-code/value c}]))
 
-(defn codes->tx
-  [instance {:keys [before-codes code after-codes]}]
-  (as-> [[:db/add instance :instance/code code]] tx
+(defn exit-codes->tx
+  [instance {:keys [before-exit-codes exit-code after-exit-codes]}]
+  (as-> [[:db/add instance :instance/exit-code exit-code]] tx
     (reduce into tx
-            (map-indexed (partial code->tx instance :instance/before-code) before-codes))
+            (map-indexed (partial exit-code->tx instance :instance/before-exit-code) before-exit-codes))
     (reduce into tx
-            (map-indexed (partial code->tx instance :instance/after-code) after-codes))))
+            (map-indexed (partial exit-code->tx instance :instance/after-exit-code) after-exit-codes))))
 
 (defn handle-status-update
   "Takes a status update from mesos."
@@ -306,7 +306,7 @@
                   (when message
                     [[:db/add instance :instance/message message]])
                   (when codes
-                    (->> codes (munge-codes job-ent) (codes->tx instance)))]))))
+                    (->> codes (munge-exit-codes job-ent) (exit-codes->tx instance)))]))))
       (catch Exception e
         (log/error e "Mesos scheduler status update error")))))
 

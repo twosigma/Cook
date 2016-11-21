@@ -497,18 +497,18 @@
     :db/cardinality :db.cardinality/one
     :db.install/_attribute :db.part/db}
    {:db/id (d/tempid :db.part/db)
-    :db/ident :instance/code
+    :db/ident :instance/exit-code
     :db/valueType :db.type/long
     :db/cardinality :db.cardinality/one
     :db.install/_attribute :db.part/db}
    {:db/id (d/tempid :db.part/db)
-    :db/ident :instance/before-code
+    :db/ident :instance/before-exit-code
     :db/valueType :db.type/ref
     :db/isComponent true
     :db/cardinality :db.cardinality/many
     :db.install/_attribute :db.part/db}
    {:db/id (d/tempid :db.part/db)
-    :db/ident :instance/after-code
+    :db/ident :instance/after-exit-code
     :db/valueType :db.type/ref
     :db/isComponent true
     :db/cardinality :db.cardinality/many
@@ -516,12 +516,12 @@
 
    ;; Code attributes
    {:db/id (d/tempid :db.part/db)
-    :db/ident :code/order
+    :db/ident :exit-code/order
     :db/valueType :db.type/long
     :db/cardinality :db.cardinality/one
     :db.install/_attribute :db.part/db}
    {:db/id (d/tempid :db.part/db)
-    :db/ident :code/value
+    :db/ident :exit-code/value
     :db/valueType :db.type/long
     :db/cardinality :db.cardinality/one
     :db.install/_attribute :db.part/db}
