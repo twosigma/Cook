@@ -28,9 +28,10 @@ def new_task_info(id, state, data = None):
     }
 
 class CookExecutor(Executor):
-    def __init__(self, store, event):
+    def __init__(self, store, event, sandbox):
         self.store = store
         self.event = event
+        self.sandbox = sandbox
 
     def registered(self, driver, executorInfo, frameworkInfo, slaveInfo):
         """
@@ -42,7 +43,8 @@ class CookExecutor(Executor):
 
         def sync_task_status(action, type, id, entity):
             if action is WATCH_ACTION_PUT and type is 'task':
-                # TODO: set state right on task?
+                entity.update({'sandbox': self.sandbox})
+
                 if entity.get('codes') is None:
                     driver.sendStatusUpdate(new_task_info(id, 'TASK_RUNNING', entity))
                 else:
@@ -92,11 +94,11 @@ class CookExecutor(Executor):
     def error(self, error, message):
         logging.info("CookExecutor:error")
 
-def run_executor(store, stop):
+def run_executor(store, stop, sandbox = ''):
     """
     Run an executor driver until the stop event is set.
     """
-    driver = MesosExecutorDriver(CookExecutor(store, stop))
+    driver = MesosExecutorDriver(CookExecutor(store, stop, sandbox))
     driver.start()
 
     # TODO: check the status of the driver and bail if it's crashed

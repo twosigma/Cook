@@ -248,7 +248,7 @@
                instance-runtime (- (.getTime (now)) ; Used for reporting
                                    (.getTime (or (:instance/start-time instance-ent) (now))))
                job-resources (util/job-ent->resources job-ent)
-               {:keys [progress codes message]} (interpret-task-status-data job-ent data)]
+               {:keys [progress codes message sandbox]} (interpret-task-status-data job-ent data)]
            (when (#{:instance.status/success :instance.status/failed} instance-status)
              (log/debug "Unassigning task" task-id "from" (:instance/hostname instance-ent))
              (try
@@ -305,6 +305,8 @@
                     [[:db/add instance :instance/progress progress]])
                   (when message
                     [[:db/add instance :instance/message message]])
+                  (when sandbox
+                    [[:db/add instance :instance/sandbox sandbox]])
                   (when codes
                     (->> codes (munge-exit-codes job-ent) (exit-codes->tx instance)))]))))
       (catch Exception e

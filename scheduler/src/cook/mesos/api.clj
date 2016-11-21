@@ -238,6 +238,7 @@
    (s/optional-key :reason_code) s/Int
    (s/optional-key :reason_string) s/Str
    (s/optional-key :message) s/Str
+   (s/optional-key :sandbox) s/Str
    (s/optional-key :exit_code) s/Int
    (s/optional-key :before_exit_codes) [s/Int]
    (s/optional-key :after_exit_codes) [s/Int]})
@@ -762,6 +763,7 @@
                     reason (reason/instance-entity->reason-entity db instance)
                     exit-code (:instance/exit-code instance)
                     message (:instance/message instance)
+                    sandbox (:instance/sandbox instance)
                     before-exit-codes (util/instance-ent->before-exit-codes instance)
                     after-exit-codes (util/instance-ent->after-exit-codes instance)]
                 (cond-> {:task_id (:instance/task-id instance)
@@ -780,6 +782,7 @@
                   cancelled (assoc :cancelled cancelled)
                   exit-code (assoc :exit_code exit-code)
                   message (assoc :message message)
+                  sandbox (assoc :sandbox sandbox)
                   (not-empty before-exit-codes) (assoc :before_exit_codes before-exit-codes)
                   (not-empty after-exit-codes) (assoc :after_exit_codes after-exit-codes))))
             (:job/instance job))}

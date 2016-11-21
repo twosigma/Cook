@@ -31,12 +31,14 @@ def main(args=None):
     logging.info("Starting Cook Executor")
 
     port = int(os.environ.get('EXECUTOR_PORT0', 8080))
+    sandbox = os.environ.get('MESOS_SANDBOX', '')
 
     event = Event()
 
     store = Store({
         'task': {
             'message': str,
+            'sandbox': str,
             'progress': float,
             'env': {str: str},
             'commands': [{
@@ -50,7 +52,7 @@ def main(args=None):
 
     threads = [
         Thread(target = run_server, args = (store, event, port)),
-        Thread(target = run_executor, args = (store, event)),
+        Thread(target = run_executor, args = (store, event, sandbox)),
         Thread(target = run_launcher, args = (store, event))
     ]
 
