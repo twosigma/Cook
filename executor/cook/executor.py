@@ -22,6 +22,7 @@ def new_task_info(id, state, data = None):
         'state': state,
         'task_id': {'value': id},
         # FIXME: setting uuid manually is a workaround for a bug in pymesos
+        # https://github.com/douban/pymesos/issues/38
         'uuid': encode_data(uuid.uuid4().bytes).decode('utf8'),
         'data': encode_data(json.dumps(data).encode('utf8')).decode('utf8') if data else ''
     }
