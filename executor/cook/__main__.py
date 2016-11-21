@@ -18,12 +18,12 @@ import logging
 
 from threading import Event, Thread
 
-from store import Store
-from server import run_server
-from launcher import run_launcher
-from executor import run_executor
+from cook.store import Store
+from cook.server import run_server
+from cook.launcher import run_launcher
+from cook.executor import run_executor
 
-if __name__ == "__main__":
+def main(args=None):
     # TODO: get log level config from env
     logging.basicConfig(filename = "executor.log", level = "INFO")
 
@@ -64,3 +64,6 @@ if __name__ == "__main__":
 
     # TODO: return non-zero exit code when there's an error
     sys.exit(0)
+
+if __name__ == "__main__":
+    main()

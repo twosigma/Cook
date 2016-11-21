@@ -12,7 +12,7 @@ import logging
 
 from pymesos import MesosExecutorDriver, Executor, encode_data, decode_data
 
-from store import WATCH_ACTION_PUT
+from cook.store import WATCH_ACTION_PUT
 
 def new_task_info(id, state, data = None):
     """
