@@ -766,7 +766,7 @@
                     after-codes (util/instance-ent->after-codes instance)]
                 (cond-> {:task_id (:instance/task-id instance)
                          :hostname hostname
-                         :ports (:instance/ports instance)
+                         :ports (seq (:instance/ports instance))
                          :backfilled false ;; Backfill has been deprecated
                          :preempted (:instance/preempted? instance false)
                          :slave_id (:instance/slave-id instance)
