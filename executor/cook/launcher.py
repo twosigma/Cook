@@ -18,12 +18,12 @@ class Command(
     """
 
     def run(self, env):
-        if not self.name:
+        if self.name is None:
             stdout = open('stdout', 'w+')
             stderr = open('stderr', 'w+')
         else:
-            stdout = open(str(self.name) + '.stdout', 'w+')
-            stderr = open(str(self.name) + '.stderr', 'w+')
+            stdout = open('stdout.' + str(self.name), 'w+')
+            stderr = open('stderr.' + str(self.name), 'w+')
 
         return RunningCommand(
             *self,
