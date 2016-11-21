@@ -84,7 +84,7 @@
                       (route/not-found "<h1>Not a valid route</h1>")))})
 
 (def mesos-scheduler
-  {:mesos-scheduler (fnk [[:settings mesos-master mesos-master-hosts mesos-leader-path mesos-failover-timeout mesos-principal mesos-role mesos-framework-name offer-incubate-time-ms mea-culpa-failure-limit fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset task-constraints executor-command riemann mesos-gpu-enabled rebalancer good-enough-fitness] mesos-datomic mesos-datomic-mult curator-framework mesos-pending-jobs-atom]
+  {:mesos-scheduler (fnk [[:settings mesos-master mesos-master-hosts mesos-leader-path mesos-failover-timeout mesos-principal mesos-role mesos-framework-name offer-incubate-time-ms mea-culpa-failure-limit fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset task-constraints executor-command executor-message-limit riemann mesos-gpu-enabled rebalancer good-enough-fitness] mesos-datomic mesos-datomic-mult curator-framework mesos-pending-jobs-atom]
                          (try
                            (Class/forName "org.apache.mesos.Scheduler")
                            ((lazy-load-var 'cook.mesos/start-mesos-scheduler)
@@ -102,6 +102,7 @@
                             mea-culpa-failure-limit
                             task-constraints
                             executor-command
+                            executor-message-limit
                             (:host riemann)
                             (:port riemann)
                             mesos-pending-jobs-atom
@@ -348,6 +349,8 @@
                               task-constraints))
      :executor-command (fnk [[:config [:scheduler {executor-command "echo NO EXECUTOR CONFIGURED"}]]]
                             executor-command)
+     :executor-message-limit (fnk [[:config [:scheduler {executor-message-limit 512}]]]
+                                  executor-message-limit)
      :job-defaults (fnk [[:config [:scheduler {job-defaults {}}]]]
                         job-defaults)
      :offer-incubate-time-ms (fnk [[:config [:scheduler {offer-incubate-ms 15000}]]]

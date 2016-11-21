@@ -209,7 +209,7 @@
 
 (defn handle-status-update
   "Takes a status update from mesos."
-  [conn driver ^TaskScheduler fenzo status]
+  [conn executor-message-limit driver ^TaskScheduler fenzo status]
   (log/info "Mesos status is: " status)
   (timers/time!
     handle-status-update-duration
@@ -304,7 +304,11 @@
                   (when progress
                     [[:db/add instance :instance/progress progress]])
                   (when message
-                    [[:db/add instance :instance/message message]])
+                    (if (> (count message) executor-message-limit)
+                      (log/warn "Executor message too large for task" task-id "as instance" instance
+                                "limit:" executor-message-limit
+                                "actual:" (count message))
+                      [[:db/add instance :instance/message message]]))
                   (when sandbox
                     [[:db/add instance :instance/sandbox sandbox]])
                   (when codes
@@ -1254,7 +1258,7 @@
               (log/error e "Unable to decline offers!")))))))
 
 (defn create-datomic-scheduler
-  [conn set-framework-id driver-atom pending-jobs-atom heartbeat-ch offer-incubate-time-ms mea-culpa-failure-limit fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset task-constraints executor-command gpu-enabled? good-enough-fitness]
+  [conn set-framework-id driver-atom pending-jobs-atom heartbeat-ch offer-incubate-time-ms mea-culpa-failure-limit fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset task-constraints executor-command executor-message-limit gpu-enabled? good-enough-fitness]
   (persist-mea-culpa-failure-limit! conn mea-culpa-failure-limit)
   (let [fid (atom nil)
         fenzo (make-fenzo-scheduler driver-atom offer-incubate-time-ms good-enough-fitness)
@@ -1305,5 +1309,5 @@
       (resource-offers [this driver offers]
                        (receive-offers offers-chan driver offers))
       (status-update [this driver status]
-                     (future (handle-status-update conn driver fenzo status))))
+                     (future (handle-status-update conn executor-message-limit driver fenzo status))))
      :view-incubating-offers (fn get-resources-atom [] @resources-atom)}))
