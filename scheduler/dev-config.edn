@@ -12,7 +12,7 @@
                                 :memory-gb 48
                                 :retry-limit 15
                                 :cpus 6}
-             :executor-command "/usr/local/bin/cook-executor"
+             :executor-command "cook-executor"
              :executor-message-limit 512
              :job-defaults {:before-commands [{:value "echo before"}]
                             :after-commands [{:value "echo after"}]}}

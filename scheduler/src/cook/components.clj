@@ -347,7 +347,7 @@
                                :memory-gb 12
                                :cpus 4}
                               task-constraints))
-     :executor-command (fnk [[:config [:scheduler {executor-command "echo NO EXECUTOR CONFIGURED"}]]]
+     :executor-command (fnk [[:config [:scheduler {executor-command "cook-executor"}]]]
                             executor-command)
      :executor-message-limit (fnk [[:config [:scheduler {executor-message-limit 512}]]]
                                   executor-message-limit)
