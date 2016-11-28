@@ -12,7 +12,8 @@ schema = {
                 'sub-attr-b': str
             }
         ],
-        'attr-c': {str: float}
+        'attr-c': {str: float},
+        'attr-d': lambda v: isinstance(v, str) and len(v) < 4
     }
 }
 
@@ -36,7 +37,7 @@ def test_store_delete():
     s = Store(schema)
 
     assert not s.delete('Entity', 1)
-    assert s.put('Entity', 1, entity) is  entity
+    assert s.put('Entity', 1, entity) is entity
     assert s.delete('Entity', 1) == entity
     assert not s.get('Entity', 1)
 
@@ -63,6 +64,14 @@ def test_store_validation():
 
     with pytest.raises(ValidationError):
         s.put('Entity', 1, {'not-attr': 'some-other-value'})
+
+def test_store_function_validation():
+    s = Store(schema)
+
+    assert s.put('Entity', 1, {'attr-d': 'aaa'})
+
+    with pytest.raises(ValidationError):
+        s.put('Entity', 1, {'attr-d': 'some-long-value'})
 
 def test_store_watchers():
     s = Store(schema)

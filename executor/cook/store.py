@@ -59,8 +59,12 @@ def validate(v, s):
             return not [v for v in v if not validate(v, s[0])]
         else:
             return False
-    else:
+    elif isinstance(s, type):
         return isinstance(v, s)
+    elif callable(s):
+        return s(v)
+    else:
+        return False
 
 class Store():
     """
