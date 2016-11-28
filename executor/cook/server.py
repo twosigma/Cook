@@ -18,12 +18,20 @@ class CookExecutorHTTPRequestHandler(BaseHTTPRequestHandler):
         """
         GET /health
           => returns 200
+        GET /task/:task_id
+          => returns 200 and task data if task_id is valid
+          => returns 404 if task_id is unknown or invalid
         """
         if self.path is '/health':
-            self.send_response(200)
-            self.send_header('Content-type', 'application/json')
-            self.end_headers()
-            self.wfile.write(json.dumps('{"response": "okay"}'))
+            self.send_json_response(200, {'response': 'okay'})
+        elif re.match('\/task\/[^/]+', self.path):
+            task_id = self.path.split('/')[2]
+            task_data = self.server.store.get('task', task_id)
+
+            if task_data:
+                self.send_json_response(200, task_data)
+            else:
+                self.send_json_response(404, {'response': 'not found'})
 
     def do_PATCH(self):
         """
@@ -36,15 +44,9 @@ class CookExecutorHTTPRequestHandler(BaseHTTPRequestHandler):
             task_data = self.parse_body()
 
             if self.server.store.merge('task', task_id, task_data):
-                self.send_response(200)
-                self.send_header('Content-type', 'application/json')
-                self.end_headers()
-                self.wfile.write(json.dumps('{"response": "okay"}').encode('utf-8'))
+                self.send_json_response(200, {'response': 'okay'})
             else:
-                self.send_response(400)
-                self.send_header('Content-type', 'application/json')
-                self.end_headers()
-                self.wfile.write(json.dumps('{"response": "malformed"}').encode('utf-8'))
+                self.send_json_response(400, {'response': 'malformed'})
 
     def parse_body(self):
         n = int(self.headers['content-length'] or 0)
@@ -53,6 +55,12 @@ class CookExecutorHTTPRequestHandler(BaseHTTPRequestHandler):
             return json.loads(self.rfile.read(n).decode('utf-8'))
         except:
             return None
+
+    def send_json_response(self, code, content):
+        self.send_response(code)
+        self.send_header('Content-Type', 'application/json')
+        self.end_headers()
+        self.wfile.write(json.dumps(content).encode('utf-8'))
 
 def run_server(store, stop = None, port = 8080):
     """

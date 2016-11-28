@@ -15,9 +15,12 @@ class FakeStore():
 
 def request(verb, path, body = None):
     conn = http.client.HTTPConnection('localhost:8080')
-    conn.request(verb, path, json.dumps(body))
+    if body:
+        conn.request(verb, path, json.dumps(body))
+    else:
+        conn.request(verb, path)
 
-    return conn.getresponse()
+    return json.loads(conn.getresponse().read().decode('utf-8'))
 
 def test_run_server():
     event = Event()
@@ -33,3 +36,4 @@ def test_run_server():
     time.sleep(1)
 
     assert store.get('task', '123') == entity
+    assert store.get('task', '123') == request('GET', '/task/123')
