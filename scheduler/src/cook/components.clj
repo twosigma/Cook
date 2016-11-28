@@ -65,7 +65,7 @@
     (resolve var-sym)))
 
 (def raw-scheduler-routes
-  {:scheduler (fnk [mesos-datomic framework-id mesos-pending-jobs-atom [:settings task-constraints mesos-gpu-enabled is-authorized-fn job-defaults]]
+  {:scheduler (fnk [mesos-datomic framework-id mesos-pending-jobs-atom [:settings task-constraints mesos-gpu-enabled is-authorized-fn executor]]
                    ((lazy-load-var 'cook.mesos.api/main-handler)
                     mesos-datomic
                     framework-id
@@ -73,7 +73,7 @@
                     mesos-gpu-enabled
                     (fn [] @mesos-pending-jobs-atom)
                     is-authorized-fn
-                    job-defaults))
+                    executor))
    :view (fnk [scheduler]
               scheduler)})
 
@@ -84,7 +84,7 @@
                       (route/not-found "<h1>Not a valid route</h1>")))})
 
 (def mesos-scheduler
-  {:mesos-scheduler (fnk [[:settings mesos-master mesos-master-hosts mesos-leader-path mesos-failover-timeout mesos-principal mesos-role mesos-framework-name offer-incubate-time-ms mea-culpa-failure-limit fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset task-constraints executor-command executor-message-limit riemann mesos-gpu-enabled rebalancer good-enough-fitness] mesos-datomic mesos-datomic-mult curator-framework mesos-pending-jobs-atom]
+  {:mesos-scheduler (fnk [[:settings mesos-master mesos-master-hosts mesos-leader-path mesos-failover-timeout mesos-principal mesos-role mesos-framework-name offer-incubate-time-ms mea-culpa-failure-limit fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset task-constraints executor riemann mesos-gpu-enabled rebalancer good-enough-fitness] mesos-datomic mesos-datomic-mult curator-framework mesos-pending-jobs-atom]
                          (try
                            (Class/forName "org.apache.mesos.Scheduler")
                            ((lazy-load-var 'cook.mesos/start-mesos-scheduler)
@@ -101,8 +101,7 @@
                             offer-incubate-time-ms
                             mea-culpa-failure-limit
                             task-constraints
-                            executor-command
-                            executor-message-limit
+                            executor
                             (:host riemann)
                             (:port riemann)
                             mesos-pending-jobs-atom
@@ -347,12 +346,19 @@
                                :memory-gb 12
                                :cpus 4}
                               task-constraints))
-     :executor-command (fnk [[:config [:scheduler {executor-command "cook-executor"}]]]
-                            executor-command)
-     :executor-message-limit (fnk [[:config [:scheduler {executor-message-limit 512}]]]
-                                  executor-message-limit)
-     :job-defaults (fnk [[:config [:scheduler {job-defaults {}}]]]
-                        job-defaults)
+     :executor (fnk [[:config {executor {}}]]
+                    (->
+                     (merge
+                      {:command "cook-executor"
+                       :max-message-length 512}
+                      executor
+                      (when (:uris executor)
+                        {:uris (mapv
+                                (partial merge
+                                         {:cache false
+                                          :extract false
+                                          :executable false})
+                                (:uris executor))}))))
      :offer-incubate-time-ms (fnk [[:config [:scheduler {offer-incubate-ms 15000}]]]
                                   offer-incubate-ms)
      :mea-culpa-failure-limit (fnk [[:config [:scheduler {mea-culpa-failure-limit nil}]]]

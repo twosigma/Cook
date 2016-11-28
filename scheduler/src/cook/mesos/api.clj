@@ -398,7 +398,7 @@
 
 (s/defn make-job-txn
   "Creates the necessary txn data to insert a job into the database"
-  [job-defaults job :- Job]
+  [executor job :- Job]
   (let [{:keys [uuid command max-retries max-runtime priority cpus mem gpus user name ports uris env labels container group
                 before-commands after-commands]
          :or {group nil}} job
@@ -456,12 +456,12 @@
                       :commit-latch/committed? true}
         before-commands (->>
                          ;; Default before-commands run first
-                         (concat (:before-commands job-defaults) before-commands)
+                         (concat (:before-commands executor) before-commands)
                          (map-indexed (partial mk-command id :job/before-command))
                          (apply concat))
         after-commands (->>
                         ;; Default after-commands run last
-                        (concat after-commands (:after-commands job-defaults))
+                        (concat after-commands (:after-commands executor))
                         (map-indexed (partial mk-command id :job/after-command))
                         (apply concat))
         txn {:db/id db-id
@@ -939,7 +939,7 @@
 ;;;            "mem": 1000}]}
 ;;;
 (defn create-jobs-handler
-  [conn fid task-constraints gpu-enabled? is-authorized-fn job-defaults]
+  [conn fid task-constraints gpu-enabled? is-authorized-fn executor]
   (base-cook-handler
    {:allowed-methods [:post]
     :malformed? (fn [ctx]
@@ -982,7 +982,7 @@
                                                  (remove #(contains? group-uuids %))
                                                  (map make-default-group))
                             groups (concat implicit-groups (::groups ctx))
-                            job-txns (mapcat #(make-job-txn job-defaults %) jobs)
+                            job-txns (mapcat #(make-job-txn executor %) jobs)
                             job-uuids->dbids (->> job-txns
                                                   ;; Not all txns are for the top level job
                                                   (filter :job/uuid)
@@ -1011,7 +1011,6 @@
                                                  (if (not (empty? (::groups ctx)))
                                                    (concat ["submitted groups"]
                                                            (map (comp str :uuid) (::groups ctx))))))})
-
     :handle-created (fn [ctx] (::results ctx))}))
 
 (defn read-groups-handler
@@ -1436,7 +1435,7 @@
 ;; "main" - the entry point that routes to other handlers
 ;;
 (defn main-handler
-  [conn fid task-constraints gpu-enabled? mesos-pending-jobs-fn is-authorized-fn job-defaults]
+  [conn fid task-constraints gpu-enabled? mesos-pending-jobs-fn is-authorized-fn executor]
   (routes
    (c-api/api
     {:swagger {:ui "/swagger-ui"
@@ -1459,7 +1458,7 @@
        :post {:summary "Schedules one or more jobs."
               :parameters {:body-params RawSchedulerRequest}
               :responses {200 {:schema [JobResponse]}}
-              :handler (create-jobs-handler conn fid task-constraints gpu-enabled? is-authorized-fn job-defaults)}
+              :handler (create-jobs-handler conn fid task-constraints gpu-enabled? is-authorized-fn executor)}
        :delete {:summary "Cancels jobs, halting execution when possible."
                 :responses {204 {:description "The jobs have been marked for termination."}
                             400 {:description "Non-UUID values were passed as jobs."}

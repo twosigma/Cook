@@ -209,7 +209,7 @@
 
 (defn handle-status-update
   "Takes a status update from mesos."
-  [conn executor-message-limit driver ^TaskScheduler fenzo status]
+  [conn executor driver ^TaskScheduler fenzo status]
   (log/info "Mesos status is: " status)
   (timers/time!
     handle-status-update-duration
@@ -304,11 +304,11 @@
                   (when progress
                     [[:db/add instance :instance/progress progress]])
                   (when message
-                    (if (> (count message) executor-message-limit)
+                    (if (> (count message) (:max-message-length executor))
                       (log/warn "Executor message too large for task" task-id "as instance" instance
-                                "limit:" executor-message-limit
+                                "limit:" (:max-message-length executor)
                                 "actual:" (count message))
-                      [[:db/add instance :instance/message message]]))
+                      [[:db/add instance :instance/message (subs message 0 (:max-message-length executor))]]))
                   (when sandbox
                     [[:db/add instance :instance/sandbox sandbox]])
                   (when codes
@@ -573,7 +573,7 @@
 (defn handle-resource-offers!
   "Gets a list of offers from mesos. Decides what to do with them all--they should all
    be accepted or rejected at the end of the function."
-  [conn driver ^TaskScheduler fenzo fid executor-command pending-jobs user->usage user->quota num-considerable offers-chan offers]
+  [conn driver ^TaskScheduler fenzo fid executor pending-jobs user->usage user->quota num-considerable offers-chan offers]
   (log/debug "invoked handle-resource-offers!")
   (let [offer-stash (atom nil)] ;; This is a way to ensure we never lose offers fenzo assigned if an errors occures in the middle of processing
     ;; TODO: It is possible to have an offer expire by mesos because we recycle it a bunch of times.
@@ -697,7 +697,7 @@
                 handle-resource-offer!-mesos-submit-duration
                 (doseq [{:keys [tasks leases]} matches
                       :let [offers (mapv :offer leases)
-                            task-data-maps (map #(task/TaskAssignmentResult->task-metadata db fid executor-command %)
+                            task-data-maps (map #(task/TaskAssignmentResult->task-metadata db fid executor %)
                                                     tasks)
                             task-infos (task/compile-mesos-messages offers task-data-maps)]]
 
@@ -739,8 +739,7 @@
 (defn make-offer-handler
   [conn driver-atom fenzo fid-atom pending-jobs-atom
    max-considerable scaleback
-   floor-iterations-before-warn floor-iterations-before-reset
-   executor-command]
+   floor-iterations-before-warn floor-iterations-before-reset executor]
   (let [chan-length 100
         offers-chan (async/chan (async/buffer chan-length))
         resources-atom (atom (view-incubating-offers fenzo))
@@ -783,7 +782,7 @@
                                   (reduce into offers))
                       _ (log/debug "Passing following offers to handle-resource-offers!" offers)
                       user->quota (quota/create-user->quota-fn (d/db conn))
-                      matched-head? (handle-resource-offers! conn @driver-atom fenzo @fid-atom executor-command pending-jobs-atom @user->usage-future user->quota num-considerable offers-chan offers)]
+                      matched-head? (handle-resource-offers! conn @driver-atom fenzo @fid-atom executor pending-jobs-atom @user->usage-future user->quota num-considerable offers-chan offers)]
                   (when (seq offers)
                     (reset! resources-atom (view-incubating-offers fenzo)))
                   ;; This check ensures that, although we value Fenzo's optimizations,
@@ -1258,11 +1257,11 @@
               (log/error e "Unable to decline offers!")))))))
 
 (defn create-datomic-scheduler
-  [conn set-framework-id driver-atom pending-jobs-atom heartbeat-ch offer-incubate-time-ms mea-culpa-failure-limit fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset task-constraints executor-command executor-message-limit gpu-enabled? good-enough-fitness]
+  [conn set-framework-id driver-atom pending-jobs-atom heartbeat-ch offer-incubate-time-ms mea-culpa-failure-limit fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset task-constraints executor gpu-enabled? good-enough-fitness]
   (persist-mea-culpa-failure-limit! conn mea-culpa-failure-limit)
   (let [fid (atom nil)
         fenzo (make-fenzo-scheduler driver-atom offer-incubate-time-ms good-enough-fitness)
-        [offers-chan resources-atom] (make-offer-handler conn driver-atom fenzo fid pending-jobs-atom fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset executor-command)]
+        [offers-chan resources-atom] (make-offer-handler conn driver-atom fenzo fid pending-jobs-atom fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset executor)]
     (start-jobs-prioritizer! conn pending-jobs-atom task-constraints)
     {:scheduler
      (mesos/scheduler
@@ -1309,5 +1308,5 @@
       (resource-offers [this driver offers]
                        (receive-offers offers-chan driver offers))
       (status-update [this driver status]
-                     (future (handle-status-update conn executor-message-limit driver fenzo status))))
+                     (future (handle-status-update conn executor driver fenzo status))))
      :view-incubating-offers (fn get-resources-atom [] @resources-atom)}))

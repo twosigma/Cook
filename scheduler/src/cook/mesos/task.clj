@@ -18,22 +18,31 @@
       {:commands (util/job-ent->commands job-ent)}))
    "UTF-8"))
 
+(defn build-executor-environment [executor]
+  {"EXECUTOR_MAX_MESSAGE_LENGTH" (:max-message-length executor)})
+
 (defn job->task-metadata
   "Takes a job entity, returns task metadata"
-  [db fid executor-command job-ent task-id]
+  [db fid executor job-ent task-id]
   (let [resources (util/job-ent->resources job-ent)
         ;; If the custom-executor attr isn't set, we default to using a custom
         ;; executor in order to support jobs submitted before we added this field
         container (util/job-ent->container db job-ent)
         custom-executor (:job/custom-executor job-ent true)
-        environment (util/job-ent->env job-ent)
+        environment (merge
+                     (util/job-ent->env job-ent)
+                     (when-not custom-executor
+                       (build-executor-environment executor)))
         labels (util/job-ent->label job-ent)
         command {:value (if custom-executor
                           (:job/command job-ent)
-                          executor-command)
+                          (:command executor))
                  :environment environment
                  :user (:job/user job-ent)
-                 :uris (:uris resources [])}]
+                 :uris (concat
+                        (:uris resources [])
+                        (when-not custom-executor
+                          (:uris executor)))}]
     ;; If the there is no value for key :job/name, the following name will contain a substring "null".
     {:name (format "%s_%s_%s" (:job/name job-ent "cookjob") (:job/user job-ent) task-id)
      :task-id task-id
@@ -49,9 +58,9 @@
 
 (defn TaskAssignmentResult->task-metadata
   "Organizes the info Fenzo has already told us about the task we need to run"
-  [db fid executor-command ^TaskAssignmentResult fenzo-result]
+  [db fid executor ^TaskAssignmentResult fenzo-result]
   (let [task-request (.getRequest fenzo-result)]
-    (merge (job->task-metadata db fid executor-command (:job task-request) (:task-id task-request))
+    (merge (job->task-metadata db fid executor (:job task-request) (:task-id task-request))
            {:ports-assigned (.getAssignedPorts fenzo-result)
             :task-request task-request})))
 

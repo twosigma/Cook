@@ -11,11 +11,14 @@
                                 :timeout-interval-minutes 1
                                 :memory-gb 48
                                 :retry-limit 15
-                                :cpus 6}
-             :executor-command "cook-executor"
-             :executor-message-limit 512
-             :job-defaults {:before-commands [{:value "echo before"}]
-                            :after-commands [{:value "echo after"}]}}
+                                :cpus 6}}
+ :executor {:command "cook-executor"
+            :max-message-length 512
+            :before-commands [{:value "echo before"}]
+            :after-commands [{:value "echo after"}]
+            ;; :command "./cook-executor"
+            ;; :uris [{:value "/path/to/cook/executor/executable"}]
+            }
  :rebalancer {:dru-scale 1}
  :mesos {:master "zk://localhost:2181/mesos" ; Assuming Mesos is configured to use Zookeeper and is running locally
          :failover-timeout-ms nil ; When we close the instance of Cook, all its tasks are killed by Mesos
