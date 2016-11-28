@@ -31,13 +31,14 @@ def main(args=None):
     logging.info("Starting Cook Executor")
 
     port = int(os.environ.get('EXECUTOR_PORT0', 8080))
+    length = int(os.environ.get('EXECUTOR_MAX_MESSAGE_LENGTH', 512))
     sandbox = os.environ.get('MESOS_SANDBOX', '')
 
     event = Event()
 
     store = Store({
         'task': {
-            'message': str,
+            'message': lambda v: isinstance(v, str) and len(v) < length,
             'sandbox': str,
             'progress': float,
             'env': {str: str},
