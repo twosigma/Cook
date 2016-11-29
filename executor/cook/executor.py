@@ -45,10 +45,8 @@ class CookExecutor(Executor):
             if action is WATCH_ACTION_PUT and type is 'task':
                 entity.update({'sandbox': self.sandbox})
 
-                if entity.get('codes') is None:
-                    driver.sendStatusUpdate(new_task_info(id, 'TASK_RUNNING', entity))
-                else:
-                    driver.sendStatusUpdate(new_task_info(id, 'TASK_FINISHED', entity))
+                if entity.get('state'):
+                    driver.sendStatusUpdate(new_task_info(id, entity.get('state'), entity))
 
         self.store.add_watch('sync_task_status', sync_task_status)
 
@@ -70,12 +68,14 @@ class CookExecutor(Executor):
         logging.info("CookExecutor:launchTask")
 
         try:
-            self.store.put(
-                'task',
-                task['task_id']['value'],
-                json.loads(decode_data(task['data']).decode('utf8'))
-            )
+            task_id = task['task_id']['value']
+            task_data = json.loads(decode_data(task['data']).decode('utf-8'))
+
+            self.store.put('task', task_id, task_data)
+            self.store.merge('task', task_id, {'state': 'TASK_STARTING'})
         except Exception as e:
+            logging.exception("Exception in CookExecutor:launchTask")
+
             driver.sendStatusUpdate(
                 new_task_info(task['task_id']['value'], 'TASK_FAILED'))
             raise e

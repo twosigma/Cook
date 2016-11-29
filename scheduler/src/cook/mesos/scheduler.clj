@@ -45,7 +45,8 @@
             [clojure.core.cache :as cache]
             [cook.mesos.reason :as reason]
             [cheshire.core :as json]
-            [clojure.walk :refer (keywordize-keys)])
+            [clojure.walk :refer (keywordize-keys)]
+            [clojure.set :refer (rename-keys)])
   (import java.util.concurrent.TimeUnit
           org.apache.mesos.Protos$Offer
           com.netflix.fenzo.TaskAssignmentResult
@@ -171,8 +172,11 @@
     (when d
       (let [s (String. (.toByteArray d))]
         (if (:job/custom-executor job-ent true)
-         {:progress (:percent (edn/read-string s))}
-         (keywordize-keys (json/parse-string s)))))
+          {:progress (:percent (edn/read-string s))}
+          (-> s json/parse-string keywordize-keys
+              (rename-keys {:before_exit_codes :before-exit-codes
+                            :exit_code :exit-code
+                            :after_exit_codes :after-exit-codes})))))
     (catch Exception e
       (try (log/debug e (str
                           "Error parsing mesos status data to edn."
@@ -183,29 +187,21 @@
              (log/debug e "Error reading a string from mesos status data. Is it in the format we expect?")))
       {})))
 
-(defn munge-exit-codes
-  [job-ent codes]
-  (let [n (count (:job/before-command job-ent))
-        m (count (:job/after-command job-ent))]
-    {:before-exit-codes (take n codes)
-     :exit-code (->> codes (drop n) first)
-     :after-exit-codes (->> codes (drop n) rest (take m))}))
-
 (defn exit-code->tx
   [instance attr i c]
   (let [id (d/tempid :db.part/user)]
     [[:db/add instance attr id]
-     {:db/id id
-      :exit-code/order i
-      :exit-code/value c}]))
+     (merge
+      {:db/id id
+       :exit-code/order i}
+      (when c
+        {:exit-code/value c}))]))
 
 (defn exit-codes->tx
-  [instance {:keys [before-exit-codes exit-code after-exit-codes]}]
-  (as-> [[:db/add instance :instance/exit-code exit-code]] tx
-    (reduce into tx
-            (map-indexed (partial exit-code->tx instance :instance/before-exit-code) before-exit-codes))
-    (reduce into tx
-            (map-indexed (partial exit-code->tx instance :instance/after-exit-code) after-exit-codes))))
+  [instance attr exit-codes]
+  (->> exit-codes
+       (map-indexed (partial exit-code->tx instance attr))
+       (reduce into [])))
 
 (defn handle-status-update
   "Takes a status update from mesos."
@@ -243,12 +239,14 @@
                                    :task-killed
                                    :task-lost
                                    :task-error} :instance.status/failed)
+               instance-finished (#{:instance.status/success
+                                    :instance.status/failed} instance-status)
                prior-job-state (:job/state (d/entity db job))
                instance-ent (d/entity db instance)
                instance-runtime (- (.getTime (now)) ; Used for reporting
                                    (.getTime (or (:instance/start-time instance-ent) (now))))
                job-resources (util/job-ent->resources job-ent)
-               {:keys [progress codes message sandbox]} (interpret-task-status-data job-ent data)]
+               {:keys [progress message sandbox exit-code before-exit-codes after-exit-codes]} (interpret-task-status-data job-ent data)]
            (when (#{:instance.status/success :instance.status/failed} instance-status)
              (log/debug "Unassigning task" task-id "from" (:instance/hostname instance-ent))
              (try
@@ -311,8 +309,12 @@
                       [[:db/add instance :instance/message (subs message 0 (:max-message-length executor))]]))
                   (when sandbox
                     [[:db/add instance :instance/sandbox sandbox]])
-                  (when codes
-                    (->> codes (munge-exit-codes job-ent) (exit-codes->tx instance)))]))))
+                  (when exit-code
+                    [[:db/add instance :instance/exit-code exit-code]])
+                  (when (and before-exit-codes instance-finished)
+                    (exit-codes->tx instance :instance/before-exit-code before-exit-codes))
+                  (when (and after-exit-codes instance-finished)
+                    (exit-codes->tx instance :instance/after-exit-code before-exit-codes))]))))
       (catch Exception e
         (log/error e "Mesos scheduler status update error")))))
 

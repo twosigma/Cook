@@ -15,7 +15,9 @@
      (pr-str
       {:instance (str (count (:job/instance job-ent)))})
      (json/generate-string
-      {:commands (util/job-ent->commands job-ent)}))
+      {:before_commands (util/job-ent->before-commands job-ent)
+       :command (:job/command job-ent)
+       :after_commands (util/job-ent->after-commands job-ent)}))
    "UTF-8"))
 
 (defn build-executor-environment [executor]

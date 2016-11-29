@@ -40,17 +40,27 @@ def main(args=None):
 
     store = Store({
         'task': {
+            'state': str,
             'message': lambda v: isinstance(v, str) and len(v) < length,
             'sandbox': str,
             'progress': float,
             'env': {str: str},
-            'commands': [{
+            'command': str,
+            'before_commands': [{
                 'name': str,
                 'value': str,
                 'async': bool,
                 'guard': bool,
             }],
-            'codes': [int]
+            'after_commands': [{
+                'name': str,
+                'value': str,
+                'async': bool,
+                'guard': bool
+            }],
+            'exit_code': int,
+            'before_exit_codes': [lambda v: isinstance(v, int) or v is None],
+            'after_exit_codes': [lambda v: isinstance(v, int) or v is None]
         }})
 
     threads = [

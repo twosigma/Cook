@@ -180,15 +180,6 @@
   (command-ents->commands
    (:job/after-command job-ent) "after"))
 
-(defn job-ent->commands
-  [job-ent]
-  (concat
-   (job-ent->before-commands job-ent)
-   [{:value (:job/command job-ent)
-     :async false
-     :guard false}]
-   (job-ent->after-commands job-ent)))
-
 (defn exit-code-ents->exit-codes
   [exit-code-ents]
   (->> exit-code-ents (sort-by :exit-code/order) (map :exit-code/value)))
