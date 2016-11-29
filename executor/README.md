@@ -41,9 +41,9 @@ The job status endpoint can be used to view a job's progress, custom failure mes
 
 ### Executor HTTP API
 
-The executor provides an HTTP API that can be used from a job's commands. It currently only supports one endpoint:
+The executor provides an HTTP API that can be used from a job's commands. It currently only supports two endpoint:
 
-`PATCH /task/:taskid`
+#### `PATCH /task/:taskid`
 
 This request also requires a body. Since it is a `PATCH` request, a valid request may contain only some of the following keys:
 
@@ -55,11 +55,11 @@ This request also requires a body. Since it is a `PATCH` request, a valid reques
 
 Example - progress update:
 
-`curl -X PATCH -d '{progress: 10}' $EXECUTOR_PORT0/task/1`
+`curl -X PATCH -d '{progress: 10}' $EXECUTOR_ENDPOINT`
 
 Example - setting and unsetting environment variables:
 
-`curl -X PATCH -d '{env: {VAR_A: "123", SOME_B: null}}' 127.0.0.1:$EXECUTOR_PORT0/task/$TASK_ID`
+`curl -X PATCH -d '{env: {VAR_A: "123", SOME_B: null}}' $EXECUTOR_ENDPOINT`
 
 Potential responses:
 
@@ -67,6 +67,24 @@ Potential responses:
 | ---- | ------------------- | ---------------------------------------- |
 | 204  | No Content          | The request was succesfully processed. |
 | 400  | Malformed           | The request body contains an unknown key, or a key's value is the wrong type. |
+| 503  | Service Unavailable | The request was valid, and received, but there was an (ostensibly temporary) failure with mesos itself. |
+
+#### `GET /task/:taskid`
+
+For successful requests, the response body could contain:
+
+| key | type | description |
+|-----|------|-------------|
+| `exit_code` | int | The exit code of the primary command. |
+| `before_codes` | array of ints | The exit codes of the before commands. |
+| `after_codes` | array of ints | The exit codes of the after commands. |
+
+Potential responses:
+
+| Code | HTTP Meaning        | Possible reason                          |
+| ---- | ------------------- | ---------------------------------------- |
+| 200  | Okay          | The task id was valid, and the response body contains task data |
+| 404  | Not found           | The provided task id was unknown or invalid |
 | 503  | Service Unavailable | The request was valid, and received, but there was an (ostensibly temporary) failure with mesos itself. |
 
 ### Example use cases
@@ -90,11 +108,11 @@ In cases where only one copy of a certain job should be running, before and afte
 }
 ```
 
-The `guard` flag is used to prevent execution of later commands if we can't acquire the lock (in this case, `acquire-zk-lock.sh` script will return a non-zero exit code). Note that the scripts for manging the lock could be completely reusable, and that the primary command did not need to change.
+The `guard` flag is used to prevent execution of later commands if we can't acquire the lock (in this case, `acquire-zk-lock.sh` script will return a non-zero exit code). Note that the scripts for managing the lock could be completely reusable, and that the primary command did not need to change.
 
 #### Monitoring a running command
 
-Perhaps you'd like to tail a log created by your primary command. You could use an asynchronous before command to so. It will be started before your primary command, and continue running in the background until the primary command (and all other synchronous commands) finish.
+Perhaps you'd like to tail a log created by your primary command. You could use an asynchronous before command to do so. It will be started before your primary command, and continue running in the background until the primary command (and all other synchronous commands) finish.
 
 ```json
 {
@@ -124,7 +142,7 @@ The before command would need to executor something like the following:
 ```bash
 curl -XPATCH \
 	-d '{"env": {"MY_ENV_VAR": "/hello/world", "MY_OLD_VAR": null}}' \
-	127.0.0.1:$EXECUTOR_PORT0/task/$TASK_ID
+	$EXECUTOR_ENDPOINT
 ```
 
 This would set `MY_ENV_VAR` for your primary command (and all commands after `set-env-vars.sh`. 
@@ -136,7 +154,7 @@ In order to update progress or add a custom failure message, you can use the exe
 ```bash
 curl -XPATCH \
 	-d '{"progress": 100, "message": "a custom failure message"}' \
-	127.0.0.1:$EXECUTOR_PORT0/task/$TASK_ID
+	$EXECUTOR_ENDPOINT
 ```
 
 #### Sending an email on completion
@@ -151,10 +169,20 @@ In order to send an email once your primary command has finished, you can use an
 }
 ```
 
+You could also take advantage of the read API to check the exit code of the primary command in order to only send an email on error. Here's an example script using `bash` and `jq`:
+
+```bash
+exit_code=$(curl $EXECUTOR_ENDPOINT | jq '.exit_code')
+
+if [[ "$exit_code" != "0" ]]; then
+    mail -s 'your job failed, sorry!' bob@hello.com
+fi
+```
+
 For Operators
 ---------
 
-The cook executor replaces the default command executor. It must be installed on each agent and requires python 3. As the executor communicates with Mesos agent via HTTP, the agent must support the HTTP API and have it enabled. Primarily, the operator will interact with the executor by setting default commands that run either before or after the commands specified by users when submitting a job to cook. For guidance on configuring these commands, see the configuration section below.
+The cook executor replaces the default command executor. It can either be installed on each agent, or downloaded on each agent via a `uri`. As the executor communicates with Mesos agent via HTTP, the agent must support the HTTP API and have it enabled. Primarily, the operator will interact with the executor by setting default commands that run either before or after the commands specified by users when submitting a job to cook. For guidance on configuring these commands, see the configuration section below.
 
 ### Installation
 
@@ -166,20 +194,27 @@ Then, to install the executor executable (`cook-executor`) and all dependencies,
 ./setup.py install
 ```
 
+Alternatively, `pyinstaller` can be used to build a single executable that is distributed via a URI. For example, to build the executable, run the following command from the `executor` folder:
+
+```bash
+# will create dist/cook-executor
+pyinstaller -F -n cook-executor -p cook cook/__main__.py
+```
+
 ### Configuration
 
-Configuration for the executor should go under the `:scheduler` key of the edn configuration file for the cook scheduler.
+Configuration for the executor should go under the `:executor` key of the edn configuration file for the cook scheduler.
 
 For example: 
 
 ```clojure
 {...
- :scheduler {...
-             :executor-command "cook-executor"
-             :executor-message-limit 512
-             :job-defaults {:before-commands [{:value "echo before"}]
-                            :after-commands [{:value "echo after"}]}
-             ...}
+ :executor {:command "cook-executor"
+            :max-message-length 512
+            :log-level "INFO"
+            :before-commands [{:value "echo before"}]
+            :after-commands [{:value "echo after"}]
+            :uris [{:value "/path/to/executor/executable"}]}
  ...}
 ```
 
@@ -187,24 +222,29 @@ Supported configuration options:
 
 | option | type | description |
 |--------|------|-------------|
-| `:executor-command` | string | A string containing the command executed on the mesos agent to launch the cook executor. If the executor is installed using the instructions above, the default value of `cook-executor` should not need to be changed. |
-| `:executor-message-limit` | long | The maximum length for the custom failure message set by a task via the executor HTTP API. The default is 512. |
-| `:job-defaults` | map | A map of default values set when a job is submitted. |
+| `:command` | string | A string containing the command executed on the mesos agent to launch the cook executor. If the executor is installed using the instructions above, the default value of `cook-executor` should not need to be changed. |
+| `:log-level` | string | The log level for the executor process. Defaults to "INFO" |
+| `:max-message-length` | long | The maximum length for the custom failure message set by a task via the executor HTTP API. The default is 512. |
+| `:before-commands` | vector | An optional vector of `command`s to run before all user specified commands. |
+| `:after-commands` | vector | An optional vector of `command`s to run after all user specified commands. |
+| `:uris` | vector | An optional vector of `uri`s to be associated with every job |
 
-Currently, only a few options are supported in the `:job-defaults` map:
-
-| key | type | description |
-|-----|------|-------------|
-| `:before-commands` | vector | A vector of `command`s to run before all user specified commands. |
-| `:after-commands` | vector | A vector of `command`s to run after all user specified commands. |
-
-Commands have the following structure:
+`command`s have the following structure:
 
 | key | type | description |
 |-----|------|-------------|
 | `:value` | string | A string representing the command to be run, ex: `echo hello`. |
 | `:guard` | boolean | An optional flag. If set, and the command returns a non-zero exit code, no further commands for the job will be executed. |
 | `:async` | boolean | An optional flag. If set, the command runs asynchronously, in parallel with other future commands. It will be killed when all synchronous commands for a job are finished. |
+
+`uri`s have the following structure:
+
+| key | type | description |
+|-----|------|-------------|
+| `:value` | string | The URI to fetch. Supports everything the Mesos fetcher supports, i.e. http://, https://, ftp://, file://, hdfs:// |
+| `:executable` | boolean | Should the URI have the executable bit set after download? |
+| `:extract` | boolean | Should the URI be extracted (must be a tar.gz, zipfile, or similar).
+| `:cache` | boolean | Mesos 0.23 and later only: should the URI be cached in the fetcher cache? |
 
 ### Tests
 
