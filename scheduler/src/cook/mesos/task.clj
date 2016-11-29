@@ -19,7 +19,8 @@
    "UTF-8"))
 
 (defn build-executor-environment [executor]
-  {"EXECUTOR_MAX_MESSAGE_LENGTH" (:max-message-length executor)})
+  {"EXECUTOR_LOG_LEVEL" (:log-level executor)
+   "EXECUTOR_MAX_MESSAGE_LENGTH" (:max-message-length executor)})
 
 (defn job->task-metadata
   "Takes a job entity, returns task metadata"
