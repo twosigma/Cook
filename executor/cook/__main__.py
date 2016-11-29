@@ -25,10 +25,13 @@ from cook.launcher import run_launcher
 from cook.executor import run_executor
 
 def main(args=None):
+    id = os.environ.get('MESOS_EXECUTOR_ID', '1')
     port = int(os.environ.get('EXECUTOR_PORT0', 8080))
     level = os.environ.get('EXECUTOR_LOG_LEVEL', 'INFO')
     length = int(os.environ.get('EXECUTOR_MAX_MESSAGE_LENGTH', 512))
     sandbox = os.environ.get('MESOS_SANDBOX', '')
+
+    os.environ['EXECUTOR_ENDPOINT'] = '127.0.0.1:%s/task/%s' % (port, id)
 
     logging.basicConfig(filename = "executor.log", level = "INFO")
     logging.info("Starting Cook Executor")
