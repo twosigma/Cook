@@ -51,6 +51,9 @@
 (def PosDouble
   (s/both double (s/pred pos? 'pos?)))
 
+(defn render-error
+  [ctx]
+  {:error (::error ctx)})
 
 (def cook-liberator-attrs
   {:available-media-types ["application/json"]
@@ -58,12 +61,9 @@
    :handle-no-content (fn [ctx] "No content.")
    ;; Don't serialize the response; leave that to compojure-api
    :as-response (fn [data ctx] (combine {:body data} ctx))
-   :handle-forbidden (fn [ctx]
-                       (str (::error ctx)))
-   :handle-malformed (fn [ctx]
-                       (str (::error ctx)))
-   :handle-not-found (fn [ctx]
-                       (str (::error ctx)))})
+   :handle-forbidden render-error
+   :handle-malformed render-error
+   :handle-not-found render-error})
 
 (defn base-cook-handler
   [resource-attrs]
@@ -594,12 +594,9 @@
 
                       #{:post}
                       true))
-        :handle-malformed (fn [ctx]
-                            (str (::error ctx)))
-        :handle-forbidden (fn [ctx]
-                            (str (::error ctx)))
-        :handle-not-found (fn [ctx]
-                            (str (::error ctx)))
+        :handle-malformed render-error
+        :handle-forbidden render-error
+        :handle-not-found render-error
         :processable? (fn [ctx]
                         (if (= :post (get-in ctx [:request :request-method]))
                           (try
@@ -651,10 +648,9 @@
                              (log/info user " has failed auth")
                              [false {::error "Unauthorized"}]))))
         :handle-forbidden (fn [ctx]
-                               (log/info (get-in ctx [:request :authorization/user]) " is not authorized to access queue")
-                               (str (::error ctx)))
-        :handle-malformed (fn [ctx]
-                            (str (::error ctx)))
+                            (log/info (get-in ctx [:request :authorization/user]) " is not authorized to access queue")
+                            (render-error ctx))
+        :handle-malformed render-error
         :handle-ok (fn [ctx]
                      (-> (map-vals (fn [queue]
                                      (->> queue
@@ -687,10 +683,8 @@
                          (if (is-authorized-fn user :read {:owner ::system :item :running})
                            true
                            [false {::error "Unauthorized"}])))
-        :handle-forbidden (fn [ctx]
-                               (str (::error ctx)))
-        :handle-malformed (fn [ctx]
-                            (str (::error ctx)))
+        :handle-forbidden render-error
+        :handle-malformed render-error
         :handle-ok (fn [ctx]
                      (->> (util/get-running-task-ents (db conn))
                           (take (::limit ctx))
