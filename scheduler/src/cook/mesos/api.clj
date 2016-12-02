@@ -150,9 +150,10 @@
               :cpus PosNum
               :mem PosNum})))
 
-(def JobUuids
-  "Schema for one or more job uuids in params"
-  {:job [s/Uuid]})
+(def JobOrInstanceIds
+  "Schema for any number of job and/or instance uuids"
+  {(s/optional-key :job) [s/Uuid]
+   (s/optional-key :instance) [s/Uuid]})
 
 (def Instance
   "Schema for a description of a single job instance."
@@ -497,9 +498,85 @@
    Returns nil if the instance uuid doesn't correspond
    a job"
   [db instance-uuid]
-  (->> (d/entity db [:instance/task-id instance-uuid])
+  (->> (d/entity db [:instance/task-id (str instance-uuid)])
        :job/_instance
        :job/uuid))
+
+
+(defn retrieve-jobs
+  [conn instances-too? ctx]
+  (let [jobs (get-in ctx [:request :query-params :job])
+        instances (if instances-too? (get-in ctx [:request :query-params :instance]) [])]
+    (let [instance-uuid->job-uuid #(instance-uuid->job-uuid (d/db conn) %)
+          instance-jobs (mapv instance-uuid->job-uuid instances)
+          used? (partial used-uuid? (db conn))]
+      (cond
+        (and (every? used? jobs)
+             (every? (complement nil?) instance-jobs))
+        [true {::jobs (into jobs instance-jobs)}]
+        (some nil? instance-jobs)
+        [false {::error (str "UUID "
+                             (str/join
+                              \space
+                              (filter (comp nil? instance-uuid->job-uuid)
+                                      instances))
+                             " didn't correspond to an instance")}]
+        :else
+        [false {::error (str "UUID "
+                             (str/join
+                              \space
+                              (remove used? jobs))
+                             " didn't correspond to a job")}]))))
+
+(defn check-job-params-present
+  [ctx]
+  (let [jobs (get-in ctx [:request :query-params :job])
+        instances (get-in ctx [:request :query-params :instance])]
+    (if (or (seq jobs) (seq instances))
+      false
+      [true {::error "must supply at least one job or instance query param"}])))
+
+(defn job-request-allowed?
+  [conn is-authorized-fn ctx]
+  (let [uuids (::jobs ctx)
+        user (get-in ctx [:request :authorization/user])
+        job-user (fn [uuid]
+                   (:job/user (d/entity (db conn) [:job/uuid uuid])))
+        authorized? (fn [uuid]
+                      (is-authorized-fn user (get-in ctx [:request :request-method]) {:owner (job-user uuid) :item :job}))]
+    (if (every? authorized? uuids)
+      true
+      [false {::error (str "You are not authorized to view access the following jobs "
+                           (str/join \space (remove authorized? uuids)))}])))
+
+(defn render-jobs-for-response
+  [conn fid ctx]
+  (mapv (partial fetch-job-map (db conn) fid) (::jobs ctx)))
+
+
+;;; On GET; use repeated job argument
+(defn read-jobs-handler
+  [conn fid task-constraints gpu-enabled? is-authorized-fn]
+  (base-cook-handler
+   {:allowed-methods [:get]
+    :malformed? check-job-params-present
+    :allowed? (partial job-request-allowed? conn is-authorized-fn)
+    :exists? (partial retrieve-jobs conn true)
+    :handle-ok (partial render-jobs-for-response conn fid)}))
+
+
+;;; On DELETE; use repeated job argument
+(defn destroy-jobs-handler
+  [conn fid task-constraints gpu-enabled? is-authorized-fn]
+  (base-cook-handler
+   {:allowed-methods [:delete]
+    :malformed? check-job-params-present
+    :allowed? (partial job-request-allowed? conn is-authorized-fn)
+    :exists? (partial retrieve-jobs conn false)
+    :delete! (fn [ctx]
+               (cook.mesos/kill-job conn (::jobs ctx)))
+    :handle-ok (partial render-jobs-for-response conn fid)}))
+
 
 ;;; On POST; JSON blob that looks like:
 ;;; {"jobs": [{"command": "echo hello world",
@@ -508,119 +585,37 @@
 ;;;            "cpus": 1.5,
 ;;;            "mem": 1000}]}
 ;;;
-;;; On GET; use repeated job argument
-(defn job-resource
+(defn create-jobs-handler
   [conn fid task-constraints gpu-enabled? is-authorized-fn]
-  (-> (liberator/resource
-        :available-media-types ["application/json"]
-        :allowed-methods [:post :get :delete]
-        :exists? (fn [ctx]
-                   (let [jobs (get-in ctx [:request :query-params "job"])
-                         instances (get-in ctx [:request :query-params "instance"])]
-                     (let [instances (if (or (nil? instances) (vector? instances))
-                                       instances
-                                       [instances])
-                           instance-uuid->job-uuid #(instance-uuid->job-uuid (d/db conn) %)
-                           instance-jobs (mapv instance-uuid->job-uuid instances)
-                           jobs (if (or (nil? jobs) (vector? jobs))
-                                  jobs
-                                  [jobs])
-                           jobs (mapv #(UUID/fromString %) jobs)
-                           used? (partial used-uuid? (db conn))]
-                       (cond
-                         (and (seq instance-jobs)
-                              (= :delete (get-in ctx [:request :request-method])))
-                         [true {::error "Aborting instances is currently not supported"}]
-                         (and (every? used? jobs)
-                              (every? (complement nil?) instance-jobs))
-                         ;;Currently don't support delete of instance. May in future
-                         [true {::jobs (into jobs instance-jobs)}]
-                         (some nil? instance-jobs)
-                         [false {::error (str "UUID "
-                                              (str/join
-                                               \space
-                                               (filter (comp nil? instance-uuid->job-uuid)
-                                                       instances))
-                                              " didn't correspond to a instance")}]
-                         :else
-                         [false {::error (str "UUID "
-                                              (str/join
-                                               \space
-                                               (remove used? jobs))
-                                              " didn't correspond to a job")}]))
-                     ))
-        :malformed? (fn [ctx]
-                      (condp contains? (get-in ctx [:request :request-method])
-                        #{:get :delete}
-                        (try
-                          (let [jobs (get-in ctx [:request :query-params "job"])
-                                instances (get-in ctx [:request :query-params "instance"])]
-                            (if (or jobs instances)
-                              false
-                              [true {::error "must supply at least one job or instance query param"}]))
-                          (catch Exception e
-                            [true {::error e}]))
-                        #{:post}
-                        (let [params (get-in ctx [:request :body-params])
-                              user (get-in ctx [:request :authorization/user])]
-                          (try
-                            (cond
-                              (empty? params)
-                              [true {::error "must supply at least one job to start. Are you specifying that this is application/json?"}]
-                              :else
-                              [false {::jobs (mapv #(validate-and-munge-job
-                                                      (db conn)
-                                                      user
-                                                      task-constraints
-                                                      gpu-enabled?
-                                                      %)
-                                                   (get params :jobs))}])
-                            (catch Exception e
-                              (log/warn e "Malformed raw api request")
-                              [true {::error e}])))))
-        :allowed? (fn [ctx]
-                    (condp contains? (get-in ctx [:request :request-method])
-                      #{:get :delete}
-                      (let [uuids (::jobs ctx)
-                            user (get-in ctx [:request :authorization/user])
-                            job-user (fn [uuid]
-                                       (:job/user (d/entity (db conn) [:job/uuid uuid])))
-                            authorized? (fn [uuid]
-                                          (is-authorized-fn user (get-in ctx [:request :request-method]) {:owner (job-user uuid) :item :job}))]
-                        (if (every? authorized? uuids)
-                          true
-                          [false {::error (str "You are not authorized to view access the following jobs "
-                                               (str/join \space (remove authorized? uuids)))}]))
+  (base-cook-handler
+   {:allowed-methods [:post]
+    :malformed? (fn [ctx]
+                  (let [params (get-in ctx [:request :body-params])
+                        user (get-in ctx [:request :authorization/user])]
+                    (try
+                      [false {::jobs (mapv #(validate-and-munge-job
+                                             (db conn)
+                                             user
+                                             task-constraints
+                                             gpu-enabled?
+                                             %)
+                                           (get params :jobs))}]
+                      (catch Exception e
+                        (log/warn e "Malformed raw api request")
+                        [true {::error (str e)}]))))
+    :processable? (fn [ctx]
+                    (try
+                      (log/info "Submitting jobs through raw api:" (::jobs ctx))
+                      (submit-jobs conn (::jobs ctx))
+                      true
+                      (catch Exception e
+                        (log/error e "Error submitting jobs through raw api")
+                        [false (str e)])))
+    :post! (fn [ctx]
+             ;; We did the actual logic in processable?, so there's nothing left to do
+             {::results (str/join \space (cons "submitted jobs" (map (comp str :uuid) (::jobs ctx))))})
 
-                      #{:post}
-                      true))
-        :handle-malformed render-error
-        :handle-forbidden render-error
-        :handle-not-found render-error
-        :processable? (fn [ctx]
-                        (if (= :post (get-in ctx [:request :request-method]))
-                          (try
-                            (log/info "Submitting jobs through raw api:" (::jobs ctx))
-                            (submit-jobs conn (::jobs ctx))
-                            true
-                            (catch Exception e
-                              (log/error e "Error submitting jobs through raw api")
-                              [false (str e)]))
-                          true))
-        :post! (fn [ctx]
-                 ;; We did the actual logic in processable?, so there's nothing left to do
-                 {::results (str/join \space (cons "submitted jobs" (map (comp str :uuid) (::jobs ctx))))})
-        :delete! (fn [ctx]
-                   (cook.mesos/kill-job conn (::jobs ctx)))
-        :handle-ok (fn [ctx]
-                     (mapv (partial fetch-job-map (db conn) fid) (::jobs ctx)))
-        :handle-created (fn [ctx]
-                          (::results ctx))
-
-        ;; necessary to play well with as-response below
-        :handle-no-content (fn [ctx] "No content.")
-        ;; Don't serialize the response; leave that to compojure-api
-        :as-response (fn [data ctx] (combine {:body data} ctx)))))
+    :handle-created (fn [ctx] (::results ctx))}))
 
 
 ;;
@@ -915,23 +910,26 @@
                              :description "How to Cook things"}
                       :tags [{:name "api", :description "some apis"}]}}}
 
-    (c-api/context "/rawscheduler" []
-                   (c-api/resource
-                    {:get {:summary "Returns info about a set of Jobs"
-                           :parameters {:query-params JobUuids}
-                           :responses {200 {:schema [JobResponse]
-                                            :description "The jobs and their instances were returned."}
-                                       400 {:description "Non-UUID values were passed as jobs."}
-                                       403 {:description "The supplied UUIDs don't correspond to valid jobs."}}}
-                     :post {:summary "Schedules one or more jobs."
-                            :parameters {:body-params {:jobs [JobRequest]}}
-                            :responses {200 {:schema [JobResponse]}}}
-                     :delete {:summary "Cancels jobs, halting execution when possible."
-                              :responses {204 {:description "The jobs have been marked for termination."}
-                                          400 {:description "Non-UUID values were passed as jobs."}
-                                          403 {:description "The supplied UUIDs don't correspond to valid jobs."}}
-                              :parameters {:query-params JobUuids}}
-                     :handler (job-resource conn fid task-constraints gpu-enabled? is-authorized-fn)}))
+    (c-api/context
+     "/rawscheduler" []
+     (c-api/resource
+      {:get {:summary "Returns info about a set of Jobs"
+             :parameters {:query-params JobOrInstanceIds}
+             :responses {200 {:schema [JobResponse]
+                              :description "The jobs and their instances were returned."}
+                         400 {:description "Non-UUID values were passed as jobs."}
+                         403 {:description "The supplied UUIDs don't correspond to valid jobs."}}
+             :handler (read-jobs-handler conn fid task-constraints gpu-enabled? is-authorized-fn)}
+       :post {:summary "Schedules one or more jobs."
+              :parameters {:body-params {:jobs [JobRequest]}}
+              :responses {200 {:schema [JobResponse]}}
+              :handler (create-jobs-handler conn fid task-constraints gpu-enabled? is-authorized-fn)}
+       :delete {:summary "Cancels jobs, halting execution when possible."
+                :responses {204 {:description "The jobs have been marked for termination."}
+                            400 {:description "Non-UUID values were passed as jobs."}
+                            403 {:description "The supplied UUIDs don't correspond to valid jobs."}}
+                :parameters {:query-params {:job [s/Uuid]}}
+                :handler (destroy-jobs-handler conn fid task-constraints gpu-enabled? is-authorized-fn)}}))
 
     (c-api/context
      "/share" []
