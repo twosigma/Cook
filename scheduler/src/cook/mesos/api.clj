@@ -761,139 +761,80 @@
                              (get-in ctx [:request :body-params :retries])))}))
 
 
-;;
-;; /share
-;;
+;; /share and /quota
 
 (def UserParam {:user s/Str})
-
-(def SetShareParams
-  {:body-params (merge UserParam {:share {s/Keyword s/Num}})})
 
 (def UserLimitsResponse
   {String s/Num})
 
-(defn retrieve-user-share
-  [conn ctx]
+(defn set-limit-params
+  [limit-type]
+  {:body-params (merge UserParam {limit-type {s/Keyword s/Num}})})
+
+(defn retrieve-user-limit
+  [get-limit-fn conn ctx]
   (->> (or (get-in ctx [:request :query-params :user])
            (get-in ctx [:request :body-params :user]))
-       (share/get-share (db conn))
+       (get-limit-fn (db conn))
        walk/stringify-keys))
 
-(defn check-share-allowed
-  [is-authorized-fn ctx]
+(defn check-limit-allowed
+  [limit-type is-authorized-fn ctx]
   (let [request-user (get-in ctx [:request :authorization/user])
         request-method (get-in ctx [:request :request-method])]
-    (if-not (is-authorized-fn request-user request-method {:owner ::system :item :share})
-      [false {::error (str "You are not authorized to access share information")}]
+    (if-not (is-authorized-fn request-user request-method {:owner ::system :item limit-type})
+      [false {::error (str "You are not authorized to access " (name limit-type) " information")}]
       true)))
 
-(defn base-share-handler
-  [is-authorized-fn resource-attrs]
-  (base-cook-handler (merge {:allowed? (partial check-share-allowed is-authorized-fn)}
-                            resource-attrs)))
+(defn base-limit-handler
+  [limit-type is-authorized-fn resource-attrs]
+  (base-cook-handler
+   (merge {:allowed? (partial check-limit-allowed limit-type is-authorized-fn)}
+          resource-attrs)))
 
-(defn read-share-handler
-  [conn is-authorized-fn]
-  (base-share-handler
-   is-authorized-fn
-   {:handle-ok (partial retrieve-user-share conn)}))
+(defn read-limit-handler
+  [limit-type get-limit-fn conn is-authorized-fn]
+  (base-limit-handler
+   limit-type is-authorized-fn
+   {:handle-ok (partial retrieve-user-limit get-limit-fn conn)}))
 
-(defn delete-share-handler
-  [conn is-authorized-fn]
-  (base-share-handler
-   is-authorized-fn
+(defn destroy-limit-handler
+  [limit-type retract-limit-fn conn is-authorized-fn]
+  (base-limit-handler
+   limit-type is-authorized-fn
    {:allowed-methods [:delete]
     :delete!  (fn [ctx]
-                (share/retract-share! conn (get-in ctx [:request :query-params :user])))}))
+                (retract-limit-fn conn (get-in ctx [:request :query-params :user])))}))
 
-(defn update-share-handler
-  [conn is-authorized-fn]
-  (base-share-handler
-   is-authorized-fn
+(defn coerce-limit-values
+  [limits-from-request]
+  (into {} (map (fn [[k v]] [k (if (= k :count) (int v) (double v))])
+                limits-from-request)))
+
+(defn update-limit-handler
+  [limit-type extra-resource-types get-limit-fn set-limit-fn conn is-authorized-fn]
+  (base-limit-handler
+   limit-type is-authorized-fn
    {:allowed-methods [:post]
-    :handle-created (partial retrieve-user-share conn)
+    :handle-created (partial retrieve-user-limit get-limit-fn conn)
     :malformed? (fn [ctx]
-                 (let [resource-types (set (util/get-all-resource-types (d/db conn)))
-                       shares (->> (get-in ctx [:request :body-params :share])
-                                   keywordize-keys
-                                   (map-vals double))]
-                   (cond
-                     (not (seq shares))
-                     [true {::error "No shares set. Are you specifying that this is application/json?"}]
-                     (not (every? (partial contains? resource-types) (keys shares)))
-                     [true {::error (str "Unknown resource type(s)" (str/join \space (remove (partial contains? resource-types) (keys shares))))}]
-                     :else
-                     [false {::shares shares}])))
-
-    :post! (fn [ctx]
-             (apply share/set-share! conn (get-in ctx [:request :body-params :user]) (reduce into [] (::shares ctx))))}))
-
-
-;;
-;; /quota
-;;
-
-(def SetQuotaParams
-  {:body-params (merge UserParam {:quota {s/Keyword s/Num}})})
-
-(defn retrieve-user-quota
-  [conn ctx]
-  (->> (or (get-in ctx [:request :query-params :user])
-           (get-in ctx [:request :body-params :user]))
-       (quota/get-quota (db conn))
-       walk/stringify-keys))
-
-(defn check-quota-allowed
-  [is-authorized-fn ctx]
-  (let [request-user (get-in ctx [:request :authorization/user])
-        request-method (get-in ctx [:request :request-method])]
-    (if-not (is-authorized-fn request-user request-method {:owner ::system :item :quota})
-      [false {::error (str "You are not authorized to access quota information")}]
-      true)))
-
-(defn base-quota-handler
-  [is-authorized-fn resource-attrs]
-  (base-cook-handler (merge
-                      {:allowed? (partial check-quota-allowed is-authorized-fn)}
-                      resource-attrs)))
-
-(defn read-quota-handler
-  [conn is-authorized-fn]
-  (base-share-handler
-   is-authorized-fn
-   {:handle-ok (partial retrieve-user-quota conn)}))
-
-(defn delete-quota-handler
-  [conn is-authorized-fn]
-  (base-quota-handler
-   is-authorized-fn
-   {:allowed-methods [:delete]
-    :delete!  (fn [ctx]
-                (quota/retract-quota! conn (get-in ctx [:request :query-params :user])))}))
-
-(defn update-quota-handler
-  [conn is-authorized-fn]
-  (base-quota-handler
-   is-authorized-fn
-   {:allowed-methods [:post]
-    :handle-created (partial retrieve-user-quota conn)
-    :malformed? (fn [ctx]
-                  (let [resource-types (set (conj (util/get-all-resource-types (d/db conn)) :count))
-                        quotas (->> (get-in ctx [:request :body-params :quota])
+                  (let [resource-types
+                        (set (apply conj (util/get-all-resource-types (d/db conn))
+                                    extra-resource-types))
+                        limits (->> (get-in ctx [:request :body-params limit-type])
                                     keywordize-keys
-                                    (map-vals double))
-                        quotas (update-in quotas [:count] int)]
+                                    coerce-limit-values)]
                     (cond
-                      (not (seq quotas))
-                      [true {::error "No quota set. Are you specifying that this is application/json?"}]
-                      (not (every? (partial contains? resource-types) (keys quotas)))
-                      [true {::error (str "Unknown resource type(s)" (str/join \space (remove (partial contains? resource-types) (keys quotas))))}]
+                      (not (seq limits))
+                      [true {::error "No " (name limit-type) " set. Are you specifying that this is application/json?"}]
+                      (not (every? (partial contains? resource-types) (keys limits)))
+                      [true {::error (str "Unknown resource type(s)" (str/join \space (remove (partial contains? resource-types) (keys limits))))}]
                       :else
-                      [false {::quotas quotas}])))
+                      [false {::limits limits}])))
 
     :post! (fn [ctx]
-             (apply quota/set-quota! conn (get-in ctx [:request :body-params :user]) (reduce into [] (::quotas ctx))))}))
+             (apply set-limit-fn conn (get-in ctx [:request :body-params :user]) (reduce into [] (::limits ctx))))}))
 
 
 ;;
@@ -941,13 +882,15 @@
                    403 {:description "Invalid request format."}}
        :get {:summary "Read a user's share"
              :parameters {:query-params UserParam}
-             :handler (read-share-handler conn is-authorized-fn)}
+             :handler (read-limit-handler :share share/get-share conn is-authorized-fn)}
        :post {:summary "Change a user's share"
-              :parameters SetShareParams
-              :handler (update-share-handler conn is-authorized-fn)}
+              :parameters (set-limit-params :share)
+              :handler (update-limit-handler :share []
+                                             share/get-share share/set-share!
+                                             conn is-authorized-fn)}
        :delete {:summary "Reset a user's share to the default"
                 :parameters {:query-params UserParam}
-                :handler (delete-share-handler conn is-authorized-fn)}}))
+                :handler (destroy-limit-handler :share share/retract-share! conn is-authorized-fn)}}))
 
     (c-api/context
      "/quota" []
@@ -959,13 +902,15 @@
                    403 {:description "Invalid request format."}}
        :get {:summary "Read a user's quota"
              :parameters {:query-params UserParam}
-             :handler (read-quota-handler conn is-authorized-fn)}
+             :handler (read-limit-handler :quota quota/get-quota conn is-authorized-fn)}
        :post {:summary "Change a user's quota"
-              :parameters SetQuotaParams
-              :handler (update-quota-handler conn is-authorized-fn)}
+              :parameters (set-limit-params :quota)
+              :handler (update-limit-handler :quota [:count]
+                                             quota/get-quota quota/set-quota!
+                                             conn is-authorized-fn)}
        :delete {:summary "Reset a user's quota to the default"
                 :parameters {:query-params UserParam}
-                :handler (delete-quota-handler conn is-authorized-fn)}}))
+                :handler (destroy-limit-handler :delete quota/retract-quota! conn is-authorized-fn)}}))
 
     (c-api/context
      "/retry" []
