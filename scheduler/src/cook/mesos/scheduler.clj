@@ -188,14 +188,14 @@
       {})))
 
 (defn exit-code->tx
-  [instance attr i c]
+  [instance attr i exit-code]
   (let [id (d/tempid :db.part/user)]
     [[:db/add instance attr id]
      (merge
       {:db/id id
        :exit-code/order i}
-      (when c
-        {:exit-code/value c}))]))
+      (when exit-code
+        {:exit-code/value exit-code}))]))
 
 (defn exit-codes->tx
   [instance attr exit-codes]
