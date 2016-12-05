@@ -169,14 +169,16 @@
   "Schema for a command"
   {:value s/Str
    (s/optional-key :async?) s/Bool
-   (s/optional-key :guard?) s/Bool})
+   (s/optional-key :guard?) s/Bool
+   (s/optional-key :default?) s/Bool})
 
 (def CommandRequest
   "Schema for a command in request"
   {:value s/Str
    (s/optional-key :name) s/Str
    (s/optional-key :async) s/Bool
-   (s/optional-key :guard) s/Bool})
+   (s/optional-key :guard) s/Bool
+   (s/optional-key :default) s/Bool})
 
 (def Job
   "A schema for a job"
@@ -456,13 +458,17 @@
                       :commit-latch/committed? true}
         before-commands (->>
                          ;; Default before-commands run first
-                         (concat (:before-commands executor) before-commands)
-                         (map-indexed (partial mk-command id :job/before-command))
+                         (concat (map #(assoc % :default? true)
+                                      (:before-commands executor))
+                                 before-commands)
+                         (map-indexed (partial mk-command db-id :job/before-command))
                          (apply concat))
         after-commands (->>
                         ;; Default after-commands run last
-                        (concat after-commands (:after-commands executor))
-                        (map-indexed (partial mk-command id :job/after-command))
+                        (concat after-commands
+                                (map #(assoc % :default? true)
+                                     (:after-commands executor)))
+                        (map-indexed (partial mk-command db-id :job/after-command))
                         (apply concat))
         txn {:db/id db-id
              :job/commit-latch commit-latch-id

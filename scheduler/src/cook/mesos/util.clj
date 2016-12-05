@@ -168,7 +168,8 @@
           {:name (str suffix "." (:command/order c))
            :value (:command/value c)
            :async (:command/async? c false)
-           :guard (:command/guard? c false)}))))
+           :guard (:command/guard? c false)
+           :default (:command/default? c false)}))))
 
 (defn job-ent->before-commands
   [job-ent]

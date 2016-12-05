@@ -51,12 +51,14 @@ def main(args=None):
                 'value': str,
                 'async': bool,
                 'guard': bool,
+                'default': bool
             }],
             'after_commands': [{
                 'name': str,
                 'value': str,
                 'async': bool,
-                'guard': bool
+                'guard': bool,
+                'default': bool
             }],
             'exit_code': int,
             'before_exit_codes': [lambda v: isinstance(v, int) or v is None],

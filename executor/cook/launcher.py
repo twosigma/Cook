@@ -11,7 +11,7 @@ import subprocess
 from collections import namedtuple
 
 class Command(
-        namedtuple('Command', ('value', 'name', 'async', 'guard'))
+        namedtuple('Command', ('value', 'name', 'async', 'guard', 'default'))
 ):
     """
     An internal representation of a runnable command. Using a namedtuple helps catch
@@ -39,7 +39,7 @@ class Command(
         )
 
 # set default values for (name, async, guard)
-Command.__new__.__defaults__ = (None, False, False)
+Command.__new__.__defaults__ = (None, False, False, False)
 
 class RunningCommand(namedtuple(
         'RunningCommand', Command._fields + ('stdout', 'stderr', 'process'))
