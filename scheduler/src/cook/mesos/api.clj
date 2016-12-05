@@ -325,11 +325,7 @@
 (defn used-uuid?
   "Returns true iff the given uuid is used in datomic"
   [db uuid]
-  (boolean (seq (q '[:find ?j
-                     :in $ ?uuid
-                     :where
-                     [?j :job/uuid ?uuid]]
-                   db uuid))))
+  (not (nil? (d/entity db [:job/uuid uuid]))))
 
 (defn ensure-uuid-unused
   "Throws if the given uuid is used in datomic"
