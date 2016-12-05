@@ -194,7 +194,7 @@ Then, to install the executor executable (`cook-executor`) and all dependencies,
 ./setup.py install
 ```
 
-Alternatively, `pyinstaller` can be used to build a single executable that is distributed via a URI. For example, to build the executable, run the following command from the `executor` folder:
+Alternatively, [`pyinstaller`](https://github.com/pyinstaller/pyinstaller) can be used to build a single executable that is distributed via a URI. For example, to build the executable, run the following command from the `executor` folder:
 
 ```bash
 # will create dist/cook-executor
