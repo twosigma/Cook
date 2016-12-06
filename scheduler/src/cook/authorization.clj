@@ -130,19 +130,61 @@
               "may perform" verb
               "on object" (str object) "."
               "Admins are:" admins)
-   (cond (contains? admins user) 
+   (cond (contains? admins user)
          (do
            (log/debug "[configfile-admins-auth] User" user "is an admin, allowing.")
            true)
-         (= owner user) 
+         (= owner user)
          (do
            (log/debug "[configfile-admins-auth] Object is owned by user, allowing.")
            true)
-         :else 
+         :else
          (do
            (log/info "[configfile-admins-auth] Unauthorized access attempt: user" user
                      "is not allowed to perform" verb "on" (str object ",") "denying.")
            false))))
+
+(defn configfile-admins-auth-open-gets
+  "This authorization function consults the set of usernames specified
+  in the :admins key of the :authorization-config section of the config file.
+
+  Usernames in this set are administrators, who are allowed to do anything to any object.
+  Non-admins are only allowed to manipulate objects that they own but are able to read (get)
+   any object."
+  ([^String user
+    ^clojure.lang.Keyword verb
+    {:keys [owner item] :as object}]
+   (configfile-admins-auth-open-gets {:admins #{}} user verb object))
+  ([{:keys [admins] :as settings}
+    ^String user
+    ^clojure.lang.Keyword verb
+    {:keys [owner item] :as object}]
+   (log/debug "[configfile-admins-auth-open-gets] Checking whether user" user
+              "may perform" verb
+              "on object" (str object) "."
+              "Admins are:" admins)
+   (let [svo {:user user :verb verb :object object}]
+     (cond (contains? admins user)
+           (do
+             (log/debug "[configfile-admins-auth-open-gets] User" user "is an admin, allowing." 
+                        (assoc svo :authorized? true))
+             true)
+           (= verb :get)
+           (do
+             (log/debug "[configfile-admins-auth-open-gets] Verb was get, allowing" 
+                        (assoc svo :authorized? true))
+             true)
+           (= owner user)
+           (do
+             (log/debug "[configfile-admins-auth-open-gets] Object is owned by user, allowing." 
+                        (assoc svo :authorized? true))
+             true)
+           :else
+           (do
+             (log/info "[configfile-admins-auth-open-gets] Unauthorized access attempt: user" user
+                       "is not allowed to perform" verb "on" (str object ",") "denying." 
+                       (assoc svo :authorized? false))
+             false)))))
 
 (defn is-authorized?
   "Determines whether the given user can perform the given operation
