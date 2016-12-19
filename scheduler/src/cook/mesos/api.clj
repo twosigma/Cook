@@ -853,14 +853,17 @@
       false
       [true {::error "must supply at least one job or instance query param"}])))
 
+(defn user-authorized-for-job?
+  [conn is-authorized-fn ctx job-uuid]
+  (let [request-user (get-in ctx [:request :authorization/user])
+        job-user (:job/user (d/entity (db conn) [:job/uuid job-uuid]))
+        request-method (get-in ctx [:request :request-method])]
+    (is-authorized-fn request-user request-method {:owner job-user :item :job})))
+
 (defn job-request-allowed?
   [conn is-authorized-fn ctx]
   (let [uuids (::jobs ctx)
-        user (get-in ctx [:request :authorization/user])
-        job-user (fn [uuid]
-                   (:job/user (d/entity (db conn) [:job/uuid uuid])))
-        authorized? (fn [uuid]
-                      (is-authorized-fn user (get-in ctx [:request :request-method]) {:owner (job-user uuid) :item :job}))]
+        authorized? (partial user-authorized-for-job? conn is-authorized-fn ctx)]
     (if (every? authorized? uuids)
       true
       [false {::error (str "You are not authorized to view access the following jobs "
