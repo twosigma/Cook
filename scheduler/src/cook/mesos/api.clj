@@ -80,8 +80,8 @@
 ;; /rawscheduler
 ;;
 
-(defn prepare-schema-response
-  "Takes a schema and outputs a new schema which conforms to our responses.
+(defn prepare-external-schema
+  "Takes a schema and outputs a new schema which conforms to the external API.
 
    Modifications:
    1. changes keys to snake_case"
@@ -92,28 +92,28 @@
                 (->snake_case k)))
             schema))
 
-(def PosNum
+(s/defschema PosNum
   (s/both s/Num (s/pred pos? 'pos?)))
 
-(def PosInt
+(s/defschema PosInt
   (s/both s/Int (s/pred pos? 'pos?)))
 
-(def NonNegInt
+(s/defschema NonNegInt
   (s/both s/Int (s/pred (comp not neg?) 'non-negative?)))
 
-(def PosDouble
+(s/defschema PosDouble
   (s/both double (s/pred pos? 'pos?)))
 
-(def NonEmptyString
+(s/defschema NonEmptyString
   (s/both s/Str (s/pred #(not (zero? (count %))) 'not-empty-string)))
 
-(def PortMapping
+(s/defschema PortMapping
   "Schema for Docker Portmapping"
   {:host-port (s/both s/Int (s/pred #(<= 0 % 65536) 'between-0-and-65536))
    :container-port (s/both s/Int (s/pred #(<= 0 % 65536) 'between-0-and-65536))
    (s/optional-key :protocol) s/Str})
 
-(def DockerInfo
+(s/defschema DockerInfo
   "Schema for a DockerInfo"
   {:image s/Str
    (s/optional-key :network) s/Str
@@ -121,26 +121,26 @@
    (s/optional-key :parameters) [{:key s/Str :value s/Str}]
    (s/optional-key :port-mapping) [PortMapping]})
 
-(def Volume
+(s/defschema Volume
   "Schema for a Volume"
   {(s/optional-key :container-path) s/Str
    :host-path s/Str
    (s/optional-key :mode) s/Str})
 
-(def Container
+(s/defschema Container
   "Schema for a Mesos Container"
   {:type s/Str
    (s/optional-key :docker) DockerInfo
    (s/optional-key :volumes) [Volume]})
 
-(def Uri
+(s/defschema Uri
   "Schema for a Mesos fetch URI, which has many options"
   {:value s/Str
    (s/optional-key :executable?) s/Bool
    (s/optional-key :extract?) s/Bool
    (s/optional-key :cache?) s/Bool})
 
-(def UriRequest
+(s/defschema UriRequest
   "Schema for a Mesos fetch URI as it would be included in JSON requests
   or responses.  Avoids question-marks in the key names."
   {:value s/Str
@@ -148,7 +148,7 @@
    (s/optional-key :extract) s/Bool
    (s/optional-key :cache) s/Bool})
 
-(def Instance
+(s/defschema Instance
   "Schema for a description of a single job instance."
   {:status s/Str
    :task_id s/Uuid
@@ -165,7 +165,7 @@
    (s/optional-key :cancelled) s/Bool
    (s/optional-key :reason_string) s/Str})
 
-(def Job
+(s/defschema Job
   "A schema for a job"
   {:uuid s/Uuid
    :command s/Str
@@ -188,7 +188,7 @@
    ;; a lower case character or a digit, and has length between 2 to (62 + 2).
    :user (s/both s/Str (s/pred #(re-matches #"\A[a-z][a-z0-9_-]{0,62}[a-z0-9]\z" %) 'lowercase-alphanum?))})
 
-(def JobRequest
+(s/defschema JobRequest
   "Schema for the part of a request that launches a single job."
   (-> Job
     ;; make max-runtime optional.
@@ -200,9 +200,10 @@
             (s/optional-key :labels) {s/Keyword s/Str}
             (s/optional-key :max-runtime) PosInt
             :cpus PosNum
-            :mem PosNum})))
+            :mem PosNum})
+    prepare-external-schema))
 
-(def JobResponse
+(s/defschema JobResponse
   "Schema for a description of a job (as returned by the API).
   The structure is similar to JobRequest, but has some differences.
   For example, it can include descriptions of instances for the job."
@@ -215,67 +216,97 @@
               :submit-time PosInt
               :retries-remaining NonNegInt
               (s/optional-key :groups) [s/Uuid]
+              (s/optional-key :ports) s/Int
               (s/optional-key :gpus) s/Int
               (s/optional-key :instances) [Instance]})
-      prepare-schema-response))
+      prepare-external-schema))
 
-(def JobOrInstanceIds
+(s/defschema JobOrInstanceIds
   "Schema for any number of job and/or instance uuids"
   {(s/optional-key :job) [s/Uuid]
    (s/optional-key :instance) [s/Uuid]})
 
-(def Attribute-Equals-Parameters
+(s/defschema Attribute-Equals-Parameters
   "A schema for the parameters of a host placement with type attribute-equals"
   {:attribute s/Str})
 
-(def HostPlacement
+(s/defschema AttributeEqualsHostPlacement
+  {:type (s/eq :attribute-equals)
+   :parameters Attribute-Equals-Parameters})
+
+(s/defschema DefaultHostPlacement
+  {:type (s/pred #(contains? (set (map util/without-ns host-placement-types)) %)
+           'host-placement-type-exists?)
+   (s/optional-key :parameters) {}})
+
+(s/defschema HostPlacement
   "A schema for host placement"
   (s/conditional
-    #(= (:type %) :attribute-equals)
-      {:type (s/eq :attribute-equals)
-       :parameters Attribute-Equals-Parameters}
-    :else
-      {:type (s/pred #(contains? (set (map util/without-ns host-placement-types)) %)
-                     'host-placement-type-exists?)
-       (s/optional-key :parameters) {}}))
+    #(= (:type %) :attribute-equals) AttributeEqualsHostPlacement
+    :else DefaultHostPlacement))
 
-(def Quantile-Deviation-Parameters
+(s/defschema Quantile-Deviation-Parameters
   {:multiplier (s/both s/Num (s/pred #(> % 1.0) 'greater-than-one))
    :quantile (s/both s/Num (s/pred #(< 0.0 % 1.0) 'between-zero-one))})
 
-(def StragglerHandling
+(s/defschema QuantileDeviationStragglerHandler
+  {:type (s/eq :quantile-deviation)
+   :parameters Quantile-Deviation-Parameters})
+
+(s/defschema DefaultStragglerHandler
+  {:type (s/pred #(contains? (set (map util/without-ns straggler-handling-types)) %)
+           'straggler-handling-type-exists?)
+   (s/optional-key :parameters) {}})
+
+(s/defschema StragglerHandling
   "A schema for host placement"
   (s/conditional
-    #(= (:type %) :quantile-deviation)
-      {:type (s/eq :quantile-deviation)
-       :parameters Quantile-Deviation-Parameters}
-    :else
-      {:type (s/pred #(contains? (set (map util/without-ns straggler-handling-types)) %)
-                     'straggler-handling-type-exists?)
-       (s/optional-key :parameters) {}}))
+    #(= (:type %) :quantile-deviation) QuantileDeviationStragglerHandler
+    :else DefaultStragglerHandler))
 
-(def Group
+(s/defschema Group
   "A schema for a job group"
   {:uuid s/Uuid
    (s/optional-key :host-placement) HostPlacement
    (s/optional-key :straggler-handling) StragglerHandling
    (s/optional-key :name) s/Str})
 
-(def GroupResponse
-  "A schema for a group http response"
+(s/defschema HostPlacementAndStragglerHandlingResponse
+  {:type s/Str
+   (s/optional-key :parameters) {}})
+
+(s/defschema GroupRequest
+  "A schema for a job group"
   (-> Group
+    ;; the conditional schemas used in HostPlacement and StragglerHanding
+    ;; cause compojure API to generate an invalid swagger specification,
+    ;; which breaks the python API client.
+    (dissoc :host-placement)
+    (dissoc :straggler-handling)
+    (merge
+      {(s/optional-key :host-placement) HostPlacementAndStragglerHandlingResponse
+       (s/optional-key :straggler-handling) HostPlacementAndStragglerHandlingResponse})
+    prepare-external-schema))
+
+(s/defschema GroupResponse
+  "A schema for a group http response"
+  (-> GroupRequest
       (merge
         {:jobs [s/Uuid]
           (s/optional-key :waiting) s/Int
           (s/optional-key :running) s/Int
           (s/optional-key :completed) s/Int})
-      prepare-schema-response))
+      prepare-external-schema))
 
-(def RawSchedulerRequest
+(s/defschema RawSchedulerRequest
   "Schema for a request to the raw scheduler endpoint."
   {:jobs [JobRequest]
-   (s/optional-key :groups) [Group]})
+   (s/optional-key :groups) [GroupRequest]})
 
+(s/defschema RawSchedulerResponse
+  "Schema for a response from the raw scheduler endpoint."
+  {:jobs [s/Uuid]
+   (s/optional-key :groups) [s/Uuid]})
 
 (defn- mk-container-params
   "Helper for build-container.  Transforms parameters into the datomic schema."
@@ -503,15 +534,15 @@
   "Takes the user, the parsed json from the job and a list of the uuids of
    new-groups (submitted in the same request as the job). Returns proper Job
    objects, or else throws an exception"
-  [db user task-constraints gpu-enabled? new-group-uuids
-   {:keys [cpus mem gpus uuid command priority max-retries max-runtime name
-           uris ports env labels container group]
-    :or {group nil}
-    :as job}
+  [db user task-constraints gpu-enabled? new-group-uuids job
    & {:keys [commit-latch-id override-group-immutability?]
       :or {commit-latch-id nil
            override-group-immutability? false}}]
-  (let [group-uuid (when group group)
+  (let [{:keys [cpus mem gpus uuid command priority max-retries max-runtime name
+                uris ports env labels container group]
+         :or {group nil}
+         :as job} (map-keys ->kebab-case job)
+        group-uuid (when group group)
         munged (merge
                  {:user user
                   :uuid uuid
@@ -580,13 +611,14 @@
   "Takes the parsed json from the group and returns proper Group objects, or else throws an
    exception"
   [db group]
-  (let [group-name (:name group)
-        hp (:host-placement group)
+  (let [group (map-keys ->kebab-case group)
+        group-name (:name group)
+        hp (some-> group :host-placement (update :type keyword))
+        sh (some-> group :straggler-handling (update :type keyword))
         group (-> group
                   (assoc :name (or group-name "cookgroup"))
                   (assoc :host-placement (or hp (make-default-host-placement)))
-                  (assoc :straggler-handling (or (:straggler-handling group)
-                                                 default-straggler-handling)))]
+                  (assoc :straggler-handling (or sh default-straggler-handling)))]
     (s/validate Group group)
     (when (group-exists? db (:uuid group))
       (throw (ex-info (str "Group UUID " (:uuid group) " already used") {:uuid group})))
@@ -834,27 +866,22 @@
 (def cook-coercer
   (constantly
     (-> c-mw/default-coercion-matchers
-      (update :body
-              (fn [their-matchers]
-                (fn [s]
-                  (or (their-matchers s)
-                      (get {;; can't use form->kebab-case because env and label
-                            ;; accept arbitrary kvs
-                            JobRequest (partial map-keys ->kebab-case)
-                            Group (partial map-keys ->kebab-case)
-                            HostPlacement (fn [hp]
-                                            (update hp :type keyword))
-                            StragglerHandling (fn [sh]
-                                                (update sh :type keyword))}
-                           s)))))
+      (update :string
+        (fn [their-matchers]
+          (fn [s]
+            (or
+              (get {Boolean (comp boolean #{true "true" "True" 1})} s)
+              (their-matchers s)))))
       (update :response
-              (fn [their-matchers]
-                (fn [s]
-                  (or (their-matchers s)
-                      (get {JobResponse (partial map-keys ->snake_case)
-                            GroupResponse (partial map-keys ->snake_case)
-                            s/Uuid str}
-                           s))))))))
+        (fn [their-matchers]
+          (fn [s]
+            (or
+              (their-matchers s)
+              (get {JobResponse (partial map-keys ->snake_case)
+                    GroupResponse (partial map-keys ->snake_case)
+                    HostPlacementAndStragglerHandlingResponse #(update % :type name)
+                    s/Uuid str}
+                s))))))))
 
 (def override-group-str "override-group-immutability")
 
@@ -933,12 +960,8 @@
                         [false {::error (str e)}])))
     :post! (fn [ctx]
              ;; We did the actual logic in processable?, so there's nothing left to do
-             {::results (str/join \space (concat ["submitted jobs"]
-                                                 (map (comp str :uuid) (::jobs ctx))
-                                                 (if (not (empty? (::groups ctx)))
-                                                   (concat ["submitted groups"]
-                                                           (map (comp str :uuid) (::groups ctx))))))})
-
+             {::results {:jobs (map (comp str :uuid) (::jobs ctx))
+                         :groups (map (comp str :uuid) (::groups ctx))}})
     :handle-created (fn [ctx] (::results ctx))}))
 
 
@@ -1057,10 +1080,11 @@
 
 (def ReadRetriesRequest
   {:job [s/Uuid]})
+
 (def UpdateRetriesRequest
   {(s/optional-key :jobs) [s/Uuid]
-   (s/optional-key :retries) PosNum
-   (s/optional-key :increment) PosNum})
+   (s/optional-key :retries) PosInt
+   (s/optional-key :increment) PosInt})
 
 (defn display-retries
   [conn ctx]
@@ -1192,7 +1216,9 @@
 
 (defn set-limit-params
   [limit-type]
-  {:body-params (merge UserParam {limit-type {s/Keyword s/Num}})})
+  {:body-params (with-meta
+                  (merge UserParam {limit-type {s/Keyword s/Num}})
+                  {:name (name limit-type)})})
 
 (defn retrieve-user-limit
   [get-limit-fn conn ctx]
@@ -1384,8 +1410,10 @@
                          403 {:description "The supplied UUIDs don't correspond to valid jobs."}}
              :handler (read-jobs-handler conn fid task-constraints gpu-enabled? is-authorized-fn)}
        :post {:summary "Schedules one or more jobs."
-              :parameters {:body-params RawSchedulerRequest}
-              :responses {200 {:schema [JobResponse]}}
+              :parameters {:body-params (with-meta RawSchedulerRequest {:name "rawrequest"})}
+              :responses {201 {:schema (with-meta RawSchedulerResponse {:name "rawresponse"})}
+                          400 {:schema {}
+                               :description "Malformed request."}}
               :handler (create-jobs-handler conn fid task-constraints gpu-enabled? is-authorized-fn)}
        :delete {:summary "Cancels jobs, halting execution when possible."
                 :responses {204 {:description "The jobs have been marked for termination."}
@@ -1447,7 +1475,7 @@
                          404 {:description "The UUID doesn't correspond to a job."}}}
        :put
        {:summary "Change a job's retry count"
-        :parameters {:body-params UpdateRetriesRequest}
+        :parameters {:body-params (with-meta UpdateRetriesRequest {:name "retry"})}
         :handler (put-retries-handler conn is-authorized-fn task-constraints)
         :responses {201 {:schema PosInt
                          :description "The number of retries for the jobs."}
@@ -1456,7 +1484,7 @@
                     404 {:description "Unrecognized job UUID."}}}
        :post
        {:summary "Change a job's retry count (deprecated)"
-        :parameters {:body-params UpdateRetriesRequest}
+        :parameters {:body-params (with-meta UpdateRetriesRequest {:name "retry"})}
         :handler (post-retries-handler conn is-authorized-fn task-constraints)
         :responses {201 {:schema PosInt
                          :description "The number of retries for the job"}
@@ -1467,7 +1495,7 @@
      (c-api/resource
       {:get {:summary "Returns info about a set of groups"
              :parameters {:query-params {:uuid [s/Uuid] (s/optional-key :detailed) s/Bool}}
-             :responses {200 {:schema [GroupResponse]
+             :responses {200 {:schema (with-meta [GroupResponse] {:name "groups"})
                               :description "The groups were returned."}
                          400 {:description "Non-UUID values were passed."}
                          403 {:description "The supplied UUIDs don't correspond to valid groups."}}
