@@ -154,17 +154,6 @@
          (.start curator-framework)
          curator-framework)))
 
-(def jet-runner
-  "This is the jet server constructor. It could be cool."
-  (fnk [[:settings server-port]]
-       (fn [handler]
-         (let [jetty ((lazy-load-var 'qbits.jet.server/run-jetty)
-                      {:port server-port
-                       :ring-handler handler
-                       :join? false
-                       :max-threads 200})]
-           (fn [] (.stop jetty))))))
-
 (defn tell-jetty-about-usename [h]
   "Our auth in cook.spnego doesn't hook in to Jetty - this handler
   does so to make sure it's available for Jetty to log"
@@ -231,7 +220,8 @@
                                                        instrument)
                                      :join? false
                                      :configurator configure-jet-logging
-                                     :max-threads 200})]
+                                     :max-threads 200
+                                     :request-header-size 32768})]
                          (fn [] (.stop jetty))))
 
      :framework-id (fnk [curator-framework [:settings mesos-leader-path]]
