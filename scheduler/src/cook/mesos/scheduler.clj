@@ -455,7 +455,8 @@
    A schedule is just a sorted list of tasks, and we're going to greedily assign them to
    the offer.
 
-   Returns a list of tasks that got matched to the offer"
+   Returns {:matched (list of tasks that got matched to the offer)
+            :failures (list of unmatched tasks, and why they weren't matched)}"
   [^TaskScheduler fenzo considerable offers]
   (log/debug "Matching" (count offers) "offers to" (count considerable) "jobs with fenzo")
   (log/debug "offers to scheduleOnce" offers)
@@ -485,11 +486,12 @@
               f (.getFailures failure)]
         (log/debug (str f)))
       (log/debug "Task placement failure information concluded."))
-    (mapv (fn [assignment]
-            {:leases (.getLeasesUsed assignment)
-             :tasks (.getTasksAssigned assignment)
-             :hostname (.getHostname assignment)})
-          assignments)))
+    {:matches (mapv (fn [assignment]
+                      {:leases (.getLeasesUsed assignment)
+                       :tasks (.getTasksAssigned assignment)
+                       :hostname (.getHostname assignment)})
+                    assignments)
+     :failures failure-results}))
 
 (meters/defmeter [cook-mesos scheduler scheduler-offer-declined])
 
@@ -694,9 +696,9 @@
                                             handle-resource-offer!-considerable-jobs-duration
                                             (category->pending-jobs->category->considerable-jobs
                                               db category->pending-jobs user->quota user->usage num-considerable))
-              matches (timers/time!
-                        handle-resource-offer!-match-duration
-                        (match-offer-to-schedule fenzo (apply concat (vals category->considerable-jobs)) offers))
+              {:keys [matches failures]} (timers/time!
+                                          handle-resource-offer!-match-duration
+                                          (match-offer-to-schedule fenzo (apply concat (vals category->considerable-jobs)) offers))
               _ (log/debug "got matches:" matches)
               offers-scheduled (for [{:keys [leases]} matches
                                      lease leases]
