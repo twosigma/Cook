@@ -18,7 +18,7 @@
  (:require [cook.mesos.dru :as dru]
            [cook.mesos.util :as util]
            [cook.mesos.share :as share]
-           [cook.test.mesos.schema :as schema :refer (restore-fresh-database! create-dummy-job create-dummy-instance)]
+           [cook.test.testutil :refer (restore-fresh-database! create-dummy-job create-dummy-instance)]
            [plumbing.core :refer [map-vals]]
            [datomic.api :as d :refer (q db)]))
 
@@ -29,15 +29,15 @@
 
   (testing "test1"
     (let [datomic-uri "datomic:mem://test-score-tasks"
-          conn (schema/restore-fresh-database! datomic-uri)
-          job1 (schema/create-dummy-job conn :user "ljin" :memory 10.0 :ncpus 10.0)
-          job2 (schema/create-dummy-job conn :user "ljin" :memory 5.0  :ncpus 5.0)
-          job3 (schema/create-dummy-job conn :user "ljin" :memory 15.0 :ncpus 25.0)
-          job4 (schema/create-dummy-job conn :user "ljin" :memory 25.0 :ncpus 15.0)
-          task1 (schema/create-dummy-instance conn job1 :instance-status :instance.status/running)
-          task2 (schema/create-dummy-instance conn job2 :instance-status :instance.status/running)
-          task3 (schema/create-dummy-instance conn job3 :instance-status :instance.status/running)
-          task4 (schema/create-dummy-instance conn job4 :instance-status :instance.status/running)
+          conn (restore-fresh-database! datomic-uri)
+          job1 (create-dummy-job conn :user "ljin" :memory 10.0 :ncpus 10.0)
+          job2 (create-dummy-job conn :user "ljin" :memory 5.0  :ncpus 5.0)
+          job3 (create-dummy-job conn :user "ljin" :memory 15.0 :ncpus 25.0)
+          job4 (create-dummy-job conn :user "ljin" :memory 25.0 :ncpus 15.0)
+          task1 (create-dummy-instance conn job1 :instance-status :instance.status/running)
+          task2 (create-dummy-instance conn job2 :instance-status :instance.status/running)
+          task3 (create-dummy-instance conn job3 :instance-status :instance.status/running)
+          task4 (create-dummy-instance conn job4 :instance-status :instance.status/running)
           task-ent1 (d/entity (d/db conn) task1)
           task-ent2 (d/entity (d/db conn) task2)
           task-ent3 (d/entity (d/db conn) task3)
@@ -56,12 +56,12 @@
 (deftest test-init-dru-divisors
   (testing "test1"
     (let [datomic-uri "datomic:mem://test-init-dru-divisors"
-          conn (schema/restore-fresh-database! datomic-uri)
-          job1 (schema/create-dummy-job conn :user "ljin" :memory 10.0 :ncpus 10.0)
-          job2 (schema/create-dummy-job conn :user "wzhao" :memory 10.0 :ncpus 10.0)
-          job3 (schema/create-dummy-job conn :user "sunil" :memory 10.0 :ncpus 10.0)
-          task1 (schema/create-dummy-instance conn job1 :instance-status :instance.status/running)
-          task2 (schema/create-dummy-instance conn job2 :instance-status :instance.status/running)
+          conn (restore-fresh-database! datomic-uri)
+          job1 (create-dummy-job conn :user "ljin" :memory 10.0 :ncpus 10.0)
+          job2 (create-dummy-job conn :user "wzhao" :memory 10.0 :ncpus 10.0)
+          job3 (create-dummy-job conn :user "sunil" :memory 10.0 :ncpus 10.0)
+          task1 (create-dummy-instance conn job1 :instance-status :instance.status/running)
+          task2 (create-dummy-instance conn job2 :instance-status :instance.status/running)
           db (d/db conn)
           running-task-ents (util/get-running-task-ents db)
           pending-job-ents [(d/entity db job3)]]
@@ -74,15 +74,15 @@
 (deftest test-sorted-task-scored-task-pairs
   (testing "dru order correct"
     (let [datomic-uri "datomic:mem://test-init-task_scored-task"
-          conn (schema/restore-fresh-database! datomic-uri)
-          jobs [(schema/create-dummy-job conn :user "ljin" :memory 10.0 :ncpus 10.0)
-                (schema/create-dummy-job conn :user "ljin" :memory 5.0  :ncpus 5.0)
-                (schema/create-dummy-job conn :user "ljin" :memory 15.0 :ncpus 25.0)
-                (schema/create-dummy-job conn :user "ljin" :memory 25.0 :ncpus 15.0)
-                (schema/create-dummy-job conn :user "wzhao" :memory 10.0 :ncpus 10.0)
-                (schema/create-dummy-job conn :user "sunil" :memory 10.0 :ncpus 10.0)]
+          conn (restore-fresh-database! datomic-uri)
+          jobs [(create-dummy-job conn :user "ljin" :memory 10.0 :ncpus 10.0)
+                (create-dummy-job conn :user "ljin" :memory 5.0  :ncpus 5.0)
+                (create-dummy-job conn :user "ljin" :memory 15.0 :ncpus 25.0)
+                (create-dummy-job conn :user "ljin" :memory 25.0 :ncpus 15.0)
+                (create-dummy-job conn :user "wzhao" :memory 10.0 :ncpus 10.0)
+                (create-dummy-job conn :user "sunil" :memory 10.0 :ncpus 10.0)]
           tasks (doseq [job jobs]
-                  (schema/create-dummy-instance conn job :instance-status :instance.status/running))
+                  (create-dummy-instance conn job :instance-status :instance.status/running))
           db (d/db conn)
           task-ents (util/get-running-task-ents db)]
       (let [share {:mem 10.0 :cpus 10.0}

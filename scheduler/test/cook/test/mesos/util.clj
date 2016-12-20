@@ -16,7 +16,7 @@
 (ns cook.test.mesos.util
  (:use clojure.test)
  (:require [cook.mesos.util :as util]
-           [cook.test.mesos.schema :refer (restore-fresh-database! create-dummy-job create-dummy-instance)]
+           [cook.test.testutil :as testutil :refer (create-dummy-instance create-dummy-job restore-fresh-database!)]
            [datomic.api :as d :refer (q db)]))
 
 (deftest test-get-pending-job-ents

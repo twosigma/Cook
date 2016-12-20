@@ -9,6 +9,7 @@
              :task-constraints {:timeout-hours 1
                                 :timeout-interval-minutes 1
                                 :memory-gb 48
+                                :retry-limit 15
                                 :cpus 6}}
  :rebalancer {:dru-scale 1}
  :mesos {:master "zk://localhost:2181/mesos" ; Assuming Mesos is configured to use Zookeeper and is running locally

@@ -17,7 +17,7 @@
 (ns cook.test.mesos.heartbeat
   (:use clojure.test)
   (:require [cook.mesos.heartbeat :as heartbeat]
-            [cook.test.mesos.schema :as schema]
+            [cook.test.testutil :refer (restore-fresh-database! create-dummy-job create-dummy-instance)]
             [clj-time.core :as time]
             [clojure.core.async :as async]
             [datomic.api :as d :refer (q)]))
@@ -44,19 +44,19 @@
 (deftest test-sync-with-datomic
   (testing
     (let [datomic-uri "datomic:mem://test-sync-with-datomic"
-          conn (schema/restore-fresh-database! datomic-uri)
-          job-id-0 (schema/create-dummy-job conn)
-          job-id-1 (schema/create-dummy-job conn)
-          job-id-2 (schema/create-dummy-job conn :custom-executor? false)
+          conn (restore-fresh-database! datomic-uri)
+          job-id-0 (create-dummy-job conn)
+          job-id-1 (create-dummy-job conn)
+          job-id-2 (create-dummy-job conn :custom-executor? false)
           task-id-0 "task-0"
           task-id-1 "task-1"
           task-id-2 "task-2"
           ;; a task / an instance has been tracked.
-          instance-id-0 (schema/create-dummy-instance conn job-id-0 :instance-status :instance.status/running :task-id task-id-0)
+          instance-id-0 (create-dummy-instance conn job-id-0 :instance-status :instance.status/running :task-id task-id-0)
           ;; a task / an instance has not be tracked and it uses a custom executor by default
-          instance-id-1 (schema/create-dummy-instance conn job-id-1 :instance-status :instance.status/running :task-id task-id-1)
+          instance-id-1 (create-dummy-instance conn job-id-1 :instance-status :instance.status/running :task-id task-id-1)
           ;; a task / an instance has not be tracked but it does not use any custom executor.
-          instance-id-2 (schema/create-dummy-instance conn job-id-2 :instance-status :instance.status/running :task-id task-id-2)
+          instance-id-2 (create-dummy-instance conn job-id-2 :instance-status :instance.status/running :task-id task-id-2)
           test-db (d/db conn)
           timeout-ch-0 (async/chan)
           timeout-ch-1 (async/chan)

@@ -19,7 +19,7 @@
             [cook.mesos.util :as util]
             [cook.mesos.dru :as dru]
             [cook.mesos.rebalancer :as rebalancer :refer (->State)]
-            [cook.test.mesos.schema :as schema]
+            [cook.test.testutil :refer (restore-fresh-database! create-dummy-job create-dummy-instance)]
             [datomic.api :as d :refer (q)]
             [cook.mesos.share :as share]
             [clojure.test.check.generators :as gen]
@@ -28,24 +28,24 @@
 (deftest test-init-state
   (testing "test1"
     (let [datomic-uri "datomic:mem://test-init-state"
-          conn (schema/restore-fresh-database! datomic-uri)
-          job1 (schema/create-dummy-job conn :user "ljin" :memory 10.0 :ncpus 10.0)
-          job2 (schema/create-dummy-job conn :user "ljin" :memory 5.0  :ncpus 5.0)
-          job3 (schema/create-dummy-job conn :user "ljin" :memory 15.0 :ncpus 25.0)
-          job4 (schema/create-dummy-job conn :user "ljin" :memory 25.0 :ncpus 15.0)
-          job5 (schema/create-dummy-job conn :user "wzhao" :memory 8.0 :ncpus 8.0)
-          job6 (schema/create-dummy-job conn :user "wzhao" :memory 10.0 :ncpus 10.0)
-          job7 (schema/create-dummy-job conn :user "wzhao" :memory 10.0 :ncpus 10.0)
-          job8 (schema/create-dummy-job conn :user "wzhao" :memory 10.0 :ncpus 10.0)
+          conn (restore-fresh-database! datomic-uri)
+          job1 (create-dummy-job conn :user "ljin" :memory 10.0 :ncpus 10.0)
+          job2 (create-dummy-job conn :user "ljin" :memory 5.0  :ncpus 5.0)
+          job3 (create-dummy-job conn :user "ljin" :memory 15.0 :ncpus 25.0)
+          job4 (create-dummy-job conn :user "ljin" :memory 25.0 :ncpus 15.0)
+          job5 (create-dummy-job conn :user "wzhao" :memory 8.0 :ncpus 8.0)
+          job6 (create-dummy-job conn :user "wzhao" :memory 10.0 :ncpus 10.0)
+          job7 (create-dummy-job conn :user "wzhao" :memory 10.0 :ncpus 10.0)
+          job8 (create-dummy-job conn :user "wzhao" :memory 10.0 :ncpus 10.0)
 
-          task1 (schema/create-dummy-instance conn job1 :instance-status :instance.status/running)
-          task2 (schema/create-dummy-instance conn job2 :instance-status :instance.status/running)
-          task3 (schema/create-dummy-instance conn job3 :instance-status :instance.status/running)
-          task4 (schema/create-dummy-instance conn job4 :instance-status :instance.status/running)
-          task5 (schema/create-dummy-instance conn job5 :instance-status :instance.status/running)
-          task6 (schema/create-dummy-instance conn job6 :instance-status :instance.status/running)
-          task7 (schema/create-dummy-instance conn job7 :instance-status :instance.status/running)
-          task8 (schema/create-dummy-instance conn job8 :instance-status :instance.status/running)
+          task1 (create-dummy-instance conn job1 :instance-status :instance.status/running)
+          task2 (create-dummy-instance conn job2 :instance-status :instance.status/running)
+          task3 (create-dummy-instance conn job3 :instance-status :instance.status/running)
+          task4 (create-dummy-instance conn job4 :instance-status :instance.status/running)
+          task5 (create-dummy-instance conn job5 :instance-status :instance.status/running)
+          task6 (create-dummy-instance conn job6 :instance-status :instance.status/running)
+          task7 (create-dummy-instance conn job7 :instance-status :instance.status/running)
+          task8 (create-dummy-instance conn job8 :instance-status :instance.status/running)
 
           task-ent1 (d/entity (d/db conn) task1)
           task-ent2 (d/entity (d/db conn) task2)
@@ -85,29 +85,29 @@
 
 (deftest test-pending-normal-job-dru
   (testing "test1"
-    (let [datomic-uri "datomic:mem://test-rebalancer/compute-pending-normal-job-dru"
-          conn (schema/restore-fresh-database! datomic-uri)
-          job1 (schema/create-dummy-job conn :name "job1" :user "ljin" :memory 10.0 :ncpus 10.0)
-          job2 (schema/create-dummy-job conn :name "job2" :user "ljin" :memory 5.0  :ncpus 5.0)
-          job3 (schema/create-dummy-job conn :name "job3" :user "ljin" :memory 15.0 :ncpus 25.0)
-          job4 (schema/create-dummy-job conn :name "job4"  :user "ljin" :memory 25.0 :ucpus 15.0)
-          job5 (schema/create-dummy-job conn :name "job5" :user "wzhao" :memory 8.0 :ncpus 8.0)
-          job6 (schema/create-dummy-job conn :name "job6" :user "wzhao" :memory 10.0 :ncpus 10.0)
-          job7 (schema/create-dummy-job conn :name "job7" :user "wzhao" :memory 10.0 :ncpus 10.0)
-          job8 (schema/create-dummy-job conn :name "job8" :user "wzhao" :memory 10.0 :ncpus 10.0)
+    (let [datomic-uri "datomic:mem://test-compute-pending-job-dru"
+          conn (restore-fresh-database! datomic-uri)
+          job1 (create-dummy-job conn :name "job1" :user "ljin" :memory 10.0 :ncpus 10.0)
+          job2 (create-dummy-job conn :name "job2" :user "ljin" :memory 5.0  :ncpus 5.0)
+          job3 (create-dummy-job conn :name "job3" :user "ljin" :memory 15.0 :ncpus 25.0)
+          job4 (create-dummy-job conn :name "job4"  :user "ljin" :memory 25.0 :ucpus 15.0)
+          job5 (create-dummy-job conn :name "job5" :user "wzhao" :memory 8.0 :ncpus 8.0)
+          job6 (create-dummy-job conn :name "job6" :user "wzhao" :memory 10.0 :ncpus 10.0)
+          job7 (create-dummy-job conn :name "job7" :user "wzhao" :memory 10.0 :ncpus 10.0)
+          job8 (create-dummy-job conn :name "job8" :user "wzhao" :memory 10.0 :ncpus 10.0)
 
-          job9 (schema/create-dummy-job conn :name "job9" :user "wzhao" :memory 10.0 :ncpus 10.0)
-          job10 (schema/create-dummy-job conn :name "job10" :user "sunil" :memory 20.0 :ncpus 20.0)
-          job11 (schema/create-dummy-job conn :name "job11" :user "ljin" :memory 10.0 :ucpus 10.0)
+          job9 (create-dummy-job conn :name "job9" :user "wzhao" :memory 10.0 :ncpus 10.0)
+          job10 (create-dummy-job conn :name "job10" :user "sunil" :memory 20.0 :ncpus 20.0)
+          job11 (create-dummy-job conn :name "job11" :user "ljin" :memory 10.0 :ucpus 10.0)
 
-          task1 (schema/create-dummy-instance conn job1 :instance-status :instance.status/running)
-          task2 (schema/create-dummy-instance conn job2 :instance-status :instance.status/running)
-          task3 (schema/create-dummy-instance conn job3 :instance-status :instance.status/running)
-          task4 (schema/create-dummy-instance conn job4 :instance-status :instance.status/running)
-          task5 (schema/create-dummy-instance conn job5 :instance-status :instance.status/running)
-          task6 (schema/create-dummy-instance conn job6 :instance-status :instance.status/running)
-          task7 (schema/create-dummy-instance conn job7 :instance-status :instance.status/running)
-          task8 (schema/create-dummy-instance conn job8 :instance-status :instance.status/running)
+          task1 (create-dummy-instance conn job1 :instance-status :instance.status/running)
+          task2 (create-dummy-instance conn job2 :instance-status :instance.status/running)
+          task3 (create-dummy-instance conn job3 :instance-status :instance.status/running)
+          task4 (create-dummy-instance conn job4 :instance-status :instance.status/running)
+          task5 (create-dummy-instance conn job5 :instance-status :instance.status/running)
+          task6 (create-dummy-instance conn job6 :instance-status :instance.status/running)
+          task7 (create-dummy-instance conn job7 :instance-status :instance.status/running)
+          task8 (create-dummy-instance conn job8 :instance-status :instance.status/running)
 
           task-ent1 (d/entity (d/db conn) task1)
           task-ent2 (d/entity (d/db conn) task2)
@@ -130,28 +130,28 @@
 
 (deftest test-pending-gpu-job-dru
   (let [datomic-uri "datomic:mem://test-rebalancer/compute-pending-normal-job-dru"
-        conn (schema/restore-fresh-database! datomic-uri)
-        job1 (schema/create-dummy-job conn :name "job1" :user "ljin" :memory 10.0 :ncpus 10.0 :gpus 1.0)
-        job2 (schema/create-dummy-job conn :name "job2" :user "ljin" :memory 5.0  :ncpus 5.0 :gpus 1.0)
-        job3 (schema/create-dummy-job conn :name "job3" :user "ljin" :memory 15.0 :ncpus 25.0 :gpus 1.0)
-        job4 (schema/create-dummy-job conn :name "job4"  :user "ljin" :memory 25.0 :ucpus 15.0 :gpus 1.0)
-        job5 (schema/create-dummy-job conn :name "job5" :user "wzhao" :memory 8.0 :ncpus 8.0 :gpus 1.0)
-        job6 (schema/create-dummy-job conn :name "job6" :user "wzhao" :memory 10.0 :ncpus 10.0 :gpus 1.0)
-        job7 (schema/create-dummy-job conn :name "job7" :user "wzhao" :memory 10.0 :ncpus 10.0 :gpus 1.0)
-        job8 (schema/create-dummy-job conn :name "job8" :user "wzhao" :memory 10.0 :ncpus 10.0 :gpus 1.0)
+        conn (restore-fresh-database! datomic-uri)
+        job1 (create-dummy-job conn :name "job1" :user "ljin" :memory 10.0 :ncpus 10.0 :gpus 1.0)
+        job2 (create-dummy-job conn :name "job2" :user "ljin" :memory 5.0  :ncpus 5.0 :gpus 1.0)
+        job3 (create-dummy-job conn :name "job3" :user "ljin" :memory 15.0 :ncpus 25.0 :gpus 1.0)
+        job4 (create-dummy-job conn :name "job4"  :user "ljin" :memory 25.0 :ucpus 15.0 :gpus 1.0)
+        job5 (create-dummy-job conn :name "job5" :user "wzhao" :memory 8.0 :ncpus 8.0 :gpus 1.0)
+        job6 (create-dummy-job conn :name "job6" :user "wzhao" :memory 10.0 :ncpus 10.0 :gpus 1.0)
+        job7 (create-dummy-job conn :name "job7" :user "wzhao" :memory 10.0 :ncpus 10.0 :gpus 1.0)
+        job8 (create-dummy-job conn :name "job8" :user "wzhao" :memory 10.0 :ncpus 10.0 :gpus 1.0)
 
-        job9 (schema/create-dummy-job conn :name "job9" :user "wzhao" :memory 10.0 :ncpus 10.0 :gpus 1.0)
-        job10 (schema/create-dummy-job conn :name "job10" :user "sunil" :memory 20.0 :ncpus 20.0 :gpus 1.0)
-        job11 (schema/create-dummy-job conn :name "job11" :user "ljin" :memory 10.0 :ucpus 10.0 :gpus 2.0)
+        job9 (create-dummy-job conn :name "job9" :user "wzhao" :memory 10.0 :ncpus 10.0 :gpus 1.0)
+        job10 (create-dummy-job conn :name "job10" :user "sunil" :memory 20.0 :ncpus 20.0 :gpus 1.0)
+        job11 (create-dummy-job conn :name "job11" :user "ljin" :memory 10.0 :ucpus 10.0 :gpus 2.0)
 
-        task1 (schema/create-dummy-instance conn job1 :instance-status :instance.status/running)
-        task2 (schema/create-dummy-instance conn job2 :instance-status :instance.status/running)
-        task3 (schema/create-dummy-instance conn job3 :instance-status :instance.status/running)
-        task4 (schema/create-dummy-instance conn job4 :instance-status :instance.status/running)
-        task5 (schema/create-dummy-instance conn job5 :instance-status :instance.status/running)
-        task6 (schema/create-dummy-instance conn job6 :instance-status :instance.status/running)
-        task7 (schema/create-dummy-instance conn job7 :instance-status :instance.status/running)
-        task8 (schema/create-dummy-instance conn job8 :instance-status :instance.status/running)
+        task1 (create-dummy-instance conn job1 :instance-status :instance.status/running)
+        task2 (create-dummy-instance conn job2 :instance-status :instance.status/running)
+        task3 (create-dummy-instance conn job3 :instance-status :instance.status/running)
+        task4 (create-dummy-instance conn job4 :instance-status :instance.status/running)
+        task5 (create-dummy-instance conn job5 :instance-status :instance.status/running)
+        task6 (create-dummy-instance conn job6 :instance-status :instance.status/running)
+        task7 (create-dummy-instance conn job7 :instance-status :instance.status/running)
+        task8 (create-dummy-instance conn job8 :instance-status :instance.status/running)
 
         task-ent1 (d/entity (d/db conn) task1)
         task-ent2 (d/entity (d/db conn) task2)
@@ -177,52 +177,52 @@
 (deftest test-compute-preemption-decision
   (testing "test1"
     (let [datomic-uri "datomic:mem://test-compute-preemption-decision"
-          conn (schema/restore-fresh-database! datomic-uri)
-          job1 (schema/create-dummy-job conn :user "ljin" :memory 10.0 :ncpus 10.0)
-          job2 (schema/create-dummy-job conn :user "ljin" :memory 5.0  :ncpus 5.0)
-          job3 (schema/create-dummy-job conn :user "ljin" :memory 15.0 :ncpus 25.0)
-          job4 (schema/create-dummy-job conn :user "ljin" :memory 25.0 :ncpus 15.0)
-          job5 (schema/create-dummy-job conn :user "wzhao" :memory 8.0 :ncpus 8.0)
-          job6 (schema/create-dummy-job conn :user "wzhao" :memory 10.0 :ncpus 10.0)
-          job7 (schema/create-dummy-job conn :user "wzhao" :memory 10.0 :ncpus 10.0)
-          job8 (schema/create-dummy-job conn :user "wzhao" :memory 10.0 :ncpus 10.0)
+          conn (restore-fresh-database! datomic-uri)
+          job1 (create-dummy-job conn :user "ljin" :memory 10.0 :ncpus 10.0)
+          job2 (create-dummy-job conn :user "ljin" :memory 5.0  :ncpus 5.0)
+          job3 (create-dummy-job conn :user "ljin" :memory 15.0 :ncpus 25.0)
+          job4 (create-dummy-job conn :user "ljin" :memory 25.0 :ncpus 15.0)
+          job5 (create-dummy-job conn :user "wzhao" :memory 8.0 :ncpus 8.0)
+          job6 (create-dummy-job conn :user "wzhao" :memory 10.0 :ncpus 10.0)
+          job7 (create-dummy-job conn :user "wzhao" :memory 10.0 :ncpus 10.0)
+          job8 (create-dummy-job conn :user "wzhao" :memory 10.0 :ncpus 10.0)
 
-          job9 (schema/create-dummy-job conn :user "wzhao" :memory 15.0 :ncpus 15.0)
-          job10 (schema/create-dummy-job conn :user "sunil" :memory 15.0 :ncpus 15.0)
-          job11 (schema/create-dummy-job conn :user "ljin" :memory 15.0 :ncpus 15.0)
-          job12 (schema/create-dummy-job conn :user "sunil" :memory 40.0 :ncpus 40.0)
-          job13 (schema/create-dummy-job conn :user "sunil" :memory 45.0 :ncpus 45.0)
-          job14 (schema/create-dummy-job conn :user "sunil" :memory 80.0 :ncpus 80.0)
+          job9 (create-dummy-job conn :user "wzhao" :memory 15.0 :ncpus 15.0)
+          job10 (create-dummy-job conn :user "sunil" :memory 15.0 :ncpus 15.0)
+          job11 (create-dummy-job conn :user "ljin" :memory 15.0 :ncpus 15.0)
+          job12 (create-dummy-job conn :user "sunil" :memory 40.0 :ncpus 40.0)
+          job13 (create-dummy-job conn :user "sunil" :memory 45.0 :ncpus 45.0)
+          job14 (create-dummy-job conn :user "sunil" :memory 80.0 :ncpus 80.0)
 
-          task1 (schema/create-dummy-instance conn
+          task1 (create-dummy-instance conn
                                              job1
                                              :instance-status :instance.status/running
                                              :hostname "hostA")
-          task2 (schema/create-dummy-instance conn
+          task2 (create-dummy-instance conn
                                              job2
                                              :instance-status :instance.status/running
                                              :hostname "hostA")
-          task3 (schema/create-dummy-instance conn
+          task3 (create-dummy-instance conn
                                              job3
                                              :instance-status :instance.status/running
                                              :hostname "hostB")
-          task4 (schema/create-dummy-instance conn
+          task4 (create-dummy-instance conn
                                              job4
                                              :instance-status :instance.status/running
                                              :hostname "hostB")
-          task5 (schema/create-dummy-instance conn
+          task5 (create-dummy-instance conn
                                              job5
                                              :instance-status :instance.status/running
                                              :hostname "hostA")
-          task6 (schema/create-dummy-instance conn
+          task6 (create-dummy-instance conn
                                              job6
                                              :instance-status :instance.status/running
                                              :hostname "hostB")
-          task7 (schema/create-dummy-instance conn
+          task7 (create-dummy-instance conn
                                              job7
                                              :instance-status :instance.status/running
                                              :hostname "hostA")
-          task8 (schema/create-dummy-instance conn
+          task8 (create-dummy-instance conn
                                              job8
                                              :instance-status :instance.status/running
                                              :hostname "hostB")
@@ -372,52 +372,52 @@
 (deftest test-next-state
   (testing "test1"
     (let [datomic-uri "datomic:mem://test-next-state"
-          conn (schema/restore-fresh-database! datomic-uri)
-          job1 (schema/create-dummy-job conn :user "ljin" :memory 10.0 :ncpus 10.0)
-          job2 (schema/create-dummy-job conn :user "ljin" :memory 5.0  :ncpus 5.0)
-          job3 (schema/create-dummy-job conn :user "ljin" :memory 15.0 :ncpus 25.0)
-          job4 (schema/create-dummy-job conn :user "ljin" :memory 25.0 :ncpus 15.0)
-          job5 (schema/create-dummy-job conn :user "wzhao" :memory 8.0 :ncpus 8.0)
-          job6 (schema/create-dummy-job conn :user "wzhao" :memory 10.0 :ncpus 10.0)
-          job7 (schema/create-dummy-job conn :user "wzhao" :memory 10.0 :ncpus 10.0)
-          job8 (schema/create-dummy-job conn :user "wzhao" :memory 10.0 :ncpus 10.0)
+          conn (restore-fresh-database! datomic-uri)
+          job1 (create-dummy-job conn :user "ljin" :memory 10.0 :ncpus 10.0)
+          job2 (create-dummy-job conn :user "ljin" :memory 5.0  :ncpus 5.0)
+          job3 (create-dummy-job conn :user "ljin" :memory 15.0 :ncpus 25.0)
+          job4 (create-dummy-job conn :user "ljin" :memory 25.0 :ncpus 15.0)
+          job5 (create-dummy-job conn :user "wzhao" :memory 8.0 :ncpus 8.0)
+          job6 (create-dummy-job conn :user "wzhao" :memory 10.0 :ncpus 10.0)
+          job7 (create-dummy-job conn :user "wzhao" :memory 10.0 :ncpus 10.0)
+          job8 (create-dummy-job conn :user "wzhao" :memory 10.0 :ncpus 10.0)
 
-          job9 (schema/create-dummy-job conn :user "wzhao" :memory 15.0 :ncpus 15.0)
-          job10 (schema/create-dummy-job conn :user "sunil" :memory 15.0 :ncpus 15.0)
-          job11 (schema/create-dummy-job conn :user "ljin" :memory 15.0 :ncpus 15.0)
-          job12 (schema/create-dummy-job conn :user "sunil" :memory 40.0 :ncpus 40.0)
-          job13 (schema/create-dummy-job conn :user "sunil" :memory 45.0 :ncpus 45.0)
-          job14 (schema/create-dummy-job conn :user "sunil" :memory 80.0 :ncpus 80.0)
+          job9 (create-dummy-job conn :user "wzhao" :memory 15.0 :ncpus 15.0)
+          job10 (create-dummy-job conn :user "sunil" :memory 15.0 :ncpus 15.0)
+          job11 (create-dummy-job conn :user "ljin" :memory 15.0 :ncpus 15.0)
+          job12 (create-dummy-job conn :user "sunil" :memory 40.0 :ncpus 40.0)
+          job13 (create-dummy-job conn :user "sunil" :memory 45.0 :ncpus 45.0)
+          job14 (create-dummy-job conn :user "sunil" :memory 80.0 :ncpus 80.0)
 
-          task1 (schema/create-dummy-instance conn
-                                             job1
-                                             :instance-status :instance.status/running
-                                             :hostname "hostA")
-          task2 (schema/create-dummy-instance conn
+          task1 (create-dummy-instance conn
+                                       job1
+                                       :instance-status :instance.status/running
+                                       :hostname "hostA")
+          task2 (create-dummy-instance conn
                                              job2
                                              :instance-status :instance.status/running
                                              :hostname "hostA")
-          task3 (schema/create-dummy-instance conn
+          task3 (create-dummy-instance conn
                                              job3
                                              :instance-status :instance.status/running
                                              :hostname "hostB")
-          task4 (schema/create-dummy-instance conn
+          task4 (create-dummy-instance conn
                                              job4
                                              :instance-status :instance.status/running
                                              :hostname "hostB")
-          task5 (schema/create-dummy-instance conn
+          task5 (create-dummy-instance conn
                                              job5
                                              :instance-status :instance.status/running
                                              :hostname "hostA")
-          task6 (schema/create-dummy-instance conn
+          task6 (create-dummy-instance conn
                                              job6
                                              :instance-status :instance.status/running
                                              :hostname "hostB")
-          task7 (schema/create-dummy-instance conn
+          task7 (create-dummy-instance conn
                                              job7
                                              :instance-status :instance.status/running
                                              :hostname "hostA")
-          task8 (schema/create-dummy-instance conn
+          task8 (create-dummy-instance conn
                                              job8
                                              :instance-status :instance.status/running
                                              :hostname "hostB")
@@ -523,56 +523,56 @@
 (deftest test-rebalance
   (testing "test1"
     (let [datomic-uri "datomic:mem://test-rebalance"
-          conn (schema/restore-fresh-database! datomic-uri)
-          job1 (schema/create-dummy-job conn :user "ljin" :memory 10.0 :ncpus 10.0)
-          job2 (schema/create-dummy-job conn :user "ljin" :memory 5.0  :ncpus 5.0)
-          job3 (schema/create-dummy-job conn :user "ljin" :memory 15.0 :ncpus 25.0)
-          job4 (schema/create-dummy-job conn :user "ljin" :memory 25.0 :ncpus 15.0)
-          job5 (schema/create-dummy-job conn :user "wzhao" :memory 8.0 :ncpus 8.0)
-          job6 (schema/create-dummy-job conn :user "wzhao" :memory 10.0 :ncpus 10.0)
-          job7 (schema/create-dummy-job conn :user "wzhao" :memory 10.0 :ncpus 10.0)
-          job8 (schema/create-dummy-job conn :user "wzhao" :memory 10.0 :ncpus 10.0)
+          conn (restore-fresh-database! datomic-uri)
+          job1 (create-dummy-job conn :user "ljin" :memory 10.0 :ncpus 10.0)
+          job2 (create-dummy-job conn :user "ljin" :memory 5.0  :ncpus 5.0)
+          job3 (create-dummy-job conn :user "ljin" :memory 15.0 :ncpus 25.0)
+          job4 (create-dummy-job conn :user "ljin" :memory 25.0 :ncpus 15.0)
+          job5 (create-dummy-job conn :user "wzhao" :memory 8.0 :ncpus 8.0)
+          job6 (create-dummy-job conn :user "wzhao" :memory 10.0 :ncpus 10.0)
+          job7 (create-dummy-job conn :user "wzhao" :memory 10.0 :ncpus 10.0)
+          job8 (create-dummy-job conn :user "wzhao" :memory 10.0 :ncpus 10.0)
 
-          job9 (schema/create-dummy-job conn :user "wzhao" :memory 15.0 :ncpus 15.0)
-          job10 (schema/create-dummy-job conn :user "sunil" :memory 15.0 :ncpus 15.0)
-          job11 (schema/create-dummy-job conn :user "ljin" :memory 15.0 :ncpus 15.0)
-          job12 (schema/create-dummy-job conn :user "sunil" :memory 15.0 :ncpus 15.0)
-          job13 (schema/create-dummy-job conn :user "sunil" :memory 15.0 :ncpus 15.0)
-          job14 (schema/create-dummy-job conn :user "sunil" :memory 15.0 :ncpus 15.0)
+          job9 (create-dummy-job conn :user "wzhao" :memory 15.0 :ncpus 15.0)
+          job10 (create-dummy-job conn :user "sunil" :memory 15.0 :ncpus 15.0)
+          job11 (create-dummy-job conn :user "ljin" :memory 15.0 :ncpus 15.0)
+          job12 (create-dummy-job conn :user "sunil" :memory 15.0 :ncpus 15.0)
+          job13 (create-dummy-job conn :user "sunil" :memory 15.0 :ncpus 15.0)
+          job14 (create-dummy-job conn :user "sunil" :memory 15.0 :ncpus 15.0)
 
-          task1 (schema/create-dummy-instance conn
-                                             job1
-                                             :instance-status :instance.status/running
-                                             :hostname "hostA")
-          task2 (schema/create-dummy-instance conn
-                                             job2
-                                             :instance-status :instance.status/running
-                                             :hostname "hostA")
-          task3 (schema/create-dummy-instance conn
-                                             job3
-                                             :instance-status :instance.status/running
-                                             :hostname "hostB")
-          task4 (schema/create-dummy-instance conn
-                                             job4
-                                             :instance-status :instance.status/running
-                                             :hostname "hostB")
-          task5 (schema/create-dummy-instance conn
-                                             job5
-                                             :instance-status :instance.status/running
-                                             :hostname "hostA")
-          task6 (schema/create-dummy-instance conn
-                                             job6
-                                             :instance-status :instance.status/running
-                                             :hostname "hostB")
-          task7 (schema/create-dummy-instance conn
-                                             job7
-                                             :instance-status :instance.status/running
-                                             :hostname "hostA")
-          task8 (schema/create-dummy-instance conn
-                                             job8
-                                             :instance-status :instance.status/running
-                                             :hostname "hostB")
-          _ (share/set-share! conn "default" :mem 25.0 :cpus 25.0 :gpus 1.0)
+          task1 (create-dummy-instance conn
+                                       job1
+                                       :instance-status :instance.status/running
+                                       :hostname "hostA")
+          task2 (create-dummy-instance conn
+                                       job2
+                                       :instance-status :instance.status/running
+                                       :hostname "hostA")
+          task3 (create-dummy-instance conn
+                                      job3
+                                      :instance-status :instance.status/running
+                                      :hostname "hostB")
+          task4 (create-dummy-instance conn
+                                      job4
+                                      :instance-status :instance.status/running
+                                      :hostname "hostB")
+          task5 (create-dummy-instance conn
+                                      job5
+                                      :instance-status :instance.status/running
+                                      :hostname "hostA")
+          task6 (create-dummy-instance conn
+                                      job6
+                                      :instance-status :instance.status/running
+                                      :hostname "hostB")
+          task7 (create-dummy-instance conn
+                                      job7
+                                      :instance-status :instance.status/running
+                                      :hostname "hostA")
+          task8 (create-dummy-instance conn
+                                      job8
+                                      :instance-status :instance.status/running
+                                      :hostname "hostB")
+          _ (share/set-share! conn "default" :mem 25.0 :cpus 25.0)
 
           db (d/db conn)
 
@@ -585,27 +585,27 @@
           task-ent7 (d/entity db task7)
           task-ent8 (d/entity db task8)
 
-          job9 (schema/create-dummy-job conn :user "wzhao" :memory 5.0 :ncpus 5.0)
-          job10 (schema/create-dummy-job conn :user "wzhao" :memory 5.0 :ncpus 5.0)
-          job11 (schema/create-dummy-job conn :user "wzhao" :memory 5.0 :ncpus 5.0)
-          job12 (schema/create-dummy-job conn :user "wzhao" :memory 5.0 :ncpus 5.0)
-          job13 (schema/create-dummy-job conn :user "wzhao" :memory 5.0 :ncpus 5.0)
-          job14 (schema/create-dummy-job conn :user "wzhao" :memory 5.0 :ncpus 5.0)
-          job15 (schema/create-dummy-job conn :user "wzhao" :memory 5.0 :ncpus 5.0)
-          job16 (schema/create-dummy-job conn :user "wzhao" :memory 5.0 :ncpus 5.0)
-          job17 (schema/create-dummy-job conn :user "wzhao" :memory 5.0 :ncpus 5.0)
-          job18 (schema/create-dummy-job conn :user "wzhao" :memory 5.0 :ncpus 5.0)
+          job9 (create-dummy-job conn :user "wzhao" :memory 5.0 :ncpus 5.0)
+          job10 (create-dummy-job conn :user "wzhao" :memory 5.0 :ncpus 5.0)
+          job11 (create-dummy-job conn :user "wzhao" :memory 5.0 :ncpus 5.0)
+          job12 (create-dummy-job conn :user "wzhao" :memory 5.0 :ncpus 5.0)
+          job13 (create-dummy-job conn :user "wzhao" :memory 5.0 :ncpus 5.0)
+          job14 (create-dummy-job conn :user "wzhao" :memory 5.0 :ncpus 5.0)
+          job15 (create-dummy-job conn :user "wzhao" :memory 5.0 :ncpus 5.0)
+          job16 (create-dummy-job conn :user "wzhao" :memory 5.0 :ncpus 5.0)
+          job17 (create-dummy-job conn :user "wzhao" :memory 5.0 :ncpus 5.0)
+          job18 (create-dummy-job conn :user "wzhao" :memory 5.0 :ncpus 5.0)
 
-          job19 (schema/create-dummy-job conn :user "sunil" :memory 5.0 :ncpus 5.0)
-          job20 (schema/create-dummy-job conn :user "sunil" :memory 5.0 :ncpus 5.0)
-          job21 (schema/create-dummy-job conn :user "sunil" :memory 5.0 :ncpus 5.0)
-          job22 (schema/create-dummy-job conn :user "sunil" :memory 5.0 :ncpus 5.0)
-          job23 (schema/create-dummy-job conn :user "sunil" :memory 5.0 :ncpus 5.0)
-          job24 (schema/create-dummy-job conn :user "sunil" :memory 5.0 :ncpus 5.0)
-          job25 (schema/create-dummy-job conn :user "sunil" :memory 5.0 :ncpus 5.0)
-          job26 (schema/create-dummy-job conn :user "sunil" :memory 5.0 :ncpus 5.0)
-          job27 (schema/create-dummy-job conn :user "sunil" :memory 5.0 :ncpus 5.0)
-          job28 (schema/create-dummy-job conn :user "sunil" :memory 5.0 :ncpus 5.0)]
+          job19 (create-dummy-job conn :user "sunil" :memory 5.0 :ncpus 5.0)
+          job20 (create-dummy-job conn :user "sunil" :memory 5.0 :ncpus 5.0)
+          job21 (create-dummy-job conn :user "sunil" :memory 5.0 :ncpus 5.0)
+          job22 (create-dummy-job conn :user "sunil" :memory 5.0 :ncpus 5.0)
+          job23 (create-dummy-job conn :user "sunil" :memory 5.0 :ncpus 5.0)
+          job24 (create-dummy-job conn :user "sunil" :memory 5.0 :ncpus 5.0)
+          job25 (create-dummy-job conn :user "sunil" :memory 5.0 :ncpus 5.0)
+          job26 (create-dummy-job conn :user "sunil" :memory 5.0 :ncpus 5.0)
+          job27 (create-dummy-job conn :user "sunil" :memory 5.0 :ncpus 5.0)
+          job28 (create-dummy-job conn :user "sunil" :memory 5.0 :ncpus 5.0)]
 
       (comment
         {task-ent1 0.4
@@ -679,20 +679,20 @@
           running-job-gen  (gen/tuple running-user-gen mem-gen cpus-gen)
           pending-job-gen  (gen/tuple pending-user-gen mem-gen cpus-gen)
           ]
-      (let [conn (schema/restore-fresh-database! datomic-uri)
-            _ (share/set-share! conn "default" :mem 1024.0 :cpus Double/MAX_VALUE :gpus 1.0)
+      (let [conn (restore-fresh-database! datomic-uri)
+            _ (share/set-share! conn "default" :mem 1024.0 :cpus Double/MAX_VALUE)
             running-tasks-sample-size 10240
             pending-jobs-sample-size 1024
 
             _ (doseq [x (range running-tasks-sample-size)]
                 (let [[[user mem cpus]] (gen/sample running-job-gen 1)
                       [host] (gen/sample host-gen 1)
-                      job-eid (schema/create-dummy-job conn :user user :memory mem :cpus cpus)
-                      task-eid (schema/create-dummy-instance conn job-eid :instance-status :instance.status/running :hostname host)]))
+                      job-eid (create-dummy-job conn :user user :memory mem :cpus cpus)
+                      task-eid (create-dummy-instance conn job-eid :instance-status :instance.status/running :hostname host)]))
 
             _ (doseq [x (range pending-jobs-sample-size)]
                 (let [[[user mem cpus]] (gen/sample pending-job-gen 1)
-                      job-eid (schema/create-dummy-job conn :user user :memory mem :cpus cpus)]))
+                      job-eid (create-dummy-job conn :user user :memory mem :cpus cpus)]))
 
             db (d/db conn)
 
@@ -702,7 +702,7 @@
 
 (deftest test-update-datomic-params-via-config!
   (let [datomic-uri "datomic:mem://test-init-state"
-        conn (schema/restore-fresh-database! datomic-uri)
+        conn (restore-fresh-database! datomic-uri)
         all-params {:min-utilization-threshold 0.75
                     :safe-dru-threshold 1.0
                     :min-dru-diff 0.5
