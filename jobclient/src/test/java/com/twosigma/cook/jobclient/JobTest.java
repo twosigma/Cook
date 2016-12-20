@@ -61,6 +61,7 @@ public class JobTest {
     public void testParseFromJSON() throws JSONException {
         final JSONObject json = Job.jsonizeJob(_initializedJob);
         json.put("instances", new JSONArray());
+        json.put("status", "INITIALIZED");
         final String jsonString = new JSONArray().put(json).toString();
         final List<Job> jobs = Job.parseFromJSON(jsonString);
         Assert.assertEquals(jobs.size(), 1);

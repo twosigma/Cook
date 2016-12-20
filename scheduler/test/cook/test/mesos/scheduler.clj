@@ -27,7 +27,7 @@
             [cook.mesos.share :as share]
             [cook.mesos.util :as util]
             [cook.mesos.schema :as schem]
-            [cook.test.mesos.schema :refer (restore-fresh-database! create-dummy-job create-dummy-instance)]
+            [cook.test.testutil :refer (restore-fresh-database! create-dummy-job create-dummy-instance)]
             [datomic.api :as d :refer (q db)])
   (:import [org.mockito Mockito]))
 

@@ -17,7 +17,7 @@
  (:use clojure.test)
  (:require [cook.mesos.api :as api :refer (main-handler)]
            [cook.mesos.util :as util]
-           [cook.test.mesos.schema :as schema :refer (restore-fresh-database! create-dummy-job create-dummy-instance)]
+           [cook.test.testutil :refer (restore-fresh-database!)]
            [clojure.walk :refer (keywordize-keys)]
            [cook.authorization :as auth]
            [schema.core :as s]
@@ -55,13 +55,12 @@
    "name" "my-cool-job"
    "priority" 66
    "max_retries" 100
-   "max_runtime" 1000000
    "cpus" 2.0
    "mem" 2048.0})
 
 (defn basic-handler
-  [conn & {:keys [cpus mem gpus-enabled retry-limit] :or {cpus 12 mem 100 gpus-enabled false retry-limit 200}}]
-  (main-handler conn "my-framework-id" {:cpus cpus :memory-gb mem :retry-limit retry-limit} gpus-enabled
+  [conn & {:keys [cpus memory-gb gpus-enabled retry-limit] :or {cpus 12 memory-gb 100 gpus-enabled false retry-limit 200}}]
+  (main-handler conn "my-framework-id" {:cpus cpus :memory-gb memory-gb :retry-limit retry-limit} gpus-enabled
                 (fn [] []) authorized-fn))
 
 (deftest handler-db-roundtrip
@@ -140,8 +139,7 @@
                             "max_runtime" 1000000
                             "cpus" cpus
                             "mem" mem})
-        h (main-handler conn "my-framework-id" {:cpus 3.0 :memory-gb 2 :retry-limit 200}
-                        false (fn [] []) authorized-fn)]
+        h (basic-handler conn :gpus-enabled true :cpus 3 :memory-gb 2 :retry-limit 200)]
     (testing "All within limits"
       (is (<= 200
               (:status (h {:request-method :post
@@ -341,6 +339,185 @@
                                 :query-params {:user "foo"}}))
             get-body (-> get-resp :body slurp json/read-str)]
         (is (= get-body initial-get-body))))))
+
+(deftest group-validator
+  (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
+        make-job (fn [& {:keys [uuid name group]
+                         :or {uuid (str (java.util.UUID/randomUUID))
+                              name "cook-job"
+                              group nil}}]
+                   (merge {"uuid" uuid 
+                           "command" "hello world"
+                           "name" name
+                           "priority" 66
+                           "max_retries" 3
+                           "max_runtime" 1000000
+                           "cpus" 1
+                           "mem" 10}
+                          (when group
+                            {"group" group})))
+        make-group (fn [& {:keys [uuid placement-type attribute]
+                           :or {uuid (str (java.util.UUID/randomUUID))
+                                placement-type "all"
+                                attribute "test"}}]
+                     {"uuid" uuid 
+                      "host-placement" (merge {"type" placement-type}
+                                              (when (= placement-type "attribute-equals")
+                                                {"parameters" {"attribute" attribute}}))})
+
+        h (basic-handler conn)
+        post (fn [params]
+               (h {:request-method :post
+                   :scheme :http
+                   :uri "/rawscheduler"
+                   :headers {"Content-Type" "application/json"}
+                   :authorization/user "diego"
+                   :body-params params}))
+        get-group (fn [uuid]
+                    (-> (h {:request-method :get
+                            :scheme :http
+                            :uri "/group"
+                            :headers {"Content-Type" "application/json"}
+                            :authorization/usr "diego"
+                            :query-params {"uuid" uuid}})
+                        :body
+                        slurp
+                        json/read-str))
+        get-job (fn [uuid]
+                  (-> (h {:request-method :get
+                          :scheme :http
+                          :uri "/rawscheduler"
+                          :headers {"Content-Type" "application/json"}
+                          :authorization/usr "diego"
+                          :query-params {"job" uuid}})
+                      :body
+                      slurp
+                      json/read-str))]
+    (testing "One job one group"
+      (let [guuid (str (java.util.UUID/randomUUID))
+            juuid (str (java.util.UUID/randomUUID))
+            post-resp (post {"groups" [(make-group :uuid guuid)]
+                             "jobs" [(make-job :uuid juuid :group guuid)]})
+            group-resp (get-group guuid)
+            job-resp (get-job juuid)] 
+
+        (is (<= 200 (:status post-resp) 299))
+        (is (= guuid (-> group-resp first (get "uuid"))))
+        (is (= juuid (-> group-resp first (get "jobs") first)))
+
+        (is (= juuid (-> job-resp first (get "uuid"))))
+        (is (= guuid (-> job-resp first (get "groups") first)))))
+
+    (testing "Two jobs one group"
+      (let [guuid (str (java.util.UUID/randomUUID))
+            juuid1 (str (java.util.UUID/randomUUID))
+            juuid2 (str (java.util.UUID/randomUUID))
+            post-resp (post {"groups" [(make-group :uuid guuid :placement-type "unique")]
+                             "jobs" [(make-job :uuid juuid1 :group guuid)
+                                     (make-job :uuid juuid2 :group guuid)]})
+            group-resp (get-group guuid)
+            job-resp1 (get-job juuid1)  
+            job-resp2 (get-job juuid2)] 
+        
+        (is (<= 200 (:status post-resp) 299))
+        (is (= guuid (-> group-resp first (get "uuid"))))
+        (is (contains? (-> group-resp first (get "jobs") set) juuid1))
+        (is (contains? (-> group-resp first (get "jobs") set) juuid2))
+
+        (is (= juuid1 (-> job-resp1 first (get "uuid"))))  
+        (is (= guuid (-> job-resp1 first (get "groups") first)))
+        (is (= guuid (-> job-resp2 first (get "groups") first)))))
+
+    (testing "Implicitly created groups"
+      (let [guuid1 (str (java.util.UUID/randomUUID))
+            guuid2 (str (java.util.UUID/randomUUID))
+            juuid1 (str (java.util.UUID/randomUUID))
+            juuid2 (str (java.util.UUID/randomUUID))
+            post-resp (post {"jobs" [(make-job :uuid juuid1 :group guuid1)
+                                     (make-job :uuid juuid2 :group guuid2)]})
+            group-resp1 (get-group guuid1)
+            group-resp2 (get-group guuid2)
+            job-resp1 (get-job juuid1)
+            job-resp2 (get-job juuid2)]
+
+        (is (<= 200 (:status post-resp) 299))
+        (is (= guuid1 (-> group-resp1 first (get "uuid"))))
+        (is (= guuid2 (-> group-resp2 first (get "uuid"))))
+
+        (is (contains? (-> group-resp1 first (get "jobs") set) juuid1))
+        (is (contains? (-> group-resp2 first (get "jobs") set) juuid2))
+
+        (is (= (-> group-resp1 first) {"uuid" guuid1 "name" "defaultgroup" "host-placement" {"type" "host-placement.type/all" "parameters" {}} "jobs" [juuid1]}))
+        (is (= (-> group-resp2 first) {"uuid" guuid2 "name" "defaultgroup" "host-placement" {"type" "host-placement.type/all" "parameters" {}} "jobs" [juuid2]}))
+        ))
+
+    (testing "Multiple groups in one request"
+      (let [guuid1 (str (java.util.UUID/randomUUID))
+            guuid2 (str (java.util.UUID/randomUUID))
+            juuids (vec (repeatedly 5 #(str (java.util.UUID/randomUUID))))
+            post (fn [params]
+               (h {:request-method :post
+                   :scheme :http
+                   :uri "/rawscheduler"
+                   :headers {"Content-Type" "application/json"}
+                   :authorization/user "dgrnbrg"
+                   :body-params params}))
+            post-resp (post {"groups" [(make-group :uuid guuid1 :placement-type "unique")
+                                       (make-group :uuid guuid2 :placement-type "all")]
+                             "jobs" [(make-job :uuid (get juuids 0) :group guuid1)
+                                     (make-job :uuid (get juuids 1) :group guuid1)
+                                     (make-job :uuid (get juuids 2) :group guuid2)
+                                     (make-job :uuid (get juuids 3) :group guuid2)
+                                     (make-job :uuid (get juuids 4) :group guuid2)]})
+            group-resp1 (get-group guuid1)
+            group-resp2 (get-group guuid2)]
+        (is (<= 200 (:status post-resp) 299))
+
+        (is (contains? (-> group-resp1 first (get "jobs") set) (get juuids 0)))
+        (is (contains? (-> group-resp1 first (get "jobs") set) (get juuids 1)))
+
+        (is (contains? (-> group-resp2 first (get "jobs") set) (get juuids 2)))
+        (is (contains? (-> group-resp2 first (get "jobs") set) (get juuids 3)))
+        (is (contains? (-> group-resp2 first (get "jobs") set) (get juuids 4)))))
+
+    (testing "Group with defaulted host placement"
+      (let [guuid (str (java.util.UUID/randomUUID))
+            post-resp (post {"groups" [{"uuid" guuid}]
+                             "jobs" [(make-job :group guuid) (make-job :group guuid)]})
+            group-resp (get-group guuid)]
+        (is (<= 201 (:status post-resp) 299))
+        (is (= "host-placement.type/all" (-> group-resp first (get "host-placement") (get "type"))))))
+
+    (testing "Use attribute equals parameter"
+      (let [guuid (str (java.util.UUID/randomUUID))
+            post-resp (post {"groups" [(make-group :uuid guuid :placement-type "attribute-equals"
+                                                   :attribute "test")]
+                             "jobs" [(make-job :group guuid) (make-job :group guuid)]})
+            group-resp (get-group guuid)]
+        (is (<= 201 (:status post-resp) 299))
+        (is (= "test" (-> group-resp first (get "host-placement") (get "parameters")
+                        (get "attribute"))))))
+
+    (testing "Invalid placement type"
+      (let [guuid (str (java.util.UUID/randomUUID))
+            post-resp (post {"groups" [(make-group :uuid guuid :placement-type "not-a-type")]
+                             "jobs" [(make-job :group guuid) (make-job :group guuid)]})]
+        (is (<= 400 (:status post-resp) 499))))
+
+    (testing "Missing host placement attribute equals parameter"
+      (let [guuid (str (java.util.UUID/randomUUID))
+            post-resp (post {"groups" [{"uuid" guuid
+                                        "host-placement" {"type" "attribute-equals"}}]
+                             "jobs" [(make-job :group guuid) (make-job :group guuid)]})]
+        (is (<= 400 (:status post-resp) 499))))
+
+    (testing "Error trying to create previously existing group"
+      (let [guuid (str (java.util.UUID/randomUUID))
+            post-resp1 (post {"jobs" [(make-job :group guuid) (make-job :group guuid)]})
+            post-resp2 (post {"jobs" [(make-job :group guuid)]})]
+        (is (<= 201 (:status post-resp1) 299))
+        (is (<= 400 (:status post-resp2) 499))))
+    ))
 
 (deftest retry-validator
   (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")

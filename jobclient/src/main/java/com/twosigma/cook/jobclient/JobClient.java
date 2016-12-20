@@ -78,13 +78,13 @@ import org.apache.log4j.Logger;
  * An implementation for the Cook job client.
  * <p>
  * This client supports the following three key operations<br>
- * -- submit: submit jobs to Cook;<br>
- * -- query: query jobs status along with their instances from Cook;<br>
- * -- abort: abort jobs from Cook.<br>
+ * -- submit: submit jobs and groups to Cook;<br>
+ * -- query: query jobs and groups status along with their instances from Cook;<br>
+ * -- abort: abort jobs and groups from Cook.<br>
  * <p>
- * Note that this client only tracks jobs submitted through it. Periodically, it queries the Cook scheduler rest
- * endpoint for jobs status updates. If any job status changes, it will<br>
- * -- update internal map from UUID to job object;<br>
+ * Note that this client only tracks jobs and groups submitted through it. Periodically, it queries the Cook scheduler
+ * rest endpoint for job status updates. If any job or group status changes, it will<br>
+ * -- update internal map from UUID to job/group object;<br>
  * -- invoke listener call back method.<br>
  * <p>
  * Also note that, each job could potentially be associated with a different {@link JobListener} respectively. However,
@@ -105,7 +105,9 @@ public class JobClient implements Closeable {
     {
         private String _host;
 
-        private String _endpoint;
+        private String _jobEndpoint;
+
+        private String _groupEndpoint;
 
         private Integer _port;
 
@@ -165,7 +167,8 @@ public class JobClient implements Closeable {
             return new JobClient(
                     Preconditions.checkNotNull(_host, "host must be set"),
                     Preconditions.checkNotNull(_port, "port must be set"),
-                    Preconditions.checkNotNull(_endpoint, "endpoint must be set"),
+                    Preconditions.checkNotNull(_jobEndpoint, "jobEndpoint must be set"),
+                    _groupEndpoint,
                     _statusUpdateIntervalSeconds,
                     _batchRequestSize,
                     _instanceDecorator,
@@ -241,22 +244,55 @@ public class JobClient implements Closeable {
         }
 
         /**
+         * Deprecated, backwards-compatible version of setJobEndpoint.
+         * @param jobEndpoint {@link String} specifies the Cook scheduler endpoint.
+         * @return this builder.
+         */
+        public Builder setEndpoint(String jobEndpoint) {
+            return this.setJobEndpoint(jobEndpoint);
+        }
+
+
+        /**
          * Set the Cook scheduler endpoint where the job client expected to build will send the requests to.
          *
          * @param endpoint {@link String} specifies the Cook scheduler endpoint.
          * @return this builder.
          */
-        public Builder setEndpoint(String endpoint) {
-            if (!endpoint.startsWith("/")) {
-                _endpoint = "/" + endpoint;
+        public Builder setJobEndpoint(String jobEndpoint) {
+            if (!jobEndpoint.startsWith("/")) {
+                _jobEndpoint = "/" + jobEndpoint;
             } else {
-                _endpoint = endpoint;
+                _jobEndpoint = jobEndpoint;
+            }
+            return this;
+        }
+
+        /**
+         * Set the Cook scheduler endpoint where the job client will send requests about groups.
+         *
+         * @param endpoint {@link String} specifies the Cook scheduler group endpoint.
+         * @return this builder.
+         */
+        public Builder setGroupEndpoint(String groupEndpoint) {
+            if (!groupEndpoint.startsWith("/")) {
+                _groupEndpoint = "/" + groupEndpoint;
+            } else {
+                _groupEndpoint = groupEndpoint;
             }
             return this;
         }
 
         public String getEndpoint() {
-            return _endpoint;
+            return _jobEndpoint;
+        }
+
+        public String getJobEndpoint() {
+            return _jobEndpoint;
+        }
+
+        public String getGroupEndpoint() {
+            return _groupEndpoint;
         }
 
         /**
@@ -333,9 +369,14 @@ public class JobClient implements Closeable {
     }
 
     /**
-     * The URI for the Cook scheduler endpoint.
+     * The URI for the Cook scheduler job endpoint.
      */
-    private final URI _uri;
+    private final URI _jobURI;
+
+    /**
+     * The URI for the Cook scheduler group endpoint.
+     */
+    private final URI _groupURI;
 
     /**
      * A kerberized HTTP client.
@@ -360,7 +401,22 @@ public class JobClient implements Closeable {
      * (possibly strict) subset of {@code _activeUUIDToJob} as some of jobs may not have {@link JobListener}s
      * associated.
      */
-    private final Map<UUID, JobListener> _activeUUIDToListener;
+    private final Map<UUID, JobListener> _jobUUIDToListener;
+
+    /**
+     * A map from group UUID to group which is an internal map for tracking active groups, i.e. non successfully
+     * completed groups. Note that this map will be modified when<br>
+     * -- a group is successfully submitted to Cook scheduler where a new map entry is added;<br>
+     * -- and a group is successfully completed where old map entry is removed.
+     */
+    private final Map<UUID, Group> _activeUUIDToGroup;
+
+    /**
+     * A map from job group UUID to its associated {@link GroupListener}. Note that the keys of the following map should
+     * be a (possibly strict) subset of {@code _activeUUIDToGroup} as some of jobs may not have {@link GroupListener}s
+     * associated.
+     */
+    private final Map<UUID, GroupListener> _groupUUIDToListener;
 
     /**
      * The maximum number of jobs per any http request.
@@ -377,13 +433,20 @@ public class JobClient implements Closeable {
      */
     private InstanceDecorator _instanceDecorator;
 
-    private JobClient(String host, int port, String endpoint, int statusUpdateInterval, int batchSubmissionLimit,
+    private JobClient(String host, int port, String jobEndpoint, String groupEndpoint, int statusUpdateInterval, int batchSubmissionLimit,
             InstanceDecorator instanceDecorator, CloseableHttpClient httpClient) throws URISyntaxException {
         _statusUpdateInterval = statusUpdateInterval;
         _batchRequestSize = batchSubmissionLimit;
         _activeUUIDToJob = new ConcurrentHashMap<>();
-        _activeUUIDToListener = new ConcurrentHashMap<>();
-        _uri = new URIBuilder().setScheme("http").setHost(host).setPort(port).setPath(endpoint).build();
+        _jobUUIDToListener = new ConcurrentHashMap<>();
+        _activeUUIDToGroup = new ConcurrentHashMap<>();
+        _groupUUIDToListener = new ConcurrentHashMap<>();
+        _jobURI = new URIBuilder().setScheme("http").setHost(host).setPort(port).setPath(jobEndpoint).build();
+        if (groupEndpoint != null) {
+            _groupURI = new URIBuilder().setScheme("http").setHost(host).setPort(port).setPath(groupEndpoint).build();
+        } else {
+            _groupURI = null;
+        }
         _httpClient = httpClient;
         _log.info("Open ScheduledExecutorService for listener.");
         _listenerService = startListenService();
@@ -409,47 +472,85 @@ public class JobClient implements Closeable {
         scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
             @Override
             public void run() {
+                // Process Jobs and JobListeners first
                 // Simply return if there is no listener.
-                if (_activeUUIDToListener.isEmpty()) {
-                    return;
-                }
-                // Query active jobs
-                ImmutableMap<UUID, Job> currentUUIDToJob;
-                try {
-                    currentUUIDToJob = query(_activeUUIDToJob.keySet());
-                } catch (JobClientException e) {
-                    // Catch and log
-                    _log.warn("Failed to query job status for jobs " + _activeUUIDToJob.keySet(), e);
-                    return;
-                }
+                if (!_jobUUIDToListener.isEmpty()) {
+                    // Query active jobs
+                    ImmutableMap<UUID, Job> currentUUIDToJob;
+                    try {
+                        currentUUIDToJob = queryJobs(_activeUUIDToJob.keySet());
+                    } catch (JobClientException e) {
+                        // Catch and log
+                        _log.warn("Failed to query job status for jobs " + _activeUUIDToJob.keySet(), e);
+                        return;
+                    }
 
-                // Invoke listeners and update maps.
-                for (Map.Entry<UUID, Job> entry : currentUUIDToJob.entrySet()) {
-                    UUID uuid = entry.getKey();
-                    Job currentJob = entry.getValue();
-                    if (!_activeUUIDToJob.get(uuid).equals(currentJob)) {
-                        // Firstly, invoke listener if there is a listener associated to this job.
-                        final JobListener listener = _activeUUIDToListener.get(uuid);
-                        if (listener != null) {
-                            // XXX It is completely debatable what should be the correct behavior here
-                            // when a listener throws an exception. We have the following possible options:
-                            // 1. simply propagate the exception;
-                            // 2. keep {@code _activeUUIDToJob} being unchanged and retrying in the next cycle;
-                            // 3. simply log the error but the listener will miss this status
-                            // update (which is the current behavior).
-                            try {
-                                listener.onStatusUpdate(currentJob);
-                            } catch (Exception e) {
-                                _log.warn("Failed to invoke listener onStatusUpdate() for " + currentJob
-                                        + ". The listener service won't deliver this message again.", e);
+                    // Invoke listeners and update maps for job
+                    for (Map.Entry<UUID, Job> entry : currentUUIDToJob.entrySet()) {
+                        UUID juuid = entry.getKey();
+                        Job currentJob = entry.getValue();
+                        if (!_activeUUIDToJob.get(juuid).equals(currentJob)) {
+                            // Firstly, invoke job listener if there is a listener associated to this job.
+                            final JobListener listener = _jobUUIDToListener.get(juuid);
+                            if (listener != null) {
+                                // XXX It is completely debatable what should be the correct behavior here
+                                // when a listener throws an exception. We have the following possible options:
+                                // 1. simply propagate the exception;
+                                // 2. keep {@code _activeUUIDToJob} being unchanged and retrying in the next cycle;
+                                // 3. simply log the error but the listener will miss this status
+                                // update (which is the current behavior).
+                                try {
+                                    listener.onStatusUpdate(currentJob);
+                                } catch (Exception e) {
+                                    _log.warn("Failed to invoke listener onStatusUpdate() for " + currentJob
+                                            + ". The listener service won't deliver this message again.", e);
+                                }
+                            }
+
+                            // Secondly, update internal maps if necessary.
+                            if (currentJob.getStatus() != Job.Status.COMPLETED) {
+                                _activeUUIDToJob.put(juuid, currentJob);
+                            } else {
+                                _activeUUIDToJob.remove(juuid);
+                                _jobUUIDToListener.remove(juuid);
                             }
                         }
-                        // Secondly, update internal maps if necessary.
-                        if (currentJob.getStatus() != Job.Status.COMPLETED) {
-                            _activeUUIDToJob.put(uuid, currentJob);
-                        } else {
-                            _activeUUIDToJob.remove(uuid);
-                            _activeUUIDToListener.remove(uuid);
+                    }
+                }
+                if (!_groupUUIDToListener.isEmpty()) {
+                    // Now process Groups and GroupListeners
+                    // Query active groups
+                    ImmutableMap<UUID, Group> currentUUIDToGroup;
+                    try {
+                        currentUUIDToGroup = queryGroups(_activeUUIDToGroup.keySet());
+                    } catch (JobClientException e) {
+                        // Catch and log
+                        _log.warn("Failed to query group status for groups " + _activeUUIDToGroup.keySet(), e);
+                        return;
+                    }
+                    // Invoke listeners and update maps for groups
+                    for (Map.Entry<UUID, Group> entry : currentUUIDToGroup.entrySet()) {
+                        UUID guuid = entry.getKey();
+                        Group currentGroup = entry.getValue();
+                        if (!_activeUUIDToGroup.get(guuid).equals(currentGroup)) {
+                            final GroupListener listener = _groupUUIDToListener.get(guuid);
+                            if (listener != null) {
+                            // Invoke group listeners
+                                try {
+                                    listener.onStatusUpdate(currentGroup);
+                                } catch (Exception e) {
+                                    _log.warn("Failed to invoke listener onStatusUpdate() for " + currentGroup
+                                            + ". The listener service won't deliver this message again.", e);
+                                }
+                            }
+
+                            // Secondly, update internal maps if necessary.
+                            if (currentGroup.getStatus() != Group.Status.COMPLETED) {
+                                _activeUUIDToGroup.put(guuid, currentGroup);
+                            } else {
+                                _activeUUIDToGroup.remove(guuid);
+                                _groupUUIDToListener.remove(guuid);
+                            }
                         }
                     }
                 }
@@ -472,20 +573,139 @@ public class JobClient implements Closeable {
         // It is ok to change the listeners map even if the actual submission fails because it won't
         // update the internal status map {@code _activeUUIDTOJob}.
         for (Job job : jobs) {
-            _activeUUIDToListener.put(job.getUUID(), listener);
+            _jobUUIDToListener.put(job.getUUID(), listener);
         }
         submit(jobs);
     }
 
-    private JobClientException releaseAndCreateException(HttpRequestBase httpRequest, final String msg, final Throwable cause) {
+    /**
+     * Submits jobs and groups to Cook scheduler and start to track the jobs until they complete. Note that jobs
+     * submitted through this API will not be listened by any listener.
+     *
+     * @param jobs specifies a list of {@link Job}s to be submitted.
+     * @param groups specifies a list of {@link Group}s to be submitted.
+     * @return the response string from Cook scheduler rest endpoint.
+     * @throws JobClientException
+     */
+    public void submitWithGroups(List<Job> jobs, List<Group> groups)
+        throws JobClientException {
+        JSONObject json = new JSONObject();
+        try {
+            JSONObject groupsJSON = Group.jsonizeGroups(groups);
+            JSONObject jobsJSON = Job.jsonizeJob(jobs);
+            json.put("groups", groupsJSON.getJSONArray("groups"));
+            json.put("jobs", jobsJSON.getJSONArray("jobs"));
+        } catch (JSONException e) {
+            throw new JobClientException("Can not jsonize jobs or groups to submit.", e);
+        }
+        HttpResponse httpResponse;
+        HttpRequestBase httpRequest = makeHttpPost(_jobURI, json);
+        try {
+            httpResponse = executeWithRetries(httpRequest, 5, 10);
+        } catch (IOException e) {
+            throw releaseAndCreateException(httpRequest, null, "Can not submit POST request " + json + " via uri " + _jobURI, e);
+        }
+
+        // Get the response string.
+        StatusLine statusLine = httpResponse.getStatusLine();
+        HttpEntity entity = httpResponse.getEntity();
+        if (entity == null) {
+            throw releaseAndCreateException(httpRequest, null, "The response entity is null!", null);
+        }
+        String response = null;
+        try {
+            response = EntityUtils.toString(entity);
+            // Ensure that the entity content has been fully consumed and the underlying stream has been closed.
+            EntityUtils.consume(entity);
+        } catch (ParseException | IOException e) {
+            throw releaseAndCreateException(httpRequest, null, "Can not parse the response for POST request " + json +
+                    " via uri " + _jobURI, e);
+        }
+        if (_log.isDebugEnabled()) {
+            _log.debug("Response String for submitting jobs and groups" + json.toString() + " is " + response);
+        }
+
+        // Base on the decision graph
+        // http://clojure-liberator.github.io/liberator/tutorial/decision-graph.html
+        // If the jobs and groups are submitted successfully, the status code is 201.
+        // If a job or group uses a UUID which has been used before, the returned status code is 400 and the
+        // return message is something like:
+        // clojure.lang.ExceptionInfo: [Job | Group] UUID 26719da8-194f-44f9-9e6d-8a17500f5109 already used {:uuid
+        // #uuid "26719da8-194f-44f9-9e6d-8a17500f5109"}
+
+        // A flag to indicate if the submission is successful.
+        boolean isSuccess = false;
+        if (null != statusLine && statusLine.getStatusCode() == HttpStatus.SC_CREATED) {
+            isSuccess = true;
+            _log.info("Successfully execute POST request with data " + json + " via uri " + _jobURI);
+        } else if (null != statusLine && statusLine.getStatusCode() >= HttpStatus.SC_BAD_REQUEST) {
+            final Pattern patternUUID =
+                   Pattern.compile("([a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89aAbB][a-f0-9]{3}-[a-f0-9]{12} already used)");
+            final Matcher matchUUID = patternUUID.matcher(response);
+            if (matchUUID.find()) {
+                _log.info("Successfully execute POST request with several retries " + json + " via uri " + _jobURI);
+                isSuccess = true;
+            } else {
+                _log.warn("Failed to execute POST request with several retries " + json + " via uri " + _jobURI);
+            }
+        }
         if (null != httpRequest) {
             httpRequest.releaseConnection();
         }
-        if (null != cause) {
-            return new JobClientException(msg, cause);
+        if (isSuccess) {
+            // Update status map.
+            for (Job job : jobs) {
+                _activeUUIDToJob.put(job.getUUID(), job);
+            }
+            for (Group group : groups) {
+                _activeUUIDToGroup.put(group.getUUID(), group);
+            }
         } else {
-            return new JobClientException(msg);
+            _log.error("Failed to submit jobs " + json.toString());
+            throw releaseAndCreateException(httpRequest, httpResponse, "The response of POST request " + json + " via uri " + _jobURI + ": "
+                    + statusLine.getReasonPhrase() + ", " + statusLine.getStatusCode() + " Body is " + response, null);
         }
+    }
+    /**
+     * Submit a list of jobs and groups to Cook scheduler. It will <br>
+     * -- firstly associate each job with the provided {@link JobListener}<br>
+     * -- secondly submit these jobs to Cook scheduler and track them until they complete.
+     *
+     * @param jobs The list of jobs to be submitted.
+     * @param groups The list of groups to be submitted.
+     * @param listener specifies an instance of {@link JobListener} listening all job status updates.
+     * @throws JobClientException
+     */
+    public void submitWithGroups(List<Job> jobs, List<Group> groups, GroupListener listener)
+        throws JobClientException {
+        // It is ok to change the listeners map even if the actual submission fails because it won't
+        // update the internal status map {@code _activeUUIDTOJob}.
+        for (Group group : groups) {
+            _groupUUIDToListener.put(group.getUUID(), listener);
+        }
+        submitWithGroups(jobs, groups);
+    }
+
+    private JobClientException releaseAndCreateException(HttpRequestBase httpRequest, HttpResponse httpResponse, final String msg, final Throwable cause) {
+        StringBuilder newMsg = new StringBuilder(msg);
+        if (null != httpRequest) {
+            httpRequest.releaseConnection();
+        }
+        if (null != httpResponse) {
+            try {
+                newMsg.append(" Response body: " + EntityUtils.toString(httpResponse.getEntity()));
+            } catch (IOException e) {
+            }
+        }
+        if (null != cause) {
+            return new JobClientException(newMsg.toString(), cause);
+        } else {
+            return new JobClientException(newMsg.toString());
+        }
+    }
+
+    private JobClientException groupEndpointMissingException(final String msg) {
+        return new JobClientException(msg);
     }
 
     /**
@@ -525,18 +745,18 @@ public class JobClient implements Closeable {
             throw new JobClientException("Can not jsonize jobs to submit.", e);
         }
         HttpResponse httpResponse;
-        HttpRequestBase httpRequest = makeHttpPost(_uri, json);
+        HttpRequestBase httpRequest = makeHttpPost(_jobURI, json);
         try {
             httpResponse = executeWithRetries(httpRequest, 5, 10);
         } catch (IOException e) {
-            throw releaseAndCreateException(httpRequest, "Can not submit POST request " + json + " via uri " + _uri, e);
+            throw releaseAndCreateException(httpRequest, null, "Can not submit POST request " + json + " via uri " + _jobURI, e);
         }
 
         // Get the response string.
         StatusLine statusLine = httpResponse.getStatusLine();
         HttpEntity entity = httpResponse.getEntity();
         if (entity == null) {
-            throw releaseAndCreateException(httpRequest, "The response entity is null!", null);
+            throw releaseAndCreateException(httpRequest, null, "The response entity is null!", null);
         }
         String response = null;
         try {
@@ -544,8 +764,8 @@ public class JobClient implements Closeable {
             // Ensure that the entity content has been fully consumed and the underlying stream has been closed.
             EntityUtils.consume(entity);
         } catch (ParseException | IOException e) {
-            throw releaseAndCreateException(httpRequest, "Can not parse the response for POST request " + json +
-                    " via uri " + _uri, e);
+            throw releaseAndCreateException(httpRequest, null, "Can not parse the response for POST request " + json +
+                    " via uri " + _jobURI, e);
         }
         if (_log.isDebugEnabled()) {
             _log.debug("Response String for submitting jobs" + json.toString() + " is " + response);
@@ -563,16 +783,16 @@ public class JobClient implements Closeable {
         boolean isSuccess = false;
         if (null != statusLine && statusLine.getStatusCode() == HttpStatus.SC_CREATED) {
             isSuccess = true;
-            _log.info("Successfully execute POST request with data " + json + " via uri " + _uri);
+            _log.info("Successfully execute POST request with data " + json + " via uri " + _jobURI);
         } else if (null != statusLine && statusLine.getStatusCode() >= HttpStatus.SC_BAD_REQUEST) {
             final Pattern patternUUID =
                    Pattern.compile("[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89aAbB][a-f0-9]{3}-[a-f0-9]{12} already used");
             final Matcher matchUUID = patternUUID.matcher(response);
             if (matchUUID.find()) {
-                _log.info("Successfully execute POST request with several retries " + json + " via uri " + _uri);
+                _log.info("Successfully execute POST request with several retries " + json + " via uri " + _jobURI);
                 isSuccess = true;
             } else {
-                _log.warn("Failed to execute POST request with several retries " + json + " via uri " + _uri);
+                _log.warn("Failed to execute POST request with several retries " + json + " via uri " + _jobURI);
             }
         }
         if (null != httpRequest) {
@@ -585,8 +805,8 @@ public class JobClient implements Closeable {
             }
         } else {
             _log.error("Failed to submit jobs " + json.toString());
-            throw new JobClientException("The response of POST request " + json + " via uri " + _uri + ": "
-                    + statusLine.getReasonPhrase() + ", " + statusLine.getStatusCode());
+            throw new JobClientException("The response of POST request " + json + " via uri " + _jobURI + ": "
+                    + statusLine.getReasonPhrase() + ", " + statusLine.getStatusCode() + ", response is: " + response);
         }
     }
 
@@ -599,7 +819,7 @@ public class JobClient implements Closeable {
      * @return a {@link ImmutableMap} from job {@link UUID} to {@link Job}.
      * @throws JobClientException
      */
-    public ImmutableMap<UUID, Job> query(Collection<UUID> uuids)
+    public ImmutableMap<UUID, Job> queryJobs(Collection<UUID> uuids)
         throws JobClientException {
         final List<NameValuePair> allParams = new ArrayList<NameValuePair>(uuids.size());
         for (UUID uuid : uuids) {
@@ -611,12 +831,12 @@ public class JobClient implements Closeable {
             HttpResponse httpResponse;
             HttpRequestBase httpRequest;
             try {
-                URIBuilder uriBuilder = new URIBuilder(_uri);
+                URIBuilder uriBuilder = new URIBuilder(_jobURI);
                 uriBuilder.addParameters(params);
                 httpRequest = new HttpGet(uriBuilder.build());
                 httpResponse = _httpClient.execute(httpRequest);
             } catch (IOException | URISyntaxException e) {
-                throw releaseAndCreateException(null, "Can not submit GET request " + params + " via uri " + _uri, e);
+                throw releaseAndCreateException(null, null, "Can not submit GET request " + params + " via uri " + _jobURI, e);
             }
             // Check status code.
             final StatusLine statusLine = httpResponse.getStatusLine();
@@ -624,7 +844,7 @@ public class JobClient implements Closeable {
             // http://clojure-liberator.github.io/liberator/tutorial/decision-graph.html
             // The status code for the proper GET response is 200.
             if (statusLine.getStatusCode() != HttpStatus.SC_OK) {
-                throw releaseAndCreateException(httpRequest, "The response of GET request " + params + " via uri " + _uri + ": "
+                throw releaseAndCreateException(httpRequest, httpResponse, "The response of GET request " + params + " via uri " + _jobURI + ": "
                         + statusLine.getReasonPhrase() + ", " + statusLine.getStatusCode(), null);
             }
             // Parse the response.
@@ -640,12 +860,153 @@ public class JobClient implements Closeable {
                 }
             } catch (JSONException | ParseException | IOException e) {
                 throw new JobClientException("Can not parse the response = " + response + " for GET request " + params +
-                        " via uri " + _uri, e);
+                        " via uri " + _jobURI, e);
             } finally {
                 httpRequest.releaseConnection();
             }
         }
         return UUIDToJob.build();
+    }
+
+    /**
+     * An alias for queryJobs, for backwards-compatibility. Please use queryJobs instead.
+     * @deprecated Please use queryJobs
+     * @param uuids specifies a list of job {@link UUID}s expected to query.
+     * @return a {@link ImmutableMap} from job {@link UUID} to {@link Job}.
+     * @throws JobClientException
+     */
+    public ImmutableMap<UUID, Job> query(Collection<UUID> uuids)
+        throws JobClientException {
+        return queryJobs(uuids);
+    }
+
+    /**
+     * Query a group for a group's jobs.
+     * @param group specifies a group, whose jobs will be queried.
+     * @return a {@link ImmutableList} of {@link Job}s.
+     * @throws JobClientException
+     */
+    public ImmutableMap<UUID, Job> queryGroupJobs(Group group)
+        throws JobClientException {
+        ArrayList<UUID> uuids = new ArrayList<UUID>();
+        for (UUID juuid : group.getJobs()) {
+            uuids.add(juuid);
+        }
+        return queryJobs(uuids);
+    }
+
+    /**
+     * Query a group for its status.
+     * @param group specifies the group to be queried.
+     * @return a {@link Group} status.
+     * @throws JobClientException
+     */
+    public Group queryGroup(UUID guuid)
+        throws JobClientException {
+        if (_groupURI == null) {
+            throw groupEndpointMissingException("Cannot query groups if the jobclient's group endpoint is null");
+        }
+        final List<NameValuePair> allParams = new ArrayList<NameValuePair>();
+        allParams.add(new BasicNameValuePair("detailed", "true"));
+        allParams.add(new BasicNameValuePair("uuid", guuid.toString()));
+
+        Group result;
+        HttpResponse httpResponse;
+        HttpRequestBase httpRequest;
+        try {
+            URIBuilder uriBuilder = new URIBuilder(_groupURI);
+            uriBuilder.addParameters(allParams);
+            httpRequest = new HttpGet(uriBuilder.build());
+            httpResponse = _httpClient.execute(httpRequest);
+        } catch (IOException | URISyntaxException e) {
+            throw releaseAndCreateException(null, null, "Can not submit GET request " + allParams + " via uri " + _jobURI, e);
+        }
+
+        // Check status code.
+        final StatusLine statusLine = httpResponse.getStatusLine();
+        // Base on the decision graph
+        // http://clojure-liberator.github.io/liberator/tutorial/decision-graph.html
+        // The status code for the proper GET response is 200.
+        if (statusLine.getStatusCode() != HttpStatus.SC_OK) {
+            throw releaseAndCreateException(httpRequest, httpResponse, "The response of GET request " + allParams + " via uri " + _jobURI + ": "
+                + statusLine.getReasonPhrase() + ", " + statusLine.getStatusCode(), null);
+        }
+        // Parse the response.
+        String response = null;
+        try {
+            // parse the response to string.
+            final HttpEntity entity = httpResponse.getEntity();
+            response = EntityUtils.toString(entity);
+            // Ensure that the entity content has been fully consumed and the underlying stream has been closed.
+            EntityUtils.consume(entity);
+            result = Group.parseFromJSON(response, _instanceDecorator).get(0);
+        } catch (JSONException | ParseException | IOException | IndexOutOfBoundsException e) {
+            throw new JobClientException("Can not parse the response = " + response + " for GET request " + allParams +
+                    " via uri " + _jobURI, e);
+        } finally {
+            httpRequest.releaseConnection();
+        }
+        return result;
+    }
+
+    /**
+     * Query a collection of groups for their status.
+     * @param guuids specifies the uuids of the {@link Group}s to be queried.
+     * @return a map of {@link UUID}s to {@link Group}s.
+     * @throws JobClientException
+     */
+    public ImmutableMap<UUID, Group> queryGroups(Collection<UUID> guuids)
+        throws JobClientException {
+        if (_groupURI == null) {
+            throw groupEndpointMissingException("Cannot query groups if the jobclient's group endpoint is null");
+        }
+        final List<NameValuePair> allParams = new ArrayList<NameValuePair>(guuids.size());
+        for (UUID guuid : guuids) {
+            allParams.add(new BasicNameValuePair("uuid", guuid.toString()));
+        }
+        allParams.add(new BasicNameValuePair("detailed", "true"));
+        final ImmutableMap.Builder<UUID, Group> UUIDToGroup = ImmutableMap.builder();
+        // Partition a large query into small queries.
+        for (final List<NameValuePair> params : Lists.partition(allParams, _batchRequestSize)) {
+            HttpResponse httpResponse;
+            HttpRequestBase httpRequest;
+            try {
+                URIBuilder uriBuilder = new URIBuilder(_groupURI);
+                uriBuilder.addParameters(params);
+                httpRequest = new HttpGet(uriBuilder.build());
+                httpResponse = _httpClient.execute(httpRequest);
+            } catch (IOException | URISyntaxException e) {
+                throw releaseAndCreateException(null, null, "Can not submit GET request " + params + " via uri " + _jobURI, e);
+            }
+            // Check status code.
+            final StatusLine statusLine = httpResponse.getStatusLine();
+            // Base on the decision graph
+            // http://clojure-liberator.github.io/liberator/tutorial/decision-graph.html
+            // The status code for the proper GET response is 200.
+            if (statusLine.getStatusCode() != HttpStatus.SC_OK) {
+                throw releaseAndCreateException(httpRequest, httpResponse, "The response of GET request " + params + " via uri " + _jobURI + ": "
+                        + statusLine.getReasonPhrase() + ", " + statusLine.getStatusCode(), null);
+            }
+            // Parse the response.
+            String response = null;
+            try {
+                // parse the response to string.
+                final HttpEntity entity = httpResponse.getEntity();
+                response = EntityUtils.toString(entity);
+                // Ensure that the entity content has been fully consumed and the underlying stream has been closed.
+                EntityUtils.consume(entity);
+                for (Group group : Group.parseFromJSON(response, _instanceDecorator)) {
+                    UUIDToGroup.put(group.getUUID(), group);
+                }
+            } catch (JSONException | ParseException | IOException e) {
+                throw new JobClientException("Can not parse the response = " + response + " for GET request " + params +
+                        " via uri " + _jobURI, e);
+            } finally {
+                httpRequest.releaseConnection();
+            }
+        }
+        return UUIDToGroup.build();
+
     }
 
     /**
@@ -665,17 +1026,17 @@ public class JobClient implements Closeable {
         for (final List<NameValuePair> params : Lists.partition(allParams, _batchRequestSize)) {
             HttpRequestBase httpRequest;
             try {
-                URIBuilder uriBuilder = new URIBuilder(_uri);
+                URIBuilder uriBuilder = new URIBuilder(_jobURI);
                 uriBuilder.addParameters(params);
                 httpRequest =  new HttpDelete(uriBuilder.build());
             } catch (URISyntaxException e) {
-                throw releaseAndCreateException(null, "Can not submit DELETE request " + params + " via uri " + _uri, e);
+                throw releaseAndCreateException(null, null, "Can not submit DELETE request " + params + " via uri " + _jobURI, e);
             }
             HttpResponse httpResponse;
             try {
                 httpResponse = _httpClient.execute(httpRequest);
             } catch (IOException e) {
-                throw releaseAndCreateException(httpRequest, "Can not submit DELETE request " + params + " via uri " + _uri, e);
+                throw releaseAndCreateException(httpRequest, null, "Can not submit DELETE request " + params + " via uri " + _jobURI, e);
             }
             // Check status code.
             final StatusLine statusLine = httpResponse.getStatusLine();
@@ -683,7 +1044,7 @@ public class JobClient implements Closeable {
             // http://clojure-liberator.github.io/liberator/tutorial/decision-graph.html
             // If jobs are aborted successfully, the returned status code is 204.
             if (statusLine.getStatusCode() != HttpStatus.SC_NO_CONTENT) {
-                throw releaseAndCreateException(httpRequest, "The response of DELETE request " + params + " via uri " + _uri + ": "
+                throw releaseAndCreateException(httpRequest, httpResponse, "The response of DELETE request " + params + " via uri " + _jobURI + ": "
                         + statusLine.getReasonPhrase() + ", " + statusLine.getStatusCode(), null);
             }
             // Parse the response.
@@ -698,7 +1059,7 @@ public class JobClient implements Closeable {
                 }
             } catch (ParseException | IOException e) {
                 throw new JobClientException("Can not parse the response for DELETE request " + params + " via uri "
-                        + _uri, e);
+                        + _jobURI, e);
             } finally {
                 httpRequest.releaseConnection();
             }
@@ -748,7 +1109,7 @@ public class JobClient implements Closeable {
 
     @Override
     public String toString() {
-        return "JobClient [_uri=" + _uri + ", _httpClient=" + _httpClient + ", _listenerService=" + _listenerService
+        return "JobClient [_jobURI=" + _jobURI + ", _httpClient=" + _httpClient + ", _listenerService=" + _listenerService
                 + ", _activeUUIDToJob=" + _activeUUIDToJob + ", _batchSubmissionLimit=" + _batchRequestSize
                 + ", _statusUpdateInterval=" + _statusUpdateInterval + "]";
     }

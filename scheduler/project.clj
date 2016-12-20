@@ -25,7 +25,7 @@
                  [org.clojure/data.json "0.2.2"]
                  [com.taoensso/nippy "2.8.0"
                   :exclusions [org.clojure/tools.reader]]
-                 [circleci/clj-yaml "0.5.4"]
+                 [circleci/clj-yaml "0.5.5"]
                  [camel-snake-kebab "0.4.0"]
 
                  ;;Utility
@@ -138,13 +138,20 @@
    :dev
    {:dependencies [[clj-http-fake "1.0.1"]
                    [org.mockito/mockito-core "1.10.19"]
-                   [org.clojure/test.check "0.6.1"]]
+                   [twosigma/cook-jobclient "0.1.0-SNAPSHOT"]
+                   [org.clojure/test.check "0.6.1"]
+                   [log4j/log4j "1.2.17" :exclusions  [javax.mail/mail
+                                                       javax.jms/jms
+                                                       com.sun.jdmk/jmxtools
+                                                       com.sun.jmx/jmxri]]
+                   [ring/ring-jetty-adapter "1.5.0"]]
     :jvm-opts ["-Xms2G"
                "-XX:-OmitStackTraceInFastThrow"
                "-Xmx2G"
 ;               "-Dcom.sun.management.jmxremote.port=5555"
                "-Dcom.sun.management.jmxremote.authenticate=false"
                "-Dcom.sun.management.jmxremote.ssl=false"]
+    :resource-paths ["test-resources"]
     :source-paths []}}
 
   :test-selectors {:default (complement :integration)

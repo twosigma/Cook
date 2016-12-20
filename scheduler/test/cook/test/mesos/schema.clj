@@ -16,88 +16,11 @@
 
 (ns cook.test.mesos.schema
   (:use clojure.test)
-  (:require   [cook.mesos.schema :as schema]
-              [datomic.api :as d :refer (q db)]))
+  (:require [cook.mesos.schema :as schema]
+            [cook.test.testutil :as testutil :refer (create-dummy-instance create-dummy-job restore-fresh-database!)]
+            [datomic.api :as d :refer (q db)]))
 
 (def datomic-uri "datomic:mem://test")
-
-(defn restore-fresh-database!
-  "Completely delete all data, start a fresh database and apply transactions if
-   provided.
-
-   Return a connection to the fresh database."
-  [uri & txn]
-  (d/delete-database uri)
-  (d/create-database uri)
-  (let [conn (d/connect uri)]
-    (doseq [t schema/work-item-schema]
-      @(d/transact conn t))
-    (doseq [t txn]
-      @(d/transact conn t))
-    conn))
-
-(defn create-dummy-job
-  "Return the entity id for the created dummy job."
-  [conn & {:keys [user uuid command ncpus memory name retry-count max-runtime priority job-state submit-time custom-executor? gpus]
-           :or {user (System/getProperty "user.name")
-                uuid (d/squuid)
-                command "dummy command"
-                ncpus 1.0
-                memory 10.0
-                name "dummy job"
-                submit-time (java.util.Date.)
-                retry-count 5
-                max-runtime Long/MAX_VALUE
-                priority 50
-                job-state :job.state/waiting}}]
-  (let [id (d/tempid :db.part/user)
-        job-info {:db/id id
-                  :job/uuid uuid
-                  :job/command command
-                  :job/user user
-                  :job/name name
-                  :job/max-retries retry-count
-                  :job/max-runtime max-runtime
-                  :job/priority priority
-                  :job/state job-state
-                  :job/submit-time submit-time
-                  :job/resource [{:resource/type :resource.type/cpus
-                                  :resource/amount (double ncpus)}
-                                 {:resource/type :resource.type/mem
-                                  :resource/amount (double memory)}]}
-        job-info (if gpus
-                   (update-in job-info [:job/resource] conj {:resource/type :resource.type/gpus
-                                                             :resource/amount (double gpus)})
-                   job-info)
-        val @(d/transact conn [(if (nil? custom-executor?)
-                                 job-info
-                                 (assoc job-info :job/custom-executor custom-executor?))])]
-    (d/resolve-tempid (db conn) (:tempids val) id)))
-
-(defn create-dummy-instance
-  "Return the entity id for the created instance."
-  [conn job & {:keys [job-state instance-status start-time hostname task-id progress backfilled? reason]
-               :or  {job-state :job.state/running
-                     instance-status :instance.status/unknown
-                     start-time (java.util.Date.)
-                     hostname "localhost"
-                     task-id (str (str (java.util.UUID/randomUUID)))
-                     backfilled? false
-                     progress 0
-                     reason nil} :as cfg}]
-  (let [id (d/tempid :db.part/user)
-        val @(d/transact conn [(merge
-                                 {:db/id id
-                                  :job/_instance job
-                                  :instance/hostname hostname
-                                  :instance/progress progress
-                                  :instance/backfilled? backfilled?
-                                  :instance/status instance-status
-                                  :instance/start-time start-time
-                                  :instance/task-id task-id
-                                  }
-                                  (if (nil? reason) {} {:instance/reason [:reason/name reason]}))])]
-    (d/resolve-tempid (db conn) (:tempids val) id)))
 
 (deftest test-instance-update-state
   (let [uri datomic-uri

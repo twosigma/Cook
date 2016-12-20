@@ -22,7 +22,8 @@
             [compojure.api.sweet :as c-api]
             [compojure.api.middleware :as c-mw]
             [plumbing.core :refer [map-keys mapply]]
-            [camel-snake-kebab.core :refer [->snake_case]]
+            [camel-snake-kebab.core :refer [->snake_case ->kebab-case]]
+            [compojure.core :refer (GET POST ANY routes)]
             [clojure.tools.logging :as log]
             [clojure.string :as str]
             [clojure.core.cache :as cache]
@@ -37,10 +38,12 @@
             [me.raynes.conch :as sh]
             [clj-time.core :as t]
             [metrics.timers :as timers]
+            [cook.mesos.schema :refer (host-placement-types)]
             [cook.mesos.share :as share]
             [cook.mesos.quota :as quota]
-            [plumbing.core :refer (map-vals)]
+            [plumbing.core :refer (map-vals map-from-vals)]
             [cook.mesos.reason :as reason]
+            [swiss.arrows :refer :all]
             [clojure.walk :refer (keywordize-keys)])
   (:import java.util.UUID))
 
@@ -87,6 +90,9 @@
 (def PosDouble
   (s/both double (s/pred pos? 'pos?)))
 
+(def NonEmptyString
+  (s/both s/Str (s/pred #(not (zero? (count %))) 'not-empty-string)))
+
 (def PortMapping
   "Schema for Docker Portmapping"
   {:host-port (s/both s/Int (s/pred #(<= 0 % 65536) 'between-0-and-65536))
@@ -128,46 +134,6 @@
    (s/optional-key :extract) s/Bool
    (s/optional-key :cache) s/Bool})
 
-(def NonEmptyString
-  (s/both s/Str (s/pred #(not (zero? (count %))) 'empty-string)))
-
-(def Job
-  "A schema for a job"
-  {:uuid s/Uuid
-   :command s/Str
-   ;; Make sure the job name is a valid string which can only contain '.', '_', '-' or any word characters and has
-   ;; length at most 128.
-   :name (s/both s/Str (s/pred #(re-matches #"[\.a-zA-Z0-9_-]{0,128}" %) 'under-128-characters-and-alphanum?))
-   :priority (s/both s/Int (s/pred #(<= 0 % 100) 'between-0-and-100))
-   :max-retries (s/both s/Int (s/pred pos? 'pos?))
-   :max-runtime (s/both s/Int (s/pred pos? 'pos?))
-   (s/optional-key :uris) [Uri]
-   (s/optional-key :ports) (s/pred #(not (neg? %)) 'nonnegative?)
-   (s/optional-key :env) {NonEmptyString s/Str}
-   (s/optional-key :labels) {NonEmptyString s/Str}
-   (s/optional-key :container) Container
-   :cpus PosDouble
-   :mem PosDouble
-   (s/optional-key :gpus) (s/both s/Int (s/pred pos? 'pos?))
-   ;; Make sure the user name is valid. It must begin with a lower case character, end with
-   ;; a lower case character or a digit, and has length between 2 to (62 + 2).
-   :user (s/both s/Str (s/pred #(re-matches #"\A[a-z][a-z0-9_-]{0,62}[a-z0-9]\z" %) 'lowercase-alphanum?))})
-
-(def JobRequest
-  "Schema for the part of a request that launches a single job."
-  (-> (map-keys #(if (keyword? %) (->snake_case %) %) Job)
-      (dissoc :user)
-      (merge {(s/optional-key :env) {s/Keyword s/Str}
-              (s/optional-key :labels) {s/Keyword s/Str}
-              (s/optional-key :uris) [UriRequest]
-              :cpus PosNum
-              :mem PosNum})))
-
-(def JobOrInstanceIds
-  "Schema for any number of job and/or instance uuids"
-  {(s/optional-key :job) [s/Uuid]
-   (s/optional-key :instance) [s/Uuid]})
-
 (def Instance
   "Schema for a description of a single job instance."
   {:status s/Str
@@ -184,17 +150,101 @@
    (s/optional-key :output_url) s/Str
    (s/optional-key :reason_string) s/Str})
 
+(def Job
+  "A schema for a job"
+  {:uuid s/Uuid
+   :command s/Str
+   ;; Make sure the job name is a valid string which can only contain '.', '_', '-' or any word characters and has
+   ;; length at most 128.
+   :name (s/both s/Str (s/pred #(re-matches #"[\.a-zA-Z0-9_-]{0,128}" %) 'under-128-characters-and-alphanum?))
+   :priority (s/both s/Int (s/pred #(<= 0 % 100) 'between-0-and-100))
+   :max-retries PosInt
+   :max-runtime PosInt
+   (s/optional-key :uris) [Uri]
+   (s/optional-key :ports) (s/pred #(not (neg? %)) 'nonnegative?)
+   (s/optional-key :env) {NonEmptyString s/Str}
+   (s/optional-key :labels) {NonEmptyString s/Str}
+   (s/optional-key :container) Container
+   (s/optional-key :group) s/Uuid
+   :cpus PosDouble
+   :mem PosDouble
+   (s/optional-key :gpus) (s/both s/Int (s/pred pos? 'pos?))
+   ;; Make sure the user name is valid. It must begin with a lower case character, end with
+   ;; a lower case character or a digit, and has length between 2 to (62 + 2).
+   :user (s/both s/Str (s/pred #(re-matches #"\A[a-z][a-z0-9_-]{0,62}[a-z0-9]\z" %) 'lowercase-alphanum?))})
+
+(def JobRequest
+  "Schema for the part of a request that launches a single job."
+  (-> Job
+    ;; make max-runtime optional.
+    ;; It is *not* optional internally but don't want to force users to set it
+    (dissoc :max-runtime)
+    (dissoc :user)
+    (merge {(s/optional-key :uris) [UriRequest]
+            (s/optional-key :env) {s/Keyword s/Str}
+            (s/optional-key :labels) {s/Keyword s/Str}
+            (s/optional-key :max-runtime) PosInt
+            :cpus PosNum
+            :mem PosNum})))
+
 (def JobResponse
   "Schema for a description of a job (as returned by the API).
   The structure is similar to JobRequest, but has some differences.
   For example, it can include descriptions of instances for the job."
-  (merge (dissoc JobRequest :user)
-         {:framework_id (s/maybe s/Str)
-          :status s/Str
-          :submit_time PosInt
-          :retries_remaining NonNegInt
-          (s/optional-key :gpus) s/Int
-          (s/optional-key :instances) [Instance]}))
+  (-<> JobRequest
+      (dissoc :user)
+      (dissoc (s/optional-key :group))
+      (merge {:framework-id (s/maybe s/Str)
+              :status s/Str
+              :submit-time PosInt
+              :retries-remaining NonNegInt
+              (s/optional-key :groups) [s/Uuid]
+              (s/optional-key :gpus) s/Int
+              (s/optional-key :instances) [Instance]})
+      (map-keys (fn [k]
+                  (if (instance? schema.core.OptionalKey k)
+                    (update k :k ->snake_case)
+                    (->snake_case k))) <>)
+      ))
+
+(def JobOrInstanceIds
+  "Schema for any number of job and/or instance uuids"
+  {(s/optional-key :job) [s/Uuid]
+   (s/optional-key :instance) [s/Uuid]})
+
+(def Attribute-Equals-Parameters
+  "A schema for the parameters of a host placement with type attribute-equals"
+  {:attribute s/Str})
+
+(def HostPlacement
+  "A schema for host placement"
+  (s/conditional
+    #(= (:type %) :host-placement.type/attribute-equals)
+      {:type (s/eq :host-placement.type/attribute-equals)
+       :parameters Attribute-Equals-Parameters}
+    :else
+      {:type (s/pred #(contains? host-placement-types %) 'host-placement-type-exists?)
+       (s/optional-key :parameters) {}}))
+
+(def Group
+  "A schema for a job group"
+  {:uuid s/Uuid
+   (s/optional-key :host-placement) HostPlacement
+   (s/optional-key :name) s/Str})
+
+(def GroupResponse
+  "A schema for a group http response"
+  (merge Group
+         {:jobs [s/Uuid]
+          (s/optional-key :waiting) s/Int
+          (s/optional-key :running) s/Int
+          (s/optional-key :completed) s/Int}))
+
+(def RawSchedulerRequest
+  "Schema for a request to the raw scheduler endpoint."
+  {:jobs [JobRequest]
+   (s/optional-key :groups) [Group]})
+
 
 (defn- mk-container-params
   "Helper for build-container.  Transforms parameters into the datomic schema."
@@ -263,109 +313,176 @@
                 (mk-docker-ports docker-id port-mappings))])
       {})))
 
-(s/defn submit-jobs
-  [conn jobs :- [Job]]
-  (doseq [{:keys [uuid command max-retries max-runtime priority cpus mem gpus user name ports uris env labels container]} jobs
-          :let [id (d/tempid :db.part/user)
-                ports (when (and ports (not (zero? ports)))
-                        [[:db/add id :job/ports ports]])
-                uris (mapcat (fn [{:keys [value executable? cache? extract?]}]
-                               (let [uri-id (d/tempid :db.part/user)
-                                     optional-params {:resource.uri/executable? executable?
-                                                      :resource.uri/extract? extract?
-                                                      :resource.uri/cache? cache?}]
-                                 [[:db/add id :job/resource uri-id]
-                                  (reduce-kv
-                                    ;; This only adds the optional params to the DB if they were explicitly set
-                                    (fn [txn-map k v]
-                                      (if-not (nil? v)
-                                        (assoc txn-map k v)
-                                        txn-map))
-                                    {:db/id uri-id
-                                     :resource/type :resource.type/uri
-                                     :resource.uri/value value}
-                                    optional-params)]))
-                             uris)
-                env (mapcat (fn [[k v]]
-                              (let [env-var-id (d/tempid :db.part/user)]
-                                [[:db/add id :job/environment env-var-id]
-                                 {:db/id env-var-id
-                                  :environment/name k
-                                  :environment/value v}]))
-                            env)
-                labels (mapcat (fn [[k v]]
-                              (let [label-var-id (d/tempid :db.part/user)]
-                                [[:db/add id :job/label label-var-id]
-                                 {:db/id label-var-id
-                                  :label/key k
-                                  :label/value v}]))
-                            labels)
-                container (if (nil? container) [] (build-container user id container))
-                ;; These are optionally set datoms w/ default values
-                maybe-datoms (concat
-                               (when (and priority (not= util/default-job-priority priority))
-                                 [[:db/add id :job/priority priority]])
-                               (when (and max-runtime (not= Long/MAX_VALUE max-runtime))
-                                 [[:db/add id :job/max-runtime max-runtime]])
-                               (when (and gpus (not (zero? gpus)))
-                                 (let [gpus-id (d/tempid :db.part/user)]
-                                   [[:db/add id :job/resource gpus-id]
-                                    {:db/id gpus-id
-                                     :resource/type :resource.type/gpus
-                                     :resource/amount (double gpus)}])))
-                commit-latch-id (d/tempid :db.part/user)
-                commit-latch {:db/id commit-latch-id
-                              :commit-latch/uuid (java.util.UUID/randomUUID)
-                              :commit-latch/committed? true}
-                txn {:db/id id
-                     :job/commit-latch commit-latch-id
-                     :job/uuid uuid
-                     :job/submit-time (java.util.Date.)
-                     :job/name (or name "cookjob") ; set the default job name if not provided.
-                     :job/command command
-                     :job/custom-executor false
-                     :job/user user
-                     :job/max-retries max-retries
-                     :job/state :job.state/waiting
-                     :job/resource [{:resource/type :resource.type/cpus
-                                     :resource/amount cpus}
-                                    {:resource/type :resource.type/mem
-                                     :resource/amount mem}]}]]
+(s/defn make-job-txn
+  "Creates the necessary txn data to insert a job into the database"
+  [job :- Job]
+  (let [{:keys [uuid command max-retries max-runtime priority cpus mem gpus user name ports uris env labels container group]
+         :or {group nil}
+         } job
+        db-id (d/tempid :db.part/user)
+        ports (when (and ports (not (zero? ports)))
+                [[:db/add db-id :job/ports ports]])
+        uris (mapcat (fn [{:keys [value executable? cache? extract?]}]
+                       (let [uri-id (d/tempid :db.part/user)
+                             optional-params {:resource.uri/executable? executable?
+                                              :resource.uri/extract? extract?
+                                              :resource.uri/cache? cache?}]
+                         [[:db/add db-id :job/resource uri-id]
+                          (reduce-kv
+                            ;; This only adds the optional params to the DB if they were explicitly set
+                            (fn [txn-map k v]
+                              (if-not (nil? v)
+                                (assoc txn-map k v)
+                                txn-map))
+                            {:db/id uri-id
+                             :resource/type :resource.type/uri
+                             :resource.uri/value value}
+                            optional-params)]))
+                     uris)
+        env (mapcat (fn [[k v]]
+                      (let [env-var-id (d/tempid :db.part/user)]
+                        [[:db/add db-id :job/environment env-var-id]
+                         {:db/id env-var-id
+                          :environment/name k
+                          :environment/value v}]))
+                    env)
+        labels (mapcat (fn [[k v]]
+                      (let [label-var-id (d/tempid :db.part/user)]
+                        [[:db/add db-id :job/label label-var-id]
+                         {:db/id label-var-id
+                          :label/key k
+                          :label/value v}]))
+                    labels)
+        container (if (nil? container) [] (build-container user db-id container))
+        ;; These are optionally set datoms w/ default values
+        maybe-datoms (reduce into
+                             []
+                             [(when (and priority (not= util/default-job-priority priority))
+                                [[:db/add db-id :job/priority priority]])
+                              (when (and max-runtime (not= Long/MAX_VALUE max-runtime))
+                                [[:db/add db-id :job/max-runtime max-runtime]])
+                              (when (and gpus (not (zero? gpus)))
+                                  (let [gpus-id (d/tempid :db.part/user)]
+                                    [[:db/add db-id :job/resource gpus-id]
+                                     {:db/id gpus-id
+                                      :resource/type :resource.type/gpus
+                                      :resource/amount (double gpus)}]))])
+        commit-latch-id (d/tempid :db.part/user)
+        commit-latch {:db/id commit-latch-id
+                      :commit-latch/uuid (java.util.UUID/randomUUID)
+                      :commit-latch/committed? true}
+        txn {:db/id db-id
+             :job/commit-latch commit-latch-id
+             :job/uuid uuid
+             :job/submit-time (java.util.Date.)
+             :job/name (or name "cookjob") ; set the default job name if not provided.
+             :job/command command
+             :job/custom-executor false
+             :job/user user
+             :job/max-retries max-retries
+             :job/state :job.state/waiting
+             :job/resource [{:resource/type :resource.type/cpus
+                             :resource/amount cpus}
+                            {:resource/type :resource.type/mem
+                             :resource/amount mem}]}]
 
     ;; TODO batch these transactions to improve performance
-    @(d/transact conn (-> ports
-                          (into uris)
-                          (into env)
-                          (into labels)
-                          (into container)
-                          (into maybe-datoms)
-                          (conj txn)
-                          (conj commit-latch))))
-  "ok")
+    (-> ports
+        (into uris)
+        (into env)
+        (into labels)
+        (into container)
+        (into maybe-datoms)
+        (conj txn)
+        (conj commit-latch))))
 
-(defn used-uuid?
-  "Returns true iff the given uuid is used in datomic"
-  [db uuid]
-  (not (nil? (d/entity db [:job/uuid uuid]))))
+(s/defn make-host-placement-txn
+  "Creates the transaction data necessary to insert a host placement into the database.
+   Returns a vector [host-placement-id txns]"
+  [hp :- [HostPlacement]]
+  (let [params (:parameters hp)
+        params-txn-id (d/tempid :db.part/user)
+        params-txn (when (= (:type hp) :host-placement.type/attribute-equals)
+                      {:db/id params-txn-id
+                       :host-placement.attribute-equals/attribute (:attribute params)})
+        hp-txn-id (d/tempid :db.part/user)
+        hp-txn (merge {:db/id hp-txn-id
+                        :host-placement/type [:host-placement.type/name (:type hp)]}
+                       (when params-txn
+                         {:host-placement/parameters params-txn-id}))
+        txns (if (nil? params-txn)
+               [hp-txn]
+               [params-txn hp-txn])]
+    [hp-txn-id txns]))
 
-(defn ensure-uuid-unused
-  "Throws if the given uuid is used in datomic"
-  [db uuid]
-  (if (used-uuid? db uuid)
-    (throw (ex-info (str "UUID " uuid " already used") {:uuid uuid}))
-    true))
+(s/defn make-group-txn
+  "Creates the transaction data necessary to insert a group to the database. job-db-ids is the
+   list of all db-ids (datomic temporary ids) of jobs that belong to this group"
+  [group :- Group job-db-ids]
+  (let [uuid (:uuid group)
+        [hp-txn-id hp-txns] (-> group
+                                :host-placement
+                                make-host-placement-txn)
+        group-txn {:db/id (d/tempid :db.part/user)
+                    :group/uuid uuid
+                    :group/name (:name group)
+                    :group/host-placement hp-txn-id
+                    :group/job job-db-ids}]
+      (conj hp-txns group-txn)))
+
+(defn group-exists?
+  "True if a group with guuid exists in the database, false otherwise"
+  [db guuid]
+  (not (nil? (d/entity db [:group/uuid guuid]))))
+
+(defn job-exists?
+  "True if a job with juuid exists in the database, false otherwise"
+  [db juuid]
+  (not (nil? (d/entity db [:job/uuid juuid]))))
+
+(defn valid-group-uuid?
+  "Returns truth-y if the provided guuid corresponds to a valid group for a new
+   job to belong to. Returns false otherwise."
+  [db new-guuids commit-latch-id override-immutability? guuid]
+  (let [group-exists (group-exists? db guuid)]
+    (cond
+      (contains? new-guuids guuid) :created-in-transaction
+      (not group-exists) :new
+      (and group-exists override-immutability?) :override-existing
+      :else false)))
+
+(defn make-default-host-placement
+  []
+  {:type :host-placement.type/all})
+
+(defn make-default-group
+  [guuid]
+  ; Have to validate (check uuid is unused)
+  {:uuid guuid
+   :name "defaultgroup"
+   :host-placement (make-default-host-placement)})
 
 (defn validate-and-munge-job
-  "Takes the user and the parsed json from the job and returns proper
-   Job objects, or else throws an exception"
-  [db user task-constraints gpu-enabled? {:keys [cpus mem gpus uuid command priority max_retries max_runtime name uris ports env labels container] :as job}]
-  (let [munged (merge
-                (dissoc job :max_retries :max_runtime)
+  "Takes the user, the parsed json from the job and a list of the uuids of
+   new-groups (submitted in the same request as the job). Returns proper Job
+   objects, or else throws an exception"
+  [db user task-constraints gpu-enabled? new-group-uuids
+   {:keys [cpus mem gpus uuid command priority max-retries max-runtime name
+           uris ports env labels container group]
+    :or {group nil}
+    :as job}
+   & {:keys [commit-latch-id override-group-immutability?]
+      :or {commit-latch-id nil
+           override-group-immutability? false}}]
+  (let [group-uuid (when group group)
+        munged (merge
                  {:user user
+                  :uuid uuid
+                  :command command
                   :name (or name "cookjob") ; Add default job name if user does not provide a name.
                   :priority (or priority util/default-job-priority)
-                  :max-retries max_retries
-                  :max-runtime (or max_runtime Long/MAX_VALUE)
+                  :max-retries max-retries
+                  :max-runtime (or max-runtime Long/MAX_VALUE)
                   :ports (or ports 0)
                   :cpus (double cpus)
                   :mem (double mem)}
@@ -381,12 +498,15 @@
                                         (when extract {:extract? extract})))
                                uris)})
                  (when labels
-                   {:labels (walk/stringify-keys labels)}))]
+                   {:labels (walk/stringify-keys labels)})
+                 (when group-uuid
+                   {:group group-uuid}))]
+    (s/validate Job munged)
     (when (and (:gpus munged) (not gpu-enabled?))
       (throw (ex-info (str "GPU support is not enabled") {:gpus gpus})))
-    (s/validate Job munged)
     (when (> cpus (:cpus task-constraints))
-      (throw (ex-info (str "Requested " cpus " cpus, but only allowed to use " (:cpus task-constraints))
+      (throw (ex-info (str "Requested " cpus " cpus, but only allowed to use "
+                           (:cpus task-constraints))
                       {:constraints task-constraints
                        :job job})))
     (when (> mem (* 1024 (:memory-gb task-constraints)))
@@ -394,19 +514,46 @@
                            (* 1024 (:memory-gb task-constraints)))
                       {:constraints task-constraints
                        :job job})))
-    (when (> max_retries (:retry-limit task-constraints))
-      (throw (ex-info (str "Requested " max_retries " exceeds the maximum retry limit")
+    (when (> max-retries (:retry-limit task-constraints))
+      (throw (ex-info (str "Requested " max-retries " exceeds the maximum retry limit")
                       {:constraints task-constraints
                        :job job})))
     (doseq [{:keys [executable? extract?] :as uri} (:uris munged)
             :when (and (not (nil? executable?)) (not (nil? extract?)))]
       (throw (ex-info "Uri cannot set executable and extract" uri)))
-    (ensure-uuid-unused db (:uuid munged))
+    (when (job-exists? db uuid)
+      (throw (ex-info (str "Job UUID " uuid " already used") {:uuid uuid})))
+    (when (and group-uuid
+               (not (valid-group-uuid? db
+                                       new-group-uuids
+                                       commit-latch-id
+                                       override-group-immutability?
+                                       group-uuid)))
+      (throw (ex-info (str "Invalid group UUID " group-uuid " provided. A valid"
+                           " group UUID either: 1. belongs to a group created "
+                           "in the same request or 2. does not belong to any "
+                           "existing group, or group created in this request")
+                      {:uuid group-uuid})))
     munged))
 
+(defn validate-and-munge-group
+  "Takes the parsed json from the group and returns proper Group objects, or else throws an
+   exception"
+  [db group]
+  (let [group-name (:name group)
+        hp (:host-placement group)
+        group (-> group
+                  (assoc :name (or group-name "cookgroup"))
+                  (assoc :host-placement (or hp (make-default-host-placement))))]
+    (s/validate Group group)
+    (when (group-exists? db (:uuid group))
+      (throw (ex-info (str "Group UUID " (:uuid group) " already used") {:uuid group})))
+    group))
+
+
 (defn get-executor-states-impl
-  "Builds an indexed version of all executor states on the specified slave. Has no cache; takes 100-500ms
-   to run."
+  "Builds an indexed version of all executor states on the specified slave. Has no cache; takes
+   100-500ms to run."
   [framework-id hostname]
   (let [timeout-millis (* 5 1000)
         ;; Throw SocketTimeoutException or ConnectionTimeoutException when timeout
@@ -425,10 +572,7 @@
                                             [(get framework "executors")
                                              (get framework "completed_executors")])]
                               e)]
-    (reduce (fn [m {:strs [id] :as executor-state}]
-              (assoc m id executor-state))
-            {}
-            framework-executors)))
+    (map-from-vals #(get % "id") framework-executors)))
 
 (let [cache (-> {}
                 (cache/fifo-cache-factory :threshold 10000)
@@ -460,20 +604,21 @@
 (defn fetch-job-map
   [db fid job-uuid]
   (let [job (d/entity db [:job/uuid job-uuid])
-        resources (util/job-ent->resources job)]
+        resources (util/job-ent->resources job)
+        groups (:group/_job job)]
     (merge
       {:command (:job/command job)
        :uuid (str (:job/uuid job))
        :name (:job/name job "cookjob")
        :priority (:job/priority job util/default-job-priority)
-       :submit_time (when (:job/submit-time job) ; Due to a bug, submit time may not exist for some jobs
+       :submit_time (when (:job/submit-time job) ; due to a bug, submit time may not exist for some jobs
                       (.getTime (:job/submit-time job)))
        :cpus (:cpus resources)
        :mem (:mem resources)
        :gpus (int (:gpus resources 0))
-       :max_retries  (:job/max-retries job) ; Consistent with input
+       :max_retries  (:job/max-retries job) ; consistent with input
        :retries_remaining (- (:job/max-retries job) (util/job-ent->attempts-consumed job))
-       :max_runtime (:job/max-runtime job Long/MAX_VALUE) ; Consistent with input
+       :max_runtime (:job/max-runtime job Long/MAX_VALUE) ; consistent with input
        :framework_id fid
        :status (name (:job/state job))
        :uris (:uris resources)
@@ -514,7 +659,39 @@
                                   :reason_string (:reason/string reason))
                            base)]
                 base))
-            (:job/instance job))})))
+            (:job/instance job))}
+      (when groups
+        {:groups (map #(str (:group/uuid %)) groups)})
+      )))
+
+(defn fetch-group-job-details
+  [db guuid]
+  (let [group (d/entity db [:group/uuid guuid])
+        jobs (:group/job group)
+        jobs-by-state (group-by :job/state jobs)]
+          {:waiting (count (:job.state/waiting jobs-by-state))
+           :running (count (:job.state/running jobs-by-state))
+           :completed (count (:job.state/completed jobs-by-state))}))
+
+(defn fetch-group-map
+  [db guuid]
+  (let [group (d/entity db [:group/uuid guuid])
+        hp (:group/host-placement group)
+        hp-params (:host-placement/parameters hp)
+        hp-type (->> hp :host-placement/type :host-placement.type/name)
+        jobs (:group/job group)]
+      {:uuid (:group/uuid group)
+       :name (:group/name group)
+       ;; TODO: strip everything before slash in parameters so we can just do:
+       ;; {:type hp-type
+       ;;  :parameters (map-keys remove-datomic-namepace hp-params
+       ;; See cook.mesos.util/deep-transduce-kv
+       :host-placement {:type hp-type
+                        :parameters (merge {}
+                                           (when (= hp-type :host-placement.type/attribute-equals)
+                                             {:attribute (:host-placement.attribute-equals/attribute hp-params)}))}
+       :jobs (->> jobs
+                  (map :job/uuid))}))
 
 (defn instance-uuid->job-uuid
   "Queries for the job uuid from an instance uuid.
@@ -525,31 +702,30 @@
        :job/_instance
        :job/uuid))
 
-
 (defn retrieve-jobs
   [conn instances-too? ctx]
   (let [jobs (get-in ctx [:request :query-params :job])
         instances (if instances-too? (get-in ctx [:request :query-params :instance]) [])]
     (let [instance-uuid->job-uuid #(instance-uuid->job-uuid (d/db conn) %)
           instance-jobs (mapv instance-uuid->job-uuid instances)
-          used? (partial used-uuid? (db conn))]
+          used? (partial job-exists? (db conn))]
       (cond
         (and (every? used? jobs)
              (every? (complement nil?) instance-jobs))
-          [true {::jobs (into jobs instance-jobs)}]
+        [true {::jobs (into jobs instance-jobs)}]
         (some nil? instance-jobs)
-          [false {::error (str "UUID "
-                               (str/join
-                                \space
-                                (filter (comp nil? instance-uuid->job-uuid)
-                                        instances))
-                               " didn't correspond to an instance")}]
+        [false {::error (str "UUID "
+                             (str/join
+                               \space
+                               (filter (comp nil? instance-uuid->job-uuid)
+                                       instances))
+                             " didn't correspond to an instance")}]
         :else
-          [false {::error (str "UUID "
-                               (str/join
-                                \space
-                                (remove used? jobs))
-                               " didn't correspond to a job")}]))))
+        [false {::error (str "UUID "
+                             (str/join
+                               \space
+                               (remove used? jobs))
+                             " didn't correspond to a job")}]))))
 
 (defn check-job-params-present
   [ctx]
@@ -600,6 +776,40 @@
                (cook.mesos/kill-job conn (::jobs ctx)))
     :handle-ok (partial render-jobs-for-response conn fid)}))
 
+(defn vectorize
+  "If x is not a vector (or nil), turns it into a vector"
+  [x]
+  (if (or (nil? x) (vector? x))
+      x
+      [x]))
+
+(defn clojurize-hp-type
+  [placement-type]
+  (let [placement-type-str (str placement-type)]
+    (if (re-find #"^host-placement.type/" placement-type-str)
+      placement-type
+      (keyword "host-placement.type" placement-type-str)))) ; Note that keyword adds in the slash
+
+;;TODO (Diego): add docs for this
+(def cook-coercer
+  (constantly
+    (-> c-mw/default-coercion-matchers
+      (update :body
+              (fn [their-matchers]
+                (fn [s]
+                  (or (their-matchers s)
+                      (get {JobRequest #(map-keys ->kebab-case %)
+                            HostPlacement (fn [hp] (update hp :type clojurize-hp-type))}
+                           s)))))
+      (update :response
+              (fn [their-matchers]
+                (fn [s]
+                  (or (their-matchers s)
+                      (get {JobResponse #(map-keys ->snake_case %)
+                            s/Uuid str}
+                           s))))))))
+
+(def override-group-str "override-group-immutability")
 
 ;;; On POST; JSON blob that looks like:
 ;;; {"jobs": [{"command": "echo hello world",
@@ -614,36 +824,125 @@
    {:allowed-methods [:post]
     :malformed? (fn [ctx]
                   (let [params (get-in ctx [:request :body-params])
-                        user (get-in ctx [:request :authorization/user])]
+                        jobs (get params :jobs)
+                        groups (get params :groups)
+                        user (get-in ctx [:request :authorization/user])
+                        override-group-immutability? (boolean (get params override-group-str))]
                     (try
-                      [false {::jobs (mapv #(validate-and-munge-job
-                                             (db conn)
-                                             user
-                                             task-constraints
-                                             gpu-enabled?
-                                             %)
-                                           (get params :jobs))}]
+                      (cond
+                        (empty? params)
+                        [true {::error (str "Must supply at least one job or group to start."
+                                            "Are you specifying that this is application/json?")}]
+                        :else
+                        (let [groups (mapv #(validate-and-munge-group (db conn) %) groups)
+                              jobs (mapv #(validate-and-munge-job
+                                            (db conn)
+                                            user
+                                            task-constraints
+                                            gpu-enabled?
+                                            (set (map :uuid groups))
+                                            %
+                                            :override-group-immutability?
+                                            override-group-immutability?) jobs)]
+                          [false {::groups groups ::jobs jobs}]))
                       (catch Exception e
                         (log/warn e "Malformed raw api request")
-                        [true {::error (str e)}]))))
+                        [true {::error (.getMessage e)}]))))
     :processable? (fn [ctx]
                     (try
                       (log/info "Submitting jobs through raw api:" (::jobs ctx))
-                      (submit-jobs conn (::jobs ctx))
+                      (let [jobs (::jobs ctx)
+                            groups (::groups ctx)
+                            group-uuids (set (map :uuid groups))
+                            ; Create new implicit groups (with all default settings)
+                            implicit-groups (->> jobs
+                                                 (map :group)
+                                                 (remove nil?)
+                                                 distinct
+                                                 (remove #(contains? group-uuids %))
+                                                 (map make-default-group))
+                            groups (concat implicit-groups (::groups ctx))
+                            job-txns (mapcat #(make-job-txn %) jobs)
+                            job-uuids->dbids (->> job-txns
+                                                  ;; Not all txns are for the top level job
+                                                  (filter :job/uuid)
+                                                  (map (juxt :job/uuid :db/id))
+                                                  (into {}))
+                            group-uuid->job-dbids (->> jobs
+                                                        (group-by :group)
+                                                        (map-vals (fn [jobs]
+                                                                    (map #(job-uuids->dbids (:uuid %))
+                                                                         jobs))))
+                            group-txns (mapcat
+                                         #(make-group-txn % (get group-uuid->job-dbids (:uuid %) []))
+                                               groups)]
+                        (log/info (concat job-txns group-txns))
+                        (log/info {:job-uuids->dbids job-uuids->dbids
+                                   :group-uuid->job-dbids group-uuid->job-dbids
+                                   :jobs jobs
+                                   :groups groups
+                                   :job-txns job-txns
+                                   })
+                        @(d/transact
+                         conn
+                         (concat job-txns group-txns)))
                       true
                       (catch Exception e
                         (log/error e "Error submitting jobs through raw api")
-                        [false (str e)])))
+                        [false {::error (str e)}])))
     :post! (fn [ctx]
              ;; We did the actual logic in processable?, so there's nothing left to do
-             {::results (str/join \space (cons "submitted jobs" (map (comp str :uuid) (::jobs ctx))))})
+             {::results (str/join \space (concat ["submitted jobs"]
+                                                 (map (comp str :uuid) (::jobs ctx))
+                                                 (if (not (empty? (::groups ctx)))
+                                                   (concat ["submitted groups"]
+                                                           (map (comp str :uuid) (::groups ctx))))))})
 
     :handle-created (fn [ctx] (::results ctx))}))
 
 
+(defn read-groups-handler
+  [conn fid task-constraints is-authorized-fn]
+  (base-cook-handler
+    {:allowed-methods [:get]
+     :malformed? (fn [ctx]
+                   (try
+                     (let [requested-guuids (->> (get-in ctx [:request :query-params "uuid"])
+                                                 vectorize
+                                                 (mapv #(UUID/fromString %)))
+                           not-found-guuids (remove #(group-exists? (db conn) %) requested-guuids)]
+                       (if (empty? not-found-guuids)
+                         [false {::guuids requested-guuids}]
+                         [true {::error (str "UUID "
+                                                 (str/join
+                                                   \space
+                                                   not-found-guuids)
+                                                 " didn't correspond to a group")}]))
+                     (catch Exception e
+                       [true {::error e}])))
+     :allowed? (fn [ctx]
+                 (let [user (get-in ctx [:request :authorization/user])
+                       guuids (::guuids ctx)
+                       group-user (fn [guuid] (-> (d/entity (db conn) [:group/uuid guuid])
+                                                  :group/job first :job/user))
+                       authorized? (fn [guuid] (is-authorized-fn user
+                                                                 (get-in ctx [:request :request-method])
+                                                                 {:owner (group-user guuid) :item :job}))
+                       unauthorized-guuids (mapv :uuid (remove authorized? guuids))]
+                   (if (empty? unauthorized-guuids)
+                     true
+                     [false {::error (str "You are not authorized to view access the following groups "
+                                          (str/join \space unauthorized-guuids))}]
+                     )))
+     :handle-ok (fn [ctx]
+                  (if (get-in ctx [:request :query-params "detailed"])
+                    (mapv #(merge (fetch-group-map (db conn) %)
+                                  (fetch-group-job-details (db conn) %))
+                          (::guuids ctx))
+                    (mapv #(fetch-group-map (db conn) %) (::guuids ctx))))}))
+
 ;;
 ;; /queue
-;;
 
 (defn waiting-jobs
   [mesos-pending-jobs-fn is-authorized-fn]
@@ -652,7 +951,7 @@
         :allowed-methods [:get]
         :malformed? (fn [ctx]
                       (try
-                        (if-let [limit (Integer/parseInt (get-in ctx [:request :params "limit"] "1000"))]
+                        (if-let [limit (Integer/parseInt (get-in ctx [:request :query-params "limit"] "1000"))]
                           (if-not (pos? limit)
                             [true {::error (str "Limit " limit " most be positive")}]
                             [false {::limit limit}]))
@@ -690,7 +989,7 @@
         :allowed-methods [:get]
         :malformed? (fn [ctx]
                       (try
-                        (if-let [limit (Integer/parseInt (get-in ctx [:request :params "limit"] "1000"))]
+                        (if-let [limit (Integer/parseInt (get-in ctx [:request :query-params "limit"] "1000"))]
                           (if-not (pos? limit)
                             [true {::error (str "Limit " limit " most be positive")}]
                             [false {::limit limit}]))
@@ -728,23 +1027,19 @@
   [conn ctx]
   (let [job (or (get-in ctx [:request :query-params :job])
                 (get-in ctx [:request :body-params :job]))]
-    (if (used-uuid? (d/db conn) job)
+    (if (job-exists? (d/db conn) job)
       [true {::job job}]
       [false {::error (str "UUID " job " does not correspond to a job" )}])))
 
 (defn validate-retries
   [conn task-constraints ctx]
   (let [retries (or (get-in ctx [:request :query-params :retries])
-                (get-in ctx [:request :body-params :retries]))]
+                    (get-in ctx [:request :body-params :retries]))]
     (cond
-      (nil? retries)
-        [true {::error (str "'retries' parameter is required")}]
-      (not (pos? retries))
-        [true {::error (str "'retries' must be positive")}]
       (> retries (:retry-limit task-constraints))
-        [true {::error (str "'retries' exceeds the maximum retry limit of " (:retry-limit task-constraints))}]
+      [true {::error (str "'retries' exceeds the maximum retry limit of " (:retry-limit task-constraints))}]
       :else
-        [false {::retries retries}])))
+      [false {::retries retries}])))
 
 (defn check-retry-allowed
   [conn is-authorized-fn ctx]
@@ -794,9 +1089,7 @@
     :put! (fn [ctx]
             (util/retry-job! conn (::job ctx) (ctx ::retries)))}))
 
-
 ;; /share and /quota
-
 (def UserParam {:user s/Str})
 
 (def UserLimitsResponse
@@ -887,8 +1180,8 @@
     d
     (Long/parseLong s)))
 
-(timers/deftimer [order-wheel handler fetch-jobs])
-(timers/deftimer [order-wheel handler list-endpoint])
+(timers/deftimer [cook-scheduler handler fetch-jobs])
+(timers/deftimer [cook-scheduler handler list-endpoint])
 
 (defn list-resource
   [db framework-id is-authorized-fn]
@@ -982,7 +1275,8 @@
                :spec "/swagger-docs"
                :data {:info {:title "Cook API"
                              :description "How to Cook things"}
-                      :tags [{:name "api", :description "some apis"}]}}}
+                      :tags [{:name "api", :description "some apis"}]}}
+     :coercion cook-coercer}
 
     (c-api/context
      "/rawscheduler" []
@@ -995,7 +1289,7 @@
                          403 {:description "The supplied UUIDs don't correspond to valid jobs."}}
              :handler (read-jobs-handler conn fid task-constraints gpu-enabled? is-authorized-fn)}
        :post {:summary "Schedules one or more jobs."
-              :parameters {:body-params {:jobs [JobRequest]}}
+              :parameters {:body-params RawSchedulerRequest}
               :responses {200 {:schema [JobResponse]}}
               :handler (create-jobs-handler conn fid task-constraints gpu-enabled? is-authorized-fn)}
        :delete {:summary "Cancels jobs, halting execution when possible."
@@ -1072,8 +1366,17 @@
         :responses {201 {:schema PosInt
                          :description "The number of retries for the job"}
                     400 {:description "Invalid request format or bad job UUID."}
-                    401 {:description "Request user not authorized to access that job."}}}})))
-
+                    401 {:description "Request user not authorized to access that job."}}}}))
+     (c-api/context
+     "/group" []
+     (c-api/resource
+      {:get {:summary "Returns info about a set of groups"
+             :parameters {:query-params {:uuid [s/Uuid] (s/optional-key :detailed) s/Bool}}
+             :responses {200 {:schema [GroupResponse]
+                              :description "The groups were returned."}
+                         400 {:description "Non-UUID values were passed."}
+                         403 {:description "The supplied UUIDs don't correspond to valid groups."}}
+             :handler (read-groups-handler conn fid task-constraints is-authorized-fn)}})))
     (ANY "/queue" []
          (waiting-jobs mesos-pending-jobs-fn is-authorized-fn))
     (ANY "/running" []

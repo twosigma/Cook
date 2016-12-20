@@ -15,6 +15,7 @@ gclog*
 /lib
 /classes
 /checkouts
+test-log
 pom.xml
 pom.xml.asc
 *.jar
@@ -25,3 +26,5 @@ pom.xml.asc
 .lein-repl-history
 .nrepl-port
 scheduler/src/cfg
+jobclient/src/cfg
+scheduler/checkouts

@@ -502,7 +502,6 @@
          (shutdown-rebalancer)))))
 
 (comment
-
   ; Useful function to simulate preemptions
   (defn update-task-by-name
     [name reason-name]

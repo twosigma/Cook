@@ -93,6 +93,7 @@ final public class Job {
         private Map<String,String> _env = new HashMap<>();
         private JSONObject _container;
         private Map<String,String> _labels = new HashMap<>();
+        private List<UUID> _groups = new ArrayList<>();
 
         /**
          * Prior to {@code build()}, command, memory and cpus for a job must be provided.<br>
@@ -118,7 +119,7 @@ final public class Job {
                 _status = Status.INITIALIZED;
             if (_name == null)
                 _name = "cookjob";
-            return new Job(_uuid, _name, _command, _memory, _cpus, _retries, _status, _priority, _instances, _env, _uris, _container, _labels);
+            return new Job(_uuid, _name, _command, _memory, _cpus, _retries, _status, _priority, _instances, _env, _uris, _container, _labels, _groups);
         }
 
         /**
@@ -160,6 +161,31 @@ final public class Job {
          */
         public Builder addUris(Collection<FetchableURI> uris) {
             _uris.addAll(uris);
+            return this;
+        }
+
+        /**
+         * Adds the job to a group by UUID
+         *
+         *
+         * @param group A group to which the job belongs by UUID
+         * @return this builder
+         */
+        private Builder _setGroupByUUID(UUID guuid) {
+            _groups.clear();
+            _groups.add(guuid);
+            return this;
+        }
+
+        /**
+         * Adds the job to a group
+         *
+         *
+         * @param group A group to which the job belongs
+         * @return this builder
+         */
+        public Builder setGroup(Group group) {
+            _setGroupByUUID(group.getUUID());
             return this;
         }
 
@@ -332,7 +358,7 @@ final public class Job {
         /**
          * Set the name of the job expected to build.
          *
-         * @param name {@link Status} specifies the name for a job.
+         * @param name {@link String} specifies the name for a job.
          * @return this builder.
          */
         public Builder setName(String name) {
@@ -391,10 +417,13 @@ final public class Job {
     final private List<FetchableURI> _uris;
     final private JSONObject _container;
     final private Map<String, String> _labels;
+    // This is a list although for now each job is only allowed to belong to one group (see setGroup and getGroup). In
+    // the future, jobs will be allowed to belong to multiple groups.
+    final private List<UUID> _groups;
 
     private Job(UUID uuid, String name, String command, Double memory, Double cpus, Integer retries, Status status,
                 Integer priority, List<Instance> instances, Map<String,String> env, List<FetchableURI> uris,
-                JSONObject container, Map<String,String> labels) {
+                JSONObject container, Map<String,String> labels, List<UUID> groups) {
         _uuid = uuid;
         _name = name;
         _command = command;
@@ -418,6 +447,7 @@ final public class Job {
             _container = null;
         }
         _labels = ImmutableMap.copyOf(labels);
+        _groups = groups;
     }
 
     /**
@@ -467,6 +497,17 @@ final public class Job {
      */
     public Map<String,String> getLabels() {
         return _labels;
+    }
+
+
+    /**
+     * @return the job's group, or null if the job does not belong to a group
+     */
+    public UUID getGroup() {
+        if (_groups.size() > 0) {
+            return _groups.get(0);
+        }
+        return null;
     }
 
     /**
@@ -572,10 +613,14 @@ final public class Job {
         object.put("cpus", job.getCpus());
         object.put("priority", job.getPriority());
         object.put("max_retries", job.getRetries());
-        object.put("status", job.getStatus());
         object.put("env", env);
         object.put("labels", labels);
-        if(container != null) {
+        // For now, only use one group
+        UUID group = job.getGroup();
+        if (group != null) {
+            object.put("group", job.getGroup().toString());
+        }
+        if (container != null) {
             object.put("container", container);
         }
         for (FetchableURI uri : job.getUris()) {
@@ -702,6 +747,12 @@ final public class Job {
             if (urisJson != null) {
                 for (int j = 0; j < urisJson.length(); j++) {
                     jobBuilder.addUri(FetchableURI.parseFromJSON(urisJson.getJSONObject(j)));
+                }
+            }
+            JSONArray groupsJson = json.optJSONArray("groups");
+            if (groupsJson != null) {
+                for (int j = 0; j < groupsJson.length(); j++) {
+                    jobBuilder._setGroupByUUID(UUID.fromString(groupsJson.getString(j)));
                 }
             }
             jobBuilder.addInstances(Instance.parseFromJSON(json.getJSONArray("instances"), decorator));

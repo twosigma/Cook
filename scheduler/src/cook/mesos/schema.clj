@@ -117,6 +117,64 @@
     :db/valueType :db.type/ref
     :db/cardinality :db.cardinality/one
     :db.install/_attribute :db.part/db}
+   ;; Group attributes
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :group/uuid
+    :db/valueType :db.type/uuid
+    :db/unique :db.unique/identity
+    :db/index true
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db
+    :db/doc "A group is used to assign constraints and rules to an aggregate of jobs."}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :group/name
+    :db/valueType :db.type/string
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :group/host-placement
+    :db/valueType :db.type/ref
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :group/commit-latch
+    :db/valueType :db.type/ref
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :group/job
+    :db/valueType :db.type/ref
+    :db/cardinality :db.cardinality/many
+    :db.install/_attribute :db.part/db}
+   ;; host-placement attributes
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :host-placement/type
+    :db/valueType :db.type/ref
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :host-placement/parameters
+    :db/valueType :db.type/ref
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   ;; parameters for type attribute-equals
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :host-placement.attribute-equals/attribute
+    :db/valueType :db.type/string
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   ;; host-placement.type attributes
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :host-placement.type/name
+    :db/valueType :db.type/keyword
+    :db/cardinality :db.cardinality/one
+    :db/unique :db.unique/identity
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :host-placement.type/string
+    :db/valueType :db.type/string
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
    ;; commit-latch attributes
    {:db/id (d/tempid :db.part/db)
     :db/ident :commit-latch/committed?
@@ -135,7 +193,7 @@
              should be considered schedulable at the same time. However, it is
              recommended not to consider jobs that share a commit latch to hold
              any semantic meaning other than they will be considered schedulable
-             at the same time. A primative of job group will be added to add
+             at the same time. A primitive of job group will be added to add
              more semantic power in the future."}
    ;; Container Attributes
    {:db/id (d/tempid :db.part/db)
@@ -499,6 +557,14 @@
    {:db/id (d/tempid :db.part/user)
     :db/ident :instance/create
     :db/doc "Creates an instance for a job"}])
+
+(def host-placement-types #{:host-placement.type/unique
+                            :host-placement.type/balanced
+                            :host-placement.type/one
+                            :host-placement.type/attribute-equals
+                            :host-placement.type/all})
+(def host-placement-type-txns
+  (map #(assoc {:db/id (d/tempid :db.part/user)} :host-placement.type/name %) host-placement-types))
 
 (def db-fns
   [{:db/id (d/tempid :db.part/user)
@@ -869,4 +935,4 @@
     :reason/mesos-reason :reason-command-executor-failed}])
 
 (def work-item-schema
-  [schema-attributes state-enums rebalancer-configs migration-add-index-to-job-state migration-add-index-to-job-user migration-add-port-count db-fns reason-entities])
+  [schema-attributes state-enums host-placement-type-txns rebalancer-configs migration-add-index-to-job-state migration-add-index-to-job-user migration-add-port-count db-fns reason-entities])
