@@ -1,0 +1,10 @@
+*.pyc
+stdout.*
+stderr.*
+.cache
+__pycache__
+build
+dist
+*.egg-info
+*.spec
+*.log
