@@ -712,7 +712,6 @@
         ; Update ljin-1 to running
         inst (create-dummy-instance conn ljin-1 :instance-status :instance.status/unknown)
         _ @(d/transact conn [[:instance/update-state inst :instance.status/running [:reason/name :unknown]]])
-
         _ (share/set-share! conn "default" :cpus 1.0 :mem 2.0 :gpus 1.0)]
     (testing "test1"
       (let [_ (share/set-share! conn "ljin" :gpus 2.0)

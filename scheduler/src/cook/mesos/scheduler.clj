@@ -1129,7 +1129,7 @@
                                         pending-job-ents-by)
         running-task-ents-by (group-by (comp util/categorize-job :job/_instance)
                                        (util/get-running-task-ents unfiltered-db))
-        user->dru-divisors (dru/init-user->dru-divisors unfiltered-db (apply concat (vals running-task-ents-by)) (apply concat (vals pending-job-ents-by)))]
+        user->dru-divisors (share/create-user->share-fn unfiltered-db)]
     {:normal (sort-normal-jobs-by-dru (:normal pending-task-ents-by)
                                       (:normal running-task-ents-by)
                                       user->dru-divisors)
