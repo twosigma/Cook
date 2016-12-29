@@ -86,6 +86,7 @@ final public class Job {
         private Double _memory;
         private Double _cpus;
         private Integer _retries;
+        private Long _maxRuntime;
         private Status _status;
         private Integer _priority;
         private List<Instance> _instances = Collections.synchronizedList(new ArrayList<Instance>());
@@ -108,18 +109,27 @@ final public class Job {
             Preconditions.checkNotNull(_memory, "memory must be set!");
             Preconditions.checkNotNull(_cpus, "cpus must be set!");
 
-            // set the default values
-            if (_uuid == null)
+            // Set the default values.
+            if (_uuid == null) {
                 _uuid = UUID.randomUUID();
-            if (_retries == null)
+            }
+            if (_retries == null) {
                 _retries = 5;
-            if (_priority == null)
+            }
+            if (_maxRuntime == null) {
+                _maxRuntime = Long.MAX_VALUE;
+            }
+            if (_priority == null) {
                 _priority = 50;
-            if (_status == null)
+            }
+            if (_status == null) {
                 _status = Status.INITIALIZED;
-            if (_name == null)
+            }
+            if (_name == null) {
                 _name = "cookjob";
-            return new Job(_uuid, _name, _command, _memory, _cpus, _retries, _status, _priority, _instances, _env, _uris, _container, _labels, _groups);
+            }
+            return new Job(_uuid, _name, _command, _memory, _cpus, _retries, _maxRuntime, _status, _priority,
+                    _instances, _env, _uris, _container, _labels, _groups);
         }
 
         /**
@@ -133,6 +143,7 @@ final public class Job {
             setMemory(job.getMemory());
             setCpus(job.getCpus());
             setRetries(job.getRetries());
+            setMaxRuntime(job.getMaxRuntime());
             setEnv(job.getEnv());
             setUris(job.getUris());
             setContainer(job.getContainer());
@@ -168,7 +179,7 @@ final public class Job {
          * Adds the job to a group by UUID
          *
          *
-         * @param group A group to which the job belongs by UUID
+         * @param guuid A group to which the job belongs by UUID
          * @return this builder
          */
         private Builder _setGroupByUUID(UUID guuid) {
@@ -321,7 +332,7 @@ final public class Job {
             return this;
         }
 
-	/**
+        /**
          * Set the container information of the job expected ot build.
          *
          * @param container {@link JSONObject} specifies container information for the job
@@ -341,6 +352,18 @@ final public class Job {
         public Builder setRetries(Integer retries) {
             Preconditions.checkArgument(retries > 0, "The number of retries must be > 0.");
             _retries = retries;
+            return this;
+        }
+
+        /**
+         * Set the maximum runtime in milliseconds of the job expected to build.
+         *
+         * @param runtime {@link Long} specifies the maximun runtime in milliseconds for a job.
+         * @return this builder.
+         */
+        public Builder setMaxRuntime(Long runtime) {
+            Preconditions.checkArgument(runtime > 0, "The runtime in milliseconds must be > 0.");
+            _maxRuntime = runtime;
             return this;
         }
 
@@ -410,6 +433,7 @@ final public class Job {
     final private Double _memory;
     final private Double _cpus;
     final private Integer _retries;
+    final private Long _maxRuntime;
     final private Integer _priority;
     final private Status _status;
     final private List<Instance> _instances;
@@ -421,15 +445,16 @@ final public class Job {
     // the future, jobs will be allowed to belong to multiple groups.
     final private List<UUID> _groups;
 
-    private Job(UUID uuid, String name, String command, Double memory, Double cpus, Integer retries, Status status,
-                Integer priority, List<Instance> instances, Map<String,String> env, List<FetchableURI> uris,
-                JSONObject container, Map<String,String> labels, List<UUID> groups) {
+    private Job(UUID uuid, String name, String command, Double memory, Double cpus, Integer retries, Long maxRuntime,
+                Status status, Integer priority, List<Instance> instances, Map<String,String> env,
+                List<FetchableURI> uris, JSONObject container, Map<String,String> labels, List<UUID> groups) {
         _uuid = uuid;
         _name = name;
         _command = command;
         _memory = memory;
         _cpus = cpus;
         _retries = retries;
+        _maxRuntime = maxRuntime;
         _status = status;
         _priority = priority;
         _instances = ImmutableList.copyOf(instances);
@@ -483,6 +508,13 @@ final public class Job {
      */
     public Integer getRetries() {
         return _retries;
+    }
+
+    /**
+     * @return the max runtime in milliseconds for this job.
+     */
+    public Long getMaxRuntime() {
+        return _maxRuntime;
     }
 
     /**
@@ -564,7 +596,7 @@ final public class Job {
         return null;
     }
 
-    /**
+   /**
      * A job is successful if and only if the job is completed and one of its instances is successful.
      *
      * @return
@@ -613,6 +645,7 @@ final public class Job {
         object.put("cpus", job.getCpus());
         object.put("priority", job.getPriority());
         object.put("max_retries", job.getRetries());
+        object.put("max_runtime", job.getMaxRuntime());
         object.put("env", env);
         object.put("labels", labels);
         // For now, only use one group
@@ -720,6 +753,7 @@ final public class Job {
                 jobBuilder.setName(json.getString("name"));
             }
             jobBuilder.setRetries(json.getInt("max_retries"));
+            jobBuilder.setMaxRuntime(json.getLong("max_runtime"));
             if (json.has("container")) {
                 jobBuilder.setContainer(json.getJSONObject("container"));
             }
@@ -778,8 +812,8 @@ final public class Job {
         StringBuilder stringBuilder = new StringBuilder(512);
         stringBuilder
             .append("Job [_uuid=" + _uuid + ", _name=" + _name + ", _command=" + _command + ", _memory=" + _memory
-                    + ", _cpus=" + _cpus + ", _retries=" + _retries + ", _status=" + _status + ", _priority="
-                    + _priority + "]");
+                    + ", _cpus=" + _cpus + ", _retries=" + _retries + ", _maxRuntime=" + _maxRuntime
+                    + ", _status=" + _status + ", _priority=" + _priority + "]");
         stringBuilder.append('\n');
         for (Instance instance : getInstances()) {
             stringBuilder.append(instance.toString()).append('\n');
