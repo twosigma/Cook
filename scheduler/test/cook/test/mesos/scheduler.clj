@@ -640,7 +640,7 @@
                             :instance-status :instance.status/running
                             :task-id task-id)]
         ; Wait for async database transaction inside handle-status-update
-        (async/<!! (sched/handle-status-update conn driver fenzo
+        (async/<!! (sched/handle-status-update conn {} driver fenzo
                      (make-dummy-status-update task-id :reason-gc-error :task-killed)))
         (is (= :instance.status/failed
              (ffirst (q '[:find ?status
@@ -676,7 +676,7 @@
                             :task-id task-id
                             :reason :max-runtime-exceeded)] ; Previous reason is not mea-culpa
         ; Status update says slave got restarted (mea-culpa)
-        (async/<!! (sched/handle-status-update conn driver fenzo
+        (async/<!! (sched/handle-status-update conn {} driver fenzo
                      (make-dummy-status-update task-id :mesos-slave-restarted :task-killed)))
         ; Assert old reason persists
         (is (= :max-runtime-exceeded
@@ -710,7 +710,7 @@
                             :instance-status :instance.status/success
                             :task-id task-id-b
                             :reason :unknown)]
-        (async/<!! (sched/handle-status-update conn driver fenzo
+        (async/<!! (sched/handle-status-update conn {} driver fenzo
                      (make-dummy-status-update task-id-a :mesos-slave-restarted :task-running)))
         (is (true? (contains? @tasks-killed task-id-a)))
         ))
