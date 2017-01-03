@@ -216,8 +216,8 @@
             (s/optional-key :env) {s/Keyword s/Str}
             (s/optional-key :labels) {s/Keyword s/Str}
             (s/optional-key :max-runtime) PosInt
-            (s/optional-key :before_commands) [CommandRequest]
-            (s/optional-key :after_commands) [CommandRequest]
+            (s/optional-key :before-commands) [CommandRequest]
+            (s/optional-key :after-commands) [CommandRequest]
             :cpus PosNum
             :mem PosNum})))
 
