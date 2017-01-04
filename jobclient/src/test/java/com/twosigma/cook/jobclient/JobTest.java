@@ -47,6 +47,7 @@ public class JobTest {
         jobBuilder.setCpus(1.0);
         jobBuilder.addEnv("FOO", "test");
         jobBuilder.addLabel("foobar", "frobnicator");
+        jobBuilder.setMaxRuntime(1000L);
         jobBuilder.addUri(new FetchableURI.Builder().setValue("http://example.com/my_resource").build());
         _initializedJob = jobBuilder.build();
     }
@@ -66,6 +67,7 @@ public class JobTest {
         final List<Job> jobs = Job.parseFromJSON(jsonString);
         Assert.assertEquals(jobs.size(), 1);
         Assert.assertEquals(jobs.get(0), _initializedJob);
+        Assert.assertEquals(jobs.get(0).getMaxRuntime(), new Long(1000L));
     }
 }
 
