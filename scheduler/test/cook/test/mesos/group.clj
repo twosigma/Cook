@@ -1,0 +1,74 @@
+(ns cook.test.mesos.group
+  (:use clojure.test)
+  (:require [clj-time.coerce :as tc]
+            [clj-time.core :as t]
+            [cook.mesos.group :as group]
+            [cook.mesos.util :as util]
+            [cook.test.testutil :refer (restore-fresh-database! 
+                                         create-dummy-group 
+                                         create-dummy-job 
+                                         create-dummy-instance)]
+            [datomic.api :as d :refer (q db)]))
+
+(deftest test-find-stragglers
+  (let [uri "datomic:mem://test-find-stragglers"
+        conn (restore-fresh-database! uri)]
+    (testing "no straggler-handling"
+      (let [group-ent-id (create-dummy-group conn)
+            job-a (create-dummy-job conn :group group-ent-id)
+            _ (create-dummy-instance conn job-a :instance-status :instance.status/success
+                                     :start-time (tc/to-date (t/ago (t/hours 3)))
+                                     :end-time (tc/to-date (t/ago (t/hours 2))))
+            job-b (create-dummy-job conn :group group-ent-id)
+            _ (create-dummy-instance conn job-b :instance-status :instance.status/running
+                                     :start-time (tc/to-date (t/ago (t/minutes 30))))
+            group-ent (d/entity (d/db conn) group-ent-id)]
+        (is (nil? (seq (group/find-stragglers group-ent))))))
+    (testing "quantile deviation straggler-handling, no stragglers"
+      (let [straggler-handling {:straggler-handling/type :straggler-handling.type/quantile-deviation
+                                :straggler-handling/parameters 
+                                {:straggler-handling.quantile-deviation/quantile 0.5
+                                 :straggler-handling.quantile-deviation/multiplier 2.0}}
+            group-ent-id (create-dummy-group conn :straggler-handling straggler-handling)
+            job-a (create-dummy-job conn :group group-ent-id)
+            _ (create-dummy-instance conn job-a :instance-status :instance.status/success
+                                     :start-time (tc/to-date (t/ago (t/hours 3)))
+                                     :end-time (tc/to-date (t/ago (t/hours 2))))
+            job-b (create-dummy-job conn :group group-ent-id)
+            _ (create-dummy-instance conn job-b :instance-status :instance.status/running
+                                     :start-time (tc/to-date (t/ago (t/minutes 90))))
+            group-ent (d/entity (d/db conn) group-ent-id)]
+        (is (nil? (seq (group/find-stragglers group-ent))))))
+    (testing "quantile deviation straggler-handling, stragglers found"
+      (let [straggler-handling {:straggler-handling/type :straggler-handling.type/quantile-deviation
+                                :straggler-handling/parameters 
+                                {:straggler-handling.quantile-deviation/quantile 0.5
+                                 :straggler-handling.quantile-deviation/multiplier 2.0}}
+            group-ent-id (create-dummy-group conn :straggler-handling straggler-handling)
+            job-a (create-dummy-job conn :group group-ent-id)
+            _ (create-dummy-instance conn job-a :instance-status :instance.status/success
+                                     :start-time (tc/to-date (t/ago (t/hours 3)))
+                                     :end-time (tc/to-date (t/ago (t/hours 2))))
+            job-b (create-dummy-job conn :group group-ent-id)
+            straggler (create-dummy-instance conn job-b :instance-status :instance.status/running
+                                             :start-time (tc/to-date (t/ago (t/minutes 190))))
+            db (d/db conn)
+            group-ent (d/entity db group-ent-id)
+            straggler-task (d/entity db straggler)]
+        (is (= [straggler-task](group/find-stragglers group-ent)))))
+    (testing "quantile deviation straggler-handling, not enough jobs complete"
+      (let [straggler-handling {:straggler-handling/type :straggler-handling.type/quantile-deviation
+                                :straggler-handling/parameters 
+                                {:straggler-handling.quantile-deviation/quantile 0.5
+                                 :straggler-handling.quantile-deviation/multiplier 2.0}}
+            group-ent-id (create-dummy-group conn :straggler-handling straggler-handling)
+            job-a (create-dummy-job conn :group group-ent-id)
+            _ (create-dummy-instance conn job-a :instance-status :instance.status/running
+                                     :start-time (tc/to-date (t/ago (t/hours 3))))
+            job-b (create-dummy-job conn :group group-ent-id)
+            straggler (create-dummy-instance conn job-b :instance-status :instance.status/running
+                                             :start-time (tc/to-date (t/ago (t/minutes 190))))
+            db (d/db conn)
+            group-ent (d/entity db group-ent-id)
+            straggler-task (d/entity db straggler)]
+        (is (nil? (seq (group/find-stragglers group-ent))))))))

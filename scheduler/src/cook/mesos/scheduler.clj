@@ -18,6 +18,7 @@
             [mesomatic.types :as mtypes]
             [cook.mesos.dru :as dru]
             [cook.mesos.task :as task]
+            [cook.mesos.group :as group]
             cook.mesos.schema
             [clojure.tools.logging :as log]
             [datomic.api :as d :refer (q)]
@@ -983,9 +984,7 @@
         @(d/transact
            conn
            [[:instance/update-state [:instance/task-id task-id] :instance.status/failed [:reason/name :max-runtime-exceeded]]
-            [:db/add [:instance/task-id task-id] :instance/reason [:reason/name :max-runtime-exceeded]]])
-        )))
-  )
+            [:db/add [:instance/task-id task-id] :instance/reason [:reason/name :max-runtime-exceeded]]])))))
 
 (defn lingering-task-killer
   "Periodically kill lingering tasks.
@@ -1001,6 +1000,36 @@
               (fn [now] (kill-lingering-tasks now conn driver config))
               {:error-handler (fn [e]
                                 (log/error e "Failed to reap timeout tasks!"))})))
+
+(defn handle-stragglers 
+  "Searches for running jobs in groups and runs the associated straggler handler"
+  [conn kill-task-fn]
+  (let [running-task-ents (util/get-running-task-ents (d/db conn))
+        running-job-ents (map :job/_instance running-task-ents)
+        groups (distinct (map :group/_job running-job-ents))]
+    (doseq [group groups]
+      (log/debug "Checking group " group " for stragglers")
+
+      (let [straggler-task-ents (group/find-stragglers group)]
+        (log/debug "Group " group " had stragglers: " straggler-task-ents)
+
+        (doseq [{task-id :db/id :as task-ent} straggler-task-ents]
+          (log/info "Killing " task-ent " of group " group " because it is a straggler")
+          ;; Mark as killed first so that if we fail after this it is still marked failed
+          @(d/transact
+             conn
+             [[:instance/update-state [:instance/task-id task-id] :instance.status/failed [:reason/name :straggler]]
+              [:db/add [:instance/task-id task-id] :instance/reason [:reason/name :straggler]]])
+          (kill-task-fn task-id))))))
+
+(defn straggler-handler
+  "Periodically checks for running jobs that are in groups and runs the associated
+   straggler handler."
+  [conn driver {:keys [interval-minutes] :or {interval-minutes 1}}]
+  (chime-at (periodic/periodic-seq (time/now) (time/minutes interval-minutes))
+            (fn [now] (handle-stragglers (conn) #(mesos/kill-task! driver {:task-id %})))
+            {:error-handler (fn [e]
+                              (log/error e "Failed to handle stragglers"))}))
 
 (defn get-user->used-resources
   "Return a map from user'name to his allocated resources, in the form of

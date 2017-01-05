@@ -146,6 +146,39 @@
     :db/valueType :db.type/ref
     :db/cardinality :db.cardinality/many
     :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :group/straggler-handling
+    :db/valueType :db.type/ref
+    :db/cardinality :db.cardinality/one
+    :db/isComponent true
+    :db.install/_attribute :db.part/db}
+   ;;straggler-handling attriutes
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :straggler-handling/type
+    :db/valueType :db.type/ref
+    :db/cardinality :db.cardinality/one
+    :db/isComponent true
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :straggler-handling/parameters
+    :db/valueType :db.type/ref
+    :db/isComponent true
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :straggler-handling.quantile-deviation/quantile
+    :db/valueType :db.type/double 
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :straggler-handling.quantile-deviation/multiplier
+    :db/valueType :db.type/double
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/user)
+    :db/ident :straggler-handling.type/none}
+   {:db/id (d/tempid :db.part/user)
+    :db/ident :straggler-handling.type/quantile-deviation}
    ;; host-placement attributes
    {:db/id (d/tempid :db.part/db)
     :db/ident :host-placement/type
@@ -558,6 +591,11 @@
     :db/ident :instance/create
     :db/doc "Creates an instance for a job"}])
 
+(def straggler-handling-types 
+  (->> schema-attributes
+       (map :db/ident)
+       (filter #(= "straggler-handling.type" (namespace %)))))
+
 (def host-placement-types #{:host-placement.type/unique
                             :host-placement.type/balanced
                             :host-placement.type/one
@@ -786,6 +824,11 @@
     :reason/code 2003
     :reason/string "Task max runtime exceeded"
     :reason/name :max-runtime-exceeded
+    :reason/mea-culpa? false}
+   {:db/id (d/tempid :db.part/user)
+    :reason/code 2004
+    :reason/string "Task was a straggler"
+    :reason/name :straggler
     :reason/mea-culpa? false}
 
    {:db/id (d/tempid :db.part/user)

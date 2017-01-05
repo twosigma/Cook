@@ -507,11 +507,12 @@
               (rebalancer/next-state state job-ent12 {:hostname "hostA" :task [] :mem 50.0 :cpus 50.0})]
           (is (= user->sorted-running-task-ents' user->sorted-running-task-ents''))
           (is (= host->spare-resources' host->spare-resources''))
-          (is (= [task-ent4 task-ent12 task-ent3 task-ent8 task-ent7 task-ent6 task-ent2 task-ent1 task-ent5]
+          ;; If these tests break, know that the ordering for equal dru tasks is undefined..
+          (is (= [task-ent4 task-ent3 task-ent12 task-ent8 task-ent7 task-ent6 task-ent2 task-ent1 task-ent5]
                  (keys task->scored-task'')))
           (is (= [(dru/->ScoredTask task-ent4 2.2 25.0 15.0)
-                  (dru/->ScoredTask task-ent12 1.6 40.0 40.0)
                   (dru/->ScoredTask task-ent3 1.6 15.0 25.0)
+                  (dru/->ScoredTask task-ent12 1.6 40.0 40.0)
                   (dru/->ScoredTask task-ent8 1.52 10.0 10.0)
                   (dru/->ScoredTask task-ent7 1.12 10.0 10.0)
                   (dru/->ScoredTask task-ent6 0.72 10.0 10.0)

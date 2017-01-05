@@ -38,7 +38,7 @@
             [me.raynes.conch :as sh]
             [clj-time.core :as t]
             [metrics.timers :as timers]
-            [cook.mesos.schema :refer (host-placement-types)]
+            [cook.mesos.schema :refer (host-placement-types straggler-handling-types)]
             [cook.mesos.share :as share]
             [cook.mesos.quota :as quota]
             [plumbing.core :refer (map-vals map-from-vals)]
@@ -67,7 +67,8 @@
    :as-response (fn [data ctx] (combine {:body data} ctx))
    :handle-forbidden render-error
    :handle-malformed render-error
-   :handle-not-found render-error})
+   :handle-not-found render-error
+   :handle-unprocessable-entity render-error})
 
 (defn base-cook-handler
   [resource-attrs]
@@ -219,17 +220,34 @@
 (def HostPlacement
   "A schema for host placement"
   (s/conditional
-    #(= (:type %) :host-placement.type/attribute-equals)
-      {:type (s/eq :host-placement.type/attribute-equals)
+    #(= (:type %) :attribute-equals)
+      {:type (s/eq :attribute-equals)
        :parameters Attribute-Equals-Parameters}
     :else
-      {:type (s/pred #(contains? host-placement-types %) 'host-placement-type-exists?)
+      {:type (s/pred #(contains? (set (map util/without-ns host-placement-types)) %) 
+                     'host-placement-type-exists?)
+       (s/optional-key :parameters) {}}))
+
+(def Quantile-Deviation-Parameters
+  {:multiplier (s/both s/Num (s/pred #(> % 1.0) 'greater-than-one))
+   :quantile (s/both s/Num (s/pred #(< 0.0 % 1.0) 'between-zero-one))})
+
+(def StragglerHandling
+  "A schema for host placement"
+  (s/conditional
+    #(= (:type %) :quantile-deviation)
+      {:type (s/eq :quantile-deviation)
+       :parameters Quantile-Deviation-Parameters}
+    :else
+      {:type (s/pred #(contains? (set (map util/without-ns straggler-handling-types)) %) 
+                     'straggler-handling-type-exists?)
        (s/optional-key :parameters) {}}))
 
 (def Group
   "A schema for a job group"
   {:uuid s/Uuid
    (s/optional-key :host-placement) HostPlacement
+   (s/optional-key :straggler-handling) StragglerHandling
    (s/optional-key :name) s/Str})
 
 (def GroupResponse
@@ -402,18 +420,39 @@
   [hp :- [HostPlacement]]
   (let [params (:parameters hp)
         params-txn-id (d/tempid :db.part/user)
-        params-txn (when (= (:type hp) :host-placement.type/attribute-equals)
+        type (keyword "host-placement.type" (name (:type hp)))
+        params-txn (when (= type :host-placement.type/attribute-equals)
                       {:db/id params-txn-id
                        :host-placement.attribute-equals/attribute (:attribute params)})
         hp-txn-id (d/tempid :db.part/user)
         hp-txn (merge {:db/id hp-txn-id
-                        :host-placement/type [:host-placement.type/name (:type hp)]}
+                        :host-placement/type [:host-placement.type/name type]}
                        (when params-txn
                          {:host-placement/parameters params-txn-id}))
         txns (if (nil? params-txn)
                [hp-txn]
                [params-txn hp-txn])]
     [hp-txn-id txns]))
+
+(defn namespace-straggler-handling-parameters
+  "Adds the namespace to straggler-handling parameters
+   
+   Follows the convention that the namespace is:
+   'straggler-handling.<type of straggler-handling>/<parameter name>"
+  [straggler-handling]
+  (map-keys #(keyword (str "straggler-handling." (:type straggler-handling)) (name %)) 
+            (:parameters straggler-handling)))
+
+(s/defn make-straggler-handling-txn
+  "Returns a map to create the straggler-handling txn.
+   Uses the fact that straggler-handling and its components are marked with
+   isComponent true"
+  [straggler-handling :- [StragglerHandling]]
+  (merge {:straggler-handling/type (keyword "straggler-handling.type" 
+                                            (name (:type straggler-handling)))}
+         (when (:parameters straggler-handling) 
+           {:straggler-handling/parameters 
+            (namespace-straggler-handling-parameters straggler-handling)})))
 
 (s/defn make-group-txn
   "Creates the transaction data necessary to insert a group to the database. job-db-ids is the
@@ -424,11 +463,14 @@
                                 :host-placement
                                 make-host-placement-txn)
         group-txn {:db/id (d/tempid :db.part/user)
-                    :group/uuid uuid
-                    :group/name (:name group)
-                    :group/host-placement hp-txn-id
-                    :group/job job-db-ids}]
-      (conj hp-txns group-txn)))
+                   :group/uuid uuid
+                   :group/name (:name group)
+                   :group/host-placement hp-txn-id
+                   :group/job job-db-ids
+                   :group/straggler-handling (-> group
+                                                 :straggler-handling
+                                                 (make-straggler-handling-txn))}]
+    (conj hp-txns group-txn)))
 
 (defn group-exists?
   "True if a group with guuid exists in the database, false otherwise"
@@ -453,14 +495,18 @@
 
 (defn make-default-host-placement
   []
-  {:type :host-placement.type/all})
+  {:type :all})
+
+(def default-straggler-handling
+  {:type :none})
 
 (defn make-default-group
   [guuid]
   ; Have to validate (check uuid is unused)
   {:uuid guuid
    :name "defaultgroup"
-   :host-placement (make-default-host-placement)})
+   :host-placement (make-default-host-placement)
+   :straggler-handling default-straggler-handling})
 
 (defn validate-and-munge-job
   "Takes the user, the parsed json from the job and a list of the uuids of
@@ -544,7 +590,9 @@
         hp (:host-placement group)
         group (-> group
                   (assoc :name (or group-name "cookgroup"))
-                  (assoc :host-placement (or hp (make-default-host-placement))))]
+                  (assoc :host-placement (or hp (make-default-host-placement)))
+                  (assoc :straggler-handling (or (:straggler-handling group)
+                                                 default-straggler-handling)))]
     (s/validate Group group)
     (when (group-exists? db (:uuid group))
       (throw (ex-info (str "Group UUID " (:uuid group) " already used") {:uuid group})))
@@ -679,19 +727,37 @@
         hp (:group/host-placement group)
         hp-params (:host-placement/parameters hp)
         hp-type (->> hp :host-placement/type :host-placement.type/name)
+        jobs (:group/job group)
+        straggler-handling (:group/straggler-handling group)]
+    {:uuid (:group/uuid group)
+     :name (:group/name group)
+     ;; TODO: strip everything before slash in parameters so we can just do:
+     ;; {:type hp-type
+     ;;  :parameters (map-keys remove-datomic-namepace hp-params
+     ;; See cook.mesos.util/deep-transduce-kv
+     :host-placement {:type (util/without-ns hp-type)
+                      :parameters (merge {}
+                                         (when (= hp-type :host-placement.type/attribute-equals)
+                                           {:attribute (:host-placement.attribute-equals/attribute hp-params)}))}
+     :straggler-handling {:type (util/without-ns (:straggler-handling/type straggler-handling))
+                          :parameters (map-keys util/without-ns 
+                                                (:straggler-handling/parameters straggler-handling))}
+     :jobs (->> jobs
+                (map :job/uuid))}))
+
+#_(defn fetch-group-map
+  [db guuid]
+  (let [group (d/entity db [:group/uuid guuid])
         jobs (:group/job group)]
-      {:uuid (:group/uuid group)
-       :name (:group/name group)
-       ;; TODO: strip everything before slash in parameters so we can just do:
-       ;; {:type hp-type
-       ;;  :parameters (map-keys remove-datomic-namepace hp-params
-       ;; See cook.mesos.util/deep-transduce-kv
-       :host-placement {:type hp-type
-                        :parameters (merge {}
-                                           (when (= hp-type :host-placement.type/attribute-equals)
-                                             {:attribute (:host-placement.attribute-equals/attribute hp-params)}))}
-       :jobs (->> jobs
-                  (map :job/uuid))}))
+    (println (d/touch group))
+    (println (merge
+               (util/remove-datomic-namespacing (dissoc (into {} group) :group/job))
+               {:jobs (->> jobs
+                           (map :job/uuid))}))
+    (merge
+      (util/remove-datomic-namespacing (dissoc (into {} group) :group/job))
+      {:jobs (->> jobs
+                  (map :job/uuid))})))
 
 (defn instance-uuid->job-uuid
   "Queries for the job uuid from an instance uuid.
@@ -786,7 +852,8 @@
 (defn clojurize-hp-type
   [placement-type]
   (let [placement-type-str (str placement-type)]
-    (if (re-find #"^host-placement.type/" placement-type-str)
+    (keyword placement-type)
+    #_(if (re-find #"^host-placement.type/" placement-type-str)
       placement-type
       (keyword "host-placement.type" placement-type-str)))) ; Note that keyword adds in the slash
 
@@ -876,13 +943,6 @@
                             group-txns (mapcat
                                          #(make-group-txn % (get group-uuid->job-dbids (:uuid %) []))
                                                groups)]
-                        (log/info (concat job-txns group-txns))
-                        (log/info {:job-uuids->dbids job-uuids->dbids
-                                   :group-uuid->job-dbids group-uuid->job-dbids
-                                   :jobs jobs
-                                   :groups groups
-                                   :job-txns job-txns
-                                   })
                         @(d/transact
                          conn
                          (concat job-txns group-txns)))

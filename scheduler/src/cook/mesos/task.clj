@@ -253,3 +253,4 @@
          (add-ports-to-task-info combined-resource-pool)
          (map #(assoc % :slave-id slave-id))
          (map task-info->mesos-message))))
+

@@ -16,6 +16,8 @@
 (ns cook.mesos.util
   (:require [clojure.tools.logging :as log]
             [clojure.walk :as walk]
+            [clj-time.core :as t]
+            [clj-time.coerce :as tc]
             [datomic.api :as d :refer (q)]
             [metatransaction.core :refer (db)]
             [metrics.timers :as timers]))
@@ -44,24 +46,66 @@
     (keyword (name k))
     k))
 
+;; These two walk functions were copied from https://github.com/clojure/clojure/blob/master/src/clj/clojure/walk.clj
+;; because the line about datomic.query.EntityMap needed to be added..
+(defn walk
+  "Traverses form, an arbitrary data structure.  inner and outer are
+  functions.  Applies inner to each element of form, building up a
+  data structure of the same type, then applies outer to the result.
+  Recognizes all Clojure data structures. Consumes seqs as with doall."
+
+  {:added "1.1"}
+  [inner outer form]
+  (cond
+   (list? form) (outer (apply list (map inner form)))
+   (instance? clojure.lang.IMapEntry form) (outer (vec (map inner form)))
+   (seq? form) (outer (doall (map inner form)))
+   (instance? clojure.lang.IRecord form)
+     (outer (reduce (fn [r x] (conj r (inner x))) form form))
+   ;; Added the line below to work with datomic entities..
+   (instance? datomic.query.EntityMap form) (into {} (map inner form))
+   (coll? form) (outer (into (empty form) (map inner form)))
+   :else (outer form)))
+
+(defn postwalk
+  "Performs a depth-first, post-order traversal of form.  Calls f on
+  each sub-form, uses f's return value in place of the original.
+  Recognizes all Clojure data structures. Consumes seqs as with doall."
+  {:added "1.1"}
+  [f form]
+  (walk (partial postwalk f) f form))
+
 (defn deep-transduce-kv
   "Recursively applies the transducer xf over all kvs in the map or
   any nested maps"
   [xf m]
-  (walk/postwalk (fn [x]
+  (postwalk (fn [x]
                    (if (map? x)
                      (into {} xf x)
                      x))
                  m))
+
+(defn remove-datomic-namespacing
+  "Takes a map from datomic (pull) and removes the namespace
+   as well as :db/id keys
+   
+   d/entity currently causes an AbstractMethodException"
+  [datomic-map]
+  (->> datomic-map
+       (deep-transduce-kv (comp
+                            (filter (comp (partial not= :db/id) first))
+                            (map (fn [[k v]] 
+                                   (if (and (map? v) (:ident v))
+                                     [k (without-ns (:ident v))]
+                                     [k v])))
+                            (map (juxt (comp without-ns first) second))))))
 
 (defn job-ent->container
   "Take a job entity and return its container"
   [db job-ent]
   (when-let [ceid (:db/id (:job/container job-ent))]
     (->> (d/pull db "[*]" ceid)
-         (deep-transduce-kv (comp
-                             (filter (comp (partial not= :db/id) first))
-                             (map (juxt (comp without-ns first) second)))))))
+         remove-datomic-namespacing)))
 
 (defn job-ent->env
   "Take a job entity and return the environment variable map"
@@ -294,3 +338,11 @@
       (reductions fr {:state init-state :x nil})
       (filter :x)
       (map :x))))
+
+(defn task-run-time
+  "Returns the run time of the task as a joda interval"
+  [task-ent]
+  (let [start (tc/from-date (:instance/start-time task-ent))
+        end (or (tc/from-date (:instance/end-time task-ent))
+                (t/now))]
+    (t/interval start end)))
