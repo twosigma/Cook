@@ -229,7 +229,7 @@ final public class Group {
      * {
      *     "uuid" : "26719da8-394f-44f9-9e6d-8a17500f5109",
      *     "name" : "cookgroup",
-     *     "host-placement": {
+     *     "host_placement": {
      *         "type": "all"
      *     }
      * }
@@ -245,7 +245,7 @@ final public class Group {
         final JSONObject object = new JSONObject();
         object.put("uuid", group.getUUID().toString());
         object.put("name", group.getName());
-        object.put("host-placement", HostPlacement.jsonize(group.getHostPlacement()));
+        object.put("host_placement", HostPlacement.jsonize(group.getHostPlacement()));
         // Do not jsonize jobs. In the POST request to the scheduler, jobs are assigned to groups by setting a
         // 'group' field in each job.
         return object;
@@ -261,7 +261,7 @@ final public class Group {
      *      {
      *          "uuid" : "26719da8-394f-44f9-9e6d-8a17500f5109",
      *          "name" : "cookgroup",
-     *          "host-placement": Groups{
+     *          "host_placement": {
      *              "type": "all"
      *          },
      *          "jobs": [
@@ -300,7 +300,7 @@ final public class Group {
      *   {
      *       "uuid" : "26719da8-394f-44f9-9e6d-8a17500f5109",
      *       "name" : "cookgroup",
-     *       "host-placement": Groups{
+     *       "host_placement": Groups{
      *           "type": "all"
      *       },
      *       "jobs": [
@@ -333,7 +333,7 @@ final public class Group {
             for (int j = 0; j < jobsJson.length(); j++) {
                 groupBuilder._addJobByUUID(UUID.fromString(jobsJson.getString(j)));
             }
-            groupBuilder.setHostPlacement(HostPlacement.parseFromJSON(json.getJSONObject("host-placement"), decorator));
+            groupBuilder.setHostPlacement(HostPlacement.parseFromJSON(json.getJSONObject("host_placement"), decorator));
             if (json.isNull("completed")) {
                  groupBuilder.setStatus(Status.INITIALIZED);
              } else if (json.getInt("completed") == jobsJson.length()) {
