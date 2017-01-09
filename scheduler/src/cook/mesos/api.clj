@@ -460,7 +460,7 @@
   [straggler-handling :- [StragglerHandling]]
   (merge {:straggler-handling/type (keyword "straggler-handling.type"
                                             (name (:type straggler-handling)))}
-         (when (:parameters straggler-handling)
+         (when (seq (:parameters straggler-handling))
            {:straggler-handling/parameters
             (namespace-straggler-handling-parameters straggler-handling)})))
 
