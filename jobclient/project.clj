@@ -1,7 +1,7 @@
 ;; This project file exists to make it easier to develop the the job client 
 ;; and cook scheduler together. It should be kept in sync with the pom.xml
 
-(defproject twosigma/cook-jobclient "0.1.0-SNAPSHOT"
+(defproject twosigma/cook-jobclient "0.1.1-SNAPSHOT"
   :description "A Java API for connecting to the Cook scheduler, submitting, and monitoring jobs."
   :license {:name "Apache License, Version 2.0"}
   :dependencies [[com.google.guava/guava "14.0.1"]

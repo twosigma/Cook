@@ -189,11 +189,13 @@ final public class HostPlacement {
 
         String type = hpJson.getString("type");
         hpBuilder.setType(Type.fromString(type.substring(type.lastIndexOf("/") + 1).toUpperCase()));
-        JSONObject paramJson = hpJson.getJSONObject("parameters");
-        Iterator names = paramJson.keys();
-        while (names.hasNext()) {
-            String name = (String)names.next();
-            hpBuilder.setParameter(name, paramJson.getString(name));
+        if (hpJson.has("parameters")){
+            JSONObject paramJson = hpJson.getJSONObject("parameters");
+            Iterator names = paramJson.keys();
+            while (names.hasNext()) {
+                String name = (String)names.next();
+                hpBuilder.setParameter(name, paramJson.getString(name));
+            }
         }
         return hpBuilder.build();
     }
