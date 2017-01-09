@@ -455,7 +455,7 @@
    A schedule is just a sorted list of tasks, and we're going to greedily assign them to
    the offer.
 
-   Returns {:matched (list of tasks that got matched to the offer)
+   Returns {:matches (list of tasks that got matched to the offer)
             :failures (list of unmatched tasks, and why they weren't matched)}"
   [^TaskScheduler fenzo considerable offers]
   (log/debug "Matching" (count offers) "offers to" (count considerable) "jobs with fenzo")

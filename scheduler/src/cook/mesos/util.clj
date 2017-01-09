@@ -199,7 +199,8 @@
 
 (defn get-jobs-by-user-and-state
   "Returns all job entities for a particular user
-   in a particular state."
+   in a particular state, in the specified timeframe,
+   without a custom executor."
   [db user state start end]
   (->> (if (= state :job.state/completed)
          ;; Datomic query performance is based entirely on the size of the set
@@ -228,6 +229,20 @@
               [?j :job/custom-executor false]]
             db user state start end))
        (map (partial d/entity db))))
+
+(defn jobs-by-user-and-state
+  "Returns all job entities for a particular user
+   in a particular state.  Unlike get-jobs-by-user-and-state, doesn't
+  impose any other conditions."
+  [db user state]
+  (->> (q '[:find [?j ...]
+            :in $ ?user ?state
+            :where
+            [?j :job/state ?state]
+            [?j :job/user ?user]]
+          db user state)
+       (map (partial d/entity db))
+       (map d/touch)))
 
 (timers/deftimer [cook-mesos scheduler get-running-tasks-duration])
 
