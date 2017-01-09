@@ -17,6 +17,8 @@
 package com.twosigma.cook.jobclient;
 
 import com.twosigma.cook.jobclient.HostPlacement;
+import com.twosigma.cook.jobclient.StragglerHandling;
+
 
 import java.util.ArrayList;
 import java.util.Map;
@@ -75,6 +77,7 @@ final public class Group {
         private Status _status;
         private String _name;
         private HostPlacement _hostPlacement;
+        private StragglerHandling _stragglerHandling;
         private List<UUID> _jobs = new ArrayList<>();
 
         /**
@@ -96,7 +99,10 @@ final public class Group {
                 HostPlacement.Builder hpBuilder = new HostPlacement.Builder();
                 _hostPlacement = hpBuilder.setType(HostPlacement.Type.ALL).build();
             }
-            return new Group(_uuid, _status, _name, _hostPlacement, _jobs);
+            if (_stragglerHandling == null) {
+                _stragglerHandling = new StragglerHandling.Builder().build();
+            }
+            return new Group(_uuid, _status, _name, _hostPlacement, _stragglerHandling, _jobs);
         }
 
         /**
@@ -150,6 +156,17 @@ final public class Group {
         }
 
         /**
+         * Set the straggler handling of the group
+         *
+         * @param stragglerHandling {@link StragglerHandling} of the group
+         * @return this builder
+         */
+        public Builder setStragglerHandling(StragglerHandling stragglerHandling){
+            _stragglerHandling = stragglerHandling;
+            return this;
+        }
+
+        /**
          * Set the jobs of the group to be built.
          *
          * @param jobs {@link Job} to belong to the group.
@@ -176,13 +193,16 @@ final public class Group {
     final private Status _status;
     final private String _name;
     final private HostPlacement _hostPlacement;
+    final private StragglerHandling _stragglerHandling;
     final private List<UUID> _jobs;
 
-    private Group(UUID uuid, Status status, String name, HostPlacement hostPlacement, List<UUID> jobs) {
+    private Group(UUID uuid, Status status, String name, HostPlacement hostPlacement, 
+            StragglerHandling stragglerHandling, List<UUID> jobs) {
         _uuid = uuid;
         _status = status;
         _name = name;
         _hostPlacement = hostPlacement;
+        _stragglerHandling = stragglerHandling;
         _jobs = ImmutableList.copyOf(jobs);
     }
 
@@ -215,6 +235,13 @@ final public class Group {
     }
 
     /**
+     * @return the group StragglerHandling
+     */ 
+    public StragglerHandling getStragglerHandling(){
+        return _stragglerHandling;
+    }
+
+    /**
      * @return the group's jobs.
      */
     public List<UUID> getJobs() {
@@ -231,7 +258,10 @@ final public class Group {
      *     "name" : "cookgroup",
      *     "host_placement": {
      *         "type": "all"
-     *     }
+     *     },
+     *     "straggler_handling": {
+     *         "type": "none"
+     *      }
      * }
      * </code>
      * </pre>
@@ -246,6 +276,7 @@ final public class Group {
         object.put("uuid", group.getUUID().toString());
         object.put("name", group.getName());
         object.put("host_placement", HostPlacement.jsonize(group.getHostPlacement()));
+        object.put("straggler_handling", StragglerHandling.jsonize(group.getStragglerHandling()));
         // Do not jsonize jobs. In the POST request to the scheduler, jobs are assigned to groups by setting a
         // 'group' field in each job.
         return object;
@@ -334,6 +365,7 @@ final public class Group {
                 groupBuilder._addJobByUUID(UUID.fromString(jobsJson.getString(j)));
             }
             groupBuilder.setHostPlacement(HostPlacement.parseFromJSON(json.getJSONObject("host_placement"), decorator));
+            groupBuilder.setStragglerHandling(StragglerHandling.parseFromJSON(json.getJSONObject("straggler_handling"), decorator));
             if (json.isNull("completed")) {
                  groupBuilder.setStatus(Status.INITIALIZED);
              } else if (json.getInt("completed") == jobsJson.length()) {
@@ -365,7 +397,7 @@ final public class Group {
         StringBuilder stringBuilder = new StringBuilder(512);
         stringBuilder
             .append("Group [_uuid=" + _uuid + ",_status=" + _status + ", _name=" + _name + ", _hostPlacement="
-                    + _hostPlacement + "]");
+                    + _hostPlacement + ", _stragglerHandling=" + _stragglerHandling + "]");
         return stringBuilder.toString();
     }
 
