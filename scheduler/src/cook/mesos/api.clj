@@ -79,6 +79,18 @@
 ;; /rawscheduler
 ;;
 
+(defn prepare-schema-response
+  "Takes a schema and outputs a new schema which conforms to our responses.
+
+   Modifications:
+   1. changes keys to snake_case"
+  [schema]
+  (map-keys (fn [k]
+              (if (instance? schema.core.OptionalKey k)
+                (update k :k ->snake_case)
+                (->snake_case k)))
+            schema))
+
 (def PosNum
   (s/both s/Num (s/pred pos? 'pos?)))
 
@@ -192,7 +204,7 @@
   "Schema for a description of a job (as returned by the API).
   The structure is similar to JobRequest, but has some differences.
   For example, it can include descriptions of instances for the job."
-  (-<> JobRequest
+  (-> JobRequest
       (dissoc :user)
       (dissoc (s/optional-key :group))
       (merge {:framework-id (s/maybe s/Str)
@@ -202,11 +214,7 @@
               (s/optional-key :groups) [s/Uuid]
               (s/optional-key :gpus) s/Int
               (s/optional-key :instances) [Instance]})
-      (map-keys (fn [k]
-                  (if (instance? schema.core.OptionalKey k)
-                    (update k :k ->snake_case)
-                    (->snake_case k))) <>)
-      ))
+      prepare-schema-response))
 
 (def JobOrInstanceIds
   "Schema for any number of job and/or instance uuids"
@@ -252,11 +260,13 @@
 
 (def GroupResponse
   "A schema for a group http response"
-  (merge Group
-         {:jobs [s/Uuid]
+  (-> Group
+      (merge
+        {:jobs [s/Uuid]
           (s/optional-key :waiting) s/Int
           (s/optional-key :running) s/Int
-          (s/optional-key :completed) s/Int}))
+          (s/optional-key :completed) s/Int})
+      prepare-schema-response))
 
 (def RawSchedulerRequest
   "Schema for a request to the raw scheduler endpoint."
@@ -830,15 +840,21 @@
               (fn [their-matchers]
                 (fn [s]
                   (or (their-matchers s)
-                      (get {JobRequest #(map-keys ->kebab-case %)
-                            HostPlacement (fn [hp] (update hp :type keyword))
-                            StragglerHandling (fn [sh] (update sh :type keyword))}
+                      (get {;; can't use form->kebab-case because env and label
+                            ;; accept arbitrary kvs
+                            JobRequest (partial map-keys ->kebab-case)
+                            Group (partial map-keys ->kebab-case)
+                            HostPlacement (fn [hp]
+                                            (update hp :type keyword))
+                            StragglerHandling (fn [sh]
+                                                (update sh :type keyword))}
                            s)))))
       (update :response
               (fn [their-matchers]
                 (fn [s]
                   (or (their-matchers s)
-                      (get {JobResponse #(map-keys ->snake_case %)
+                      (get {JobResponse (partial map-keys ->snake_case)
+                            GroupResponse (partial map-keys ->snake_case)
                             s/Uuid str}
                            s))))))))
 
