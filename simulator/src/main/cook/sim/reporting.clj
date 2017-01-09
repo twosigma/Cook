@@ -39,11 +39,11 @@
 
 (defn first-finish
   "Given a collection of instances (from Cook database), returns the time of the
-  instance to finish successfully."
+  first instance to finish successfully."
   [instances]
   (let [successes (filter #(= (:instance/status %) :instance.status/success) instances)]
     (if (-> successes count pos?)
-      (.getTime (apply min (map :instance/end-time successes))))))
+      (apply min (map (fn [i] (.getTime (:instance/end-time i))) successes)))))
 
 (defn overhead-time
   "Time from scheduling to finish, minus actual execution time of job.
