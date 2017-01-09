@@ -138,7 +138,7 @@
    :dev
    {:dependencies [[clj-http-fake "1.0.1"]
                    [org.mockito/mockito-core "1.10.19"]
-                   [twosigma/cook-jobclient "0.1.0-SNAPSHOT"]
+                   [twosigma/cook-jobclient "0.1.1-SNAPSHOT"]
                    [org.clojure/test.check "0.6.1"]
                    [log4j/log4j "1.2.17" :exclusions  [javax.mail/mail
                                                        javax.jms/jms

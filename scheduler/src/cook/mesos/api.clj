@@ -224,7 +224,7 @@
       {:type (s/eq :attribute-equals)
        :parameters Attribute-Equals-Parameters}
     :else
-      {:type (s/pred #(contains? (set (map util/without-ns host-placement-types)) %) 
+      {:type (s/pred #(contains? (set (map util/without-ns host-placement-types)) %)
                      'host-placement-type-exists?)
        (s/optional-key :parameters) {}}))
 
@@ -239,7 +239,7 @@
       {:type (s/eq :quantile-deviation)
        :parameters Quantile-Deviation-Parameters}
     :else
-      {:type (s/pred #(contains? (set (map util/without-ns straggler-handling-types)) %) 
+      {:type (s/pred #(contains? (set (map util/without-ns straggler-handling-types)) %)
                      'straggler-handling-type-exists?)
        (s/optional-key :parameters) {}}))
 
@@ -436,11 +436,11 @@
 
 (defn namespace-straggler-handling-parameters
   "Adds the namespace to straggler-handling parameters
-   
+
    Follows the convention that the namespace is:
    'straggler-handling.<type of straggler-handling>/<parameter name>"
   [straggler-handling]
-  (map-keys #(keyword (str "straggler-handling." (:type straggler-handling)) (name %)) 
+  (map-keys #(keyword (str "straggler-handling." (name (:type straggler-handling))) (name %))
             (:parameters straggler-handling)))
 
 (s/defn make-straggler-handling-txn
@@ -448,10 +448,10 @@
    Uses the fact that straggler-handling and its components are marked with
    isComponent true"
   [straggler-handling :- [StragglerHandling]]
-  (merge {:straggler-handling/type (keyword "straggler-handling.type" 
+  (merge {:straggler-handling/type (keyword "straggler-handling.type"
                                             (name (:type straggler-handling)))}
-         (when (:parameters straggler-handling) 
-           {:straggler-handling/parameters 
+         (when (:parameters straggler-handling)
+           {:straggler-handling/parameters
             (namespace-straggler-handling-parameters straggler-handling)})))
 
 (s/defn make-group-txn
@@ -822,14 +822,6 @@
       x
       [x]))
 
-(defn clojurize-hp-type
-  [placement-type]
-  (let [placement-type-str (str placement-type)]
-    (keyword placement-type)
-    #_(if (re-find #"^host-placement.type/" placement-type-str)
-      placement-type
-      (keyword "host-placement.type" placement-type-str)))) ; Note that keyword adds in the slash
-
 ;;TODO (Diego): add docs for this
 (def cook-coercer
   (constantly
@@ -839,7 +831,8 @@
                 (fn [s]
                   (or (their-matchers s)
                       (get {JobRequest #(map-keys ->kebab-case %)
-                            HostPlacement (fn [hp] (update hp :type clojurize-hp-type))}
+                            HostPlacement (fn [hp] (update hp :type keyword))
+                            StragglerHandling (fn [sh] (update sh :type keyword))}
                            s)))))
       (update :response
               (fn [their-matchers]

@@ -211,7 +211,7 @@
                prior-job-state (:job/state (d/entity db job))
                instance-ent (d/entity db instance)
                instance-runtime (- (.getTime (now)) ; Used for reporting
-                                   (.getTime (:instance/start-time instance-ent)))
+                                   (.getTime (or (:instance/start-time instance-ent) (now))))
                job-resources (util/job-ent->resources job-ent)]
            (when (#{:instance.status/success :instance.status/failed} instance-status)
              (log/debug "Unassigning task" task-id "from" (:instance/hostname instance-ent))
@@ -424,10 +424,10 @@
         _ (log/debug "tasks to scheduleOnce" considerable)
         leases (mapv #(->VirtualMachineLeaseAdapter % t) offers)
         requests (mapv (fn [job]
-                         (->TaskRequestAdapter job 
-                                               (util/job-ent->resources job) 
-                                               (str (java.util.UUID/randomUUID)) 
-                                               (atom nil))) 
+                         (->TaskRequestAdapter job
+                                               (util/job-ent->resources job)
+                                               (str (java.util.UUID/randomUUID))
+                                               (atom nil)))
                        considerable)
         ;; Need to lock on fenzo when accessing scheduleOnce because scheduleOnce and
         ;; task assigner can not be called at the same time.
@@ -650,8 +650,8 @@
                                   ;; We take 10x num-considerable as a heuristic
                                   ;; scheduler-contents can be very large and so we don't want to go through the whole thing
                                   ;; it is better to be mostly right in back fill decisions and schedule fast
-                                  (process-matches-for-backfill (take (* 10 num-considerable) (:normal scheduler-contents-by)) 
-                                                                (first (:normal considerable-by)) 
+                                  (process-matches-for-backfill (take (* 10 num-considerable) (:normal scheduler-contents-by))
+                                                                (first (:normal considerable-by))
                                                                 matched-normal-jobs))
               update-scheduler-contents (fn update-scheduler-contents [scheduler-contents-by]
                                           (-> scheduler-contents-by
@@ -1001,33 +1001,33 @@
               {:error-handler (fn [e]
                                 (log/error e "Failed to reap timeout tasks!"))})))
 
-(defn handle-stragglers 
+(defn handle-stragglers
   "Searches for running jobs in groups and runs the associated straggler handler"
   [conn kill-task-fn]
   (let [running-task-ents (util/get-running-task-ents (d/db conn))
         running-job-ents (map :job/_instance running-task-ents)
-        groups (distinct (map :group/_job running-job-ents))]
+        groups (distinct (mapcat :group/_job running-job-ents))]
     (doseq [group groups]
-      (log/debug "Checking group " group " for stragglers")
+      (log/debug "Checking group " (d/touch group) " for stragglers")
 
       (let [straggler-task-ents (group/find-stragglers group)]
         (log/debug "Group " group " had stragglers: " straggler-task-ents)
 
-        (doseq [{task-id :db/id :as task-ent} straggler-task-ents]
+        (doseq [{task-ent-id :db/id :as task-ent} straggler-task-ents]
           (log/info "Killing " task-ent " of group " group " because it is a straggler")
           ;; Mark as killed first so that if we fail after this it is still marked failed
           @(d/transact
              conn
-             [[:instance/update-state [:instance/task-id task-id] :instance.status/failed [:reason/name :straggler]]
-              [:db/add [:instance/task-id task-id] :instance/reason [:reason/name :straggler]]])
-          (kill-task-fn task-id))))))
+             [[:instance/update-state task-ent-id :instance.status/failed [:reason/name :straggler]]
+              [:db/add task-ent-id :instance/reason [:reason/name :straggler]]])
+          (kill-task-fn (:instance/task-id task-ent)))))))
 
 (defn straggler-handler
   "Periodically checks for running jobs that are in groups and runs the associated
    straggler handler."
   [conn driver {:keys [interval-minutes] :or {interval-minutes 1}}]
   (chime-at (periodic/periodic-seq (time/now) (time/minutes interval-minutes))
-            (fn [now] (handle-stragglers (conn) #(mesos/kill-task! driver {:task-id %})))
+            (fn [now] (handle-stragglers conn #(mesos/kill-task! driver {:value (:instance/task-id %)})))
             {:error-handler (fn [e]
                               (log/error e "Failed to handle stragglers"))}))
 

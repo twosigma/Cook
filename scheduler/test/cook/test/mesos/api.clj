@@ -356,14 +356,20 @@
                            "mem" 10}
                           (when group
                             {"group" group})))
-        make-group (fn [& {:keys [uuid placement-type attribute]
+        make-group (fn [& {:keys [uuid placement-type attribute straggler-handling-type quantile multiplier]
                            :or {uuid (str (java.util.UUID/randomUUID))
                                 placement-type "all"
+                                straggler-handling-type "none"
+                                quantile 0.5
+                                multiplier 2.0
                                 attribute "test"}}]
                      {"uuid" uuid 
                       "host-placement" (merge {"type" placement-type}
                                               (when (= placement-type "attribute-equals")
-                                                {"parameters" {"attribute" attribute}}))})
+                                                {"parameters" {"attribute" attribute}}))
+                      "straggler-handling" (merge {"type" straggler-handling-type }
+                                                  (when (= straggler-handling-type "quantile-deviation")
+                                                    {"parameters" {"quantile" quantile "multiplier" multiplier}}))})
 
         h (basic-handler conn)
         post (fn [params]
@@ -401,7 +407,9 @@
             group-resp (get-group guuid)
             job-resp (get-job juuid)] 
 
-        (is (<= 200 (:status post-resp) 299))
+        (is (<= 200 (:status post-resp) 299) 
+            ; for debugging
+            (try (slurp (:body post-resp)) (catch Exception e (:body post-resp)))) 
         (is (= guuid (-> group-resp first (get "uuid"))) group-resp)
         (is (= juuid (-> group-resp first (get "jobs") first)))
 
@@ -511,6 +519,27 @@
                              "jobs" [(make-job :group guuid) (make-job :group guuid)]})]
         (is (<= 400 (:status post-resp) 499))))
 
+    (testing "Straggler handling quantile deviation"
+      (let [guuid1 (str (java.util.UUID/randomUUID))
+            juuid1 (str (java.util.UUID/randomUUID))
+            juuid2 (str (java.util.UUID/randomUUID))
+            post-resp (post {"jobs" [(make-job :uuid juuid1 :group guuid1)
+                                     (make-job :uuid juuid2 :group guuid1)]
+                             "groups" [(make-group :uuid guuid1 :straggler-handling-type "quantile-deviation"
+                                                   :quantile 0.5 :multiplier 2.0)]})
+            group-resp1 (get-group guuid1)
+            job-resp1 (get-job juuid1)
+            job-resp2 (get-job juuid2)]
+
+        (is (<= 200 (:status post-resp) 299)
+            ; for debugging
+            (try (slurp (:body post-resp)) (catch Exception e (:body post-resp))))
+        (is (= guuid1 (-> group-resp1 first (get "uuid"))))
+
+        (is (contains? (-> group-resp1 first (get "jobs") set) juuid1))
+        (is (contains? (-> group-resp1 first (get "jobs") set) juuid2))
+
+        (is (= (-> group-resp1 first (update "jobs" set)) {"uuid" guuid1 "name" "cookgroup" "host-placement" {"type" "all"} "jobs" #{juuid1 juuid2} "straggler-handling" {"type" "quantile-deviation" "parameters" {"quantile" 0.5 "multiplier" 2.0}}}))))
     (testing "Error trying to create previously existing group"
       (let [guuid (str (java.util.UUID/randomUUID))
             post-resp1 (post {"jobs" [(make-job :group guuid) (make-job :group guuid)]})
