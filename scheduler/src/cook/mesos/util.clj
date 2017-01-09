@@ -63,8 +63,8 @@
    (instance? clojure.lang.IRecord form)
      (outer (reduce (fn [r x] (conj r (inner x))) form form))
    ;; Added the line below to work with datomic entities..
-   (instance? datomic.query.EntityMap form) (into {} (map inner form))
-   (coll? form) (outer (into (empty form) (map inner form)))
+   (instance? datomic.query.EntityMap form) (outer (into {} (map inner) form))
+   (coll? form) (outer (into (empty form) (map inner) form))
    :else (outer form)))
 
 (defn postwalk
@@ -80,25 +80,29 @@
   any nested maps"
   [xf m]
   (postwalk (fn [x]
-                   (if (map? x)
-                     (into {} xf x)
-                     x))
-                 m))
+              (if (map? x)
+                (into {} xf x)
+                x))
+            m))
 
 (defn remove-datomic-namespacing
   "Takes a map from datomic (pull) and removes the namespace
-   as well as :db/id keys
-   
-   d/entity currently causes an AbstractMethodException"
+   as well as :db/id keys"
   [datomic-map]
   (->> datomic-map
        (deep-transduce-kv (comp
                             (filter (comp (partial not= :db/id) first))
-                            (map (fn [[k v]] 
+                            (map (fn [[k v]]
+                                   ;; This if is here in the case when a ident is used as
+                                   ;; an enum and the data is gotten from the pull api.
+                                   ;; It will be represented as:
+                                   ;; {:thing/type {:ident :ident/thing}}
                                    (if (and (map? v) (:ident v))
                                      [k (without-ns (:ident v))]
                                      [k v])))
-                            (map (juxt (comp without-ns first) second))))))
+                            (map (juxt (comp without-ns first) second))))
+       ;; Merge with {} in case datomic-map was nil so we get empty map back
+       (merge {})))
 
 (defn job-ent->container
   "Take a job entity and return its container"
@@ -149,7 +153,7 @@
    do not count towards attempts consumed."
   [reasons]
   (->> reasons
-       (remove :reason/mea-culpa?) ; Note a nil reason counts as a non-mea-culpa failure! 
+       (remove :reason/mea-culpa?) ; Note a nil reason counts as a non-mea-culpa failure!
        count))
 
 (defn job-ent->attempts-consumed
@@ -202,7 +206,7 @@
           (map (fn [[x]] (d/entity unfiltered-db x)))))))
 
 (defn get-jobs-by-user-and-state
-  "Returns all job entities for a particular user 
+  "Returns all job entities for a particular user
    in a particular state."
   [db user state start end]
   (->> (if (= state :job.state/completed)

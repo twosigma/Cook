@@ -709,8 +709,7 @@
                 base))
             (:job/instance job))}
       (when groups
-        {:groups (map #(str (:group/uuid %)) groups)})
-      )))
+        {:groups (map #(str (:group/uuid %)) groups)}))))
 
 (defn fetch-group-job-details
   [db guuid]
@@ -724,40 +723,14 @@
 (defn fetch-group-map
   [db guuid]
   (let [group (d/entity db [:group/uuid guuid])
-        hp (:group/host-placement group)
-        hp-params (:host-placement/parameters hp)
-        hp-type (->> hp :host-placement/type :host-placement.type/name)
-        jobs (:group/job group)
-        straggler-handling (:group/straggler-handling group)]
-    {:uuid (:group/uuid group)
-     :name (:group/name group)
-     ;; TODO: strip everything before slash in parameters so we can just do:
-     ;; {:type hp-type
-     ;;  :parameters (map-keys remove-datomic-namepace hp-params
-     ;; See cook.mesos.util/deep-transduce-kv
-     :host-placement {:type (util/without-ns hp-type)
-                      :parameters (merge {}
-                                         (when (= hp-type :host-placement.type/attribute-equals)
-                                           {:attribute (:host-placement.attribute-equals/attribute hp-params)}))}
-     :straggler-handling {:type (util/without-ns (:straggler-handling/type straggler-handling))
-                          :parameters (map-keys util/without-ns 
-                                                (:straggler-handling/parameters straggler-handling))}
-     :jobs (->> jobs
-                (map :job/uuid))}))
-
-#_(defn fetch-group-map
-  [db guuid]
-  (let [group (d/entity db [:group/uuid guuid])
         jobs (:group/job group)]
-    (println (d/touch group))
-    (println (merge
-               (util/remove-datomic-namespacing (dissoc (into {} group) :group/job))
-               {:jobs (->> jobs
-                           (map :job/uuid))}))
-    (merge
-      (util/remove-datomic-namespacing (dissoc (into {} group) :group/job))
-      {:jobs (->> jobs
-                  (map :job/uuid))})))
+    (-> (into {} group)
+        ;; Remove job because we don't want to walk entire job list
+        (dissoc :group/job)
+        util/remove-datomic-namespacing
+        (assoc :jobs (map :job/uuid jobs))
+        (update-in [:host-placement :type] (comp util/without-ns :name))
+        (update-in [:straggler-handling :type] util/without-ns))))
 
 (defn instance-uuid->job-uuid
   "Queries for the job uuid from an instance uuid.

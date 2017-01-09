@@ -402,7 +402,7 @@
             job-resp (get-job juuid)] 
 
         (is (<= 200 (:status post-resp) 299))
-        (is (= guuid (-> group-resp first (get "uuid"))))
+        (is (= guuid (-> group-resp first (get "uuid"))) group-resp)
         (is (= juuid (-> group-resp first (get "jobs") first)))
 
         (is (= juuid (-> job-resp first (get "uuid"))))
@@ -447,8 +447,8 @@
         (is (contains? (-> group-resp1 first (get "jobs") set) juuid1))
         (is (contains? (-> group-resp2 first (get "jobs") set) juuid2))
 
-        (is (= (-> group-resp1 first) {"uuid" guuid1 "name" "defaultgroup" "host-placement" {"type" "all" "parameters" {}} "jobs" [juuid1] "straggler-handling" {"type" "none" "parameters" {}}}))
-        (is (= (-> group-resp2 first) {"uuid" guuid2 "name" "defaultgroup" "host-placement" {"type" "all" "parameters" {}} "jobs" [juuid2] "straggler-handling"  {"type" "none" "parameters" {}}}))
+        (is (= (-> group-resp1 first) {"uuid" guuid1 "name" "defaultgroup" "host-placement" {"type" "all"} "jobs" [juuid1] "straggler-handling" {"type" "none"}}))
+        (is (= (-> group-resp2 first) {"uuid" guuid2 "name" "defaultgroup" "host-placement" {"type" "all"} "jobs" [juuid2] "straggler-handling"  {"type" "none"}}))
         ))
 
     (testing "Multiple groups in one request"
