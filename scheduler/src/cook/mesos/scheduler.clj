@@ -26,6 +26,8 @@
             [cook.datomic :as datomic :refer (transact-with-retries)]
             [cook.mesos.constraints :as constraints]
             [cook.mesos.dru :as dru]
+            [cook.mesos.fenzo-utils :as fenzo]
+            [cook.mesos.task :as task]
             [cook.mesos.group :as group]
             [cook.mesos.heartbeat :as heartbeat]
             [cook.mesos.quota :as quota]
@@ -478,14 +480,9 @@
                  (.scheduleOnce fenzo requests leases))
         failure-results (.. result getFailures values)
         assignments (.. result getResultMap values)]
-    (when (and (seq failure-results) (log/enabled? :debug))
-      (log/debug "Task placement failure information follows:")
-      (doseq [failure-result failure-results
-              failure failure-result
-              :let [_ (log/debug (str (.getConstraintFailure failure)))]
-              f (.getFailures failure)]
-        (log/debug (str f)))
-      (log/debug "Task placement failure information concluded."))
+
+    (log/debug "Found this assigment:" result)
+
     {:matches (mapv (fn [assignment]
                       {:leases (.getLeasesUsed assignment)
                        :tasks (.getTasksAssigned assignment)
@@ -708,9 +705,13 @@
                                                                            (matches->category->job-uuids matches))
               first-normal-considerable-job-resources (-> category->considerable-jobs :normal first util/job-ent->resources)
               matched-normal-considerable-jobs-head? (contains? matched-normal-job-uuids (-> category->considerable-jobs :normal first :job/uuid))]
+
+          (fenzo/record-placement-failures! conn failures)
+
           (reset! offer-stash offers-scheduled)
           (reset! front-of-job-queue-mem-atom (or (:mem first-normal-considerable-job-resources) 0))
           (reset! front-of-job-queue-cpus-atom (or (:cpus first-normal-considerable-job-resources) 0))
+
           (cond
             ;; Possible innocuous reasons for no matches: no offers, or no pending jobs.
             ;; Even beyond that, if Fenzo fails to match ANYTHING, "penalizing" it in the form of giving

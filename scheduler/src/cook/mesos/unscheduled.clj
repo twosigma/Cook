@@ -66,6 +66,44 @@
         [err-msg ways]
         nil))))
 
+(def constraint-name->message
+  {"novel_host_constraint" "Job already ran on this host."
+   "gpu_host_constraint" "Host has no GPU support."
+   "non_gpu_host_constraint" "Host is reserved for jobs that need GPU support."})
+
+(defn fenzo-failures-for-user
+  "Given a minimal data structure containing serialized summary of fenzo errors,
+  e.g. {:resources {:cpus 2 :mem 3} :constraints {\"unique_host_constraints\" 4}},
+  Returns a data structure suitable for presentation, e.g.
+  [{:reason \"Not enough CPU available\" :host_count 2}
+   {:reason \"Not enough Memory available\" :host_count 3}
+   {:reason \"Job already ran on this host.\" :host_count 4}]"
+  [raw-summary]
+  (reduce into [] [(map (fn [[k v]] {:reason (str "Not enough " k " available.")
+                                     :host_count v})
+                        (:resources raw-summary))
+                   (map (fn [[k v]] {:reason (or (constraint-name->message k) k)
+                                     :host_count v})
+                        (:constraints raw-summary))]))
+
+(defn check-fenzo-placement
+  "Places the job Under Investigation (next time Fenzo fails to place the job,
+  the details of that will be recorded).
+  If there are already any Fenzo placement failures associated with the job, returns
+  [(String explaining placement failure), {data structure containing host counts for
+  each type of failure}].
+  Otherwise, if job wasn't already under investigation,
+  returns [String indicating job is now under investigation, {}] "
+  [conn job]
+  (when-not (:job/under-investigation job)
+    @(d/transact conn [{:db/id (:db/id job)
+                        :job/under-investigation true}]))
+  (if (:job/last-fenzo-placement-failure job)
+    ["The job couldn't be placed on any available hosts."
+     {:reasons (-> job :job/last-fenzo-placement-failure edn/read-string
+                   fenzo-failures-for-user)}]
+    ["The job is now under investigation. Check back in a minute for more details!" {}]))
+
 (defn reasons
   "Top level function which assembles a data structure representing the list
   of possible responses to the question \"Why isn't this job being scheduled?\".
@@ -86,5 +124,6 @@
                                     db job)
                (check-exceeds-limit share/get-share
                                     "The job would cause you to exceed resource shares."
-                                    db job)]))))
+                                    db job)
+               (check-fenzo-placement conn job)]))))
 
