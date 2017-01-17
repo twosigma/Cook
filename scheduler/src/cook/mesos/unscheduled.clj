@@ -104,6 +104,35 @@
                    fenzo-failures-for-user)}]
     ["The job is now under investigation. Check back in a minute for more details!" {}]))
 
+(defn check-queue-position
+  "IFF the job is not first in the user's queue, returns
+  [\"You have x other jobs ahead in the queue\", {:jobs [other job uuids]]}]"
+  [conn job]
+  (let [db (d/db conn)
+        user (:job/user job)
+        job-uuid (:job/uuid job)
+        running-tasks (map
+                       (fn [j] (->> j
+                                    :job/instance
+                                    (filter util/instance-running?)
+                                    last))
+                       (util/jobs-by-user-and-state db user :job.state/running))
+        pending-tasks (map util/create-task-ent
+                           (util/jobs-by-user-and-state db user :job.state/waiting))
+        all-tasks (into running-tasks pending-tasks)
+        sorted-tasks (vec (sort (util/same-user-task-comparator) all-tasks))
+        queue-pos (first
+                   (keep-indexed
+                    (fn [i instance]
+                      (when (= (-> instance :job/_instance :job/uuid) job-uuid) i))
+                    sorted-tasks))
+        tasks-ahead (subvec sorted-tasks 0 queue-pos)]
+    (when (seq tasks-ahead)
+      [(str "You have " queue-pos " other jobs ahead in the queue.")
+       {:jobs (->> tasks-ahead
+                   (take 10)
+                   (mapv #(-> % :job/_instance :job/uuid str)))}])))
+
 (defn reasons
   "Top level function which assembles a data structure representing the list
   of possible responses to the question \"Why isn't this job being scheduled?\".
@@ -125,5 +154,6 @@
                (check-exceeds-limit share/get-share
                                     "The job would cause you to exceed resource shares."
                                     db job)
+               (check-queue-position conn job)
                (check-fenzo-placement conn job)]))))
 

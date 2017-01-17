@@ -77,13 +77,14 @@
                                               :ncpus 1.0 :memory 3.0
                                               :job-state :job.state/running))
         running-job-id2 (-> (create-dummy-job conn :user "mforsyth"
-                                              :ncpus 1.0 :memory 3.0
+                                              :ncpus 1.0 :memory 3.1
                                               :job-state :job.state/running))
         waiting-job-id (-> (create-dummy-job conn :user "mforsyth"
                                              :ncpus 1.0 :memory 3.0
                                              :job-state :job.state/waiting
                                              :retry-count 2))
         _ (dotimes [n 2]  (create-dummy-instance conn running-job-id1))
+        _ (dotimes [n 2]  (create-dummy-instance conn running-job-id2))
         _ (dotimes [n 2]  (create-dummy-instance conn waiting-job-id
                                                  :instance-status :instance.status/failed))]
 
@@ -97,9 +98,25 @@
     (testing "Waiting job returns multiple reasons, and is placed under investigation."
       @(d/transact conn [[:db/add waiting-job-id :job/state :job.state/waiting]])
       (let [db (d/db conn)
-            waiting-job-ent (d/touch (d/entity db waiting-job-id))]
-        (is (= (u/reasons conn waiting-job-ent)
-               '(["Job has exhausted its maximum number of retries."
-                  {:max-retries 2, :instance-count 2}]
-                 ["The job is now under investigation. Check back in a minute for more details!"
-                  {}])))))))
+            running-job-ent1 (d/touch (d/entity db running-job-id1))
+            running-job-ent2 (d/touch (d/entity db running-job-id2))
+            waiting-job-ent (d/touch (d/entity db waiting-job-id))
+            running-job-uuids [(-> running-job-ent1 :job/uuid str)
+                               (-> running-job-ent2 :job/uuid str)]
+            reasons (u/reasons conn waiting-job-ent)]
+
+        (is (= (nth reasons 0)
+               ["Job has exhausted its maximum number of retries."
+                {:max-retries 2, :instance-count 2}]))
+
+        (is (= (nth reasons 1)
+               ["The job would cause you to exceed resource quotas."
+                {:count {:limit 2 :usage 3}}]))
+
+        (is (= (nth reasons 2)
+               ["You have 2 other jobs ahead in the queue."
+                {:jobs running-job-uuids}]))
+
+        (is (= (nth reasons 3)
+               ["The job is now under investigation. Check back in a minute for more details!"
+                {}]))))))
