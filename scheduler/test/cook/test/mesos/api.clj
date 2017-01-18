@@ -231,34 +231,45 @@
 (deftest retries-api
   (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
         h (basic-handler conn)
-        uuid (str (java.util.UUID/randomUUID))
+        uuid1 (str (java.util.UUID/randomUUID))
+        uuid2 (str (java.util.UUID/randomUUID))
         create-response (h {:request-method :post
                             :scheme :http
                             :uri "/rawscheduler"
                             :headers {"Content-Type" "application/json"}
                             :authorization/user "mforsyth"
-                            :body-params {"jobs" [(merge (basic-job)
-                                                         {"uuid" uuid
-                                                          "max_retries" 42})]}})
+                            :body-params
+                            {"jobs" [(merge (basic-job) {"uuid" uuid1
+                                                         "max_retries" 42})
+                                     (merge (basic-job) {"uuid" uuid2
+                                                         "max_retries" 30})]}})
         retry-req-attrs {:scheme :http
                          :uri "/retry"
                          :authorization/user "mforsyth"}]
-    (testing "read retry count"
-      (let [resp (h (merge retry-req-attrs  {:request-method :get
-                                             :query-params {"job" uuid}}))
-            _ (is (<= 200 (:status resp) 299))
-            body (-> resp :body slurp json/read-str)]
-        (is (= body 42))))
 
-    (testing "update retry count"
+    (testing "retry a single job with static retries"
       (let [update-resp (h (merge retry-req-attrs
                                   {:request-method :put
-                                   :body-params {"job" uuid "retries" 70}}))
+                                   :body-params {"job" [uuid1] "retries" 45}}))
             _ (is (<= 200 (:status update-resp) 299))
             read-resp (h (merge retry-req-attrs  {:request-method :get
-                                                  :query-params {"job" uuid}}))
+                                                  :query-params {"job" uuid1}}))
             read-body (-> read-resp :body slurp json/read-str)]
-        (is (= read-body 70))))))
+        (is (= read-body 45))))
+
+    (testing "retry multiple jobs incrementing retries"
+      (let [update-resp (h (merge retry-req-attrs
+                                  {:request-method :put
+                                   :query-params {"job" [uuid1 uuid2]}
+                                   :body-params {"increment" 3}}))
+            read-resp1 (h (merge retry-req-attrs  {:request-method :get
+                                                   :query-params {"job" uuid1}}))
+            read-body1 (-> read-resp1 :body slurp json/read-str)
+            read-resp2 (h (merge retry-req-attrs  {:request-method :get
+                                                   :query-params {"job" uuid2}}))
+            read-body2 (-> read-resp2 :body slurp json/read-str)]
+        (is (= read-body1 48))
+        (is (= read-body2 33))))))
 
 (deftest quota-api
   (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
@@ -571,19 +582,29 @@
                                :uri "/retry"
                                :headers {"Content-Type" "application/json"}
                                :authorization/user "dgrnbrg"
-                               :body-params {"job" uuid
-                                        "retries" 199}}))
+                               :body-params {"job" [uuid]
+                                             "retries" 198}}))
                   299)))
-        (testing "At limits"
+        (testing "Incrementing within limit"
           (is (<= 200
                   (:status (h {:request-method :post
                                :scheme :http
                                :uri "/retry"
                                :headers {"Content-Type" "application/json"}
                                :authorization/user "dgrnbrg"
-                               :body-params {"job" uuid
-                                        "retries" 200}}))
+                               :body-params {"job" [uuid]
+                                             "increment" 1}}))
                   299)))
+        (testing "At limits"
+            (is (<= 200
+                    (:status (h {:request-method :post
+                                 :scheme :http
+                                 :uri "/retry"
+                                 :headers {"Content-Type" "application/json"}
+                                 :authorization/user "dgrnbrg"
+                                 :body-params {"job" [uuid]
+                                               "retries" 200}}))
+                    299)))
         (testing "Over limit"
           (is (<= 400
                   (:status (h {:request-method :post
@@ -591,9 +612,20 @@
                                :uri "/retry"
                                :headers {"Content-Type" "application/json"}
                                :authorization/user "dgrnbrg"
-                               :body-params {"job" uuid
+                               :body-params {"job" [uuid]
                                         "retries" 201}}))
-                  499)))))
+                  499)))
+
+        (testing "Incrementing over limit"
+            (is (<= 400
+                    (:status (h {:request-method :post
+                                 :scheme :http
+                                 :uri "/retry"
+                                 :headers {"Content-Type" "application/json"}
+                                 :authorization/user "dgrnbrg"
+                                 :body-params {"job" [uuid]
+                                               "increment" 5}}))
+                    499)))))
 
 (deftest list-validator
   (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
