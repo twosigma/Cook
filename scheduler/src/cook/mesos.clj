@@ -157,7 +157,7 @@
                                     (cook.mesos.scheduler/monitor-tx-report-queue datomic-report-chan mesos-datomic-conn current-driver)
                                     (mesomatic.scheduler/join! driver)
                                     (reset! current-driver nil))
-                                  (catch Exception e
+                                  (catch Throwable e
                                     (log/error e "Lost mesos leadership due to exception")
                                     (reset! normal-exit false))
                                   (finally
