@@ -158,7 +158,7 @@ final public class StragglerHandling {
     }
 
     /**
-     * Convert a job to a JSON object, e.g.
+     * Convert a StragglerHandling to a JSON object, e.g.
      *
      * <pre>
      * <code>
