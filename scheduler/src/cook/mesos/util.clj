@@ -350,3 +350,16 @@
         end (or (tc/from-date (:instance/end-time task-ent))
                 (t/now))]
     (t/interval start end)))
+
+(defn namespace-datomic
+  "Namespaces keywords given the datomic conventions
+
+   Examples:
+   (namespace-datomic :straggler-handling :type)
+   :straggler-handling/type
+   (namespace-datomic :straggler-handling :type :quantile-deviation)
+   :straggler-handling.type/quantile-deviation"
+  ([name-space value]
+   (keyword (name name-space) (name value)))
+  ([name-space subspace value]
+   (namespace-datomic (str (name name-space) "." (name subspace)) value)))

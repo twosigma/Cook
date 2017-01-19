@@ -134,6 +134,7 @@
    {:db/id (d/tempid :db.part/db)
     :db/ident :group/host-placement
     :db/valueType :db.type/ref
+    :db/isComponent true
     :db/cardinality :db.cardinality/one
     :db.install/_attribute :db.part/db}
    {:db/id (d/tempid :db.part/db)
@@ -167,7 +168,7 @@
     :db.install/_attribute :db.part/db}
    {:db/id (d/tempid :db.part/db)
     :db/ident :straggler-handling.quantile-deviation/quantile
-    :db/valueType :db.type/double 
+    :db/valueType :db.type/double
     :db/cardinality :db.cardinality/one
     :db.install/_attribute :db.part/db}
    {:db/id (d/tempid :db.part/db)
@@ -183,11 +184,13 @@
    {:db/id (d/tempid :db.part/db)
     :db/ident :host-placement/type
     :db/valueType :db.type/ref
+    :db/isComponent true
     :db/cardinality :db.cardinality/one
     :db.install/_attribute :db.part/db}
    {:db/id (d/tempid :db.part/db)
     :db/ident :host-placement/parameters
     :db/valueType :db.type/ref
+    :db/isComponent true
     :db/cardinality :db.cardinality/one
     :db.install/_attribute :db.part/db}
    ;; parameters for type attribute-equals
@@ -197,17 +200,16 @@
     :db/cardinality :db.cardinality/one
     :db.install/_attribute :db.part/db}
    ;; host-placement.type attributes
-   {:db/id (d/tempid :db.part/db)
-    :db/ident :host-placement.type/name
-    :db/valueType :db.type/keyword
-    :db/cardinality :db.cardinality/one
-    :db/unique :db.unique/identity
-    :db.install/_attribute :db.part/db}
-   {:db/id (d/tempid :db.part/db)
-    :db/ident :host-placement.type/string
-    :db/valueType :db.type/string
-    :db/cardinality :db.cardinality/one
-    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/user)
+    :db/ident :host-placement.type/unique}
+   {:db/id (d/tempid :db.part/user)
+    :db/ident :host-placement.type/balanced}
+   {:db/id (d/tempid :db.part/user)
+    :db/ident :host-placement.type/one}
+   {:db/id (d/tempid :db.part/user)
+    :db/ident :host-placement.type/attribute-equals}
+   {:db/id (d/tempid :db.part/user)
+    :db/ident :host-placement.type/all}
    ;; commit-latch attributes
    {:db/id (d/tempid :db.part/db)
     :db/ident :commit-latch/committed?
@@ -591,18 +593,15 @@
     :db/ident :instance/create
     :db/doc "Creates an instance for a job"}])
 
-(def straggler-handling-types 
+(def straggler-handling-types
   (->> schema-attributes
        (map :db/ident)
        (filter #(= "straggler-handling.type" (namespace %)))))
 
-(def host-placement-types #{:host-placement.type/unique
-                            :host-placement.type/balanced
-                            :host-placement.type/one
-                            :host-placement.type/attribute-equals
-                            :host-placement.type/all})
-(def host-placement-type-txns
-  (map #(assoc {:db/id (d/tempid :db.part/user)} :host-placement.type/name %) host-placement-types))
+(def host-placement-types
+  (->> schema-attributes
+       (map :db/ident)
+       (filter #(= "host-placement.type" (namespace %)))))
 
 (def db-fns
   [{:db/id (d/tempid :db.part/user)
@@ -684,12 +683,12 @@
    {:db/id (d/tempid :db.part/user)
     :db/ident :instance/update-state
     :db/doc "Update instance and job status. Queries the instance status first and checks that the transition is valid. Also transitions the job status considering the new update.
-             
+
              Note that in order to provide consistency between an instance and the job that owns it, you should not wrap calls to :instance/update-state for multiple instances
              of the same job in a single transaction (or more generally, if you are calling :instance/update-state on an instance, you should not modify the status of another instance
              of the same job in the same transaction).
              To see one case where wrapping multiple calls in the same transaction leads to inconsistency, suppose jobA has instances instanceA and instanceB, both of which are marked
-             as running. jobA is running and has no retries remaining. Suppose in one transaction we call (:instance/update-state instanceA :instance.status/failed) and 
+             as running. jobA is running and has no retries remaining. Suppose in one transaction we call (:instance/update-state instanceA :instance.status/failed) and
              (:instance/update-state instanceB :instance.status/failed). We would hope that after the transaction, jobA has status completed since both instances have failed and it is
              out of retries. However, since during the evaluation of :instance/update-state for instanceA (instanceB), the status of instanceB (instanceA) still appears to be running
              from the perspective of the current Datomic state, the state of jobA will not be set to completed. After the transaction completes, the state of jobA is still running."
@@ -711,14 +710,14 @@
                                               db instance))]
                      ;; Checking the validity of the target state transition
                      (when (get-in state-transitions [old-state new-state])
-                       (into [[:db/add instance :instance/status new-state]] 
+                       (into [[:db/add instance :instance/status new-state]]
                          (let [instance-ent (d/entity db instance)
                                job-ent (:job/_instance instance-ent)
                                job (:db/id job-ent)
                                other-instances (->> (:job/instance job-ent)
                                                     (remove #(= (:db/id %) (:db/id instance-ent))))
                                instance-states (->> other-instances
-                                                    (map :instance/status) 
+                                                    (map :instance/status)
                                                     (cons new-state))
                                any-success? (some #{:instance.status/success} instance-states)
                                any-running? (some #{:instance.status/running} instance-states)
@@ -978,4 +977,4 @@
     :reason/mesos-reason :reason-command-executor-failed}])
 
 (def work-item-schema
-  [schema-attributes state-enums host-placement-type-txns rebalancer-configs migration-add-index-to-job-state migration-add-index-to-job-user migration-add-port-count db-fns reason-entities])
+  [schema-attributes state-enums rebalancer-configs migration-add-index-to-job-state migration-add-index-to-job-user migration-add-port-count db-fns reason-entities])

@@ -157,4 +157,13 @@
     
     ))
 
+(deftest test-namespace-datomic
+  (testing "Example tests"
+    (is (= (util/namespace-datomic :straggler-handling :type)
+           :straggler-handling/type))
+    (is (= (util/namespace-datomic :straggler-handling :type :quantile-deviation)
+           :straggler-handling.type/quantile-deviation ))
+    )
+  )
+
 (comment (run-tests))

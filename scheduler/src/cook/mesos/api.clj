@@ -424,63 +424,41 @@
         (conj txn)
         (conj commit-latch))))
 
-(s/defn make-host-placement-txn
-  "Creates the transaction data necessary to insert a host placement into the database.
-   Returns a vector [host-placement-id txns]"
-  [hp :- [HostPlacement]]
-  (let [params (:parameters hp)
-        params-txn-id (d/tempid :db.part/user)
-        type (keyword "host-placement.type" (name (:type hp)))
-        params-txn (when (= type :host-placement.type/attribute-equals)
-                      {:db/id params-txn-id
-                       :host-placement.attribute-equals/attribute (:attribute params)})
-        hp-txn-id (d/tempid :db.part/user)
-        hp-txn (merge {:db/id hp-txn-id
-                        :host-placement/type [:host-placement.type/name type]}
-                       (when params-txn
-                         {:host-placement/parameters params-txn-id}))
-        txns (if (nil? params-txn)
-               [hp-txn]
-               [params-txn hp-txn])]
-    [hp-txn-id txns]))
+(defn make-type-parameter-txn
+  "Makes txn map for an entity conforming to the pattern of
+   {:<namespace>/type <type>
+    :<namespace>/parameters {<parameters>}}
+   The entity must be marked with isComponent true
 
-(defn namespace-straggler-handling-parameters
-  "Adds the namespace to straggler-handling parameters
-
-   Follows the convention that the namespace is:
-   'straggler-handling.<type of straggler-handling>/<parameter name>"
-  [straggler-handling]
-  (map-keys #(keyword (str "straggler-handling." (name (:type straggler-handling))) (name %))
-            (:parameters straggler-handling)))
-
-(s/defn make-straggler-handling-txn
-  "Returns a map to create the straggler-handling txn.
-   Uses the fact that straggler-handling and its components are marked with
-   isComponent true"
-  [straggler-handling :- [StragglerHandling]]
-  (merge {:straggler-handling/type (keyword "straggler-handling.type"
-                                            (name (:type straggler-handling)))}
-         (when (seq (:parameters straggler-handling))
-           {:straggler-handling/parameters
-            (namespace-straggler-handling-parameters straggler-handling)})))
+   Example:
+   (make-type-parameter-txn {:type :quantile-deviation
+                             :parameters {:quantile 0.5 :multiplier 2.5}}
+                             :straggler-handling)
+   {:straggler-handling/type :straggler-handling.type/quantile-deviation
+    :straggler-handling/parameters {:straggler-handling.quantile-deviation/quantile 0.5
+                                    :straggler-handling.quantile-deviation/multiplier 2.5}}"
+  [{:keys [type parameters]} name-space]
+  (let [namespace-fn (partial util/namespace-datomic name-space)]
+    (merge
+      {(namespace-fn :type) (namespace-fn :type type)}
+      (when (seq parameters)
+        {(namespace-fn :parameters) (map-keys (partial namespace-fn type)
+                                              parameters)}))))
 
 (s/defn make-group-txn
   "Creates the transaction data necessary to insert a group to the database. job-db-ids is the
    list of all db-ids (datomic temporary ids) of jobs that belong to this group"
   [group :- Group job-db-ids]
-  (let [uuid (:uuid group)
-        [hp-txn-id hp-txns] (-> group
-                                :host-placement
-                                make-host-placement-txn)
-        group-txn {:db/id (d/tempid :db.part/user)
-                   :group/uuid uuid
-                   :group/name (:name group)
-                   :group/host-placement hp-txn-id
-                   :group/job job-db-ids
-                   :group/straggler-handling (-> group
-                                                 :straggler-handling
-                                                 (make-straggler-handling-txn))}]
-    (conj hp-txns group-txn)))
+  {:db/id (d/tempid :db.part/user)
+   :group/uuid (:uuid group)
+   :group/name (:name group)
+   :group/job job-db-ids
+   :group/host-placement (-> group
+                             :host-placement
+                             (make-type-parameter-txn :host-placement))
+   :group/straggler-handling (-> group
+                                 :straggler-handling
+                                 (make-type-parameter-txn :straggler-handling))})
 
 (defn group-exists?
   "True if a group with guuid exists in the database, false otherwise"
@@ -739,7 +717,7 @@
         (dissoc :group/job)
         util/remove-datomic-namespacing
         (assoc :jobs (map :job/uuid jobs))
-        (update-in [:host-placement :type] (comp util/without-ns :name))
+        (update-in [:host-placement :type] util/without-ns)
         (update-in [:straggler-handling :type] util/without-ns))))
 
 (defn instance-uuid->job-uuid
@@ -922,8 +900,9 @@
                                                         (map-vals (fn [jobs]
                                                                     (map #(job-uuids->dbids (:uuid %))
                                                                          jobs))))
-                            group-txns (mapcat
-                                         #(make-group-txn % (get group-uuid->job-dbids (:uuid %) []))
+                            group-txns (map #(make-group-txn % (get group-uuid->job-dbids
+                                                                    (:uuid %)
+                                                                    []))
                                                groups)]
                         @(d/transact
                          conn

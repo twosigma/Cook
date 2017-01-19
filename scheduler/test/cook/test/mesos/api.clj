@@ -346,7 +346,7 @@
                          :or {uuid (str (java.util.UUID/randomUUID))
                               name "cook-job"
                               group nil}}]
-                   (merge {"uuid" uuid 
+                   (merge {"uuid" uuid
                            "command" "hello world"
                            "name" name
                            "priority" 66
@@ -363,7 +363,7 @@
                                 quantile 0.5
                                 multiplier 2.0
                                 attribute "test"}}]
-                     {"uuid" uuid 
+                     {"uuid" uuid
                       "host_placement" (merge {"type" placement-type}
                                               (when (= placement-type "attribute-equals")
                                                 {"parameters" {"attribute" attribute}}))
@@ -405,11 +405,11 @@
             post-resp (post {"groups" [(make-group :uuid guuid)]
                              "jobs" [(make-job :uuid juuid :group guuid)]})
             group-resp (get-group guuid)
-            job-resp (get-job juuid)] 
+            job-resp (get-job juuid)]
 
-        (is (<= 200 (:status post-resp) 299) 
+        (is (<= 200 (:status post-resp) 299)
             ; for debugging
-            (try (slurp (:body post-resp)) (catch Exception e (:body post-resp)))) 
+            (try (slurp (:body post-resp)) (catch Exception e (:body post-resp))))
         (is (= guuid (-> group-resp first (get "uuid"))) group-resp)
         (is (= juuid (-> group-resp first (get "jobs") first)))
 
@@ -424,15 +424,15 @@
                              "jobs" [(make-job :uuid juuid1 :group guuid)
                                      (make-job :uuid juuid2 :group guuid)]})
             group-resp (get-group guuid)
-            job-resp1 (get-job juuid1)  
-            job-resp2 (get-job juuid2)] 
-        
+            job-resp1 (get-job juuid1)
+            job-resp2 (get-job juuid2)]
+
         (is (<= 200 (:status post-resp) 299))
         (is (= guuid (-> group-resp first (get "uuid"))))
         (is (contains? (-> group-resp first (get "jobs") set) juuid1))
         (is (contains? (-> group-resp first (get "jobs") set) juuid2))
 
-        (is (= juuid1 (-> job-resp1 first (get "uuid"))))  
+        (is (= juuid1 (-> job-resp1 first (get "uuid"))))
         (is (= guuid (-> job-resp1 first (get "groups") first)))
         (is (= guuid (-> job-resp2 first (get "groups") first)))))
 
@@ -700,3 +700,12 @@
                                        "user" "dgrnbrg"}}))
           jobs (json/read-str list-str)]
       (is (= 0 (count jobs))))))
+
+(deftest test-make-type-parameter-txn
+  (testing "Example test"
+    (is (= (api/make-type-parameter-txn {:type :quantile-deviation
+                                         :parameters {:quantile 0.5 :multiplier 2.5}}
+                                        :straggler-handling)
+           {:straggler-handling/type :straggler-handling.type/quantile-deviation
+            :straggler-handling/parameters {:straggler-handling.quantile-deviation/quantile 0.5
+                                            :straggler-handling.quantile-deviation/multiplier 2.5}}))))
