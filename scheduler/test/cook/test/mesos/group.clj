@@ -68,6 +68,10 @@
             job-b (create-dummy-job conn :group group-ent-id)
             straggler (create-dummy-instance conn job-b :instance-status :instance.status/running
                                              :start-time (tc/to-date (t/ago (t/minutes 190))))
+            job-c (create-dummy-job conn :group group-ent-id)
+            _ (create-dummy-instance conn job-b :instance-status :instance.status/success
+                                     :start-time (tc/to-date (t/ago (t/hours 3)))
+                                     :end-time (tc/to-date (t/ago (t/hours 2))))
             db (d/db conn)
             group-ent (d/entity db group-ent-id)
             straggler-task (d/entity db straggler)]
