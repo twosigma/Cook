@@ -6,7 +6,7 @@ scratch. We have to install Clojure itself, Datomic, Docker, and Mesos.
 Prerequisites
 =============
 
-Before beginning, you should already have working installations Clojure, Leiningen.
+Before beginning, you should already have working installations of Clojure and [Leiningen](https://leiningen.org/).
 Refer to those projects' getting started guides for information on how to set
 them up.
 
