@@ -22,6 +22,7 @@
             [clj-time.core :as t]
             [congestion.storage :as storage]
             [clj-pid.core :as pid]
+            [clojure.edn :as edn]
             [clojure.java.io :as io]
             [clj-logging-config.log4j :as log4j-conf]
             [clojure.tools.logging :as log]
@@ -290,7 +291,7 @@
   "Parses the settings out of a config file"
   (graph/eager-compile
     {:server-port (fnk [[:config port]]
-                       port)
+                       (if (number? port) port (Integer/parseInt port)))
      :is-authorized-fn (fnk [[:config {authorization-config default-authorization}]]
                                 (partial (lazy-load-var 'cook.authorization/is-authorized?)
                                          authorization-config))
@@ -474,6 +475,12 @@
      :logging (fnk [[:config log]]
                    (init-logger log))}))
 
+(defn- read-edn-config [config]
+  (edn/read-string
+   {:readers
+    {'config/env #(System/getenv %)}}
+   config))
+
 (defn -main
   [config & args]
   (when-not (.exists (java.io.File. config))
@@ -488,7 +495,7 @@
           literal-config (try
                            {:config
                             (case config-format
-                              "edn" (read-string (slurp config))
+                              "edn" (read-edn-config (slurp config))
                               (do
                                 (.println System/err (str "Invalid config file format " config-format))
                                 (System/exit 1)))}
