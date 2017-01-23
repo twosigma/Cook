@@ -25,6 +25,7 @@
             [plumbing.core :refer [map-keys mapply]]
             [camel-snake-kebab.core :refer [->snake_case ->kebab-case]]
             [compojure.core :refer (GET POST ANY routes)]
+            [compojure.route :as route]
             [clojure.tools.logging :as log]
             [clojure.string :as str]
             [clojure.core.cache :as cache]
@@ -1555,4 +1556,5 @@
     (ANY "/running" []
          (running-jobs conn is-authorized-fn))
     (ANY "/list" []
-         (list-resource (db conn) fid is-authorized-fn))))
+         (list-resource (db conn) fid is-authorized-fn))
+    (route/resources "/resource")))
