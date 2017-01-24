@@ -73,7 +73,7 @@
                 command "dummy command"
                 ncpus 1.0
                 memory 10.0
-                name "dummy job"
+                name "dummy_job"
                 submit-time (java.util.Date.)
                 retry-count 5
                 max-runtime Long/MAX_VALUE
