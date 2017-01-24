@@ -1031,6 +1031,33 @@
             {:error-handler (fn [e]
                               (log/error e "Failed to handle stragglers"))}))
 
+(defn killable-cancelled-tasks
+  [db]
+  (->> (q '[:find ?i
+            :in $ [?status ...]
+            :where
+            [?i :instance/cancelled true]
+            [?i :instance/status ?status]]
+          db [:instance.status/running :instance.status/unknown])
+       (map (fn [[x]] (d/entity db x)))))
+
+(timers/deftimer [cook-mesos scheduler killing-cancelled-tasks-duration])
+
+(defn cancelled-task-killer
+  "Every 3 seconds, kill tasks that have been cancelled (e.g. via the API)."
+  [conn driver]
+  (chime-at (periodic/periodic-seq (time/now) (time/seconds 3))
+            (fn [now]
+              (timers/time!
+               killing-cancelled-tasks-duration
+               (doseq [task (killable-cancelled-tasks (d/db conn))]
+                 (log/warn "killing cancelled task " (:instance/task-id task))
+                 @(d/transact conn [[:db/add (:db/id task) :instance/reason
+                                     [:reason/name :mesos-executor-terminated]]])
+                 (mesos/kill-task! driver {:value (:instance/task-id task)}))))
+            {:error-handler (fn [e]
+                              (log/error e "Failed to kill cancelled tasks!"))}))
+
 (defn get-user->used-resources
   "Return a map from user'name to his allocated resources, in the form of
    {:cpus cpu :mem mem}

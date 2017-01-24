@@ -17,7 +17,7 @@
  (:use clojure.test)
  (:require [cook.mesos.api :as api :refer (main-handler)]
            [cook.mesos.util :as util]
-           [cook.test.testutil :refer (restore-fresh-database!)]
+           [cook.test.testutil :refer (restore-fresh-database! create-dummy-job create-dummy-instance)]
            [clojure.walk :refer (keywordize-keys)]
            [cook.authorization :as auth]
            [schema.core :as s]
@@ -259,6 +259,31 @@
                                                   :query-params {"job" uuid}}))
             read-body (-> read-resp :body slurp json/read-str)]
         (is (= read-body 70))))))
+
+(deftest instance-cancelling
+  (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
+        job (create-dummy-job conn :user "mforsyth")
+        instance (create-dummy-instance conn job
+                                        :instance-status :instance.status/running)
+        task-id (-> conn d/db (d/entity instance) :instance/task-id)
+        h (basic-handler conn)
+        req-attrs {:scheme :http
+                   :uri "/rawscheduler"
+                   :authorization/user "mforsyth"
+                   :query-params {"instance" task-id}}
+        initial-read-resp (h (merge req-attrs {:request-method :get}))
+        initial-read-body (-> initial-read-resp :body slurp json/read-str)
+        initial-instance-cancelled? (-> initial-read-body keywordize-keys
+                                        first :instances first :cancelled boolean)
+        cancel-resp (h (merge req-attrs {:request-method :delete}))
+        followup-read-resp (h (merge req-attrs {:request-method :get}))
+        followup-read-body (-> followup-read-resp :body slurp json/read-str)
+        followup-instance-cancelled? (-> followup-read-body keywordize-keys
+                                         first :instances first :cancelled boolean)]
+    (is (not initial-instance-cancelled?))
+    (is (<= 200 (:status cancel-resp) 299))
+    (is followup-instance-cancelled?)))
+
 
 (deftest quota-api
   (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")

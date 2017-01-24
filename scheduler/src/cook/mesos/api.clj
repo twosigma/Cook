@@ -18,6 +18,7 @@
             [metatransaction.core :refer (db)]
             [schema.core :as s]
             [cook.mesos]
+            [mesomatic.scheduler]
             [compojure.core :refer (routes ANY)]
             [compojure.api.sweet :as c-api]
             [compojure.api.middleware :as c-mw]
@@ -161,6 +162,7 @@
    (s/optional-key :end_time) s/Int
    (s/optional-key :reason_code) s/Int
    (s/optional-key :output_url) s/Str
+   (s/optional-key :cancelled) s/Bool
    (s/optional-key :reason_string) s/Str})
 
 (def Job
@@ -671,6 +673,7 @@
                                  nil))
                     start (:instance/start-time instance)
                     end (:instance/end-time instance)
+                    cancelled (:instance/cancelled instance)
                     reason (reason/instance-entity->reason-entity db instance)
                     base {:task_id (:instance/task-id instance)
                           :hostname hostname
@@ -688,6 +691,9 @@
                            base)
                     base (if end
                            (assoc base :end_time (.getTime end))
+                           base)
+                    base (if cancelled
+                           (assoc base :cancelled cancelled)
                            base)
                     base (if reason
                            (assoc base
@@ -730,16 +736,18 @@
        :job/uuid))
 
 (defn retrieve-jobs
-  [conn instances-too? ctx]
+  [conn ctx]
   (let [jobs (get-in ctx [:request :query-params :job])
-        instances (if instances-too? (get-in ctx [:request :query-params :instance]) [])]
+        instances (get-in ctx [:request :query-params :instance])]
     (let [instance-uuid->job-uuid #(instance-uuid->job-uuid (d/db conn) %)
           instance-jobs (mapv instance-uuid->job-uuid instances)
           used? (partial job-exists? (db conn))]
       (cond
         (and (every? used? jobs)
              (every? (complement nil?) instance-jobs))
-        [true {::jobs (into jobs instance-jobs)}]
+        [true {::jobs (into jobs instance-jobs)
+               ::jobs-requested jobs
+               ::instances-requested instances}]
         (some nil? instance-jobs)
         [false {::error (str "UUID "
                              (str/join
@@ -787,7 +795,7 @@
     {:allowed-methods [:get]
      :malformed? check-job-params-present
      :allowed? (partial job-request-allowed? conn is-authorized-fn)
-     :exists? (partial retrieve-jobs conn true)
+     :exists? (partial retrieve-jobs conn)
      :handle-ok (partial render-jobs-for-response conn fid)}))
 
 
@@ -798,9 +806,10 @@
    {:allowed-methods [:delete]
     :malformed? check-job-params-present
     :allowed? (partial job-request-allowed? conn is-authorized-fn)
-    :exists? (partial retrieve-jobs conn false)
+    :exists? (partial retrieve-jobs conn)
     :delete! (fn [ctx]
-               (cook.mesos/kill-job conn (::jobs ctx)))
+               (cook.mesos/kill-job conn (::jobs-requested ctx))
+               (cook.mesos/kill-instances conn (::instances-requested ctx)))
     :handle-ok (partial render-jobs-for-response conn fid)}))
 
 (defn vectorize
@@ -1317,7 +1326,7 @@
                 :responses {204 {:description "The jobs have been marked for termination."}
                             400 {:description "Non-UUID values were passed as jobs."}
                             403 {:description "The supplied UUIDs don't correspond to valid jobs."}}
-                :parameters {:query-params {:job [s/Uuid]}}
+                :parameters {:query-params JobOrInstanceIds}
                 :handler (destroy-jobs-handler conn fid task-constraints gpu-enabled? is-authorized-fn)}}))
 
     (c-api/context

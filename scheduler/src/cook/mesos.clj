@@ -145,6 +145,7 @@
                                     #_(cook.mesos.scheduler/reconciler mesos-datomic-conn driver)
                                     (cook.mesos.scheduler/lingering-task-killer mesos-datomic-conn driver task-constraints)
                                     (cook.mesos.scheduler/straggler-handler mesos-datomic-conn driver task-constraints)
+                                    (cook.mesos.scheduler/cancelled-task-killer mesos-datomic-conn driver)
                                     (cook.mesos.heartbeat/start-heartbeat-watcher! mesos-datomic-conn mesos-heartbeat-chan)
                                     (cook.mesos.rebalancer/start-rebalancer! {:conn  mesos-datomic-conn
                                                                               :driver driver
@@ -201,3 +202,14 @@
                                    [:db/add [:job/uuid job-uuid] :job/state :job.state/completed])
                                  uuids)
                                (into (repeat 10 500) (repeat 10 1000)))))))
+
+(defn kill-instances
+  "Kills instances.  Marks them as cancelled in datomic;
+  the cancelled-task-killer will notice this and kill the actual Mesos tasks."
+  [conn task-uuids]
+  (let [txns (mapv (fn [task-uuid]
+                     [:db/add
+                      [:instance/task-id (str task-uuid)]
+                      :instance/cancelled true])
+                   task-uuids)]
+    @(d/transact conn txns)))

@@ -723,6 +723,26 @@
               db (d/db conn)]
           (is (= [wzhao-1 wzhao-2 ljin-2 ljin-3 ljin-4] (map :db/id (:gpu (sched/sort-jobs-by-dru db db)))))))))
 
+(deftest test-cancelled-task-killer
+  (let [uri "datomic:mem://test-gpu-shares"
+        conn (restore-fresh-database! uri)
+        job1 (create-dummy-job conn :user "mforsyth")
+        inst-cancelled (create-dummy-instance conn job1
+                                              :instance-status :instance.status/running
+                                              :cancelled true)
+        inst-not-cancelled (create-dummy-instance conn job1
+                                                  :instance-status :instance.status/running)
+        inst-not-running (create-dummy-instance conn job1
+                                                :instance-status :instance.status/success
+                                                :cancelled true)]
+
+    (testing "killable-cancelled-tasks"
+      (let [db (d/db conn)
+            killable (sched/killable-cancelled-tasks db)]
+        (is (= 1 (count killable)))
+        (is (= (-> killable first :db/id) inst-cancelled))))))
+
+
 (deftest test-handle-status-update
   (let [uri "datomic:mem://test-handle-status-update"
         conn (restore-fresh-database! uri)

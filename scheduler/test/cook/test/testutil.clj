@@ -105,7 +105,9 @@
 
 (defn create-dummy-instance
   "Return the entity id for the created instance."
-  [conn job & {:keys [job-state instance-status start-time end-time hostname task-id progress backfilled? reason slave-id executor-id]
+  [conn job & {:keys [job-state instance-status start-time end-time hostname
+                      task-id progress backfilled? reason slave-id executor-id
+                      cancelled]
                :or  {job-state :job.state/running
                      instance-status :instance.status/unknown
                      start-time (java.util.Date.)
@@ -129,8 +131,9 @@
                                   :instance/task-id task-id
                                   :instance/executor-id executor-id
                                   :instance/slave-id slave-id}
+                                  (when end-time {:instance/end-time end-time})
                                   (if (nil? reason) {} {:instance/reason [:reason/name reason]})
-                                  (when end-time {:instance/end-time end-time}))])]
+                                  (if (nil? cancelled) {} {:instance/cancelled true}))])]
     (d/resolve-tempid (db conn) (:tempids val) id)))
 
 (defn create-dummy-group
