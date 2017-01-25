@@ -209,6 +209,7 @@
       (dissoc (s/optional-key :group))
       (merge {:framework-id (s/maybe s/Str)
               :status s/Str
+              :state s/Str
               :submit-time PosInt
               :retries-remaining NonNegInt
               (s/optional-key :groups) [s/Uuid]
@@ -657,6 +658,13 @@
        :max_runtime (:job/max-runtime job Long/MAX_VALUE) ; consistent with input
        :framework_id fid
        :status (name (:job/state job))
+       :state (case (:job/state job)
+                :job.state/waiting "waiting"
+                :job.state/running "running"
+                :job.state/completed
+                (if (some #{:instance.status/success}
+                          (map :instance/status (:job/instance job)))
+                  "success" "failed"))
        :uris (:uris resources)
        :env (util/job-ent->env job)
        :labels (util/job-ent->label job)
