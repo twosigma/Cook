@@ -77,7 +77,7 @@
 
 (defn start-mesos-scheduler
   "Starts a leader elector that runs a mesos."
-  [mesos-master mesos-master-hosts curator-framework mesos-datomic-conn mesos-datomic-mult zk-prefix mesos-failover-timeout mesos-principal mesos-role offer-incubate-time-ms task-constraints riemann-host riemann-port mesos-pending-jobs-atom gpu-enabled? rebalancer-config
+  [mesos-master mesos-master-hosts curator-framework mesos-datomic-conn mesos-datomic-mult zk-prefix mesos-failover-timeout mesos-principal mesos-role mesos-framework-name offer-incubate-time-ms task-constraints riemann-host riemann-port mesos-pending-jobs-atom gpu-enabled? rebalancer-config
    {:keys [fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn
            fenzo-floor-iterations-before-reset good-enough-fitness]
     :as fenzo-config}]
@@ -121,7 +121,9 @@
                                                       scheduler
                                                       (merge
                                                         {:user ""
-                                                         :name (str "Cook-" cook.util/version)
+                                                         :name (str mesos-framework-name
+                                                                    "-"
+                                                                    cook.util/version)
                                                          :checkpoint true}
                                                         (when mesos-role
                                                           {:role mesos-role})
