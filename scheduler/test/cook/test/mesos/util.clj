@@ -16,6 +16,8 @@
 (ns cook.test.mesos.util
  (:use clojure.test)
  (:require [cook.mesos.util :as util]
+           [clj-time.core :as t]
+           [clj-time.coerce :as tc]
            [cook.test.testutil :as testutil :refer (create-dummy-instance create-dummy-job restore-fresh-database!)]
            [datomic.api :as d :refer (q db)]))
 
@@ -58,6 +60,34 @@
       (take 200
             (concat (take 100 (filter odd? (range)))
                     (drop 100 (filter even? (range)))))))
+
+(deftest test-task-run-time
+  (let [uri "datomic:mem://test-task-run-time"
+        conn (restore-fresh-database! uri)]
+    (testing "task complete"
+      (let [expected-run-time (t/hours 3)
+            start (t/ago expected-run-time)
+            end (t/now)
+            job (create-dummy-job conn :user "tsram" :job-state :job.state/completed :retry-count 3)
+            task-entid (create-dummy-instance conn 
+                                              job 
+                                              :instance-status :instance.status/failed
+                                              :start-time (tc/to-date start)
+                                              :end-time (tc/to-date end))
+            task-ent (d/entity (d/db conn) task-entid)]
+        (is (= (t/in-seconds expected-run-time) 
+               (t/in-seconds (util/task-run-time task-ent))))))
+    (testing "task running"
+      (let [expected-run-time (t/hours 3)
+            start (t/ago expected-run-time)
+            job (create-dummy-job conn :user "tsram" :job-state :job.state/completed :retry-count 3)
+            task-entid (create-dummy-instance conn 
+                                              job 
+                                              :instance-status :instance.status/running
+                                              :start-time (tc/to-date start))
+            task-ent (d/entity (d/db conn) task-entid)]
+        (is (= (t/in-seconds expected-run-time) 
+               (t/in-seconds (util/task-run-time task-ent))))))))
 
 (deftest test-attempts-consumed
   (let [uri "datomic:mem://test-attempts-consumed"
@@ -126,5 +156,14 @@
        ))
     
     ))
+
+(deftest test-namespace-datomic
+  (testing "Example tests"
+    (is (= (util/namespace-datomic :straggler-handling :type)
+           :straggler-handling/type))
+    (is (= (util/namespace-datomic :straggler-handling :type :quantile-deviation)
+           :straggler-handling.type/quantile-deviation ))
+    )
+  )
 
 (comment (run-tests))

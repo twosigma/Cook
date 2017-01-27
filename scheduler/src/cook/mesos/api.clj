@@ -38,7 +38,7 @@
             [me.raynes.conch :as sh]
             [clj-time.core :as t]
             [metrics.timers :as timers]
-            [cook.mesos.schema :refer (host-placement-types)]
+            [cook.mesos.schema :refer (host-placement-types straggler-handling-types)]
             [cook.mesos.share :as share]
             [cook.mesos.quota :as quota]
             [plumbing.core :refer (map-vals map-from-vals)]
@@ -67,7 +67,8 @@
    :as-response (fn [data ctx] (combine {:body data} ctx))
    :handle-forbidden render-error
    :handle-malformed render-error
-   :handle-not-found render-error})
+   :handle-not-found render-error
+   :handle-unprocessable-entity render-error})
 
 (defn base-cook-handler
   [resource-attrs]
@@ -77,6 +78,18 @@
 ;;
 ;; /rawscheduler
 ;;
+
+(defn prepare-schema-response
+  "Takes a schema and outputs a new schema which conforms to our responses.
+
+   Modifications:
+   1. changes keys to snake_case"
+  [schema]
+  (map-keys (fn [k]
+              (if (instance? schema.core.OptionalKey k)
+                (update k :k ->snake_case)
+                (->snake_case k)))
+            schema))
 
 (def PosNum
   (s/both s/Num (s/pred pos? 'pos?)))
@@ -191,7 +204,7 @@
   "Schema for a description of a job (as returned by the API).
   The structure is similar to JobRequest, but has some differences.
   For example, it can include descriptions of instances for the job."
-  (-<> JobRequest
+  (-> JobRequest
       (dissoc :user)
       (dissoc (s/optional-key :group))
       (merge {:framework-id (s/maybe s/Str)
@@ -201,11 +214,7 @@
               (s/optional-key :groups) [s/Uuid]
               (s/optional-key :gpus) s/Int
               (s/optional-key :instances) [Instance]})
-      (map-keys (fn [k]
-                  (if (instance? schema.core.OptionalKey k)
-                    (update k :k ->snake_case)
-                    (->snake_case k))) <>)
-      ))
+      prepare-schema-response))
 
 (def JobOrInstanceIds
   "Schema for any number of job and/or instance uuids"
@@ -219,26 +228,45 @@
 (def HostPlacement
   "A schema for host placement"
   (s/conditional
-    #(= (:type %) :host-placement.type/attribute-equals)
-      {:type (s/eq :host-placement.type/attribute-equals)
+    #(= (:type %) :attribute-equals)
+      {:type (s/eq :attribute-equals)
        :parameters Attribute-Equals-Parameters}
     :else
-      {:type (s/pred #(contains? host-placement-types %) 'host-placement-type-exists?)
+      {:type (s/pred #(contains? (set (map util/without-ns host-placement-types)) %)
+                     'host-placement-type-exists?)
+       (s/optional-key :parameters) {}}))
+
+(def Quantile-Deviation-Parameters
+  {:multiplier (s/both s/Num (s/pred #(> % 1.0) 'greater-than-one))
+   :quantile (s/both s/Num (s/pred #(< 0.0 % 1.0) 'between-zero-one))})
+
+(def StragglerHandling
+  "A schema for host placement"
+  (s/conditional
+    #(= (:type %) :quantile-deviation)
+      {:type (s/eq :quantile-deviation)
+       :parameters Quantile-Deviation-Parameters}
+    :else
+      {:type (s/pred #(contains? (set (map util/without-ns straggler-handling-types)) %)
+                     'straggler-handling-type-exists?)
        (s/optional-key :parameters) {}}))
 
 (def Group
   "A schema for a job group"
   {:uuid s/Uuid
    (s/optional-key :host-placement) HostPlacement
+   (s/optional-key :straggler-handling) StragglerHandling
    (s/optional-key :name) s/Str})
 
 (def GroupResponse
   "A schema for a group http response"
-  (merge Group
-         {:jobs [s/Uuid]
+  (-> Group
+      (merge
+        {:jobs [s/Uuid]
           (s/optional-key :waiting) s/Int
           (s/optional-key :running) s/Int
-          (s/optional-key :completed) s/Int}))
+          (s/optional-key :completed) s/Int})
+      prepare-schema-response))
 
 (def RawSchedulerRequest
   "Schema for a request to the raw scheduler endpoint."
@@ -396,39 +424,41 @@
         (conj txn)
         (conj commit-latch))))
 
-(s/defn make-host-placement-txn
-  "Creates the transaction data necessary to insert a host placement into the database.
-   Returns a vector [host-placement-id txns]"
-  [hp :- [HostPlacement]]
-  (let [params (:parameters hp)
-        params-txn-id (d/tempid :db.part/user)
-        params-txn (when (= (:type hp) :host-placement.type/attribute-equals)
-                      {:db/id params-txn-id
-                       :host-placement.attribute-equals/attribute (:attribute params)})
-        hp-txn-id (d/tempid :db.part/user)
-        hp-txn (merge {:db/id hp-txn-id
-                        :host-placement/type [:host-placement.type/name (:type hp)]}
-                       (when params-txn
-                         {:host-placement/parameters params-txn-id}))
-        txns (if (nil? params-txn)
-               [hp-txn]
-               [params-txn hp-txn])]
-    [hp-txn-id txns]))
+(defn make-type-parameter-txn
+  "Makes txn map for an entity conforming to the pattern of
+   {:<namespace>/type <type>
+    :<namespace>/parameters {<parameters>}}
+   The entity must be marked with isComponent true
+
+   Example:
+   (make-type-parameter-txn {:type :quantile-deviation
+                             :parameters {:quantile 0.5 :multiplier 2.5}}
+                             :straggler-handling)
+   {:straggler-handling/type :straggler-handling.type/quantile-deviation
+    :straggler-handling/parameters {:straggler-handling.quantile-deviation/quantile 0.5
+                                    :straggler-handling.quantile-deviation/multiplier 2.5}}"
+  [{:keys [type parameters]} name-space]
+  (let [namespace-fn (partial util/namespace-datomic name-space)]
+    (merge
+      {(namespace-fn :type) (namespace-fn :type type)}
+      (when (seq parameters)
+        {(namespace-fn :parameters) (map-keys (partial namespace-fn type)
+                                              parameters)}))))
 
 (s/defn make-group-txn
   "Creates the transaction data necessary to insert a group to the database. job-db-ids is the
    list of all db-ids (datomic temporary ids) of jobs that belong to this group"
   [group :- Group job-db-ids]
-  (let [uuid (:uuid group)
-        [hp-txn-id hp-txns] (-> group
-                                :host-placement
-                                make-host-placement-txn)
-        group-txn {:db/id (d/tempid :db.part/user)
-                    :group/uuid uuid
-                    :group/name (:name group)
-                    :group/host-placement hp-txn-id
-                    :group/job job-db-ids}]
-      (conj hp-txns group-txn)))
+  {:db/id (d/tempid :db.part/user)
+   :group/uuid (:uuid group)
+   :group/name (:name group)
+   :group/job job-db-ids
+   :group/host-placement (-> group
+                             :host-placement
+                             (make-type-parameter-txn :host-placement))
+   :group/straggler-handling (-> group
+                                 :straggler-handling
+                                 (make-type-parameter-txn :straggler-handling))})
 
 (defn group-exists?
   "True if a group with guuid exists in the database, false otherwise"
@@ -453,14 +483,18 @@
 
 (defn make-default-host-placement
   []
-  {:type :host-placement.type/all})
+  {:type :all})
+
+(def default-straggler-handling
+  {:type :none})
 
 (defn make-default-group
   [guuid]
   ; Have to validate (check uuid is unused)
   {:uuid guuid
    :name "defaultgroup"
-   :host-placement (make-default-host-placement)})
+   :host-placement (make-default-host-placement)
+   :straggler-handling default-straggler-handling})
 
 (defn validate-and-munge-job
   "Takes the user, the parsed json from the job and a list of the uuids of
@@ -544,7 +578,9 @@
         hp (:host-placement group)
         group (-> group
                   (assoc :name (or group-name "cookgroup"))
-                  (assoc :host-placement (or hp (make-default-host-placement))))]
+                  (assoc :host-placement (or hp (make-default-host-placement)))
+                  (assoc :straggler-handling (or (:straggler-handling group)
+                                                 default-straggler-handling)))]
     (s/validate Group group)
     (when (group-exists? db (:uuid group))
       (throw (ex-info (str "Group UUID " (:uuid group) " already used") {:uuid group})))
@@ -661,8 +697,7 @@
                 base))
             (:job/instance job))}
       (when groups
-        {:groups (map #(str (:group/uuid %)) groups)})
-      )))
+        {:groups (map #(str (:group/uuid %)) groups)}))))
 
 (defn fetch-group-job-details
   [db guuid]
@@ -676,22 +711,14 @@
 (defn fetch-group-map
   [db guuid]
   (let [group (d/entity db [:group/uuid guuid])
-        hp (:group/host-placement group)
-        hp-params (:host-placement/parameters hp)
-        hp-type (->> hp :host-placement/type :host-placement.type/name)
         jobs (:group/job group)]
-      {:uuid (:group/uuid group)
-       :name (:group/name group)
-       ;; TODO: strip everything before slash in parameters so we can just do:
-       ;; {:type hp-type
-       ;;  :parameters (map-keys remove-datomic-namepace hp-params
-       ;; See cook.mesos.util/deep-transduce-kv
-       :host-placement {:type hp-type
-                        :parameters (merge {}
-                                           (when (= hp-type :host-placement.type/attribute-equals)
-                                             {:attribute (:host-placement.attribute-equals/attribute hp-params)}))}
-       :jobs (->> jobs
-                  (map :job/uuid))}))
+    (-> (into {} group)
+        ;; Remove job because we don't want to walk entire job list
+        (dissoc :group/job)
+        util/remove-datomic-namespacing
+        (assoc :jobs (map :job/uuid jobs))
+        (update-in [:host-placement :type] util/without-ns)
+        (update-in [:straggler-handling :type] util/without-ns))))
 
 (defn instance-uuid->job-uuid
   "Queries for the job uuid from an instance uuid.
@@ -783,13 +810,6 @@
       x
       [x]))
 
-(defn clojurize-hp-type
-  [placement-type]
-  (let [placement-type-str (str placement-type)]
-    (if (re-find #"^host-placement.type/" placement-type-str)
-      placement-type
-      (keyword "host-placement.type" placement-type-str)))) ; Note that keyword adds in the slash
-
 ;;TODO (Diego): add docs for this
 (def cook-coercer
   (constantly
@@ -798,14 +818,21 @@
               (fn [their-matchers]
                 (fn [s]
                   (or (their-matchers s)
-                      (get {JobRequest #(map-keys ->kebab-case %)
-                            HostPlacement (fn [hp] (update hp :type clojurize-hp-type))}
+                      (get {;; can't use form->kebab-case because env and label
+                            ;; accept arbitrary kvs
+                            JobRequest (partial map-keys ->kebab-case)
+                            Group (partial map-keys ->kebab-case)
+                            HostPlacement (fn [hp]
+                                            (update hp :type keyword))
+                            StragglerHandling (fn [sh]
+                                                (update sh :type keyword))}
                            s)))))
       (update :response
               (fn [their-matchers]
                 (fn [s]
                   (or (their-matchers s)
-                      (get {JobResponse #(map-keys ->snake_case %)
+                      (get {JobResponse (partial map-keys ->snake_case)
+                            GroupResponse (partial map-keys ->snake_case)
                             s/Uuid str}
                            s))))))))
 
@@ -873,16 +900,10 @@
                                                         (map-vals (fn [jobs]
                                                                     (map #(job-uuids->dbids (:uuid %))
                                                                          jobs))))
-                            group-txns (mapcat
-                                         #(make-group-txn % (get group-uuid->job-dbids (:uuid %) []))
+                            group-txns (map #(make-group-txn % (get group-uuid->job-dbids
+                                                                    (:uuid %)
+                                                                    []))
                                                groups)]
-                        (log/info (concat job-txns group-txns))
-                        (log/info {:job-uuids->dbids job-uuids->dbids
-                                   :group-uuid->job-dbids group-uuid->job-dbids
-                                   :jobs jobs
-                                   :groups groups
-                                   :job-txns job-txns
-                                   })
                         @(d/transact
                          conn
                          (concat job-txns group-txns)))

@@ -28,21 +28,18 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.base.Preconditions;
 
 /**
- * An immutable host-placement implementation.
+ * An immutable straggler handling implementation.
  * <p>
- * A HostPlacement has a type and named parameters.
+ * A StragglerHandling has a type and named parameters.
  * Created: November 17, 2016
  *
- * @author diego
+ * @author wyegelwel 
  */
-final public class HostPlacement {
-    /**
-     * There are five types of host placement: UNIQUE, BALANCED, ONE, ATTRIBUTE_EQUALS and ALL.
-     */
+final public class StragglerHandling {
     public static enum Type {
-        UNIQUE("UNIQUE"), BALANCED("BALANCED"), ONE("ONE"), ATTRIBUTE_EQUALS("ATTRIBUTE-EQUALS"),
-            ALL("ALL");
+        NONE("NONE"), QUANTILE_DEVIATION("QUANTILE_DEVIATION");
 
+        
         private Type(String name) {}
 
         /**
@@ -54,29 +51,32 @@ final public class HostPlacement {
         }
     }
     /**
-     * HostPlacement builder
+     * StragglerHandling builder
      */
     public static class Builder
     {
         private Type _type;
-        private Map<String,String> _parameters = new HashMap<>();
+        private Map<String,Object> _parameters = new HashMap<>();
 
         /**
          * Prior to {@code build()}, type must be set.<br>
-         * - If the type is set to ATTRIBUTE_EQUALS, then a parameter "attribute" must exist.<br>
+         * - If the type is set to QUANTILE_DEVIATION, then parameters "quantile" and
+         *   "multiplier"  must exist.<br>
          *
-         * @return a instance of {@link HostPlacement}.
+         * @return a instance of {@link StragglerHandling}.
          */
-        public HostPlacement build() {
+        public StragglerHandling build() {
             if (_type == null) {
-                _type = Type.fromString("ALL");
-            } else if (_type == Type.ATTRIBUTE_EQUALS) {
-                Preconditions.checkNotNull(_parameters.get("attribute"), "attribute parameter is required with " +
-                        "type attribute-equals" );
+                _type = Type.fromString("NONE");
+            } else if (_type == Type.QUANTILE_DEVIATION) {
+                Preconditions.checkNotNull(_parameters.get("quantile"), 
+                        "quantile parameter is required with type quantile-deviation");
+                Preconditions.checkNotNull(_parameters.get("multiplier"), 
+                        "multiplier parameter is required with type quantile-deviation");
             }
 
             // set the default values
-            return new HostPlacement(_type, _parameters);
+            return new StragglerHandling(_type, _parameters);
         }
 
         /**
@@ -85,16 +85,16 @@ final public class HostPlacement {
          * @param job {@link Job} specifies a job.
          * @return this builder.
          */
-        public Builder of(HostPlacement hp) {
-            setType(hp.getType());
-            setParameters(hp.getParameters());
+        public Builder of(StragglerHandling sh) {
+            setType(sh.getType());
+            setParameters(sh.getParameters());
             return this;
         }
 
         /**
-         * Set the HostPlacement type
+         * Set the StragglerHandling type
          *
-         * @param type The type of host placement
+         * @param type The type of straggler handling 
          * @return this builder
          */
         public Builder setType(Type type) {
@@ -103,24 +103,24 @@ final public class HostPlacement {
         }
 
         /**
-         * Set the HostPlacement parameters
+         * Set the StragglerHandling parameters
          *
-         * @param parameters The HostPlacement parameters
+         * @param parameters The StragglerHandling parameters
          * @return this builder
          */
-        public Builder setParameters(Map<String,String> parameters) {
+        public Builder setParameters(Map<String,Object> parameters) {
             _parameters = ImmutableMap.copyOf(parameters);
             return this;
         }
 
         /**
-         * Add a HostPlacement parameter
+         * Add a StragglerHandling parameter
          *
          * @param name The name of the parameter
          * @param val The value of the parameter
          * @return this builder
          */
-        public Builder setParameter(String name, String val) {
+        public Builder setParameter(String name, Object val) {
             _parameters.put(name, val);
             return this;
         }
@@ -128,83 +128,84 @@ final public class HostPlacement {
     }
 
     final private Type _type;
-    final private Map<String,String> _parameters;
+    final private Map<String,Object> _parameters;
 
-    private HostPlacement(Type type, Map<String,String> parameters) {
+    private StragglerHandling(Type type, Map<String,Object> parameters) {
         _type = type;
         _parameters = ImmutableMap.copyOf(parameters);
     }
 
     /**
-     * @return the HostPlacement type
+     * @return the StragglerHandling type
      */
     public Type getType() {
         return _type;
     }
 
     /**
-     * @return the HostPlacement parameters
+     * @return the StragglerHandling parameters
      */
-    public Map<String,String> getParameters() {
+    public Map<String,Object> getParameters() {
         return _parameters;
     }
 
     /**
-     * @param name The name of a HostPlacement parameter
-     * @return The value of a HostPlacement parameter, or null if it does not exist
+     * @param name The name of a StragglerHandling parameter
+     * @return The value of a StragglerHandling parameter, or null if it does not exist
      */
-    public String getParameters(String name) {
+    public Object getParameter(String name) {
         return _parameters.get(name);
     }
 
     /**
-     * Convert a job to a JSON object, e.g.
+     * Convert a StragglerHandling to a JSON object, e.g.
      *
      * <pre>
      * <code>
      * {
-     *     "type": "attribute-equals",
+     *     "type": "quantile-deviation",
      *     "parameters": {
-     *         "attribute": "test"
+     *         "quantile": 0.5,
+     *         "multiplier": 2.5
      *     }
      * }
      * </code>
      * </pre>
      *
-     * @param hp specifies a HostPlacement.
-     * @return a JSON object which represents a HostPlacement.
+     * @param sh specifies a StragglerHandling.
+     * @return a JSON object which represents a StragglerHandling.
      * @throws JSONException
      */
-    public static JSONObject jsonize(HostPlacement hp)
+    public static JSONObject jsonize(StragglerHandling sh)
         throws JSONException {
         final JSONObject object = new JSONObject();
-        object.put("type", hp.getType().toString().toLowerCase());
-        object.put("parameters", hp.getParameters());
+        object.put("type", sh.getType().toString().toLowerCase());
+        object.put("parameters", sh.getParameters());
         return object;
     }
 
-    public static HostPlacement parseFromJSON(JSONObject hpJson, InstanceDecorator decorator)
+    public static StragglerHandling parseFromJSON(JSONObject shJson, InstanceDecorator decorator)
         throws JSONException {
-        Builder hpBuilder = new Builder();
+        Builder shBuilder = new Builder();
 
-        String type = hpJson.getString("type");
-        hpBuilder.setType(Type.fromString(type.substring(type.lastIndexOf("/") + 1).toUpperCase()));
-        if (hpJson.has("parameters")){
-            JSONObject paramJson = hpJson.getJSONObject("parameters");
+        String type = shJson.getString("type");
+        shBuilder.setType(Type.fromString(type.toUpperCase()));
+        if (shJson.has("parameters")){
+            JSONObject paramJson = shJson.getJSONObject("parameters");
             Iterator names = paramJson.keys();
             while (names.hasNext()) {
                 String name = (String)names.next();
-                hpBuilder.setParameter(name, paramJson.getString(name));
+                shBuilder.setParameter(name, paramJson.get(name));
             }
         }
-        return hpBuilder.build();
+        return shBuilder.build();
     }
 
     @Override
     public String toString() {
         StringBuilder stringBuilder = new StringBuilder(512);
         stringBuilder
-            .append("HostPlacement [_type=" + _type + ", _parameters=" + _parameters.toString() + "]");
+            .append("StragglerHandling [_type=" + _type + ", _parameters=" + _parameters.toString() + "]");
         stringBuilder.append('\n');
         return stringBuilder.toString();
     }

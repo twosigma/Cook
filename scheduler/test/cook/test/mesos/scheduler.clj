@@ -27,7 +27,7 @@
             [cook.mesos.share :as share]
             [cook.mesos.util :as util]
             [cook.mesos.schema :as schem]
-            [cook.test.testutil :refer (restore-fresh-database! create-dummy-job create-dummy-instance)]
+            [cook.test.testutil :refer (restore-fresh-database! create-dummy-group create-dummy-job create-dummy-instance)]
             [datomic.api :as d :refer (q db)])
   (:import [org.mockito Mockito]))
 
@@ -393,10 +393,10 @@
                                               :start-time start-time-3)
          test-db (d/db conn)
          config {:timeout-hours timeout-hours}
-         dummy-driver (reify msched/SchedulerDriver (kill-task! [_ _] nil))] 
+         dummy-driver (reify msched/SchedulerDriver (kill-task! [_ _] nil))]
 
      (sched/kill-lingering-tasks (t/now) conn dummy-driver config)
-     
+
      (is (= :instance.status/failed
             (ffirst (q '[:find ?status
                          :in $ ?i
@@ -426,7 +426,7 @@
                          [?i :instance/reason ?r]
                          [?r :reason/name ?reason-name]]
                        (db conn) instance-id-2))))
-     
+
      (is (= :instance.status/running
             (ffirst (q '[:find ?status
                          :in $ ?i
@@ -758,7 +758,7 @@
                             :where
                             [?i :instance/reason ?r]
                             [?r :reason/name ?reason-name]]
-                           (db conn) instance-id))))))  
+                           (db conn) instance-id))))))
     (testing "Pre-existing reason is not mea-culpa. New reason is. Job still out of retries because non-mea-culpa takes preference"
       (let [job-id (create-dummy-job conn
                      :user "tsram"
@@ -789,12 +789,12 @@
                             [?i :instance/reason ?r]
                             [?r :reason/name ?reason-name]]
                            (db conn) instance-id))))
-        ; Assert job still marked as out of retries 
+        ; Assert job still marked as out of retries
         (is (= :job.state/completed
                (ffirst (q '[:find ?state
                             :in $ ?j
                             :where
-                            [?j :job/state ?s] 
+                            [?j :job/state ?s]
                             [?s :db/ident ?state]]
                            (db conn) job-id))))
         ))
@@ -812,12 +812,44 @@
             instance-id-b (create-dummy-instance conn job-id
                             :instance-status :instance.status/success
                             :task-id task-id-b
-                            :reason :unknown)] 
+                            :reason :unknown)]
         (async/<!! (sched/handle-status-update conn driver fenzo
                      (make-dummy-status-update task-id-a :mesos-slave-restarted :task-running)))
         (is (true? (contains? @tasks-killed task-id-a)))
         ))
     ))
+
+(deftest test-handle-stragglers
+  (let [uri "datomic:mem://test-handle-stragglers"
+        conn (restore-fresh-database! uri)]
+    (testing "one cycle"
+      (let [;; no straggler handling
+            group-ent-id (create-dummy-group conn)
+            job-a (create-dummy-job conn :group group-ent-id)
+            _ (create-dummy-instance conn job-a :instance-status :instance.status/success
+                                     :start-time (tc/to-date (t/ago (t/hours 3)))
+                                     :end-time (tc/to-date (t/ago (t/hours 2))))
+            job-b (create-dummy-job conn :group group-ent-id)
+            _ (create-dummy-instance conn job-b :instance-status :instance.status/running
+                                     :start-time (tc/to-date (t/ago (t/minutes 30))))
+            ;; Straggler handling configured
+            straggler-handling {:straggler-handling/type :straggler-handling.type/quantile-deviation
+                                :straggler-handling/parameters
+                                {:straggler-handling.quantile-deviation/quantile 0.5
+                                 :straggler-handling.quantile-deviation/multiplier 2.0}}
+            group-ent-id (create-dummy-group conn :straggler-handling straggler-handling)
+            job-c (create-dummy-job conn :group group-ent-id)
+            _ (create-dummy-instance conn job-c :instance-status :instance.status/success
+                                     :start-time (tc/to-date (t/ago (t/hours 3)))
+                                     :end-time (tc/to-date (t/ago (t/hours 2))))
+            job-d (create-dummy-job conn :group group-ent-id)
+            straggler (create-dummy-instance conn job-d :instance-status :instance.status/running
+                                             :start-time (tc/to-date (t/ago (t/minutes 190))))
+            straggler-task (d/entity (d/db conn) straggler)
+            kill-fn (fn [task-id]
+                      (is (= task-id (:instance/task-id straggler-task))))]
+        ;; Check that group with straggler handling configured has instance killed
+        (sched/handle-stragglers conn kill-fn)))))
 
 (comment
   (run-tests))

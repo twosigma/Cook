@@ -33,6 +33,9 @@
           com.twosigma.cook.jobclient.HostPlacement
           com.twosigma.cook.jobclient.HostPlacement$Builder
           com.twosigma.cook.jobclient.HostPlacement$Type
+          com.twosigma.cook.jobclient.StragglerHandling
+          com.twosigma.cook.jobclient.StragglerHandling$Builder
+          com.twosigma.cook.jobclient.StragglerHandling$Type
           com.twosigma.cook.jobclient.JobListener
           com.twosigma.cook.jobclient.GroupListener))
 
@@ -61,22 +64,37 @@
 (defn make-host-placement
   [& {:keys [type attribute]
       :or {type "ALL"
-           attribute nil}}]
+           attribute "lol"}}]
   (-> (HostPlacement$Builder.)
       (.setType (HostPlacement$Type/fromString type))
-      (.build)
       (cond->
-        (= type "ATTRIBUTE_EQUALS") (.setParameter "attribute" attribute))))
+        (= type "ATTRIBUTE_EQUALS") (.setParameter "attribute" attribute))
+      (.build)))
+
+(defn make-straggler-handling
+  [& {:keys [type quantile multiplier]
+      :or {type "NONE"
+           quantile 0.5
+           multiplier 2.0}}]
+  (-> (StragglerHandling$Builder.)
+      (.setType (StragglerHandling$Type/fromString type))
+      (cond->
+        (= type "QUANTILE_DEVIATION") ((fn [b]
+                                         (.setParameter b "quantile" quantile)
+                                         (.setParameter b "multiplier" multiplier))))
+      (.build)))
 
 (defn make-group
-  [& {:keys [uuid name hp]
+  [& {:keys [uuid name hp sh]
       :or {uuid (java.util.UUID/randomUUID)
            name "cookgroup"
-           hp (make-host-placement)}}]
+           hp (make-host-placement)
+           sh (make-straggler-handling)}}]
   (-> (Group$Builder.)
       (.setUUID uuid)
       (.setName name)
       (.setHostPlacement hp)
+      (.setStragglerHandling sh)
       (.build)))
 
 (defn make-job-listener
@@ -136,7 +154,16 @@
               job (make-job :uuid juuid :group group)]
           (-> jc (.submitWithGroups (java.util.ArrayList. [job]) (java.util.ArrayList. [group])))
           (is (= gname (-> jc (.queryGroups [guuid]) (.get guuid) (.getName))))))
-
+      (testing "1 group, 1 job, group settings"
+        (let [guuid (java.util.UUID/randomUUID)
+              juuid (java.util.UUID/randomUUID)
+              gname "group-name"
+              sh (make-straggler-handling :type "QUANTILE_DEVIATION")
+              hp (make-host-placement :type "ATTRIBUTE_EQUALS")
+              group (make-group :uuid guuid :name gname :straggler-handling sh :host-placement hp)
+              job (make-job :uuid juuid :group group)]
+          (-> jc (.submitWithGroups (java.util.ArrayList. [job]) (java.util.ArrayList. [group])))
+          (is (= gname (-> jc (.queryGroups [guuid]) (.get guuid) (.getName))))))
 
       (testing "1 group, multiple jobs"
         (let [guuid (java.util.UUID/randomUUID)
