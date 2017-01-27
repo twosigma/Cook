@@ -37,7 +37,7 @@
         ;; the first job to complete 
         quantile-job-idx (int (* (dec (count jobs)) quantile))]
     (when (> (count successful-tasks) quantile-job-idx)
-      (let [sorted-success-tasks (sort-by util/task-run-time successful-tasks)
+      (let [sorted-success-tasks (sort-by (comp t/in-seconds util/task-run-time) successful-tasks)
             target-task (nth sorted-success-tasks quantile-job-idx)
             target-runtime-seconds (t/in-seconds (util/task-run-time target-task))
             max-runtime-seconds (* target-runtime-seconds multiplier)]
