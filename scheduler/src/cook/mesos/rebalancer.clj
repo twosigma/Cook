@@ -23,9 +23,9 @@
             [clojure.data.json :as json]
             [clojure.data.priority-map :as pm]
             [clojure.tools.logging :as log]
+            [clojure.walk :refer (keywordize-keys)]
+            [cook.mesos.constraints :as constraints]
             [cook.mesos.dru :as dru]
-            [cook.mesos.scheduler :as sched]
-            [cook.mesos.schema]
             [cook.mesos.share :as share]
             [cook.mesos.util :as util]
             [datomic.api :as d :refer (q)]
@@ -79,8 +79,8 @@
 ;;;
 ;;; We introduce mem-divisor and cpus-divisor because it gives us the flexibility to change how individual resources
 ;;; impact score. For instance, if we believe our cluster is memory bound, we can set mem-divisor to (* 0.1 total-mem)
-;;; and cpus-divisor to (* 0.3 total-cpus) to encode our belief that memory 3x as precious as cpu. Conveniently, we can
-;;; set each respective divisor to per user per resource share, which gives us a weighted DRU.
+;;; and cpus-divisor to (* 0.3 total-cpus) to encode our belief that memory 3x is as precious as cpu. Conveniently, we
+;;; can set each respective divisor to per user per resource share, which gives us a weighted DRU.
 ;;;
 ;;; DRU of a Running Task
 ;;; Assume there is a per user ordering of tasks. We define DRU of a task to be the resource sum of this task and all
@@ -142,7 +142,7 @@
 ;;; preemption-decision {:hostname String :task [task-ent] :dru Double :mem Double :cpus Double}
 ;;; preemption-candidates [{:task task-ent :dru Double :mem Double :cpus Double}]
 
-(defrecord State [task->scored-task user->sorted-running-task-ents host->spare-resources user->dru-divisors compute-pending-job-dru])
+(defrecord State [task->scored-task user->sorted-running-task-ents host->spare-resources user->dru-divisors compute-pending-job-dru preempted-tasks])
 
 (timers/deftimer [cook-mesos rebalancer rebalance-duration])
 (timers/deftimer [cook-mesos rebalancer compute-preemption-decision-duration])
@@ -169,7 +169,7 @@
    pending-job-ent]
   (let [user (:job/user pending-job-ent)
         {gpu-req :gpus} (util/job-ent->resources pending-job-ent)
-        gpu-divisor (get-in user->dru-divisors [user :gpus])
+        gpu-divisor (-> user user->dru-divisors :gpus)
         pending-task-ent (util/create-task-ent pending-job-ent)
         nearest-task-ent (some-> user->sorted-running-task-ents
                                  (get user)
@@ -194,7 +194,7 @@
    pending-job-ent]
   (let [user (:job/user pending-job-ent)
         {mem-req :mem cpus-req :cpus} (util/job-ent->resources pending-job-ent)
-        {mem-divisor :mem cpus-divisor :cpus} (get user->dru-divisors user)
+        {mem-divisor :mem cpus-divisor :cpus} (user->dru-divisors user)
         pending-task-ent (util/create-task-ent pending-job-ent)
         nearest-task-ent (some-> user->sorted-running-task-ents
                                  (get user)
@@ -211,46 +211,54 @@
     pending-job-dru))
 
 (defn init-state
-  "Initializes state. State is consist of:
+  "Initializes state. State consists of:
    task->scored-task A priority from task entities to ScoredTasks, sorted from high dru to low dru
    user->sorted-running-task-ents A map from user to a sorted set of running task entities, from high value to low
    value
    host->spare-resources A map from host to spare resources.
    user->dru-divisors A map from user to dru divisors."
-  [db running-task-ents pending-job-ents host->spare-resources category]
-  (let [running-task-ents (filter (fn [task]
-                                    (-> task
-                                        :job/_instance
-                                        util/categorize-job
-                                        (= category)))
-                                  running-task-ents)
-        user->dru-divisors (dru/init-user->dru-divisors db running-task-ents pending-job-ents)
-        user->sorted-running-task-ents (->> running-task-ents
-                                            (group-by util/task-ent->user)
-                                            (map (fn [[user task-ents]]
-                                                   [user (into (sorted-set-by (case category
-                                                                                :normal (util/same-user-task-comparator)
-                                                                                :gpu (util/same-user-task-comparator))) task-ents)]))
-                                            (into {}))
-        task->scored-task (into (pm/priority-map-keyfn (case category
-                                                         :normal (comp - :dru)
-                                                         :gpu (fnil - 0)))
-                                (case category
-                                  :normal (dru/sorted-task-scored-task-pairs user->dru-divisors user->sorted-running-task-ents)
-                                  :gpu (dru/sorted-task-cumulative-gpu-score-pairs user->dru-divisors user->sorted-running-task-ents)))]
-    (->State task->scored-task user->sorted-running-task-ents host->spare-resources user->dru-divisors (case category
-                                                                                                         :normal compute-pending-normal-job-dru
-                                                                                                         :gpu compute-pending-gpu-job-dru))))
+  ([db running-task-ents pending-job-ents host->spare-resources category]
+   (init-state db running-task-ents pending-job-ents host->spare-resources category []))
+  ([db running-task-ents pending-job-ents host->spare-resources category preempted-tasks]
+   (let [running-task-ents (filter (fn [task]
+                                     (-> task
+                                         :job/_instance
+                                         util/categorize-job
+                                         (= category)))
+                                   running-task-ents)
+         user->dru-divisors (dru/init-user->dru-divisors db running-task-ents pending-job-ents)
+         user->sorted-running-task-ents (->> running-task-ents
+                                             (group-by util/task-ent->user)
+                                             (map (fn [[user task-ents]]
+                                                    [user (into (sorted-set-by (case category
+                                                                                 :normal (util/same-user-task-comparator)
+                                                                                 :gpu (util/same-user-task-comparator))) task-ents)]))
+                                             (into {}))
+         task->scored-task (into (pm/priority-map-keyfn (case category
+                                                          :normal (comp - :dru)
+                                                          :gpu (fnil - 0)))
+                                 (case category
+                                   :normal (dru/sorted-task-scored-task-pairs user->dru-divisors user->sorted-running-task-ents)
+                                   :gpu (dru/sorted-task-cumulative-gpu-score-pairs user->dru-divisors user->sorted-running-task-ents)))]
+     (->State task->scored-task
+              user->sorted-running-task-ents
+              host->spare-resources
+              user->dru-divisors
+              (case category
+                :normal compute-pending-normal-job-dru
+                :gpu compute-pending-gpu-job-dru)
+              preempted-tasks))))
 
 (defn next-state
   "Takes state, a pending job entity to launch and a preemption decision, returns the next state"
-  [{:keys [task->scored-task user->sorted-running-task-ents host->spare-resources user->dru-divisors compute-pending-job-dru] :as state}
+  [{:keys [task->scored-task user->sorted-running-task-ents host->spare-resources user->dru-divisors compute-pending-job-dru preempted-tasks] :as state}
    pending-job-ent
    preemption-decision]
   {:pre [(not (nil? preemption-decision))]}
   (let [hostname (:hostname preemption-decision)
+        slave-id (-> preemption-decision :task first :instance/slave-id)
         {mem-req :mem cpus-req :cpus gpus-req :gpus} (util/job-ent->resources pending-job-ent)
-        new-running-task-ent (util/create-task-ent pending-job-ent :hostname hostname)
+        new-running-task-ent (util/create-task-ent pending-job-ent :hostname hostname :slave-id slave-id)
         preempted-task-ents (:task preemption-decision)
         changed-users (->> (conj preempted-task-ents new-running-task-ent)
                            (map util/task-ent->user)
@@ -276,7 +284,8 @@
                                       {:mem (- (:mem preemption-decision) mem-req)
                                        :gpus (- (:gpus preemption-decision 0.0) (or gpus-req 0.0))
                                        :cpus (- (:cpus preemption-decision) cpus-req)})
-        state' (->State task->scored-task' user->sorted-running-task-ents' host->spare-resources' user->dru-divisors' compute-pending-job-dru)]
+        preempted-tasks' (into preempted-tasks preempted-task-ents)
+        state' (->State task->scored-task' user->sorted-running-task-ents' host->spare-resources' user->dru-divisors' compute-pending-job-dru preempted-tasks')]
     state'))
 
 (defn exceeds-min-diff?
@@ -290,17 +299,17 @@
   "Takes state, parameters and a pending job entity, returns a preemption decision
    A preemption decision is a map that describes a possible way to perform preemption on a host. It has a hostname, a seq of tasks
    to preempt and available mem and cpus on the host after the preemption."
-  [{:keys [task->scored-task host->spare-resources compute-pending-job-dru] :as state}
+  [offer-cache
+   {:keys [task->scored-task host->spare-resources compute-pending-job-dru preempted-tasks] :as state}
    {:keys [min-dru-diff safe-dru-threshold] :as params}
    pending-job-ent]
   (timers/time!
    compute-preemption-decision-duration
    (let [{pending-job-mem :mem pending-job-cpus :cpus pending-job-gpus :gpus} (util/job-ent->resources pending-job-ent)
          pending-job-dru (compute-pending-job-dru state pending-job-ent)
-
          ;; This will preserve the ordering of task->scored-task
          host->scored-tasks (->> task->scored-task
-                                 (vals)
+                                 vals
                                  (remove #(< (:dru %) safe-dru-threshold))
                                  (filter (partial exceeds-min-diff? pending-job-dru min-dru-diff))
                                  (group-by (fn [{:keys [task]}]
@@ -311,11 +320,31 @@
                                                      [host [{:dru Double/MAX_VALUE :task nil :mem mem :cpus cpus :gpus gpus}]]))
                                               (into {}))
 
+         job-constraints (constraints/make-rebalancer-job-constraints
+                           pending-job-ent (partial util/get-slave-attrs-from-cache offer-cache))
+         group-constraints (->> pending-job-ent
+                                :group/_job
+                                (map #(constraints/make-rebalancer-group-constraint
+                                        %
+                                        (partial util/get-slave-attrs-from-cache offer-cache)
+                                        preempted-tasks))
+                                (remove nil?))
+         constraints (concat job-constraints group-constraints)
+
+         preemptable-host->slave-id (->> task->scored-task
+                                         keys
+                                         (map (juxt :instance/hostname :instance/slave-id))
+                                         (into {}))
+
+         passes-constraints? (fn [hostname] (every? #(% pending-job-ent (get preemptable-host->slave-id hostname))
+                                                    constraints))
+         ;; Get all the unconstrained slaves and hosts
          ;; Here we do a greedy search instead of bin packing. A preemption decision contains a prefix of scored
          ;; tasks on a specific host.
          ;; We try to find a preemption decision where the minimum dru of tasks to be preempted is maximum
-
          preemption-decision (->> (merge-with into host->formatted-spare-resources host->scored-tasks)
+                                  ; Only evaluate tasks in unconstrained slaves
+                                  (filter (comp passes-constraints? key))
                                   (mapcat (fn compute-aggregations [[host scored-tasks]]
                                             (rest
                                              (reductions
@@ -342,8 +371,8 @@
 
 (defn compute-next-state-and-preemption-decision
   "Takes state, params and a pending job entity, returns new state and preemption decision"
-  [state params pending-job]
-  (if-let [preemption-decision (compute-preemption-decision state params pending-job)]
+  [offer-cache state params pending-job]
+  (if-let [preemption-decision (compute-preemption-decision offer-cache state params pending-job)]
     [(next-state state pending-job preemption-decision) preemption-decision]
     [state nil]))
 
@@ -352,7 +381,7 @@
    Returns a list of pending job entities to run and a list of task entities to preempt
 
    category is :normal or :gpu, depending on which type of job we're working with"
-  [db pending-job-ents host->spare-resources {:keys [max-preemption category] :as params}]
+  [db offer-cache pending-job-ents host->spare-resources {:keys [max-preemption category] :as params}]
   (let [timer (timers/start rebalance-duration)
         jobs-to-make-room-for (filter (partial util/job-allowed-to-start? db)
                                       pending-job-ents)
@@ -363,7 +392,7 @@
            pending-job-ents-to-run []
            task-ents-to-preempt []]
       (if (and pending-job-ent (pos? remaining-preemption))
-        (let [[state' preemption-decision] (compute-next-state-and-preemption-decision state params pending-job-ent)]
+        (let [[state' preemption-decision] (compute-next-state-and-preemption-decision offer-cache state params pending-job-ent)]
           (if preemption-decision
             (recur state'
                    (dec remaining-preemption)
@@ -391,11 +420,11 @@
           )))))
 
 (defn rebalance!
-  [conn driver pending-job-ents host->spare-resources params]
+  [conn driver offer-cache pending-job-ents host->spare-resources params]
   (try
     (log/info "Rebalancing...Params:" params)
     (let [db (mt/db conn)
-          [pending-job-ents-to-run task-ents-to-preempt] (rebalance db pending-job-ents host->spare-resources params)]
+          [pending-job-ents-to-run task-ents-to-preempt] (rebalance db offer-cache pending-job-ents host->spare-resources params)]
       (log/info "Jobs to run:" pending-job-ents-to-run)
       (log/info "Tasks to preempt:" task-ents-to-preempt)
       (doseq [task-ent task-ents-to-preempt]
@@ -403,8 +432,8 @@
           @(d/transact
             conn
             ;; Make :instance/status and :instance/preempted? consistent to simplify the state machine.
-            ;; We don't want to deal with {:instance/status :instance.stats/running, :instance/preempted? true}
-            ;; all over the places.
+            ;; We don't want to deal with {:instance/status :instance.status/running, :instance/preempted? true}
+            ;; all over the place.
             (let [job-eid (:db/id (:job/_instance task-ent))
                   task-eid (:db/id task-ent)]
               [[:generic/ensure task-eid :instance/status (d/entid db :instance.status/running)]
@@ -458,7 +487,7 @@
                                            recognized-params))])))))
 
 (defn start-rebalancer!
-  [{:keys [conn driver mesos-master-hosts pending-jobs-atom view-incubating-offers view-mature-offers config]}]
+  [{:keys [conn driver mesos-master-hosts pending-jobs-atom offer-cache view-incubating-offers view-mature-offers config]}]
   (binding [metrics-dru-scale (:dru-scale config)]
     (update-datomic-params-from-config! conn config)
 
@@ -485,15 +514,15 @@
                                                                                   (when (time/before?
                                                                                          (time/minus now observe-refreshness-threshold)
                                                                                          (:time-observed v))
-                                                                                    [k (select-keys (:resources v) [:cpus :mem :gpus])])))
+                                                                                    [k (select-keys (keywordize-keys (:resources v)) [:cpus :mem :gpus])])))
                                                                            (into {}))]
                                             (when (and (seq params)
                                                        (> utilization (:min-utilization-threshold params)))
                                               (let [{normal-pending-jobs :normal gpu-pending-jobs :gpu} @pending-jobs-atom]
-                                                (rebalance! conn driver normal-pending-jobs host->spare-resources (assoc params
+                                                (rebalance! conn driver offer-cache normal-pending-jobs host->spare-resources (assoc params
                                                                                                                          :compute-pending-job-dru compute-pending-normal-job-dru
                                                                                                                          :category :normal))
-                                                (rebalance! conn driver gpu-pending-jobs host->spare-resources (assoc params
+                                                (rebalance! conn driver offer-cache gpu-pending-jobs host->spare-resources (assoc params
                                                                                                                       :compute-pending-job-dru compute-pending-gpu-job-dru
                                                                                                                       :category :gpu))))))
                                         {:error-handler (fn [ex] (log/error ex "Rebalance failed"))})]

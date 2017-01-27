@@ -16,12 +16,12 @@
 (ns cook.mesos.util
   (:require [clj-time.coerce :as tc]
             [clj-time.core :as t]
-            [clojure.tools.logging :as log]
+            [clojure.core.cache :as cache]
             [clojure.walk :as walk]
             [datomic.api :as d :refer (q)]
             [metatransaction.core :refer (db)]
             [metrics.timers :as timers]
-            [plumbing.core :as pc]))
+            [plumbing.core :as pc :refer (map-vals map-keys)]))
 
 (defn get-all-resource-types
   "Return a list of all supported resources types. Example, :cpus :mem :gpus ..."
@@ -254,10 +254,11 @@
 
 (defn create-task-ent
   "Takes a pending job entity and returns a synthetic running task entity for that job"
-  [pending-job-ent & {:keys [hostname] :or {hostname nil}}]
-  {:job/_instance pending-job-ent
-   :instance/status :instance.status/running
-   :instance/hostname hostname})
+  [pending-job-ent & {:keys [hostname slave-id] :or {hostname nil slave-id nil}}]
+  (merge {:job/_instance pending-job-ent
+          :instance/status :instance.status/running}
+         (when hostname {:instance/hostname hostname})
+         (when slave-id {:instance/slave-id slave-id})))
 
 (defn task-ent->user
   [task-ent]
@@ -355,6 +356,40 @@
    (keyword (name name-space) (name value)))
   ([name-space subspace value]
    (namespace-datomic (str (name name-space) "." (name subspace)) value)))
+
+(defn make-guuid->juuids
+  "Given a list of jobs, groups them by guuid. Returned value is a map that
+   goes from guuid to a list of juuids."
+  [jobs]
+  (->> jobs
+     (map (fn [job]
+            (mapv #(vector (:group/uuid %) #{(:job/uuid job)}) (:group/_job job))))
+     (map (partial into {}))
+     (reduce (partial merge-with clojure.set/union))))
+
+(defn make-guuid->considerable-cotask-ids
+  "Takes a list of jobs and their corresponding task-ids. Returns a function that, given a group uuid, returns the
+   the set of task-ids associated with that group. A set is returned for consistency with datomic queries."
+  [job->considerable-task-id]
+  (let [guuid->juuids (make-guuid->juuids (keys job->considerable-task-id))
+        juuid->task-id (map-keys :job/uuid job->considerable-task-id)]
+    (fn [guuid]
+      (->> guuid
+           (get guuid->juuids)
+           (map juuid->task-id)
+           set))))
+
+(defn get-slave-attrs-from-cache
+  "Looks up a slave property (properties are a union of the slave's attributes and its hostname) in the offer-cache"
+  [offer-cache-atom slave-id]
+  (cache/lookup @offer-cache-atom slave-id))
+
+(defn update-offer-cache!
+  [offer-cache-atom slave-id props]
+  (swap! offer-cache-atom (fn [c]
+                            (if (cache/has? c slave-id)
+                              (cache/hit c slave-id)
+                              (cache/miss c slave-id props)))))
 
 (defn clear-uncommitted-jobs
   "Retracts entities that have not been committed as of now and were submitted before

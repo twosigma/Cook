@@ -77,7 +77,7 @@
 
 (defn start-mesos-scheduler
   "Starts a leader elector that runs a mesos."
-  [mesos-master mesos-master-hosts curator-framework mesos-datomic-conn mesos-datomic-mult zk-prefix mesos-failover-timeout mesos-principal mesos-role mesos-framework-name offer-incubate-time-ms mea-culpa-failure-limit task-constraints riemann-host riemann-port mesos-pending-jobs-atom gpu-enabled? rebalancer-config
+  [mesos-master mesos-master-hosts curator-framework mesos-datomic-conn mesos-datomic-mult zk-prefix mesos-failover-timeout mesos-principal mesos-role mesos-framework-name offer-incubate-time-ms mea-culpa-failure-limit task-constraints riemann-host riemann-port mesos-pending-jobs-atom offer-cache gpu-enabled? rebalancer-config
    {:keys [fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn
            fenzo-floor-iterations-before-reset good-enough-fitness]
     :as fenzo-config}]
@@ -95,6 +95,7 @@
                       (.getBytes (-> framework-id mesomatic.types/pb->data :value) "UTF-8")))
                    current-driver
                    mesos-pending-jobs-atom
+                   offer-cache
                    mesos-heartbeat-chan
                    offer-incubate-time-ms
                    mea-culpa-failure-limit
@@ -152,6 +153,7 @@
                                                                               :driver driver
                                                                               :mesos-master-hosts mesos-master-hosts
                                                                               :pending-jobs-atom mesos-pending-jobs-atom
+                                                                              :offer-cache offer-cache
                                                                               :config rebalancer-config
                                                                               :view-incubating-offers view-incubating-offers})
                                     (counters/inc! mesos-leader)

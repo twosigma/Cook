@@ -17,6 +17,7 @@
   (:require [clj-logging-config.log4j :as log4j-conf]
             [clj-pid.core :as pid]
             [clj-time.core :as t]
+            [clojure.core.cache :as cache]
             [clojure.edn :as edn]
             [clojure.java.io :as io]
             [clojure.pprint :refer (pprint)]
@@ -84,7 +85,7 @@
                       (route/not-found "<h1>Not a valid route</h1>")))})
 
 (def mesos-scheduler
-  {:mesos-scheduler (fnk [[:settings mesos-master mesos-master-hosts mesos-leader-path mesos-failover-timeout mesos-principal mesos-role mesos-framework-name offer-incubate-time-ms mea-culpa-failure-limit fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset task-constraints riemann mesos-gpu-enabled rebalancer good-enough-fitness] mesos-datomic mesos-datomic-mult curator-framework mesos-pending-jobs-atom]
+  {:mesos-scheduler (fnk [[:settings mesos-master mesos-master-hosts mesos-leader-path mesos-failover-timeout mesos-principal mesos-role mesos-framework-name offer-incubate-time-ms mea-culpa-failure-limit fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset task-constraints riemann mesos-gpu-enabled rebalancer good-enough-fitness] mesos-datomic mesos-datomic-mult curator-framework mesos-pending-jobs-atom mesos-offer-cache]
                          (try
                            (Class/forName "org.apache.mesos.Scheduler")
                            ((lazy-load-var 'cook.mesos/start-mesos-scheduler)
@@ -104,6 +105,7 @@
                             (:host riemann)
                             (:port riemann)
                             mesos-pending-jobs-atom
+                            mesos-offer-cache
                             mesos-gpu-enabled
                             rebalancer
                             {:fenzo-max-jobs-considered fenzo-max-jobs-considered
@@ -237,6 +239,11 @@
                              (.start zookeeper-server)))
      :mesos mesos-scheduler
      :mesos-pending-jobs-atom (fnk [] (atom {}))
+     :mesos-offer-cache (fnk [[:settings [:offer-cache max-size ttl-ms]]]
+                          (-> {}
+                              (cache/fifo-cache-factory :threshold max-size)
+                              (cache/ttl-cache-factory :ttl ttl-ms)
+                              atom))
      :curator-framework curator-framework}))
 
 (def simple-dns-name
@@ -347,6 +354,11 @@
                               task-constraints))
      :offer-incubate-time-ms (fnk [[:config [:scheduler {offer-incubate-ms 15000}]]]
                                   offer-incubate-ms)
+     :offer-cache (fnk [[:config [:scheduler {offer-cache nil}]]]
+                    (merge
+                      {:max-size 2000
+                       :ttl-ms 15000}
+                      offer-cache))
      :mea-culpa-failure-limit (fnk [[:config [:scheduler {mea-culpa-failure-limit nil}]]]
                                    mea-culpa-failure-limit)
      :fenzo-max-jobs-considered (fnk [[:config [:scheduler {fenzo-max-jobs-considered 1000}]]]

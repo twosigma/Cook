@@ -205,6 +205,17 @@
     :db/isComponent true
     :db/cardinality :db.cardinality/one
     :db.install/_attribute :db.part/db}
+   ;; parameters for type balanced
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :host-placement.balanced/attribute
+    :db/valueType :db.type/string
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :host-placement.balanced/minimum
+    :db/valueType :db.type/long
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
    ;; parameters for type attribute-equals
    {:db/id (d/tempid :db.part/db)
     :db/ident :host-placement.attribute-equals/attribute
@@ -216,8 +227,6 @@
     :db/ident :host-placement.type/unique}
    {:db/id (d/tempid :db.part/user)
     :db/ident :host-placement.type/balanced}
-   {:db/id (d/tempid :db.part/user)
-    :db/ident :host-placement.type/one}
    {:db/id (d/tempid :db.part/user)
     :db/ident :host-placement.type/attribute-equals}
    {:db/id (d/tempid :db.part/user)
