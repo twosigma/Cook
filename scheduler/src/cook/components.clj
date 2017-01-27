@@ -80,7 +80,7 @@
                       (route/not-found "<h1>Not a valid route</h1>")))})
 
 (def mesos-scheduler
-  {:mesos-scheduler (fnk [[:settings mesos-master mesos-master-hosts mesos-leader-path mesos-failover-timeout mesos-principal mesos-role offer-incubate-time-ms fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset task-constraints riemann mesos-gpu-enabled rebalancer good-enough-fitness] mesos-datomic mesos-datomic-mult curator-framework mesos-pending-jobs-atom]
+  {:mesos-scheduler (fnk [[:settings mesos-master mesos-master-hosts mesos-leader-path mesos-failover-timeout mesos-principal mesos-role mesos-framework-name offer-incubate-time-ms fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset task-constraints riemann mesos-gpu-enabled rebalancer good-enough-fitness] mesos-datomic mesos-datomic-mult curator-framework mesos-pending-jobs-atom]
                          (try
                            (Class/forName "org.apache.mesos.Scheduler")
                            ((lazy-load-var 'cook.mesos/start-mesos-scheduler)
@@ -93,6 +93,7 @@
                             mesos-failover-timeout
                             mesos-principal
                             mesos-role
+                            mesos-framework-name
                             offer-incubate-time-ms
                             task-constraints
                             (:host riemann)
@@ -355,6 +356,8 @@
                            principal)
      :mesos-role (fnk [[:config [:mesos {role "*"}]]]
                            role)
+     :mesos-framework-name (fnk [[:config [:mesos {framework-name "Cook"}]]]
+                                framework-name)
      ;:riemann-metrics (fnk [[:config [:metrics {riemann nil}]]]
      ;                  (when riemann
      ;                    (when-not (= 4 (count (select-keys riemann [:host :port])))
