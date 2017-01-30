@@ -187,6 +187,13 @@
     handle-status-update-duration
     (try (let [db (db conn)
                {:keys [task-id reason task-state progress]} (interpret-task-status status)
+               _ (when-not task-id
+                   (throw (ex-info "task-id is nil. Something unexpected has happened."
+                                   {:status status
+                                    :task-id task-id
+                                    :reason reason
+                                    :task-state task-state
+                                    :progress progress})))
                [job instance prior-instance-status] (first (q '[:find ?j ?i ?status
                                                                 :in $ ?task-id
                                                                 :where
@@ -883,7 +890,6 @@
                                               js))))))
 
 ;; TODO test that this fenzo recovery system actually works
-;; TODO this may need a lock on the fenzo for the taskAssigner
 (defn reconcile-tasks
   "Finds all non-completed tasks, and has Mesos let us know if any have changed."
   [db driver fid fenzo]
@@ -905,7 +911,7 @@
               :let [task-ent (d/entity db [:instance/task-id task-id])
                     hostname (:instance/hostname task-ent)
                     job (:job/_instance task-ent)
-                    task-request (->TaskRequestAdapter job (util/job-ent->resources job) task-id)]]
+                    task-request (->TaskRequestAdapter job (util/job-ent->resources job) task-id (atom nil))]]
         ;; Need to lock on fenzo when accessing taskAssigner because taskAssigner and
         ;; scheduleOnce can not be called at the same time.
         (locking fenzo
@@ -1014,13 +1020,13 @@
         (log/debug "Group " group " had stragglers: " straggler-task-ents)
 
         (doseq [{task-ent-id :db/id :as task-ent} straggler-task-ents]
-          (log/info "Killing " task-ent " of group " group " because it is a straggler")
+          (log/info "Killing " task-ent " of group " (:group/uuid group) " because it is a straggler")
           ;; Mark as killed first so that if we fail after this it is still marked failed
           @(d/transact
              conn
              [[:instance/update-state task-ent-id :instance.status/failed [:reason/name :straggler]]
               [:db/add task-ent-id :instance/reason [:reason/name :straggler]]])
-          (kill-task-fn (:instance/task-id task-ent)))))))
+          (kill-task-fn task-ent))))))
 
 (defn straggler-handler
   "Periodically checks for running jobs that are in groups and runs the associated
@@ -1212,7 +1218,7 @@
       (let [jobs (->> (sort-jobs-by-dru filtered-db unfiltered-db)
                       ;; Apply the offensive job filter first before taking.
                       (map (fn [[category jobs]]
-                             (log/info "filtering category" category jobs)
+                             (log/debug "filtering category" category jobs)
                              [category (offensive-job-filter jobs)]))
                       (into {} ))]
         (log/debug "Total number of pending jobs is:" (apply + (map count (vals jobs)))
