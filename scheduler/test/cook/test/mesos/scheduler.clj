@@ -845,8 +845,8 @@
             straggler (create-dummy-instance conn job-d :instance-status :instance.status/running
                                              :start-time (tc/to-date (t/ago (t/minutes 190))))
             straggler-task (d/entity (d/db conn) straggler)
-            kill-fn (fn [task-id]
-                      (is (= task-id (:instance/task-id straggler-task))))]
+            kill-fn (fn [task]
+                      (is (= task straggler-task)))]
         ;; Check that group with straggler handling configured has instance killed
         (sched/handle-stragglers conn kill-fn)))))
 
