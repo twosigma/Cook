@@ -550,7 +550,8 @@
                            (* 1024 (:memory-gb task-constraints)))
                       {:constraints task-constraints
                        :job job})))
-    (when (> max-retries (:retry-limit task-constraints))
+    (when (and (:retry-limit task-constraints)
+               (> max-retries (:retry-limit task-constraints)))
       (throw (ex-info (str "Requested " max-retries " exceeds the maximum retry limit")
                       {:constraints task-constraints
                        :job job})))
