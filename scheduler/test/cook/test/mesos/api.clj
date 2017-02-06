@@ -129,6 +129,43 @@
                          :query-params {"job" (str uuid)}}))
             299))))
 
+(deftest descriptive-state
+  (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
+        job-waiting (create-dummy-job conn :user "mforsyth"
+                                      :job-state :job.state/waiting)
+        job-running (create-dummy-job conn :user "mforsyth"
+                                      :job-state :job.state/running)
+        job-success (create-dummy-job conn :user "mforsyth"
+                                      :job-state :job.state/completed)
+        instance-success (create-dummy-instance conn job-success
+                                                :instance-status :instance.status/success)
+        job-fail (create-dummy-job conn :user "mforsyth"
+                                   :job-state :job.state/completed)
+        instance-fail (create-dummy-instance conn job-success
+                                             :instance-status :instance.status/success)
+        db (d/db conn)
+        waiting-uuid (:job/uuid (d/entity db job-waiting))
+        running-uuid (:job/uuid (d/entity db job-running))
+        success-uuid (:job/uuid (d/entity db job-success))
+        fail-uuid (:job/uuid (d/entity db job-fail))
+        h (basic-handler conn)
+        req-attrs {:scheme :http
+                   :uri "/rawscheduler"
+                   :authorization/user "mforsyth"
+                   :request-method :get}
+        waiting-resp (h (merge req-attrs {:query-params {"job" (str waiting-uuid)}}))
+        waiting-body (-> waiting-resp :body slurp json/read-str)
+        running-resp (h (merge req-attrs {:query-params {"job" (str running-uuid)}}))
+        running-body (-> running-resp :body slurp json/read-str)
+        success-resp (h (merge req-attrs {:query-params {"job" (str success-uuid)}}))
+        success-body (-> success-resp :body slurp json/read-str)
+        fail-resp (h (merge req-attrs {:query-params {"job" (str fail-uuid)}}))
+        fail-body (-> fail-resp :body slurp json/read-str)]
+    (is (= ((first waiting-body) "state") "waiting"))
+    (is (= ((first running-body) "state") "running"))
+    (is (= ((first success-body) "state") "success"))
+    (is (= ((first fail-body) "state") "failed"))))
+
 (deftest job-validator
   (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
         job (fn [cpus mem max-retries] {"uuid" (str (java.util.UUID/randomUUID))
