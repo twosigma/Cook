@@ -443,6 +443,11 @@
     :db/valueType :db.type/ref
     :db/cardinality :db.cardinality/one
     :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :instance/cancelled
+    :db/valueType :db.type/boolean
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
 
     ;; Share attributes
     {:db/id (d/tempid :db.part/db)
