@@ -46,7 +46,6 @@
            javax.security.auth.Subject
            java.security.Principal)
   (:gen-class))
-
 (defn wrap-no-cache
   [handler]
   (fn [req]
@@ -282,6 +281,8 @@
 
 (def default-authorization {:authorization-fn 'cook.authorization/open-auth})
 
+
+
 (def config-settings
   "Parses the settings out of a config file"
   (graph/eager-compile
@@ -292,17 +293,24 @@
                                          authorization-config))
      :authorization-middleware (fnk [[:config [:authorization {one-user false} {kerberos false} {http-basic false}]]]
                                     (cond
-                                      http-basic (do
-                                                   (log/info "Using http basic authorization")
-                                                   (lazy-load-var 'cook.basic-auth/http-basic-middleware))
-                                      one-user (do
-                                                 (log/info "Using single user authorization")
-                                                 (fn one-user-middleware [h]
-                                                   (fn one-user-auth-wrapper [req]
-                                                     (h (assoc req :authorization/user one-user)))))
-                                      kerberos (do
-                                                 (log/info "Using kerberos middleware")
-                                                 (lazy-load-var 'cook.spnego/require-gss))
+                                      http-basic 
+                                      (let [validation (get http-basic :validation :none)
+                                            user-password-valid? 
+                                            ((lazy-load-var 'cook.basic-auth/make-user-password-valid?) validation http-basic)]
+                                        (log/info "Using http basic authorization with validation" validation)
+                                        ((lazy-load-var 'cook.basic-auth/create-http-basic-middleware) user-password-valid?))
+
+                                      one-user 
+                                      (do
+                                        (log/info "Using single user authorization")
+                                        (fn one-user-middleware [h]
+                                          (fn one-user-auth-wrapper [req]
+                                            (h (assoc req :authorization/user one-user)))))
+
+                                      kerberos 
+                                      (do
+                                        (log/info "Using kerberos middleware")
+                                        (lazy-load-var 'cook.spnego/require-gss))
                                       :else (throw (ex-info "Missing authorization configuration" {}))))
      :rate-limit (fnk [[:config {rate-limit nil}]]
                       (let [{:keys [user-limit-per-m]

@@ -34,15 +34,47 @@
             nil))]
     (when data [user pass])))
 
-(defn http-basic-middleware
-  "Provides HTTP basic auth middleware. Doesn't verify the password at all; this should be used in a trusted network"
-  [h]
-  (fn [req]
-    (if-let [[user pass] (parse-auth-from-request req)]
-      (do
-        (log/debug "Got http basic auth:" user pass)
-        (h (assoc req :authorization/user user)))
-      (-> (response "malformed or missing authorization header in basic auth")
-          (status 401)
-          (header "Content-Type" "text/plain")
-          (header "WWW-Authenticate" "Basic realm=\"Cook\"")))))
+(defn make-user-password-valid?
+  "Takes a validation type and arbitrary config and returns a function that given a user and password
+   returns true if it is a valid pair.
+   
+   Example:
+   ((make-user-password-valid? :config-file {:valid-logins #{[:wyegelwe :password1234]}})
+    :wyegelwe :password1234)
+   true
+   "
+  [validation config]
+  (condp = validation
+    :none (constantly true) 
+    :config-file 
+    (do
+      (when-not (and (set? (:valid-logins config)) 
+                     (every? #(= (count %) 2) (:valid-logins config)))
+        (throw (ex-info (str "When using :config-file validation, must include key " 
+                             ":valid-logins where the value is the set of valid [user password] pairs.") 
+                        {:config config})))
+      (fn config-file-validator 
+        [user password]
+        (contains? (:valid-logins config) [user password])))
+    :else (throw (ex-info "Unknown validation selected" 
+                          {:validation validation :config config }))))
+
+(defn create-http-basic-middleware
+  "Provides HTTP basic auth middleware. Uses `user-password-valid?` to verify requester"
+  [user-password-valid?]
+  (fn http-basic-middleware [h]
+    (fn http-basic-auth-wrapper [req]
+      (if-let [[user pass] (parse-auth-from-request req)]
+        (do 
+          (log/debug "Got http basic auth:" user pass)
+          (if (user-password-valid? user pass)
+            (h (assoc req :authorization/user user))
+            (-> (response (str "User, password (" [user pass] ") not valid"))
+                (status 401)
+                (header "Content-Type" "text/plain")
+                (header "WWW-Authenticate" "Basic realm=\"Cook\""))))
+        (-> (response "malformed or missing authorization header in basic auth")
+            (status 401)
+            (header "Content-Type" "text/plain")
+            (header "WWW-Authenticate" "Basic realm=\"Cook\""))))))
+
