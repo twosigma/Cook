@@ -17,8 +17,11 @@
   (:require cook.mesos.schema
             [clojure.tools.logging :as log]
             [datomic.api :as d :refer (q)]
+            [metrics.timers :as timers]
             [metatransaction.core :refer (db)]
             [cook.mesos.util :as util]))
+
+(def default-user "default")
 
 (defn- resource-type->datomic-resource-type
   [type]
@@ -52,7 +55,7 @@
                 [?r :resource/type ?t]
                 [?r :resource/amount ?a]]]
     (or (-> (q query db user type) ffirst)
-        (-> (q query db "default" type) ffirst)
+        (-> (q query db default-user type) ffirst)
         (Double/MAX_VALUE))))
 
 (defn get-share
@@ -105,6 +108,33 @@
         (recur kvs (into txn txns)))
       @(d/transact conn txns))))
 
+(timers/deftimer [cook-mesos share create-user->share-fn-duration])
+
+(defn create-user->share-fn
+  "Returns a function which will return the share same as `(get-share db user)`
+   snapshotted to the db passed in. However, it queries for all users with share
+   and returns the `default-user` value if a user is not returned.
+   This is useful if the application will go over ALL users during processing"
+  [db]
+  (timers/time!
+    create-user->share-fn-duration
+    (let [all-share-users (d/q '[:find [?user ...]
+                                 :where
+                                 [?q :share/user ?user]]
+                               db)
+          user->share-cache (->> all-share-users
+                                 (map (fn [user]
+                                        [user (get-share db user)]))
+                                 ;; In case default-user doesn't have an explicit share
+                                 (cons [default-user (get-share db default-user)])
+                                 (into {}))]
+      (fn user->share
+        [user]
+        (or (get user->share-cache user)
+            (get user->share-cache default-user))))))
+
+
+
 (comment
   ;; Adjust the share.
   (let [conn (d/connect "datomic:riak://ramkv.pit.twosigma.com:8098/datomic3/mesos-jobs2?interface=http")]
@@ -130,4 +160,22 @@
                    [?e :share/user ?u]
                    [?e :share/resource ?r]]
                  db)]
-    (println users)))
+    (println users))
+
+  ; Print table of users with explicit share set and what that share is
+  (let [conn (d/connect "datomic:mem://test-db")
+        db (d/db conn)
+        all-share-users (d/q '[:find [?user ...]
+                               :where
+                               [?q :share/user ?user]]
+                             db)]
+    (->> all-share-users
+         (map (fn [user]
+                (assoc (get-share db user) :user user)))
+         ;; In case default-user doesn't have an explicit share
+         (cons (assoc (get-share db default-user) :user default-user))
+         (sort-by (juxt :mem :cpus :user))
+         reverse
+         (clojure.pprint/print-table [:user :mem :cpus])
+
+         )))

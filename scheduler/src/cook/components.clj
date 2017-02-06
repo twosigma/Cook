@@ -17,6 +17,10 @@
   (:require [plumbing.core :refer (fnk)]
             [ring.middleware.cookies :refer (wrap-cookies)]
             [ring.middleware.params :refer (wrap-params)]
+            [congestion.middleware :refer  (wrap-rate-limit ip-rate-limit)]
+            [congestion.limits :refer (RateLimit)]
+            [clj-time.core :as t]
+            [congestion.storage :as storage]
             [clj-pid.core :as pid]
             [clojure.java.io :as io]
             [clj-logging-config.log4j :as log4j-conf]
@@ -150,17 +154,6 @@
          (.start curator-framework)
          curator-framework)))
 
-(def jet-runner
-  "This is the jet server constructor. It could be cool."
-  (fnk [[:settings server-port]]
-       (fn [handler]
-         (let [jetty ((lazy-load-var 'qbits.jet.server/run-jetty)
-                      {:port server-port
-                       :ring-handler handler
-                       :join? false
-                       :max-threads 200})]
-           (fn [] (.stop jetty))))))
-
 (defn tell-jetty-about-usename [h]
   "Our auth in cook.spnego doesn't hook in to Jetty - this handler
   does so to make sure it's available for Jetty to log"
@@ -196,16 +189,28 @@
                                                     (.setPreferProxiedForAddress true)))
                                   (.setServer server)))))))
 
+(defrecord UserRateLimit [id quota ttl]
+  RateLimit
+  (get-key [self req]
+    (str (.getName (type self)) id "-" (:authorization/user req)))
+  (get-quota [self req]
+    quota)
+  (get-ttl [self req]
+    ttl))
+
 (def scheduler-server
   (graph/eager-compile
     {:mesos-datomic mesos-datomic
      :route full-routes
-     :http-server (fnk [[:settings server-port authorization-middleware] [:route view]]
+     :http-server (fnk [[:settings server-port authorization-middleware [:rate-limit user-limit]] [:route view]]
                        (log/info "Launching http server")
-                       (let [jetty ((lazy-load-var 'qbits.jet.server/run-jetty)
+                       (let [rate-limit-storage (storage/local-storage)
+                             jetty ((lazy-load-var 'qbits.jet.server/run-jetty)
                                     {:port server-port
                                      :ring-handler (-> view
                                                        tell-jetty-about-usename
+                                                       (wrap-rate-limit {:storage rate-limit-storage
+                                                                         :limit user-limit})
                                                        authorization-middleware
                                                        wrap-stacktrace
                                                        wrap-no-cache
@@ -215,7 +220,8 @@
                                                        instrument)
                                      :join? false
                                      :configurator configure-jet-logging
-                                     :max-threads 200})]
+                                     :max-threads 200
+                                     :request-header-size 32768})]
                          (fn [] (.stop jetty))))
 
      :framework-id (fnk [curator-framework [:settings mesos-leader-path]]
@@ -298,6 +304,10 @@
                                                  (log/info "Using kerberos middleware")
                                                  (lazy-load-var 'cook.spnego/require-gss))
                                       :else (throw (ex-info "Missing authorization configuration" {}))))
+     :rate-limit (fnk [[:config {rate-limit nil}]]
+                      (let [{:keys [user-limit-per-m]
+                             :or {user-limit-per-m 600}} rate-limit]
+                        {:user-limit (->UserRateLimit :user-limit user-limit-per-m (t/minutes 1))}))
      :sim-agent-path (fnk [] "/usr/bin/sim-agent")
      :mesos-datomic-uri (fnk [[:config [:database datomic-uri]]]
                              (when-not datomic-uri
@@ -321,6 +331,7 @@
                             (merge
                               {:timeout-hours 1
                                :timeout-interval-minutes 1
+                               :retry-limit 20
                                :memory-gb 12
                                :cpus 4}
                               task-constraints))

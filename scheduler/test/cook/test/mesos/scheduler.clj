@@ -712,7 +712,6 @@
         ; Update ljin-1 to running
         inst (create-dummy-instance conn ljin-1 :instance-status :instance.status/unknown)
         _ @(d/transact conn [[:instance/update-state inst :instance.status/running [:reason/name :unknown]]])
-
         _ (share/set-share! conn "default" :cpus 1.0 :mem 2.0 :gpus 1.0)]
     (testing "test1"
       (let [_ (share/set-share! conn "ljin" :gpus 2.0)
@@ -846,8 +845,8 @@
             straggler (create-dummy-instance conn job-d :instance-status :instance.status/running
                                              :start-time (tc/to-date (t/ago (t/minutes 190))))
             straggler-task (d/entity (d/db conn) straggler)
-            kill-fn (fn [task-id]
-                      (is (= task-id (:instance/task-id straggler-task))))]
+            kill-fn (fn [task]
+                      (is (= task straggler-task)))]
         ;; Check that group with straggler handling configured has instance killed
         (sched/handle-stragglers conn kill-fn)))))
 

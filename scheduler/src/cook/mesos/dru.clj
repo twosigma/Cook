@@ -114,7 +114,7 @@
   (->> user->sorted-running-task-ents
        (map (fn [[user task-ents]]
               (compute-gpu-task-scored-task-pair
-                task-ents (get-in user->dru-divisors [user :gpus]))))
+                task-ents (-> user user->dru-divisors :gpus))))
        (sorted-merge second)))
 
 (timers/deftimer [cook-mesos dru sorted-task-scored-task-pairs-duration])
@@ -127,7 +127,7 @@
     sorted-task-scored-task-pairs-duration
     (->> user->sorted-running-task-ents
        (map (fn [[user task-ents]]
-              (compute-task-scored-task-pairs task-ents (get user->dru-divisors user))))
+              (compute-task-scored-task-pairs task-ents (user->dru-divisors user))))
        (sorted-merge (comp :dru second)))))
 
 (defn next-task->scored-task

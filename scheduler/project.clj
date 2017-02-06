@@ -30,6 +30,7 @@
 
                  ;;Utility
                  [amalloy/ring-buffer "1.1"]
+                 [listora/ring-congestion "0.1.2"]
                  [lonocloud/synthread "1.0.4"]
                  [org.clojure/tools.namespace "0.2.4"]
                  [org.clojure/core.cache "0.6.4"]
