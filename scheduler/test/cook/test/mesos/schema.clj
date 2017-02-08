@@ -103,6 +103,23 @@
                         [?s :db/ident ?status]]
                       (db conn) job))))))
 
+(deftest test-reasons->attempts-consumed
+  (let [uri "datomic:mem://test-reasons-attempts-consumed"
+        conn (restore-fresh-database! uri)
+        db (d/db conn)
+        reasons [{:reason/code 100 :reason/mea-culpa? true}
+                 {:reason/code 100 :reason/mea-culpa? true}
+                 {:reason/code 100 :reason/mea-culpa? true}
+                 {:reason/code 101 :reason/mea-culpa? false}
+                 {:reason/code 101 :reason/mea-culpa? false}
+                 nil
+                 {:reason/code 102 :reason/mea-culpa? false}]]
+
+    (is (= (d/invoke db :job/reasons->attempts-consumed 0 reasons) 7))
+    (is (= (d/invoke db :job/reasons->attempts-consumed 1 reasons) 6))
+    (is (= (d/invoke db :job/reasons->attempts-consumed 2 reasons) 5))
+    (is (= (d/invoke db :job/reasons->attempts-consumed 3 reasons) 4))
+    (is (= (d/invoke db :job/reasons->attempts-consumed 5 reasons) 4))))
 
 (deftest test-instance-update-state-with-job-state
     (testing "Instance initially unknown"

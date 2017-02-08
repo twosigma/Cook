@@ -559,6 +559,15 @@
     :db/cardinality :db.cardinality/one
     :db.install/_attribute :db.part/db}])
 
+(def scheduler-configs
+  [{:db/id (d/tempid :db.part/user)
+    :db/ident :scheduler/config}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :scheduler.config/mea-culpa-failure-limit
+    :db/valueType :db.type/long
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}])
+
 (def state-enums
   [;; Job states
    {:db/id (d/tempid :db.part/user)
@@ -630,6 +639,46 @@
                                                                    :expected v}))))}}
 
    {:db/id (d/tempid :db.part/user)
+    :db/ident :job/reasons->attempts-consumed
+    :db/doc "Determines the amount of attempts consumed by a collection of failure reasons."
+    :db/fn #db/fn {:lang "clojure"
+                   :params [mea-culpa-limit reasons]
+                   :code
+                   (->> reasons
+                        frequencies
+                        (map (fn [[reason count]]
+                               ;; Note a nil reason counts as a non-mea-culpa failure!
+                               (if (:reason/mea-culpa? reason)
+                                 (max 0 (- count mea-culpa-limit))
+                                 count)))
+                        (apply +))}}
+
+   {:db/id (d/tempid :db.part/user)
+    :db/ident :job/attempts-consumed
+    :db/doc "Determines the amount of attempts consumed by a job-ent."
+    :db/fn #db/fn {:lang "clojure"
+                   :params [db job-ent]
+                   :code
+                   (let [done-statuses #{:instance.status/success :instance.status/failed}
+                         mea-culpa-limit (or (:scheduler.config/mea-culpa-failure-limit
+                                              (d/entity db :scheduler/config))
+                                             5)]
+                     (->> job-ent
+                          :job/instance
+                          (filter #(done-statuses (:instance/status %)))
+                          (map :instance/reason)
+                          (d/invoke db :job/reasons->attempts-consumed mea-culpa-limit)))}}
+
+   {:db/id (d/tempid :db.part/user)
+    :db/ident :job/all-attempts-consumed?
+    :db/doc "True if a job-ent is out of retries."
+    :db/fn #db/fn {:lang "clojure"
+                   :params [db job-ent]
+                   :code
+                   (<= (:job/max-retries job-ent)
+                       (d/invoke db :job/attempts-consumed db job-ent))}}
+
+   {:db/id (d/tempid :db.part/user)
     :db/ident :job/update-state
     :db/doc "job state change cases:
              - task is running, job was running => no change
@@ -650,20 +699,7 @@
                          any-unknown? (some #{:instance.status/unknown} instance-states)
                          all-failed? (every? #{:instance.status/failed} instance-states)
                          prior-state (:job/state job)
-                         ; WARNING: This code is duplicated throughout the codebase. Ideally,
-                         ; all-attempts-consumed? would be obtained using the util functions in
-                         ; mesos/util.clj, but adding that file to the transactor class path is
-                         ; cumbersome. For now, ensure the following code follows the same logic as
-                         ; the util functions, along with all other database functions that
-                         ; calculate all-attempts-consumed?
-                         done-statuses #{:instance.status/failed :instance.status/success}
-                         all-attempts-consumed? (<= (:job/max-retries job)
-                                                    (->> job
-                                                         :job/instance
-                                                         (filter #(done-statuses (:instance/status %)))
-                                                         (map :instance/reason)
-                                                         (remove :reason/mea-culpa?)
-                                                         count))]
+                         all-attempts-consumed? (d/invoke db :job/all-attempts-consumed? db job)]
                      (cond
                        (= prior-state :job.state/completed)
                        []
@@ -724,20 +760,11 @@
                                any-unknown? (some #{:instance.status/unknown} instance-states)
                                all-failed? (every? #{:instance.status/failed} instance-states)
                                prior-state (:job/state job-ent)
-                               ; WARNING: This code is duplicated throughout the codebase. Ideally,
-                               ; all-attempts-consumed? would be obtained using the util functions
-                               ; in mesos/util.clj, but adding that file to the transactor class
-                               ; path is cumbersome. For now, ensure the following code follows the
-                               ; same logic as the util functions, along with all other database
-                               ; functions that calculate all-attempts-consumed?
-                               done-statuses #{:instance.status/failed :instance.status/success}
-                               all-attempts-consumed? (<= (:job/max-retries job-ent)
-                                                          (->> other-instances
-                                                               (filter #(done-statuses (:instance/status %)))
-                                                               (map :instance/reason)
-                                                               (cons (d/entity db reason))
-                                                               (remove :reason/mea-culpa?)
-                                                               count))]
+                               all-attempts-consumed?
+                               (d/invoke db :job/all-attempts-consumed? db
+                                         (update-in (into {} job-ent) [:job/instance]
+                                                    conj {:instance/status new-state
+                                                          :instance/reason reason}))]
                            (cond
                              (= prior-state :job.state/completed)
                              []
@@ -977,4 +1004,6 @@
     :reason/mesos-reason :reason-command-executor-failed}])
 
 (def work-item-schema
-  [schema-attributes state-enums rebalancer-configs migration-add-index-to-job-state migration-add-index-to-job-user migration-add-port-count db-fns reason-entities])
+  [schema-attributes state-enums rebalancer-configs scheduler-configs
+   migration-add-index-to-job-state migration-add-index-to-job-user
+   migration-add-port-count db-fns reason-entities])

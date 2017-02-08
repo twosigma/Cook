@@ -146,31 +146,10 @@
           {:ports (:job/ports job-ent 0)}
           (:job/resource job-ent)))
 
-(defn reasons->attempts-consumed
-  "Helper for job-ent->attempts-consumed, Takes a list of reasons.
-   This allows finding a job's attempts consumed during transactions, where an up-to-date job
-   entity might not be available. IMPORTANT: Note that instances failed due to mea-culpa reasons
-   do not count towards attempts consumed."
-  [reasons]
-  (->> reasons
-       (remove :reason/mea-culpa?) ; Note a nil reason counts as a non-mea-culpa failure!
-       count))
-
 (defn job-ent->attempts-consumed
   "Determines the amount of attempts consumed by a job-ent."
-  [job-ent]
-  (let [done-statuses #{:instance.status/success :instance.status/failed}]
-    (->> job-ent
-       :job/instance
-       (filter #(done-statuses (:instance/status %)))
-       (map :instance/reason)
-       (reasons->attempts-consumed))))
-
-(defn job-ent->all-attempts-consumed?
-  "True if a job-ent is out of retries."
-  [job-ent]
-  (<= (:job/max-retries job-ent)
-      (job-ent->attempts-consumed job-ent)))
+  [db job-ent]
+  (d/invoke db :job/attempts-consumed db job-ent))
 
 (defn sum-resources-of-jobs
   "Given a collections of job entities, returns the total resources they use

@@ -99,8 +99,9 @@
            _ (create-dummy-instance conn job :instance-status :instance.status/failed
                                     :reason :unknown) ; Counted
            _ (create-dummy-instance conn job :instance-status :instance.status/running) ; Not counted
+           db (d/db conn)
            job-ent (d/entity @(d/sync conn) job)]
-        (is (= (util/job-ent->attempts-consumed job-ent) 2))
+        (is (= (util/job-ent->attempts-consumed db job-ent) 2))
        ))
     (testing "Some mea-culpa reasons"
       (let [job (create-dummy-job conn :user "tsram" :job-state :job.state/completed :retry-count 3)
@@ -111,8 +112,9 @@
            _ (create-dummy-instance conn job :instance-status :instance.status/failed
                                     :reason :preempted-by-rebalancer) ; Not counted
            _ (create-dummy-instance conn job :instance-status :instance.status/running) ; Not counted
+           db (d/db conn)
            job-ent (d/entity @(d/sync conn) job)]
-        (is (= (util/job-ent->attempts-consumed job-ent) 1))
+        (is (= (util/job-ent->attempts-consumed db job-ent) 1))
        ))
     (testing "All mea-culpa reasons"
       (let [job (create-dummy-job conn :user "tsram" :job-state :job.state/completed :retry-count 3)
@@ -121,8 +123,9 @@
            _ (create-dummy-instance conn job :instance-status :instance.status/failed
                                     :reason :preempted-by-rebalancer) ; Not counted
            _ (create-dummy-instance conn job :instance-status :instance.status/running) ; Not counted
+           db (d/db conn)
            job-ent (d/entity @(d/sync conn) job)]
-        (is (= (util/job-ent->attempts-consumed job-ent) 0))
+        (is (= (util/job-ent->attempts-consumed db job-ent) 0))
        ))
     (testing "Some nil reasons"
       (let [job (create-dummy-job conn :user "tsram" :job-state :job.state/completed :retry-count 3)
@@ -132,8 +135,9 @@
            _ (create-dummy-instance conn job :instance-status :instance.status/failed
                                     :reason :preempted-by-rebalancer) ; Not counted
            _ (create-dummy-instance conn job :instance-status :instance.status/running) ; Not counted
+           db (d/db conn)
            job-ent (d/entity @(d/sync conn) job)]
-        (is (= (util/job-ent->attempts-consumed job-ent) 2))
+        (is (= (util/job-ent->attempts-consumed db job-ent) 2))
        ))
     (testing "Finished running job"
       (let [job (create-dummy-job conn :user "tsram" :job-state :job.state/completed :retry-count 3)
@@ -142,8 +146,9 @@
            _ (create-dummy-instance conn job :instance-status :instance.status/failed
                                     :reason :preempted-by-rebalancer) ; Not counted
            _ (create-dummy-instance conn job :instance-status :instance.status/running) ; Not counted
+           db (d/db conn)
            job-ent (d/entity @(d/sync conn) job)]
-        (is (= (util/job-ent->attempts-consumed job-ent) 2))
+        (is (= (util/job-ent->attempts-consumed db job-ent) 2))
        ))
     (testing "Finished job"
       (let [job (create-dummy-job conn :user "tsram" :job-state :job.state/completed :retry-count 3)
@@ -151,8 +156,9 @@
            _ (create-dummy-instance conn job :instance-status :instance.status/failed) ; Counted
            _ (create-dummy-instance conn job :instance-status :instance.status/failed
                                     :reason :preempted-by-rebalancer) ; Not counted
+           db (d/db conn)
            job-ent (d/entity @(d/sync conn) job)]
-        (is (= (util/job-ent->attempts-consumed job-ent) 2))
+        (is (= (util/job-ent->attempts-consumed db job-ent) 2))
        ))
     
     ))
