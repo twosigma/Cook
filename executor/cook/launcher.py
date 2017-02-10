@@ -4,7 +4,6 @@ A component for launching and monitoring processes for a task's commands.
 
 import os
 import time
-import shlex
 import logging
 import subprocess
 
@@ -31,7 +30,8 @@ class Command(
             stdout = stdout,
             stderr = stderr,
             process = subprocess.Popen(
-                shlex.split(self.value),
+                self.value,
+                shell = True,
                 stdout = stdout,
                 stderr = stderr,
                 env = dict(os.environ, **env)
