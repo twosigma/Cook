@@ -1,5 +1,4 @@
 {:port 12321
- :hostname "172.17.0.1"
  :authorization {:http-basic true}
  :database {:datomic-uri "datomic:free://localhost:4334/cook-jobs"}
  :zookeeper {:local? true}
