@@ -175,5 +175,7 @@ def run_launcher(store, stop):
 
             run_commands(munge_commands(task), stop, get_env, update_task)
 
+            stop.set()
+
     except Exception as e:
         logging.exception('Exception in CookExecutor:run_launcher')
