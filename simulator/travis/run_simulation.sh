@@ -2,6 +2,7 @@
 set -ev
 
 cd travis/
+docker build -t mesos-agent:latest -f Dockerfile.agent .
 ./datomic-free-0.9.5394/bin/transactor $(pwd)/datomic_transactor.properties &
 ./minimesos up
 

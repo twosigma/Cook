@@ -1,0 +1,14 @@
+FROM containersol/mesos-agent:1.0.0-0.1.0
+
+# Ensure that the users from the simulation test exist inside the container
+RUN useradd heavy1 && \
+    useradd heavy2 && \
+    useradd heavy3 && \
+    useradd heavy4 && \
+    useradd heavy5 && \
+    useradd light1 && \
+    useradd light2 && \
+    useradd light3 && \
+    useradd light4 && \
+    useradd light5 && \
+    useradd unsched1

@@ -7,8 +7,8 @@ minimesos {
     timeout = 60
 
     agent {
-        imageName = "containersol/mesos-agent"
-        imageTag = "1.0.0-0.1.0"
+        imageName = "mesos-agent"
+        imageTag = "latest"
         loggingLevel = "# INHERIT FROM CLUSTER"
         portNumber = 5051
 
@@ -52,8 +52,8 @@ minimesos {
     }
 
     agent {
-        imageName = "containersol/mesos-agent"
-        imageTag = "1.0.0-0.1.0"
+        imageName = "mesos-agent"
+        imageTag = "latest"
         loggingLevel = "# INHERIT FROM CLUSTER"
         portNumber = 5052
 
@@ -97,8 +97,8 @@ minimesos {
     }
 
     agent {
-        imageName = "containersol/mesos-agent"
-        imageTag = "1.0.0-0.1.0"
+        imageName = "mesos-agent"
+        imageTag = "latest"
         loggingLevel = "# INHERIT FROM CLUSTER"
         portNumber = 5053
 
@@ -142,8 +142,8 @@ minimesos {
     }
 
     agent {
-        imageName = "containersol/mesos-agent"
-        imageTag = "1.0.0-0.1.0"
+        imageName = "mesos-agent"
+        imageTag = "latest"
         loggingLevel = "# INHERIT FROM CLUSTER"
         portNumber = 5053
 
@@ -187,8 +187,8 @@ minimesos {
     }
 
     agent {
-        imageName = "containersol/mesos-agent"
-        imageTag = "1.0.0-0.1.0"
+        imageName = "mesos-agent"
+        imageTag = "latest"
         loggingLevel = "# INHERIT FROM CLUSTER"
         portNumber = 5054
 
@@ -232,8 +232,8 @@ minimesos {
     }
 
     agent {
-        imageName = "containersol/mesos-agent"
-        imageTag = "1.0.0-0.1.0"
+        imageName = "mesos-agent"
+        imageTag = "latest"
         loggingLevel = "# INHERIT FROM CLUSTER"
         portNumber = 5055
 
