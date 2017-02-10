@@ -18,7 +18,22 @@ wget \
     --tries 20 \
     http://172.17.0.1:12321/resource/cook-executor
 
+tail -f log/cook.log | grep -i "error\|exception" &
+
 cd ../simulator
+
+{
+    while :; do
+        echo "printing all the logs..."
+
+        while read path; do
+            tail "$path" || true
+        done <<< "$(find travis/.minimesos -name 'stdout' -o -name 'stderr' -o -name 'executor.log')"
+
+        sleep 5
+    done
+} &
+
 lein run -c config/settings.edn setup-database -c travis/simulator_config.edn
 
 set e

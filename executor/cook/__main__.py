@@ -34,7 +34,7 @@ def main(args=None):
     os.environ['EXECUTOR_ENDPOINT'] = '127.0.0.1:%s/task/%s' % (port, id)
 
     logging.basicConfig(filename = "executor.log", level = "INFO")
-    logging.info("Starting Cook Executor")
+    logging.info("Starting executor with id: " + id + ", port: " + str(port))
 
     event = Event()
 
@@ -66,8 +66,8 @@ def main(args=None):
         }})
 
     threads = [
-        Thread(target = run_server, args = (store, event, port)),
         Thread(target = run_executor, args = (store, event, sandbox)),
+        Thread(target = run_server, args = (store, event, port)),
         Thread(target = run_launcher, args = (store, event))
     ]
 
@@ -80,6 +80,8 @@ def main(args=None):
         time.sleep(1)
     else:
         event.set()
+
+    logging.info("Exiting executor with id: " + id + ", port: " + str(port))
 
     # TODO: return non-zero exit code when there's an error
     sys.exit(0)
