@@ -148,23 +148,6 @@
    (s/optional-key :extract) s/Bool
    (s/optional-key :cache) s/Bool})
 
-(def Instance
-  "Schema for a description of a single job instance."
-  {:status s/Str
-   :task_id s/Uuid
-   :executor_id s/Uuid
-   :slave_id s/Str
-   :hostname s/Str
-   :preempted s/Bool
-   :backfilled s/Bool
-   :ports [s/Int]
-   (s/optional-key :start_time) s/Int
-   (s/optional-key :end_time) s/Int
-   (s/optional-key :reason_code) s/Int
-   (s/optional-key :output_url) s/Str
-   (s/optional-key :cancelled) s/Bool
-   (s/optional-key :reason_string) s/Str})
-
 (def Command
   "Schema for a command"
   {:value s/Str
@@ -237,6 +220,8 @@
    :ports [s/Int]
    (s/optional-key :start_time) s/Int
    (s/optional-key :end_time) s/Int
+   (s/optional-key :output_url) s/Str
+   (s/optional-key :cancelled) s/Bool
    (s/optional-key :reason_code) s/Int
    (s/optional-key :reason_string) s/Str
    (s/optional-key :message) s/Str
