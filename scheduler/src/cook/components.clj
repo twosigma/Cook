@@ -65,6 +65,26 @@
     (require (symbol ns))
     (resolve var-sym)))
 
+(defn tell-jetty-about-usename [h]
+  "Our auth in cook.spnego doesn't hook in to Jetty - this handler
+  does so to make sure it's available for Jetty to log"
+  (fn [req]
+    (do
+      (.setAuthentication (:servlet-request req)
+                          (UserAuthentication.
+                            "kerberos"
+                            (DefaultUserIdentity.
+                              (Subject.)
+                              (reify Principal ; Shim principal to pass username along
+                                (equals [this another]
+                                  (= this another))
+                                (getName [this]
+                                  (:authorization/user req))
+                                (toString [this]
+                                  (str "Shim principal for user: " (:authorization/user req))))
+                              (into-array String []))))
+      (h req))))
+
 (def raw-scheduler-routes
   {:scheduler (fnk [mesos-datomic framework-id mesos-pending-jobs-atom [:settings task-constraints mesos-gpu-enabled is-authorized-fn executor]]
                    ((lazy-load-var 'cook.mesos.api/main-handler)
@@ -80,9 +100,17 @@
 
 (def full-routes
   {:raw-scheduler raw-scheduler-routes
-   :view (fnk [raw-scheduler]
-              (routes (:view raw-scheduler)
-                      (route/not-found "<h1>Not a valid route</h1>")))})
+   :view (fnk [raw-scheduler [:settings authorization-middleware [:rate-limit user-limit]]]
+           (let [rate-limit-storage (storage/local-storage)]
+             (routes
+               (route/resources "/resource")
+               (-> (routes
+                     (:view raw-scheduler)
+                     (route/not-found "<h1>Not a valid route</h1>"))
+                 tell-jetty-about-usename
+                 (wrap-rate-limit {:storage rate-limit-storage
+                                   :limit user-limit})
+                 authorization-middleware))))})
 
 (def mesos-scheduler
   {:mesos-scheduler (fnk [[:settings mesos-master mesos-master-hosts mesos-leader-path mesos-failover-timeout mesos-principal mesos-role mesos-framework-name offer-incubate-time-ms mea-culpa-failure-limit fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset task-constraints executor riemann mesos-gpu-enabled rebalancer good-enough-fitness] mesos-datomic mesos-datomic-mult curator-framework mesos-pending-jobs-atom]
@@ -157,26 +185,6 @@
          (.start curator-framework)
          curator-framework)))
 
-(defn tell-jetty-about-usename [h]
-  "Our auth in cook.spnego doesn't hook in to Jetty - this handler
-  does so to make sure it's available for Jetty to log"
-  (fn [req]
-    (do
-      (.setAuthentication (:servlet-request req)
-                          (UserAuthentication.
-                            "kerberos"
-                            (DefaultUserIdentity.
-                              (Subject.)
-                              (reify Principal ; Shim principal to pass username along
-                                (equals [this another]
-                                  (= this another))
-                                (getName [this]
-                                  (:authorization/user req))
-                                (toString [this]
-                                  (str "Shim principal for user: " (:authorization/user req))))
-                              (into-array String []))))
-      (h req))))
-
 (defn configure-jet-logging
   "Set up access logs for Jet"
   [server]
@@ -205,16 +213,11 @@
   (graph/eager-compile
     {:mesos-datomic mesos-datomic
      :route full-routes
-     :http-server (fnk [[:settings server-port authorization-middleware [:rate-limit user-limit]] [:route view]]
+     :http-server (fnk [[:settings server-port] [:route view]]
                        (log/info "Launching http server")
-                       (let [rate-limit-storage (storage/local-storage)
-                             jetty ((lazy-load-var 'qbits.jet.server/run-jetty)
+                       (let [jetty ((lazy-load-var 'qbits.jet.server/run-jetty)
                                     {:port server-port
                                      :ring-handler (-> view
-                                                       tell-jetty-about-usename
-                                                       (wrap-rate-limit {:storage rate-limit-storage
-                                                                         :limit user-limit})
-                                                       authorization-middleware
                                                        wrap-stacktrace
                                                        wrap-no-cache
                                                        wrap-cookies
