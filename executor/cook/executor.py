@@ -28,9 +28,10 @@ def new_task_info(id, state, data = None):
     }
 
 class CookExecutor(Executor):
-    def __init__(self, store, event, sandbox):
+    def __init__(self, store, event, server, sandbox):
         self.store = store
         self.event = event
+        self.server = server
         self.sandbox = sandbox
 
     def registered(self, driver, executorInfo, frameworkInfo, slaveInfo):
@@ -43,9 +44,13 @@ class CookExecutor(Executor):
 
         def sync_task_status(action, type, id, entity):
             if action is WATCH_ACTION_PUT and type is 'task':
+                state = entity.get('state')
+
                 entity.update({'sandbox': self.sandbox})
 
-                if entity.get('state'):
+                if state:
+                    if state == 'TASK_FAILED' or state == 'TASK_FINISHED':
+                        self.server.stop()
                     driver.sendStatusUpdate(new_task_info(id, entity.get('state'), entity))
 
         self.store.add_watch('sync_task_status', sync_task_status)
@@ -71,6 +76,8 @@ class CookExecutor(Executor):
             task_id = task['task_id']['value']
             task_data = json.loads(decode_data(task['data']).decode('utf-8'))
 
+            self.server.start()
+
             self.store.put('task', task_id, task_data)
             self.store.merge('task', task_id, {'state': 'TASK_STARTING'})
         except Exception as e:
@@ -94,11 +101,11 @@ class CookExecutor(Executor):
     def error(self, error, message):
         logging.info("CookExecutor:error")
 
-def run_executor(store, stop, sandbox = ''):
+def run_executor(store, stop, server, sandbox = ''):
     """
     Run an executor driver until the stop event is set.
     """
-    driver = MesosExecutorDriver(CookExecutor(store, stop, sandbox))
+    driver = MesosExecutorDriver(CookExecutor(store, stop, server, sandbox))
     driver.start()
 
     # TODO: check the status of the driver and bail if it's crashed

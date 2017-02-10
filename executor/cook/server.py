@@ -6,7 +6,10 @@ task progress.
 
 import re
 import json
+import socket
+import logging
 
+from threading import Thread
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 class CookExecutorHTTPRequestHandler(BaseHTTPRequestHandler):
@@ -62,15 +65,45 @@ class CookExecutorHTTPRequestHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(json.dumps(content).encode('utf-8'))
 
-def run_server(store, stop = None, port = 8080):
-    """
-    Run a web server on the specified port until the stop event is set.
-    """
-    server = HTTPServer(('', port), CookExecutorHTTPRequestHandler)
-    server.store = store
-    server.timeout = 1
+class CookExecutorHTTPServer():
+    def __init__(self, store, event = None, port = 8080):
+        self.port = port
+        self.store = store
+        self.event = event
 
-    while not (stop and stop.isSet()):
-        server.handle_request()
+    def start(self):
+        self.server = HTTPServer(('', self.port), CookExecutorHTTPRequestHandler)
+        self.server.store = self.store
+        self.server.timeout = 1
 
-    server.socket.close()
+        def run_server(server, event = None):
+            while not (event and event.isSet()):
+                try:
+                    server.handle_request()
+                except ValueError:
+                    # the underlying socket already closed
+                    pass
+
+            try:
+                server.socket.shutdown(socket.SHUT_RDWR)
+                server.socket.close()
+            except socket.error:
+                # socket already closed
+                pass
+
+        self.thread = Thread(target = run_server, args = (self.server, self.event))
+        self.thread.daemon = True
+        self.thread.start()
+
+        return True
+
+    def stop(self):
+        if self.server:
+            try:
+                self.server.socket.shutdown(socket.SHUT_RDWR)
+                self.server.socket.close()
+            except socket.error:
+                # socket already closed
+                pass
+
+        return True

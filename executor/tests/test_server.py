@@ -4,7 +4,7 @@ import http.client
 
 from threading import Event, Thread
 
-from cook.server import run_server
+from cook.server import CookExecutorHTTPServer
 
 class FakeStore():
     def merge(self, type, id, e):
@@ -27,9 +27,8 @@ def test_run_server():
     store = FakeStore()
     entity =  {'progress': 1.0}
 
-    thread = Thread(target = run_server, args = (store, event))
-    thread.daemon = True
-    thread.start()
+    server = CookExecutorHTTPServer(store, event)
+    server.start()
 
     request('PATCH', '/task/123', entity)
 
@@ -37,3 +36,5 @@ def test_run_server():
 
     assert store.get('task', '123') == entity
     assert store.get('task', '123') == request('GET', '/task/123')
+
+    server.stop()

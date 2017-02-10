@@ -23,7 +23,7 @@ import encodings.idna
 from threading import Event, Thread
 
 from cook.store import Store
-from cook.server import run_server
+from cook.server import CookExecutorHTTPServer
 from cook.launcher import run_launcher
 from cook.executor import run_executor
 
@@ -68,18 +68,17 @@ def main(args=None):
             'after_exit_codes': [lambda v: isinstance(v, int) or v is None]
         }})
 
-    threads = [
-        Thread(target = run_executor, args = (store, event, sandbox)),
-        Thread(target = run_server, args = (store, event, port)),
-        Thread(target = run_launcher, args = (store, event))
-    ]
+    server = CookExecutorHTTPServer(store, event, port)
+    executor = Thread(target = run_executor, args = (store, event, server, sandbox))
+    launcher = Thread(target = run_launcher, args = (store, event))
 
-    for t in threads:
-        t.start()
+    executor.start()
+    launcher.start()
 
     signal.signal(signal.SIGINT, lambda *_: event.set())
 
-    while all([t.is_alive() for t in threads]):
+    while all([executor.is_alive(),
+               launcher.is_alive()]):
         time.sleep(1)
     else:
         event.set()
