@@ -10,6 +10,14 @@ cd ../../scheduler
 # available for processes inside minimesos containers to connect to
 LIBPROCESS_IP=172.17.0.1 lein run ../simulator/travis/scheduler_config.edn &
 
+# wait until we can download the executor binary so we can fail fast if it's unavailable
+wget \
+    --retry-connrefused \
+    --waitretry=5 \
+    --timeout=10 \
+    --tries 20 \
+    http://172.17.0.1:12321/resource/cook-executor
+
 cd ../simulator
 lein run -c config/settings.edn setup-database -c travis/simulator_config.edn
 
