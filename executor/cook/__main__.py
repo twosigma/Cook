@@ -17,6 +17,9 @@ import time
 import signal
 import logging
 
+# https://github.com/pyinstaller/pyinstaller/issues/1113
+import encodings.idna
+
 from threading import Event, Thread
 
 from cook.store import Store
