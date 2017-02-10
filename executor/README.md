@@ -1,7 +1,7 @@
 Cook Executor
 =============
 
-The cook executor is a custom executor written in python. It replaces the default command executor in order to enable a number of features for both operators and end users. 
+The cook executor is a custom executor written in python. It replaces the default command executor in order to enable a number of features for both operators and end users.
 
 For Users
 -----
@@ -104,7 +104,14 @@ In cases where only one copy of a certain job should be running, before and afte
 	}],
 	"after_commands":[{
 		"value": "./release-zk-lock.sh my-service"
-	}]
+	}],
+	"uris": [{
+		"value": "http://my-file-server/release-zk-lock.sh",
+		"executable": true
+  	},{
+  		"value": "http://my-file-server/acquire-zk-lock.sh",
+  		"executable": true
+  	}]
 }
 ```
 
@@ -133,7 +140,7 @@ In order to dynamically set environment variables for later commands, you can us
 	"command": "my-actual-command",
 	"before_commands": [{
 		"value": "./set-env-vars.sh"
-	}]	
+	}]
 }
 ```
 
@@ -145,7 +152,7 @@ curl -XPATCH \
 	$EXECUTOR_ENDPOINT
 ```
 
-This would set `MY_ENV_VAR` for your primary command (and all commands after `set-env-vars.sh`. 
+This would set `MY_ENV_VAR` for your primary command (and all commands after `set-env-vars.sh`.
 
 #### Update progress and custom failure messages
 
@@ -205,7 +212,7 @@ pyinstaller -F -n cook-executor -p cook cook/__main__.py
 
 Configuration for the executor should go under the `:executor` key of the edn configuration file for the cook scheduler.
 
-For example: 
+For example:
 
 ```clojure
 {...
@@ -257,10 +264,7 @@ The cook executor uses `pytest`. To install test dependencies and run the execut
 ### Troubleshooting
 
 If the executor is not correctly installed on an agent (or if `:executor-command` is not set correctly), all tasks will fail, and there will be a message in the `stderr` file for each task indicating the command the agent attempted to run. Verify that the command is the correct command, and that it is available on each agent. If not, either fix the `:executor-command` config, or install the executor on the agent.
- 
+
 If the executor is installed correctly, it will log info and errors to the `executor.log` file in the task sandbox. This should be the first place to look for stack traces and other error information. Each lifecycle callback is logged (`registered`, `launchTask`, etc), which can help to narrow down the issue.
 
 When troubleshooting any issues with running the executor on the agent, it may be helpful to remove the `:job-defaults` entirely until you confirm that executor is being launched correctly. It can also be helpful to simplify commands for example `echo before` to rule out problems with the commands themselves.
-
-
-
