@@ -1292,8 +1292,19 @@
                                      (log/error "Unable to decline offer; no current driver"))))))
       (build)))
 
+(defn persist-mea-culpa-failure-limit!
+  "The Datomic transactor needs to be able to access this part of the
+  configuration, so on cook startup we transact the configured value into Datomic."
+  [conn limit]
+  (when limit
+    @(d/transact conn [{:db/id :scheduler/config
+                        :scheduler.config/mea-culpa-failure-limit limit}])))
+
 (defn create-datomic-scheduler
-  [conn set-framework-id driver-atom pending-jobs-atom heartbeat-ch offer-incubate-time-ms fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset task-constraints gpu-enabled? good-enough-fitness]
+  [conn set-framework-id driver-atom pending-jobs-atom heartbeat-ch offer-incubate-time-ms mea-culpa-failure-limit fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset task-constraints gpu-enabled? good-enough-fitness]
+
+  (persist-mea-culpa-failure-limit! conn mea-culpa-failure-limit)
+
   (let [fid (atom nil)
         fenzo (make-fenzo-scheduler driver-atom offer-incubate-time-ms good-enough-fitness)
         [offers-chan resources-atom] (make-offer-handler conn driver-atom fenzo fid pending-jobs-atom fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset)]

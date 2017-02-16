@@ -13,6 +13,7 @@
                         :admins #{"admin" "other-admin"}}
  :zookeeper {:connection "zk1.example.com:2181,zk2.example.com:2181,zk3.example.com:2181/cook"}
  :scheduler {:offer-incubate-ms 15000
+             :mea-culpa-failure-limit 5
              :task-constraints {:timeout-hours 24
                                 :timeout-interval-minutes 10
                                 :memory-gb 96
