@@ -1054,39 +1054,87 @@
 ;;
 
 (def ReadRetriesRequest
-  {:job s/Uuid})
+  {:job [s/Uuid]})
 (def UpdateRetriesRequest
-  (merge ReadRetriesRequest {:retries PosNum}))
+  {(s/optional-key :job) [s/Uuid]
+   (s/optional-key :retries) PosNum
+   (s/optional-key :increment) PosNum})
 
 (defn display-retries
   [conn ctx]
-  (:job/max-retries (d/entity (db conn) [:job/uuid (::job ctx)])))
+  (:job/max-retries (d/entity (db conn) [:job/uuid (-> ctx ::jobs first)])))
 
-(defn check-job-exists
+(defn jobs-from-request
+  "compojure-api doesn't support applying a schema to a combination of
+   query parameters and body parameters.  So some manual work is needed to combine
+   ?job=a&job=b with the retries specified in the JSON body payload."
+  [ctx]
+  (let [query-jobs-coerced (get-in ctx [:request :query-params :job])
+        query-jobs-uncoerced (get-in ctx [:request :query-params "job"])
+        ;; if the query params are coerceable, both :job and "job" keys will be
+        ;; present, but in that case we only want to read the coerced version
+        query-jobs (or query-jobs-coerced (mapv #(UUID/fromString %) query-jobs-uncoerced))
+        body-jobs (mapv #(UUID/fromString %)
+                        (get-in ctx [:request :body-params "job"]))]
+    (reduce conj query-jobs body-jobs)))
+
+(defn check-jobs-exist
   [conn ctx]
-  (let [job (or (get-in ctx [:request :query-params :job])
-                (get-in ctx [:request :body-params :job]))]
-    (if (job-exists? (d/db conn) job)
-      [true {::job job}]
-      [false {::error (str "UUID " job " does not correspond to a job" )}])))
+  (let [jobs (jobs-from-request ctx)
+        jobs-not-existing (remove (partial job-exists? (d/db conn)) jobs)]
+    (if (seq jobs-not-existing)
+      [false {::error (->> jobs-not-existing
+                           (map #(str "UUID " % " does not correspond to a job."))
+                           (str/join \space))}]
+      [true {::jobs jobs}])))
 
 (defn validate-retries
   [conn task-constraints ctx]
-  (let [retries (or (get-in ctx [:request :query-params :retries])
-                    (get-in ctx [:request :body-params :retries]))]
+  (let [retries (get-in ctx [:request :body-params :retries])
+        increment (get-in ctx [:request :body-params :increment])
+        jobs (jobs-from-request ctx)
+        retry-limit (:retry-limit task-constraints)]
     (cond
-      (> retries (:retry-limit task-constraints))
-      [true {::error (str "'retries' exceeds the maximum retry limit of " (:retry-limit task-constraints))}]
+      (empty? jobs)
+      [true {:error "Need to specify at least 1 job."}]
+
+      (and (nil? retries) (nil? increment))
+      [true {::error "Need to specify either retries or increment."}]
+
+      (and retries increment)
+      [true {::error "Can't specify both retries and increment."}]
+
+      (and retries (> retries retry-limit))
+      [true {::error (str "'retries' exceeds the maximum retry limit of " retry-limit)}]
+
+      (and increment (let [db (d/db conn)]
+                       (some (fn [job]
+                               (> (+ (:job/max-retries (d/entity db [:job/uuid job]))
+                                     increment)
+                                  retry-limit))
+                             jobs)))
+      [true {::error (str "Increment would exceed the maximum retry limit of " retry-limit)}]
+
       :else
-      [false {::retries retries}])))
+      [false {::retries retries
+              ::increment increment
+              ::jobs jobs}])))
+
+(defn user-can-retry-job?
+  [conn is-authorized-fn request-user job]
+  (let [job-owner (:job/user (d/entity (db conn) [:job/uuid job]))]
+    (is-authorized-fn request-user :retry {:owner job-owner :item :job})))
 
 (defn check-retry-allowed
   [conn is-authorized-fn ctx]
   (let [request-user (get-in ctx [:request :authorization/user])
-        job (::job ctx)
-        job-owner (:job/user (d/entity (db conn) [:job/uuid job]))]
-    (if-not (is-authorized-fn request-user :retry {:owner job-owner :item :job})
-      [false {::error (str "You are not authorized to access that job")}]
+        unauthorized-jobs (remove (partial user-can-retry-job?
+                                           conn is-authorized-fn request-user)
+                                  (::jobs ctx))]
+    (if (seq unauthorized-jobs)
+      [false {::error (->> unauthorized-jobs
+                           (map #(str "You are not authorized to retry job " % "."))
+                           (str/join \space))}]
       true)))
 
 (defn base-retries-handler
@@ -1100,8 +1148,17 @@
   (base-retries-handler
    conn is-authorized-fn
    {:allowed-methods [:get]
-    :exists? (partial check-job-exists conn)
+    :exists? (partial check-jobs-exist conn)
     :handle-ok (partial display-retries conn)}))
+
+(defn retry-jobs!
+  [conn ctx]
+  (let [db (d/db conn)]
+    (doseq [job (distinct (::jobs ctx))]
+      (let [new-retries (or (::retries ctx)
+                            (+ (:job/max-retries (d/entity db [:job/uuid job]))
+                               (::increment ctx)))]
+        (util/retry-job! conn job new-retries)))))
 
 (defn post-retries-handler
   [conn is-authorized-fn task-constraints]
@@ -1111,22 +1168,20 @@
     ;; we need to check if it's a valid job UUID in malformed? here,
     ;; because this endpoint currently isn't restful (POST used for what is
     ;; actually an idempotent update; it should be PUT).
-    :exists? (partial check-job-exists conn)
+    :exists? (partial check-jobs-exist conn)
     :malformed? (partial validate-retries conn task-constraints)
     :handle-created (partial display-retries conn)
-    :post! (fn [ctx]
-             (util/retry-job! conn (::job ctx) (::retries ctx)))}))
+    :post! (partial retry-jobs! conn)}))
 
 (defn put-retries-handler
   [conn is-authorized-fn task-constraints]
   (base-retries-handler
    conn is-authorized-fn
    {:allowed-methods [:put]
-    :exists? (partial check-job-exists conn)
+    :exists? (partial check-jobs-exist conn)
     :malformed? (partial validate-retries conn task-constraints)
     :handle-created (partial display-retries conn)
-    :put! (fn [ctx]
-            (util/retry-job! conn (::job ctx) (ctx ::retries)))}))
+    :put! (partial retry-jobs! conn)}))
 
 ;; /share and /quota
 (def UserParam {:user s/Str})
@@ -1394,9 +1449,9 @@
         :parameters {:body-params UpdateRetriesRequest}
         :handler (put-retries-handler conn is-authorized-fn task-constraints)
         :responses {201 {:schema PosInt
-                         :description "The number of retries for the job"}
+                         :description "The number of retries for the jobs."}
                     400 {:description "Invalid request format."}
-                    401 {:description "Request user not authorized to access that job."}
+                    401 {:description "Request user not authorized to access those jobs."}
                     404 {:description "Unrecognized job UUID."}}}
        :post
        {:summary "Change a job's retry count (deprecated)"
