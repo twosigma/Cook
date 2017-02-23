@@ -274,6 +274,7 @@
 (def RawSchedulerRequest
   "Schema for a request to the raw scheduler endpoint."
   {:jobs [JobRequest]
+   (s/optional-key :override-group-immutability) s/Bool
    (s/optional-key :groups) [Group]})
 
 
@@ -856,7 +857,6 @@
                             s/Uuid str}
                            s))))))))
 
-(def override-group-str "override-group-immutability")
 
 ;;; On POST; JSON blob that looks like:
 ;;; {"jobs": [{"command": "echo hello world",
@@ -874,7 +874,7 @@
                         jobs (get params :jobs)
                         groups (get params :groups)
                         user (get-in ctx [:request :authorization/user])
-                        override-group-immutability? (boolean (get params override-group-str))]
+                        override-group-immutability? (boolean (get params :override-group-immutability))]
                     (try
                       (cond
                         (empty? params)
