@@ -25,3 +25,8 @@
   was last updated (last transaction)."
   [db eid]
   (last (transaction-times db eid)))
+
+(defn seconds
+  "Returns a printable number of fractional seconds based on input milliseconds."
+  [millis]
+  (float (/ millis 1000)))

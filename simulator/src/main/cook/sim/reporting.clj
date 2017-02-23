@@ -3,9 +3,27 @@
             [datomic.api :as d]
             [cook.sim.database :as data]
             [cook.sim.util :as u]
+            [cook.sim.reporting.groups :as groups]
+            [schema.core :as s]
             [incanter.core :as ic]
             [incanter.stats :as is]
             [incanter.charts :as chart]))
+
+(s/defschema JobResult
+  "Identifies a job and describes how it performed in a given sim run."
+  {:id s/Uuid
+   :requested-at s/Int
+   :name s/Str
+   :username s/Str
+   :details {s/Any s/Any}
+   :started-at (s/maybe s/Int)
+   :finished-at (s/maybe s/Int)
+   :wait-time (s/maybe s/Int)
+   :turnaround (s/maybe s/Int)
+   :overhead (s/maybe s/Int)
+   :instance-count s/Int
+   (s/optional-key :group) s/Str})
+(def job-result-validator (s/validator JobResult))
 
 (defn actions-for-sim
   "Given a simulation id, and a simulation database returns all of the \"actions\"
@@ -18,14 +36,6 @@
          [?log :job/requested-at ?requested]
          [?log :actionLog/sim ?simid]]
        sim-db sim-id))
-
-(defn wait-time
-  "Given a request time and an instance (from Cook database), returns the amount of
-  time before the instance was scheduled."
-  [requested-at first-cook-instance]
-  (if first-cook-instance
-    (- (.getTime (:instance/start-time first-cook-instance))
-       requested-at)))
 
 (defn first-finish
   "Given a collection of instances (from Cook database), returns the time of the
@@ -45,13 +55,6 @@
     (if finished-at
       (- finished-at (+ scheduled-at execution-time)))))
 
-(defn turnaround-time
-  "Time from scheduling to finish."
-  [sim-job scheduled-at instances]
-  (let [finished-at (first-finish instances)]
-    (if finished-at
-      (- finished-at scheduled-at))))
-
 (defn job-result
   "Given db's from both Cook scheduler and Cook simulator, and a description of
   a job request (job id and time of request), return a data structure
@@ -60,16 +63,28 @@
   [sim-db cook-db [job-id action-at]]
   (let [sim-job (:actionLog/action (d/entity sim-db [:job/uuid job-id]))
         cook-job (d/entity cook-db [:job/uuid job-id])
-        instances (:job/instance cook-job)]
-    {:id job-id
-     :requested-at action-at
-     :name (:job/name sim-job)
-     :username (:job/username sim-job)
-     :details (d/touch cook-job)
-     :wait-time (wait-time action-at (first instances))
-     :turnaround (turnaround-time sim-job action-at instances)
-     :overhead (overhead-time sim-job action-at instances)
-     :instance-count (count instances)}))
+        instances (:job/instance cook-job)
+        started-at (when (seq instances)
+                     (.getTime (:instance/start-time (first instances))))
+        finished-at (first-finish instances)
+        group (->> cook-job :group/_job
+                   (map #(str (:group/uuid %)))
+                   ;; for now, each job can only belong to 1 group
+                   first)]
+    (job-result-validator
+     (merge
+      {:id job-id
+       :requested-at action-at
+       :name (:job/name sim-job)
+       :username (:job/username sim-job)
+       :details (into {} (d/touch cook-job))
+       :started-at started-at
+       :finished-at finished-at
+       :wait-time (when started-at (- started-at action-at))
+       :turnaround (when finished-at (- finished-at action-at))
+       :overhead (overhead-time sim-job action-at instances)
+       :instance-count (count instances)}
+      (when group {:group group})))))
 
 (defn warn-about-unscheduled
   "The only effect of this function is to print out to STDOUT (for the cli).
@@ -143,7 +158,7 @@
   [jobs]
   (let [avg (average-of-metric jobs :wait-time)]
     (if avg
-      (println "Average wait time for jobs is" (float (/ avg 1000)) "seconds.")
+      (println "Average wait time for jobs is" (u/seconds avg) "seconds.")
       (println "No jobs were scheduled; thus, there is no average wait time."))))
 
 (defn show-average-turnaround
@@ -152,7 +167,7 @@
   [jobs]
   (let [avg (average-of-metric jobs :turnaround)]
     (if avg
-      (println "Average turnaround for jobs is" (float (/ avg 1000)) "seconds.")
+      (println "Average turnaround for jobs is" (u/seconds avg) "seconds.")
       (println "No jobs were finished; thus, there is no average turnaround."))))
 
 (defn show-average-overhead
@@ -161,7 +176,7 @@
   [jobs]
   (let [avg (average-of-metric jobs :overhead)]
     (if avg
-      (println "Average overhead for jobs is" (float (/ avg 1000)) "seconds.")
+      (println "Average overhead for jobs is" (u/seconds avg) "seconds.")
       (println "No jobs were finished; thus, there is no average overhead."))))
 
 (defn job-results
@@ -366,6 +381,9 @@
     (show-average-wait job-results)
     (show-average-turnaround job-results)
     (show-average-overhead job-results)
+    (groups/show-wait-for-first job-results)
+    (groups/show-wait-for-last job-results)
+    (groups/show-runtime job-results)
     (summarize-preemption job-results)))
 
 (defn- format-sim-result
