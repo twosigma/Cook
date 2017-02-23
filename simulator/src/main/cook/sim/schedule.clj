@@ -29,7 +29,7 @@
         (simu/tx-ent user-tempid))))
 
 (defn create-db-job
-  "Creates a new Simulant Action (job requet).  Returns the Datomic entity."
+  "Creates a new Simulant Action (job request).  Returns the Datomic entity."
   [conn job-spec user-spec user-id]
   @(d/transact conn [{:db/id (d/tempid :test)
                       :agent/_actions user-id
