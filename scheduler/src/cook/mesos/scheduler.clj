@@ -112,21 +112,6 @@
 (histograms/defhistogram [cook-mesos scheduler hist-task-fail-times])
 (meters/defmeter [cook-mesos scheduler task-fail-times])
 
-(meters/defmeter [cook-mesos scheduler backfilled-count])
-(histograms/defhistogram [cook-mesos scheduler hist-backfilled-count])
-(meters/defmeter [cook-mesos scheduler backfilled-cpu])
-(meters/defmeter [cook-mesos scheduler backfilled-mem])
-
-(meters/defmeter [cook-mesos scheduler upgraded-count])
-(histograms/defhistogram [cook-mesos scheduler hist-upgraded-count])
-(meters/defmeter [cook-mesos scheduler upgraded-cpu])
-(meters/defmeter [cook-mesos scheduler upgraded-mem])
-
-(meters/defmeter [cook-mesos scheduler fully-processed-count])
-(histograms/defhistogram [cook-mesos scheduler hist-fully-processed-count])
-(meters/defmeter [cook-mesos scheduler fully-processed-cpu])
-(meters/defmeter [cook-mesos scheduler fully-processed-mem])
-
 
 (def success-throughput-metrics
   {:completion-rate tasks-succeeded
@@ -494,72 +479,6 @@
 (gauges/defgauge [cook-mesos scheduler front-of-job-queue-mem] (fn [] @front-of-job-queue-mem-atom))
 (gauges/defgauge [cook-mesos scheduler front-of-job-queue-cpus] (fn [] @front-of-job-queue-cpus-atom))
 
-(defn ids-of-backfilled-instances
-  "Returns a list of the ids of running-or-unknown, backfilled instances of the given job"
-  [job]
-  (->> (:job/instance job)
-       (filter #(and (contains? #{:instance.status/running :instance.status/unknown}
-                                (:instance/status %))
-                     (:instance/backfilled? %)))
-       (map :db/id)))
-
-(defn process-matches-for-backfill
-  "This computes some sets:
-
-   fully-processed: this is a set of job uuids that should be removed from the list scheduler jobs. These are not backfilled
-   upgrade-backfill: this is a set of instance datomic ids that should be upgraded to non-backfill
-   backfill-jobs: this is a set of job uuids for jobs that were matched, but are in the backfill QoS class
-   "
-  [scheduler-contents head-of-considerable matched-jobs]
-  (let [matched-job-uuids (set (mapv :job/uuid matched-jobs))
-        ;; ids-of-backfilled-instances hits datomic; without memoization this would
-        ;; happen multiple times for the same job:
-        backfilled-ids-memo (memoize ids-of-backfilled-instances)
-        matched? (fn [job]
-                   (contains? matched-job-uuids (:job/uuid job)))
-        previously-backfilled? (fn [job]
-                                 (seq (backfilled-ids-memo job)))
-        index-if-never-matched (fn [index job]
-                                 (if (not (or
-                                           (matched? job)
-                                           (previously-backfilled? job)))
-                                   index))
-        last-index-before-backfill (->> scheduler-contents
-                                        (keep-indexed index-if-never-matched)
-                                        first)
-        num-before-backfilling (if last-index-before-backfill
-                                 (inc last-index-before-backfill)
-                                 (count scheduler-contents))
-        jobs-before-backfilling (take num-before-backfilling scheduler-contents)
-        jobs-after-backfilling (drop num-before-backfilling scheduler-contents)
-        jobs-to-backfill (filter matched? jobs-after-backfilling)
-        jobs-fully-processed (filter matched? jobs-before-backfilling)
-        jobs-to-upgrade (filter previously-backfilled? jobs-before-backfilling)
-        tasks-ids-to-upgrade (->> jobs-to-upgrade (mapv backfilled-ids-memo) (reduce into []))]
-
-    (let [resources-backfilled (util/sum-resources-of-jobs jobs-to-backfill)
-          resources-fully-processed (util/sum-resources-of-jobs jobs-fully-processed)
-          resources-upgraded (util/sum-resources-of-jobs jobs-to-upgrade)]
-      (meters/mark! backfilled-count (count jobs-to-backfill))
-      (histograms/update! hist-backfilled-count (count jobs-to-backfill))
-      (meters/mark! backfilled-cpu (:cpus resources-backfilled))
-      (meters/mark! backfilled-mem (:mem resources-backfilled))
-
-      (meters/mark! fully-processed-count (count jobs-fully-processed))
-      (histograms/update! hist-fully-processed-count (count jobs-fully-processed))
-      (meters/mark! fully-processed-cpu (:cpus resources-fully-processed))
-      (meters/mark! fully-processed-mem (:mem resources-fully-processed))
-
-      (meters/mark! upgraded-count (count jobs-to-upgrade))
-      (histograms/update! hist-upgraded-count (count jobs-to-upgrade))
-      (meters/mark! upgraded-cpu (:cpus resources-upgraded))
-      (meters/mark! upgraded-mem (:mem resources-upgraded)))
-
-    {:fully-processed (set (mapv :job/uuid jobs-fully-processed))
-     :upgrade-backfill (set tasks-ids-to-upgrade)
-     :backfill-jobs (set (mapv :job/uuid jobs-to-backfill))
-     :matched-head? (matched? head-of-considerable)}))
-
 (defn below-quota?
   "Returns true if the usage is below quota-constraints on all dimensions"
   [{:keys [count cpus mem] :as quota}
@@ -620,17 +539,7 @@
               considerable-by (->> scheduler-contents-by
                                    (map (fn [[category jobs]]
                                           [category (->> jobs
-                                                         ;; Refresh cached job entity data to prevent cases where stale
-                                                         ;; data lingers for too long.  This is problematic in the case
-                                                         ;; of backfilled jobs because they remain in the queue after
-                                                         ;; they are scheduled in the hopes that the job will be
-                                                         ;; upgraded. However, this means it is possible the instance
-                                                         ;; will fail and it will be considered again.
                                                          (map #(d/entity db (:db/id %)))
-                                                         (filter (fn [job]
-                                                                   ;; Remove backfill jobs
-                                                                   (= (:job/state job)
-                                                                      :job.state/waiting)))
                                                          (filter-based-on-quota user->quota user->usage)
                                                          (filter (fn [job]
                                                                    (util/job-allowed-to-start? db job)))
@@ -651,35 +560,24 @@
                                         :let [task-request (.getRequest task-result)]
                                         :when (= :normal (util/categorize-job (:job task-request)))]
                                     (:job task-request))
+              matched-normal-job-uuids (set (mapv :job/uuid matched-normal-jobs))
               matched-gpu-job-uuids (set (for [match matches
                                                ^TaskAssignmentResult task-result (:tasks match)
                                                :let [task-request (.getRequest task-result)]
                                                :when (= :gpu (util/categorize-job (:job task-request)))]
                                            (:job/uuid (:job task-request))))
-              ;; Backfill only applies to normal (i.e. non-scarce resource dependent) jobs
-              processed-matches (timers/time!
-                                  handle-resource-offer!-process-matches-duration
-                                  ;; We take 10x num-considerable as a heuristic
-                                  ;; scheduler-contents can be very large and so we don't want to go through the whole thing
-                                  ;; it is better to be mostly right in back fill decisions and schedule fast
-                                  (process-matches-for-backfill (take (* 10 num-considerable) (:normal scheduler-contents-by))
-                                                                (first (:normal considerable-by))
-                                                                matched-normal-jobs))
+              matched-head? (contains? matched-normal-job-uuids (-> considerable-by :normal first))
               update-scheduler-contents (fn update-scheduler-contents [scheduler-contents-by]
                                           (-> scheduler-contents-by
-                                              (update-in [:gpu] #(remove (fn [{pending-job-uuid :job/uuid}]
-                                                                           (contains? matched-gpu-job-uuids pending-job-uuid))
-                                                                         %))
-                                              (update-in [:normal] #(remove (fn [{pending-job-uuid :job/uuid}]
-                                                                              (or (contains? (:fully-processed processed-matches) pending-job-uuid)
-                                                                                  (contains? (:upgrade-backfill processed-matches) pending-job-uuid)))
-                                                                            %))))
-              ;; We don't remove backfilled jobs here, because although backfilled
-              ;; jobs have already been scheduled in a sense, the scheduler still can't
-              ;; adjust the status of backfilled tasks.
-              ;; Backfilled tasks can be updgraded to non-backfilled after the jobs
-              ;; prioritized above them are also scheduled.
-              first-considerable-resources (-> considerable-by :normal first util/job-ent->resources)
+                                              (update-in [:gpu] 
+                                                         #(remove (fn [{pending-job-uuid :job/uuid}]
+                                                                    (contains? matched-gpu-job-uuids pending-job-uuid))
+                                                                  %))
+                                              (update-in [:normal] 
+                                                         #(remove (fn [{pending-job-uuid :job/uuid}]
+                                                                    (contains? matched-normal-job-uuids pending-job-uuid))
+                                                                  %))))
+			  first-considerable-resources (-> considerable-by :normal first util/job-ent->resources)
               match-resource-requirements (util/sum-resources-of-jobs matched-normal-jobs)]
           (log/debug "got matches:" matches)
           (log/debug "matched normal jobs:" (count matched-normal-jobs))
@@ -718,16 +616,12 @@
                                 ;; NB command executor uses the task-id
                                 ;; as the executor-id
                                 :instance/executor-id task-id
-                                :instance/backfilled? (contains? (:backfill-jobs processed-matches) (get-in request [:job :job/uuid]))
                                 :instance/slave-id slave-id
                                 :instance/ports (.getAssignedPorts task)
                                 :instance/progress 0
                                 :instance/status :instance.status/unknown
                                 :instance/preempted? false}])
-                  upgrade-txns (mapv (fn [instance-id]
-                                      [:db/add instance-id :instance/backfilled? false])
-                                    (:upgrade-backfill processed-matches))]
-              ;; Note that this transaction can fail if a job was scheduled
+]             ;; Note that this transaction can fail if a job was scheduled
               ;; during a race. If that happens, then other jobs that should
               ;; be scheduled will not be eligible for rescheduling until
               ;; the pending-jobs atom is repopulated
@@ -735,9 +629,8 @@
                 handle-resource-offer!-transact-task-duration
                 @(d/transact
                    conn
-                   (reduce into upgrade-txns task-txns)))
+                   task-txns))
               (log/info "Launching" (count task-txns) "tasks")
-              (log/info "Upgrading" (count (:upgrade-backfill processed-matches)) "tasks from backfilled to proper")
               (log/info "Matched tasks" task-txns)
               ;; This launch-tasks MUST happen after the above transaction in
               ;; order to allow a transaction failure (due to failed preconditions)
@@ -771,7 +664,7 @@
                     (.. fenzo
                         (getTaskAssigner)
                         (call (.getRequest task) (get-in (first leases) [:offer :hostname])))))))
-              (:matched-head? processed-matches))))
+              matched-head?)))
         (catch Throwable t
           (meters/mark! handle-resource-offer!-errors)
           (log/error t "Error in match:" (ex-data t))
@@ -1122,10 +1015,7 @@
                      (into {})
                      (dru/sorted-task-scored-task-pairs <> user->dru-divisors)
                      (filter (fn [[task scored-task]]
-                               (or (contains? pending-task-ents task)
-                                   ;; backfilled tasks can be upgraded to non-backfilled
-                                   ;; during scheduling, so they also need to be considered.
-                                   (:instance/backfilled? task))))
+                               (contains? pending-task-ents task)))
                      (map (fn [[task scored-task]]
                             (:job/_instance task)))))]
     jobs))

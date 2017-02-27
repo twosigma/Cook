@@ -445,8 +445,8 @@
       (let [task-ent9 {:job/_instance job-ent9
                        :instance/hostname "hostB"
                        :instance/status :instance.status/running}
-            user->sorted-running-task-ents' {"ljin" (into (sorted-set-by (util/same-user-task-comparator-penalize-backfill)) [task-ent1 task-ent2 task-ent3 task-ent4])
-                                               "wzhao" (into (sorted-set-by (util/same-user-task-comparator-penalize-backfill)) [task-ent5 task-ent7 task-ent9])}
+            user->sorted-running-task-ents' {"ljin" (into (sorted-set-by (util/same-user-task-comparator)) [task-ent1 task-ent2 task-ent3 task-ent4])
+                                               "wzhao" (into (sorted-set-by (util/same-user-task-comparator)) [task-ent5 task-ent7 task-ent9])}
             host->spare-resources' {"hostA" {:mem 50.0 :cpus 50.0} "hostB" {:mem 5.0 :cpus 5.0 :gpus 0.0}}]
         (let [{task->scored-task'' :task->scored-task
                user->sorted-running-task-ents'' :user->sorted-running-task-ents
@@ -470,9 +470,9 @@
       (let [task-ent10 {:job/_instance job-ent10
                         :instance/hostname "hostA"
                         :instance/status :instance.status/running}
-            user->sorted-running-task-ents' {"ljin" (into (sorted-set-by (util/same-user-task-comparator-penalize-backfill)) [task-ent1 task-ent3 task-ent4])
-                                               "wzhao" (into (sorted-set-by (util/same-user-task-comparator-penalize-backfill)) [task-ent5 task-ent6 task-ent8])
-                                               "sunil" (into (sorted-set-by (util/same-user-task-comparator-penalize-backfill)) [task-ent10])}
+            user->sorted-running-task-ents' {"ljin" (into (sorted-set-by (util/same-user-task-comparator)) [task-ent1 task-ent3 task-ent4])
+                                               "wzhao" (into (sorted-set-by (util/same-user-task-comparator)) [task-ent5 task-ent6 task-ent8])
+                                               "sunil" (into (sorted-set-by (util/same-user-task-comparator)) [task-ent10])}
             host->spare-resources' {"hostA" {:mem 50.0 :cpus 50.0 :gpus 0.0}}]
         (let [{task->scored-task'' :task->scored-task
                user->sorted-running-task-ents'' :user->sorted-running-task-ents
@@ -495,9 +495,9 @@
       (let [task-ent12 {:job/_instance job-ent12
                         :instance/hostname "hostA"
                         :instance/status :instance.status/running}
-            user->sorted-running-task-ents' {"ljin" (into (sorted-set-by (util/same-user-task-comparator-penalize-backfill)) [task-ent1 task-ent2 task-ent3 task-ent4])
-                                               "wzhao" (into (sorted-set-by (util/same-user-task-comparator-penalize-backfill)) [task-ent5 task-ent6 task-ent7 task-ent8])
-                                               "sunil" (into (sorted-set-by (util/same-user-task-comparator-penalize-backfill)) [task-ent12])}
+            user->sorted-running-task-ents' {"ljin" (into (sorted-set-by (util/same-user-task-comparator)) [task-ent1 task-ent2 task-ent3 task-ent4])
+                                               "wzhao" (into (sorted-set-by (util/same-user-task-comparator)) [task-ent5 task-ent6 task-ent7 task-ent8])
+                                               "sunil" (into (sorted-set-by (util/same-user-task-comparator)) [task-ent12])}
             host->spare-resources' {"hostA" {:mem 10.0 :cpus 10.0 :gpus 0.0}}]
 
         (let [{task->scored-task'' :task->scored-task

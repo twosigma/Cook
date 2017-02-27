@@ -271,16 +271,6 @@
   (fn [task1 task2]
       (compare (task->feature-vector task1) (task->feature-vector task2))))
 
-(defn same-user-task-comparator-penalize-backfill
-  "Same as same-user-task-comparator, but we treat jobs which were backfilled as being the lowest priority"
-  []
-  (letfn [(comparable-with-backfill
-            [task]
-            (vec (cons (if (:instance/backfilled? task) 1 0)
-                       (task->feature-vector task))))]
-    (fn [task1 task2]
-      (compare (comparable-with-backfill task1) (comparable-with-backfill task2)))))
-
 (defn retry-job!
   "Sets :job/max-retries to the given value for the given job UUID.
    Throws an exception if there is no job with that UUID."
