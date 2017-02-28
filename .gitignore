@@ -26,6 +26,7 @@ pom.xml.asc
 scheduler/checkouts
 scheduler/log/
 scheduler/src/cfg
+scheduler/trace*.csv
 src/cfg/current.clj
 target
 test-log
