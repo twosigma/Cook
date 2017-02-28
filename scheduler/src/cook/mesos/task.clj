@@ -190,7 +190,9 @@
 (def cook-volume-mode->mesomatic-volume-mode
   "Converts the string representation of volume mode to a value mesomatic understands"
   {"RW" :volume-rw
-   "RO" :volume-ro})
+   "RO" :volume-ro
+   ;; nil volume produces a Mesomatic serializion error
+   nil  :volume-ro})
 
 (def cook-container-type->mesomatic-container-type
   "Converts the string representation of container type to a value mesomatic understands"
@@ -216,9 +218,7 @@
                                     docker)))
                         (update :volumes
                                    (fn [volumes]
-                                     (map #(if (:mode %)
-                                             (update % :mode cook-volume-mode->mesomatic-volume-mode)
-                                             %)
+                                     (map #(update % :mode cook-volume-mode->mesomatic-volume-mode)
                                           volumes)))))]
     (merge {:name name
             :task-id {:value task-id}
