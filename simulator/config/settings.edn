@@ -7,6 +7,7 @@
              :user-profiles
              [{:description "Profile 1"
                :usernames ["testuser1" "testuser2"]
+               :docker-tendency 0.5
                :seconds-between-jobs {:mean 3
                                       :std-dev 1
                                       :floor 1

@@ -7,6 +7,7 @@
              :user-profiles
              [{:description "Heavy Users"
                :usernames ["heavy1" "heavy2" "heavy3" "heavy4" "heavy5"]
+               :docker-tendency 0.4
                :seconds-between-jobs {:mean 2
                                       :std-dev 1
                                       :floor 1
@@ -25,6 +26,7 @@
                          :ceiling 6.0}}
               {:description "Light Users"
                :usernames ["light1" "light2" "light3" "light4" "light5"]
+               :docker-tendency 0.6
                :seconds-between-jobs {:mean 6
                                       :std-dev 1
                                       :floor 1
@@ -47,6 +49,7 @@
                                       :std-dev 3
                                       :floor 1
                                       :ceiling 120}
+               :docker-tendency 0.5
                :job-duration {:mean 15
                               :std-dev 2
                               :floor 1
