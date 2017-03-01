@@ -537,7 +537,9 @@
                  (when labels
                    {:labels (walk/stringify-keys labels)})
                  (when group-uuid
-                   {:group group-uuid}))]
+                   {:group group-uuid})
+                 (when container
+                   {:container container}))]
     (s/validate Job munged)
     (when (and (:gpus munged) (not gpu-enabled?))
       (throw (ex-info (str "GPU support is not enabled") {:gpus gpus})))
