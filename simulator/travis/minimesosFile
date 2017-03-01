@@ -1,7 +1,7 @@
 minimesos {
     clusterName = "Cook Simulation Cluster"
     loggingLevel = "INFO"
-    mapAgentSandboxVolume = false
+    mapAgentSandboxVolume = true
     mapPortsToHost = false
     mesosVersion = "1.0.0"
     timeout = 60
