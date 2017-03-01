@@ -338,8 +338,8 @@
          [:db/add container-id :container/docker docker-id]
          (merge {:db/id docker-id
                  :docker/image (:image docker)
-                 :docker/force-pull-image (:force-pull-image docker false)
-                 :docker/network (:network docker)}
+                 :docker/force-pull-image (:force-pull-image docker false)}
+                (when (:network docker) {:docker/network(:network docker)})
                 (mk-container-params docker-id params)
                 (mk-docker-ports docker-id port-mappings))])
       {})))
