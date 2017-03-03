@@ -45,7 +45,7 @@ minimesos {
                 value = "[31000-32000]"
             }
             ports {
-                role = "*"
+                role = "cook"
                 value = "[32000-33000]"
             }
         }
@@ -90,7 +90,7 @@ minimesos {
                 value = "[31000-32000]"
             }
             ports {
-                role = "*"
+                role = "cook"
                 value = "[32000-33000]"
             }
         }
@@ -135,7 +135,7 @@ minimesos {
                 value = "[31000-32000]"
             }
             ports {
-                role = "*"
+                role = "cook"
                 value = "[32000-33000]"
             }
         }
@@ -180,7 +180,7 @@ minimesos {
                 value = "[31000-32000]"
             }
             ports {
-                role = "*"
+                role = "cook"
                 value = "[32000-33000]"
             }
         }
@@ -225,7 +225,7 @@ minimesos {
                 value = "[31000-32000]"
             }
             ports {
-                role = "*"
+                role = "cook"
                 value = "[32000-33000]"
             }
         }
@@ -270,7 +270,7 @@ minimesos {
                 value = "[31000-32000]"
             }
             ports {
-                role = "*"
+                role = "cook"
                 value = "[32000-33000]"
             }
         }
