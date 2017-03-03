@@ -396,7 +396,7 @@
 ;;                                 this causes a lot of unexpected behavior (jobs being preempted out of priority 
 ;;                                 order) and lots of bugs (it is hard to correctly update jobs). The concept of 
 ;;                                 backfill is not worth the added problems and so it is being removed."
-     :db/doc "If this is true, then this instance should be preempted first regardless of priority. It's okay to upgrade an instance to be non-backfilled after a while."
+     :db/doc "DEPRECATED: If this is true, then this instance should be preempted first regardless of priority. It's okay to upgrade an instance to be non-backfilled after a while."
      :db/valueType :db.type/boolean
      :db/cardinality :db.cardinality/one
      :db.install/_attribute :db.part/db}
