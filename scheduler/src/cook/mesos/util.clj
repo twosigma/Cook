@@ -168,9 +168,7 @@
 (timers/deftimer [cook-mesos scheduler get-pending-jobs-duration])
 
 (defn get-pending-job-ents
-  ([filtered-db]
-   (get-pending-job-ents filtered-db filtered-db))
-  ([filtered-db unfiltered-db]
+  ([unfiltered-db]
    (timers/time!
      get-pending-jobs-duration
      ;; This function can use an unfiltered db when creating entities
@@ -181,7 +179,7 @@
                :in $ [?state ...]
                :where
                [?j :job/state ?state]]
-             filtered-db [:job.state/waiting])
+             [:job.state/waiting])
           (map (fn [[x]] (d/entity unfiltered-db x)))))))
 
 (defn get-jobs-by-user-and-state
