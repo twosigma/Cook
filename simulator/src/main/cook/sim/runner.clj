@@ -27,18 +27,26 @@
                     duration :job/duration
                     mem :job/memory
                     cpu :job/cpu
+                    docker? :job/docker?
                     exit-code :job/exit-code}]
   (let [cmd (str "sleep " duration "; exit " exit-code)
         ;; TODO: determine if max_retries and max_runtime need to be configured,
         ;; or even randomized per job?
-        body (json/generate-string {:jobs [{:name name
-                                            :priority priority
-                                            :max_retries 3
-                                            :max_runtime 86400000
-                                            :mem mem
-                                            :cpus cpu
-                                            :uuid job-id
-                                            :command cmd}]})]
+        body (json/generate-string
+              {:jobs [(merge {:name name
+                              :priority priority
+                              :max_retries 3
+                              :max_runtime 86400000
+                              :mem mem
+                              :cpus cpu
+                              :uuid job-id
+                              :command cmd}
+                             (when docker?
+                               {:container {:type "docker"
+                                            :docker {:image "python:3"}
+                                            :volumes [{:container-path "/host-tmp"
+                                                       :host-path "/tmp"
+                                                       :mode "RW"}]}}))]})]
     (println "scheduling cook job with payload: " body)
     (http/post (str cook-uri "/rawscheduler")
                {:body body

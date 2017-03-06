@@ -338,8 +338,8 @@
          [:db/add container-id :container/docker docker-id]
          (merge {:db/id docker-id
                  :docker/image (:image docker)
-                 :docker/force-pull-image (:force-pull-image docker false)
-                 :docker/network (:network docker)}
+                 :docker/force-pull-image (:force-pull-image docker false)}
+                (when (:network docker) {:docker/network(:network docker)})
                 (mk-container-params docker-id params)
                 (mk-docker-ports docker-id port-mappings))])
       {})))
@@ -537,7 +537,9 @@
                  (when labels
                    {:labels (walk/stringify-keys labels)})
                  (when group-uuid
-                   {:group group-uuid}))]
+                   {:group group-uuid})
+                 (when container
+                   {:container container}))]
     (s/validate Job munged)
     (when (and (:gpus munged) (not gpu-enabled?))
       (throw (ex-info (str "GPU support is not enabled") {:gpus gpus})))

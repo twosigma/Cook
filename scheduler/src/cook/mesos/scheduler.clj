@@ -177,7 +177,12 @@
                (when (:data s)
                  (:percent (edn/read-string (String. (.toByteArray (:data s))))))
                (catch Exception e
-                 (log/debug e "Error parse mesos status data. Is it in the format we expect?")))})
+                 (try (log/debug e (str "Error parsing mesos status data to edn."
+                                        "Is it in the format we expect?"
+                                        "String representation: "
+                                        (String. (.toByteArray (:data s)))))
+                      (catch Exception e
+                        (log/debug e "Error reading a string from mesos status data. Is it in the format we expect?")))))})
 
 (defn handle-status-update
   "Takes a status update from mesos."
