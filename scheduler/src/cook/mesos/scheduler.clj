@@ -625,7 +625,7 @@
                 handle-resource-offer!-transact-task-duration
                 @(d/transact
                    conn
-                   task-txns))
+                   (reduce into [] task-txns)))
               (log/info "Launching" (count task-txns) "tasks")
               (log/info "Matched tasks" task-txns)
               ;; This launch-tasks MUST happen after the above transaction in
