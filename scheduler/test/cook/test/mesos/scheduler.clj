@@ -870,5 +870,21 @@
         ;; Check that group with straggler handling configured has instance killed
         (sched/handle-stragglers conn kill-fn)))))
 
+
+(deftest test-receive-offers
+  (let [declined-offer-ids-atom (atom [])
+        offers-chan (async/chan (async/buffer 1))
+        mock-driver (reify msched/SchedulerDriver
+                               (decline-offer [driver id]
+                                 (swap! declined-offer-ids-atom conj id)))
+        offer-1 {:id {:value "foo"}}
+        offer-2 {:id {:value "bar"}}
+        offer-3 {:id {:value "baz"}}]
+    (testing "offer chan overflow"
+      (sched/receive-offers offers-chan mock-driver [offer-1])
+      @(sched/receive-offers offers-chan mock-driver [offer-2])
+      @(sched/receive-offers offers-chan mock-driver [offer-3])
+      (is (= @declined-offer-ids-atom [(:id offer-2) (:id offer-3)])))))
+
 (comment
   (run-tests))

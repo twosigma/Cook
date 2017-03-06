@@ -1300,6 +1300,22 @@
     @(d/transact conn [{:db/id :scheduler/config
                         :scheduler.config/mea-culpa-failure-limit limit}])))
 
+(defn receive-offers
+  [offers-chan driver offers]
+  (log/info "Got offers, putting them into the offer channel:" offers)
+  (doseq [offer offers]
+    (histograms/update! offer-size-cpus (get-in offer [:resources :cpus] 0))
+    (histograms/update! offer-size-mem (get-in offer [:resources :mem] 0)))
+  (if (async/offer! offers-chan offers)
+    (counters/inc! offer-chan-depth)
+    (do (log/warn "Offer chan is full. Are we not handling offers fast enough?")
+        (meters/mark! offer-chan-full-error)
+        (future
+          (try
+            (decline-offers driver (map :id offers))
+            (catch Exception e
+              (log/error e "Unable to decline offers!")))))))
+
 (defn create-datomic-scheduler
   [conn set-framework-id driver-atom pending-jobs-atom heartbeat-ch offer-incubate-time-ms mea-culpa-failure-limit fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset task-constraints gpu-enabled? good-enough-fitness]
 
@@ -1352,24 +1368,7 @@
              (meters/mark! mesos-error)
              (log/error "Got a mesos error!!!!" message))
       (resource-offers [this driver offers]
-                       (log/info "Got offers, putting them into the offer channel:" offers)
-                      (doseq [offer offers]
-                        (histograms/update!
-                         offer-size-cpus
-                         (get-in offer [:resources :cpus] 0))
-                        (histograms/update!
-                         offer-size-mem
-                         (get-in offer [:resources :mem] 0)))
-
-                      (if (async/offer! offers-chan offers)
-                        (counters/inc! offer-chan-depth)
-                        (do (log/warn "Offer chan is full. Are we not handling offers fast enough?")
-                            (meters/mark! offer-chan-full-error)
-                            (future
-                              (try
-                                (decline-offers driver offers)
-                                (catch Exception e
-                                  (log/error e "Unable to decline offers!")))))))
+                       (receive-offers offers-chan driver offers))
       (status-update [this driver status]
                      (future (handle-status-update conn driver fenzo status))))
      :view-incubating-offers (fn get-resources-atom [] @resources-atom)}))
