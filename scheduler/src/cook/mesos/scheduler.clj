@@ -567,16 +567,12 @@
                                                :when (= :gpu (util/categorize-job (:job task-request)))]
                                            (:job/uuid (:job task-request))))
               matched-head? (contains? matched-normal-job-uuids (-> considerable-by :normal first))
+              remove-matched-jobs (fn remove-matched-jobs [existing-jobs matched-job-uuids]
+                                    (remove #(contains? matched-job-uuids (:job/uuid %)) existing-jobs))
               update-scheduler-contents (fn update-scheduler-contents [scheduler-contents-by]
                                           (-> scheduler-contents-by
-                                              (update-in [:gpu] 
-                                                         #(remove (fn [{pending-job-uuid :job/uuid}]
-                                                                    (contains? matched-gpu-job-uuids pending-job-uuid))
-                                                                  %))
-                                              (update-in [:normal] 
-                                                         #(remove (fn [{pending-job-uuid :job/uuid}]
-                                                                    (contains? matched-normal-job-uuids pending-job-uuid))
-                                                                  %))))
+                                              (update-in [:gpu] remove-matched-jobs matched-gpu-job-uuids)
+                                              (update-in [:normal] remove-matched-jobs matched-normal-job-uuids)))
 			  first-considerable-resources (-> considerable-by :normal first util/job-ent->resources)
               match-resource-requirements (util/sum-resources-of-jobs matched-normal-jobs)]
           (log/debug "got matches:" matches)
