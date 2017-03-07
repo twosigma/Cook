@@ -857,7 +857,7 @@
     :reason/code 2002
     :reason/string "Container memory limit exceeded"
     :reason/name :mesos-container-limitation-memory
-    :reason/mea-culpa? true
+    :reason/mea-culpa? false
     :reason/mesos-reason :reason-container-limitation-memory}
    {:db/id (d/tempid :db.part/user)
     :reason/code 2003
