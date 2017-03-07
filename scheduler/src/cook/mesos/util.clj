@@ -168,18 +168,18 @@
 (timers/deftimer [cook-mesos scheduler get-pending-jobs-duration])
 
 (defn get-pending-job-ents
+  "Returns a seq of datomic entities corresponding to jobs"
   ([unfiltered-db]
    (timers/time!
      get-pending-jobs-duration
-     ;; This function can use an unfiltered db when creating entities
-     ;; because a job will either be fully committed or fully not committed,
-     ;; therefore if the :job/state attribute was committed the full entity
-     ;; is committed and we need not worry about checking commit status
+     ;; This function explicitly uses the unfiltered (not metatransaction filtered)
+     ;; db to improve the performance of this query. We are working to remove
+     ;; metatransaction throughout the code
      (->> (q '[:find ?j
                :in $ [?state ...]
                :where
                [?j :job/state ?state]]
-             [:job.state/waiting])
+             unfiltered-db [:job.state/waiting])
           (map (fn [[x]] (d/entity unfiltered-db x)))))))
 
 (defn get-jobs-by-user-and-state

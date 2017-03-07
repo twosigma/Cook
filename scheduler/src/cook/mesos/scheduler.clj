@@ -1157,7 +1157,7 @@
   ;; e.g. running jobs or when it is always considered committed e.g. shares
   ;; The unfiltered db can also be used on pending job entities once the filtered db is used to limit
   ;; to only those jobs that have been committed.
-  (let [pending-job-ents-by (group-by util/categorize-job (util/get-pending-job-ents filtered-db unfiltered-db))
+  (let [pending-job-ents-by (group-by util/categorize-job (util/get-pending-job-ents unfiltered-db))
         pending-task-ents-by (reduce-kv (fn [m category pending-job-ents]
                                           (assoc m category
                                                  (into #{}
