@@ -388,7 +388,15 @@
      :db.install/_attribute :db.part/db}
     {:db/id (d/tempid :db.part/db)
      :db/ident :instance/backfilled?
-     :db/doc "If this is true, then this instance should be preempted first regardless of priority. It's okay to upgrade an instance to be non-backfilled after a while."
+;;;   In a future version, datomic adds these schema values, leaving the info here when that occurs
+;;     :schema/deprecated true
+;;     :schema/deprecated-because "The concept of backfill was meant to allow Cook to schedule jobs out of order 
+;;                                 temporarily but treat the jobs as opportunistic and upgrade the jobs out of 
+;;                                 backfill later once the scheduling order had been corrected. Unfortunately, 
+;;                                 this causes a lot of unexpected behavior (jobs being preempted out of priority 
+;;                                 order) and lots of bugs (it is hard to correctly update jobs). The concept of 
+;;                                 backfill is not worth the added problems and so it is being removed."
+     :db/doc "DEPRECATED: If this is true, then this instance should be preempted first regardless of priority. It's okay to upgrade an instance to be non-backfilled after a while."
      :db/valueType :db.type/boolean
      :db/cardinality :db.cardinality/one
      :db.install/_attribute :db.part/db}

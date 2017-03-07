@@ -217,95 +217,6 @@
            (offer-maker 4 4000)
            (offer-maker 5 5000)))))
 
-(deftest test-ids-of-backfilled-instances
-  (let [uri "datomic:mem://test-ids-of-backfilled-instances"
-        conn (restore-fresh-database! uri)
-        jid (d/tempid :db.part/user)
-        tid1 (d/tempid :db.part/user)
-        tid2 (d/tempid :db.part/user)
-        {:keys [tempids db-after]} @(d/transact conn [[:db/add jid :job/instance tid1]
-                                                      [:db/add jid :job/instance tid2]
-                                                      [:db/add tid1 :instance/status :instance.status/running]
-                                                      [:db/add tid2 :instance/status :instance.status/running]
-                                                      [:db/add tid1 :instance/backfilled? false]
-                                                      [:db/add tid2 :instance/backfilled? true]])
-        jid' (d/resolve-tempid db-after tempids jid)
-        tid2' (d/resolve-tempid db-after tempids tid2)
-        backfilled-ids (sched/ids-of-backfilled-instances (d/entity db-after jid'))]
-    (is (= [tid2'] backfilled-ids))))
-
-(deftest test-process-matches-for-backfill
-  (letfn [(mock-job [& instances] ;;instances is a seq of booleans which denote the running instances that could be true or false
-            {:job/uuid (java.util.UUID/randomUUID)
-             :job/instance (for [backfill? instances]
-                             {:instance/status :instance.status/running
-                              :instance/backfilled? backfill?
-                              :db/id (java.util.UUID/randomUUID)})})]
-    (let [validate-format! #(is (every? set? (vals (select-keys % [:fully-processed :upgrade-backfill :backfill-jobs]))))
-          j1 (mock-job)
-          j2 (mock-job true)
-          j3 (mock-job false true true)
-          j4 (mock-job)
-          j5 (mock-job true)
-          j6 (mock-job false false)
-          j7 (mock-job false)]
-      (testing "Match nothing"
-        (let [result (sched/process-matches-for-backfill [j1 j4] j1 [])]
-          (validate-format! result)
-          (is (zero? (count (:fully-processed result))))
-          (is (zero? (count (:upgrade-backfill result))))
-          (is (zero? (count (:backfill-jobs result))))
-          (is (not (:matched-head? result)))))
-      (testing "Match everything basic"
-        (let [result (sched/process-matches-for-backfill [j1 j4] j1 [j1 j4])]
-          (validate-format! result)
-          (is (= 2 (count (:fully-processed result))))
-          (is (zero? (count (:upgrade-backfill result))))
-          (is (zero? (count (:backfill-jobs result))))
-          (is (:matched-head? result))))
-      (testing "Don't match head"
-        (let [result (sched/process-matches-for-backfill [j1 j4] j1 [j4])]
-          (validate-format! result)
-          (is (zero? (count (:fully-processed result))))
-          (is (zero? (count (:upgrade-backfill result))))
-          (is (= 1 (count (:backfill-jobs result))))
-          (is (not (:matched-head? result)))))
-      (testing "Match the tail, but the head isn't considerable"
-        (let [result (sched/process-matches-for-backfill [j1 j4] j5 [j4])]
-          (validate-format! result)
-          (is (zero? (count (:fully-processed result))))
-          (is (zero? (count (:upgrade-backfill result))))
-          (is (= 1 (count (:backfill-jobs result))))
-          (is (not (:matched-head? result)))))
-      (testing "Match the tail, and the head was backfilled"
-        (let [result (sched/process-matches-for-backfill [j2 j1 j4] j1 [j1 j4])]
-          (validate-format! result)
-          (is (= 2 (count (:fully-processed result))))
-          (is (= 1 (count (:upgrade-backfill result))))
-          (is (zero? (count (:backfill-jobs result))))
-          (is (:matched-head? result))))
-      (testing "Match the tail, and the head was backfilled (multiple backfilled mixed in)"
-        (let [result (sched/process-matches-for-backfill [j2 j1 j3 j4] j1 [j1 j4])]
-          (validate-format! result)
-          (is (= 2 (count (:fully-processed result))))
-          (is (= 3 (count (:upgrade-backfill result))))
-          (is (zero? (count (:backfill-jobs result))))
-          (is (:matched-head? result))))
-      (testing "Fail to match the head, but backfill several jobs"
-        (let [result (sched/process-matches-for-backfill [j1 j2 j3 j4 j5 j6 j7] j1 [j4 j6 j7])]
-          (validate-format! result)
-          (is (zero? (count (:fully-processed result))))
-          (is (zero? (count (:upgrade-backfill result))))
-          (is (= 3 (count (:backfill-jobs result))))
-          (is (not (:matched-head? result)))))
-      (testing "Fail to match the head, but backfill several jobs"
-        (let [result (sched/process-matches-for-backfill [j1 j2 j3 j4 j5 j6 j7] j1 [j4 j6 j7])]
-          (validate-format! result)
-          (is (zero? (count (:fully-processed result))))
-          (is (zero? (count (:upgrade-backfill result))))
-          (is (= 3 (count (:backfill-jobs result))))
-          (is (not (:matched-head? result))))))))
-
 (deftest test-get-user->used-resources
   (let [uri "datomic:mem://test-get-used-resources"
         conn (restore-fresh-database! uri)
@@ -515,40 +426,6 @@
         ]
     (is (= [task-id-2] (sched/get-lingering-tasks test-db now 120 120))))
   )
-
-(deftest test-upgrade-backfill-flow
-  ;; We need to create a DB and connect the tx monitor queue to it
-  ;; Then we'll put in some jobs
-  ;; Then pretend to launch them as backfilled
-  ;; Check here that they have the right properties (pending, not ready to run)
-  ;; Then we'll upgrade the jobs
-  ;; Check here that they have the right properties (not pending, not ready to run)
-  ;; Then shut it down
-
-  (let [uri "datomic:mem://test-backfill-upgrade"
-        conn (restore-fresh-database! uri)
-        check-count-of-pending-and-runnable-jobs
-        (fn check-count-of-pending-and-runnable-jobs [expected-pending expected-runnable msg]
-          (let [db (db conn)
-                pending-jobs (:normal (sched/rank-jobs db db identity))
-                runnable-jobs (filter (fn [job] (util/job-allowed-to-start? db job)) pending-jobs)]
-            (is (= expected-pending (count pending-jobs)) (str "Didn't match pending job count in " msg))
-            (is (= expected-runnable (count runnable-jobs)) (str "Didn't match runnable job count in " msg))))
-        job (create-dummy-job conn
-                              :user "tsram"
-                              :job-state :job.state/waiting
-                              :max-runtime Long/MAX_VALUE)
-        _ (check-count-of-pending-and-runnable-jobs 1 1 "job created")
-        instance (create-dummy-instance conn job
-                                        :job-state :job.state/waiting
-                                        :instance-status :instance.status/running
-                                        :backfilled? true)]
-    (check-count-of-pending-and-runnable-jobs 2 0 "job backfilled without update")
-    @(d/transact conn [[:job/update-state job]])
-    (check-count-of-pending-and-runnable-jobs 1 0 "job backfilled")
-    @(d/transact conn [[:db/add instance :instance/backfilled? false]])
-    @(d/transact conn [[:job/update-state job]])
-    (check-count-of-pending-and-runnable-jobs 0 0 "job promoted")))
 
 (deftest test-virtual-machine-lease-adapter
   ;; ensure that the VirtualMachineLeaseAdapter can successfully handle an offer from Mesomatic.

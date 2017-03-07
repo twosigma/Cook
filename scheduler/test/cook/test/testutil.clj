@@ -106,7 +106,7 @@
 (defn create-dummy-instance
   "Return the entity id for the created instance."
   [conn job & {:keys [job-state instance-status start-time end-time hostname
-                      task-id progress backfilled? reason slave-id executor-id
+                      task-id progress reason slave-id executor-id
                       cancelled]
                :or  {job-state :job.state/running
                      instance-status :instance.status/unknown
@@ -114,7 +114,6 @@
                      end-time nil
                      hostname "localhost"
                      task-id (str (str (java.util.UUID/randomUUID)))
-                     backfilled? false
                      progress 0
                      reason nil
                      slave-id  (str (java.util.UUID/randomUUID))
@@ -125,7 +124,6 @@
                                   :job/_instance job
                                   :instance/hostname hostname
                                   :instance/progress progress
-                                  :instance/backfilled? backfilled?
                                   :instance/status instance-status
                                   :instance/start-time start-time
                                   :instance/task-id task-id

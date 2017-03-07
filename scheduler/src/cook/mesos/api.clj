@@ -689,7 +689,7 @@
                     base {:task_id (:instance/task-id instance)
                           :hostname hostname
                           :ports (:instance/ports instance)
-                          :backfilled (:instance/backfilled? instance false)
+                          :backfilled false ;; Backfill has been deprecated
                           :preempted (:instance/preempted? instance false)
                           :slave_id (:instance/slave-id instance)
                           :executor_id (:instance/executor-id instance)

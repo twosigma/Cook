@@ -229,7 +229,7 @@
                                             (group-by util/task-ent->user)
                                             (map (fn [[user task-ents]]
                                                    [user (into (sorted-set-by (case category
-                                                                                :normal (util/same-user-task-comparator-penalize-backfill)
+                                                                                :normal (util/same-user-task-comparator)
                                                                                 :gpu (util/same-user-task-comparator))) task-ents)]))
                                             (into {}))
         task->scored-task (into (pm/priority-map-keyfn (case category
@@ -262,7 +262,7 @@
         (reduce (fn [task-ents-by-user task-ent]
                   (let [user (util/task-ent->user task-ent)
                         f (if (= new-running-task-ent task-ent)
-                            (fnil conj (sorted-set-by (util/same-user-task-comparator-penalize-backfill)))
+                            (fnil conj (sorted-set-by (util/same-user-task-comparator)))
                             disj)]
                     (update-in task-ents-by-user [user] f task-ent)))
                 user->sorted-running-task-ents
