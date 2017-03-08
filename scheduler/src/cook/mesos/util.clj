@@ -267,9 +267,18 @@
 
 (defn same-user-task-comparator
   "Comparator to order same user's tasks"
-  []
-  (fn [task1 task2]
-      (compare (task->feature-vector task1) (task->feature-vector task2))))
+  ([]
+   (same-user-task-comparator []))
+  ([tasks]
+   (let [task-ent->feature-vector (into {} 
+                                        (map #(vector % 
+                                                      (task->feature-vector %))) 
+                                        tasks)]
+     (fn [task1 task2]
+       (compare (or (task-ent->feature-vector task1)
+                    (task->feature-vector task1)) 
+                (or (task-ent->feature-vector task2)
+                    (task->feature-vector task2)))))))
 
 (defn retry-job!
   "Sets :job/max-retries to the given value for the given job UUID.
