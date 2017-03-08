@@ -165,9 +165,7 @@
                job-ents))
       {:cpus total-cpus :mem total-mem})))
 
-(timers/deftimer [cook-mesos scheduler get-pending-jobs-duration])
-
-(defn get-pending-job-ents*
+(defn- get-pending-job-ents*
   "Returns a seq of datomic entities corresponding to jobs
 
    Parameters:
@@ -185,6 +183,8 @@
             [?cl :commit-latch/committed? ?committed?]]
           unfiltered-db [:job.state/waiting] committed?)
        (map (partial d/entity unfiltered-db))))
+
+(timers/deftimer [cook-mesos scheduler get-pending-jobs-duration])
 
 (defn get-pending-job-ents
   "Returns a seq of datomic entities corresponding to jobs
