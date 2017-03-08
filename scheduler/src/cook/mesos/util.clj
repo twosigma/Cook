@@ -270,6 +270,10 @@
   ([]
    (same-user-task-comparator []))
   ([tasks]
+   ;; Pre-compute the feature-vector for tasks we expect to see to improve performance
+   ;; This is done because accessing fields in datomic entities is much slower than
+   ;; a map access, even when accessing multiple times. 
+   ;; Don't want to complicate the function by caching new values in the event we see them
    (let [task-ent->feature-vector (into {} 
                                         (map #(vector % 
                                                       (task->feature-vector %))) 
