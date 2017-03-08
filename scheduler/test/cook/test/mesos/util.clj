@@ -69,29 +69,29 @@
             start (t/ago expected-run-time)
             end (t/now)
             job (create-dummy-job conn :user "tsram" :job-state :job.state/completed :retry-count 3)
-            task-entid (create-dummy-instance conn 
-                                              job 
+            task-entid (create-dummy-instance conn
+                                              job
                                               :instance-status :instance.status/failed
                                               :start-time (tc/to-date start)
                                               :end-time (tc/to-date end))
             task-ent (d/entity (d/db conn) task-entid)]
-        (is (= (t/in-seconds expected-run-time) 
+        (is (= (t/in-seconds expected-run-time)
                (t/in-seconds (util/task-run-time task-ent))))))
     (testing "task running"
       (let [expected-run-time (t/hours 3)
             start (t/ago expected-run-time)
             job (create-dummy-job conn :user "tsram" :job-state :job.state/completed :retry-count 3)
-            task-entid (create-dummy-instance conn 
-                                              job 
+            task-entid (create-dummy-instance conn
+                                              job
                                               :instance-status :instance.status/running
                                               :start-time (tc/to-date start))
             task-ent (d/entity (d/db conn) task-entid)]
-        (is (= (t/in-seconds expected-run-time) 
+        (is (= (t/in-seconds expected-run-time)
                (t/in-seconds (util/task-run-time task-ent))))))))
 
 (deftest test-attempts-consumed
   (let [uri "datomic:mem://test-attempts-consumed"
-        conn (restore-fresh-database! uri)] 
+        conn (restore-fresh-database! uri)]
     (testing "No mea-culpa reasons"
       (let [job (create-dummy-job conn :user "tsram" :job-state :job.state/completed :retry-count 3)
            _ (create-dummy-instance conn job :instance-status :instance.status/failed
@@ -160,7 +160,7 @@
            job-ent (d/entity @(d/sync conn) job)]
         (is (= (util/job-ent->attempts-consumed db job-ent) 2))
        ))
-    
+
     ))
 
 (deftest test-namespace-datomic
@@ -168,8 +168,57 @@
     (is (= (util/namespace-datomic :straggler-handling :type)
            :straggler-handling/type))
     (is (= (util/namespace-datomic :straggler-handling :type :quantile-deviation)
-           :straggler-handling.type/quantile-deviation ))
-    )
-  )
+           :straggler-handling.type/quantile-deviation))))
+
+(deftest test-clear-uncommitted-jobs
+  (testing "no uncommitted"
+    (let [uri "datomic:mem://test-clear-uncommitted"
+          conn (restore-fresh-database! uri)
+          _ (dotimes [_ 100]
+              (create-dummy-job conn))]
+      (is (= (count (util/clear-uncommitted-jobs conn (t/yesterday) true)) 0))))
+  (testing "uncommitted but not before"
+    (let [uri "datomic:mem://test-clear-uncommitted"
+          conn (restore-fresh-database! uri)
+          _ (dotimes [_ 100]
+              (create-dummy-job conn))
+          _ (dotimes [_ 100]
+              (create-dummy-job conn
+                                :committed? false
+                                :submit-time (tc/to-date (-> 6 t/hours t/ago))))]
+      (is (= (count (util/clear-uncommitted-jobs conn (t/yesterday) true)) 0))))
+  (testing "uncommitted dry-run"
+    (let [uri "datomic:mem://test-clear-uncommitted"
+          conn (restore-fresh-database! uri)
+          _ (dotimes [_ 100]
+              (create-dummy-job conn))
+          _ (dotimes [_ 100]
+              (create-dummy-job conn
+                                :committed? false
+                                :submit-time (tc/to-date (-> 6 t/hours t/ago))))
+          uncommitted-count 25
+          _ (dotimes [_ uncommitted-count]
+              (create-dummy-job conn
+                                :committed? false
+                                :submit-time (tc/to-date (-> 48 t/hours t/ago))))]
+      (is (= (count (util/clear-uncommitted-jobs conn (t/yesterday) true))
+             uncommitted-count))))
+  (testing "uncommitted with retract"
+    (let [uri "datomic:mem://test-clear-uncommitted"
+          conn (restore-fresh-database! uri)
+          _ (dotimes [_ 100]
+              (create-dummy-job conn))
+          _ (dotimes [_ 100]
+              (create-dummy-job conn
+                                :committed? false
+                                :submit-time (tc/to-date (-> 6 t/hours t/ago))))
+          uncommitted-count 25
+          _ (dotimes [_ uncommitted-count]
+              (create-dummy-job conn
+                                :committed? false
+                                :submit-time (tc/to-date (-> 48 t/hours t/ago))))]
+      (is (= (count (util/clear-uncommitted-jobs conn (t/yesterday) false))
+             uncommitted-count))
+      (is (= (count (util/clear-uncommitted-jobs conn (t/yesterday) false)) 0)))))
 
 (comment (run-tests))
