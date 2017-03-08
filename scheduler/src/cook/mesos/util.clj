@@ -18,6 +18,7 @@
             [clojure.walk :as walk]
             [clj-time.core :as t]
             [clj-time.coerce :as tc]
+            [plumbing.core :as pc]
             [datomic.api :as d :refer (q)]
             [metatransaction.core :refer (db)]
             [metrics.timers :as timers]))
@@ -274,10 +275,7 @@
    ;; This is done because accessing fields in datomic entities is much slower than
    ;; a map access, even when accessing multiple times. 
    ;; Don't want to complicate the function by caching new values in the event we see them
-   (let [task-ent->feature-vector (into {} 
-                                        (map #(vector % 
-                                                      (task->feature-vector %))) 
-                                        tasks)]
+   (let [task-ent->feature-vector (pc/map-from-keys task->feature-vector tasks)]
      (fn [task1 task2]
        (compare (or (task-ent->feature-vector task1)
                     (task->feature-vector task1)) 
