@@ -29,7 +29,7 @@ Please visit the `scheduler` subproject first to get started.
 
 ## Quickstart
 
-The quickest way to Mesos and Cook running locally is with [docker](https://www.docker.com/) and [minmesos](https://minimesos.org/). 
+The quickest way to Mesos and Cook running locally is with [docker](https://www.docker.com/) and [minimesos](https://minimesos.org/). 
 
 1. Install `docker`
 2. Install `minimesos`

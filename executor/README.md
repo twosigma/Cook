@@ -29,7 +29,7 @@ Commands have the following structure:
 
 #### `GET /rawscheduler?job=:job`
 
-The job status endpoint can be used to view a job's progress, custom failure message, as well as the exit codes for all commands, by examing the following additional keys:
+The job status endpoint can be used to view a job's progress, custom failure message, as well as the exit codes for all commands, by examining the following additional keys:
 
 | key | type    | description                              |
 | -------- | ------- | ---------------------------------------- |
@@ -41,7 +41,7 @@ The job status endpoint can be used to view a job's progress, custom failure mes
 
 ### Executor HTTP API
 
-The executor provides an HTTP API that can be used from a job's commands. It currently only supports two endpoint:
+The executor provides an HTTP API that can be used from a job's commands. It currently only supports two endpoints:
 
 #### `PATCH /task/:taskid`
 
@@ -144,7 +144,7 @@ In order to dynamically set environment variables for later commands, you can us
 }
 ```
 
-The before command would need to executor something like the following:
+The before command would need to execute something like the following:
 
 ```bash
 curl -XPATCH \
@@ -152,7 +152,7 @@ curl -XPATCH \
 	$EXECUTOR_ENDPOINT
 ```
 
-This would set `MY_ENV_VAR` for your primary command (and all commands after `set-env-vars.sh`.
+This would set `MY_ENV_VAR` for your primary command (and all commands after `set-env-vars.sh`).
 
 #### Update progress and custom failure messages
 
@@ -240,7 +240,7 @@ Supported configuration options:
 
 | key | type | description |
 |-----|------|-------------|
-| `:value` | string | A string representing the command to be run, ex: `echo hello`. |
+| `:value` | string | A string representing the command to be run, e.g.: `echo hello`. |
 | `:guard` | boolean | An optional flag. If set, and the command returns a non-zero exit code, no further commands for the job will be executed. |
 | `:async` | boolean | An optional flag. If set, the command runs asynchronously, in parallel with other future commands. It will be killed when all synchronous commands for a job are finished. |
 
