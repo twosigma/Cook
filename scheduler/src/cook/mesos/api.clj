@@ -181,6 +181,7 @@
    (s/optional-key :labels) {NonEmptyString s/Str}
    (s/optional-key :container) Container
    (s/optional-key :group) s/Uuid
+   (s/optional-key :disable-mea-culpa-retries) s/Bool
    :cpus PosDouble
    :mem PosDouble
    (s/optional-key :gpus) (s/both s/Int (s/pred pos? 'pos?))
@@ -347,8 +348,10 @@
 (s/defn make-job-txn
   "Creates the necessary txn data to insert a job into the database"
   [job :- Job]
-  (let [{:keys [uuid command max-retries max-runtime priority cpus mem gpus user name ports uris env labels container group]
-         :or {group nil}
+  (let [{:keys [uuid command max-retries max-runtime priority cpus mem gpus user name ports uris env labels container group
+                disable-mea-culpa-retries]
+         :or {group nil
+              disable-mea-culpa-retries false}
          } job
         db-id (d/tempid :db.part/user)
         ports (when (and ports (not (zero? ports)))
@@ -412,6 +415,7 @@
              :job/user user
              :job/max-retries max-retries
              :job/state :job.state/waiting
+             :job/disable-mea-culpa-retries disable-mea-culpa-retries
              :job/resource [{:resource/type :resource.type/cpus
                              :resource/amount cpus}
                             {:resource/type :resource.type/mem

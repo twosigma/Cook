@@ -67,7 +67,8 @@
 
 (defn create-dummy-job
   "Return the entity id for the created dummy job."
-  [conn & {:keys [user uuid command ncpus memory name retry-count max-runtime priority job-state submit-time custom-executor? gpus group committed?]
+  [conn & {:keys [user uuid command ncpus memory name retry-count max-runtime priority job-state submit-time custom-executor? gpus group committed?
+                  disable-mea-culpa-retries]
            :or {user (System/getProperty "user.name")
                 uuid (d/squuid)
                 committed? true
@@ -79,7 +80,8 @@
                 retry-count 5
                 max-runtime Long/MAX_VALUE
                 priority 50
-                job-state :job.state/waiting}}]
+                job-state :job.state/waiting
+                disable-mea-culpa-retries false}}]
   (let [id (d/tempid :db.part/user)
         commit-latch-id (d/tempid :db.part/user)
         commit-latch {:db/id commit-latch-id
@@ -95,6 +97,7 @@
                          :job/priority priority
                          :job/state job-state
                          :job/submit-time submit-time
+                         :job/disable-mea-culpa-retries disable-mea-culpa-retries
                          :job/resource [{:resource/type :resource.type/cpus
                                          :resource/amount (double ncpus)}
                                         {:resource/type :resource.type/mem
