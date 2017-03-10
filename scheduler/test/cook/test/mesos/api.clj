@@ -287,7 +287,8 @@
     (testing "retry a single job with static retries"
       (let [update-resp (h (merge retry-req-attrs
                                   {:request-method :put
-                                   :body-params {"job" [uuid1] "retries" 45}}))
+                                   :query-params {"job" uuid1}
+                                   :body-params {"retries" 45}}))
             _ (is (<= 200 (:status update-resp) 299))
             read-resp (h (merge retry-req-attrs  {:request-method :get
                                                   :query-params {"job" uuid1}}))
@@ -625,7 +626,7 @@
 
 (deftest retry-validator
   (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
-        uuid (str (java.util.UUID/randomUUID))
+        uuid (java.util.UUID/randomUUID)
         job (merge (basic-job) {"uuid" (str uuid)})
         h (basic-handler conn :retry-limit 200)]
         (testing "Initial job creation"
@@ -644,8 +645,8 @@
                                :uri "/retry"
                                :headers {"Content-Type" "application/json"}
                                :authorization/user "dgrnbrg"
-                               :body-params {"job" [uuid]
-                                             "retries" 198}}))
+                               :query-params {:job uuid}
+                               :body-params {"retries" 198}}))
                   299)))
         (testing "Incrementing within limit"
           (is (<= 200
@@ -654,7 +655,7 @@
                                :uri "/retry"
                                :headers {"Content-Type" "application/json"}
                                :authorization/user "dgrnbrg"
-                               :body-params {"job" [uuid]
+                               :body-params {"jobs" [uuid]
                                              "increment" 1}}))
                   299)))
         (testing "At limits"
@@ -664,7 +665,7 @@
                                  :uri "/retry"
                                  :headers {"Content-Type" "application/json"}
                                  :authorization/user "dgrnbrg"
-                                 :body-params {"job" [uuid]
+                                 :body-params {"jobs" [uuid]
                                                "retries" 200}}))
                     299)))
         (testing "Over limit"

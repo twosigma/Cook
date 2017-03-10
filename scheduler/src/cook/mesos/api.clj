@@ -1058,7 +1058,7 @@
 (def ReadRetriesRequest
   {:job [s/Uuid]})
 (def UpdateRetriesRequest
-  {(s/optional-key :job) [s/Uuid]
+  {(s/optional-key :jobs) [s/Uuid]
    (s/optional-key :retries) PosNum
    (s/optional-key :increment) PosNum})
 
@@ -1071,13 +1071,12 @@
    query parameters and body parameters.  So some manual work is needed to combine
    ?job=a&job=b with the retries specified in the JSON body payload."
   [ctx]
-  (let [query-jobs-coerced (get-in ctx [:request :query-params :job])
-        query-jobs-uncoerced (get-in ctx [:request :query-params "job"])
+  (let [query-jobs-coerced (vectorize (get-in ctx [:request :query-params :job]))
+        query-jobs-uncoerced (vectorize (get-in ctx [:request :query-params "job"]))
         ;; if the query params are coerceable, both :job and "job" keys will be
         ;; present, but in that case we only want to read the coerced version
         query-jobs (or query-jobs-coerced (mapv #(UUID/fromString %) query-jobs-uncoerced))
-        body-jobs (mapv #(UUID/fromString %)
-                        (get-in ctx [:request :body-params "job"]))]
+        body-jobs (get-in ctx [:request :body-params :jobs])]
     (reduce conj query-jobs body-jobs)))
 
 (defn check-jobs-exist
