@@ -277,6 +277,9 @@
                   (when (#{:instance.status/success
                            :instance.status/failed} instance-status)
                     [[:db/add instance :instance/end-time (now)]])
+                  (when (and (#{:task-starting :task-running} task-state)
+                             (nil? (:instance/mesos-start-time instance-ent)))
+                    [[:db/add instance :instance/mesos-start-time (now)]])
                   (when progress
                     [[:db/add instance :instance/progress progress]])]))))
       (catch Exception e

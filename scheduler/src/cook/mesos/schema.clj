@@ -424,6 +424,11 @@
     :db/cardinality :db.cardinality/one
     :db.install/_attribute :db.part/db}
    {:db/id (d/tempid :db.part/db)
+    :db/ident :instance/mesos-start-time
+    :db/valueType :db.type/instant
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
     :db/ident :instance/end-time
     :db/valueType :db.type/instant
     :db/cardinality :db.cardinality/one

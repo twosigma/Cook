@@ -159,6 +159,7 @@
    :backfilled s/Bool
    :ports [s/Int]
    (s/optional-key :start_time) s/Int
+   (s/optional-key :mesos_start_time) s/Int
    (s/optional-key :end_time) s/Int
    (s/optional-key :reason_code) s/Int
    (s/optional-key :output_url) s/Str
@@ -683,6 +684,7 @@
                                (catch Exception e
                                  nil))
                     start (:instance/start-time instance)
+                    mesos-start (:instance/mesos-start-time instance)
                     end (:instance/end-time instance)
                     cancelled (:instance/cancelled instance)
                     reason (reason/instance-entity->reason-entity db instance)
@@ -699,6 +701,9 @@
                            base)
                     base (if start
                            (assoc base :start_time (.getTime start))
+                           base)
+                    base (if mesos-start
+                           (assoc base :mesos_start_time (.getTime mesos-start))
                            base)
                     base (if end
                            (assoc base :end_time (.getTime end))
