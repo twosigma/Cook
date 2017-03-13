@@ -19,7 +19,7 @@ If you'd like to learn more or do something different, read on...
 
 ## Releases 
 
-Check the [changelog](https://github.com/twosigma/Cook/CHANGELOG.md) for release info.
+Check the [changelog](CHANGELOG.md) for release info.
 
 ## Subproject Summary
 
