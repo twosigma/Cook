@@ -566,7 +566,7 @@
                                                :let [task-request (.getRequest task-result)]
                                                :when (= :gpu (util/categorize-job (:job task-request)))]
                                            (:job/uuid (:job task-request))))
-              matched-head? (contains? matched-normal-job-uuids (-> considerable-by :normal first))
+              matched-head? (contains? matched-normal-job-uuids (-> considerable-by :normal first :job/uuid))
               remove-matched-jobs (fn remove-matched-jobs [existing-jobs matched-job-uuids]
                                     (remove #(contains? matched-job-uuids (:job/uuid %)) existing-jobs))
               update-scheduler-contents (fn update-scheduler-contents [scheduler-contents-by]
