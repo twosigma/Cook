@@ -20,7 +20,7 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/) and this p
 - Authorization on endpoints from @pjlegato and @wyegelwel
 - System simulator and CI from @mforsyth
 - Access logs for server from @sophaskins
-- Mea culpa reasons so some failures don't count against retries from @DiegoAlbertoTorres @morsyth
+- Mea culpa reasons so some failures don't count against retries from @DiegoAlbertoTorres @mforsyth
  
 ### Changed
 - Switch to use [mesomatic](https://github.com/pyr/mesomatic) over clj-mesos from @mforsyth
