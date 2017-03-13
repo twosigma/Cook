@@ -7,8 +7,12 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/) and this p
 ## [Unreleased]
 ### Added
 ### Changed
- 
-## [1.2.0] - 2017-03-13
+
+## [1.2.1] - 2017-03-13
+### Fixed
+- Fixed a bug with calculating whether we matched the head of the queue which caused cook to only schedule 1 job at a time. (this is why 1.2.0 was yanked)
+
+## [1.2.0] - 2017-03-13 - [YANKED]
 ### Added
 - Start of CHANGELOG. We are likely missing some items from 1.0.1, will be better from now on.
 - Switch to use Fenzo for matching from @dgrnbrg and @mforsyth
