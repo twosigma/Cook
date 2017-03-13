@@ -8,7 +8,7 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/) and this p
 ### Added
 ### Changed
  
-## [0.3.0] - 2017-03-13
+## [1.2.0] - 2017-03-13
 ### Added
 - Start of CHANGELOG. We are likely missing some items from 1.0.1, will be better from now on.
 - Switch to use Fenzo for matching from @dgrnbrg and @mforsyth
