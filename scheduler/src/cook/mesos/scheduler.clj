@@ -208,8 +208,9 @@
                                    :task-error} :instance.status/failed)
                prior-job-state (:job/state (d/entity db job))
                instance-ent (d/entity db instance)
-               instance-runtime (- (.getTime (now)) ; Used for reporting
-                                   (.getTime (or (:instance/start-time instance-ent) (now))))
+               current-time (now)
+               instance-runtime (- (.getTime current-time)         ; Used for reporting
+                                   (.getTime (or (:instance/start-time instance-ent) current-time)))
                job-resources (util/job-ent->resources job-ent)]
            (when (#{:instance.status/success :instance.status/failed} instance-status)
              (log/debug "Unassigning task" task-id "from" (:instance/hostname instance-ent))
