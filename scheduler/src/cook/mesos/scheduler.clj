@@ -31,7 +31,6 @@
             [cook.mesos.share :as share]
             [cook.mesos.task :as task]
             [cook.mesos.util :as util]
-            [cook.reporter]
             [datomic.api :as d :refer (q)]
             [mesomatic.scheduler :as mesos]
             [mesomatic.types :as mtypes]
@@ -42,19 +41,21 @@
             [metrics.meters :as meters]
             [metrics.timers :as timers]
             [plumbing.core :refer (map-vals)]
-            [swiss.arrows :refer :all]
-            cook.mesos.schema)
-  (:import com.netflix.fenzo.TaskAssignmentResult
-           com.netflix.fenzo.TaskScheduler
-           com.netflix.fenzo.VirtualMachineLease
-           com.netflix.fenzo.plugins.BinPackingFitnessCalculators
-           java.util.concurrent.TimeUnit
-           org.apache.mesos.Protos$Offer))
+            [swiss.arrows :refer :all])
+  (import com.netflix.fenzo.plugins.BinPackingFitnessCalculators
+          com.netflix.fenzo.ConstraintEvaluator
+          com.netflix.fenzo.ConstraintEvaluator$Result
+          com.netflix.fenzo.TaskAssignmentResult
+          com.netflix.fenzo.TaskScheduler
+          com.netflix.fenzo.TaskScheduler$Builder
+          com.netflix.fenzo.VirtualMachineLease
+          java.util.Date
+          java.util.concurrent.TimeUnit
+          org.apache.mesos.Protos$Offer))
 
 (defn now
   []
-  (java.util.Date.))
-
+  (Date.))
 
 (defn offer-resource-values
   [offer resource-name value-type]
@@ -321,7 +322,7 @@
 ;;; ===========================================================================
 
 (defrecord VirtualMachineLeaseAdapter [offer time]
-  com.netflix.fenzo.VirtualMachineLease
+  VirtualMachineLease
   (cpuCores [_] (or (offer-resource-scalar offer "cpus") 0.0))
   (diskMB [_] (or (offer-resource-scalar offer "disk") 0.0))
   (getScalarValue [_ name] (or (double (offer-resource-scalar offer name)) 0.0))
@@ -348,13 +349,13 @@
 (defn novel-host-constraint
   "This returns a Fenzo hard constraint that ensures the given job won't run on the same host again"
   [job]
-  (reify com.netflix.fenzo.ConstraintEvaluator
+  (reify ConstraintEvaluator
     (getName [_] "novel_host_constraint")
     (evaluate [_ task-request target-vm task-tracker-state]
       (let [previous-hosts (->> (:job/instance job)
                                 (remove #(true? (:instance/preempted? %)))
                                 (mapv :instance/hostname))]
-        (com.netflix.fenzo.ConstraintEvaluator$Result.
+        (ConstraintEvaluator$Result.
           (not-any? #(= % (.getHostname target-vm))
                     previous-hosts)
           (str "Can't run on " (.getHostname target-vm)
@@ -372,7 +373,7 @@
                                   (seq)
                                   (boolean))))
         needs-gpus? (job-needs-gpus? job)]
-    (reify com.netflix.fenzo.ConstraintEvaluator
+    (reify ConstraintEvaluator
       (getName [_] (str (if @needs-gpus? "" "non_") "gpu_host_constraint"))
       (evaluate [_ task-request target-vm task-tracker-state]
         (let [has-gpus? (boolean (or (> (or (.getScalarValue (.getCurrAvailableResources target-vm) "gpus") 0.0) 0)
@@ -380,7 +381,7 @@
                                              @(job-needs-gpus? (:job req)))
                                            (concat (.getRunningTasks target-vm)
                                                    (mapv #(.getRequest %) (.getTasksCurrentlyAssigned target-vm))))))]
-          (com.netflix.fenzo.ConstraintEvaluator$Result.
+          (ConstraintEvaluator$Result.
             (if @needs-gpus?
               has-gpus?
               (not has-gpus?))
@@ -1167,7 +1168,7 @@
 
 (defn make-fenzo-scheduler
   [driver offer-incubate-time-ms good-enough-fitness]
-  (.. (com.netflix.fenzo.TaskScheduler$Builder.)
+  (.. (TaskScheduler$Builder.)
       (disableShortfallEvaluation) ;; We're not using the autoscaling features
       (withLeaseOfferExpirySecs (max (-> offer-incubate-time-ms time/millis time/in-seconds) 1)) ;; should be at least 1 second
       (withRejectAllExpiredOffers)
