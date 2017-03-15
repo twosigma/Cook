@@ -40,8 +40,7 @@
             [metrics.histograms :as histograms]
             [metrics.meters :as meters]
             [metrics.timers :as timers]
-            [plumbing.core :refer (map-vals)]
-            [swiss.arrows :refer :all])
+            [plumbing.core :refer (map-vals)])
   (import com.netflix.fenzo.plugins.BinPackingFitnessCalculators
           com.netflix.fenzo.ConstraintEvaluator
           com.netflix.fenzo.ConstraintEvaluator$Result
@@ -662,6 +661,7 @@
                 (mesos/launch-tasks! driver (mapv :id offers) task-infos)
 
                 (doseq [^TaskAssignmentResult task tasks]
+                (doseq [^TaskAssignmentResult task tasks]
                   (locking fenzo
                     (.. fenzo
                         (getTaskAssigner)
@@ -1008,19 +1008,19 @@
 (defn sort-normal-jobs-by-dru
   "Return a list of normal job entities ordered by dru"
   [pending-task-ents running-task-ents user->dru-divisors]
-  (let [tasks (into running-task-ents pending-task-ents) 
+  (let [tasks (into running-task-ents pending-task-ents)
         task-comparator (util/same-user-task-comparator tasks)
         jobs (timers/time!
                sort-jobs-hierarchy-duration
-               (-<>> tasks
-                     (group-by util/task-ent->user)
-                     (map-vals (fn [task-ents]
-                                 (into (sorted-set-by task-comparator) task-ents)))
-                     (dru/sorted-task-scored-task-pairs <> user->dru-divisors)
-                     (filter (fn [[task scored-task]]
-                               (contains? pending-task-ents task)))
-                     (map (fn [[task scored-task]]
-                            (:job/_instance task)))))]
+               (->> tasks
+                    (group-by util/task-ent->user)
+                    (map-vals (fn [task-ents]
+                                (into (sorted-set-by task-comparator) task-ents)))
+                    (dru/sorted-task-scored-task-pairs user->dru-divisors)
+                    (filter (fn [[task scored-task]]
+                              (contains? pending-task-ents task)))
+                    (map (fn [[task scored-task]]
+                           (:job/_instance task)))))]
     jobs))
 
 (timers/deftimer [cook-mesos scheduler sort-gpu-jobs-hierarchy-duration])
@@ -1030,16 +1030,16 @@
   [pending-task-ents running-task-ents user->dru-divisors]
   (let [jobs (timers/time!
                sort-gpu-jobs-hierarchy-duration
-               (-<>> (concat running-task-ents pending-task-ents)
-                     (group-by util/task-ent->user)
-                     (map (fn [[user task-ents]]
-                            [user (into (sorted-set-by (util/same-user-task-comparator)) task-ents)]))
-                     (into {})
-                     (dru/gpu-task-scored-task-pairs <> user->dru-divisors)
-                     (filter (fn [[task _]]
-                               (contains? pending-task-ents task)))
-                     (map (fn [[task _]]
-                            (:job/_instance task)))))]
+               (->> (concat running-task-ents pending-task-ents)
+                    (group-by util/task-ent->user)
+                    (map (fn [[user task-ents]]
+                           [user (into (sorted-set-by (util/same-user-task-comparator)) task-ents)]))
+                    (into {})
+                    (dru/sorted-task-cumulative-gpu-score-pairs user->dru-divisors)
+                    (filter (fn [[task _]]
+                              (contains? pending-task-ents task)))
+                    (map (fn [[task _]]
+                           (:job/_instance task)))))]
     jobs))
 
 (defn sort-jobs-by-dru

@@ -53,7 +53,7 @@
 
 (defn compute-task-scored-task-pairs
   "Takes a sorted seq of task entities and dru-divisors, returns a list of [task scored-task], preserving the same order of input tasks"
-  [task-ents {mem-divisor :mem cpus-divisor :cpus}]
+  [{mem-divisor :mem cpus-divisor :cpus} task-ents]
   (if (seq task-ents)
     (let [task-resources (->> task-ents
                               (map (comp #(select-keys % [:cpus :mem]) util/job-ent->resources :job/_instance)))
@@ -69,20 +69,19 @@
       scored-tasks)
     '()))
 
-(defn compute-gpu-task-scored-task-pair
+(defn compute-sorted-task-cumulative-gpu-score-pairs
   "Takes a sorted seq of task entities and the gpu divisor, returns a list of [task cumulative-gpus], preserving the same order of input tasks"
-  [task-ents gpu-divisor]
-  (let [task-resources (->> task-ents
-                            (map (comp #(select-keys % [:gpus]) util/job-ent->resources :job/_instance)))
-        task-cum-gpus (->> task-resources
-                           (accumulate-resources)
-                           (map (fn [{:keys [gpus]}]
-                                  (/ gpus gpu-divisor))))
-        scored-tasks (map (fn [task cum-gpus]
-                            [task cum-gpus])
-                          task-ents
-                          task-cum-gpus)]
-    scored-tasks))
+  [gpu-divisor task-ents]
+  (if (seq task-ents)
+    (let [task-resources (->> task-ents
+                              (map (comp #(select-keys % [:gpus]) util/job-ent->resources :job/_instance)))
+          task-cum-gpus (->> task-resources
+                             (accumulate-resources)
+                             (map (fn [{:keys [gpus]}]
+                                    (/ gpus gpu-divisor))))
+          scored-tasks (map vector task-ents task-cum-gpus)]
+      scored-tasks)
+    '()))
 
 (defn sorted-merge
   "Accepts a seq-able datastructure `colls` where each item is seq-able.
@@ -108,13 +107,12 @@
   ([colls]
    (sorted-merge identity compare colls)))
 
-(defn gpu-task-scored-task-pairs
+(defn sorted-task-cumulative-gpu-score-pairs
   "Takes a sorted seq of task entities and the gpu divisor, returns a list of [task cumulative-gpus], preserving the same order of input tasks"
-  [user->sorted-running-task-ents user->dru-divisors]
+  [user->dru-divisors user->sorted-running-task-ents]
   (->> user->sorted-running-task-ents
        (map (fn [[user task-ents]]
-              (compute-gpu-task-scored-task-pair
-                task-ents (-> user user->dru-divisors :gpus))))
+              (compute-sorted-task-cumulative-gpu-score-pairs (-> user user->dru-divisors :gpus) task-ents)))
        (sorted-merge second)))
 
 (timers/deftimer [cook-mesos dru sorted-task-scored-task-pairs-duration])
@@ -122,12 +120,12 @@
 (defn sorted-task-scored-task-pairs
   "Returns a lazy sequence of [task,scored-task] pairs sorted by dru in ascending order.
    If jobs have the same dru, any ordering is allowed"
-  [user->sorted-running-task-ents user->dru-divisors]
+  [user->dru-divisors user->sorted-running-task-ents]
   (timers/time!
     sorted-task-scored-task-pairs-duration
     (->> user->sorted-running-task-ents
        (map (fn [[user task-ents]]
-              (compute-task-scored-task-pairs task-ents (user->dru-divisors user))))
+              (compute-task-scored-task-pairs (user->dru-divisors user) task-ents)))
        (sorted-merge (comp :dru second)))))
 
 (defn next-task->scored-task
@@ -144,6 +142,6 @@
       ;; priority-map doesn't support transients :(
       (recur (-<> task->scored-task
                   (apply dissoc <> (get user->sorted-running-task-ents user))
-                  (into <> (compute-task-scored-task-pairs (get user->sorted-running-task-ents' user) (get user->dru-divisors user))))
+                  (into <> (compute-task-scored-task-pairs (get user->dru-divisors user) (get user->sorted-running-task-ents' user))))
              remaining-users)
       task->scored-task)))

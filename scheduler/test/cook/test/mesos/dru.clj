@@ -25,7 +25,7 @@
 (deftest test-compute-task-scored-task-pairs
   (testing "return empty set on input empty set"
     (is (= []
-           (dru/compute-task-scored-task-pairs '() {:mem 25.0 :cpus 25.0}))))
+           (dru/compute-task-scored-task-pairs {:mem 25.0 :cpus 25.0} '()))))
 
   (testing "test1"
     (let [datomic-uri "datomic:mem://test-score-tasks"
@@ -51,7 +51,7 @@
                 [task-ent2 scored-task2]
                 [task-ent3 scored-task3]
                 [task-ent4 scored-task4]]
-               (dru/compute-task-scored-task-pairs tasks {:mem 25.0 :cpus 25.0})))))))
+               (dru/compute-task-scored-task-pairs {:mem 25.0 :cpus 25.0} tasks)))))))
 
 (deftest test-init-dru-divisors
   (testing "test1"
@@ -73,7 +73,7 @@
 
 (deftest test-sorted-task-scored-task-pairs
   (testing "dru order correct"
-    (let [datomic-uri "datomic:mem://test-init-task_scored-task"
+    (let [datomic-uri "datomic:mem://test-sorted-task-scored-task-pairs"
           conn (restore-fresh-database! datomic-uri)
           jobs [(create-dummy-job conn :user "ljin" :memory 10.0 :ncpus 10.0)
                 (create-dummy-job conn :user "ljin" :memory 5.0  :ncpus 5.0)
@@ -89,8 +89,64 @@
             ordered-drus [1.0 1.0 1.0 1.5 4.0 5.5]]
         (is (= ordered-drus
                (map (comp :dru second)
-                    (dru/sorted-task-scored-task-pairs (map-vals (partial sort-by identity (util/same-user-task-comparator))
-                                                          (group-by util/task-ent->user task-ents))
-                                                {"ljin" share "wzhao" share "sunil" share}))))))))
+                    (dru/sorted-task-scored-task-pairs
+                      {"ljin" share "wzhao" share "sunil" share}
+                      (map-vals (partial sort-by identity (util/same-user-task-comparator))
+                                (group-by util/task-ent->user task-ents))))))))))
+
+(deftest test-compute-sorted-task-cumulative-gpu-score-pairs
+  (testing "return empty set on input empty set"
+    (is (= []
+           (dru/compute-sorted-task-cumulative-gpu-score-pairs 25.0 '()))))
+
+  (testing "test1"
+    (let [datomic-uri "datomic:mem://test-score-tasks"
+          conn (restore-fresh-database! datomic-uri)
+          job1 (create-dummy-job conn :user "ljin" :gpus 10.0)
+          job2 (create-dummy-job conn :user "ljin" :gpus 5.0)
+          job3 (create-dummy-job conn :user "ljin" :gpus 25.0)
+          job4 (create-dummy-job conn :user "ljin" :gpus 15.0)
+          task1 (create-dummy-instance conn job1 :instance-status :instance.status/running)
+          task2 (create-dummy-instance conn job2 :instance-status :instance.status/running)
+          task3 (create-dummy-instance conn job3 :instance-status :instance.status/running)
+          task4 (create-dummy-instance conn job4 :instance-status :instance.status/running)
+          task-ent1 (d/entity (d/db conn) task1)
+          task-ent2 (d/entity (d/db conn) task2)
+          task-ent3 (d/entity (d/db conn) task3)
+          task-ent4 (d/entity (d/db conn) task4)
+          tasks [task-ent1 task-ent2 task-ent3 task-ent4]]
+      (let [expected-result [[task-ent1 1.0] [task-ent2 1.5] [task-ent3 4.0] [task-ent4 5.5]]]
+        (is (= expected-result
+               (dru/compute-sorted-task-cumulative-gpu-score-pairs 10.0 tasks)))))))
+
+(deftest test-sorted-task-cumulative-gpu-score-pairs
+  (testing "dru order correct"
+    (let [datomic-uri "datomic:mem://test-sorted-task-cumulative-gpu-score-pairs"
+          conn (restore-fresh-database! datomic-uri)
+          jobs [(create-dummy-job conn :user "ljin" :gpus 10.0)
+                (create-dummy-job conn :user "ljin" :gpus 5.0)
+                (create-dummy-job conn :user "ljin" :gpus 25.0)
+                (create-dummy-job conn :user "ljin" :gpus 15.0)
+                (create-dummy-job conn :user "wzhao" :gpus 10.0)
+                (create-dummy-job conn :user "sunil" :gpus 10.0)]
+          tasks (doseq [job jobs]
+                  (create-dummy-instance conn job :instance-status :instance.status/running))
+          db (d/db conn)
+          task-ents (util/get-running-task-ents db)]
+      (let [expected-result [["wzhao" 1.0]
+                             ["ljin" 2.0]
+                             ["ljin" 3.0]
+                             ["sunil" 4.0]
+                             ["ljin" 8.0]
+                             ["ljin" 11.0]]]
+        (is (= expected-result
+               (map
+                 (fn [[task gpu-score]] [(get-in task [:job/_instance :job/user]) gpu-score])
+                 (dru/sorted-task-cumulative-gpu-score-pairs
+                   {"ljin"  {:gpus 5.0}
+                    "wzhao" {:gpus 10.0}
+                    "sunil" {:gpus 2.5}}
+                   (map-vals (partial sort-by identity (util/same-user-task-comparator))
+                             (group-by util/task-ent->user task-ents))))))))))
 
 (comment (run-tests))
