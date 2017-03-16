@@ -29,7 +29,9 @@
             [datomic.api :as d :refer (q db)]
             [mesomatic.scheduler :as msched]
             [mesomatic.types :as mtypes])
-  (:import [org.mockito Mockito]))
+  (:import (com.netflix.fenzo TaskScheduler)
+           (java.util UUID)
+           (org.mockito Mockito)))
 
 (def datomic-uri "datomic:mem://test-mesos-jobs")
 
@@ -59,10 +61,10 @@
             db (d/db conn)]
         (is (= [j2 j3 j6 j4 j8] (map :db/id (:normal (sched/sort-jobs-by-dru db db)))))))
     (testing "test2"
-        (let [_ (share/set-share! conn "default" :mem 10.0 :cpus 10.0)
-              _ (share/set-share! conn "sunil" :mem 100.0 :cpus 100.0)
-              db (d/db conn)]
-          (is (= [j8 j2 j3 j6 j4] (map :db/id (:normal (sched/sort-jobs-by-dru db db))))))))
+      (let [_ (share/set-share! conn "default" :mem 10.0 :cpus 10.0)
+            _ (share/set-share! conn "sunil" :mem 100.0 :cpus 100.0)
+            db (d/db conn)]
+        (is (= [j8 j2 j3 j6 j4] (map :db/id (:normal (sched/sort-jobs-by-dru db db))))))))
 
   (let [uri "datomic:mem://test-sort-jobs-by-dru"
         conn (restore-fresh-database! uri)
@@ -147,7 +149,7 @@
                                              :instance/start-time #inst "2014-09-23T00:06"
                                              :instance/task-id "job 2: task 1"}]}
                             {:db/id j3
-                            :job/command "job 3 command"
+                             :job/command "job 3 command"
                              :job/user "wzhao"
                              :job/uuid #uuid "cccccccc-cccc-cccc-cccc-cccccccccccc"
                              :job/max-retries 3
@@ -190,32 +192,32 @@
         offer-maker (fn [cpus mem]
                       [{:resources [{:name "cpus" :scalar cpus}
                                     {:name "mem" :scalar mem}]
-                        :id {:value (str "id-" (java.util.UUID/randomUUID))}
-                        :slave-id {:value (str "slave-" (java.util.UUID/randomUUID))}
-                        :hostname (str "host-" (java.util.UUID/randomUUID))}])
-        fid (str "framework-id-" (java.util.UUID/randomUUID))
+                        :id {:value (str "id-" (UUID/randomUUID))}
+                        :slave-id {:value (str "slave-" (UUID/randomUUID))}
+                        :hostname (str "host-" (UUID/randomUUID))}])
+        fid (str "framework-id-" (UUID/randomUUID))
         fenzo-maker #(sched/make-fenzo-scheduler nil 100000 1)] ; The params are for offer declining, which should never happen
     (testing "Consume no schedule cases"
       (are [schedule offers] (= [] (sched/match-offer-to-schedule (fenzo-maker) schedule offers))
-           [] (offer-maker 0 0)
-           [] (offer-maker 2 2000)
-           schedule (offer-maker 0 0)
-           schedule (offer-maker 0.5 100)
-           schedule (offer-maker 0.5 1000)
-           schedule (offer-maker 1 500)))
+                             [] (offer-maker 0 0)
+                             [] (offer-maker 2 2000)
+                             schedule (offer-maker 0 0)
+                             schedule (offer-maker 0.5 100)
+                             schedule (offer-maker 0.5 1000)
+                             schedule (offer-maker 1 500)))
     (testing "Consume Partial schedule cases"
       ;; We're looking for one task to get assigned
       (are [offers] (= 1 (count (mapcat :tasks (sched/match-offer-to-schedule
                                                  (fenzo-maker) schedule offers))))
-           (offer-maker 1 1000)
-           (offer-maker 1.5 1500)))
+                    (offer-maker 1 1000)
+                    (offer-maker 1.5 1500)))
     (testing "Consume full schedule cases"
       ;; We're looking for the entire schedule to get assigned
       (are [offers] (= (count schedule)
                        (count (mapcat :tasks (sched/match-offer-to-schedule
                                                (fenzo-maker) schedule offers))))
-           (offer-maker 4 4000)
-           (offer-maker 5 5000)))))
+                    (offer-maker 4 4000)
+                    (offer-maker 5 5000)))))
 
 (deftest test-get-user->used-resources
   (let [uri "datomic:mem://test-get-used-resources"
@@ -229,15 +231,15 @@
     ;; Query u2
     (is (= {"u2" {:mem 10.0 :cpus 1.0}} (sched/get-user->used-resources db "u2")))
     ;; Query unknow user
-    (is (= {"whoami" {:mem  0.0 :cpus 0.0}} (sched/get-user->used-resources db "whoami")))
+    (is (= {"whoami" {:mem 0.0 :cpus 0.0}} (sched/get-user->used-resources db "whoami")))
     ; Query all users
     (is (= {"u1" {:mem 20.0 :cpus 2.0}
             "u2" {:mem 10.0 :cpus 1.0}}
            (sched/get-user->used-resources db)))))
 
 (defn joda-datetime->java-date
-    [datetime]
-    (java.util.Date. (tc/to-long datetime)))
+  [datetime]
+  (java.util.Date. (tc/to-long datetime)))
 
 (deftest test-get-lingering-tasks
   (let [uri "datomic:mem://test-get-lingering-tasks"
@@ -275,76 +277,76 @@
 
 (deftest test-kill-lingering-tasks
   ;; Ensure that lingering tasks are killed properly
-   (let [uri "datomic:mem://test-kill-lingering-tasks"
-         conn (restore-fresh-database! uri)
-         ;; a job has been timeout
-         job-id-1 (create-dummy-job conn :user "tsram" :job-state :job.state/running)
-         ;; a job has been timeout
-         job-id-2 (create-dummy-job conn :user "tsram" :job-state :job.state/running)
-         ;; a job is not timeout
-         job-id-3 (create-dummy-job conn :user "tsram" :job-state :job.state/running)
-         timeout-hours 4
-         start-time-1 (joda-datetime->java-date
-                        (t/minus (t/now) (t/hours (+ timeout-hours 1))))
-         start-time-2 (joda-datetime->java-date
-                        (t/minus (t/now) (t/hours (+ timeout-hours 1))))
-         start-time-3 (joda-datetime->java-date
-                        (t/minus (t/now) (t/hours (- timeout-hours 1))))
-         instance-id-1 (create-dummy-instance conn job-id-1
-                                              :instance-status :instance.status/unknown
-                                              :task-id "task-1"
-                                              :start-time start-time-1)
-         instance-id-2 (create-dummy-instance conn job-id-2
-                                              :instance-status :instance.status/running
-                                              :task-id "task-2"
-                                              :start-time start-time-2)
-         instance-id-3 (create-dummy-instance conn job-id-3
-                                              :instance-status :instance.status/running
-                                              :task-id "task-3"
-                                              :start-time start-time-3)
-         test-db (d/db conn)
-         config {:timeout-hours timeout-hours}
-         dummy-driver (reify msched/SchedulerDriver (kill-task! [_ _] nil))]
+  (let [uri "datomic:mem://test-kill-lingering-tasks"
+        conn (restore-fresh-database! uri)
+        ;; a job has been timeout
+        job-id-1 (create-dummy-job conn :user "tsram" :job-state :job.state/running)
+        ;; a job has been timeout
+        job-id-2 (create-dummy-job conn :user "tsram" :job-state :job.state/running)
+        ;; a job is not timeout
+        job-id-3 (create-dummy-job conn :user "tsram" :job-state :job.state/running)
+        timeout-hours 4
+        start-time-1 (joda-datetime->java-date
+                       (t/minus (t/now) (t/hours (+ timeout-hours 1))))
+        start-time-2 (joda-datetime->java-date
+                       (t/minus (t/now) (t/hours (+ timeout-hours 1))))
+        start-time-3 (joda-datetime->java-date
+                       (t/minus (t/now) (t/hours (- timeout-hours 1))))
+        instance-id-1 (create-dummy-instance conn job-id-1
+                                             :instance-status :instance.status/unknown
+                                             :task-id "task-1"
+                                             :start-time start-time-1)
+        instance-id-2 (create-dummy-instance conn job-id-2
+                                             :instance-status :instance.status/running
+                                             :task-id "task-2"
+                                             :start-time start-time-2)
+        instance-id-3 (create-dummy-instance conn job-id-3
+                                             :instance-status :instance.status/running
+                                             :task-id "task-3"
+                                             :start-time start-time-3)
+        test-db (d/db conn)
+        config {:timeout-hours timeout-hours}
+        dummy-driver (reify msched/SchedulerDriver (kill-task! [_ _] nil))]
 
-     (sched/kill-lingering-tasks (t/now) conn dummy-driver config)
+    (sched/kill-lingering-tasks (t/now) conn dummy-driver config)
 
-     (is (= :instance.status/failed
-            (ffirst (q '[:find ?status
-                         :in $ ?i
-                         :where
-                         [?i :instance/status ?s]
-                         [?s :db/ident ?status]]
-                       (db conn) instance-id-1))))
-     (is (= :max-runtime-exceeded
-            (ffirst (q '[:find ?reason-name
-                         :in $ ?i
-                         :where
-                         [?i :instance/reason ?r]
-                         [?r :reason/name ?reason-name]]
-                       (db conn) instance-id-1))))
+    (is (= :instance.status/failed
+           (ffirst (q '[:find ?status
+                        :in $ ?i
+                        :where
+                        [?i :instance/status ?s]
+                        [?s :db/ident ?status]]
+                      (db conn) instance-id-1))))
+    (is (= :max-runtime-exceeded
+           (ffirst (q '[:find ?reason-name
+                        :in $ ?i
+                        :where
+                        [?i :instance/reason ?r]
+                        [?r :reason/name ?reason-name]]
+                      (db conn) instance-id-1))))
 
-     (is (= :instance.status/failed
-            (ffirst (q '[:find ?status
-                         :in $ ?i
-                         :where
-                         [?i :instance/status ?s]
-                         [?s :db/ident ?status]]
-                       (db conn) instance-id-2))))
-     (is (= :max-runtime-exceeded
-            (ffirst (q '[:find ?reason-name
-                         :in $ ?i
-                         :where
-                         [?i :instance/reason ?r]
-                         [?r :reason/name ?reason-name]]
-                       (db conn) instance-id-2))))
+    (is (= :instance.status/failed
+           (ffirst (q '[:find ?status
+                        :in $ ?i
+                        :where
+                        [?i :instance/status ?s]
+                        [?s :db/ident ?status]]
+                      (db conn) instance-id-2))))
+    (is (= :max-runtime-exceeded
+           (ffirst (q '[:find ?reason-name
+                        :in $ ?i
+                        :where
+                        [?i :instance/reason ?r]
+                        [?r :reason/name ?reason-name]]
+                      (db conn) instance-id-2))))
 
-     (is (= :instance.status/running
-            (ffirst (q '[:find ?status
-                         :in $ ?i
-                         :where
-                         [?i :instance/status ?s]
-                         [?s :db/ident ?status]]
-                       (db conn) instance-id-3))))))
+    (is (= :instance.status/running
+           (ffirst (q '[:find ?status
+                        :in $ ?i
+                        :where
+                        [?i :instance/status ?s]
+                        [?s :db/ident ?status]]
+                      (db conn) instance-id-3))))))
 
 (deftest test-filter-offensive-jobs
   (let [uri "datomic:mem://test-filter-offensive-jobs"
@@ -431,7 +433,7 @@
   ;; ensure that the VirtualMachineLeaseAdapter can successfully handle an offer from Mesomatic.
   (let [;; observed offer from Mesomatic API:
         when (System/currentTimeMillis)
-        offer #mesomatic.types.Offer{:id #mesomatic.types.OfferID {:value "my-offer-id"}
+        offer #mesomatic.types.Offer{:id #mesomatic.types.OfferID{:value "my-offer-id"}
                                      :framework-id #mesomatic.types.FrameworkID{:value "my-framework-id"}
                                      :slave-id #mesomatic.types.SlaveID{:value "my-slave-id"},
                                      :hostname "slave3",
@@ -475,7 +477,7 @@
 
 (deftest test-gpu-constraint
   (let [fid #mesomatic.types.FrameworkID{:value "my-framework-id"}
-        gpu-offer #mesomatic.types.Offer{:id #mesomatic.types.OfferID {:value "my-offer-id"}
+        gpu-offer #mesomatic.types.Offer{:id #mesomatic.types.OfferID{:value "my-offer-id"}
                                          :framework-id fid
                                          :slave-id #mesomatic.types.SlaveID{:value "my-slave-id"},
                                          :hostname "slave3",
@@ -486,7 +488,7 @@
                                                      #mesomatic.types.Resource{:name "gpus", :type :value-scalar :scalar 2.0 :role "*"}],
                                          :attributes [],
                                          :executor-ids []}
-        non-gpu-offer #mesomatic.types.Offer{:id #mesomatic.types.OfferID {:value "my-offer-id"}
+        non-gpu-offer #mesomatic.types.Offer{:id #mesomatic.types.OfferID{:value "my-offer-id"}
                                              :framework-id fid
                                              :slave-id #mesomatic.types.SlaveID{:value "my-slave-id"},
                                              :hostname "slave3",
@@ -508,35 +510,35 @@
         mock-gpu-assignment #(-> (Mockito/when (.getRequest (Mockito/mock com.netflix.fenzo.TaskAssignmentResult)))
                                  (.thenReturn (sched/->TaskRequestAdapter other-gpu-job
                                                                           (util/job-ent->resources other-gpu-job)
-                                                                          (str (java.util.UUID/randomUUID))
+                                                                          (str (UUID/randomUUID))
                                                                           (atom nil)))
                                  (.getMock))]
     (doseq [[type gpu-lease] [["gpu avail"
                                (reify com.netflix.fenzo.VirtualMachineCurrentState
-                                (getHostname [_] "test-host")
-                                (getRunningTasks [_] [])
-                                (getTasksCurrentlyAssigned [_] [])
-                                (getCurrAvailableResources [_]  (sched/->VirtualMachineLeaseAdapter gpu-offer 0)))]
+                                 (getHostname [_] "test-host")
+                                 (getRunningTasks [_] [])
+                                 (getTasksCurrentlyAssigned [_] [])
+                                 (getCurrAvailableResources [_] (sched/->VirtualMachineLeaseAdapter gpu-offer 0)))]
                               ["running gpu"
                                (reify com.netflix.fenzo.VirtualMachineCurrentState
-                                (getHostname [_] "test-host")
-                                (getRunningTasks [_] [(sched/->TaskRequestAdapter other-gpu-job
-                                                                          (util/job-ent->resources other-gpu-job)
-                                                                          (str (java.util.UUID/randomUUID))
-                                                                          (atom nil))])
-                                (getTasksCurrentlyAssigned [_] [])
-                                (getCurrAvailableResources [_]  (sched/->VirtualMachineLeaseAdapter non-gpu-offer 0)))]
+                                 (getHostname [_] "test-host")
+                                 (getRunningTasks [_] [(sched/->TaskRequestAdapter other-gpu-job
+                                                                                   (util/job-ent->resources other-gpu-job)
+                                                                                   (str (UUID/randomUUID))
+                                                                                   (atom nil))])
+                                 (getTasksCurrentlyAssigned [_] [])
+                                 (getCurrAvailableResources [_] (sched/->VirtualMachineLeaseAdapter non-gpu-offer 0)))]
                               ["gpu assigned"
                                (reify com.netflix.fenzo.VirtualMachineCurrentState
-                                (getHostname [_] "test-host")
-                                (getRunningTasks [_] [])
-                                (getTasksCurrentlyAssigned [_] [(mock-gpu-assignment)])
-                                (getCurrAvailableResources [_]  (sched/->VirtualMachineLeaseAdapter non-gpu-offer 0)))]]]
+                                 (getHostname [_] "test-host")
+                                 (getRunningTasks [_] [])
+                                 (getTasksCurrentlyAssigned [_] [(mock-gpu-assignment)])
+                                 (getCurrAvailableResources [_] (sched/->VirtualMachineLeaseAdapter non-gpu-offer 0)))]]]
       (is (.isSuccessful
             (.evaluate (sched/gpu-host-constraint gpu-job)
                        (sched/->TaskRequestAdapter gpu-job
                                                    (util/job-ent->resources gpu-job)
-                                                   (str (java.util.UUID/randomUUID))
+                                                   (str (UUID/randomUUID))
                                                    (atom nil))
                        gpu-lease
                        nil))
@@ -545,37 +547,37 @@
                  (.evaluate (sched/gpu-host-constraint non-gpu-job)
                             (sched/->TaskRequestAdapter non-gpu-job
                                                         (util/job-ent->resources non-gpu-job)
-                                                        (str (java.util.UUID/randomUUID))
+                                                        (str (UUID/randomUUID))
                                                         (atom nil))
                             gpu-lease
                             nil)))
-          (str "GPU task on GPU host with " type " should fail") )
+          (str "GPU task on GPU host with " type " should fail"))
       (is (not (.isSuccessful
                  (.evaluate (sched/gpu-host-constraint gpu-job)
                             (sched/->TaskRequestAdapter gpu-job
                                                         (util/job-ent->resources gpu-job)
-                                                        (str (java.util.UUID/randomUUID))
+                                                        (str (UUID/randomUUID))
                                                         (atom nil))
                             (reify com.netflix.fenzo.VirtualMachineCurrentState
                               (getHostname [_] "test-host")
                               (getRunningTasks [_] [])
                               (getTasksCurrentlyAssigned [_] [])
-                              (getCurrAvailableResources [_]  (sched/->VirtualMachineLeaseAdapter non-gpu-offer 0)))
+                              (getCurrAvailableResources [_] (sched/->VirtualMachineLeaseAdapter non-gpu-offer 0)))
                             nil)))
           "GPU task on non GPU host should fail")
       (is (.isSuccessful
-          (.evaluate (sched/gpu-host-constraint non-gpu-job)
-                     (sched/->TaskRequestAdapter non-gpu-job
-                                                 (util/job-ent->resources non-gpu-job)
-                                                 (str (java.util.UUID/randomUUID))
-                                                 (atom nil))
-                   (reify com.netflix.fenzo.VirtualMachineCurrentState
-                     (getHostname [_] "test-host")
-                     (getRunningTasks [_] [])
-                     (getTasksCurrentlyAssigned [_] [])
-                     (getCurrAvailableResources [_]  (sched/->VirtualMachineLeaseAdapter non-gpu-offer 0)))
-                   nil))
-        "non GPU task on non GPU host should succeed"))))
+            (.evaluate (sched/gpu-host-constraint non-gpu-job)
+                       (sched/->TaskRequestAdapter non-gpu-job
+                                                   (util/job-ent->resources non-gpu-job)
+                                                   (str (UUID/randomUUID))
+                                                   (atom nil))
+                       (reify com.netflix.fenzo.VirtualMachineCurrentState
+                         (getHostname [_] "test-host")
+                         (getRunningTasks [_] [])
+                         (getTasksCurrentlyAssigned [_] [])
+                         (getCurrAvailableResources [_] (sched/->VirtualMachineLeaseAdapter non-gpu-offer 0)))
+                       nil))
+          "non GPU task on non GPU host should succeed"))))
 
 (deftest test-gpu-share-prioritization
   (let [uri "datomic:mem://test-gpu-shares"
@@ -595,9 +597,9 @@
             db (d/db conn)]
         (is (= [ljin-2 wzhao-1 ljin-3 ljin-4 wzhao-2] (map :db/id (:gpu (sched/sort-jobs-by-dru db db)))))))
     (testing "test2"
-        (let [_ (share/set-share! conn "ljin" :gpus 1.0)
-              db (d/db conn)]
-          (is (= [wzhao-1 wzhao-2 ljin-2 ljin-3 ljin-4] (map :db/id (:gpu (sched/sort-jobs-by-dru db db)))))))))
+      (let [_ (share/set-share! conn "ljin" :gpus 1.0)
+            db (d/db conn)]
+        (is (= [wzhao-1 wzhao-2 ljin-2 ljin-3 ljin-4] (map :db/id (:gpu (sched/sort-jobs-by-dru db db)))))))))
 
 (deftest test-cancelled-task-killer
   (let [uri "datomic:mem://test-gpu-shares"
@@ -629,54 +631,54 @@
         fenzo (sched/make-fenzo-scheduler driver-atom 1500 0.8)
         make-dummy-status-update (fn [task-id reason state & {:keys [progress] :or {progress nil}}]
                                    (let [task {:task-id {:value task-id}
-                                                :reason reason
-                                                :state state}]
+                                               :reason reason
+                                               :state state}]
                                      task))]
     (testing "Mesos task death"
       (let [job-id (create-dummy-job conn :user "tsram" :job-state :job.state/running)
             task-id "task1"
             instance-id (create-dummy-instance conn job-id
-                            :instance-status :instance.status/running
-                            :task-id task-id)]
+                                               :instance-status :instance.status/running
+                                               :task-id task-id)]
         ; Wait for async database transaction inside handle-status-update
         (async/<!! (sched/handle-status-update conn driver fenzo
-                     (make-dummy-status-update task-id :reason-gc-error :task-killed)))
+                                               (make-dummy-status-update task-id :reason-gc-error :task-killed)))
         (is (= :instance.status/failed
-             (ffirst (q '[:find ?status
-                          :in $ ?i
-                          :where
-                          [?i :instance/status ?s]
-                          [?s :db/ident ?status]]
-                         (db conn) instance-id))))
+               (ffirst (q '[:find ?status
+                            :in $ ?i
+                            :where
+                            [?i :instance/status ?s]
+                            [?s :db/ident ?status]]
+                          (db conn) instance-id))))
         (is (= :mesos-gc-error
                (ffirst (q '[:find ?reason-name
                             :in $ ?i
                             :where
                             [?i :instance/reason ?r]
                             [?r :reason/name ?reason-name]]
-                           (db conn) instance-id))))))
+                          (db conn) instance-id))))))
     (testing "Pre-existing reason is not mea-culpa. New reason is. Job still out of retries because non-mea-culpa takes preference"
       (let [job-id (create-dummy-job conn
-                     :user "tsram"
-                     :job-state :job.state/completed
-                     :retry-count 3)
+                                     :user "tsram"
+                                     :job-state :job.state/completed
+                                     :retry-count 3)
             task-id "task2"
             _ (create-dummy-instance conn job-id
-                            :instance-status :instance.status/failed
-                            :reason :unknown)
+                                     :instance-status :instance.status/failed
+                                     :reason :unknown)
             _ (create-dummy-instance conn job-id
-                            :instance-status :instance.status/failed
-                            :reason :unknown)
+                                     :instance-status :instance.status/failed
+                                     :reason :unknown)
             _ (create-dummy-instance conn job-id
-                            :instance-status :instance.status/failed
-                            :reason :mesos-master-disconnected) ; Mea-culpa
+                                     :instance-status :instance.status/failed
+                                     :reason :mesos-master-disconnected) ; Mea-culpa
             instance-id (create-dummy-instance conn job-id
-                            :instance-status :instance.status/failed
-                            :task-id task-id
-                            :reason :max-runtime-exceeded)] ; Previous reason is not mea-culpa
+                                               :instance-status :instance.status/failed
+                                               :task-id task-id
+                                               :reason :max-runtime-exceeded)] ; Previous reason is not mea-culpa
         ; Status update says slave got restarted (mea-culpa)
         (async/<!! (sched/handle-status-update conn driver fenzo
-                     (make-dummy-status-update task-id :mesos-slave-restarted :task-killed)))
+                                               (make-dummy-status-update task-id :mesos-slave-restarted :task-killed)))
         ; Assert old reason persists
         (is (= :max-runtime-exceeded
                (ffirst (q '[:find ?reason-name
@@ -684,7 +686,7 @@
                             :where
                             [?i :instance/reason ?r]
                             [?r :reason/name ?reason-name]]
-                           (db conn) instance-id))))
+                          (db conn) instance-id))))
         ; Assert job still marked as out of retries
         (is (= :job.state/completed
                (ffirst (q '[:find ?state
@@ -692,25 +694,25 @@
                             :where
                             [?j :job/state ?s]
                             [?s :db/ident ?state]]
-                           (db conn) job-id))))
+                          (db conn) job-id))))
         ))
     (testing "Tasks of completed jobs are killed"
       (let [job-id (create-dummy-job conn
-                     :user "tsram"
-                     :job-state :job.state/completed
-                     :retry-count 3)
+                                     :user "tsram"
+                                     :job-state :job.state/completed
+                                     :retry-count 3)
             task-id-a "taska"
             task-id-b "taskb"
             instance-id-a (create-dummy-instance conn job-id
-                            :instance-status :instance.status/running
-                            :task-id task-id-a
-                            :reason :unknown)
+                                                 :instance-status :instance.status/running
+                                                 :task-id task-id-a
+                                                 :reason :unknown)
             instance-id-b (create-dummy-instance conn job-id
-                            :instance-status :instance.status/success
-                            :task-id task-id-b
-                            :reason :unknown)]
+                                                 :instance-status :instance.status/success
+                                                 :task-id task-id-b
+                                                 :reason :unknown)]
         (async/<!! (sched/handle-status-update conn driver fenzo
-                     (make-dummy-status-update task-id-a :mesos-slave-restarted :task-running)))
+                                               (make-dummy-status-update task-id-a :mesos-slave-restarted :task-running)))
         (is (true? (contains? @tasks-killed task-id-a)))
         ))
 
@@ -777,8 +779,8 @@
   (let [declined-offer-ids-atom (atom [])
         offers-chan (async/chan (async/buffer 1))
         mock-driver (reify msched/SchedulerDriver
-                               (decline-offer [driver id]
-                                 (swap! declined-offer-ids-atom conj id)))
+                      (decline-offer [driver id]
+                        (swap! declined-offer-ids-atom conj id)))
         offer-1 {:id {:value "foo"}}
         offer-2 {:id {:value "bar"}}
         offer-3 {:id {:value "baz"}}]
@@ -787,6 +789,29 @@
       @(sched/receive-offers offers-chan mock-driver [offer-2])
       @(sched/receive-offers offers-chan mock-driver [offer-3])
       (is (= @declined-offer-ids-atom [(:id offer-2) (:id offer-3)])))))
+
+(deftest test-below-quota?
+  (testing "not using quota"
+    (is (sched/below-quota? {:count 5, :cpus 15, :mem 9999}
+                            {:count 0, :cpus 0, :mem 0})))
+  (testing "inside quota"
+    (is (sched/below-quota? {:count 5, :cpus 15, :mem 9999}
+                            {:count 4, :cpus 10, :mem 1234})))
+  (testing "at quota limit"
+    (is (sched/below-quota? {:count 5, :cpus 15, :mem 9999}
+                            {:count 5, :cpus 15, :mem 9999})))
+  (testing "exceed quota limit - count"
+    (is (not (sched/below-quota? {:count 5, :cpus 15, :mem 9999}
+                                 {:count 6, :cpus 10, :mem 1234}))))
+  (testing "exceed quota limit - cpus"
+    (is (not (sched/below-quota? {:count 5, :cpus 15, :mem 9999}
+                                 {:count 4, :cpus 20, :mem 1234}))))
+  (testing "exceed quota limit - mem"
+    (is (not (sched/below-quota? {:count 5, :cpus 15, :mem 1234}
+                                 {:count 4, :cpus 10, :mem 4321}))))
+  (testing "at quota limit with extra keys"
+    (is (sched/below-quota? {:count 5, :cpus 15, :mem 9999, :gpus 4}
+                            {:count 5, :cpus 15, :mem 9999}))))
 
 (deftest test-job->usage
   (testing "cpus and mem usage"
@@ -823,6 +848,25 @@
     (is (= {:count 1, :cpus 2, :gpus 10, :mem nil}
            (sched/job->usage {:job/resource [{:resource/type :cpus, :resource/amount 2}
                                              {:resource/type :gpus, :resource/amount 10}]})))))
+
+(deftest test-filter-based-on-quota
+  (let [test-user "john"
+        user->usage {test-user {:count 1, :cpus 2, :mem 1024}}
+        make-job (fn [id cpus mem]
+                   {:db/id id
+                    :job/user test-user
+                    :job/resource [{:resource/type :cpus, :resource/amount cpus}
+                                   {:resource/type :mem, :resource/amount mem}]})
+        queue [(make-job 1 2 2048) (make-job 2 1 1024) (make-job 3 3 4096) (make-job 4 1 1024)]]
+    (testing "no jobs included"
+      (is (= []
+             (sched/filter-based-on-quota {test-user {:count 1, :cpus 2, :mem 1024}} user->usage queue))))
+    (testing "all jobs included"
+      (is (= [(make-job 1 2 2048) (make-job 2 1 1024) (make-job 3 3 4096) (make-job 4 1 1024)]
+             (sched/filter-based-on-quota {test-user {:count 10, :cpus 20, :mem 32768}} user->usage queue))))
+    (testing "room for later jobs not included"
+      (is (= [(make-job 1 2 2048) (make-job 2 1 1024)]
+             (sched/filter-based-on-quota {test-user {:count 4, :cpus 20, :mem 6144}} user->usage queue))))))
 
 (comment
   (run-tests))

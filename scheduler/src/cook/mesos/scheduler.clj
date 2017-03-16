@@ -666,7 +666,7 @@
                     (.. fenzo
                         (getTaskAssigner)
                         (call (.getRequest task) (get-in (first leases) [:offer :hostname])))))))
-              matched-head?)))
+              matched-head?))))
         (catch Throwable t
           (meters/mark! handle-resource-offer!-errors)
           (log/error t "Error in match:" (ex-data t))
