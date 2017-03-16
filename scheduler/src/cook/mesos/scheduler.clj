@@ -497,8 +497,9 @@
   ;; The select-keys on quota was added because if there is a
   ;; resource in quota that the current usage doesn't use below-quota?
   ;; will incorrectly return false
-  (every? true? (vals (merge-with <= usage
-                                  (select-keys quota (keys usage))))))
+  (every? (fn [[usage-key usage-val]]
+            (<= usage-val (get quota usage-key 0)))
+          (seq usage)))
 
 (defn job->usage
   "Takes a job-ent and returns a map of the usage of that job,
