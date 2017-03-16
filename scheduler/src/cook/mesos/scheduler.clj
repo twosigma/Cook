@@ -42,17 +42,10 @@
             [metrics.meters :as meters]
             [metrics.timers :as timers]
             [plumbing.core :refer (map-vals)])
-  (import com.netflix.fenzo.ConstraintEvaluator
-          com.netflix.fenzo.ConstraintEvaluator$Result
-          com.netflix.fenzo.TaskAssignmentResult
-          com.netflix.fenzo.TaskRequest
-          com.netflix.fenzo.TaskScheduler
-          com.netflix.fenzo.TaskScheduler$Builder
-          com.netflix.fenzo.VirtualMachineLease
-          com.netflix.fenzo.VirtualMachineLease$Range
-          com.netflix.fenzo.VirtualMachineCurrentState
-          com.netflix.fenzo.functions.Action1
-          com.netflix.fenzo.functions.Func1
+  (import [com.netflix.fenzo ConstraintEvaluator ConstraintEvaluator$Result TaskAssignmentResult TaskRequest
+                             TaskScheduler TaskScheduler$Builder VirtualMachineLease VirtualMachineLease$Range
+                             VirtualMachineCurrentState]
+          [com.netflix.fenzo.functions Action1 Func1]
           com.netflix.fenzo.plugins.BinPackingFitnessCalculators
           java.util.Date
           java.util.concurrent.TimeUnit
@@ -534,14 +527,14 @@
                         (map job->usage)
                         (reduce (partial merge-with +)))))))
 
-(defn- category->pending-jobs->category->considerable-jobs
+(defn category->pending-jobs->category->considerable-jobs
   "Limit the pending jobs to considerable jobs based on usage and quota.
    Further limit the considerable jobs to a maximum of num-considerable jobs."
-  [db pending-jobs user->quota user->usage num-considerable]
-  (log/debug "There are" (apply + (map count pending-jobs)) "pending jobs")
-  (log/debug "pending-jobs:" pending-jobs)
+  [db category->pending-jobs user->quota user->usage num-considerable]
+  (log/debug "There are" (apply + (map count category->pending-jobs)) "pending jobs")
+  (log/debug "pending-jobs:" category->pending-jobs)
   (let [category->considerable-jobs
-        (->> pending-jobs
+        (->> category->pending-jobs
              (map (fn [[category jobs]]
                     [category (->> jobs
                                    (map #(d/entity db (:db/id %)))
@@ -554,7 +547,7 @@
                "of those pending jobs (limited to " num-considerable " due to backdown)")
     category->considerable-jobs))
 
-(defn- extract-matched-job-uuids
+(defn extract-matched-job-uuids
   "Returns the matched normal and gpu job uuid sets."
   [matches]
   (let [filter-jobs-by-category (fn filter-jobs-by-category [category]
@@ -576,7 +569,7 @@
     {:matched-gpu-job-uuids matched-gpu-job-uuids
      :matched-normal-job-uuids matched-normal-job-uuids}))
 
-(defn- remove-matched-jobs-from-pending-jobs
+(defn remove-matched-jobs-from-pending-jobs
   "Removes matched normal and gpu jobs from category->pending-jobs."
   [category->pending-jobs matched-normal-job-uuids matched-gpu-job-uuids]
   (let [remove-matched-jobs (fn remove-matched-jobs [existing-jobs matched-job-uuids]
