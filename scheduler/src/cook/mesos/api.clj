@@ -561,8 +561,6 @@
     (doseq [{:keys [executable? extract?] :as uri} (:uris munged)
             :when (and (not (nil? executable?)) (not (nil? extract?)))]
       (throw (ex-info "Uri cannot set executable and extract" uri)))
-    (when (job-exists? db uuid)
-      (throw (ex-info (str "Job UUID " uuid " already used") {:uuid uuid})))
     (when (and group-uuid
                (not (valid-group-uuid? db
                                        new-group-uuids
@@ -941,6 +939,28 @@
                       (catch Exception e
                         (log/warn e "Malformed raw api request")
                         [true {::error (.getMessage e)}]))))
+
+    :exists? (fn [ctx]
+               (let [db (d/db conn)
+                     existing (filter (partial job-exists? db) (map :uuid (::jobs ctx)))]
+                 [(seq existing) {::existing existing}]))
+
+    ;; To ensure compatibility with existing clients,
+    ;; we need to return 409 (conflict) when a client POSTs a Job UUID that already exists.
+    ;; Liberator normally only supports 409 responses to PUT requests, so we need to override
+    ;; the specific decisions that will lead to a 409 response on a POST request as well.
+    ;; (see https://clojure-liberator.github.io/liberator/tutorial/decision-graph.html)
+    :post-to-existing? (fn [ctx] false)
+    :put-to-existing? (fn [ctx] true)
+    ;; conflict? will only be invoked if exists? was true, and if so, we always want
+    ;; to indicate a conflict.
+    :conflict? (fn [ctx] true)
+    :handle-conflict (fn [ctx] {:error (str "The following job UUIDs were already used: "
+                                            (str/join ", " (::existing ctx)))})
+    ;; Implementing put! doesn't mean that PUT requests are actually supported
+    ;; (see :allowed-methods above). It is simply what liberator eventually calls to persist
+    ;; resource changes when conflict? has returned false.
+    :put! (partial create-jobs! conn)
 
     :post! (partial create-jobs! conn)
     :handle-created (fn [ctx] (::results ctx))}))
