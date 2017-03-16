@@ -794,6 +794,9 @@
   (testing "not using quota"
     (is (sched/below-quota? {:count 5, :cpus 15, :mem 9999}
                             {:count 0, :cpus 0, :mem 0})))
+  (testing "not using quota with extra keys"
+    (is (sched/below-quota? {:count 5, :cpus 15, :mem 9999, :foo 2, :bar 3}
+                            {:count 0, :cpus 0, :mem 0})))
   (testing "inside quota"
     (is (sched/below-quota? {:count 5, :cpus 15, :mem 9999}
                             {:count 4, :cpus 10, :mem 1234})))
@@ -809,6 +812,9 @@
   (testing "exceed quota limit - mem"
     (is (not (sched/below-quota? {:count 5, :cpus 15, :mem 1234}
                                  {:count 4, :cpus 10, :mem 4321}))))
+  (testing "exceed quota limit - gpus"
+    (is (not (sched/below-quota? {:count 5, :cpus 15, :mem 9999, :gpus 4}
+                                 {:count 4, :cpus 10, :mem 1234, :gpus 5}))))
   (testing "at quota limit with extra keys"
     (is (sched/below-quota? {:count 5, :cpus 15, :mem 9999, :gpus 4}
                             {:count 5, :cpus 15, :mem 9999}))))
@@ -867,6 +873,201 @@
     (testing "room for later jobs not included"
       (is (= [(make-job 1 2 2048) (make-job 2 1 1024)]
              (sched/filter-based-on-quota {test-user {:count 4, :cpus 20, :mem 6144}} user->usage queue))))))
+
+(deftest test-handle-resource-offers
+  (let [uri "datomic:mem://test-handle-resource-offers"
+        launched-offer-ids-atom (atom [])
+        launched-task-ids-atom (atom [])
+        driver (reify msched/SchedulerDriver
+                 (launch-tasks! [_ offer-id tasks]
+                   (swap! launched-offer-ids-atom conj (-> offer-id first :value))
+                   (swap! launched-task-ids-atom concat (map (fn [task]
+                                                               {:id (get-in task [:task-id :value])
+                                                                :cpus (->> task
+                                                                           :resources
+                                                                           (filter #(= "cpus" (:name %1)))
+                                                                           first
+                                                                           :scalar
+                                                                           int)
+                                                                :gpus (-> (->> task
+                                                                               :resources
+                                                                               (filter #(= "gpus" (:name %1)))
+                                                                               first
+                                                                               :scalar)
+                                                                          (or 0)
+                                                                          int)})
+                                                             tasks))))
+        offer-maker (fn [cpus mem gpus]
+                      {:resources [{:name "cpus", :scalar cpus, :type :value-scalar, :role "cook"}
+                                   {:name "mem", :scalar mem, :type :value-scalar, :role "cook"}
+                                   {:name "gpus", :scalar gpus, :type :value-scalar, :role "cook"}]
+                       :id {:value (str "id-" (UUID/randomUUID))}
+                       :slave-id {:value (str "slave-" (UUID/randomUUID))}
+                       :hostname (str "host-" (UUID/randomUUID))})
+        fid #mesomatic.types.FrameworkID{:value "my-framework-id"}
+        test-user (System/getProperty "user.name")
+        offers-chan (async/chan (async/buffer 10))
+        offer-1 (offer-maker 10 2048 0)
+        offer-2 (offer-maker 20 16384 0)
+        offer-3 (offer-maker 30 8192 0)
+        offer-4 (offer-maker 4 2048 0)
+        offer-5 (offer-maker 4 1024 0)
+        offer-6 (offer-maker 10 4096 10)
+        offer-7 (offer-maker 20 4096 5)
+        offer-8 (offer-maker 30 16384 1)
+        run-handle-resource-offers! (fn [num-considerable offers & {:keys [user-quota user->usage]}]
+                                      (reset! launched-offer-ids-atom [])
+                                      (reset! launched-task-ids-atom [])
+                                      (let [conn (restore-fresh-database! uri)
+                                            test-db (d/db conn)
+                                            driver-atom (atom nil)
+                                            ^TaskScheduler fenzo (sched/make-fenzo-scheduler driver-atom 1500 0.8)
+                                            group-ent-id (create-dummy-group conn)
+                                            job-1 (d/entity test-db (create-dummy-job conn :group group-ent-id :ncpus 3 :memory 2048))
+                                            job-2 (d/entity test-db (create-dummy-job conn :group group-ent-id :ncpus 13 :memory 1024))
+                                            job-3 (d/entity test-db (create-dummy-job conn :group group-ent-id :ncpus 7 :memory 4096))
+                                            job-4 (d/entity test-db (create-dummy-job conn :group group-ent-id :ncpus 11 :memory 1024))
+                                            job-5 (d/entity test-db (create-dummy-job conn :group group-ent-id :ncpus 5 :memory 2048 :gpus 2))
+                                            job-6 (d/entity test-db (create-dummy-job conn :group group-ent-id :ncpus 19 :memory 1024 :gpus 4))
+                                            pending-jobs (atom {:normal [job-1 job-2 job-3 job-4]
+                                                                :gpu [job-5 job-6]})
+                                            user->usage (or user->usage {test-user {:count 1, :cpus 2, :mem 1024, :gpus 0}})
+                                            user->quota (or user-quota {test-user {:count 10, :cpus 50, :mem 32768, :gpus 10}})
+                                            result (sched/handle-resource-offers! conn driver fenzo fid pending-jobs user->usage user->quota
+                                                                                  num-considerable offers-chan offers)]
+                                        (async/>!! offers-chan :end-marker)
+                                        result))]
+
+    (testing "enough offers for all normal jobs"
+      (let [num-considerable 10
+            offers [offer-1 offer-2 offer-3]]
+        (is (run-handle-resource-offers! num-considerable offers))
+        (is (= :end-marker (async/<!! offers-chan)))
+        (is (= 3 (count @launched-offer-ids-atom)))
+        (is (= (+ 3 13 7 11) (reduce + (map :cpus @launched-task-ids-atom))))
+        (is (zero? (reduce + (map :gpus @launched-task-ids-atom))))))
+
+    (testing "enough offers for all normal jobs, limited by num-considerable of 1"
+      (let [num-considerable 1
+            offers [offer-1 offer-2 offer-3]]
+        (is (run-handle-resource-offers! num-considerable offers))
+        (is (= :end-marker (async/<!! offers-chan)))
+        (is (= 1 (count @launched-offer-ids-atom)))
+        (is (= (+ 3) (reduce + (map :cpus @launched-task-ids-atom))))
+        (is (zero? (reduce + (map :gpus @launched-task-ids-atom))))))
+
+    (testing "enough offers for all normal jobs, limited by num-considerable of 2"
+      (let [num-considerable 2
+            offers [offer-1 offer-2 offer-3]]
+        (is (run-handle-resource-offers! num-considerable offers))
+        (is (= :end-marker (async/<!! offers-chan)))
+        (is (= 2 (count @launched-offer-ids-atom)))
+        (is (= (+ 3 13) (reduce + (map :cpus @launched-task-ids-atom))))
+        (is (zero? (reduce + (map :gpus @launched-task-ids-atom))))))
+
+    (testing "enough offers for all normal jobs, limited by quota"
+      (let [num-considerable 1
+            offers [offer-1 offer-2 offer-3]
+            user-quota {test-user {:count 5, :cpus 45, :mem 16384, :gpus 0}}]
+        (is (run-handle-resource-offers! num-considerable offers :user-quota user-quota))
+        (is (= :end-marker (async/<!! offers-chan)))
+        (is (= 1 (count @launched-offer-ids-atom)))
+        (is (= (+ 3) (reduce + (map :cpus @launched-task-ids-atom))))
+        (is (zero? (reduce + (map :gpus @launched-task-ids-atom))))))
+
+    (testing "enough offers for all normal jobs, limited by usage capacity"
+      (let [num-considerable 1
+            offers [offer-1 offer-2 offer-3]
+            user->usage {test-user {:count 5, :cpus 5, :mem 16384, :gpus 0}}]
+        (is (run-handle-resource-offers! num-considerable offers :user->usage user->usage))
+        (is (= :end-marker (async/<!! offers-chan)))
+        (is (= 1 (count @launched-offer-ids-atom)))
+        (is (= (+ 3) (reduce + (map :cpus @launched-task-ids-atom))))
+        (is (zero? (reduce + (map :gpus @launched-task-ids-atom))))))
+
+    (testing "offer for single normal job"
+      (let [num-considerable 10
+            offers [offer-4]]
+        (is (run-handle-resource-offers! num-considerable offers))
+        (is (= :end-marker (async/<!! offers-chan)))
+        (is (= 1 (count @launched-offer-ids-atom)))
+        (is (= (+ 3) (reduce + (map :cpus @launched-task-ids-atom))))
+        (is (zero? (reduce + (map :gpus @launched-task-ids-atom))))))
+
+    (testing "offer for first three normal jobs"
+      (let [num-considerable 10
+            offers [offer-3]]
+        (is (run-handle-resource-offers! num-considerable offers))
+        (is (= :end-marker (async/<!! offers-chan)))
+        (is (= 1 (count @launched-offer-ids-atom)))
+        (is (= (+ 3 13 7) (reduce + (map :cpus @launched-task-ids-atom))))
+        (is (zero? (reduce + (map :gpus @launched-task-ids-atom))))))
+
+    (testing "offer not fit for any normal job"
+      (let [num-considerable 10
+            offers [offer-5]]
+        (is (run-handle-resource-offers! num-considerable offers))
+        (is (= :end-marker (async/<!! offers-chan)))
+        (is (zero? (count @launched-offer-ids-atom)))
+        (is (zero? (reduce + (map :cpus @launched-task-ids-atom))))
+        (is (zero? (reduce + (map :gpus @launched-task-ids-atom))))))
+
+    (testing "offer fit but user has too little quota"
+      (let [num-considerable 10
+            offers [offer-1 offer-2 offer-3]
+            user-quota {test-user {:count 5, :cpus 4, :mem 4096, :gpus 0}}]
+        (is (run-handle-resource-offers! num-considerable offers :user-quota user-quota))
+        (is (= :end-marker (async/<!! offers-chan)))
+        (is (zero? (count @launched-offer-ids-atom)))
+        (is (zero? (reduce + (map :cpus @launched-task-ids-atom))))
+        (is (zero? (reduce + (map :gpus @launched-task-ids-atom))))))
+
+    (testing "offer fit but user has capacity usage"
+      (let [num-considerable 10
+            offers [offer-1 offer-2 offer-3]
+            user->usage {test-user {:count 10, :cpus 50, :mem 32768, :gpus 10}}]
+        (is (run-handle-resource-offers! num-considerable offers :user->usage user->usage))
+        (is (= :end-marker (async/<!! offers-chan)))
+        (is (zero? (count @launched-offer-ids-atom)))
+        (is (zero? (reduce + (map :cpus @launched-task-ids-atom))))
+        (is (zero? (reduce + (map :gpus @launched-task-ids-atom))))))
+
+    (testing "gpu offers for all gpu jobs"
+      (let [num-considerable 10
+            offers [offer-6 offer-7]]
+        (is (not (run-handle-resource-offers! num-considerable offers))) ; normal jobs form the head
+        (is (= :end-marker (async/<!! offers-chan)))
+        (is (= 2 (count @launched-offer-ids-atom)))
+        (is (= (+ 5 19) (reduce + (map :cpus @launched-task-ids-atom))))
+        (is (= (+ 2 4) (reduce + (map :gpus @launched-task-ids-atom))))))
+
+    (testing "gpu offer for single gpu job"
+      (let [num-considerable 10
+            offers [offer-6]]
+        (is (not (run-handle-resource-offers! num-considerable offers))) ; normal jobs form the head
+        (is (= :end-marker (async/<!! offers-chan)))
+        (is (= 1 (count @launched-offer-ids-atom)))
+        (is (= (+ 5) (reduce + (map :cpus @launched-task-ids-atom))))
+        (is (= (+ 2) (reduce + (map :gpus @launched-task-ids-atom))))))
+
+    (testing "gpu offer matching no gpu job"
+      (let [num-considerable 10
+            offers [offer-8]]
+        (is (run-handle-resource-offers! num-considerable offers))
+        (is (= :end-marker (async/<!! offers-chan)))
+        (is (zero? (count @launched-offer-ids-atom)))
+        (is (zero? (reduce + (map :cpus @launched-task-ids-atom))))
+        (is (zero? (reduce + (map :gpus @launched-task-ids-atom))))))
+
+    (testing "offer for single normal and single gpu job"
+      (println "*****************")
+      (let [num-considerable 10
+            offers [offer-4 offer-6]]
+        (is (run-handle-resource-offers! num-considerable offers))
+        (is (= :end-marker (async/<!! offers-chan)))
+        (is (= 2 (count @launched-offer-ids-atom)))
+        (is (= (+ 3 5) (reduce + (map :cpus @launched-task-ids-atom))))
+        (is (= (+ 0 2) (reduce + (map :gpus @launched-task-ids-atom))))))))
 
 (comment
   (run-tests))
