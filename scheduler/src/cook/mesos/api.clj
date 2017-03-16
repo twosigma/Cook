@@ -1409,7 +1409,9 @@
              :handler (read-jobs-handler conn fid task-constraints gpu-enabled? is-authorized-fn)}
        :post {:summary "Schedules one or more jobs."
               :parameters {:body-params RawSchedulerRequest}
-              :responses {200 {:schema [JobResponse]}}
+              :responses {201 {:description "The jobs were successfully scheduled."}
+                          400 {:description "One or more of the jobs were incorrectly specified."}
+                          409 {:description "One or more of the jobs UUIDs are already in use."}}
               :handler (create-jobs-handler conn fid task-constraints gpu-enabled? is-authorized-fn)}
        :delete {:summary "Cancels jobs, halting execution when possible."
                 :responses {204 {:description "The jobs have been marked for termination."}
