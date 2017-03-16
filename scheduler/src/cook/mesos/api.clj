@@ -858,6 +858,50 @@
 
 (def override-group-str "override-group-immutability")
 
+(defn create-jobs!
+  [conn ctx]
+  (try
+    (log/info "Submitting jobs through raw api:" (::jobs ctx))
+    (let [jobs (::jobs ctx)
+          groups (::groups ctx)
+          group-uuids (set (map :uuid groups))
+                                        ; Create new implicit groups (with all default settings)
+          implicit-groups (->> jobs
+                               (map :group)
+                               (remove nil?)
+                               distinct
+                               (remove #(contains? group-uuids %))
+                               (map make-default-group))
+          groups (concat implicit-groups (::groups ctx))
+          job-txns (mapcat #(make-job-txn %) jobs)
+          job-uuids->dbids (->> job-txns
+                                ;; Not all txns are for the top level job
+                                (filter :job/uuid)
+                                (map (juxt :job/uuid :db/id))
+                                (into {}))
+          group-uuid->job-dbids (->> jobs
+                                     (group-by :group)
+                                     (map-vals (fn [jobs]
+                                                 (map #(job-uuids->dbids (:uuid %))
+                                                      jobs))))
+          group-txns (map #(make-group-txn % (get group-uuid->job-dbids
+                                                  (:uuid %)
+                                                  []))
+                          groups)]
+      @(d/transact
+        conn
+        (concat job-txns group-txns))
+
+      {::results (str/join
+                  \space (concat ["submitted jobs"]
+                                 (map (comp str :uuid) jobs)
+                                 (if (not (empty? groups))
+                                   (concat ["submitted groups"]
+                                           (map (comp str :uuid) groups)))))})
+    (catch Exception e
+      (log/error e "Error submitting jobs through raw api")
+      [false {::error (str e)}])))
+
 ;;; On POST; JSON blob that looks like:
 ;;; {"jobs": [{"command": "echo hello world",
 ;;;            "uuid": "123898485298459823985",
@@ -895,50 +939,8 @@
                       (catch Exception e
                         (log/warn e "Malformed raw api request")
                         [true {::error (.getMessage e)}]))))
-    :processable? (fn [ctx]
-                    (try
-                      (log/info "Submitting jobs through raw api:" (::jobs ctx))
-                      (let [jobs (::jobs ctx)
-                            groups (::groups ctx)
-                            group-uuids (set (map :uuid groups))
-                            ; Create new implicit groups (with all default settings)
-                            implicit-groups (->> jobs
-                                                 (map :group)
-                                                 (remove nil?)
-                                                 distinct
-                                                 (remove #(contains? group-uuids %))
-                                                 (map make-default-group))
-                            groups (concat implicit-groups (::groups ctx))
-                            job-txns (mapcat #(make-job-txn %) jobs)
-                            job-uuids->dbids (->> job-txns
-                                                  ;; Not all txns are for the top level job
-                                                  (filter :job/uuid)
-                                                  (map (juxt :job/uuid :db/id))
-                                                  (into {}))
-                            group-uuid->job-dbids (->> jobs
-                                                        (group-by :group)
-                                                        (map-vals (fn [jobs]
-                                                                    (map #(job-uuids->dbids (:uuid %))
-                                                                         jobs))))
-                            group-txns (map #(make-group-txn % (get group-uuid->job-dbids
-                                                                    (:uuid %)
-                                                                    []))
-                                               groups)]
-                        @(d/transact
-                         conn
-                         (concat job-txns group-txns)))
-                      true
-                      (catch Exception e
-                        (log/error e "Error submitting jobs through raw api")
-                        [false {::error (str e)}])))
-    :post! (fn [ctx]
-             ;; We did the actual logic in processable?, so there's nothing left to do
-             {::results (str/join \space (concat ["submitted jobs"]
-                                                 (map (comp str :uuid) (::jobs ctx))
-                                                 (if (not (empty? (::groups ctx)))
-                                                   (concat ["submitted groups"]
-                                                           (map (comp str :uuid) (::groups ctx))))))})
 
+    :post! (partial create-jobs! conn)
     :handle-created (fn [ctx] (::results ctx))}))
 
 
