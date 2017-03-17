@@ -115,9 +115,8 @@
           task-ent3 (d/entity (d/db conn) task3)
           task-ent4 (d/entity (d/db conn) task4)
           tasks [task-ent1 task-ent2 task-ent3 task-ent4]]
-      (let [expected-result [[task-ent1 1.0] [task-ent2 1.5] [task-ent3 4.0] [task-ent4 5.5]]]
-        (is (= expected-result
-               (dru/compute-sorted-task-cumulative-gpu-score-pairs 10.0 tasks)))))))
+      (is (= [[task-ent1 1.0] [task-ent2 1.5] [task-ent3 4.0] [task-ent4 5.5]]
+             (dru/compute-sorted-task-cumulative-gpu-score-pairs 10.0 tasks))))))
 
 (deftest test-sorted-task-cumulative-gpu-score-pairs
   (testing "dru order correct"
