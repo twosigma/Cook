@@ -14,11 +14,11 @@
 ;; limitations under the License.
 ;;
 (ns cook.mesos.dru
-  (:require [cook.mesos.util :as util]
-            [clojure.tools.logging :as log]
-            [clojure.core.async :as async]
-            [cook.mesos.share :as share]
+  (:require [clojure.core.async :as async]
             [clojure.core.reducers :as r]
+            [clojure.tools.logging :as log]
+            [cook.mesos.share :as share]
+            [cook.mesos.util :as util]
             [metrics.timers :as timers]
             [swiss.arrows :refer :all]))
 

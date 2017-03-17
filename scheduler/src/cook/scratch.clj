@@ -14,11 +14,11 @@
 ;; limitations under the License.
 ;;
 (ns cook.scratch
-  (:require [cook.mesos.scheduler :as sched]
-            [datomic.api :as d :refer (q)]
-            [metatransaction.core :refer (db)]
+  (:require [cook.datomic :refer (transact-with-retries)]
             [cook.mesos.monitor :refer (riemann-reporter)]
-            [cook.datomic :refer (transact-with-retries)]))
+            [cook.mesos.scheduler :as sched]
+            [datomic.api :as d :refer (q)]
+            [metatransaction.core :refer (db)]))
 
 (comment
   ;; Mark instance failed.

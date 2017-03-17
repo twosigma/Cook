@@ -14,10 +14,10 @@
 ;; limitations under the License.
 ;;
 (ns cook.spnego
-  (:require [ring.util.response :refer (header status response)]
-            [clojure.data.codec.base64 :as b64]
+  (:require [clojure.data.codec.base64 :as b64]
             [clojure.string :as str]
-            [clojure.string :refer (split lower-case)])
+            [clojure.string :refer (split lower-case)]
+            [ring.util.response :refer (header status response)])
   (:import [org.ietf.jgss GSSManager GSSCredential Oid]))
 
 (def krb5Mech (Oid. "1.2.840.113554.1.2.2"))

@@ -14,12 +14,12 @@
 ;; limitations under the License.
 ;;
 (ns cook.mesos.share
-  (:require cook.mesos.schema
-            [clojure.tools.logging :as log]
+  (:require [clojure.tools.logging :as log]
+            [cook.mesos.util :as util]
             [datomic.api :as d :refer (q)]
-            [metrics.timers :as timers]
             [metatransaction.core :refer (db)]
-            [cook.mesos.util :as util]))
+            [metrics.timers :as timers]
+            cook.mesos.schema))
 
 (def default-user "default")
 

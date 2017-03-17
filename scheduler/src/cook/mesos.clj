@@ -15,20 +15,20 @@
 ;;
 (ns cook.mesos
   (:require [clojure.core.async :as async]
-            [datomic.api :as d :refer (q)]
-            [metatransaction.core :as mt :refer (db)]
-            [metatransaction.utils :as dutils]
             [clojure.tools.logging :as log]
+            [cook.curator :as curator]
+            [cook.datomic :refer (transact-with-retries)]
+            [cook.mesos.heartbeat]
+            [cook.mesos.monitor]
+            [cook.mesos.rebalancer]
+            [cook.mesos.scheduler :as sched]
+            [cook.util]
+            [datomic.api :as d :refer (q)]
             [mesomatic.scheduler]
             [mesomatic.types]
-            [metrics.counters :as counters]
-            [cook.datomic :refer (transact-with-retries)]
-            [cook.mesos.scheduler :as sched]
-            [cook.mesos.heartbeat]
-            [cook.mesos.rebalancer]
-            [cook.mesos.monitor]
-            [cook.util]
-            [cook.curator :as curator])
+            [metatransaction.core :as mt :refer (db)]
+            [metatransaction.utils :as dutils]
+            [metrics.counters :as counters])
   (:import [org.apache.curator.framework.recipes.leader LeaderSelector LeaderSelectorListener]
            org.apache.curator.framework.state.ConnectionState))
 

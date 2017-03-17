@@ -14,18 +14,18 @@
 ;; limitations under the License.
 ;;
 (ns cook.mesos.heartbeat
-  (:require [datomic.api :as d :refer (q)]
-            [metatransaction.core :refer (db)]
-            [clojure.core.async :as async :refer [alts! go-loop go >!]]
-            [clojure.tools.logging :as log]
-            [clj-time.core :as time]
+  (:require [chime :refer [chime-at chime-ch]]
             [clj-time.coerce :as tc]
-            [cook.reporter :as reporter]
-            [metrics.meters :as meters]
-            [metrics.timers :as timers]
+            [clj-time.core :as time]
             [clj-time.periodic :as periodic]
-            [chime :refer [chime-at chime-ch]]
-            [clojure.data.json :as json]))
+            [clojure.core.async :as async :refer [alts! go-loop go >!]]
+            [clojure.data.json :as json]
+            [clojure.tools.logging :as log]
+            [cook.reporter :as reporter]
+            [datomic.api :as d :refer (q)]
+            [metatransaction.core :refer (db)]
+            [metrics.meters :as meters]
+            [metrics.timers :as timers]))
 
 "State is a vector of three things. The first is a set that contains all the timeout channels.
 The second is a map from task id to its timeout channel. The third is a timeout channel to task id."

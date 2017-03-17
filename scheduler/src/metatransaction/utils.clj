@@ -14,8 +14,8 @@
 ;; limitations under the License.
 ;;
 (ns metatransaction.utils
-  (:require [datomic.api :as d]
-            [clojure.core.async :as async]
+  (:require [clojure.core.async :as async]
+            [datomic.api :as d]
             [metatransaction.core :as mt]))
 
 (def assert-db

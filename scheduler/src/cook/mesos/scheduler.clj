@@ -14,42 +14,42 @@
 ;; limitations under the License.
 ;;
 (ns cook.mesos.scheduler
-  (:require [mesomatic.scheduler :as mesos]
-            [mesomatic.types :as mtypes]
-            [cook.mesos.dru :as dru]
-            [cook.mesos.task :as task]
-            [cook.mesos.group :as group]
-            cook.mesos.schema
-            [clojure.tools.logging :as log]
-            [datomic.api :as d :refer (q)]
-            [metatransaction.core :refer (db)]
-            [cook.datomic :as datomic :refer (transact-with-retries)]
-            [cook.reporter]
-            [metrics.meters :as meters]
-            [metrics.timers :as timers]
-            [metrics.histograms :as histograms]
-            [metrics.counters :as counters]
-            [metrics.gauges :as gauges]
-            [clojure.core.async :as async]
-            [clojure.edn :as edn]
+  (:require [chime :refer [chime-at chime-ch]]
+            [clj-time.coerce :as tc]
             [clj-time.core :as time]
             [clj-time.periodic :as periodic]
-            [clj-time.coerce :as tc]
-            [chime :refer [chime-at chime-ch]]
+            [clojure.core.async :as async]
+            [clojure.core.cache :as cache]
+            [clojure.edn :as edn]
+            [clojure.tools.logging :as log]
+            [cook.datomic :as datomic :refer (transact-with-retries)]
+            [cook.mesos.dru :as dru]
+            [cook.mesos.group :as group]
             [cook.mesos.heartbeat :as heartbeat]
-            [cook.mesos.share :as share]
             [cook.mesos.quota :as quota]
+            [cook.mesos.reason :as reason]
+            [cook.mesos.share :as share]
+            [cook.mesos.task :as task]
             [cook.mesos.util :as util]
+            [cook.reporter]
+            [datomic.api :as d :refer (q)]
+            [mesomatic.scheduler :as mesos]
+            [mesomatic.types :as mtypes]
+            [metatransaction.core :refer (db)]
+            [metrics.counters :as counters]
+            [metrics.gauges :as gauges]
+            [metrics.histograms :as histograms]
+            [metrics.meters :as meters]
+            [metrics.timers :as timers]
             [plumbing.core :refer (map-vals)]
             [swiss.arrows :refer :all]
-            [clojure.core.cache :as cache]
-            [cook.mesos.reason :as reason])
-  (import java.util.concurrent.TimeUnit
-          org.apache.mesos.Protos$Offer
-          com.netflix.fenzo.TaskAssignmentResult
-          com.netflix.fenzo.TaskScheduler
-          com.netflix.fenzo.VirtualMachineLease
-          com.netflix.fenzo.plugins.BinPackingFitnessCalculators))
+            cook.mesos.schema)
+  (:import com.netflix.fenzo.TaskAssignmentResult
+           com.netflix.fenzo.TaskScheduler
+           com.netflix.fenzo.VirtualMachineLease
+           com.netflix.fenzo.plugins.BinPackingFitnessCalculators
+           java.util.concurrent.TimeUnit
+           org.apache.mesos.Protos$Offer))
 
 (defn now
   []

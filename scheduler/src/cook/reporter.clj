@@ -19,12 +19,12 @@
             [datomic.api :as d :refer (q)]
             [metatransaction.core :as mt :refer (db)]
             [metrics.core :as metrics])
-  (:import [com.codahale.metrics.graphite GraphiteReporter PickledGraphite Graphite]
-           com.codahale.metrics.MetricFilter
+  (:import [com.codahale.metrics.graphite Graphite GraphiteReporter PickledGraphite]
            [com.codahale.metrics.riemann Riemann RiemannReporter]
            com.aphyr.riemann.client.RiemannClient
-           java.util.concurrent.TimeUnit
-           java.net.InetSocketAddress))
+           com.codahale.metrics.MetricFilter
+           java.net.InetSocketAddress
+           java.util.concurrent.TimeUnit))
 
 ;; the default registry
 (def registry metrics/default-registry)
