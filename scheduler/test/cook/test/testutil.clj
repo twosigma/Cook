@@ -15,12 +15,12 @@
 ;;
 
 (ns cook.test.testutil
-  (:require [cook.mesos.schema :as schema]
+  (:require [clojure.core.async :as async]
             [cook.mesos.api :as api :refer (main-handler)]
-            [clojure.core.async :as async]
-            [ring.middleware.params :refer (wrap-params)]
+            [cook.mesos.schema :as schema]
+            [datomic.api :as d :refer (q db)]
             [qbits.jet.server :refer (run-jetty)]
-            [datomic.api :as d :refer (q db)]))
+            [ring.middleware.params :refer (wrap-params)]))
 
 (defn run-test-server-in-thread
   "Runs a minimal cook scheduler server for testing inside a thread. Note that it is not properly kerberized."

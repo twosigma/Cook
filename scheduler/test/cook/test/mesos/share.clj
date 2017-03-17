@@ -15,8 +15,8 @@
 ;;
 (ns cook.test.mesos.share
   (:use clojure.test)
-  (:require [cook.mesos.share :as share]
-            [cook.mesos.scheduler :as sched]
+  (:require [cook.mesos.scheduler :as sched]
+            [cook.mesos.share :as share]
             [cook.test.testutil :refer (restore-fresh-database!)]
             [metatransaction.core :as mt :refer (db)]))
 

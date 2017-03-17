@@ -15,9 +15,9 @@
 ;;
 (ns cook.test.mesos.util
  (:use clojure.test)
- (:require [cook.mesos.util :as util]
+ (:require [clj-time.coerce :as tc]
            [clj-time.core :as t]
-           [clj-time.coerce :as tc]
+           [cook.mesos.util :as util]
            [cook.test.testutil :as testutil :refer (create-dummy-instance create-dummy-job restore-fresh-database!)]
            [datomic.api :as d :refer (q db)]))
 

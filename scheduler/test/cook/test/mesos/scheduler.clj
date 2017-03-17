@@ -20,15 +20,15 @@
             [clj-time.core :as t]
             [clojure.core.async :as async]
             [clojure.edn :as edn]
-            [mesomatic.types :as mtypes]
-            [mesomatic.scheduler :as msched]
             [cook.mesos :as mesos]
             [cook.mesos.scheduler :as sched]
+            [cook.mesos.schema :as schem]
             [cook.mesos.share :as share]
             [cook.mesos.util :as util]
-            [cook.mesos.schema :as schem]
             [cook.test.testutil :refer (restore-fresh-database! create-dummy-group create-dummy-job create-dummy-instance)]
-            [datomic.api :as d :refer (q db)])
+            [datomic.api :as d :refer (q db)]
+            [mesomatic.scheduler :as msched]
+            [mesomatic.types :as mtypes])
   (:import [org.mockito Mockito]))
 
 (def datomic-uri "datomic:mem://test-mesos-jobs")

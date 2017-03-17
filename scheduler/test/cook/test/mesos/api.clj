@@ -15,14 +15,14 @@
 ;;
 (ns cook.test.mesos.api
  (:use clojure.test)
- (:require [cook.mesos.api :as api :refer (main-handler)]
-           [cook.mesos.util :as util]
-           [cook.test.testutil :refer (restore-fresh-database! create-dummy-job create-dummy-instance)]
+ (:require [clojure.data.json :as json]
            [clojure.walk :refer (keywordize-keys)]
            [cook.authorization :as auth]
-           [schema.core :as s]
-           [clojure.data.json :as json]
-           [datomic.api :as d :refer (q db)]))
+           [cook.mesos.api :as api :refer (main-handler)]
+           [cook.mesos.util :as util]
+           [cook.test.testutil :refer (restore-fresh-database! create-dummy-job create-dummy-instance)]
+           [datomic.api :as d :refer (q db)]
+           [schema.core :as s]))
 
 (defn kw-keys
   [m]
