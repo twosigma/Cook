@@ -1002,13 +1002,14 @@
 (defn sort-normal-jobs-by-dru
   "Return a list of normal job entities ordered by dru"
   [pending-task-ents running-task-ents user->dru-divisors]
-  (let [jobs (timers/time!
+  (let [tasks (into running-task-ents pending-task-ents) 
+        task-comparator (util/same-user-task-comparator tasks)
+        jobs (timers/time!
                sort-jobs-hierarchy-duration
-               (-<>> (into running-task-ents pending-task-ents)
+               (-<>> tasks
                      (group-by util/task-ent->user)
-                     (map (fn [[user task-ents]]
-                            [user (into (sorted-set-by (util/same-user-task-comparator)) task-ents)]))
-                     (into {})
+                     (map-vals (fn [task-ents]
+                                 (into (sorted-set-by task-comparator) task-ents)))
                      (dru/sorted-task-scored-task-pairs <> user->dru-divisors)
                      (filter (fn [[task scored-task]]
                                (contains? pending-task-ents task)))
