@@ -17,6 +17,10 @@ You can launch the scheduler for testing by running `java -jar cook-release.jar 
 Then, go to the `spark` subproject, and follow the README to patch Spark to support Cook as a scheduler.
 If you'd like to learn more or do something different, read on...
 
+## Releases 
+
+Check the [changelog](CHANGELOG.md) for release info.
+
 ## Subproject Summary
 
 In this repository, you'll find several subprojects, each of which has its own documentation.
