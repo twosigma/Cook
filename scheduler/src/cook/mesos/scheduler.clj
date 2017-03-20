@@ -1186,10 +1186,20 @@
 (defn persist-mea-culpa-failure-limit!
   "The Datomic transactor needs to be able to access this part of the
   configuration, so on cook startup we transact the configured value into Datomic."
-  [conn limit]
-  (when limit
+  [conn limits]
+  (when (map? limits)
+    (let [default (:default limits)
+          overrides (mapv (fn [[reason limit]] {:db/id [:reason/name reason]
+                                                :reason/failure-limit limit})
+                          (dissoc limits :default))]
+      (when default
+        @(d/transact conn [{:db/id :scheduler/config
+                            :scheduler.config/mea-culpa-failure-limit default}]))
+      (when (seq overrides)
+        @(d/transact conn overrides))))
+  (when (number? limits)
     @(d/transact conn [{:db/id :scheduler/config
-                        :scheduler.config/mea-culpa-failure-limit limit}])))
+                        :scheduler.config/mea-culpa-failure-limit limits}])))
 
 (defn receive-offers
   [offers-chan driver offers]

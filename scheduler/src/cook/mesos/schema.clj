@@ -526,6 +526,11 @@
     :db/valueType :db.type/boolean
     :db/cardinality :db.cardinality/one
     :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :reason/failure-limit
+    :db/valueType :db.type/long
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
    ])
 
 (def migration-add-index-to-job-state
@@ -662,7 +667,11 @@
                         (map (fn [[reason count]]
                                ;; Note a nil reason counts as a non-mea-culpa failure!
                                (if (:reason/mea-culpa? reason)
-                                 (max 0 (- count mea-culpa-limit))
+                                 (let [failure-limit (or (:reason/failure-limit reason)
+                                                         mea-culpa-limit)]
+                                   (if (= failure-limit -1)
+                                     0 ; -1 means no failure limit
+                                     (max 0 (- count failure-limit))))
                                  count)))
                         (apply +))}}
 
