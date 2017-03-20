@@ -1,0 +1,15 @@
+{
+  "defaults":{
+    "cluster": "dev",
+    "create-job": {
+      "mem": 128,
+      "cpus": 1
+    }
+  },
+  "clusters": [
+    {
+      "name": "dev",
+      "url": "http://127.0.0.1:12321/swagger-docs"
+    }
+  ]
+}
