@@ -67,9 +67,10 @@
 
 (defn create-dummy-job
   "Return the entity id for the created dummy job."
-  [conn & {:keys [user uuid command ncpus memory name retry-count max-runtime priority job-state submit-time custom-executor? gpus group]
+  [conn & {:keys [user uuid command ncpus memory name retry-count max-runtime priority job-state submit-time custom-executor? gpus group committed?]
            :or {user (System/getProperty "user.name")
                 uuid (d/squuid)
+                committed? true
                 command "dummy command"
                 ncpus 1.0
                 memory 10.0
@@ -80,9 +81,13 @@
                 priority 50
                 job-state :job.state/waiting}}]
   (let [id (d/tempid :db.part/user)
+        commit-latch-id (d/tempid :db.part/user)
+        commit-latch {:db/id commit-latch-id
+                      :commit-latch/committed? committed?}
         job-info (merge {:db/id id
                          :job/uuid uuid
                          :job/command command
+                         :job/commit-latch commit-latch-id
                          :job/user user
                          :job/name name
                          :job/max-retries retry-count
@@ -100,7 +105,7 @@
                    (update-in job-info [:job/resource] conj {:resource/type :resource.type/gpus
                                                              :resource/amount (double gpus)})
                    job-info)
-        val @(d/transact conn [job-info])]
+        val @(d/transact conn [job-info commit-latch])]
     (d/resolve-tempid (db conn) (:tempids val) id)))
 
 (defn create-dummy-instance
