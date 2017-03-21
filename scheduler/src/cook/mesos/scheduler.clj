@@ -1049,9 +1049,7 @@
                sort-gpu-jobs-hierarchy-duration
                (->> (concat running-task-ents pending-task-ents)
                     (group-by util/task-ent->user)
-                    (map (fn [[user task-ents]]
-                           [user (into (sorted-set-by (util/same-user-task-comparator)) task-ents)]))
-                    (into {})
+                    (map-vals (fn [task-ents] (into (sorted-set-by (util/same-user-task-comparator)) task-ents)))
                     (dru/sorted-task-cumulative-gpu-score-pairs user->dru-divisors)
                     (filter (fn [[task _]]
                               (contains? pending-task-ents task)))
