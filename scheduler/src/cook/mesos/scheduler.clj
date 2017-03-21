@@ -487,9 +487,6 @@
   "Returns true if the usage is below quota-constraints on all dimensions"
   [{:keys [count cpus mem] :as quota}
    {:keys [count cpus mem] :as usage}]
-  ;; The select-keys on quota was added because if there is a
-  ;; resource in quota that the current usage doesn't use below-quota?
-  ;; will incorrectly return false
   (every? (fn [[usage-key usage-val]]
             (<= usage-val (get quota usage-key 0)))
           (seq usage)))
@@ -533,16 +530,15 @@
   [db category->pending-jobs user->quota user->usage num-considerable]
   (log/debug "There are" (apply + (map count category->pending-jobs)) "pending jobs")
   (log/debug "pending-jobs:" category->pending-jobs)
-  (let [category->considerable-jobs
-        (->> category->pending-jobs
-             (map (fn [[category jobs]]
-                    [category (->> jobs
-                                   (map #(d/entity db (:db/id %)))
-                                   (filter-based-on-quota user->quota user->usage)
-                                   (filter (fn [job]
-                                             (util/job-allowed-to-start? db job)))
-                                   (take num-considerable))]))
-             (into {}))]
+  (let [filter-considerable-jobs (fn filter-considerable-jobs [jobs]
+                                   (->> jobs
+                                        (map #(d/entity db (:db/id %)))
+                                        (filter-based-on-quota user->quota user->usage)
+                                        (filter (fn [job]
+                                                  (util/job-allowed-to-start? db job)))
+                                        (take num-considerable)))
+        category->considerable-jobs (->> category->pending-jobs
+                                         (map-vals filter-considerable-jobs))]
     (log/debug "We'll consider scheduling" (map (fn [[k v]] [k (count v)]) category->considerable-jobs)
                "of those pending jobs (limited to " num-considerable " due to backdown)")
     category->considerable-jobs))
@@ -576,8 +572,8 @@
                               (remove #(contains? matched-job-uuids (:job/uuid %)) existing-jobs))
         update-scheduler-contents (fn update-scheduler-contents [category->pending-jobs]
                                     (-> category->pending-jobs
-                                        (update-in [:gpu] remove-matched-jobs matched-gpu-job-uuids)
-                                        (update-in [:normal] remove-matched-jobs matched-normal-job-uuids)))]
+                                        (update :gpu remove-matched-jobs matched-gpu-job-uuids)
+                                        (update :normal remove-matched-jobs matched-normal-job-uuids)))]
     (update-scheduler-contents category->pending-jobs)))
 
 (defn- launch-matched-tasks!

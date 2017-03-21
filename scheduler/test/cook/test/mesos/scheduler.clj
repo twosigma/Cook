@@ -1006,6 +1006,7 @@
                  (launch-tasks! [_ offer-id tasks]
                    (swap! launched-offer-ids-atom conj (-> offer-id first :value))
                    (swap! launched-task-ids-atom concat (map (fn [task]
+                                                               ;; :mem is not included as the cpus and gpus numbers are used in the assertions
                                                                {:id (get-in task [:task-id :value])
                                                                 :cpus (->> task
                                                                            :resources
