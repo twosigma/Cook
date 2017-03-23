@@ -896,6 +896,27 @@
         (is (= {:normal [job-1 job-2 job-3 job-4], :gpu [job-5 job-6]}
                (sched/category->pending-jobs->category->considerable-jobs
                  (d/db conn) category->pending-jobs user->quota user->usage num-considerable)))))
+    (testing "jobs inside usage quota limited by num-considerable of 3"
+      (let [user->usage {test-user {:count 1, :cpus 2, :mem 1024, :gpus 0}}
+            user->quota {test-user {:count 10, :cpus 50, :mem 32768, :gpus 10}}
+            num-considerable 3]
+        (is (= {:normal [job-1 job-2 job-3], :gpu [job-5 job-6]}
+               (sched/category->pending-jobs->category->considerable-jobs
+                 (d/db conn) category->pending-jobs user->quota user->usage num-considerable)))))
+    (testing "jobs inside usage quota limited by num-considerable of 2"
+      (let [user->usage {test-user {:count 1, :cpus 2, :mem 1024, :gpus 0}}
+            user->quota {test-user {:count 10, :cpus 50, :mem 32768, :gpus 10}}
+            num-considerable 2]
+        (is (= {:normal [job-1 job-2], :gpu [job-5 job-6]}
+               (sched/category->pending-jobs->category->considerable-jobs
+                 (d/db conn) category->pending-jobs user->quota user->usage num-considerable)))))
+    (testing "jobs inside usage quota limited by num-considerable of 1"
+      (let [user->usage {test-user {:count 1, :cpus 2, :mem 1024, :gpus 0}}
+            user->quota {test-user {:count 10, :cpus 50, :mem 32768, :gpus 10}}
+            num-considerable 1]
+        (is (= {:normal [job-1], :gpu [job-5]}
+               (sched/category->pending-jobs->category->considerable-jobs
+                 (d/db conn) category->pending-jobs user->quota user->usage num-considerable)))))
     (testing "some jobs inside usage quota"
       (let [user->usage {test-user {:count 1, :cpus 2, :mem 1024, :gpus 0}}
             user->quota {test-user {:count 5, :cpus 10, :mem 4096, :gpus 10}}
