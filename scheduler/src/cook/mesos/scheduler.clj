@@ -467,6 +467,8 @@
 (timers/deftimer [cook-mesos scheduler handle-resource-offer!-process-matches-duration])
 (timers/deftimer [cook-mesos scheduler handle-resource-offer!-mesos-submit-duration])
 (timers/deftimer [cook-mesos scheduler handle-resource-offer!-match-duration])
+(timers/deftimer [cook-mesos scheduler handle-resource-offer!-considerable-jobs-duration])
+(timers/deftimer [cook-mesos scheduler handle-resource-offer!-match-job-uuids-duration])
 (meters/defmeter [cook-mesos scheduler pending-job-atom-contended])
 
 (histograms/defhistogram [cook-mesos scheduler offer-size-mem])
@@ -648,8 +650,10 @@
       (try
         (let [db (db conn)
               category->pending-jobs @category->pending-jobs-atom
-              category->considerable-jobs (category->pending-jobs->category->considerable-jobs
-                                            db category->pending-jobs user->quota user->usage num-considerable)
+              category->considerable-jobs (timers/time!
+                                            handle-resource-offer!-considerable-jobs-duration
+                                            (category->pending-jobs->category->considerable-jobs
+                                              db category->pending-jobs user->quota user->usage num-considerable))
               matches (timers/time!
                         handle-resource-offer!-match-duration
                         (match-offer-to-schedule fenzo (apply concat (vals category->considerable-jobs)) offers))
@@ -657,7 +661,9 @@
               offers-scheduled (for [{:keys [leases]} matches
                                      lease leases]
                                  (:offer lease))
-              {matched-normal-job-uuids :normal :as category->job-uuids} (matches->category->job-uuids matches)
+              {matched-normal-job-uuids :normal :as category->job-uuids} (timers/time!
+                                                                           handle-resource-offer!-match-job-uuids-duration
+                                                                           (matches->category->job-uuids matches))
               first-normal-considerable-job-resources (-> category->considerable-jobs :normal first util/job-ent->resources)
               matched-normal-considerable-jobs-head? (contains? matched-normal-job-uuids (-> category->considerable-jobs :normal first :job/uuid))]
           (reset! offer-stash offers-scheduled)
@@ -673,7 +679,7 @@
             :else
             (do
               (swap! category->pending-jobs-atom remove-matched-jobs-from-pending-jobs category->job-uuids)
-              (log/debug "updated-scheduler-contents:" @category->pending-jobs-atom)
+              (log/debug "updated category->pending-jobs:" @category->pending-jobs-atom)
               (launch-matched-tasks! matches conn db driver fenzo fid)
               matched-normal-considerable-jobs-head?)))
         (catch Throwable t
