@@ -918,7 +918,7 @@
                (sched/category->pending-jobs->category->considerable-jobs
                  (d/db conn) category->pending-jobs user->quota user->usage num-considerable)))))))
 
-(deftest test-extract-matched-job-uuids
+(deftest test-matches->category->job-uuids
   (let [create-task-result (fn [job-uuid cpus mem gpus]
                              (-> (Mockito/when (.getRequest (Mockito/mock TaskAssignmentResult)))
                                  (.thenReturn (sched/->TaskRequestAdapter
@@ -930,73 +930,77 @@
                                                 (str "task-id-" job-uuid)
                                                 []))
                                  (.getMock)))
-        matches [{:tasks [(create-task-result "job-1" 1 1024 nil)
-                          (create-task-result "job-2" 2 2048 nil)
-                          (create-task-result "job-3" 3 1024 1)]}
-                 {:tasks [(create-task-result "job-4" 4 1024 nil)
-                          (create-task-result "job-5" 5 2048 2)]}
-                 {:tasks [(create-task-result "job-6" 6 1024 3)]}
-                 {:tasks [(create-task-result "job-7" 7 1024 nil)]}]]
-    (is (= {:matched-gpu-job-uuids #{"job-3" "job-5" "job-6"}
-            :matched-normal-job-uuids #{"job-1" "job-2" "job-4" "job-7"}}
-           (sched/extract-matched-job-uuids matches)))))
+        job-1 (create-task-result "job-1" 1 1024 nil)
+        job-2 (create-task-result "job-2" 2 2048 nil)
+        job-3 (create-task-result "job-3" 3 1024 1)
+        job-4 (create-task-result "job-4" 4 1024 nil)
+        job-5 (create-task-result "job-5" 5 2048 2)
+        job-6 (create-task-result "job-6" 6 1024 3)
+        job-7 (create-task-result "job-7" 7 1024 nil)]
+    (is (= {:gpu #{"job-3" "job-5" "job-6"}
+            :normal #{"job-1" "job-2" "job-4" "job-7"}}
+           (sched/matches->category->job-uuids
+             [{:tasks [job-1 job-2 job-3]}, {:tasks #{job-4 job-5}}, {:tasks [job-6]}, {:tasks [job-7]}])))
+    (is (= {:normal #{"job-1" "job-2" "job-4" "job-7"}}
+           (sched/matches->category->job-uuids
+             [{:tasks [job-1 job-2]}, {:tasks #{job-4}}, {:tasks #{}}, {:tasks [job-7]}])))
+    (is (= {:gpu #{"job-3" "job-5" "job-6"}}
+           (sched/matches->category->job-uuids
+             [{:tasks [job-3]}, {:tasks #{job-5}}, {:tasks #{job-6}}, {:tasks []}])))
+    (is (= {}
+           (sched/matches->category->job-uuids
+             [{:tasks []}, {:tasks #{}}, {:tasks #{}}, {:tasks []}])))))
 
 (deftest test-remove-matched-jobs-from-pending-jobs
   (let [create-jobs-in-range (fn [start-inc end-exc]
-                               (map (fn [id] {:job/uuid id})
-                                    (range start-inc end-exc)))]
+                               (map (fn [id] {:job/uuid id}) (range start-inc end-exc)))]
     (testing "empty matched jobs"
-      (let [category->pending-jobs {:normal (create-jobs-in-range 1 10)
-                                    :gpu (create-jobs-in-range 10 15)}
-            matched-normal-job-uuids #{}
-            matched-gpu-job-uuids #{}
+      (let [category->pending-jobs {:gpu (create-jobs-in-range 10 15)
+                                    :normal (create-jobs-in-range 1 10)}
+            category->matched-job-uuids {:gpu #{}
+                                         :normal #{}}
             expected-category->pending-jobs category->pending-jobs]
         (is (= expected-category->pending-jobs
-               (sched/remove-matched-jobs-from-pending-jobs
-                 category->pending-jobs matched-normal-job-uuids matched-gpu-job-uuids)))))
+               (sched/remove-matched-jobs-from-pending-jobs category->pending-jobs category->matched-job-uuids)))))
 
     (testing "unknown matched jobs"
-      (let [category->pending-jobs {:normal (create-jobs-in-range 1 10)
-                                    :gpu (create-jobs-in-range 10 15)}
-            matched-normal-job-uuids (set (range 20 25))
-            matched-gpu-job-uuids (set (range 30 35))
+      (let [category->pending-jobs {:gpu (create-jobs-in-range 10 15)
+                                    :normal (create-jobs-in-range 1 10)}
+            category->matched-job-uuids {:gpu (set (range 30 35))
+                                         :normal (set (range 20 25))}
             expected-category->pending-jobs category->pending-jobs]
         (is (= expected-category->pending-jobs
-               (sched/remove-matched-jobs-from-pending-jobs
-                 category->pending-jobs matched-normal-job-uuids matched-gpu-job-uuids)))))
+               (sched/remove-matched-jobs-from-pending-jobs category->pending-jobs category->matched-job-uuids)))))
 
     (testing "non-empty matched normal jobs"
-      (let [category->pending-jobs {:normal (create-jobs-in-range 1 10)
-                                    :gpu (create-jobs-in-range 10 15)}
-            matched-normal-job-uuids (set (range 1 5))
-            matched-gpu-job-uuids #{}
-            expected-category->pending-jobs {:normal (create-jobs-in-range 5 10)
-                                             :gpu (create-jobs-in-range 10 15)}]
+      (let [category->pending-jobs {:gpu (create-jobs-in-range 10 15)
+                                    :normal (create-jobs-in-range 1 10)}
+            category->matched-job-uuids {:gpu #{}
+                                         :normal (set (range 1 5))}
+            expected-category->pending-jobs {:gpu (create-jobs-in-range 10 15)
+                                             :normal (create-jobs-in-range 5 10)}]
         (is (= expected-category->pending-jobs
-               (sched/remove-matched-jobs-from-pending-jobs
-                 category->pending-jobs matched-normal-job-uuids matched-gpu-job-uuids)))))
+               (sched/remove-matched-jobs-from-pending-jobs category->pending-jobs category->matched-job-uuids)))))
 
     (testing "non-empty matched gpu jobs"
-      (let [category->pending-jobs {:normal (create-jobs-in-range 1 10)
-                                    :gpu (create-jobs-in-range 10 15)}
-            matched-normal-job-uuids #{}
-            matched-gpu-job-uuids (set (range 10 12))
-            expected-category->pending-jobs {:normal (create-jobs-in-range 1 10)
-                                             :gpu (create-jobs-in-range 12 15)}]
+      (let [category->pending-jobs {:gpu (create-jobs-in-range 10 15)
+                                    :normal (create-jobs-in-range 1 10)}
+            category->matched-job-uuids {:gpu (set (range 10 12))
+                                         :normal #{}}
+            expected-category->pending-jobs {:gpu (create-jobs-in-range 12 15)
+                                             :normal (create-jobs-in-range 1 10)}]
         (is (= expected-category->pending-jobs
-               (sched/remove-matched-jobs-from-pending-jobs
-                 category->pending-jobs matched-normal-job-uuids matched-gpu-job-uuids)))))
+               (sched/remove-matched-jobs-from-pending-jobs category->pending-jobs category->matched-job-uuids)))))
 
     (testing "non-empty matched normal and gpu jobs"
       (let [category->pending-jobs {:normal (create-jobs-in-range 1 10)
                                     :gpu (create-jobs-in-range 10 15)}
-            matched-normal-job-uuids (set (range 5 10))
-            matched-gpu-job-uuids (set (range 10 12))
-            expected-category->pending-jobs {:normal (create-jobs-in-range 1 5)
-                                             :gpu (create-jobs-in-range 12 15)}]
+            category->matched-job-uuids {:gpu (set (range 10 12))
+                                         :normal (set (range 5 10))}
+            expected-category->pending-jobs {:gpu (create-jobs-in-range 12 15)
+                                             :normal (create-jobs-in-range 1 5)}]
         (is (= expected-category->pending-jobs
-               (sched/remove-matched-jobs-from-pending-jobs
-                 category->pending-jobs matched-normal-job-uuids matched-gpu-job-uuids)))))))
+               (sched/remove-matched-jobs-from-pending-jobs category->pending-jobs category->matched-job-uuids)))))))
 
 (deftest test-handle-resource-offers
   (let [uri "datomic:mem://test-handle-resource-offers"

@@ -41,7 +41,7 @@
             [metrics.histograms :as histograms]
             [metrics.meters :as meters]
             [metrics.timers :as timers]
-            [plumbing.core :refer (map-vals)])
+            [plumbing.core :as pc :refer (map-vals)])
   (import [com.netflix.fenzo ConstraintEvaluator ConstraintEvaluator$Result TaskAssignmentResult TaskRequest
                              TaskScheduler TaskScheduler$Builder VirtualMachineLease VirtualMachineLease$Range
                              VirtualMachineCurrentState]
@@ -543,38 +543,30 @@
                "of those pending jobs (limited to " num-considerable " due to backdown)")
     category->considerable-jobs))
 
-(defn extract-matched-job-uuids
-  "Returns the matched normal and gpu job uuid sets."
+(defn matches->category->job-uuids
+  "Returns the matched job uuid sets by category."
   [matches]
-  (let [filter-jobs-by-category (fn filter-jobs-by-category [category]
-                                  (for [match matches
-                                        ^TaskAssignmentResult task-result (:tasks match)
-                                        :let [task-request (.getRequest task-result)]
-                                        :when (= category (util/categorize-job (:job task-request)))]
-                                    (:job task-request)))
-        matched-normal-jobs (filter-jobs-by-category :normal)
-        matched-gpu-jobs (filter-jobs-by-category :gpu)
-        matched-normal-job-uuids (set (map :job/uuid matched-normal-jobs))
-        matched-gpu-job-uuids (set (map :job/uuid matched-gpu-jobs))]
-    (log/debug "matched normal jobs:" (count matched-normal-job-uuids))
-    (log/debug "matched gpu jobs:" (count matched-gpu-job-uuids))
+  (let [category->jobs (group-by util/categorize-job
+                                 (->> matches
+                                      (map #(-> % :tasks vec))
+                                      flatten
+                                      (map #(-> % .getRequest :job))))
+        category->job-uuids (map-vals #(set (map :job/uuid %)) category->jobs)]
+    (log/debug "matched jobs:" (map-vals count category->job-uuids))
     (when (not (empty? matches))
-      (let [matched-normal-jobs-resource-requirements (util/sum-resources-of-jobs matched-normal-jobs)]
+      (let [matched-normal-jobs-resource-requirements (-> category->jobs :normal util/sum-resources-of-jobs)]
         (meters/mark! matched-tasks-cpus (:cpus matched-normal-jobs-resource-requirements))
         (meters/mark! matched-tasks-mem (:mem matched-normal-jobs-resource-requirements))))
-    {:matched-gpu-job-uuids matched-gpu-job-uuids
-     :matched-normal-job-uuids matched-normal-job-uuids}))
+    category->job-uuids))
 
 (defn remove-matched-jobs-from-pending-jobs
-  "Removes matched normal and gpu jobs from category->pending-jobs."
-  [category->pending-jobs matched-normal-job-uuids matched-gpu-job-uuids]
-  (let [remove-matched-jobs (fn remove-matched-jobs [existing-jobs matched-job-uuids]
-                              (remove #(contains? matched-job-uuids (:job/uuid %)) existing-jobs))
-        update-scheduler-contents (fn update-scheduler-contents [category->pending-jobs]
-                                    (-> category->pending-jobs
-                                        (update :gpu remove-matched-jobs matched-gpu-job-uuids)
-                                        (update :normal remove-matched-jobs matched-normal-job-uuids)))]
-    (update-scheduler-contents category->pending-jobs)))
+  "Removes matched jobs from category->pending-jobs."
+  [category->pending-jobs category->matched-job-uuids]
+  (let [remove-matched-jobs (fn remove-matched-jobs [category]
+                              (let [existing-jobs (category->pending-jobs category)
+                                    matched-job-uuids (category->matched-job-uuids category)]
+                                (remove #(contains? matched-job-uuids (:job/uuid %)) existing-jobs)))]
+    (pc/map-from-keys remove-matched-jobs (keys category->pending-jobs))))
 
 (defn- launch-matched-tasks!
   "Updates the state of matched tasks in the database and then launches them."
@@ -665,7 +657,7 @@
               offers-scheduled (for [{:keys [leases]} matches
                                      lease leases]
                                  (:offer lease))
-              {:keys [matched-gpu-job-uuids matched-normal-job-uuids]} (extract-matched-job-uuids matches)
+              {matched-normal-job-uuids :normal :as category->job-uuids} (matches->category->job-uuids matches)
               first-normal-considerable-job-resources (-> category->considerable-jobs :normal first util/job-ent->resources)
               matched-normal-considerable-jobs-head? (contains? matched-normal-job-uuids (-> category->considerable-jobs :normal first :job/uuid))]
           (reset! offer-stash offers-scheduled)
@@ -680,7 +672,7 @@
             (empty? matches) true
             :else
             (do
-              (swap! category->pending-jobs-atom remove-matched-jobs-from-pending-jobs matched-normal-job-uuids matched-gpu-job-uuids)
+              (swap! category->pending-jobs-atom remove-matched-jobs-from-pending-jobs category->job-uuids)
               (log/debug "updated-scheduler-contents:" @category->pending-jobs-atom)
               (launch-matched-tasks! matches conn db driver fenzo fid)
               matched-normal-considerable-jobs-head?)))
