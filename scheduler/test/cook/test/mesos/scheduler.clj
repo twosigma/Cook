@@ -32,7 +32,7 @@
             [mesomatic.scheduler :as msched]
             [mesomatic.types :as mtypes]
             [plumbing.core :as pc])
-  (:import (com.netflix.fenzo TaskAssignmentResult TaskScheduler)
+  (:import (com.netflix.fenzo TaskAssignmentResult TaskScheduler VMTaskFitnessCalculator)
            (com.netflix.fenzo.plugins BinPackingFitnessCalculators)
            (java.util UUID)
            (org.mockito Mockito)))
@@ -315,7 +315,7 @@
                         :slave-id {:value (str "slave-" (UUID/randomUUID))}
                         :hostname (str "host-" (UUID/randomUUID))}])
         fid (str "framework-id-" (UUID/randomUUID))
-        fenzo-maker #(sched/make-fenzo-scheduler nil 100000 1)] ; The params are for offer declining, which should never happen
+        fenzo-maker #(sched/make-fenzo-scheduler nil 100000 nil 1)] ; The params are for offer declining, which should never happen
     (testing "Consume no schedule cases"
       (are [schedule offers] (= [] (sched/match-offer-to-schedule (fenzo-maker) schedule offers))
                              [] (offer-maker 0 0)
@@ -854,7 +854,7 @@
         driver (reify msched/SchedulerDriver
                  (kill-task! [_ task] (swap! tasks-killed conj (:value task)))) ; Conjoin the task-id
         driver-atom (atom nil)
-        fenzo (sched/make-fenzo-scheduler driver-atom 1500 0.8)
+        fenzo (sched/make-fenzo-scheduler driver-atom 1500 nil 0.8)
         make-dummy-status-update (fn [task-id reason state & {:keys [progress] :or {progress nil}}]
                                    (let [task {:task-id {:value task-id}
                                                :reason reason
@@ -1282,7 +1282,7 @@
                                       (let [conn (restore-fresh-database! uri)
                                             test-db (d/db conn)
                                             driver-atom (atom nil)
-                                            ^TaskScheduler fenzo (sched/make-fenzo-scheduler driver-atom 1500 0.8)
+                                            ^TaskScheduler fenzo (sched/make-fenzo-scheduler driver-atom 1500 nil 0.8)
                                             group-ent-id (create-dummy-group conn)
                                             job-1 (d/entity test-db (create-dummy-job conn :group group-ent-id :name "job-1" :ncpus 3 :memory 2048))
                                             job-2 (d/entity test-db (create-dummy-job conn :group group-ent-id :name "job-2" :ncpus 13 :memory 1024))
@@ -1424,6 +1424,30 @@
         (is (= 2 (count @launched-offer-ids-atom)))
         (is (= 2 (count @launched-job-ids-atom)))
         (is (= #{"job-1" "job-5"} (set @launched-job-ids-atom)))))))
+
+(def dummy-fitness-calculator
+  "This calculator simply returns 0.0 for every Fenzo fitness calculation."
+  (reify VMTaskFitnessCalculator
+    (getName [_] "Dummy Fitness Calculator")
+    (calculateFitness [_ task-request target-vm task-tracker-state]
+      0.0)))
+
+(deftest test-config-string->fitness-calculator
+  (testing "clojure symbol"
+    (is (instance? VMTaskFitnessCalculator
+                   (sched/config-string->fitness-calculator
+                    "cook.test.mesos.scheduler/dummy-fitness-calculator"))))
+  (testing "java class on classpath"
+    (is (instance? VMTaskFitnessCalculator
+                   (sched/config-string->fitness-calculator
+                    cook.components/default-fitness-calculator))))
+
+  (testing "bad input"
+    (is (thrown? IllegalArgumentException (sched/config-string->fitness-calculator "not-a-valid-anything"))))
+
+  (testing "something other than a VMTaskFitnessCalculator"
+    (is (thrown? IllegalArgumentException (sched/config-string->fitness-calculator
+                                           "System/out")))))
 
 (comment
   (run-tests))

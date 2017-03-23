@@ -22,7 +22,9 @@
             [clojure.core.cache :as cache]
             [clojure.edn :as edn]
             [clojure.set :as set]
+            [clojure.string :as str]
             [clojure.tools.logging :as log]
+            [cook.components :refer (default-fitness-calculator)]
             [cook.datomic :as datomic :refer (transact-with-retries)]
             [cook.mesos.constraints :as constraints]
             [cook.mesos.dru :as dru]
@@ -43,9 +45,10 @@
             [metrics.meters :as meters]
             [metrics.timers :as timers]
             [plumbing.core :as pc])
-  (import [com.netflix.fenzo ConstraintEvaluator ConstraintEvaluator$Result TaskAssignmentResult TaskRequest
-                             TaskScheduler TaskScheduler$Builder VirtualMachineLease VirtualMachineLease$Range
-                             VirtualMachineCurrentState]
+  (import [com.netflix.fenzo ConstraintEvaluator ConstraintEvaluator$Result
+           TaskAssignmentResult TaskRequest TaskScheduler TaskScheduler$Builder
+           VMTaskFitnessCalculator VirtualMachineLease VirtualMachineLease$Range
+           VirtualMachineCurrentState]
           [com.netflix.fenzo.functions Action1 Func1]
           com.netflix.fenzo.plugins.BinPackingFitnessCalculators
           java.util.Date
@@ -1226,13 +1229,41 @@
 (meters/defmeter [cook-mesos scheduler mesos-error])
 (meters/defmeter [cook-mesos scheduler offer-chan-full-error])
 
+(defn config-string->fitness-calculator
+  "Given a string specified in the configuration, attempt to resolve it
+  to and return an instance of com.netflix.fenzo.VMTaskFitnessCalculator.
+  The config string can either be a reference to a clojure symbol, or to a
+  static member of a java class (for example, one of the fitness calculators
+  that ship with Fenzo).  An exception will be thrown if a VMTaskFitnessCalculator
+  can't be found using either method."
+  ^VMTaskFitnessCalculator
+  [config-string]
+  (let [calculator
+        (try
+          (-> config-string symbol resolve deref)
+          (catch NullPointerException e
+            (log/debug "fitness-calculator" config-string
+                       "couldn't be resolved to a clojure symbol."
+                       "Seeing if it refers to a java static field...")
+            (try
+              (let [[java-class-name field-name] (str/split config-string #"/")
+                    java-class (-> java-class-name symbol resolve)]
+                (clojure.lang.Reflector/getStaticField java-class field-name))
+              (catch Exception e
+                (throw (IllegalArgumentException.
+                        (str config-string " could not be resolved to a clojure symbol or to a java static field")))))))]
+    (if (instance? VMTaskFitnessCalculator calculator)
+      calculator
+      (throw (IllegalArgumentException.
+              (str config-string " is not a VMTaskFitnessCalculator"))))))
+
 (defn make-fenzo-scheduler
-  [driver offer-incubate-time-ms good-enough-fitness]
+  [driver offer-incubate-time-ms fitness-calculator good-enough-fitness]
   (.. (TaskScheduler$Builder.)
       (disableShortfallEvaluation) ;; We're not using the autoscaling features
       (withLeaseOfferExpirySecs (max (-> offer-incubate-time-ms time/millis time/in-seconds) 1)) ;; should be at least 1 second
       (withRejectAllExpiredOffers)
-      (withFitnessCalculator BinPackingFitnessCalculators/cpuMemBinPacker)
+      (withFitnessCalculator (config-string->fitness-calculator (or fitness-calculator default-fitness-calculator)))
       (withFitnessGoodEnoughFunction (reify Func1
                                        (call [_ fitness]
                                          (> fitness good-enough-fitness))))
@@ -1284,12 +1315,12 @@
               (log/error e "Unable to decline offers!")))))))
 
 (defn create-datomic-scheduler
-  [conn set-framework-id driver-atom pending-jobs-atom offer-cache heartbeat-ch offer-incubate-time-ms mea-culpa-failure-limit fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset task-constraints gpu-enabled? good-enough-fitness]
+  [conn set-framework-id driver-atom pending-jobs-atom offer-cache heartbeat-ch offer-incubate-time-ms mea-culpa-failure-limit fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset fenzo-fitness-calculator task-constraints gpu-enabled? good-enough-fitness]
 
   (persist-mea-culpa-failure-limit! conn mea-culpa-failure-limit)
 
   (let [fid (atom nil)
-        fenzo (make-fenzo-scheduler driver-atom offer-incubate-time-ms good-enough-fitness)
+        fenzo (make-fenzo-scheduler driver-atom offer-incubate-time-ms fenzo-fitness-calculator good-enough-fitness)
         [offers-chan resources-atom] (make-offer-handler conn driver-atom fenzo fid pending-jobs-atom offer-cache fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset)]
     (start-jobs-prioritizer! conn pending-jobs-atom task-constraints)
     {:scheduler

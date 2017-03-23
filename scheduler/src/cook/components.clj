@@ -1,4 +1,3 @@
-;;
 ;; Copyright (c) Two Sigma Open Source, LLC
 ;;
 ;; Licensed under the Apache License, Version 2.0 (the "License");
@@ -83,7 +82,7 @@
                    (route/not-found "<h1>Not a valid route</h1>")))})
 
 (def mesos-scheduler
-  {:mesos-scheduler (fnk [[:settings mesos-master mesos-master-hosts mesos-leader-path mesos-failover-timeout mesos-principal mesos-role mesos-framework-name offer-incubate-time-ms mea-culpa-failure-limit fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset task-constraints riemann mesos-gpu-enabled rebalancer good-enough-fitness] mesos-datomic mesos-datomic-mult curator-framework mesos-pending-jobs-atom mesos-offer-cache]
+  {:mesos-scheduler (fnk [[:settings mesos-master mesos-master-hosts mesos-leader-path mesos-failover-timeout mesos-principal mesos-role mesos-framework-name offer-incubate-time-ms mea-culpa-failure-limit fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset fenzo-fitness-calculator task-constraints riemann mesos-gpu-enabled rebalancer good-enough-fitness] mesos-datomic mesos-datomic-mult curator-framework mesos-pending-jobs-atom mesos-offer-cache]
                       (let [make-mesos-driver-fn (partial (lazy-load-var 'cook.mesos/make-mesos-driver)
                                                           {:mesos-master mesos-master
                                                            :mesos-failover-timeout mesos-failover-timeout
@@ -114,6 +113,7 @@
                              :fenzo-scaleback fenzo-scaleback
                              :fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-warn
                              :fenzo-floor-iterations-before-reset fenzo-floor-iterations-before-reset
+                             :fenzo-fitness-calculator fenzo-fitness-calculator
                              :good-enough-fitness good-enough-fitness})
                           (catch ClassNotFoundException e
                             (log/warn e "Not loading mesos support...")
@@ -291,7 +291,7 @@
      })
 
 (def default-authorization {:authorization-fn 'cook.authorization/open-auth})
-
+(def default-fitness-calculator "com.netflix.fenzo.plugins.BinPackingFitnessCalculators/cpuMemBinPacker")
 
 
 (def config-settings
@@ -371,6 +371,8 @@
                                            fenzo-floor-iterations-before-warn)
      :fenzo-floor-iterations-before-reset (fnk [[:config [:scheduler {fenzo-floor-iterations-before-reset 1000}]]]
                                             fenzo-floor-iterations-before-reset)
+     :fenzo-fitness-calculator (fnk [[:config [:scheduler {fenzo-fitness-calculator default-fitness-calculator}]]]
+                                    fenzo-fitness-calculator)
      :mesos-gpu-enabled (fnk [[:config [:mesos {enable-gpu-support false}]]]
                           (boolean enable-gpu-support))
      :good-enough-fitness (fnk [[:config [:scheduler {good-enough-fitness 0.8}]]]

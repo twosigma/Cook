@@ -166,7 +166,7 @@
    fenzo-config             -- map, config for fenzo, See scheduler/docs/configuration.asc for more details"
   [make-mesos-driver-fn get-mesos-utilization curator-framework mesos-datomic-conn mesos-datomic-mult zk-prefix offer-incubate-time-ms mea-culpa-failure-limit task-constraints riemann-host riemann-port mesos-pending-jobs-atom offer-cache gpu-enabled? rebalancer-config
    {:keys [fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn
-           fenzo-floor-iterations-before-reset good-enough-fitness]
+           fenzo-floor-iterations-before-reset fenzo-fitness-calculator good-enough-fitness]
     :as fenzo-config}]
   (let [zk-framework-id (str zk-prefix "/framework-id")
         datomic-report-chan (async/chan (async/sliding-buffer 4096))
@@ -190,6 +190,7 @@
                    fenzo-scaleback
                    fenzo-floor-iterations-before-warn
                    fenzo-floor-iterations-before-reset
+                   fenzo-fitness-calculator
                    task-constraints
                    gpu-enabled?
                    good-enough-fitness)
