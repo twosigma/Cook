@@ -30,6 +30,17 @@ git apply --check 0001-Add-cook-support-for-spark-v1.6.1.patch
 git am < 0001-Add-cook-support-for-spark-v1.6.1.patch
 ```
 
+## Instructions
+
+```
+cd spark
+git checkout v1.6.1
+git apply --stat 0001-Add-cook-support-for-spark-v2.0.1.patch
+git apply --check 0001-Add-cook-support-for-spark-v2.0.1.patch
+git am < 0001-Add-cook-support-for-spark-v2.0.1.patch
+```
+
+
 ## Installation
 
 Please refer to [Building Spark](http://spark.apache.org/docs/latest/building-spark.html)
