@@ -63,6 +63,9 @@
   (main-handler conn "my-framework-id" {:cpus cpus :memory-gb memory-gb :retry-limit retry-limit} gpus-enabled
                 (fn [] []) authorized-fn))
 
+(defn response->body-data [response]
+  (-> response :body slurp json/read-str))
+
 (deftest handler-db-roundtrip
   (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
         uuid #uuid "386b374c-4c4a-444f-aca0-0c25384c6fa0"
@@ -91,6 +94,18 @@
                          :authorization/user "dgrnbrg"
                          :body-params {"jobs" [job]}}))
             299))
+
+    (testing "409 (conflict) on duplicate creation attempt"
+      (let [response (h {:request-method :post
+                         :scheme :http
+                         :uri "/rawscheduler"
+                         :headers {"Content-Type" "application/json"}
+                         :authorization/user "dgrnbrg"
+                         :body-params {"jobs" [job]}})]
+        (is (= 409 (:status response)))
+        (is (= (response->body-data response)
+               {"error" (str "The following job UUIDs were already used: " uuid)}))))
+
     (let [ent (d/entity (db conn) [:job/uuid uuid])
           resources (util/job-ent->resources ent)]
       (is (= "hello world" (:job/command ent)))
@@ -105,7 +120,7 @@
                    :authorization/user "dgrnbrg"
                    :query-params {"job" (str uuid)}})
           _ (is (<= 200 (:status resp) 299))
-          [body] (-> resp :body slurp json/read-str)
+          [body] (response->body-data resp)
           trimmed-body (select-keys body (keys job))
           resp-uris (map (fn [gold copy]
                            (select-keys copy (keys gold)))
@@ -154,13 +169,13 @@
                    :authorization/user "mforsyth"
                    :request-method :get}
         waiting-resp (h (merge req-attrs {:query-params {"job" (str waiting-uuid)}}))
-        waiting-body (-> waiting-resp :body slurp json/read-str)
+        waiting-body (response->body-data waiting-resp)
         running-resp (h (merge req-attrs {:query-params {"job" (str running-uuid)}}))
-        running-body (-> running-resp :body slurp json/read-str)
+        running-body (response->body-data running-resp)
         success-resp (h (merge req-attrs {:query-params {"job" (str success-uuid)}}))
-        success-body (-> success-resp :body slurp json/read-str)
+        success-body (response->body-data success-resp)
         fail-resp (h (merge req-attrs {:query-params {"job" (str fail-uuid)}}))
-        fail-body (-> fail-resp :body slurp json/read-str)]
+        fail-body (response->body-data fail-resp)]
     (is (= ((first waiting-body) "state") "waiting"))
     (is (= ((first running-body) "state") "running"))
     (is (= ((first success-body) "state") "success"))
@@ -261,7 +276,7 @@
                      :authorization/user "dgrnbrg"
                      :query-params {"job" (str (get successful-job "uuid"))}})
             _ (is (<= 200 (:status resp) 299))
-            [body] (-> resp :body slurp json/read-str)
+            [body] (response->body-data resp)
             trimmed-body (select-keys body (keys successful-job))]
         (is (= (dissoc successful-job "uris") (dissoc trimmed-body "uris")))))))
 
@@ -292,7 +307,7 @@
             _ (is (<= 200 (:status update-resp) 299))
             read-resp (h (merge retry-req-attrs  {:request-method :get
                                                   :query-params {"job" uuid1}}))
-            read-body (-> read-resp :body slurp json/read-str)]
+            read-body (response->body-data read-resp)]
         (is (= read-body 45))))
 
     (testing "retry multiple jobs incrementing retries"
@@ -302,10 +317,10 @@
                                    :body-params {"increment" 3}}))
             read-resp1 (h (merge retry-req-attrs  {:request-method :get
                                                    :query-params {"job" uuid1}}))
-            read-body1 (-> read-resp1 :body slurp json/read-str)
+            read-body1 (response->body-data read-resp1)
             read-resp2 (h (merge retry-req-attrs  {:request-method :get
                                                    :query-params {"job" uuid2}}))
-            read-body2 (-> read-resp2 :body slurp json/read-str)]
+            read-body2 (response->body-data read-resp2)]
         (is (= read-body1 48))
         (is (= read-body2 33))))))
 
@@ -321,12 +336,12 @@
                    :authorization/user "mforsyth"
                    :query-params {"instance" task-id}}
         initial-read-resp (h (merge req-attrs {:request-method :get}))
-        initial-read-body (-> initial-read-resp :body slurp json/read-str)
+        initial-read-body (response->body-data initial-read-resp)
         initial-instance-cancelled? (-> initial-read-body keywordize-keys
                                         first :instances first :cancelled boolean)
         cancel-resp (h (merge req-attrs {:request-method :delete}))
         followup-read-resp (h (merge req-attrs {:request-method :get}))
-        followup-read-body (-> followup-read-resp :body slurp json/read-str)
+        followup-read-body (response->body-data followup-read-resp)
         followup-instance-cancelled? (-> followup-read-body keywordize-keys
                                          first :instances first :cancelled boolean)]
     (is (not initial-instance-cancelled?))
@@ -344,7 +359,7 @@
         initial-get-resp (h (merge quota-req-attrs
                                    {:request-method :get
                                     :query-params {:user "foo"}}))
-        initial-get-body (-> initial-get-resp :body slurp json/read-str)]
+        initial-get-body (response->body-data initial-get-resp)]
 
     (testing "initial get successful"
       (is (<= 200 (:status initial-get-resp) 299)))
@@ -354,13 +369,13 @@
             update-resp (h (merge quota-req-attrs
                                   {:request-method :post
                                    :body-params {:user "foo" :quota new-quota}}))
-            update-body (-> update-resp :body slurp json/read-str)
+            update-body (response->body-data update-resp)
             _ (is (<= 200 (:status update-resp) 299))
             _ (is (= (kw-keys update-body) new-quota))
             get-resp (h (merge quota-req-attrs
                                {:request-method :get
                                 :query-params {:user "foo"}}))
-            get-body (-> get-resp :body slurp json/read-str)]
+            get-body (response->body-data get-resp)]
         (is (= get-body update-body))))
 
     (testing "delete resets quota"
@@ -371,7 +386,7 @@
             get-resp (h (merge quota-req-attrs
                                {:request-method :get
                                 :query-params {:user "foo"}}))
-            get-body (-> get-resp :body slurp json/read-str)]
+            get-body (response->body-data get-resp)]
         (is (= get-body initial-get-body))))))
 
 (deftest share-api
@@ -384,7 +399,7 @@
         initial-get-resp (h (merge share-req-attrs
                                    {:request-method :get
                                     :query-params {:user "foo"}}))
-        initial-get-body (-> initial-get-resp :body slurp json/read-str)]
+        initial-get-body (response->body-data initial-get-resp)]
 
     (testing "initial get successful"
       (is (<= 200 (:status initial-get-resp) 299)))
@@ -394,13 +409,13 @@
             update-resp (h (merge share-req-attrs
                                   {:request-method :post
                                    :body-params {:user "foo" :share new-share}}))
-            update-body (-> update-resp :body slurp json/read-str)
+            update-body (response->body-data update-resp)
             _ (is (<= 200 (:status update-resp) 299))
             _ (is (= (kw-keys update-body) new-share))
             get-resp (h (merge share-req-attrs
                                {:request-method :get
                                 :query-params {:user "foo"}}))
-            get-body (-> get-resp :body slurp json/read-str)]
+            get-body (response->body-data get-resp)]
         (is (= get-body update-body))))
 
     (testing "delete resets share"
@@ -411,7 +426,7 @@
             get-resp (h (merge share-req-attrs
                                {:request-method :get
                                 :query-params {:user "foo"}}))
-            get-body (-> get-resp :body slurp json/read-str)]
+            get-body (response->body-data get-resp)]
         (is (= get-body initial-get-body))))))
 
 (deftest group-validator
@@ -454,25 +469,19 @@
                    :authorization/user "diego"
                    :body-params params}))
         get-group (fn [uuid]
-                    (-> (h {:request-method :get
-                            :scheme :http
-                            :uri "/group"
-                            :headers {"Content-Type" "application/json"}
-                            :authorization/usr "diego"
-                            :query-params {"uuid" uuid}})
-                        :body
-                        slurp
-                        json/read-str))
+                    (response->body-data (h {:request-method :get
+                                   :scheme :http
+                                   :uri "/group"
+                                   :headers {"Content-Type" "application/json"}
+                                   :authorization/usr "diego"
+                                   :query-params {"uuid" uuid}})))
         get-job (fn [uuid]
-                  (-> (h {:request-method :get
-                          :scheme :http
-                          :uri "/rawscheduler"
-                          :headers {"Content-Type" "application/json"}
-                          :authorization/usr "diego"
-                          :query-params {"job" uuid}})
-                      :body
-                      slurp
-                      json/read-str))]
+                  (response->body-data (h {:request-method :get
+                                 :scheme :http
+                                 :uri "/rawscheduler"
+                                 :headers {"Content-Type" "application/json"}
+                                 :authorization/usr "diego"
+                                 :query-params {"job" uuid}})))]
     (testing "One job one group"
       (let [guuid (str (java.util.UUID/randomUUID))
             juuid (str (java.util.UUID/randomUUID))
