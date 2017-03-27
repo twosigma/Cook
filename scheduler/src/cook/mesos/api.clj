@@ -562,8 +562,6 @@
     (doseq [{:keys [executable? extract?] :as uri} (:uris munged)
             :when (and (not (nil? executable?)) (not (nil? extract?)))]
       (throw (ex-info "Uri cannot set executable and extract" uri)))
-    (when (job-exists? db uuid)
-      (throw (ex-info (str "Job UUID " uuid " already used") {:uuid uuid})))
     (when (and group-uuid
                (not (valid-group-uuid? db
                                        new-group-uuids
@@ -863,6 +861,52 @@
 
 (def override-group-str "override-group-immutability")
 
+(defn create-jobs!
+  "Based on the context, persists the specified jobs, along with their groups,
+  to Datomic.
+  Preconditions:  The context must already have been populated with both
+  ::jobs and ::groups, which specify the jobs and job groups."
+  [conn {:keys [::groups ::jobs] :as ctx}]
+  (try
+    (log/info "Submitting jobs through raw api:" (::jobs ctx))
+    (let [group-uuids (set (map :uuid groups))
+          ;; Create new implicit groups (with all default settings)
+          implicit-groups (->> jobs
+                               (map :group)
+                               (remove nil?)
+                               distinct
+                               (remove #(contains? group-uuids %))
+                               (map make-default-group))
+          groups (concat implicit-groups (::groups ctx))
+          job-txns (mapcat #(make-job-txn %) jobs)
+          job-uuids->dbids (->> job-txns
+                                ;; Not all txns are for the top level job
+                                (filter :job/uuid)
+                                (map (juxt :job/uuid :db/id))
+                                (into {}))
+          group-uuid->job-dbids (->> jobs
+                                     (group-by :group)
+                                     (map-vals (fn [jobs]
+                                                 (map #(job-uuids->dbids (:uuid %))
+                                                      jobs))))
+          group-txns (map #(make-group-txn % (get group-uuid->job-dbids
+                                                  (:uuid %)
+                                                  []))
+                          groups)]
+      @(d/transact
+        conn
+        (concat job-txns group-txns))
+
+      {::results (str/join
+                  \space (concat ["submitted jobs"]
+                                 (map (comp str :uuid) jobs)
+                                 (if (not (empty? groups))
+                                   (concat ["submitted groups"]
+                                           (map (comp str :uuid) groups)))))})
+    (catch Exception e
+      (log/error e "Error submitting jobs through raw api")
+      [false {::error (str e)}])))
+
 ;;; On POST; JSON blob that looks like:
 ;;; {"jobs": [{"command": "echo hello world",
 ;;;            "uuid": "123898485298459823985",
@@ -900,50 +944,30 @@
                       (catch Exception e
                         (log/warn e "Malformed raw api request")
                         [true {::error (.getMessage e)}]))))
-    :processable? (fn [ctx]
-                    (try
-                      (log/info "Submitting jobs through raw api:" (::jobs ctx))
-                      (let [jobs (::jobs ctx)
-                            groups (::groups ctx)
-                            group-uuids (set (map :uuid groups))
-                            ; Create new implicit groups (with all default settings)
-                            implicit-groups (->> jobs
-                                                 (map :group)
-                                                 (remove nil?)
-                                                 distinct
-                                                 (remove #(contains? group-uuids %))
-                                                 (map make-default-group))
-                            groups (concat implicit-groups (::groups ctx))
-                            job-txns (mapcat #(make-job-txn %) jobs)
-                            job-uuids->dbids (->> job-txns
-                                                  ;; Not all txns are for the top level job
-                                                  (filter :job/uuid)
-                                                  (map (juxt :job/uuid :db/id))
-                                                  (into {}))
-                            group-uuid->job-dbids (->> jobs
-                                                        (group-by :group)
-                                                        (map-vals (fn [jobs]
-                                                                    (map #(job-uuids->dbids (:uuid %))
-                                                                         jobs))))
-                            group-txns (map #(make-group-txn % (get group-uuid->job-dbids
-                                                                    (:uuid %)
-                                                                    []))
-                                               groups)]
-                        @(d/transact
-                         conn
-                         (concat job-txns group-txns)))
-                      true
-                      (catch Exception e
-                        (log/error e "Error submitting jobs through raw api")
-                        [false {::error (str e)}])))
-    :post! (fn [ctx]
-             ;; We did the actual logic in processable?, so there's nothing left to do
-             {::results (str/join \space (concat ["submitted jobs"]
-                                                 (map (comp str :uuid) (::jobs ctx))
-                                                 (if (not (empty? (::groups ctx)))
-                                                   (concat ["submitted groups"]
-                                                           (map (comp str :uuid) (::groups ctx))))))})
 
+    :exists? (fn [ctx]
+               (let [db (d/db conn)
+                     existing (filter (partial job-exists? db) (map :uuid (::jobs ctx)))]
+                 [(seq existing) {::existing existing}]))
+
+    ;; To ensure compatibility with existing clients,
+    ;; we need to return 409 (conflict) when a client POSTs a Job UUID that already exists.
+    ;; Liberator normally only supports 409 responses to PUT requests, so we need to override
+    ;; the specific decisions that will lead to a 409 response on a POST request as well.
+    ;; (see https://clojure-liberator.github.io/liberator/tutorial/decision-graph.html)
+    :post-to-existing? (fn [ctx] false)
+    :put-to-existing? (fn [ctx] true)
+    ;; conflict? will only be invoked if exists? was true, and if so, we always want
+    ;; to indicate a conflict.
+    :conflict? (fn [ctx] true)
+    :handle-conflict (fn [ctx] {:error (str "The following job UUIDs were already used: "
+                                            (str/join ", " (::existing ctx)))})
+    ;; Implementing put! doesn't mean that PUT requests are actually supported
+    ;; (see :allowed-methods above). It is simply what liberator eventually calls to persist
+    ;; resource changes when conflict? has returned false.
+    :put! (partial create-jobs! conn)
+
+    :post! (partial create-jobs! conn)
     :handle-created (fn [ctx] (::results ctx))}))
 
 
@@ -1390,7 +1414,9 @@
              :handler (read-jobs-handler conn fid task-constraints gpu-enabled? is-authorized-fn)}
        :post {:summary "Schedules one or more jobs."
               :parameters {:body-params RawSchedulerRequest}
-              :responses {200 {:schema [JobResponse]}}
+              :responses {201 {:description "The jobs were successfully scheduled."}
+                          400 {:description "One or more of the jobs were incorrectly specified."}
+                          409 {:description "One or more of the jobs UUIDs are already in use."}}
               :handler (create-jobs-handler conn fid task-constraints gpu-enabled? is-authorized-fn)}
        :delete {:summary "Cancels jobs, halting execution when possible."
                 :responses {204 {:description "The jobs have been marked for termination."}
