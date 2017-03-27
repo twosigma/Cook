@@ -15,15 +15,15 @@
 ;;
 (ns cook.test.mesos.rebalancer
   (:use clojure.test)
-  (:require [cook.mesos :as mesos]
-            [cook.mesos.util :as util]
+  (:require [clojure.data.priority-map :as pm]
+            [clojure.test.check.generators :as gen]
+            [cook.mesos :as mesos]
             [cook.mesos.dru :as dru]
             [cook.mesos.rebalancer :as rebalancer :refer (->State)]
-            [cook.test.testutil :refer (restore-fresh-database! create-dummy-job create-dummy-instance)]
-            [datomic.api :as d :refer (q)]
             [cook.mesos.share :as share]
-            [clojure.test.check.generators :as gen]
-            [clojure.data.priority-map :as pm]))
+            [cook.mesos.util :as util]
+            [cook.test.testutil :refer (restore-fresh-database! create-dummy-job create-dummy-instance)]
+            [datomic.api :as d :refer (q)]))
 
 (deftest test-init-state
   (testing "test1"

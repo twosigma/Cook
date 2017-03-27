@@ -14,37 +14,37 @@
 ;; limitations under the License.
 ;;
 (ns cook.components
-  (:require [plumbing.core :refer (fnk)]
-            [ring.middleware.cookies :refer (wrap-cookies)]
-            [ring.middleware.params :refer (wrap-params)]
-            [congestion.middleware :refer  (wrap-rate-limit ip-rate-limit)]
-            [congestion.limits :refer (RateLimit)]
-            [clj-time.core :as t]
-            [congestion.storage :as storage]
+  (:require [clj-logging-config.log4j :as log4j-conf]
             [clj-pid.core :as pid]
+            [clj-time.core :as t]
             [clojure.java.io :as io]
-            [clj-logging-config.log4j :as log4j-conf]
-            [clojure.tools.logging :as log]
             [clojure.pprint :refer (pprint)]
-            [cook.spnego :as spnego]
-            [ring.middleware.stacktrace :refer (wrap-stacktrace)]
-            [ring.util.response :refer (response)]
-            [ring.util.mime-type]
+            [clojure.tools.logging :as log]
             [compojure.core :refer (GET POST routes context)]
             [compojure.route :as route]
-            [plumbing.graph :as graph]
+            [congestion.limits :refer (RateLimit)]
+            [congestion.middleware :refer (wrap-rate-limit ip-rate-limit)]
+            [congestion.storage :as storage]
             [cook.curator :as curator]
-            [metrics.ring.instrument :refer (instrument)])
-  (:import org.apache.curator.retry.BoundedExponentialBackoffRetry
-           org.apache.curator.framework.state.ConnectionStateListener
-           org.apache.curator.framework.CuratorFrameworkFactory
-           org.eclipse.jetty.server.handler.RequestLogHandler
-           org.eclipse.jetty.server.handler.HandlerCollection
-           org.eclipse.jetty.server.NCSARequestLog
-           org.eclipse.jetty.security.UserAuthentication
-           org.eclipse.jetty.security.DefaultUserIdentity
+            [cook.spnego :as spnego]
+            [metrics.ring.instrument :refer (instrument)]
+            [plumbing.core :refer (fnk)]
+            [plumbing.graph :as graph]
+            [ring.middleware.cookies :refer (wrap-cookies)]
+            [ring.middleware.params :refer (wrap-params)]
+            [ring.middleware.stacktrace :refer (wrap-stacktrace)]
+            [ring.util.mime-type]
+            [ring.util.response :refer (response)])
+  (:import java.security.Principal
            javax.security.auth.Subject
-           java.security.Principal)
+           org.apache.curator.framework.CuratorFrameworkFactory
+           org.apache.curator.framework.state.ConnectionStateListener
+           org.apache.curator.retry.BoundedExponentialBackoffRetry
+           org.eclipse.jetty.security.DefaultUserIdentity
+           org.eclipse.jetty.security.UserAuthentication
+           org.eclipse.jetty.server.NCSARequestLog
+           org.eclipse.jetty.server.handler.HandlerCollection
+           org.eclipse.jetty.server.handler.RequestLogHandler)
   (:gen-class))
 (defn wrap-no-cache
   [handler]

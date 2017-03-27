@@ -15,16 +15,16 @@
 ;;
 (ns cook.test.mesos
   (:use clojure.test)
-  (:require [cook.curator :as curator]
-            [cook.mesos :as mesos]
-            [clojure.core.async :as async]
+  (:require [clojure.core.async :as async]
+            [cook.curator :as curator]
             [cook.datomic]
+            [cook.mesos :as mesos]
             [cook.mesos.scheduler :as sched]
-            [datomic.api :as d :refer (q db)]
-            [cook.mesos.schema :as schem])
-  (:import (org.apache.curator.test TestingServer)
-           (org.apache.curator.retry BoundedExponentialBackoffRetry)
-           (org.apache.curator.framework CuratorFrameworkFactory CuratorFramework)))
+            [cook.mesos.schema :as schem]
+            [datomic.api :as d :refer (q db)])
+  (:import [org.apache.curator.framework CuratorFrameworkFactory CuratorFramework]
+           [org.apache.curator.retry BoundedExponentialBackoffRetry]
+           [org.apache.curator.test TestingServer]))
 
 (defmacro with-zk [[connect-string] & body]
   "Evaluates body with a zookeeper test instance running"

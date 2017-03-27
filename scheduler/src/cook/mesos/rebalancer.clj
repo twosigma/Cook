@@ -14,27 +14,27 @@
 ;; limitations under the License.
 ;;
 (ns cook.mesos.rebalancer
-  (:require [mesomatic.scheduler :as mesos]
-            [cook.mesos.scheduler :as sched]
-            [cook.mesos.util :as util]
-            [cook.mesos.dru :as dru]
-            cook.mesos.schema
+  (:require [chime :refer [chime-at]]
+            [clj-http.client :as http]
+            [clj-time.core :as time]
+            [clj-time.periodic :as periodic]
+            [clojure.core.async :as async]
+            [clojure.core.reducers :as r]
+            [clojure.data.json :as json]
+            [clojure.data.priority-map :as pm]
             [clojure.tools.logging :as log]
+            [cook.mesos.dru :as dru]
+            [cook.mesos.scheduler :as sched]
+            [cook.mesos.schema]
+            [cook.mesos.share :as share]
+            [cook.mesos.util :as util]
             [datomic.api :as d :refer (q)]
+            [mesomatic.scheduler :as mesos]
             [metatransaction.core :as mt]
             [metrics.histograms :as histograms]
             [metrics.timers :as timers]
-            [clojure.core.async :as async]
-            [clj-time.core :as time]
-            [clj-time.periodic :as periodic]
-            [cook.mesos.share :as share]
-            [clojure.core.reducers :as r]
-            [chime :refer [chime-at]]
-            [clojure.data.priority-map :as pm]
-            [swiss.arrows :refer :all]
             [plumbing.core :refer [map-keys]]
-            [clojure.data.json :as json]
-            [clj-http.client :as http]))
+            [swiss.arrows :refer :all]))
 
 ;;; Design
 ;;; Rebalancer is designed to run independently of the scheduler. Its primary functionality is to detect that

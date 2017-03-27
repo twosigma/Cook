@@ -14,30 +14,30 @@
 ;; limitations under the License.
 ;;
 (ns cook.test.jobclient.jobclient
- (:use clojure.test)
- (:require [cook.authorization :as auth]
-           [cook.components :as components]
-           [cook.test.testutil :refer (with-test-server restore-fresh-database! create-dummy-instance)]
-           [clojure.core.async :as async]
-           [datomic.api :as d])
- (:import com.twosigma.cook.jobclient.JobClient
-          com.twosigma.cook.jobclient.JobClient$Builder
-          com.twosigma.cook.jobclient.Job
-          com.twosigma.cook.jobclient.Job$Builder
-          com.twosigma.cook.jobclient.Job$Status
-          com.twosigma.cook.jobclient.Group
-          com.twosigma.cook.jobclient.Group$Builder
-          com.twosigma.cook.jobclient.Group$Status
-          com.twosigma.cook.jobclient.FetchableURI
-          com.twosigma.cook.jobclient.FetchableURI$Builder
-          com.twosigma.cook.jobclient.HostPlacement
-          com.twosigma.cook.jobclient.HostPlacement$Builder
-          com.twosigma.cook.jobclient.HostPlacement$Type
-          com.twosigma.cook.jobclient.StragglerHandling
-          com.twosigma.cook.jobclient.StragglerHandling$Builder
-          com.twosigma.cook.jobclient.StragglerHandling$Type
-          com.twosigma.cook.jobclient.JobListener
-          com.twosigma.cook.jobclient.GroupListener))
+  (:use clojure.test)
+  (:require [clojure.core.async :as async]
+            [cook.authorization :as auth]
+            [cook.components :as components]
+            [cook.test.testutil :refer (with-test-server restore-fresh-database! create-dummy-instance)]
+            [datomic.api :as d])
+  (:import com.twosigma.cook.jobclient.FetchableURI
+           com.twosigma.cook.jobclient.FetchableURI$Builder
+           com.twosigma.cook.jobclient.Group
+           com.twosigma.cook.jobclient.Group$Builder
+           com.twosigma.cook.jobclient.Group$Status
+           com.twosigma.cook.jobclient.GroupListener
+           com.twosigma.cook.jobclient.HostPlacement
+           com.twosigma.cook.jobclient.HostPlacement$Builder
+           com.twosigma.cook.jobclient.HostPlacement$Type
+           com.twosigma.cook.jobclient.Job
+           com.twosigma.cook.jobclient.Job$Builder
+           com.twosigma.cook.jobclient.Job$Status
+           com.twosigma.cook.jobclient.JobClient
+           com.twosigma.cook.jobclient.JobClient$Builder
+           com.twosigma.cook.jobclient.JobListener
+           com.twosigma.cook.jobclient.StragglerHandling
+           com.twosigma.cook.jobclient.StragglerHandling$Builder
+           com.twosigma.cook.jobclient.StragglerHandling$Type))
 
 (def port 3001)
 

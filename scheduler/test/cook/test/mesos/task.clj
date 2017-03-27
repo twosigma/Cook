@@ -1,9 +1,9 @@
 (ns cook.test.mesos.task
   (:use clojure.test)
   (:require [clojure.edn :as edn]
-            [mesomatic.types :as mtypes]
+            [cook.mesos.scheduler :as sched]
             [cook.mesos.task :as task]
-            [cook.mesos.scheduler :as sched]))
+            [mesomatic.types :as mtypes]))
 
 (deftest test-resources-by-role
   (let [

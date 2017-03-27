@@ -14,14 +14,14 @@
 ;; limitations under the License.
 ;;
 (ns cook.mesos.util
-  (:require [clojure.tools.logging :as log]
-            [clojure.walk :as walk]
+  (:require [clj-time.coerce :as tc]
             [clj-time.core :as t]
-            [clj-time.coerce :as tc]
-            [plumbing.core :as pc]
+            [clojure.tools.logging :as log]
+            [clojure.walk :as walk]
             [datomic.api :as d :refer (q)]
             [metatransaction.core :refer (db)]
-            [metrics.timers :as timers]))
+            [metrics.timers :as timers]
+            [plumbing.core :as pc]))
 
 (defn get-all-resource-types
   "Return a list of all supported resources types. Example, :cpus :mem :gpus ..."
@@ -285,12 +285,12 @@
   ([tasks]
    ;; Pre-compute the feature-vector for tasks we expect to see to improve performance
    ;; This is done because accessing fields in datomic entities is much slower than
-   ;; a map access, even when accessing multiple times. 
+   ;; a map access, even when accessing multiple times.
    ;; Don't want to complicate the function by caching new values in the event we see them
    (let [task-ent->feature-vector (pc/map-from-keys task->feature-vector tasks)]
      (fn [task1 task2]
        (compare (or (task-ent->feature-vector task1)
-                    (task->feature-vector task1)) 
+                    (task->feature-vector task1))
                 (or (task-ent->feature-vector task2)
                     (task->feature-vector task2)))))))
 
