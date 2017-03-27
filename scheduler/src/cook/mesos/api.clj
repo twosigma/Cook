@@ -207,8 +207,7 @@
   "Schema for a description of a job (as returned by the API).
   The structure is similar to JobRequest, but has some differences.
   For example, it can include descriptions of instances for the job."
-  (-> JobRequest
-      (dissoc :user)
+  (-> Job
       (dissoc (s/optional-key :group))
       (merge {:framework-id (s/maybe s/Str)
               :status s/Str
@@ -654,6 +653,7 @@
        :priority (:job/priority job util/default-job-priority)
        :submit_time (when (:job/submit-time job) ; due to a bug, submit time may not exist for some jobs
                       (.getTime (:job/submit-time job)))
+       :user (:job/user job)
        :cpus (:cpus resources)
        :mem (:mem resources)
        :gpus (int (:gpus resources 0))
