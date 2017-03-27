@@ -104,6 +104,9 @@
 (def PosDouble
   (s/both double (s/pred pos? 'pos?)))
 
+(def UserName
+  (s/both s/Str (s/pred #(re-matches #"\A[a-z][a-z0-9_-]{0,62}[a-z0-9]\z" %) 'lowercase-alphanum?)))
+
 (def NonEmptyString
   (s/both s/Str (s/pred #(not (zero? (count %))) 'not-empty-string)))
 
@@ -187,7 +190,7 @@
    (s/optional-key :gpus) (s/both s/Int (s/pred pos? 'pos?))
    ;; Make sure the user name is valid. It must begin with a lower case character, end with
    ;; a lower case character or a digit, and has length between 2 to (62 + 2).
-   :user (s/both s/Str (s/pred #(re-matches #"\A[a-z][a-z0-9_-]{0,62}[a-z0-9]\z" %) 'lowercase-alphanum?))})
+   :user UserName})
 
 (def JobRequest
   "Schema for the part of a request that launches a single job."
@@ -207,13 +210,14 @@
   "Schema for a description of a job (as returned by the API).
   The structure is similar to JobRequest, but has some differences.
   For example, it can include descriptions of instances for the job."
-  (-> Job
+  (-> JobRequest
       (dissoc (s/optional-key :group))
       (merge {:framework-id (s/maybe s/Str)
               :status s/Str
               :state s/Str
               :submit-time PosInt
               :retries-remaining NonNegInt
+              :user UserName
               (s/optional-key :groups) [s/Uuid]
               (s/optional-key :gpus) s/Int
               (s/optional-key :instances) [Instance]})
