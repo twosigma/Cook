@@ -43,7 +43,10 @@
             [plumbing.core :refer (map-vals)]
             [swiss.arrows :refer :all]
             [clojure.core.cache :as cache]
-            [cook.mesos.reason :as reason])
+            [cook.mesos.reason :as reason]
+            [cheshire.core :as json]
+            [clojure.walk :refer (keywordize-keys)]
+            [clojure.set :refer (rename-keys)])
   (import java.util.concurrent.TimeUnit
           org.apache.mesos.Protos$Offer
           com.netflix.fenzo.TaskAssignmentResult
@@ -158,32 +161,63 @@
   {:task-id (-> s :task-id :value)
    :reason (:reason s)
    :task-state (:state s)
-   :progress (try
-               (when (:data s)
-                 (:percent (edn/read-string (String. (.toByteArray (:data s))))))
-               (catch Exception e
-                 (try (log/debug e (str "Error parsing mesos status data to edn."
-                                        "Is it in the format we expect?"
-                                        "String representation: "
-                                        (String. (.toByteArray (:data s)))))
-                      (catch Exception e
-                        (log/debug e "Error reading a string from mesos status data. Is it in the format we expect?")))))})
+   :data (:data s)})
+
+(defn interpret-task-status-data
+  "Parses the task status data field.
+
+  The data format depends on the custom-executor flag."
+  [job-ent d]
+  (try
+    (when d
+      (let [s (String. (.toByteArray d))]
+        (if (:job/custom-executor job-ent true)
+          {:progress (:percent (edn/read-string s))}
+          (-> s json/parse-string keywordize-keys
+              (rename-keys {:before_exit_codes :before-exit-codes
+                            :exit_code :exit-code
+                            :after_exit_codes :after-exit-codes})))))
+    (catch Exception e
+      (try (log/debug e (str
+                          "Error parsing mesos status data to edn."
+                          "Is it in the format we expect?"
+                          "String representation: "
+                          (String. (.toByteArray (:data s)))))
+           (catch Exception e
+             (log/debug e "Error reading a string from mesos status data. Is it in the format we expect?")))
+      {})))
+
+(defn exit-code->tx
+  [instance attr i exit-code]
+  (let [id (d/tempid :db.part/user)]
+    [[:db/add instance attr id]
+     (merge
+      {:db/id id
+       :exit-code/order i}
+      (when exit-code
+        {:exit-code/value exit-code}))]))
+
+(defn exit-codes->tx
+  [instance attr exit-codes]
+  (->> exit-codes
+       (map-indexed (partial exit-code->tx instance attr))
+       (reduce into [])))
 
 (defn handle-status-update
   "Takes a status update from mesos."
-  [conn driver ^TaskScheduler fenzo status]
+  [conn executor driver ^TaskScheduler fenzo status]
   (log/info "Mesos status is: " status)
   (timers/time!
     handle-status-update-duration
     (try (let [db (db conn)
-               {:keys [task-id reason task-state progress]} (interpret-task-status status)
+               {:keys [task-id reason task-state data]} (interpret-task-status status)
                _ (when-not task-id
                    (throw (ex-info "task-id is nil. Something unexpected has happened."
                                    {:status status
                                     :task-id task-id
                                     :reason reason
                                     :task-state task-state
-                                    :progress progress})))
+                                    :data data})))
                [job instance prior-instance-status] (first (q '[:find ?j ?i ?status
                                                                 :in $ ?task-id
                                                                 :where
@@ -205,11 +239,14 @@
                                    :task-killed
                                    :task-lost
                                    :task-error} :instance.status/failed)
+               instance-finished (#{:instance.status/success
+                                    :instance.status/failed} instance-status)
                prior-job-state (:job/state (d/entity db job))
                instance-ent (d/entity db instance)
                instance-runtime (- (.getTime (now)) ; Used for reporting
                                    (.getTime (or (:instance/start-time instance-ent) (now))))
-               job-resources (util/job-ent->resources job-ent)]
+               job-resources (util/job-ent->resources job-ent)
+               {:keys [progress message sandbox exit-code before-exit-codes after-exit-codes]} (interpret-task-status-data job-ent data)]
            (when (#{:instance.status/success :instance.status/failed} instance-status)
              (log/debug "Unassigning task" task-id "from" (:instance/hostname instance-ent))
              (try
@@ -263,7 +300,21 @@
                            :instance.status/failed} instance-status)
                     [[:db/add instance :instance/end-time (now)]])
                   (when progress
-                    [[:db/add instance :instance/progress progress]])]))))
+                    [[:db/add instance :instance/progress progress]])
+                  (when message
+                    (if (> (count message) (:max-message-length executor))
+                      (log/warn "Executor message too large for task" task-id "as instance" instance
+                                "limit:" (:max-message-length executor)
+                                "actual:" (count message))
+                      [[:db/add instance :instance/message (subs message 0 (:max-message-length executor))]]))
+                  (when sandbox
+                    [[:db/add instance :instance/sandbox sandbox]])
+                  (when exit-code
+                    [[:db/add instance :instance/exit-code exit-code]])
+                  (when (and before-exit-codes instance-finished)
+                    (exit-codes->tx instance :instance/before-exit-code before-exit-codes))
+                  (when (and after-exit-codes instance-finished)
+                    (exit-codes->tx instance :instance/after-exit-code before-exit-codes))]))))
       (catch Exception e
         (log/error e "Mesos scheduler status update error")))))
 
@@ -524,7 +575,7 @@
 (defn handle-resource-offers!
   "Gets a list of offers from mesos. Decides what to do with them all--they should all
    be accepted or rejected at the end of the function."
-  [conn driver ^TaskScheduler fenzo fid pending-jobs user->usage user->quota num-considerable offers-chan offers]
+  [conn driver ^TaskScheduler fenzo fid executor pending-jobs user->usage user->quota num-considerable offers-chan offers]
   (log/debug "invoked handle-resource-offers!")
   (let [offer-stash (atom nil)] ;; This is a way to ensure we never lose offers fenzo assigned if an errors occures in the middle of processing
     ;; TODO: It is possible to have an offer expire by mesos because we recycle it a bunch of times.
@@ -648,7 +699,7 @@
                 handle-resource-offer!-mesos-submit-duration
                 (doseq [{:keys [tasks leases]} matches
                       :let [offers (mapv :offer leases)
-                            task-data-maps (map #(task/TaskAssignmentResult->task-metadata db fid %)
+                            task-data-maps (map #(task/TaskAssignmentResult->task-metadata db fid executor %)
                                                     tasks)
                             task-infos (task/compile-mesos-messages offers task-data-maps)]]
 
@@ -690,7 +741,7 @@
 (defn make-offer-handler
   [conn driver-atom fenzo fid-atom pending-jobs-atom
    max-considerable scaleback
-   floor-iterations-before-warn floor-iterations-before-reset]
+   floor-iterations-before-warn floor-iterations-before-reset executor]
   (let [chan-length 100
         offers-chan (async/chan (async/buffer chan-length))
         resources-atom (atom (view-incubating-offers fenzo))
@@ -733,7 +784,7 @@
                                   (reduce into offers))
                       _ (log/debug "Passing following offers to handle-resource-offers!" offers)
                       user->quota (quota/create-user->quota-fn (d/db conn))
-                      matched-head? (handle-resource-offers! conn @driver-atom fenzo @fid-atom pending-jobs-atom @user->usage-future user->quota num-considerable offers-chan offers)]
+                      matched-head? (handle-resource-offers! conn @driver-atom fenzo @fid-atom executor pending-jobs-atom @user->usage-future user->quota num-considerable offers-chan offers)]
                   (when (seq offers)
                     (reset! resources-atom (view-incubating-offers fenzo)))
                   ;; This check ensures that, although we value Fenzo's optimizations,
@@ -1209,13 +1260,11 @@
               (log/error e "Unable to decline offers!")))))))
 
 (defn create-datomic-scheduler
-  [conn set-framework-id driver-atom pending-jobs-atom heartbeat-ch offer-incubate-time-ms mea-culpa-failure-limit fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset task-constraints gpu-enabled? good-enough-fitness]
-
+  [conn set-framework-id driver-atom pending-jobs-atom heartbeat-ch offer-incubate-time-ms mea-culpa-failure-limit fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset task-constraints executor gpu-enabled? good-enough-fitness]
   (persist-mea-culpa-failure-limit! conn mea-culpa-failure-limit)
-
   (let [fid (atom nil)
         fenzo (make-fenzo-scheduler driver-atom offer-incubate-time-ms good-enough-fitness)
-        [offers-chan resources-atom] (make-offer-handler conn driver-atom fenzo fid pending-jobs-atom fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset)]
+        [offers-chan resources-atom] (make-offer-handler conn driver-atom fenzo fid pending-jobs-atom fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset executor)]
     (start-jobs-prioritizer! conn pending-jobs-atom task-constraints)
     {:scheduler
      (mesos/scheduler
@@ -1262,5 +1311,5 @@
       (resource-offers [this driver offers]
                        (receive-offers offers-chan driver offers))
       (status-update [this driver status]
-                     (future (handle-status-update conn driver fenzo status))))
+                     (future (handle-status-update conn executor driver fenzo status))))
      :view-incubating-offers (fn get-resources-atom [] @resources-atom)}))

@@ -121,7 +121,7 @@
               :scalar-resource-messages [{:name "mem", :type :value-scalar, :scalar 623.0, :role "cook"}
                                         {:name "cpus", :type :value-scalar, :scalar 1.0, :role "cook"}]
               :ports-resource-messages [{:name "ports" :type :value-ranges :role "cook" :ranges [{:begin 31000 :end 31002}]}]
-              :executor-key :command
+              :custom-executor false
               :command {:value "sleep 26; exit 0",
                         :environment {"MYENV" "VAR"},
                         :user "andalucien",
@@ -185,7 +185,7 @@
 
     (is (= (->> msg :labels :labels (filter #(= (:key %) "foo")) first :value) "bar"))
 
-    (let [msg-cmd (:command msg)
+    (let [msg-cmd (-> msg :executor :command)
           task-cmd (:command task)
           msg-uri (-> msg-cmd :uris first)
           task-uri (-> task-cmd :uris first)]
@@ -199,7 +199,7 @@
     ;; the following assertions don't use the roundtrip because Mesomatic currently
     ;; has a bug and doesn't convert env var info back into clojure data.
     ;; It's not a problem for Cook, except for the purposes of this unit test.
-    (let [msg-env (-> task task/task-info->mesos-message :command :environment)]
+    (let [msg-env (-> task task/task-info->mesos-message :executor :command :environment)]
       (is (= (-> msg-env :variables first :name) "MYENV"))
       (is (= (-> msg-env :variables first :value) "VAR")))
 

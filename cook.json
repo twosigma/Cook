@@ -1,0 +1,30 @@
+{
+    "id": "cook-scheduler",
+    "container": {
+        "docker": {
+            "image": "cook-scheduler:latest",
+            "network": "BRIDGE",
+            "parameters": [
+                {
+                    "key": "name",
+                    "value": "cook-scheduler"
+                },
+                {
+                    "key": "publish",
+                    "value": "8888:8888"
+                },
+                {
+                    "key": "publish",
+                    "value": "12321:12321"
+                }
+            ]
+        }
+    },
+    "cpus": 0.5,
+    "mem": 1024.0,
+    "env": {
+        "COOK_PORT": "12321",
+        "MESOS_MASTER": "zk://${MINIMESOS_ZOOKEEPER_IP}:${MINIMESOS_ZOOKEEPER_PORT}/mesos"
+    },
+    "instances": 1
+}

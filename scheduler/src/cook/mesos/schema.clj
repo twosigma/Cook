@@ -210,6 +210,46 @@
     :db/ident :host-placement.type/attribute-equals}
    {:db/id (d/tempid :db.part/user)
     :db/ident :host-placement.type/all}
+
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :job/before-command
+    :db/valueType :db.type/ref
+    :db/isComponent true
+    :db/cardinality :db.cardinality/many
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :job/after-command
+    :db/valueType :db.type/ref
+    :db/isComponent true
+    :db/cardinality :db.cardinality/many
+    :db.install/_attribute :db.part/db}
+
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :command/order
+    :db/valueType :db.type/long
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :command/value
+    :db/valueType :db.type/string
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :command/async?
+    :db/valueType :db.type/boolean
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :command/guard?
+    :db/valueType :db.type/boolean
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :command/default?
+    :db/valueType :db.type/boolean
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+
    ;; commit-latch attributes
    {:db/id (d/tempid :db.part/db)
     :db/ident :commit-latch/committed?
@@ -454,6 +494,45 @@
    {:db/id (d/tempid :db.part/db)
     :db/ident :instance/cancelled
     :db/valueType :db.type/boolean
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :instance/message
+    :db/valueType :db.type/string
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :instance/sandbox
+    :db/valueType :db.type/string
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :instance/exit-code
+    :db/valueType :db.type/long
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :instance/before-exit-code
+    :db/valueType :db.type/ref
+    :db/isComponent true
+    :db/cardinality :db.cardinality/many
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :instance/after-exit-code
+    :db/valueType :db.type/ref
+    :db/isComponent true
+    :db/cardinality :db.cardinality/many
+    :db.install/_attribute :db.part/db}
+
+   ;; Code attributes
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :exit-code/order
+    :db/valueType :db.type/long
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :exit-code/value
+    :db/valueType :db.type/long
     :db/cardinality :db.cardinality/one
     :db.install/_attribute :db.part/db}
 

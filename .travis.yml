@@ -8,6 +8,7 @@ before_install:
   - echo "deb http://repos.mesosphere.io/ubuntu/ precise main" | sudo tee /etc/apt/sources.list.d/mesosphere.list
   - sudo apt-get update -qq
   - sudo apt-get install mesos -y </dev/null
+  - sudo apt-get install python3 python3-pip
 branches:
   only:
     - master

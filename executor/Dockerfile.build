@@ -1,0 +1,13 @@
+FROM python:3.5
+
+RUN pip install pyinstaller
+
+RUN mkdir /opt/cook
+WORKDIR /opt/cook
+
+COPY requirements.txt /opt/cook/
+RUN pip install -r requirements.txt
+
+COPY . /opt/cook
+
+CMD ["pyinstaller", "-F", "-n", "cook-executor", "-p", "cook", "cook/__main__.py"]

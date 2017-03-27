@@ -1,5 +1,4 @@
 {:port 12321
- :hostname "172.17.0.1"
  :authorization {:http-basic true}
  :database {:datomic-uri "datomic:free://localhost:4334/cook-jobs"}
  :zookeeper {:local? true}
@@ -9,6 +8,10 @@
                                 :memory-gb 48
                                 :retry-limit 200
                                 :cpus 6}}
+ :executor {:command "./cook-executor"
+            :max-message-length 512
+            :uris [{:value "http://172.17.0.1:12321/resource/cook-executor"
+                    :executable true}]}
  :rebalancer {:interval-seconds 20
               :min-utilization-threshold 0.0
               :safe-dru-threshold 0.0
@@ -16,7 +19,6 @@
               :min-dru-diff 1E-309
               :max-preemption 64.0
               :dru-scale 1}
-
  :mesos {:master "zk://172.17.0.3:2181/mesos" ; minimesos zookeeper
          :master-hosts ["172.17.0.4"] ; minimesos master
          :failover-timeout-ms nil

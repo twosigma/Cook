@@ -92,7 +92,9 @@
         sim-id (runner/simulate! settings sim-db schedule-id "Travis run")
         final-progress (wait-for-sim-to-finish sim-db cook-db sim-id timeout-secs)
         unschedulable-jobs (:unschedulable final-progress)
-        num-scheduled-unschedulable (- (:total unschedulable-jobs) (:unscheduled unschedulable-jobs))]
+        num-scheduled-unschedulable (if final-progress
+                                      (- (:total unschedulable-jobs)
+                                         (:unscheduled unschedulable-jobs)))]
     (reporting/analyze settings sim-db cook-db sim-id)
     (if (not final-progress)
       (throw (Exception. "Sim never finished.")))

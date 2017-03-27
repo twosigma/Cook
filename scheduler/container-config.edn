@@ -1,26 +1,24 @@
-{:port 12321
- ;; We'll set the user to vagrant, since that's the default for many Vagrant-based Mesos setups
- :authorization {:one-user "vagrant"}
+{:port #config/env "COOK_PORT"
+ :authorization {:one-user "root"}
  :database {:datomic-uri "datomic:mem://cook-jobs"}
  :zookeeper {:local? true
              ;:local-port 3291 ; Uncomment to change the default port
              }
  :scheduler {:offer-incubate-ms 15000
-             :mea-culpa-failure-limit 5
              :task-constraints {:timeout-hours 1
                                 :timeout-interval-minutes 1
                                 :memory-gb 48
                                 :retry-limit 15
                                 :cpus 6}}
- :executor {:command "cook-executor"
+ :executor {:command "./cook-executor"
             :max-message-length 512
             :before-commands [{:value "echo before"}]
             :after-commands [{:value "echo after"}]
             ;; :command "./cook-executor"
-            ;; :uris [{:value "/path/to/cook/executor/executable"}]
-            }
+            :uris [{:value #config/env "COOK_EXECUTOR"
+                    :executable true}]}
  :rebalancer {:dru-scale 1}
- :mesos {:master "zk://localhost:2181/mesos" ; Assuming Mesos is configured to use Zookeeper and is running locally
+ :mesos {:master #config/env "MESOS_MASTER"
          :failover-timeout-ms nil ; When we close the instance of Cook, all its tasks are killed by Mesos
          :leader-path "/cook-scheduler"}
  :unhandled-exceptions {:log-level :error}

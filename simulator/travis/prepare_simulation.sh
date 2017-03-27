@@ -3,6 +3,13 @@ set -ev
 
 lein deps
 
+cd ../executor
+pip3 install pyinstaller
+pip3 install -r requirements.txt
+pyinstaller -F -n cook-executor -p cook cook/__main__.py
+mkdir -p ../scheduler/resources/public
+cp dist/cook-executor ../scheduler/resources/public/
+
 cd ../scheduler
 lein deps
 lein uberjar

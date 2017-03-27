@@ -22,6 +22,7 @@
             [clj-time.core :as t]
             [congestion.storage :as storage]
             [clj-pid.core :as pid]
+            [clojure.edn :as edn]
             [clojure.java.io :as io]
             [clj-logging-config.log4j :as log4j-conf]
             [clojure.tools.logging :as log]
@@ -64,26 +65,55 @@
     (require (symbol ns))
     (resolve var-sym)))
 
+(defn tell-jetty-about-usename [h]
+  "Our auth in cook.spnego doesn't hook in to Jetty - this handler
+  does so to make sure it's available for Jetty to log"
+  (fn [req]
+    (do
+      (.setAuthentication (:servlet-request req)
+                          (UserAuthentication.
+                            "kerberos"
+                            (DefaultUserIdentity.
+                              (Subject.)
+                              (reify Principal ; Shim principal to pass username along
+                                (equals [this another]
+                                  (= this another))
+                                (getName [this]
+                                  (:authorization/user req))
+                                (toString [this]
+                                  (str "Shim principal for user: " (:authorization/user req))))
+                              (into-array String []))))
+      (h req))))
+
 (def raw-scheduler-routes
-  {:scheduler (fnk [mesos-datomic framework-id mesos-pending-jobs-atom [:settings task-constraints mesos-gpu-enabled is-authorized-fn]]
+  {:scheduler (fnk [mesos-datomic framework-id mesos-pending-jobs-atom [:settings task-constraints mesos-gpu-enabled is-authorized-fn executor]]
                    ((lazy-load-var 'cook.mesos.api/main-handler)
                     mesos-datomic
                     framework-id
                     task-constraints
                     mesos-gpu-enabled
                     (fn [] @mesos-pending-jobs-atom)
-                    is-authorized-fn))
+                    is-authorized-fn
+                    executor))
    :view (fnk [scheduler]
               scheduler)})
 
 (def full-routes
   {:raw-scheduler raw-scheduler-routes
-   :view (fnk [raw-scheduler]
-              (routes (:view raw-scheduler)
-                      (route/not-found "<h1>Not a valid route</h1>")))})
+   :view (fnk [raw-scheduler [:settings authorization-middleware [:rate-limit user-limit]]]
+           (let [rate-limit-storage (storage/local-storage)]
+             (routes
+               (route/resources "/resource")
+               (-> (routes
+                     (:view raw-scheduler)
+                     (route/not-found "<h1>Not a valid route</h1>"))
+                 tell-jetty-about-usename
+                 (wrap-rate-limit {:storage rate-limit-storage
+                                   :limit user-limit})
+                 authorization-middleware))))})
 
 (def mesos-scheduler
-  {:mesos-scheduler (fnk [[:settings mesos-master mesos-master-hosts mesos-leader-path mesos-failover-timeout mesos-principal mesos-role mesos-framework-name offer-incubate-time-ms mea-culpa-failure-limit fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset task-constraints riemann mesos-gpu-enabled rebalancer good-enough-fitness] mesos-datomic mesos-datomic-mult curator-framework mesos-pending-jobs-atom]
+  {:mesos-scheduler (fnk [[:settings mesos-master mesos-master-hosts mesos-leader-path mesos-failover-timeout mesos-principal mesos-role mesos-framework-name offer-incubate-time-ms mea-culpa-failure-limit fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset task-constraints executor riemann mesos-gpu-enabled rebalancer good-enough-fitness] mesos-datomic mesos-datomic-mult curator-framework mesos-pending-jobs-atom]
                          (try
                            (Class/forName "org.apache.mesos.Scheduler")
                            ((lazy-load-var 'cook.mesos/start-mesos-scheduler)
@@ -100,6 +130,7 @@
                             offer-incubate-time-ms
                             mea-culpa-failure-limit
                             task-constraints
+                            executor
                             (:host riemann)
                             (:port riemann)
                             mesos-pending-jobs-atom
@@ -154,26 +185,6 @@
          (.start curator-framework)
          curator-framework)))
 
-(defn tell-jetty-about-usename [h]
-  "Our auth in cook.spnego doesn't hook in to Jetty - this handler
-  does so to make sure it's available for Jetty to log"
-  (fn [req]
-    (do
-      (.setAuthentication (:servlet-request req)
-                          (UserAuthentication.
-                            "kerberos"
-                            (DefaultUserIdentity.
-                              (Subject.)
-                              (reify Principal ; Shim principal to pass username along
-                                (equals [this another]
-                                  (= this another))
-                                (getName [this]
-                                  (:authorization/user req))
-                                (toString [this]
-                                  (str "Shim principal for user: " (:authorization/user req))))
-                              (into-array String []))))
-      (h req))))
-
 (defn configure-jet-logging
   "Set up access logs for Jet"
   [server]
@@ -202,16 +213,11 @@
   (graph/eager-compile
     {:mesos-datomic mesos-datomic
      :route full-routes
-     :http-server (fnk [[:settings server-port authorization-middleware [:rate-limit user-limit]] [:route view]]
+     :http-server (fnk [[:settings server-port] [:route view]]
                        (log/info "Launching http server")
-                       (let [rate-limit-storage (storage/local-storage)
-                             jetty ((lazy-load-var 'qbits.jet.server/run-jetty)
+                       (let [jetty ((lazy-load-var 'qbits.jet.server/run-jetty)
                                     {:port server-port
                                      :ring-handler (-> view
-                                                       tell-jetty-about-usename
-                                                       (wrap-rate-limit {:storage rate-limit-storage
-                                                                         :limit user-limit})
-                                                       authorization-middleware
                                                        wrap-stacktrace
                                                        wrap-no-cache
                                                        wrap-cookies
@@ -288,27 +294,27 @@
   "Parses the settings out of a config file"
   (graph/eager-compile
     {:server-port (fnk [[:config port]]
-                       port)
+                       (if (number? port) port (Integer/parseInt port)))
      :is-authorized-fn (fnk [[:config {authorization-config default-authorization}]]
                                 (partial (lazy-load-var 'cook.authorization/is-authorized?)
                                          authorization-config))
      :authorization-middleware (fnk [[:config [:authorization {one-user false} {kerberos false} {http-basic false}]]]
                                     (cond
-                                      http-basic 
+                                      http-basic
                                       (let [validation (get http-basic :validation :none)
-                                            user-password-valid? 
+                                            user-password-valid?
                                             ((lazy-load-var 'cook.basic-auth/make-user-password-valid?) validation http-basic)]
                                         (log/info "Using http basic authorization with validation" validation)
                                         ((lazy-load-var 'cook.basic-auth/create-http-basic-middleware) user-password-valid?))
 
-                                      one-user 
+                                      one-user
                                       (do
                                         (log/info "Using single user authorization")
                                         (fn one-user-middleware [h]
                                           (fn one-user-auth-wrapper [req]
                                             (h (assoc req :authorization/user one-user)))))
 
-                                      kerberos 
+                                      kerberos
                                       (do
                                         (log/info "Using kerberos middleware")
                                         (lazy-load-var 'cook.spnego/require-gss))
@@ -344,6 +350,19 @@
                                :memory-gb 12
                                :cpus 4}
                               task-constraints))
+     :executor (fnk [[:config {executor {}}]]
+                    (->
+                     (merge
+                      {:command "cook-executor"
+                       :max-message-length 512}
+                      executor
+                      (when (:uris executor)
+                        {:uris (mapv
+                                (partial merge
+                                         {:cache false
+                                          :extract false
+                                          :executable false})
+                                (:uris executor))}))))
      :offer-incubate-time-ms (fnk [[:config [:scheduler {offer-incubate-ms 15000}]]]
                                   offer-incubate-ms)
      :mea-culpa-failure-limit (fnk [[:config [:scheduler {mea-culpa-failure-limit nil}]]]
@@ -459,6 +478,12 @@
      :logging (fnk [[:config log]]
                    (init-logger log))}))
 
+(defn- read-edn-config [config]
+  (edn/read-string
+   {:readers
+    {'config/env #(System/getenv %)}}
+   config))
+
 (defn -main
   [config & args]
   (when-not (.exists (java.io.File. config))
@@ -473,7 +498,7 @@
           literal-config (try
                            {:config
                             (case config-format
-                              "edn" (read-string (slurp config))
+                              "edn" (read-edn-config (slurp config))
                               (do
                                 (.println System/err (str "Invalid config file format " config-format))
                                 (System/exit 1)))}

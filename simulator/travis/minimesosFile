@@ -7,8 +7,8 @@ minimesos {
     timeout = 60
 
     agent {
-        imageName = "containersol/mesos-agent"
-        imageTag = "1.0.0-0.1.0"
+        imageName = "mesos-agent"
+        imageTag = "latest"
         loggingLevel = "# INHERIT FROM CLUSTER"
         portNumber = 5051
 
@@ -42,18 +42,18 @@ minimesos {
 
             ports {
                 role = "*"
-                value = "[31000-32000]"
+                value = "[31000-31100]"
             }
             ports {
                 role = "cook"
-                value = "[32000-33000]"
+                value = "[31100-31200]"
             }
         }
     }
 
     agent {
-        imageName = "containersol/mesos-agent"
-        imageTag = "1.0.0-0.1.0"
+        imageName = "mesos-agent"
+        imageTag = "latest"
         loggingLevel = "# INHERIT FROM CLUSTER"
         portNumber = 5052
 
@@ -87,18 +87,18 @@ minimesos {
 
             ports {
                 role = "*"
-                value = "[31000-32000]"
+                value = "[31200-31300]"
             }
             ports {
                 role = "cook"
-                value = "[32000-33000]"
+                value = "[31300-31400]"
             }
         }
     }
 
     agent {
-        imageName = "containersol/mesos-agent"
-        imageTag = "1.0.0-0.1.0"
+        imageName = "mesos-agent"
+        imageTag = "latest"
         loggingLevel = "# INHERIT FROM CLUSTER"
         portNumber = 5053
 
@@ -132,18 +132,18 @@ minimesos {
 
             ports {
                 role = "*"
-                value = "[31000-32000]"
+                value = "[31400-31500]"
             }
             ports {
                 role = "cook"
-                value = "[32000-33000]"
+                value = "[31500-31600]"
             }
         }
     }
 
     agent {
-        imageName = "containersol/mesos-agent"
-        imageTag = "1.0.0-0.1.0"
+        imageName = "mesos-agent"
+        imageTag = "latest"
         loggingLevel = "# INHERIT FROM CLUSTER"
         portNumber = 5053
 
@@ -177,18 +177,18 @@ minimesos {
 
             ports {
                 role = "*"
-                value = "[31000-32000]"
+                value = "[31600-31700]"
             }
             ports {
                 role = "cook"
-                value = "[32000-33000]"
+                value = "[31700-31800]"
             }
         }
     }
 
     agent {
-        imageName = "containersol/mesos-agent"
-        imageTag = "1.0.0-0.1.0"
+        imageName = "mesos-agent"
+        imageTag = "latest"
         loggingLevel = "# INHERIT FROM CLUSTER"
         portNumber = 5054
 
@@ -222,18 +222,18 @@ minimesos {
 
             ports {
                 role = "*"
-                value = "[31000-32000]"
+                value = "[31800-31900]"
             }
             ports {
                 role = "cook"
-                value = "[32000-33000]"
+                value = "[31900-32000]"
             }
         }
     }
 
     agent {
-        imageName = "containersol/mesos-agent"
-        imageTag = "1.0.0-0.1.0"
+        imageName = "mesos-agent"
+        imageTag = "latest"
         loggingLevel = "# INHERIT FROM CLUSTER"
         portNumber = 5055
 
@@ -267,11 +267,11 @@ minimesos {
 
             ports {
                 role = "*"
-                value = "[31000-32000]"
+                value = "[32000-32100]"
             }
             ports {
                 role = "cook"
-                value = "[32000-33000]"
+                value = "[32100-32200]"
             }
         }
     }

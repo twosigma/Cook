@@ -144,13 +144,55 @@
                                     :executable (:resource.uri/executable? r false)
                                     :value (:resource.uri/value r)
                                     :extract (:resource.uri/extract? r false)}))))
-          {:ports (:job/ports job-ent 0)}
+          {:ports (let [ports (:job/ports job-ent 0)]
+                    (if (:job/custom-executor job-ent true)
+                      ports
+                      ;; XXX: The cook executor needs a port for its web API
+                      ;; Rather than adding a port at write time, which could
+                      ;; break bacwkard compatability for jobs created with the
+                      ;; datomic API, add a port at read time. That being said,
+                      ;; this feels a little dirty.
+                      (+ ports 1)))}
           (:job/resource job-ent)))
 
 (defn job-ent->attempts-consumed
   "Determines the amount of attempts consumed by a job-ent."
   [db job-ent]
   (d/invoke db :job/attempts-consumed db job-ent))
+
+(defn command-ents->commands
+  [command-ents suffix]
+  (->> command-ents
+       (sort-by :command/order)
+       (map
+        (fn [c]
+          {:name (str suffix "." (:command/order c))
+           :value (:command/value c)
+           :async (:command/async? c false)
+           :guard (:command/guard? c false)
+           :default (:command/default? c false)}))))
+
+(defn job-ent->before-commands
+  [job-ent]
+  (command-ents->commands
+   (:job/before-command job-ent) "before"))
+
+(defn job-ent->after-commands
+  [job-ent]
+  (command-ents->commands
+   (:job/after-command job-ent) "after"))
+
+(defn exit-code-ents->exit-codes
+  [exit-code-ents]
+  (->> exit-code-ents (sort-by :exit-code/order) (map :exit-code/value)))
+
+(defn instance-ent->before-exit-codes
+  [instance-ent]
+  (-> instance-ent :instance/before-exit-code exit-code-ents->exit-codes))
+
+(defn instance-ent->after-exit-codes
+  [instance-ent]
+  (-> instance-ent :instance/after-exit-code exit-code-ents->exit-codes))
 
 (defn sum-resources-of-jobs
   "Given a collections of job entities, returns the total resources they use

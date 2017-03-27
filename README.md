@@ -31,6 +31,17 @@ In this repository, you'll find several subprojects, each of which has its own d
 
 Please visit the `scheduler` subproject first to get started.
 
+## Quickstart
+
+The quickest way to Mesos and Cook running locally is with [docker](https://www.docker.com/) and [minimesos](https://minimesos.org/). 
+
+1. Install `docker`
+2. Install `minimesos`
+3. Clone down this repo
+4. Run `make` from the project root to build all images
+5. Run `minimesos up` from the project root to start a Mesos and Cook
+6. Cook should now be listening locally on port 12321
+
 ## Contributing
 
 In order to accept your code contributions, please fill out the appropriate Contributor License Agreement in the `cla` folder and submit it to tsos@twosigma.com.
