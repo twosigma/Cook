@@ -61,8 +61,31 @@
        (cons (get-max-jobs-quota db user))
        (into {})))
 
+(defn quota-history
+  "Return changes to a user's own quota, in the form
+  [{:time (inst when change occurred)
+    :reason (stated reason for change)
+    :quota (quota as would have been returned by get-quota after change)}]"
+  [db user]
+  (->> (d/q '[:find ?e ?a ?v ?added ?tx
+              :in $ ?a ?e
+              :where
+              [?e ?a ?v ?tx ?added]]
+            (d/history db)
+            :quota/reason
+            [:quota/user user])
+       (sort-by last)
+       (map (fn [[e attr v added tx]]
+              (let [tx-db (d/as-of db tx)
+                    tx-e (d/entity tx-db e)]
+                {:time (:db/txInstant (d/entity db tx))
+                 :reason (:quota/reason tx-e)
+                 :quota (get-quota tx-db user)})))
+       distinct))
+
 (defn retract-quota!
-  [conn user]
+  [conn user reason]
+  @(d/transact conn [[:db/add [:quota/user user] :quota/reason reason]])
   @(d/transact conn [[:db.fn/retractEntity [:quota/user user]]]))
 
 (defn set-quota!
@@ -74,7 +97,7 @@
    or
    (set-quota! conn \"u1\" :cpus 20.0)
    etc."
-  [conn user & kvs]
+  [conn user reason & kvs]
   (loop [[type amount & kvs] kvs
          txns []]
     (if (and amount (pos? amount))
@@ -99,7 +122,8 @@
                       :quota/resource [{:resource/type type
                                         :resource/amount amount}]}])]
           (recur kvs (into txn txns))))
-      @(d/transact conn txns))))
+      @(d/transact conn txns)))
+  @(d/transact conn [[:db/add [:quota/user user] :quota/reason reason]]))
 
 (defn create-user->quota-fn
   "Returns a function which will return the quota same as `(get-quota db user)`

@@ -432,7 +432,9 @@
       (let [new-quota {:cpus 9.0 :mem 4323.0 :count 43 :gpus 3.0}
             update-resp (h (merge quota-req-attrs
                                   {:request-method :post
-                                   :body-params {:user "foo" :quota new-quota}}))
+                                   :body-params {:user "foo"
+                                                 :quota new-quota
+                                                 :reason "Needs custom settings"}}))
             update-body (response->body-data update-resp)
             _ (is (<= 200 (:status update-resp) 299))
             _ (is (= (kw-keys update-body) new-quota))
@@ -445,7 +447,8 @@
     (testing "delete resets quota"
       (let [delete-resp (h (merge quota-req-attrs
                                   {:request-method :delete
-                                   :query-params {:user "foo"}}))
+                                   :query-params {:user "foo"
+                                                  :reason "Back to defaults"}}))
             _ (is (<= 200 (:status delete-resp) 299))
             get-resp (h (merge quota-req-attrs
                                {:request-method :get
@@ -472,7 +475,9 @@
       (let [new-share {:cpus 9.0 :mem 4323.0 :gpus 3.0}
             update-resp (h (merge share-req-attrs
                                   {:request-method :post
-                                   :body-params {:user "foo" :share new-share}}))
+                                   :body-params {:user "foo"
+                                                 :reason "needs more CPUs"
+                                                 :share new-share}}))
             update-body (response->body-data update-resp)
             _ (is (<= 200 (:status update-resp) 299))
             _ (is (= (kw-keys update-body) new-share))
@@ -485,7 +490,8 @@
     (testing "delete resets share"
       (let [delete-resp (h (merge share-req-attrs
                                   {:request-method :delete
-                                   :query-params {:user "foo"}}))
+                                   :query-params {:user "foo"
+                                                  :reason "not special anymore"}}))
             _ (is (<= 200 (:status delete-resp) 299))
             get-resp (h (merge share-req-attrs
                                {:request-method :get
