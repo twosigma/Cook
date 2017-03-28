@@ -41,12 +41,13 @@
             [mesomatic.scheduler]
             [metatransaction.core :refer (db)]
             [metrics.timers :as timers]
-            [plumbing.core :refer (map-vals map-from-vals)]
-            [plumbing.core :refer [map-keys mapply]]
+            [plumbing.core :refer [map-from-vals map-keys map-vals mapply]]
             [ring.middleware.json]
             [schema.core :as s]
             [swiss.arrows :refer :all])
-  (:import java.util.UUID))
+  (:import java.net.URLEncoder
+           (java.util Date UUID)
+           schema.core.OptionalKey))
 
 ;; This is necessary to prevent a user from requesting a uid:gid
 ;; pair other than their own (for example, root)
@@ -87,7 +88,7 @@
    1. changes keys to snake_case"
   [schema]
   (map-keys (fn [k]
-              (if (instance? schema.core.OptionalKey k)
+              (if (instance? OptionalKey k)
                 (update k :k ->snake_case)
                 (->snake_case k)))
             schema))
@@ -404,12 +405,12 @@
                                       :resource/amount (double gpus)}]))])
         commit-latch-id (d/tempid :db.part/user)
         commit-latch {:db/id commit-latch-id
-                      :commit-latch/uuid (java.util.UUID/randomUUID)
+                      :commit-latch/uuid (UUID/randomUUID)
                       :commit-latch/committed? true}
         txn {:db/id db-id
              :job/commit-latch commit-latch-id
              :job/uuid uuid
-             :job/submit-time (java.util.Date.)
+             :job/submit-time (Date.)
              :job/name (or name "cookjob") ; set the default job name if not provided.
              :job/command command
              :job/custom-executor false
@@ -643,7 +644,7 @@
   [host executor-state]
   (str "http://" host ":5051"
        "/files/read.json?path="
-       (java.net.URLEncoder/encode (get executor-state "directory") "UTF-8")))
+       (URLEncoder/encode (get executor-state "directory") "UTF-8")))
 
 (defn fetch-job-map
   [db fid job-uuid]
@@ -1090,6 +1091,7 @@
 
 (def ReadRetriesRequest
   {:job [s/Uuid]})
+
 (def UpdateRetriesRequest
   {(s/optional-key :jobs) [s/Uuid]
    (s/optional-key :retries) PosNum
@@ -1370,9 +1372,9 @@
                               since-hours-ago ::since-hours-ago
                               limit ::limit} ctx
                              start (if start-ms
-                                     (java.util.Date. start-ms)
-                                     (java.util.Date. (- end-ms (-> since-hours-ago t/hours t/in-millis))))
-                             end (java.util.Date. end-ms)
+                                     (Date. start-ms)
+                                     (Date. (- end-ms (-> since-hours-ago t/hours t/in-millis))))
+                             end (Date. end-ms)
                              job-uuids (->> (timers/time!
                                               fetch-jobs
                                               ;; Get valid timings
