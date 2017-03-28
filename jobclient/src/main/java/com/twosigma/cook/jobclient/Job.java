@@ -713,7 +713,7 @@ final public class Job {
      *             "end_time" : 1426632251828,
      *             "status" : "success",
      *             "start_time" : 1426632249597,
-     *             "hostname" : "simfarm73.dft.twosigma.com",
+     *             "hostname" : "server1.example.com",
      *             "executor_id" : "f52fbacf-52a1-44a2-bda1-cbfa477cc163",
      *             "task_id" : "f52fbacf-52a1-44a2-bda1-cbfa477cc163",
      *             "preempted": false

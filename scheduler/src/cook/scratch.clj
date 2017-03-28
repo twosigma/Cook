@@ -22,7 +22,7 @@
 
 (comment
   ;; Mark instance failed.
-  (let [conn (d/connect "datomic:riak://example.twosigma.com:8098/datomic/mesos-jobs?interface=http")
+  (let [conn (d/connect "datomic:riak://db.example.com:8098/datomic/mesos-jobs?interface=http")
         db (db conn)
         user "testuser"
         running-instances (q '[:find ?i
@@ -39,7 +39,7 @@
                                :instance/status :instance.status/failed]])))
 
   ;; Query a job
-  (let [conn (d/connect "datomic:riak://example.twosigma.com:8098/datomic/mesos-jobs?interface=http")
+  (let [conn (d/connect "datomic:riak://db.example.com:8098/datomic/mesos-jobs?interface=http")
         db (db conn)
         user "testuser"
         running-instances (q '[:find ?i ?state ?task-id
@@ -56,7 +56,7 @@
     (println running-instances))
 
   ;; Kill a user's jobs
-  (let [conn (d/connect "datomic:riak://example.twosigma.com:8098/datomic/mesos-jobs?interface=http")
+  (let [conn (d/connect "datomic:riak://db.example.com:8098/datomic/mesos-jobs?interface=http")
         job-uuids (q '[:find ?uuid
                        :in $ [?status ...]
                        :where
@@ -69,12 +69,12 @@
          (map first)
          (sched/kill-job conn)))
 
-  (let [conn (d/connect "datomic:riak://example.twosigma.com:8098/datomic/mesos-jobs?interface=http")]
+  (let [conn (d/connect "datomic:riak://db.example.com:8098/datomic/mesos-jobs?interface=http")]
     (println "testuser" (sched/get-used-quota (db conn) "testuser"))
     (println "testuser2" (sched/get-quota (db conn) "testuser2")))
 
   ;; List users who has pre-defined quota.
-  (let [conn (d/connect "datomic:riak://example.twosigma.com:8098/datomic/mesos-jobs?interface=http")
+  (let [conn (d/connect "datomic:riak://db.example.com:8098/datomic/mesos-jobs?interface=http")
         user "testuser"
         db (db conn)
         users (q '[:find ?u
@@ -86,7 +86,7 @@
     (println users))
 
   ;; Count the job which has multiple instances.
-  (let [conn (d/connect "datomic:riak://example.twosigma.com:8098/datomic/mesos-jobs?interface=http")
+  (let [conn (d/connect "datomic:riak://db.example.com:8098/datomic/mesos-jobs?interface=http")
         db (db conn)
         jobs (q '[:find ?j
                   :in $
@@ -106,11 +106,11 @@
           (println insts @njobs)))))
 
   ;; Adjust the quota.
-  (let [conn (d/connect "datomic:riak://example.twosigma.com:8098/datomic/mesos-jobs?interface=http")]
+  (let [conn (d/connect "datomic:riak://db.example.com:8098/datomic/mesos-jobs?interface=http")]
     (sched/set-quota! conn "promised" :resource.type/cpus 3000.0 :resource.type/mem 2500000.0))
 
   ;; Kill jobs running for more than a week
-  (let [conn (d/connect "datomic:riak://example.twosigma.com:8098/datomic/mesos-jobs?interface=http")
+  (let [conn (d/connect "datomic:riak://db.example.com:8098/datomic/mesos-jobs?interface=http")
         db (d/db conn)
         one-week-ago (- (.getTime (java.util.Date.)) (* 7 24 60 60 1000))
         job-eids (->>
@@ -131,5 +131,5 @@
     (d/transact conn txns))
 
   ;; Retract quota.
-  (let [conn (d/connect "datomic:riak://example.twosigma.com:8098/datomic/mesos-jobs?interface=http")]
+  (let [conn (d/connect "datomic:riak://db.example.com:8098/datomic/mesos-jobs?interface=http")]
     (sched/retract-quota! conn "testuser")))

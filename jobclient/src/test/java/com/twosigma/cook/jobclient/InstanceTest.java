@@ -45,7 +45,7 @@ public class InstanceTest {
         instanceBuilder.setSlaveID("20150311-033720-1963923116-5050-4084-32");
         instanceBuilder.setStartTime(1426632249597L);
         instanceBuilder.setEndTime(1426632251828L);
-        instanceBuilder.setHostName("simfarm73.dft.twosigma.com");
+        instanceBuilder.setHostName("server1.example.com");
         instanceBuilder.setExecutorID("f52fbacf-52a1-44a2-bda1-cbfa477cc163");
         instanceBuilder.setStatus(Instance.Status.SUCCESS);
         instanceBuilder.setPreempted(false);
