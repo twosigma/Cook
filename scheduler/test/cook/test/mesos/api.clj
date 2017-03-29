@@ -14,15 +14,16 @@
 ;; limitations under the License.
 ;;
 (ns cook.test.mesos.api
- (:use clojure.test)
- (:require [clojure.data.json :as json]
-           [clojure.walk :refer (keywordize-keys)]
-           [cook.authorization :as auth]
-           [cook.mesos.api :as api :refer (main-handler)]
-           [cook.mesos.util :as util]
-           [cook.test.testutil :refer (restore-fresh-database! create-dummy-job create-dummy-instance)]
-           [datomic.api :as d :refer (q db)]
-           [schema.core :as s]))
+  (:use clojure.test)
+  (:require [clojure.data.json :as json]
+            [clojure.walk :refer (keywordize-keys)]
+            [cook.authorization :as auth]
+            [cook.mesos.api :as api :refer (main-handler)]
+            [cook.mesos.util :as util]
+            [cook.test.testutil :refer (restore-fresh-database! create-dummy-job create-dummy-instance)]
+            [datomic.api :as d :refer (q db)]
+            [schema.core :as s])
+  (:import java.util.UUID))
 
 (defn kw-keys
   [m]
@@ -50,7 +51,7 @@
 
 (defn basic-job
   []
-  {"uuid" (str (java.util.UUID/randomUUID))
+  {"uuid" (str (UUID/randomUUID))
    "command" "hello world"
    "name" "my-cool-job"
    "priority" 66
@@ -134,7 +135,7 @@
                          :scheme :http
                          :uri "/rawscheduler"
                          :authorization/user "dgrnbrg"
-                         :query-params {"job" (str (java.util.UUID/randomUUID))}}))
+                         :query-params {"job" (str (UUID/randomUUID))}}))
             499))
     (is (<= 200
             (:status (h {:request-method :delete
@@ -183,14 +184,14 @@
 
 (deftest job-validator
   (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
-        job (fn [cpus mem max-retries] {"uuid" (str (java.util.UUID/randomUUID))
-                            "command" "hello world"
-                            "name" "my-cool-job"
-                            "priority" 66
-                            "max_retries" max-retries
-                            "max_runtime" 1000000
-                            "cpus" cpus
-                            "mem" mem})
+        job (fn [cpus mem max-retries] {"uuid" (str (UUID/randomUUID))
+                                        "command" "hello world"
+                                        "name" "my-cool-job"
+                                        "priority" 66
+                                        "max_retries" max-retries
+                                        "max_runtime" 1000000
+                                        "cpus" cpus
+                                        "mem" mem})
         h (basic-handler conn :gpus-enabled true :cpus 3 :memory-gb 2 :retry-limit 200)]
     (testing "All within limits"
       (is (<= 200
@@ -283,8 +284,8 @@
 (deftest retries-api
   (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
         h (basic-handler conn)
-        uuid1 (str (java.util.UUID/randomUUID))
-        uuid2 (str (java.util.UUID/randomUUID))
+        uuid1 (str (UUID/randomUUID))
+        uuid2 (str (UUID/randomUUID))
         create-response (h {:request-method :post
                             :scheme :http
                             :uri "/rawscheduler"
@@ -432,7 +433,7 @@
 (deftest group-validator
   (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
         make-job (fn [& {:keys [uuid name group]
-                         :or {uuid (str (java.util.UUID/randomUUID))
+                         :or {uuid (str (UUID/randomUUID))
                               name "cook-job"
                               group nil}}]
                    (merge {"uuid" uuid
@@ -446,7 +447,7 @@
                           (when group
                             {"group" group})))
         make-group (fn [& {:keys [uuid placement-type attribute straggler-handling-type quantile multiplier]
-                           :or {uuid (str (java.util.UUID/randomUUID))
+                           :or {uuid (str (UUID/randomUUID))
                                 placement-type "all"
                                 straggler-handling-type "none"
                                 quantile 0.5
@@ -483,8 +484,8 @@
                                  :authorization/usr "diego"
                                  :query-params {"job" uuid}})))]
     (testing "One job one group"
-      (let [guuid (str (java.util.UUID/randomUUID))
-            juuid (str (java.util.UUID/randomUUID))
+      (let [guuid (str (UUID/randomUUID))
+            juuid (str (UUID/randomUUID))
             post-resp (post {"groups" [(make-group :uuid guuid)]
                              "jobs" [(make-job :uuid juuid :group guuid)]})
             group-resp (get-group guuid)
@@ -500,9 +501,9 @@
         (is (= guuid (-> job-resp first (get "groups") first)))))
 
     (testing "Two jobs one group"
-      (let [guuid (str (java.util.UUID/randomUUID))
-            juuid1 (str (java.util.UUID/randomUUID))
-            juuid2 (str (java.util.UUID/randomUUID))
+      (let [guuid (str (UUID/randomUUID))
+            juuid1 (str (UUID/randomUUID))
+            juuid2 (str (UUID/randomUUID))
             post-resp (post {"groups" [(make-group :uuid guuid :placement-type "unique")]
                              "jobs" [(make-job :uuid juuid1 :group guuid)
                                      (make-job :uuid juuid2 :group guuid)]})
@@ -520,10 +521,10 @@
         (is (= guuid (-> job-resp2 first (get "groups") first)))))
 
     (testing "Implicitly created groups"
-      (let [guuid1 (str (java.util.UUID/randomUUID))
-            guuid2 (str (java.util.UUID/randomUUID))
-            juuid1 (str (java.util.UUID/randomUUID))
-            juuid2 (str (java.util.UUID/randomUUID))
+      (let [guuid1 (str (UUID/randomUUID))
+            guuid2 (str (UUID/randomUUID))
+            juuid1 (str (UUID/randomUUID))
+            juuid2 (str (UUID/randomUUID))
             post-resp (post {"jobs" [(make-job :uuid juuid1 :group guuid1)
                                      (make-job :uuid juuid2 :group guuid2)]})
             group-resp1 (get-group guuid1)
@@ -543,9 +544,9 @@
         ))
 
     (testing "Multiple groups in one request"
-      (let [guuid1 (str (java.util.UUID/randomUUID))
-            guuid2 (str (java.util.UUID/randomUUID))
-            juuids (vec (repeatedly 5 #(str (java.util.UUID/randomUUID))))
+      (let [guuid1 (str (UUID/randomUUID))
+            guuid2 (str (UUID/randomUUID))
+            juuids (vec (repeatedly 5 #(str (UUID/randomUUID))))
             post (fn [params]
                (h {:request-method :post
                    :scheme :http
@@ -572,7 +573,7 @@
         (is (contains? (-> group-resp2 first (get "jobs") set) (get juuids 4)))))
 
     (testing "Group with defaulted host placement"
-      (let [guuid (str (java.util.UUID/randomUUID))
+      (let [guuid (str (UUID/randomUUID))
             post-resp (post {"groups" [{"uuid" guuid}]
                              "jobs" [(make-job :group guuid) (make-job :group guuid)]})
             group-resp (get-group guuid)]
@@ -580,7 +581,7 @@
         (is (= "all" (-> group-resp first (get "host_placement") (get "type"))))))
 
     (testing "Use attribute equals parameter"
-      (let [guuid (str (java.util.UUID/randomUUID))
+      (let [guuid (str (UUID/randomUUID))
             post-resp (post {"groups" [(make-group :uuid guuid :placement-type "attribute-equals"
                                                    :attribute "test")]
                              "jobs" [(make-job :group guuid) (make-job :group guuid)]})
@@ -592,22 +593,22 @@
                         (get "attribute"))))))
 
     (testing "Invalid placement type"
-      (let [guuid (str (java.util.UUID/randomUUID))
+      (let [guuid (str (UUID/randomUUID))
             post-resp (post {"groups" [(make-group :uuid guuid :placement-type "not-a-type")]
                              "jobs" [(make-job :group guuid) (make-job :group guuid)]})]
         (is (<= 400 (:status post-resp) 499))))
 
     (testing "Missing host placement attribute equals parameter"
-      (let [guuid (str (java.util.UUID/randomUUID))
+      (let [guuid (str (UUID/randomUUID))
             post-resp (post {"groups" [{"uuid" guuid
                                         "host_placement" {"type" "attribute-equals"}}]
                              "jobs" [(make-job :group guuid) (make-job :group guuid)]})]
         (is (<= 400 (:status post-resp) 499))))
 
     (testing "Straggler handling quantile deviation"
-      (let [guuid1 (str (java.util.UUID/randomUUID))
-            juuid1 (str (java.util.UUID/randomUUID))
-            juuid2 (str (java.util.UUID/randomUUID))
+      (let [guuid1 (str (UUID/randomUUID))
+            juuid1 (str (UUID/randomUUID))
+            juuid2 (str (UUID/randomUUID))
             post-resp (post {"jobs" [(make-job :uuid juuid1 :group guuid1)
                                      (make-job :uuid juuid2 :group guuid1)]
                              "groups" [(make-group :uuid guuid1 :straggler-handling-type "quantile-deviation"
@@ -626,7 +627,7 @@
 
         (is (= (-> group-resp1 first (update "jobs" set)) {"uuid" guuid1 "name" "cookgroup" "host_placement" {"type" "all"} "jobs" #{juuid1 juuid2} "straggler_handling" {"type" "quantile-deviation" "parameters" {"quantile" 0.5 "multiplier" 2.0}}}))))
     (testing "Error trying to create previously existing group"
-      (let [guuid (str (java.util.UUID/randomUUID))
+      (let [guuid (str (UUID/randomUUID))
             post-resp1 (post {"jobs" [(make-job :group guuid) (make-job :group guuid)]})
             post-resp2 (post {"jobs" [(make-job :group guuid)]})]
         (is (<= 201 (:status post-resp1) 299))
@@ -635,7 +636,7 @@
 
 (deftest retry-validator
   (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
-        uuid (java.util.UUID/randomUUID)
+        uuid (UUID/randomUUID)
         job (merge (basic-job) {"uuid" (str uuid)})
         h (basic-handler conn :retry-limit 200)]
         (testing "Initial job creation"
@@ -813,3 +814,107 @@
            {:straggler-handling/type :straggler-handling.type/quantile-deviation
             :straggler-handling/parameters {:straggler-handling.quantile-deviation/quantile 0.5
                                             :straggler-handling.quantile-deviation/multiplier 2.5}}))))
+
+(deftest test-max-128-characters-and-alphanum?
+  (is (api/max-128-characters-and-alphanum? ""))
+  (is (api/max-128-characters-and-alphanum? "a"))
+  (is (api/max-128-characters-and-alphanum? (apply str (repeat 128 "a"))))
+  (is (not (api/max-128-characters-and-alphanum? (apply str (repeat 129 "a")))))
+  (is (api/max-128-characters-and-alphanum? "allows.dots"))
+  (is (api/max-128-characters-and-alphanum? "allows-dashes"))
+  (is (api/max-128-characters-and-alphanum? "allows_underscores")))
+
+(deftest test-non-empty-max-128-characters-and-alphanum?
+  (is (not (api/non-empty-max-128-characters-and-alphanum? "")))
+  (is (api/non-empty-max-128-characters-and-alphanum? "a"))
+  (is (api/non-empty-max-128-characters-and-alphanum? (apply str (repeat 128 "a"))))
+  (is (not (api/non-empty-max-128-characters-and-alphanum? (apply str (repeat 129 "a")))))
+  (is (api/non-empty-max-128-characters-and-alphanum? "allows.dots"))
+  (is (api/non-empty-max-128-characters-and-alphanum? "allows-dashes"))
+  (is (api/non-empty-max-128-characters-and-alphanum? "allows_underscores")))
+
+(defn- minimal-job
+  "Returns a dummy job with the minimal set of fields"
+  []
+  {:uuid (UUID/randomUUID)
+   :command "ls"
+   :name ""
+   :priority 0
+   :max-retries 1
+   :max-runtime 1
+   :cpus 0.1
+   :mem 128.
+   :user "user"})
+
+(deftest test-job-schema
+  (testing "Job schema validation"
+    (let [min-job (minimal-job)]
+
+      (testing "should require the minimal set of fields"
+        (is (s/validate api/Job min-job))
+        (is (thrown? Exception (s/validate api/Job (dissoc min-job :uuid))))
+        (is (thrown? Exception (s/validate api/Job (dissoc min-job :command))))
+        (is (thrown? Exception (s/validate api/Job (dissoc min-job :name))))
+        (is (thrown? Exception (s/validate api/Job (dissoc min-job :priority))))
+        (is (thrown? Exception (s/validate api/Job (dissoc min-job :max-retries))))
+        (is (thrown? Exception (s/validate api/Job (dissoc min-job :max-runtime))))
+        (is (thrown? Exception (s/validate api/Job (dissoc min-job :cpus))))
+        (is (thrown? Exception (s/validate api/Job (dissoc min-job :mem))))
+        (is (thrown? Exception (s/validate api/Job (dissoc min-job :user)))))
+
+      (testing "should allow an optional application field"
+        (is (s/validate api/Job (assoc min-job :application {:name "foo-app", :version "0.1.0"})))
+        (is (thrown? Exception (s/validate api/Job (assoc min-job :application {:name "", :version "0.2.0"}))))
+        (is (thrown? Exception (s/validate api/Job (assoc min-job :application {:name "bar-app", :version ""}))))))))
+
+(deftest test-create-jobs!
+  (let [expected-job-map
+        (fn
+          ; Converts the provided job and framework-id (fid) to the job-map we expect to get back from
+          ; api/fetch-job-map. Note that we don't include the submit_time field here, so assertions below
+          ; will have to dissoc it.
+          [{:keys [mem max-retries max-runtime name gpus command ports priority uuid user cpus application]} fid]
+          (cond-> {;; Fields we will fill in from the provided args:
+                   :command command
+                   :cpus cpus
+                   :framework_id fid
+                   :gpus (or gpus 0)
+                   :max_retries max-retries
+                   :max_runtime max-runtime
+                   :mem mem
+                   :name name
+                   :ports (or ports 0)
+                   :priority priority
+                   :user user
+                   :uuid (str uuid)
+                   ;; Fields we will simply hardcode for this test:
+                   :env {}
+                   :instances ()
+                   :labels {}
+                   :retries_remaining 1
+                   :state "waiting"
+                   :status "waiting"
+                   :uris nil}
+                  ;; Only assoc :application if the job specified one
+                  application (assoc :application application)))]
+
+    (testing "Job creation"
+
+      (testing "should work with a minimal job"
+        (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
+              {:keys [uuid] :as job} (minimal-job)
+              fid #mesomatic.types.FrameworkID{:value "fid"}]
+          (is (= {::api/results (str "submitted jobs " uuid)}
+                 (api/create-jobs! conn {::api/jobs [job]})))
+          (is (= (expected-job-map job fid)
+                 (dissoc (api/fetch-job-map (db conn) fid uuid) :submit_time)))))
+
+      (testing "should work when the job specifies an application"
+        (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
+              application {:name "foo-app", :version "0.1.0"}
+              {:keys [uuid] :as job} (assoc (minimal-job) :application application)
+              fid #mesomatic.types.FrameworkID{:value "fid"}]
+          (is (= {::api/results (str "submitted jobs " uuid)}
+                 (api/create-jobs! conn {::api/jobs [job]})))
+          (is (= (expected-job-map job fid)
+                 (dissoc (api/fetch-job-map (db conn) fid uuid) :submit_time))))))))

@@ -170,13 +170,28 @@
    (s/optional-key :cancelled) s/Bool
    (s/optional-key :reason_string) s/Str})
 
+(defn max-128-characters-and-alphanum?
+  "Returns true if s contains only '.', '_', '-' or
+  any word characters and has length at most 128"
+  [s]
+  (re-matches #"[\.a-zA-Z0-9_-]{0,128}" s))
+
+(defn non-empty-max-128-characters-and-alphanum?
+  "Returns true if s contains only '.', '_', '-' or any
+  word characters and has length at least 1 and most 128"
+  [s]
+  (re-matches #"[\.a-zA-Z0-9_-]{1,128}" s))
+
+(def Application
+  "Schema for the application a job corresponds to"
+  {:name (s/constrained s/Str non-empty-max-128-characters-and-alphanum?)
+   :version (s/constrained s/Str non-empty-max-128-characters-and-alphanum?)})
+
 (def Job
   "A schema for a job"
   {:uuid s/Uuid
    :command s/Str
-   ;; Make sure the job name is a valid string which can only contain '.', '_', '-' or any word characters and has
-   ;; length at most 128.
-   :name (s/both s/Str (s/pred #(re-matches #"[\.a-zA-Z0-9_-]{0,128}" %) 'under-128-characters-and-alphanum?))
+   :name (s/both s/Str (s/pred max-128-characters-and-alphanum? 'max-128-characters-and-alphanum?))
    :priority (s/both s/Int (s/pred #(<= 0 % 100) 'between-0-and-100))
    :max-retries PosInt
    :max-runtime PosInt
@@ -191,7 +206,8 @@
    (s/optional-key :gpus) (s/both s/Int (s/pred pos? 'pos?))
    ;; Make sure the user name is valid. It must begin with a lower case character, end with
    ;; a lower case character or a digit, and has length between 2 to (62 + 2).
-   :user UserName})
+   :user UserName
+   (s/optional-key :application) Application})
 
 (def JobRequest
   "Schema for the part of a request that launches a single job."
@@ -349,12 +365,21 @@
                 (mk-docker-ports docker-id port-mappings))])
       {})))
 
+(defn- build-application
+  "Returns the datoms for adding the provided application"
+  [id {:keys [name version]}]
+  (let [application-id (d/tempid :db.part/user)]
+    [[:db/add id :job/application application-id]
+     {:db/id application-id
+      :application/name name
+      :application/version version}]))
+
 (s/defn make-job-txn
   "Creates the necessary txn data to insert a job into the database"
   [job :- Job]
-  (let [{:keys [uuid command max-retries max-runtime priority cpus mem gpus user name ports uris env labels container group]
-         :or {group nil}
-         } job
+  (let [{:keys [uuid command max-retries max-runtime priority cpus mem gpus
+                user name ports uris env labels container group application]
+         :or {group nil}} job
         db-id (d/tempid :db.part/user)
         ports (when (and ports (not (zero? ports)))
                 [[:db/add db-id :job/ports ports]])
@@ -390,6 +415,7 @@
                           :label/value v}]))
                     labels)
         container (if (nil? container) [] (build-container user db-id container))
+        application (if (nil? application) [] (build-application db-id application))
         ;; These are optionally set datoms w/ default values
         maybe-datoms (reduce into
                              []
@@ -428,6 +454,7 @@
         (into env)
         (into labels)
         (into container)
+        (into application)
         (into maybe-datoms)
         (conj txn)
         (conj commit-latch))))
@@ -650,79 +677,81 @@
   [db fid job-uuid]
   (let [job (d/entity db [:job/uuid job-uuid])
         resources (util/job-ent->resources job)
-        groups (:group/_job job)]
-    (merge
-      {:command (:job/command job)
-       :uuid (str (:job/uuid job))
-       :name (:job/name job "cookjob")
-       :priority (:job/priority job util/default-job-priority)
-       :submit_time (when (:job/submit-time job) ; due to a bug, submit time may not exist for some jobs
-                      (.getTime (:job/submit-time job)))
-       :user (:job/user job)
-       :cpus (:cpus resources)
-       :mem (:mem resources)
-       :gpus (int (:gpus resources 0))
-       :max_retries  (:job/max-retries job) ; consistent with input
-       :retries_remaining (- (:job/max-retries job) (util/job-ent->attempts-consumed  db job))
-       :max_runtime (:job/max-runtime job Long/MAX_VALUE) ; consistent with input
-       :framework_id fid
-       :status (name (:job/state job))
-       :state (case (:job/state job)
-                :job.state/waiting "waiting"
-                :job.state/running "running"
-                :job.state/completed
-                (if (some #{:instance.status/success}
-                          (map :instance/status (:job/instance job)))
-                  "success" "failed"))
-       :uris (:uris resources)
-       :env (util/job-ent->env job)
-       :labels (util/job-ent->label job)
-       :ports (:job/ports job 0)
-       :instances
-       (map (fn [instance]
-              (let [hostname (:instance/hostname instance)
-                    executor-states (get-executor-states fid hostname)
-                    url-path (try
-                               (executor-state->url-path hostname (get executor-states (:instance/executor-id instance)))
-                               (catch Exception e
-                                 nil))
-                    start (:instance/start-time instance)
-                    mesos-start (:instance/mesos-start-time instance)
-                    end (:instance/end-time instance)
-                    cancelled (:instance/cancelled instance)
-                    reason (reason/instance-entity->reason-entity db instance)
-                    base {:task_id (:instance/task-id instance)
-                          :hostname hostname
-                          :ports (:instance/ports instance)
-                          :backfilled false ;; Backfill has been deprecated
-                          :preempted (:instance/preempted? instance false)
-                          :slave_id (:instance/slave-id instance)
-                          :executor_id (:instance/executor-id instance)
-                          :status (name (:instance/status instance))}
-                    base (if url-path
-                           (assoc base :output_url url-path)
-                           base)
-                    base (if start
-                           (assoc base :start_time (.getTime start))
-                           base)
-                    base (if mesos-start
-                           (assoc base :mesos_start_time (.getTime mesos-start))
-                           base)
-                    base (if end
-                           (assoc base :end_time (.getTime end))
-                           base)
-                    base (if cancelled
-                           (assoc base :cancelled cancelled)
-                           base)
-                    base (if reason
-                           (assoc base
-                                  :reason_code (:reason/code reason)
-                                  :reason_string (:reason/string reason))
-                           base)]
-                base))
-            (:job/instance job))}
-      (when groups
-        {:groups (map #(str (:group/uuid %)) groups)}))))
+        groups (:group/_job job)
+        application (:job/application job)
+        job-map {:command (:job/command job)
+                 :uuid (str (:job/uuid job))
+                 :name (:job/name job "cookjob")
+                 :priority (:job/priority job util/default-job-priority)
+                 :submit_time (when (:job/submit-time job) ; due to a bug, submit time may not exist for some jobs
+                                (.getTime (:job/submit-time job)))
+                 :user (:job/user job)
+                 :cpus (:cpus resources)
+                 :mem (:mem resources)
+                 :gpus (int (:gpus resources 0))
+                 :max_retries (:job/max-retries job) ; consistent with input
+                 :retries_remaining (- (:job/max-retries job) (util/job-ent->attempts-consumed db job))
+                 :max_runtime (:job/max-runtime job Long/MAX_VALUE) ; consistent with input
+                 :framework_id fid
+                 :status (name (:job/state job))
+                 :state (case (:job/state job)
+                          :job.state/waiting "waiting"
+                          :job.state/running "running"
+                          :job.state/completed
+                          (if (some #{:instance.status/success}
+                                    (map :instance/status (:job/instance job)))
+                            "success" "failed"))
+                 :uris (:uris resources)
+                 :env (util/job-ent->env job)
+                 :labels (util/job-ent->label job)
+                 :ports (:job/ports job 0)
+                 :instances
+                 (map (fn [instance]
+                        (let [hostname (:instance/hostname instance)
+                              executor-states (get-executor-states fid hostname)
+                              url-path (try
+                                         (executor-state->url-path hostname (get executor-states (:instance/executor-id instance)))
+                                         (catch Exception e
+                                           nil))
+                              start (:instance/start-time instance)
+                              mesos-start (:instance/mesos-start-time instance)
+                              end (:instance/end-time instance)
+                              cancelled (:instance/cancelled instance)
+                              reason (reason/instance-entity->reason-entity db instance)
+                              base {:task_id (:instance/task-id instance)
+                                    :hostname hostname
+                                    :ports (:instance/ports instance)
+                                    :backfilled false ;; Backfill has been deprecated
+                                    :preempted (:instance/preempted? instance false)
+                                    :slave_id (:instance/slave-id instance)
+                                    :executor_id (:instance/executor-id instance)
+                                    :status (name (:instance/status instance))}
+                              base (if url-path
+                                     (assoc base :output_url url-path)
+                                     base)
+                              base (if start
+                                     (assoc base :start_time (.getTime start))
+                                     base)
+                              base (if mesos-start
+                                     (assoc base :mesos_start_time (.getTime mesos-start))
+                                     base)
+                              base (if end
+                                     (assoc base :end_time (.getTime end))
+                                     base)
+                              base (if cancelled
+                                     (assoc base :cancelled cancelled)
+                                     base)
+                              base (if reason
+                                     (assoc base
+                                       :reason_code (:reason/code reason)
+                                       :reason_string (:reason/string reason))
+                                     base)]
+                          base))
+                      (:job/instance job))}]
+    (cond-> job-map
+            groups (assoc :groups (map #(str (:group/uuid %)) groups))
+            application (assoc :application {:name (:application/name application)
+                                             :version (:application/version application)}))))
 
 (defn fetch-group-job-details
   [db guuid]
@@ -873,7 +902,7 @@
   ::jobs and ::groups, which specify the jobs and job groups."
   [conn {:keys [::groups ::jobs] :as ctx}]
   (try
-    (log/info "Submitting jobs through raw api:" (::jobs ctx))
+    (log/info "Submitting jobs through raw api:" jobs)
     (let [group-uuids (set (map :uuid groups))
           ;; Create new implicit groups (with all default settings)
           implicit-groups (->> jobs
@@ -882,7 +911,7 @@
                                distinct
                                (remove #(contains? group-uuids %))
                                (map make-default-group))
-          groups (concat implicit-groups (::groups ctx))
+          groups (concat implicit-groups groups)
           job-txns (mapcat #(make-job-txn %) jobs)
           job-uuids->dbids (->> job-txns
                                 ;; Not all txns are for the top level job
