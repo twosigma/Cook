@@ -121,7 +121,8 @@
     :db/ident :job/disable-mea-culpa-retries
     :db/valueType :db.type/boolean
     :db/cardinality :db.cardinality/one
-    :db.install/_attribute :db.part/db}
+    :db.install/_attribute :db.part/db
+    :db/doc "Flag that disables mea culpa retries. If set to true, mea culpa retries will count against the job's retry count."}
    ;; Group attributes
    {:db/id (d/tempid :db.part/db)
     :db/ident :group/uuid
