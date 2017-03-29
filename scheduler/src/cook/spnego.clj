@@ -14,10 +14,10 @@
 ;; limitations under the License.
 ;;
 (ns cook.spnego
-  (:require [ring.util.response :refer (header status response)]
-            [clojure.data.codec.base64 :as b64]
+  (:require [clojure.data.codec.base64 :as b64]
             [clojure.string :as str]
-            [clojure.string :refer (split lower-case)])
+            [clojure.string :refer (split lower-case)]
+            [ring.util.response :refer (header status response)])
   (:import [org.ietf.jgss GSSManager GSSCredential Oid]))
 
 (def krb5Mech (Oid. "1.2.840.113554.1.2.2"))
@@ -78,13 +78,16 @@
   [rh]
   (fn [req]
     (if (get-in req [:headers "authorization"])
-      (let [gss_context (gss-context-init)]
-        (if-let [token (do-gss-auth-check gss_context req)]
+      (let [gss_context (gss-context-init)
+            token (do-gss-auth-check gss_context req)]
+        ; Use isEstablished to confirm that the client authenticated correctly.
+        ; If token is non-nil, add a WWW-Authenticate header to the response.
+        (if (.isEstablished gss_context)
           (let [princ (gss-get-princ gss_context)]
-            (-> req
-                (assoc :krb5-authenticated-princ princ
-                       :authorization/user (first (str/split princ #"@" 2)))
-                (rh)
-                (header "WWW-Authenticate" token)))
+            (cond-> (-> req
+                        (assoc :krb5-authenticated-princ princ
+                               :authorization/user (first (str/split princ #"@" 2)))
+                        (rh))
+              token (header "WWW-Authenticate" token)))
           (response-401-negotiate)))
-      (response-401-negotiate))))
+        (response-401-negotiate))))

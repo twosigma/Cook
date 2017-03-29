@@ -14,19 +14,19 @@
 ;; limitations under the License.
 ;;
 (ns cook.mesos.monitor
-  (:require [cook.mesos.scheduler :as sched]
-            [cook.mesos.share :as share]
-            [cook.mesos.util :as util]
-            [clojure.core.async :as async]
-            [clojure.tools.logging :as log]
-            [datomic.api :as d :refer (q)]
-            [metatransaction.core :refer (db)]
-            [riemann.client :as riemann]
-            [cook.datomic :refer (transact-with-retries)]
+  (:require [chime :refer [chime-at]]
             [clj-time.core :as time]
             [clj-time.periodic :as periodic]
+            [clojure.core.async :as async]
             [clojure.set :refer (union difference)]
-            [chime :refer [chime-at]])
+            [clojure.tools.logging :as log]
+            [cook.datomic :refer (transact-with-retries)]
+            [cook.mesos.scheduler :as sched]
+            [cook.mesos.share :as share]
+            [cook.mesos.util :as util]
+            [datomic.api :as d :refer (q)]
+            [metatransaction.core :refer (db)]
+            [riemann.client :as riemann])
   (:import [java.util.concurrent Executors TimeUnit]))
 
 ;;; ===========================================================================

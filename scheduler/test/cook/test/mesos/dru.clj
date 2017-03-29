@@ -16,11 +16,11 @@
 (ns cook.test.mesos.dru
  (:use clojure.test)
  (:require [cook.mesos.dru :as dru]
-           [cook.mesos.util :as util]
            [cook.mesos.share :as share]
+           [cook.mesos.util :as util]
            [cook.test.testutil :refer (restore-fresh-database! create-dummy-job create-dummy-instance)]
-           [plumbing.core :refer [map-vals]]
-           [datomic.api :as d :refer (q db)]))
+           [datomic.api :as d :refer (q db)]
+           [plumbing.core :refer [map-vals]]))
 
 (deftest test-compute-task-scored-task-pairs
   (testing "return empty set on input empty set"

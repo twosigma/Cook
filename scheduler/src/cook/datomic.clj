@@ -15,8 +15,8 @@
 ;;
 (ns cook.datomic
   (:require [clojure.core.async :as async]
-            [clojure.tools.logging :as log]
             [clojure.pprint :refer (pprint)]
+            [clojure.tools.logging :as log]
             [cook.util :refer (deftraced)]
             [datomic.api :as d :refer (q)]))
 

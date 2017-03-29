@@ -15,21 +15,21 @@
 ;;
 (ns cook.util
   (:refer-clojure :exclude [cast merge empty split replace])
-  (:require [clojure.java.io :as io :refer [reader file]]
-            [postal.core :as postal]
+  (:require [clj-http.client :as client]
+            [clj-time.core :as time]
+            [clojure.core.memoize :as memo]
             [clojure.data.json :as json]
+            [clojure.java.io :as io :refer [reader file]]
+            [clojure.tools.logging :as log]
             [instaparse.core :as insta]
             [postal.core :as postal]
-            [clojure.tools.logging :as log]
-            [clj-http.client :as client]
-            [clojure.core.memoize :as memo]
-            [clj-time.core :as time])
-  (:use [clojure.java.shell :only [sh]]
-        [clojure.string :only [join split replace]]
-        [clojure.tools.namespace.dependency]
+            [postal.core :as postal])
+  (:use [clojure-miniprofiler :as miniprofiler]
+        [clojure.java.shell :only [sh]]
         [clojure.pprint :only [pp pprint]]
+        [clojure.string :only [join split replace]]
         [clojure.tools.macro :as macro]
-        [clojure-miniprofiler :as miniprofiler]))
+        [clojure.tools.namespace.dependency]))
 
 (def deployment-users #{"tsram"})
 

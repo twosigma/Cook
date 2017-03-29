@@ -114,13 +114,16 @@
                  {:reason/code 101 :reason/mea-culpa? false}
                  {:reason/code 101 :reason/mea-culpa? false}
                  nil
-                 {:reason/code 102 :reason/mea-culpa? false}]]
-
-    (is (= (d/invoke db :job/reasons->attempts-consumed 0 reasons) 7))
-    (is (= (d/invoke db :job/reasons->attempts-consumed 1 reasons) 6))
-    (is (= (d/invoke db :job/reasons->attempts-consumed 2 reasons) 5))
-    (is (= (d/invoke db :job/reasons->attempts-consumed 3 reasons) 4))
-    (is (= (d/invoke db :job/reasons->attempts-consumed 5 reasons) 4))))
+                 {:reason/code 102 :reason/mea-culpa? false}
+                 {:reason/code 103 :reason/mea-culpa? true :reason/failure-limit 1}
+                 {:reason/code 103 :reason/mea-culpa? true :reason/failure-limit 1}
+                 {:reason/code 104 :reason/mea-culpa? true :reason/failure-limit -1}
+                 {:reason/code 104 :reason/mea-culpa? true :reason/failure-limit -1}]]
+    (is (= (d/invoke db :job/reasons->attempts-consumed 0 reasons) 8))
+    (is (= (d/invoke db :job/reasons->attempts-consumed 1 reasons) 7))
+    (is (= (d/invoke db :job/reasons->attempts-consumed 2 reasons) 6))
+    (is (= (d/invoke db :job/reasons->attempts-consumed 3 reasons) 5))
+    (is (= (d/invoke db :job/reasons->attempts-consumed 5 reasons) 5))))
 
 (deftest test-instance-update-state-with-job-state
     (testing "Instance initially unknown"

@@ -6,7 +6,10 @@
              ;:local-port 3291 ; Uncomment to change the default port
              }
  :scheduler {:offer-incubate-ms 15000
-             :mea-culpa-failure-limit 5
+             :mea-culpa-failure-limit {:default 5
+                                       :mesos-master-disconnected 8
+                                        ; -1 means no limit
+                                       :preempted-by-rebalancer -1}
              :task-constraints {:timeout-hours 1
                                 :timeout-interval-minutes 1
                                 :memory-gb 48

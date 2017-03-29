@@ -14,11 +14,11 @@
 ;; limitations under the License.
 ;;
 (ns metatransaction.utils-test
-  (:require [clojure.test :refer :all]
+  (:require [clojure.core.async :as async]
+            [clojure.test :refer :all]
             [datomic.api :as d]
             [metatransaction.core :as mt]
-            [metatransaction.utils :refer :all]
-            [clojure.core.async :as async]))
+            [metatransaction.utils :refer :all]))
 
 (def wait
   (datomic.function/construct

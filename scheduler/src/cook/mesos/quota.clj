@@ -14,11 +14,11 @@
 ;; limitations under the License.
 ;;
 (ns cook.mesos.quota
-  (:require cook.mesos.schema
-            [clojure.tools.logging :as log]
+  (:require [clojure.tools.logging :as log]
+            [cook.mesos.schema]
+            [cook.mesos.util :as util]
             [datomic.api :as d :refer (q)]
-            [metatransaction.core :refer (db)]
-            [cook.mesos.util :as util]))
+            [metatransaction.core :refer (db)]))
 ;; This namespace is dangerously similar to cook.mesos.share (it was copied..)
 ;; it isn't obvious what the abstraction is, but there must be one.
 
@@ -121,58 +121,3 @@
       [user]
       (or (get user->quota-cache user)
           (get user->quota-cache default-user)))))
-
-(comment
-  ;; Adjust the quota.
-  (let [conn (d/connect "datomic:riak://ramkv.pit.twosigma.com:8098/datomic3/mesos-jobs2?interface=http")]
-    (set-quota! conn "promised" :cpus 3000.0 :mem 2500000.0))
-
-  (let [conn (d/connect "datomic:riak://ramkv.pit.twosigma.com:8098/datomic3/mesos-jobs2?interface=http")]
-    (set-quota! conn "default" :cpus 3000.0 :mem 2500000.0))
-
-  ;; Retract quota.
-  (let [conn (d/connect "datomic:riak://ramkv.pit.twosigma.com:8098/datomic3/mesos-jobs2?interface=http")]
-    (retract-quota! conn "wyegelwe"))
-
-  (def conn (d/connect "datomic:riak://ramkv.simfarm2.cnje1.twosigma.com:8098/datomic/mesos-jobs2?interface=http"))
-
-  (require '[cook.mesos.schema :as schema])
-
-  (defn restore-fresh-database!
-    "Completely delete all data, start a fresh database and apply transactions if
-     provided.
-
-     Return a connection to the fresh database."
-    [uri & txn]
-    (d/delete-database uri)
-    (d/create-database uri)
-    (let [conn (d/connect uri)]
-      (doseq [t schema/work-item-schema]
-        @(d/transact conn t))
-      (doseq [t txn]
-        @(d/transact conn t))
-      conn))
-
-  (def conn (restore-fresh-database! "datomic:mem://test1"))
-
-  (retract-quota! conn "wyegelwe")
-  (set-quota! conn "wyegelwe" :count 20)
-  (get-quota (d/db conn) "wyegelwe")
-  @(d/transact conn [[:db.fn/retractEntity [:quota/user "default"]]])
-
-  ((create-user->quota-fn (d/db conn)) "wyegelwe")
-
-  ;; Check the quota.
-  (let [conn (d/connect "datomic:riak://ramkv.pit.twosigma.com:8098/datomic3/mesos-jobs2?interface=http")]
-    (println "default" (get-quota (db conn) "default")))
-
-  ;; List users who has non default quota.
-  (let [conn (d/connect "datomic:riak://ramkv.pit.twosigma.com:8098/datomic3/mesos-jobs2?interface=http")
-        db (db conn)
-        users (q '[:find ?u
-                   :in $
-                   :where
-                   [?e :quota/user ?u]
-                   [?e :quota/resource ?r]]
-                 db)]
-    (println users)))

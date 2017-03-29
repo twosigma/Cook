@@ -1,7 +1,7 @@
 (ns cook.mesos.group
-  (:require [cook.mesos.util :as util]
+  (:require [clj-time.coerce :as tc]
             [clj-time.core :as t]
-            [clj-time.coerce :as tc]))
+            [cook.mesos.util :as util]))
 
 (defmulti find-stragglers
   "Given a group entity, returns a list of task entities 

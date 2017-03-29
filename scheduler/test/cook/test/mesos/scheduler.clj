@@ -20,15 +20,15 @@
             [clj-time.core :as t]
             [clojure.core.async :as async]
             [clojure.edn :as edn]
-            [mesomatic.types :as mtypes]
-            [mesomatic.scheduler :as msched]
             [cook.mesos :as mesos]
             [cook.mesos.scheduler :as sched]
+            [cook.mesos.schema :as schem]
             [cook.mesos.share :as share]
             [cook.mesos.util :as util]
-            [cook.mesos.schema :as schem]
             [cook.test.testutil :refer (restore-fresh-database! create-dummy-group create-dummy-job create-dummy-instance)]
-            [datomic.api :as d :refer (q db)])
+            [datomic.api :as d :refer (q db)]
+            [mesomatic.scheduler :as msched]
+            [mesomatic.types :as mtypes])
   (:import [org.mockito Mockito]))
 
 (def datomic-uri "datomic:mem://test-mesos-jobs")
@@ -713,7 +713,32 @@
                      (make-dummy-status-update task-id-a :mesos-slave-restarted :task-running)))
         (is (true? (contains? @tasks-killed task-id-a)))
         ))
-    ))
+
+    (testing "instance persists mesos-start-time when task is first known to be starting or running"
+      (let [job-id (create-dummy-job conn
+                                     :user "mforsyth"
+                                     :job-state :job.state/running
+                                     :retry-count 3)
+            task-id "task-mesos-start-time"
+            instance-id-a (create-dummy-instance conn job-id
+                                                 :instance-status :instance.status/unknown
+                                                 :task-id task-id
+                                                 :reason :unknown)
+            mesos-start-time (fn [] (-> conn
+                                        d/db
+                                        (d/entity [:instance/task-id task-id])
+                                        :instance/mesos-start-time))]
+        (is (nil? (mesos-start-time)))
+        (async/<!! (sched/handle-status-update conn driver fenzo
+                                               (make-dummy-status-update task-id :unknown :task-staging)))
+        (is (nil? (mesos-start-time)))
+        (async/<!! (sched/handle-status-update conn driver fenzo
+                                               (make-dummy-status-update task-id :unknown :task-running)))
+        (let [first-observed-start-time (.getTime (mesos-start-time))]
+          (is (not (nil? first-observed-start-time)))
+          (async/<!! (sched/handle-status-update conn driver fenzo
+                                                 (make-dummy-status-update task-id :unknown :task-running)))
+          (is (= first-observed-start-time (.getTime (mesos-start-time)))))))))
 
 (deftest test-handle-stragglers
   (let [uri "datomic:mem://test-handle-stragglers"

@@ -14,8 +14,8 @@
 ;; limitations under the License.
 ;;
 (ns metatransaction.core-test
-  (:require [clojure.test :refer :all]
-            [clojure.core.async :as async]
+  (:require [clojure.core.async :as async]
+            [clojure.test :refer :all]
             [datomic.api :as d]
             [metatransaction.core :refer :all]))
 

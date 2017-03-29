@@ -14,39 +14,40 @@
 ;; limitations under the License.
 ;;
 (ns cook.mesos.api
-  (:require [datomic.api :as d :refer (q)]
-            [metatransaction.core :refer (db)]
-            [schema.core :as s]
-            [cook.mesos]
-            [mesomatic.scheduler]
-            [compojure.core :refer (routes ANY)]
-            [compojure.api.sweet :as c-api]
-            [compojure.api.middleware :as c-mw]
-            [plumbing.core :refer [map-keys mapply]]
-            [camel-snake-kebab.core :refer [->snake_case ->kebab-case]]
-            [compojure.core :refer (GET POST ANY routes)]
-            [clojure.tools.logging :as log]
-            [clojure.string :as str]
-            [clojure.core.cache :as cache]
-            [clojure.walk :as walk]
-            [clj-http.client :as http]
-            [ring.middleware.json]
-            [clojure.data.json :as json]
-            [liberator.core :as liberator]
-            [liberator.util :refer [combine]]
+  (:require [camel-snake-kebab.core :refer [->snake_case ->kebab-case]]
             [cheshire.core :as cheshire]
-            [cook.mesos.util :as util]
-            [me.raynes.conch :as sh]
+            [clj-http.client :as http]
             [clj-time.core :as t]
-            [metrics.timers :as timers]
+            [clojure.core.cache :as cache]
+            [clojure.data.json :as json]
+            [clojure.string :as str]
+            [clojure.tools.logging :as log]
+            [clojure.walk :as walk]
+            [clojure.walk :refer (keywordize-keys)]
+            [compojure.api.middleware :as c-mw]
+            [compojure.api.sweet :as c-api]
+            [compojure.core :refer (GET POST ANY routes)]
+            [compojure.core :refer (routes ANY)]
+            [cook.mesos.quota :as quota]
+            [cook.mesos.reason :as reason]
             [cook.mesos.schema :refer (host-placement-types straggler-handling-types)]
             [cook.mesos.share :as share]
-            [cook.mesos.quota :as quota]
-            [plumbing.core :refer (map-vals map-from-vals)]
-            [cook.mesos.reason :as reason]
-            [swiss.arrows :refer :all]
-            [clojure.walk :refer (keywordize-keys)])
-  (:import java.util.UUID))
+            [cook.mesos.util :as util]
+            [cook.mesos]
+            [datomic.api :as d :refer (q)]
+            [liberator.core :as liberator]
+            [liberator.util :refer [combine]]
+            [me.raynes.conch :as sh]
+            [mesomatic.scheduler]
+            [metatransaction.core :refer (db)]
+            [metrics.timers :as timers]
+            [plumbing.core :refer [map-from-vals map-keys map-vals mapply]]
+            [ring.middleware.json]
+            [schema.core :as s]
+            [swiss.arrows :refer :all])
+  (:import java.net.URLEncoder
+           (java.util Date UUID)
+           schema.core.OptionalKey))
 
 ;; This is necessary to prevent a user from requesting a uid:gid
 ;; pair other than their own (for example, root)
@@ -87,7 +88,7 @@
    1. changes keys to snake_case"
   [schema]
   (map-keys (fn [k]
-              (if (instance? schema.core.OptionalKey k)
+              (if (instance? OptionalKey k)
                 (update k :k ->snake_case)
                 (->snake_case k)))
             schema))
@@ -103,6 +104,9 @@
 
 (def PosDouble
   (s/both double (s/pred pos? 'pos?)))
+
+(def UserName
+  (s/both s/Str (s/pred #(re-matches #"\A[a-z][a-z0-9_-]{0,62}[a-z0-9]\z" %) 'lowercase-alphanum?)))
 
 (def NonEmptyString
   (s/both s/Str (s/pred #(not (zero? (count %))) 'not-empty-string)))
@@ -159,6 +163,7 @@
    :backfilled s/Bool
    :ports [s/Int]
    (s/optional-key :start_time) s/Int
+   (s/optional-key :mesos_start_time) s/Int
    (s/optional-key :end_time) s/Int
    (s/optional-key :reason_code) s/Int
    (s/optional-key :output_url) s/Str
@@ -187,7 +192,7 @@
    (s/optional-key :gpus) (s/both s/Int (s/pred pos? 'pos?))
    ;; Make sure the user name is valid. It must begin with a lower case character, end with
    ;; a lower case character or a digit, and has length between 2 to (62 + 2).
-   :user (s/both s/Str (s/pred #(re-matches #"\A[a-z][a-z0-9_-]{0,62}[a-z0-9]\z" %) 'lowercase-alphanum?))})
+   :user UserName})
 
 (def JobRequest
   "Schema for the part of a request that launches a single job."
@@ -208,13 +213,13 @@
   The structure is similar to JobRequest, but has some differences.
   For example, it can include descriptions of instances for the job."
   (-> JobRequest
-      (dissoc :user)
       (dissoc (s/optional-key :group))
       (merge {:framework-id (s/maybe s/Str)
               :status s/Str
               :state s/Str
               :submit-time PosInt
               :retries-remaining NonNegInt
+              :user UserName
               (s/optional-key :groups) [s/Uuid]
               (s/optional-key :gpus) s/Int
               (s/optional-key :instances) [Instance]})
@@ -403,12 +408,12 @@
                                       :resource/amount (double gpus)}]))])
         commit-latch-id (d/tempid :db.part/user)
         commit-latch {:db/id commit-latch-id
-                      :commit-latch/uuid (java.util.UUID/randomUUID)
+                      :commit-latch/uuid (UUID/randomUUID)
                       :commit-latch/committed? true}
         txn {:db/id db-id
              :job/commit-latch commit-latch-id
              :job/uuid uuid
-             :job/submit-time (java.util.Date.)
+             :job/submit-time (Date.)
              :job/name (or name "cookjob") ; set the default job name if not provided.
              :job/command command
              :job/custom-executor false
@@ -565,8 +570,6 @@
     (doseq [{:keys [executable? extract?] :as uri} (:uris munged)
             :when (and (not (nil? executable?)) (not (nil? extract?)))]
       (throw (ex-info "Uri cannot set executable and extract" uri)))
-    (when (job-exists? db uuid)
-      (throw (ex-info (str "Job UUID " uuid " already used") {:uuid uuid})))
     (when (and group-uuid
                (not (valid-group-uuid? db
                                        new-group-uuids
@@ -645,7 +648,7 @@
   [host executor-state]
   (str "http://" host ":5051"
        "/files/read.json?path="
-       (java.net.URLEncoder/encode (get executor-state "directory") "UTF-8")))
+       (URLEncoder/encode (get executor-state "directory") "UTF-8")))
 
 (defn fetch-job-map
   [db fid job-uuid]
@@ -659,6 +662,7 @@
        :priority (:job/priority job util/default-job-priority)
        :submit_time (when (:job/submit-time job) ; due to a bug, submit time may not exist for some jobs
                       (.getTime (:job/submit-time job)))
+       :user (:job/user job)
        :cpus (:cpus resources)
        :mem (:mem resources)
        :gpus (int (:gpus resources 0))
@@ -687,6 +691,7 @@
                                (catch Exception e
                                  nil))
                     start (:instance/start-time instance)
+                    mesos-start (:instance/mesos-start-time instance)
                     end (:instance/end-time instance)
                     cancelled (:instance/cancelled instance)
                     reason (reason/instance-entity->reason-entity db instance)
@@ -703,6 +708,9 @@
                            base)
                     base (if start
                            (assoc base :start_time (.getTime start))
+                           base)
+                    base (if mesos-start
+                           (assoc base :mesos_start_time (.getTime mesos-start))
                            base)
                     base (if end
                            (assoc base :end_time (.getTime end))
@@ -862,6 +870,52 @@
 
 (def override-group-str "override-group-immutability")
 
+(defn create-jobs!
+  "Based on the context, persists the specified jobs, along with their groups,
+  to Datomic.
+  Preconditions:  The context must already have been populated with both
+  ::jobs and ::groups, which specify the jobs and job groups."
+  [conn {:keys [::groups ::jobs] :as ctx}]
+  (try
+    (log/info "Submitting jobs through raw api:" (::jobs ctx))
+    (let [group-uuids (set (map :uuid groups))
+          ;; Create new implicit groups (with all default settings)
+          implicit-groups (->> jobs
+                               (map :group)
+                               (remove nil?)
+                               distinct
+                               (remove #(contains? group-uuids %))
+                               (map make-default-group))
+          groups (concat implicit-groups (::groups ctx))
+          job-txns (mapcat #(make-job-txn %) jobs)
+          job-uuids->dbids (->> job-txns
+                                ;; Not all txns are for the top level job
+                                (filter :job/uuid)
+                                (map (juxt :job/uuid :db/id))
+                                (into {}))
+          group-uuid->job-dbids (->> jobs
+                                     (group-by :group)
+                                     (map-vals (fn [jobs]
+                                                 (map #(job-uuids->dbids (:uuid %))
+                                                      jobs))))
+          group-txns (map #(make-group-txn % (get group-uuid->job-dbids
+                                                  (:uuid %)
+                                                  []))
+                          groups)]
+      @(d/transact
+        conn
+        (concat job-txns group-txns))
+
+      {::results (str/join
+                  \space (concat ["submitted jobs"]
+                                 (map (comp str :uuid) jobs)
+                                 (if (not (empty? groups))
+                                   (concat ["submitted groups"]
+                                           (map (comp str :uuid) groups)))))})
+    (catch Exception e
+      (log/error e "Error submitting jobs through raw api")
+      [false {::error (str e)}])))
+
 ;;; On POST; JSON blob that looks like:
 ;;; {"jobs": [{"command": "echo hello world",
 ;;;            "uuid": "123898485298459823985",
@@ -899,50 +953,30 @@
                       (catch Exception e
                         (log/warn e "Malformed raw api request")
                         [true {::error (.getMessage e)}]))))
-    :processable? (fn [ctx]
-                    (try
-                      (log/info "Submitting jobs through raw api:" (::jobs ctx))
-                      (let [jobs (::jobs ctx)
-                            groups (::groups ctx)
-                            group-uuids (set (map :uuid groups))
-                            ; Create new implicit groups (with all default settings)
-                            implicit-groups (->> jobs
-                                                 (map :group)
-                                                 (remove nil?)
-                                                 distinct
-                                                 (remove #(contains? group-uuids %))
-                                                 (map make-default-group))
-                            groups (concat implicit-groups (::groups ctx))
-                            job-txns (mapcat #(make-job-txn %) jobs)
-                            job-uuids->dbids (->> job-txns
-                                                  ;; Not all txns are for the top level job
-                                                  (filter :job/uuid)
-                                                  (map (juxt :job/uuid :db/id))
-                                                  (into {}))
-                            group-uuid->job-dbids (->> jobs
-                                                        (group-by :group)
-                                                        (map-vals (fn [jobs]
-                                                                    (map #(job-uuids->dbids (:uuid %))
-                                                                         jobs))))
-                            group-txns (map #(make-group-txn % (get group-uuid->job-dbids
-                                                                    (:uuid %)
-                                                                    []))
-                                               groups)]
-                        @(d/transact
-                         conn
-                         (concat job-txns group-txns)))
-                      true
-                      (catch Exception e
-                        (log/error e "Error submitting jobs through raw api")
-                        [false {::error (str e)}])))
-    :post! (fn [ctx]
-             ;; We did the actual logic in processable?, so there's nothing left to do
-             {::results (str/join \space (concat ["submitted jobs"]
-                                                 (map (comp str :uuid) (::jobs ctx))
-                                                 (if (not (empty? (::groups ctx)))
-                                                   (concat ["submitted groups"]
-                                                           (map (comp str :uuid) (::groups ctx))))))})
 
+    :exists? (fn [ctx]
+               (let [db (d/db conn)
+                     existing (filter (partial job-exists? db) (map :uuid (::jobs ctx)))]
+                 [(seq existing) {::existing existing}]))
+
+    ;; To ensure compatibility with existing clients,
+    ;; we need to return 409 (conflict) when a client POSTs a Job UUID that already exists.
+    ;; Liberator normally only supports 409 responses to PUT requests, so we need to override
+    ;; the specific decisions that will lead to a 409 response on a POST request as well.
+    ;; (see https://clojure-liberator.github.io/liberator/tutorial/decision-graph.html)
+    :post-to-existing? (fn [ctx] false)
+    :put-to-existing? (fn [ctx] true)
+    ;; conflict? will only be invoked if exists? was true, and if so, we always want
+    ;; to indicate a conflict.
+    :conflict? (fn [ctx] true)
+    :handle-conflict (fn [ctx] {:error (str "The following job UUIDs were already used: "
+                                            (str/join ", " (::existing ctx)))})
+    ;; Implementing put! doesn't mean that PUT requests are actually supported
+    ;; (see :allowed-methods above). It is simply what liberator eventually calls to persist
+    ;; resource changes when conflict? has returned false.
+    :put! (partial create-jobs! conn)
+
+    :post! (partial create-jobs! conn)
     :handle-created (fn [ctx] (::results ctx))}))
 
 
@@ -1061,6 +1095,7 @@
 
 (def ReadRetriesRequest
   {:job [s/Uuid]})
+
 (def UpdateRetriesRequest
   {(s/optional-key :jobs) [s/Uuid]
    (s/optional-key :retries) PosNum
@@ -1341,9 +1376,9 @@
                               since-hours-ago ::since-hours-ago
                               limit ::limit} ctx
                              start (if start-ms
-                                     (java.util.Date. start-ms)
-                                     (java.util.Date. (- end-ms (-> since-hours-ago t/hours t/in-millis))))
-                             end (java.util.Date. end-ms)
+                                     (Date. start-ms)
+                                     (Date. (- end-ms (-> since-hours-ago t/hours t/in-millis))))
+                             end (Date. end-ms)
                              job-uuids (->> (timers/time!
                                               fetch-jobs
                                               ;; Get valid timings
@@ -1389,7 +1424,9 @@
              :handler (read-jobs-handler conn fid task-constraints gpu-enabled? is-authorized-fn)}
        :post {:summary "Schedules one or more jobs."
               :parameters {:body-params RawSchedulerRequest}
-              :responses {200 {:schema [JobResponse]}}
+              :responses {201 {:description "The jobs were successfully scheduled."}
+                          400 {:description "One or more of the jobs were incorrectly specified."}
+                          409 {:description "One or more of the jobs UUIDs are already in use."}}
               :handler (create-jobs-handler conn fid task-constraints gpu-enabled? is-authorized-fn)}
        :delete {:summary "Cancels jobs, halting execution when possible."
                 :responses {204 {:description "The jobs have been marked for termination."}
