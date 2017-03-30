@@ -1,0 +1,50 @@
+minimesos {
+    clusterName = "cook"
+    loggingLevel = "INFO"
+    mapAgentSandboxVolume = false
+    mapPortsToHost = false
+    mesosVersion = "1.0.0"
+    timeout = 60
+
+    agent {
+        imageName = "containersol/mesos-agent"
+        imageTag = "1.0.0-0.1.0"
+        loggingLevel = "# INHERIT FROM CLUSTER"
+        portNumber = 5051
+
+        resources {
+            cpu {
+                role = "*"
+                value = 4
+            }
+
+            disk {
+                role = "*"
+                value = 200
+            }
+
+            mem {
+                role = "*"
+                value = 2048
+            }
+
+            ports {
+                role = "*"
+                value = "[31000-32000]"
+            }
+        }
+    }
+
+    master {
+        aclJson = null
+        authenticate = false
+        imageName = "containersol/mesos-master"
+        imageTag = "1.0.0-0.1.0"
+        loggingLevel = "# INHERIT FROM CLUSTER"
+    }
+
+    zookeeper {
+        imageName = "jplock/zookeeper"
+        imageTag = "3.4.6"
+    }
+}
