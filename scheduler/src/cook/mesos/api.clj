@@ -365,15 +365,6 @@
                 (mk-docker-ports docker-id port-mappings))])
       {})))
 
-(defn- build-application
-  "Returns the datoms for adding the provided application"
-  [id {:keys [name version]}]
-  (let [application-id (d/tempid :db.part/user)]
-    [[:db/add id :job/application application-id]
-     {:db/id application-id
-      :application/name name
-      :application/version version}]))
-
 (s/defn make-job-txn
   "Creates the necessary txn data to insert a job into the database"
   [job :- Job]
@@ -415,7 +406,6 @@
                           :label/value v}]))
                     labels)
         container (if (nil? container) [] (build-container user db-id container))
-        application (if (nil? application) [] (build-application db-id application))
         ;; These are optionally set datoms w/ default values
         maybe-datoms (reduce into
                              []
@@ -433,20 +423,23 @@
         commit-latch {:db/id commit-latch-id
                       :commit-latch/uuid (UUID/randomUUID)
                       :commit-latch/committed? true}
-        txn {:db/id db-id
-             :job/commit-latch commit-latch-id
-             :job/uuid uuid
-             :job/submit-time (Date.)
-             :job/name (or name "cookjob") ; set the default job name if not provided.
-             :job/command command
-             :job/custom-executor false
-             :job/user user
-             :job/max-retries max-retries
-             :job/state :job.state/waiting
-             :job/resource [{:resource/type :resource.type/cpus
-                             :resource/amount cpus}
-                            {:resource/type :resource.type/mem
-                             :resource/amount mem}]}]
+        txn (cond-> {:db/id db-id
+                     :job/commit-latch commit-latch-id
+                     :job/uuid uuid
+                     :job/submit-time (Date.)
+                     :job/name (or name "cookjob") ; set the default job name if not provided.
+                     :job/command command
+                     :job/custom-executor false
+                     :job/user user
+                     :job/max-retries max-retries
+                     :job/state :job.state/waiting
+                     :job/resource [{:resource/type :resource.type/cpus
+                                     :resource/amount cpus}
+                                    {:resource/type :resource.type/mem
+                                     :resource/amount mem}]}
+                    application (assoc :job/application
+                                       {:application/name (:name application)
+                                        :application/version (:version application)}))]
 
     ;; TODO batch these transactions to improve performance
     (-> ports
@@ -454,7 +447,6 @@
         (into env)
         (into labels)
         (into container)
-        (into application)
         (into maybe-datoms)
         (conj txn)
         (conj commit-latch))))
@@ -750,8 +742,7 @@
                       (:job/instance job))}]
     (cond-> job-map
             groups (assoc :groups (map #(str (:group/uuid %)) groups))
-            application (assoc :application {:name (:application/name application)
-                                             :version (:application/version application)}))))
+            application (assoc :application (util/remove-datomic-namespacing application)))))
 
 (defn fetch-group-job-details
   [db guuid]

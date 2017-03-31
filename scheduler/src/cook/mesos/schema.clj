@@ -120,6 +120,7 @@
    {:db/id (d/tempid :db.part/db)
     :db/ident :job/application
     :db/valueType :db.type/ref
+    :db/isComponent true
     :db/cardinality :db.cardinality/one
     :db.install/_attribute :db.part/db}
    ;; Group attributes
@@ -349,13 +350,15 @@
     :db.install/_attribute :db.part/db}
    ;; Application attributes
    {:db/id (d/tempid :db.part/db)
-    :db/doc "TODO(DPO)"
+    :db/doc
+    "Applications scheduling jobs on Cook can optionally provide the application
+    name, which could be used to analyze the source of requests after the fact"
     :db/ident :application/name
     :db/valueType :db.type/string
     :db/cardinality :db.cardinality/one
     :db.install/_attribute :db.part/db}
    {:db/id (d/tempid :db.part/db)
-    :db/doc "TODO(DPO)"
+    :db/doc "Along with application name, clients can provide an application version"
     :db/ident :application/version
     :db/valueType :db.type/string
     :db/cardinality :db.cardinality/one
