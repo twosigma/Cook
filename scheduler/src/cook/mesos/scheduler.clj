@@ -494,10 +494,11 @@
 
 (defn job->usage
   "Takes a job-ent and returns a map of the usage of that job,
-   specifically :mem, :cpus, and :count (which is 1)"
+   specifically :cpus, :gpus (when available), :mem, and :count (which is 1)"
   [job-ent]
-  (let [{:keys [cpus mem]} (util/job-ent->resources job-ent)]
-    {:cpus cpus :mem mem :count 1}))
+  (let [{:keys [cpus gpus mem]} (util/job-ent->resources job-ent)]
+    (cond-> {:count 1 :cpus cpus :mem mem}
+            gpus (assoc :gpus gpus))))
 
 (defn filter-based-on-quota
   "Lazily filters jobs for which the sum of running jobs and jobs earlier in the queue exceeds one of the constraints,
