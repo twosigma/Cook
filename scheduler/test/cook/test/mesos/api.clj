@@ -299,6 +299,30 @@
                          :uri "/retry"
                          :authorization/user "mforsyth"}]
 
+    (testing "Specifying both \"job\" and \"jobs\" is malformed"
+      (let [update-resp (h (merge retry-req-attrs
+                                  {:request-method :put
+                                   :body-params {:job uuid1
+                                                 :jobs [uuid2]
+                                                 "retries" 4}}))]
+        (is (= (:status update-resp) 400))))
+
+    (testing "Specifying \"job\" in query and body is malformed"
+      (let [update-resp (h (merge retry-req-attrs
+                                  {:request-method :put
+                                   :query-params {:job uuid2}
+                                   :body-params {:job uuid1
+                                                 "retries" 4}}))]
+        (is (= (:status update-resp) 400))))
+
+    (testing "Specifying \"job\" in query and \"jobs\" in body is malformed"
+      (let [update-resp (h (merge retry-req-attrs
+                                  {:request-method :put
+                                   :query-params {:job uuid2}
+                                   :body-params {:jobs [uuid1]
+                                                 "retries" 4}}))]
+        (is (= (:status update-resp) 400))))
+
     (testing "retry a single job with static retries"
       (let [update-resp (h (merge retry-req-attrs
                                   {:request-method :put
@@ -306,9 +330,20 @@
                                    :body-params {"retries" 45}}))
             _ (is (<= 200 (:status update-resp) 299))
             read-resp (h (merge retry-req-attrs  {:request-method :get
-                                                  :query-params {"job" uuid1}}))
+                                                  :query-params {:job uuid1}}))
             read-body (response->body-data read-resp)]
         (is (= read-body 45))))
+
+    (testing "retry a single job incrementing retries"
+      (let [update-resp (h (merge retry-req-attrs
+                                  {:request-method :put
+                                   :body-params {"job" uuid1
+                                                 "increment" 2}}))
+            _ (is (<= 200 (:status update-resp) 299))
+            read-resp (h (merge retry-req-attrs  {:request-method :get
+                                                  :query-params {:job uuid1}}))
+            read-body (response->body-data read-resp)]
+        (is (= read-body 47))))
 
     (testing "retry multiple jobs incrementing retries"
       (let [update-resp (h (merge retry-req-attrs
@@ -321,7 +356,7 @@
             read-resp2 (h (merge retry-req-attrs  {:request-method :get
                                                    :query-params {"job" uuid2}}))
             read-body2 (response->body-data read-resp2)]
-        (is (= read-body1 48))
+        (is (= read-body1 50))
         (is (= read-body2 33))))))
 
 (deftest instance-cancelling
