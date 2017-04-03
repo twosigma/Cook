@@ -123,6 +123,12 @@
     :db/cardinality :db.cardinality/one
     :db.install/_attribute :db.part/db
     :db/doc "Flag that disables mea culpa retries. If set to true, mea culpa retries will count against the job's retry count."}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :job/application
+    :db/valueType :db.type/ref
+    :db/isComponent true
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
    ;; Group attributes
    {:db/id (d/tempid :db.part/db)
     :db/ident :group/uuid
@@ -338,27 +344,42 @@
      :db/cardinality :db.cardinality/one
      :db.install/_attribute :db.part/db}
    ;; Label attributes
-    {:db/id (d/tempid :db.part/db)
-     :db/ident :label/key
-     :db/valueType :db.type/string
-     :db/cardinality :db.cardinality/one
-     :db.install/_attribute :db.part/db}
-    {:db/id (d/tempid :db.part/db)
-     :db/ident :label/value
-     :db/valueType :db.type/string
-     :db/cardinality :db.cardinality/one
-     :db.install/_attribute :db.part/db}
-    ;; Resource attributes
-    {:db/id (d/tempid :db.part/db)
-     :db/ident :resource/type
-     :db/valueType :db.type/ref
-     :db/cardinality :db.cardinality/one
-     :db.install/_attribute :db.part/db}
-    {:db/id (d/tempid :db.part/db)
-     :db/ident :resource/amount
-     :db/valueType :db.type/double
-     :db/cardinality :db.cardinality/one
-     :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :label/key
+    :db/valueType :db.type/string
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :label/value
+    :db/valueType :db.type/string
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   ;; Application attributes
+   {:db/id (d/tempid :db.part/db)
+    :db/doc
+    "Applications scheduling jobs on Cook can optionally provide the application
+    name, which could be used to analyze the source of requests after the fact"
+    :db/ident :application/name
+    :db/valueType :db.type/string
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/doc "Along with application name, clients can provide an application version"
+    :db/ident :application/version
+    :db/valueType :db.type/string
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   ;; Resource attributes
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :resource/type
+    :db/valueType :db.type/ref
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :resource/amount
+    :db/valueType :db.type/double
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
    {:db/id (d/tempid :db.part/db)
     :db/ident :resource.uri/executable?
     :db/valueType :db.type/boolean
@@ -396,11 +417,11 @@
      :db/ident :instance/backfilled?
 ;;;   In a future version, datomic adds these schema values, leaving the info here when that occurs
 ;;     :schema/deprecated true
-;;     :schema/deprecated-because "The concept of backfill was meant to allow Cook to schedule jobs out of order 
-;;                                 temporarily but treat the jobs as opportunistic and upgrade the jobs out of 
-;;                                 backfill later once the scheduling order had been corrected. Unfortunately, 
-;;                                 this causes a lot of unexpected behavior (jobs being preempted out of priority 
-;;                                 order) and lots of bugs (it is hard to correctly update jobs). The concept of 
+;;     :schema/deprecated-because "The concept of backfill was meant to allow Cook to schedule jobs out of order
+;;                                 temporarily but treat the jobs as opportunistic and upgrade the jobs out of
+;;                                 backfill later once the scheduling order had been corrected. Unfortunately,
+;;                                 this causes a lot of unexpected behavior (jobs being preempted out of priority
+;;                                 order) and lots of bugs (it is hard to correctly update jobs). The concept of
 ;;                                 backfill is not worth the added problems and so it is being removed."
      :db/doc "DEPRECATED: If this is true, then this instance should be preempted first regardless of priority. It's okay to upgrade an instance to be non-backfilled after a while."
      :db/valueType :db.type/boolean

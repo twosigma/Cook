@@ -11,6 +11,7 @@
 .lein-failures
 .lein-plugins
 .lein-repl-history
+.minimesos/
 .nrepl-port
 .vim_jack_in
 /checkouts
@@ -23,6 +24,7 @@ jobclient/src/cfg
 pom.xml
 pom.xml.asc
 scheduler/checkouts
+scheduler/log/
 scheduler/src/cfg
 src/cfg/current.clj
 target

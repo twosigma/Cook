@@ -49,6 +49,7 @@ public class JobTest {
         jobBuilder.addLabel("foobar", "frobnicator");
         jobBuilder.setMaxRuntime(1000L);
         jobBuilder.addUri(new FetchableURI.Builder().setValue("http://example.com/my_resource").build());
+        jobBuilder.setApplication(new Application("baz-app", "1.2.3"));
         _initializedJob = jobBuilder.build();
     }
 
@@ -56,6 +57,9 @@ public class JobTest {
     public void testJsonizeJob() throws JSONException {
         final JSONObject jsonJob = Job.jsonizeJob(_initializedJob);
         Assert.assertEquals(jsonJob.getString("uuid"), _initializedJob.getUUID().toString());
+        Assert.assertEquals(
+                jsonJob.getJSONObject("application").toString(),
+                new JSONObject().put("name", "baz-app").put("version", "1.2.3").toString());
     }
 
     @Test
@@ -68,6 +72,7 @@ public class JobTest {
         Assert.assertEquals(jobs.size(), 1);
         Assert.assertEquals(jobs.get(0), _initializedJob);
         Assert.assertEquals(jobs.get(0).getMaxRuntime(), new Long(1000L));
+        Assert.assertEquals(jobs.get(0).getApplication().getName(), "baz-app");
+        Assert.assertEquals(jobs.get(0).getApplication().getVersion(), "1.2.3");
     }
 }
-
