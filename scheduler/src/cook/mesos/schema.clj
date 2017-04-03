@@ -118,6 +118,12 @@
     :db/cardinality :db.cardinality/one
     :db.install/_attribute :db.part/db}
    {:db/id (d/tempid :db.part/db)
+    :db/ident :job/disable-mea-culpa-retries
+    :db/valueType :db.type/boolean
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db
+    :db/doc "Flag that disables mea culpa retries. If set to true, mea culpa retries will count against the job's retry count."}
+   {:db/id (d/tempid :db.part/db)
     :db/ident :job/application
     :db/valueType :db.type/ref
     :db/isComponent true
@@ -708,7 +714,9 @@
                    :params [db job-ent]
                    :code
                    (let [done-statuses #{:instance.status/success :instance.status/failed}
-                         mea-culpa-limit (or (:scheduler.config/mea-culpa-failure-limit
+                         mea-culpa-limit (or (when (:job/disable-mea-culpa-retries job-ent)
+                                               0)
+                                             (:scheduler.config/mea-culpa-failure-limit
                                               (d/entity db :scheduler/config))
                                              5)]
                      (->> job-ent
@@ -808,6 +816,7 @@
                                any-unknown? (some #{:instance.status/unknown} instance-states)
                                all-failed? (every? #{:instance.status/failed} instance-states)
                                prior-state (:job/state job-ent)
+                               reason (d/entity db reason)
                                all-attempts-consumed?
                                (d/invoke db :job/all-attempts-consumed? db
                                          (update-in (into {} job-ent) [:job/instance]

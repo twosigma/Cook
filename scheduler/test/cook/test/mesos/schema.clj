@@ -74,14 +74,15 @@
 
 (defn verify-job-state-transition
   [old-instance-states target-instance-states
-   & {:keys [old-job-state new-job-state retry-count old-reasons new-reasons]
+   & {:keys [old-job-state new-job-state retry-count old-reasons new-reasons disable-mea-culpa-retries]
       :or {retry-count 5
            old-reasons nil
-           new-reasons nil}
+           new-reasons nil
+           disable-mea-culpa-retries false}
       :as job-keys}]
   (let [uri datomic-uri
         conn (restore-fresh-database! uri)
-        job (create-dummy-job conn :job-state old-job-state :retry-count retry-count)
+        job (create-dummy-job conn :job-state old-job-state :retry-count retry-count :disable-mea-culpa-retries disable-mea-culpa-retries)
         n-instances (count old-instance-states)
         old-reasons (if (nil? old-reasons) (repeat n-instances :unknown) old-reasons)
         new-reasons (if (nil? new-reasons) (repeat n-instances :unknown) new-reasons)
@@ -92,7 +93,7 @@
                                         (let [task-id (:instance/task-id (d/entity (db conn) instance))]
                                           (if (nil? target-state)
                                             nil
-                                            [:instance/update-state [:instance/task-id task-id] target-state [:reason/name reason]])))
+                                              [:instance/update-state [:instance/task-id task-id] target-state [:reason/name reason]])))
                                       instances target-instance-states new-reasons))]
     @(d/transact conn (into [] instance-updates))
     (is (= new-job-state
@@ -213,6 +214,8 @@
         :old-job-state :job.state/running
         :new-job-state :job.state/waiting))
 
+  
+
     (testing "Still more retries left, thanks to mea-culpas, edge case"
       (verify-job-state-transition
         [:instance.status/failed :instance.status/failed :instance.status/running]
@@ -231,7 +234,17 @@
         :new-reasons [nil nil :unknown]
         :retry-count 1
         :old-job-state :job.state/running
-        :new-job-state :job.state/completed)))
+        :new-job-state :job.state/completed))
+  (testing "No more retries with mea-culpas due to disable-mea-culpa-retries"
+    (verify-job-state-transition
+     [:instance.status/running]
+     [:instance.status/failed]
+     :old-reasons [:unknown]
+     :new-reasons [:preempted-by-rebalancer]
+     :retry-count 1
+     :disable-mea-culpa-retries true
+     :old-job-state :job.state/running
+     :new-job-state :job.state/completed)))
 
 (comment
   (run-tests))

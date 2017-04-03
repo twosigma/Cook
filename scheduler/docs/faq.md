@@ -20,3 +20,9 @@ namely, if the client is unsure if the job was submitted, submit again.
 Additionally, since the client knows what the id of the job is before submission, it can store the *intent* to submit before submitting
 which makes client side failure easier. Thus, if the client fails after storing intent but before storing submission successful, it
 can simply query cook with the intended job uuid to see if it exists
+
+## How can I configure my job to run exactly once?
+
+Cook has the concept of "mea-culpa" retries, for instance when a job is killed due to pre-emption. Some users may prefer for jobs to
+just fail in this case instead of attempting to restart it (e.g. when a job is not idempotent.) To prevent this behavior and ensure
+the job is only launched once, set `max-retries: 1` and `disable-mea-culpa-retries: true`.
