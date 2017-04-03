@@ -95,6 +95,7 @@ final public class Job {
         private JSONObject _container;
         private Map<String,String> _labels = new HashMap<>();
         private List<UUID> _groups = new ArrayList<>();
+        private Application _application;
 
         /**
          * Prior to {@code build()}, command, memory and cpus for a job must be provided.<br>
@@ -129,7 +130,7 @@ final public class Job {
                 _name = "cookjob";
             }
             return new Job(_uuid, _name, _command, _memory, _cpus, _retries, _maxRuntime, _status, _priority,
-                    _instances, _env, _uris, _container, _labels, _groups);
+                    _instances, _env, _uris, _container, _labels, _groups, _application);
         }
 
         /**
@@ -425,6 +426,16 @@ final public class Job {
             _instances.addAll(instances);
             return this;
         }
+
+        /**
+         * Sets the application of the job expected to build.
+         * @param application {@link Application} specifies the application of the job.
+         * @return this builder.
+         */
+        public Builder setApplication(Application application) {
+            _application = application;
+            return this;
+        }
     }
 
     final private UUID _uuid;
@@ -444,10 +455,12 @@ final public class Job {
     // This is a list although for now each job is only allowed to belong to one group (see setGroup and getGroup). In
     // the future, jobs will be allowed to belong to multiple groups.
     final private List<UUID> _groups;
+    final private Application _application;
 
     private Job(UUID uuid, String name, String command, Double memory, Double cpus, Integer retries, Long maxRuntime,
-                Status status, Integer priority, List<Instance> instances, Map<String,String> env,
-                List<FetchableURI> uris, JSONObject container, Map<String,String> labels, List<UUID> groups) {
+                Status status, Integer priority, List<Instance> instances, Map<String, String> env,
+                List<FetchableURI> uris, JSONObject container, Map<String, String> labels, List<UUID> groups,
+                Application application) {
         _uuid = uuid;
         _name = name;
         _command = command;
@@ -460,6 +473,7 @@ final public class Job {
         _instances = ImmutableList.copyOf(instances);
         _env = ImmutableMap.copyOf(env);
         _uris = ImmutableList.copyOf(uris);
+        _application = application;
         // This take the string representation of the JSON object and then parses it again which is inefficient but
         // that is most convenient way to deep copy a JSONObject and make this Job instance immutable.
         if (container != null) {
@@ -585,6 +599,13 @@ final public class Job {
     }
 
     /**
+     * @return the job application.
+     */
+    public Application getApplication() {
+        return _application;
+    }
+
+    /**
      * @return the job instance with the running state or {@code null} if can't find one.
      */
     public Instance getRunningInstance() {
@@ -658,6 +679,9 @@ final public class Job {
         }
         for (FetchableURI uri : job.getUris()) {
             object.append("uris", FetchableURI.jsonizeUri(uri));
+        }
+        if (job._application != null) {
+            object.put("application", Application.jsonizeApplication(job._application));
         }
         return object;
     }
@@ -790,6 +814,10 @@ final public class Job {
                 }
             }
             jobBuilder.addInstances(Instance.parseFromJSON(json.getJSONArray("instances"), decorator));
+            if (json.has("application")) {
+                JSONObject applicationJson = json.getJSONObject("application");
+                jobBuilder.setApplication(Application.parseFromJSON(applicationJson));
+            }
             jobs.add(jobBuilder.build());
         }
         return jobs;
