@@ -788,5 +788,41 @@
       @(sched/receive-offers offers-chan mock-driver [offer-3])
       (is (= @declined-offer-ids-atom [(:id offer-2) (:id offer-3)])))))
 
+(deftest test-job->usage
+  (testing "cpus and mem usage"
+    (is (= {:count 1, :cpus 2, :mem 2048}
+           (sched/job->usage {:job/resource [{:resource/type :cpus, :resource/amount 2}
+                                             {:resource/type :mem, :resource/amount 2048}]}))))
+  (testing "cpus and mem usage - ignore extra resources"
+    (is (= {:count 1, :cpus 2, :mem 2048}
+           (sched/job->usage {:job/resource [{:resource/type :cpus, :resource/amount 2}
+                                             {:resource/type :mem, :resource/amount 2048}
+                                             {:resource/type :uri, :resource.uri/value "www.test.com"}]}))))
+  (testing "cpus mem and gpus usage"
+    (is (= {:count 1, :cpus 2, :gpus 10, :mem 2048}
+           (sched/job->usage {:job/resource [{:resource/type :cpus, :resource/amount 2}
+                                             {:resource/type :mem, :resource/amount 2048}
+                                             {:resource/type :gpus, :resource/amount 10}
+                                             {:resource/type :uri, :resource.uri/value "www.test.com"}]}))))
+  (testing "cpus mem and gpus usage - ignore extra resources"
+    (is (= {:count 1, :cpus 2, :gpus 10, :mem 2048}
+           (sched/job->usage {:job/resource [{:resource/type :cpus, :resource/amount 2}
+                                             {:resource/type :mem, :resource/amount 2048}
+                                             {:resource/type :gpus, :resource/amount 10}]}))))
+  (testing "ensures cpu value - gpus absent"
+    (is (= {:count 1, :cpus nil, :mem 2048}
+           (sched/job->usage {:job/resource [{:resource/type :mem, :resource/amount 2048}]}))))
+  (testing "ensures cpu value - gpus present"
+    (is (= {:count 1, :cpus nil, :gpus 10, :mem 2048}
+           (sched/job->usage {:job/resource [{:resource/type :mem, :resource/amount 2048}
+                                             {:resource/type :gpus, :resource/amount 10}]}))))
+  (testing "ensures mem value - gpus absent"
+    (is (= {:count 1, :cpus 2, :mem nil}
+           (sched/job->usage {:job/resource [{:resource/type :cpus, :resource/amount 2}]}))))
+  (testing "ensures mem value - gpus present"
+    (is (= {:count 1, :cpus 2, :gpus 10, :mem nil}
+           (sched/job->usage {:job/resource [{:resource/type :cpus, :resource/amount 2}
+                                             {:resource/type :gpus, :resource/amount 10}]})))))
+
 (comment
   (run-tests))
