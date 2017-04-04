@@ -46,7 +46,8 @@ class CookExecutorHTTPRequestHandler(BaseHTTPRequestHandler):
             task_id = self.path.split('/')[2]
             task_data = self.parse_body()
 
-            if self.server.store.merge('task', task_id, task_data):
+            if all(k in ('progress', 'message') for k in task_data) and \
+               self.server.store.merge('task', task_id, task_data):
                 self.send_json_response(200, {'response': 'okay'})
             else:
                 self.send_json_response(400, {'response': 'malformed'})
