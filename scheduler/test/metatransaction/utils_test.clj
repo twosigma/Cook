@@ -81,175 +81,186 @@
 
 (deftest pass-test
   (testing "simple-pass-test"
-    (let [conn (get-test-conn)
-          update-out (update!! conn opts (fn [_] uno-txn))]
-      (is (:transaction update-out)))))
+    (with-out-str
+      (let [conn (get-test-conn)
+            update-out (update!! conn opts (fn [_] uno-txn))]
+        (is (:transaction update-out))))))
 
 (deftest assert-test
   (testing "assert-db"
-    (let [conn (get-test-conn)]
-      (d/transact conn uno-txn)
-      (is (thrown-with-msg? Exception
-                            #"Failed assertion"
-                            @(d/transact conn [[:utils/assert-db :exists get-ent-id-from-id-query "5"]])))
-      (is @(d/transact conn [[:utils/assert-db :exists get-ent-id-from-id-query "1"]])))))
+    (with-out-str
+      (let [conn (get-test-conn)]
+        (d/transact conn uno-txn)
+        (is (thrown-with-msg? Exception
+                              #"Failed assertion"
+                              @(d/transact conn [[:utils/assert-db :exists get-ent-id-from-id-query "5"]])))
+        (is @(d/transact conn [[:utils/assert-db :exists get-ent-id-from-id-query "1"]]))))))
 
 (deftest no-retry-from-failing-update-fn-test
   (testing "retry"
-    (let [conn (get-test-conn)
-          a (atom true)
-          exception-when-a-true (fn [db] (if @a
-                                           (throw (ex-info "a was true" {}))
-                                           [{:db/id (d/tempid :db.part/user)
-                                             :job/id "1"
-                                             :job/name "uno"}]))
-          resp-chan (update-async conn opts exception-when-a-true)]
-          (async/<!! (async/timeout 50)) ; Let run update fail at least once
-          (reset! a false)
-          (let [resp (async/<!! resp-chan)]
-            (is (instance? clojure.lang.ExceptionInfo resp))
-            (is (= "a was true" (.. resp getCause getMessage)))))))
+    (with-out-str
+      (let [conn (get-test-conn)
+            a (atom true)
+            exception-when-a-true (fn [db] (if @a
+                                             (throw (ex-info "a was true" {}))
+                                             [{:db/id (d/tempid :db.part/user)
+                                               :job/id "1"
+                                               :job/name "uno"}]))
+            resp-chan (update-async conn opts exception-when-a-true)]
+        (async/<!! (async/timeout 50)) ; Let run update fail at least once
+        (reset! a false)
+        (let [resp (async/<!! resp-chan)]
+          (is (instance? clojure.lang.ExceptionInfo resp))
+          (is (= "a was true" (.. resp getCause getMessage))))))))
 
 (deftest use-case-test
   (testing "use-case with transact-with-retries!!"
-    (let [conn (get-test-conn)
-          query-id (fn [db id]
-                     (d/q get-ent-id-from-id-query db id))
-          gen-tx (fn [db id]
-                         (let [e (ffirst (query-id db id))]
-                           (if e
-                             [{:db/id e
-                               :job/name (str "name: " id)}]
-                             [{:db/id (d/tempid :db.part/user)
-                               :job/id (str (inc (read-string id)))
-                               :job/name (str "name: " id)}
-                              [:utils/assert-db :none get-ent-id-from-id-query id]])))
-          id "5"
-          fut (async/go (d/transact-async conn [[:utils/wait (* 5 100)]
-                                      {:db/id (d/tempid :db.part/user)
-                                       :job/id id}]))
-          resp (update!! conn opts gen-tx id)]
-      (is (:transaction resp)))))
+    (with-out-str
+      (let [conn (get-test-conn)
+            query-id (fn [db id]
+                       (d/q get-ent-id-from-id-query db id))
+            gen-tx (fn [db id]
+                     (let [e (ffirst (query-id db id))]
+                       (if e
+                         [{:db/id e
+                           :job/name (str "name: " id)}]
+                         [{:db/id (d/tempid :db.part/user)
+                           :job/id (str (inc (read-string id)))
+                           :job/name (str "name: " id)}
+                          [:utils/assert-db :none get-ent-id-from-id-query id]])))
+            id "5"
+            fut (async/go (d/transact-async conn [[:utils/wait (* 5 100)]
+                                                  {:db/id (d/tempid :db.part/user)
+                                                   :job/id id}]))
+            resp (update!! conn opts gen-tx id)]
+        (is (:transaction resp))))))
 
 
 
 (deftest idempotent-test
   (testing "basic idempotency"
-    (let [conn (get-test-conn)
-          uuid (d/squuid)
-          id "5"
-          tx [[:utils/idempotent-transaction uuid]
-              {:db/id (d/tempid :db.part/user)
-              :job/id (str (inc (read-string id)))
-              :job/name (str "name: " id)}]]
-      @(d/transact conn tx)
-      (is (thrown-with-msg? Exception
-                            #"idempotency check failed."
-                            @(d/transact conn tx)))))
+    (with-out-str
+      (let [conn (get-test-conn)
+            uuid (d/squuid)
+            id "5"
+            tx [[:utils/idempotent-transaction uuid]
+                {:db/id (d/tempid :db.part/user)
+                 :job/id (str (inc (read-string id)))
+                 :job/name (str "name: " id)}]]
+        @(d/transact conn tx)
+        (is (thrown-with-msg? Exception
+                              #"idempotency check failed."
+                              @(d/transact conn tx))))))
   (testing "transact with retries idempotency"
-    (let [conn (get-test-conn)
-          uuid (d/squuid)
-          id "6"
-          tx [[:utils/idempotent-transaction uuid]
-              {:db/id (d/tempid :db.part/user)
-               :job/id (str (inc (read-string id)))
-               :job/name (str "name: " id)}]]
-      @(d/transact conn tx)
-      (try
-        @(transact-with-retries!! conn {} tx)
-        (is false)
-        (catch Exception e
-          (is (thrown-with-msg? Exception
-                                #"idempotency check failed."
-                                (throw (last (:errors (ex-data e))))))))))
+    (with-out-str
+      (let [conn (get-test-conn)
+            uuid (d/squuid)
+            id "6"
+            tx [[:utils/idempotent-transaction uuid]
+                {:db/id (d/tempid :db.part/user)
+                 :job/id (str (inc (read-string id)))
+                 :job/name (str "name: " id)}]]
+        @(d/transact conn tx)
+        (try
+          @(transact-with-retries!! conn {} tx)
+          (is false)
+          (catch Exception e
+            (is (thrown-with-msg? Exception
+                                  #"idempotency check failed."
+                                  (throw (last (:errors (ex-data e)))))))))))
   (testing "make-idempotent"
-    (let [conn (get-test-conn)
-          id "7"
-          tx-fn (fn [db]
-                  [{:db/id (d/tempid :db.part/user)
-                    :job/id (str (inc (read-string id)))
-                    :job/name (str "name: " id)}])
-          idempotent-tx-fn (make-idempotent tx-fn)]
-      @(d/transact conn (idempotent-tx-fn (d/db conn)))
-      (try
-        @(update!! conn {} idempotent-tx-fn)
-        (is false)
-        (catch Exception e
-          (is (:idempotent-ex? (ex-data e)))))))
+    (with-out-str
+      (let [conn (get-test-conn)
+            id "7"
+            tx-fn (fn [db]
+                    [{:db/id (d/tempid :db.part/user)
+                      :job/id (str (inc (read-string id)))
+                      :job/name (str "name: " id)}])
+            idempotent-tx-fn (make-idempotent tx-fn)]
+        @(d/transact conn (idempotent-tx-fn (d/db conn)))
+        (try
+          @(update!! conn {} idempotent-tx-fn)
+          (is false)
+          (catch Exception e
+            (is (:idempotent-ex? (ex-data e))))))))
   (testing "with-idempotency-working"
-    (let [conn (get-test-conn)
-          id "8"
-          tx-fn (fn [db]
-                  [{:db/id (d/tempid :db.part/user)
-                    :job/id (str (inc (read-string id)))
-                    :job/name (str "name: " id)}])
-          idempotent-tx-fn (make-idempotent tx-fn)]
-      (is
-        ((complement #(isa? % Exception))
-              (suppress-idempotent-exceptions
-                (update!! conn {} idempotent-tx-fn))))))
+    (with-out-str
+      (let [conn (get-test-conn)
+            id "8"
+            tx-fn (fn [db]
+                    [{:db/id (d/tempid :db.part/user)
+                      :job/id (str (inc (read-string id)))
+                      :job/name (str "name: " id)}])
+            idempotent-tx-fn (make-idempotent tx-fn)]
+        (is
+          ((complement #(isa? % Exception))
+            (suppress-idempotent-exceptions
+              (update!! conn {} idempotent-tx-fn)))))))
   (testing "with-idempotency"
-    (let [conn (get-test-conn)
-          id "8"
-          tx-fn (fn [db]
-                  [{:db/id (d/tempid :db.part/user)
-                    :job/id (str (inc (read-string id)))
-                    :job/name (str "name: " id)}])
-          idempotent-tx-fn (make-idempotent tx-fn)]
-      @(d/transact conn (idempotent-tx-fn (d/db conn)))
-      (is
-        (suppress-idempotent-exceptions
-          (update!! conn {} idempotent-tx-fn))))))
+    (with-out-str
+      (let [conn (get-test-conn)
+            id "8"
+            tx-fn (fn [db]
+                    [{:db/id (d/tempid :db.part/user)
+                      :job/id (str (inc (read-string id)))
+                      :job/name (str "name: " id)}])
+            idempotent-tx-fn (make-idempotent tx-fn)]
+        @(d/transact conn (idempotent-tx-fn (d/db conn)))
+        (is
+          (suppress-idempotent-exceptions
+            (update!! conn {} idempotent-tx-fn)))))))
 
 (deftest retry-test
   (testing "retry with update!"
-    (let [conn (get-test-conn)
-          a (atom true)
-          exception-when-a-true (fn [db] (if @a
-                                           [{:db/id (d/tempid :db.part/user)
-                                             :job/id "1"
-                                             :job/name "uno"}
-                                            [:utils/throw-ex "test!"]]
-                                           [{:db/id (d/tempid :db.part/user)
-                                             :job/id "1"
-                                             :job/name "uno"}]))
-          resp-chan (async/chan)]
-      (async/go
-        (try
-          (async/>! resp-chan (update! conn opts exception-when-a-true))
-          (catch Exception e
-            (async/>! resp-chan e))))
-      (async/<!! (async/timeout 10)) ; Let run update fail at least once
-      (reset! a false)
-      (let [resp (async/<!! resp-chan)]
-        (is (:transaction resp))))))
+    (with-out-str
+      (let [conn (get-test-conn)
+            a (atom true)
+            exception-when-a-true (fn [db] (if @a
+                                             [{:db/id (d/tempid :db.part/user)
+                                               :job/id "1"
+                                               :job/name "uno"}
+                                              [:utils/throw-ex "test!"]]
+                                             [{:db/id (d/tempid :db.part/user)
+                                               :job/id "1"
+                                               :job/name "uno"}]))
+            resp-chan (async/chan)]
+        (async/go
+          (try
+            (async/>! resp-chan (update! conn opts exception-when-a-true))
+            (catch Exception e
+              (async/>! resp-chan e))))
+        (async/<!! (async/timeout 10)) ; Let run update fail at least once
+        (reset! a false)
+        (let [resp (async/<!! resp-chan)]
+          (is (:transaction resp)))))))
 
 (deftest use-case-test
   (testing "use-case with update!"
-    (let [conn (get-test-conn)
-          query-id (fn [db id]
-                     (d/q get-ent-id-from-id-query db id))
-          gen-tx (fn [db id]
-                   (let [e (ffirst (query-id db id))]
-                     (if e
-                       [{:db/id e
-                         :job/name (str "name: " id)}]
-                       [{:db/id (d/tempid :db.part/user)
-                         :job/id (str (inc (read-string id)))
-                         :job/name (str "name: " id)}
-                        [:utils/assert-db :none get-ent-id-from-id-query id]])))
-          id "5"
-          fut (async/go (d/transact-async conn [[:utils/wait (* 5 100)]
-                                                {:db/id (d/tempid :db.part/user)
-                                                 :job/id id}]))
-          resp-chan (async/chan)]
-      (async/go
-        (try
-          (async/>! resp-chan (update! conn opts gen-tx id))
-          (catch Exception e
-            (async/>! resp-chan e))))
-      (let [resp (async/<!! resp-chan)]
-        (is (and (not (instance? Throwable resp)) (:transaction resp)))))))
+    (with-out-str
+      (let [conn (get-test-conn)
+            query-id (fn [db id]
+                       (d/q get-ent-id-from-id-query db id))
+            gen-tx (fn [db id]
+                     (let [e (ffirst (query-id db id))]
+                       (if e
+                         [{:db/id e
+                           :job/name (str "name: " id)}]
+                         [{:db/id (d/tempid :db.part/user)
+                           :job/id (str (inc (read-string id)))
+                           :job/name (str "name: " id)}
+                          [:utils/assert-db :none get-ent-id-from-id-query id]])))
+            id "5"
+            fut (async/go (d/transact-async conn [[:utils/wait (* 5 100)]
+                                                  {:db/id (d/tempid :db.part/user)
+                                                   :job/id id}]))
+            resp-chan (async/chan)]
+        (async/go
+          (try
+            (async/>! resp-chan (update! conn opts gen-tx id))
+            (catch Exception e
+              (async/>! resp-chan e))))
+        (let [resp (async/<!! resp-chan)]
+          (is (and (not (instance? Throwable resp)) (:transaction resp))))))))
 
 
 

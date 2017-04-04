@@ -236,8 +236,8 @@
                                                          :normal (comp - :dru)
                                                          :gpu (fnil - 0)))
                                 (case category
-                                  :normal (dru/sorted-task-scored-task-pairs user->sorted-running-task-ents user->dru-divisors)
-                                  :gpu (dru/gpu-task-scored-task-pairs user->sorted-running-task-ents user->dru-divisors)))]
+                                  :normal (dru/sorted-task-scored-task-pairs user->dru-divisors user->sorted-running-task-ents)
+                                  :gpu (dru/sorted-task-cumulative-gpu-score-pairs user->dru-divisors user->sorted-running-task-ents)))]
     (->State task->scored-task user->sorted-running-task-ents host->spare-resources user->dru-divisors (case category
                                                                                                          :normal compute-pending-normal-job-dru
                                                                                                          :gpu compute-pending-gpu-job-dru))))
