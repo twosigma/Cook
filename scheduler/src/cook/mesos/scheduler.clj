@@ -570,34 +570,39 @@
                                 (remove #(contains? matched-job-uuids (:job/uuid %)) existing-jobs)))]
     (pc/map-from-keys remove-matched-jobs (keys category->pending-jobs))))
 
+(defn- matches->task-txns
+  "Converts matches to a task transactions."
+  [matches]
+  (for [{:keys [tasks leases]} matches
+        :let [offers (mapv :offer leases)
+              slave-id (-> offers first :slave-id :value)]
+        ^TaskAssignmentResult task tasks
+        :let [request (.getRequest task)
+              task-id (:task-id request)
+              job-id (get-in request [:job :db/id])]]
+    [[:job/allowed-to-start? job-id]
+     ;; NB we set any job with an instance in a non-terminal
+     ;; state to running to prevent scheduling the same job
+     ;; twice; see schema definition for state machine
+     [:db/add job-id :job/state :job.state/running]
+     {:db/id (d/tempid :db.part/user)
+      :job/_instance job-id
+      :instance/task-id task-id
+      :instance/hostname (.getHostname task)
+      :instance/start-time (now)
+      ;; NB command executor uses the task-id
+      ;; as the executor-id
+      :instance/executor-id task-id
+      :instance/slave-id slave-id
+      :instance/ports (.getAssignedPorts task)
+      :instance/progress 0
+      :instance/status :instance.status/unknown
+      :instance/preempted? false}]))
+
 (defn- launch-matched-tasks!
   "Updates the state of matched tasks in the database and then launches them."
   [matches conn db driver fenzo fid]
-  (let [task-txns (for [{:keys [tasks leases]} matches
-                        :let [offers (mapv :offer leases)
-                              slave-id (-> offers first :slave-id :value)]
-                        ^TaskAssignmentResult task tasks
-                        :let [request (.getRequest task)
-                              task-id (:task-id request)
-                              job-id (get-in request [:job :db/id])]]
-                    [[:job/allowed-to-start? job-id]
-                     ;; NB we set any job with an instance in a non-terminal
-                     ;; state to running to prevent scheduling the same job
-                     ;; twice; see schema definition for state machine
-                     [:db/add job-id :job/state :job.state/running]
-                     {:db/id (d/tempid :db.part/user)
-                      :job/_instance job-id
-                      :instance/task-id task-id
-                      :instance/hostname (.getHostname task)
-                      :instance/start-time (now)
-                      ;; NB command executor uses the task-id
-                      ;; as the executor-id
-                      :instance/executor-id task-id
-                      :instance/slave-id slave-id
-                      :instance/ports (.getAssignedPorts task)
-                      :instance/progress 0
-                      :instance/status :instance.status/unknown
-                      :instance/preempted? false}])]
+  (let [task-txns (matches->task-txns matches)]
     ;; Note that this transaction can fail if a job was scheduled
     ;; during a race. If that happens, then other jobs that should
     ;; be scheduled will not be eligible for rescheduling until
@@ -612,16 +617,12 @@
     ;; This launch-tasks MUST happen after the above transaction in
     ;; order to allow a transaction failure (due to failed preconditions)
     ;; to block the launch
-    (meters/mark! scheduler-offer-matched
-                  (->> matches
-                       (mapcat (comp :id :offer :leases))
-                       (distinct)
-                       (count)))
-    (histograms/update! number-offers-matched
-                        (->> matches
-                             (mapcat (comp :id :offer :leases))
-                             (distinct)
-                             (count)))
+    (let [num-offers-matched (->> matches
+                                  (mapcat (comp :id :offer :leases))
+                                  (distinct)
+                                  (count))]
+      (meters/mark! scheduler-offer-matched num-offers-matched)
+      (histograms/update! number-offers-matched num-offers-matched))
     (meters/mark! matched-tasks (count task-txns))
     (timers/time!
       handle-resource-offer!-mesos-submit-duration
@@ -1049,10 +1050,8 @@
                     (group-by util/task-ent->user)
                     (map-vals (fn [task-ents] (into (sorted-set-by (util/same-user-task-comparator)) task-ents)))
                     (dru/sorted-task-cumulative-gpu-score-pairs user->dru-divisors)
-                    (filter (fn [[task _]]
-                              (contains? pending-task-ents task)))
-                    (map (fn [[task _]]
-                           (:job/_instance task)))))]
+                    (filter (fn [[task _]] (contains? pending-task-ents task)))
+                    (map (fn [[task _]] (:job/_instance task)))))]
     jobs))
 
 (defn sort-jobs-by-dru

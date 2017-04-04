@@ -27,7 +27,7 @@
     (is (= []
            (dru/compute-task-scored-task-pairs {:mem 25.0 :cpus 25.0} '()))))
 
-  (testing "test1"
+  (testing "sort tasks from same user"
     (let [datomic-uri "datomic:mem://test-score-tasks"
           conn (restore-fresh-database! datomic-uri)
           job1 (create-dummy-job conn :user "ljin" :memory 10.0 :ncpus 10.0)
@@ -54,7 +54,7 @@
                (dru/compute-task-scored-task-pairs {:mem 25.0 :cpus 25.0} tasks)))))))
 
 (deftest test-init-dru-divisors
-  (testing "test1"
+  (testing "compute dru divisors for users with different shares"
     (let [datomic-uri "datomic:mem://test-init-dru-divisors"
           conn (restore-fresh-database! datomic-uri)
           job1 (create-dummy-job conn :user "ljin" :memory 10.0 :ncpus 10.0)
@@ -68,7 +68,9 @@
       (let [_ (share/set-share! conn "default" :mem 25.0 :cpus 25.0 :gpus 1.0)
             _ (share/set-share! conn "wzhao" :mem 10.0 :cpus 10.0)
             db (d/db conn)]
-        (is (= {"ljin" {:mem 25.0 :cpus 25.0 :gpus 1.0} "wzhao" {:mem 10.0 :cpus 10.0 :gpus 1.0} "sunil" {:mem 25.0 :cpus 25.0 :gpus 1.0}}
+        (is (= {"ljin" {:mem 25.0 :cpus 25.0 :gpus 1.0}
+                "wzhao" {:mem 10.0 :cpus 10.0 :gpus 1.0}
+                "sunil" {:mem 25.0 :cpus 25.0 :gpus 1.0}}
                (dru/init-user->dru-divisors db running-task-ents pending-job-ents)))))))
 
 (deftest test-sorted-task-scored-task-pairs
@@ -99,7 +101,7 @@
     (is (= []
            (dru/compute-sorted-task-cumulative-gpu-score-pairs 25.0 '()))))
 
-  (testing "test1"
+  (testing "sort tasks from same user"
     (let [datomic-uri "datomic:mem://test-score-tasks"
           conn (restore-fresh-database! datomic-uri)
           job1 (create-dummy-job conn :user "ljin" :gpus 10.0)

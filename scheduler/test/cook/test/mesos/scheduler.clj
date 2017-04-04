@@ -58,11 +58,11 @@
         _ (create-dummy-instance conn j1)
         _ (create-dummy-instance conn j5)
         _ (create-dummy-instance conn j7)]
-    (testing "test1"
+    (testing "sort-jobs-by-dru default share for everyone"
       (let [_ (share/set-share! conn "default" :mem 10.0 :cpus 10.0)
             db (d/db conn)]
         (is (= [j2 j3 j6 j4 j8] (map :db/id (:normal (sched/sort-jobs-by-dru db db)))))))
-    (testing "test2"
+    (testing "sort-jobs-by-dru one user has non-default share"
       (let [_ (share/set-share! conn "default" :mem 10.0 :cpus 10.0)
             _ (share/set-share! conn "sunil" :mem 100.0 :cpus 100.0)
             db (d/db conn)]
@@ -594,11 +594,11 @@
         inst (create-dummy-instance conn ljin-1 :instance-status :instance.status/unknown)
         _ @(d/transact conn [[:instance/update-state inst :instance.status/running [:reason/name :unknown]]])
         _ (share/set-share! conn "default" :cpus 1.0 :mem 2.0 :gpus 1.0)]
-    (testing "test1"
+    (testing "one user has double gpu share"
       (let [_ (share/set-share! conn "ljin" :gpus 2.0)
             db (d/db conn)]
         (is (= [ljin-2 wzhao-1 ljin-3 ljin-4 wzhao-2] (map :db/id (:gpu (sched/sort-jobs-by-dru db db)))))))
-    (testing "test2"
+    (testing "one user has single gpu share"
       (let [_ (share/set-share! conn "ljin" :gpus 1.0)
             db (d/db conn)]
         (is (= [wzhao-1 wzhao-2 ljin-2 ljin-3 ljin-4] (map :db/id (:gpu (sched/sort-jobs-by-dru db db)))))))))
