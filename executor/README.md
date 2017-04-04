@@ -6,7 +6,7 @@ The cook executor is a custom executor written in python. It replaces the defaul
 For Users
 -----
 
-The cook executor supports a number of (completely optional) features beyond the standard Mesos command executor. It allows users to specify additional commands that run either before or after a job's primary command. This enables the use of existing utilities, and promotes sharing and reuse. It also provides an HTTP API that allows commands to expose progress updates and custom failure messages, as well as update environment variables.
+The cook executor supports a number of (completely optional) features beyond the standard Mesos command executor. It allows users to specify additional commands that run either before or after a job's primary command. This enables the use of existing utilities, and promotes sharing and reuse. It also provides an HTTP API that allows commands to expose progress updates and custom failure messages.
 
 ### Scheduler HTTP API
 
@@ -51,15 +51,10 @@ This request also requires a body. Since it is a `PATCH` request, a valid reques
 | -------- | ------ | ---------------------------------------- |
 | `progress` | float  | A number between 0 and 100, representing the progress of the task |
 | `message`   | string | A custom failure reason, expected to be accompanied by a non-zero exit code. |
-| `env`      | object | A map of env variable names to values, a null value will unset the variable. This is really only useful from a before command, since it will only affect commands that run afterward.  |
 
 Example - progress update:
 
 `curl -X PATCH -d '{progress: 10}' $EXECUTOR_ENDPOINT`
-
-Example - setting and unsetting environment variables:
-
-`curl -X PATCH -d '{env: {VAR_A: "123", SOME_B: null}}' $EXECUTOR_ENDPOINT`
 
 Potential responses:
 
@@ -130,29 +125,6 @@ Perhaps you'd like to tail a log created by your primary command. You could use 
 	}]
 }
 ```
-
-#### Dynamically setting environment variables
-
-In order to dynamically set environment variables for later commands, you can use the executor HTTP API from a before command.
-
-```json
-{
-	"command": "my-actual-command",
-	"before_commands": [{
-		"value": "./set-env-vars.sh"
-	}]
-}
-```
-
-The before command would need to execute something like the following:
-
-```bash
-curl -XPATCH \
-	-d '{"env": {"MY_ENV_VAR": "/hello/world", "MY_OLD_VAR": null}}' \
-	$EXECUTOR_ENDPOINT
-```
-
-This would set `MY_ENV_VAR` for your primary command (and all commands after `set-env-vars.sh`).
 
 #### Update progress and custom failure messages
 
