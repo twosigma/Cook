@@ -36,7 +36,7 @@
                  [org.clojure/core.cache "0.6.4"]
                  [org.clojure/core.memoize "0.5.8"]
                  [clj-time "0.9.0"]
-                 [org.clojure/core.async "0.2.374" :exclusions [org.clojure/tools.reader]]
+                 [org.clojure/core.async "0.3.442" :exclusions [org.clojure/tools.reader]]
                  [prismatic/schema "1.1.3"]
                  [clojure-miniprofiler "0.4.0"]
                  [jarohen/chime "0.1.6"]
