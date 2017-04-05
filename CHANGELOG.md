@@ -6,6 +6,7 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/) and this p
  
 ## [Unreleased]
 ### Added
+- /unscheduled_jobs API endpoint, from @mforsyth
 ### Changed
 
 ## [1.2.1] - 2017-03-13
