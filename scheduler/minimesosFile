@@ -2,7 +2,7 @@ minimesos {
     clusterName = "cook"
     loggingLevel = "INFO"
     mapAgentSandboxVolume = false
-    mapPortsToHost = false
+    mapPortsToHost = true
     mesosVersion = "1.0.0"
     timeout = 60
 
