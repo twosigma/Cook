@@ -17,6 +17,7 @@
   (:require [clj-logging-config.log4j :as log4j-conf]
             [clj-pid.core :as pid]
             [clj-time.core :as t]
+            [clojure.edn :as edn]
             [clojure.java.io :as io]
             [clojure.pprint :refer (pprint)]
             [clojure.tools.logging :as log]
@@ -294,21 +295,21 @@
                                          authorization-config))
      :authorization-middleware (fnk [[:config [:authorization {one-user false} {kerberos false} {http-basic false}]]]
                                     (cond
-                                      http-basic 
+                                      http-basic
                                       (let [validation (get http-basic :validation :none)
-                                            user-password-valid? 
+                                            user-password-valid?
                                             ((lazy-load-var 'cook.basic-auth/make-user-password-valid?) validation http-basic)]
                                         (log/info "Using http basic authorization with validation" validation)
                                         ((lazy-load-var 'cook.basic-auth/create-http-basic-middleware) user-password-valid?))
 
-                                      one-user 
+                                      one-user
                                       (do
                                         (log/info "Using single user authorization")
                                         (fn one-user-middleware [h]
                                           (fn one-user-auth-wrapper [req]
                                             (h (assoc req :authorization/user one-user)))))
 
-                                      kerberos 
+                                      kerberos
                                       (do
                                         (log/info "Using kerberos middleware")
                                         (lazy-load-var 'cook.spnego/require-gss))
@@ -459,6 +460,16 @@
      :logging (fnk [[:config log]]
                    (init-logger log))}))
 
+(defn- env [name]
+  (System/getenv name))
+
+(defn read-edn-config [config]
+  (edn/read-string
+    {:readers
+     {'config/env #(env %)
+      'config/env-int #(Integer/parseInt (env %))}}
+    config))
+
 (defn -main
   [config & args]
   (when-not (.exists (java.io.File. config))
@@ -473,7 +484,7 @@
           literal-config (try
                            {:config
                             (case config-format
-                              "edn" (read-string (slurp config))
+                              "edn" (read-edn-config (slurp config))
                               (do
                                 (.println System/err (str "Invalid config file format " config-format))
                                 (System/exit 1)))}
