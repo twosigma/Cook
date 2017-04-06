@@ -18,10 +18,8 @@ RUN lein
 
 RUN mkdir -p /opt/cook
 WORKDIR /opt/cook
-COPY project.clj /opt/cook/
-RUN lein deps
-
 COPY . /opt/cook
+RUN lein deps
 
 EXPOSE 12321
 ENTRYPOINT ["lein", "run"]
