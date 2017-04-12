@@ -1,6 +1,7 @@
 (ns cook.test.mesos.mesos-mock
   (:use clojure.test)
   (:require [clojure.core.async :as async]
+            [clojure.core.cache :as cache]
             [clojure.data.csv :as csv]
             [clojure.java.io :as io]
             [clojure.tools.logging :as log]
@@ -240,8 +241,7 @@
                  :hostname "hostb"
                  :resources [{:name "cpus" :role "*" :scalar 5 :type :value-scalar}
                              {:name "mem" :role "*" :scalar 50000 :type :value-scalar}
-                             {:name "ports" :role "*" :ranges [{:begin 20001 :end 30000}] :type :value-ranges}]}
-                }
+                             {:name "ports" :role "*" :ranges [{:begin 20001 :end 30000}] :type :value-ranges}]}}
                :task-id->task {}}
         new-state (mm/handle-action! :decline offer-id state nil (noop-mock-scheduler))]
     (is (= (count (:offer-id->offer new-state)) 1))
@@ -373,7 +373,7 @@
                                   :ports {"*" [{:begin 10000 :end 12000} {:begin 25001 :end 30000}]}}
             :slave-id "a5cb3212-3023-4546-888d-67cc13eac3dd"}))))
 
-(defn make-random-host
+(defn dummy-host
   [& {:keys [mem cpus ports uuid slave-id hostname attributes]
       :or {mem {"*" 12000}
            cpus {"*" 24}
@@ -391,17 +391,23 @@
 (defn poll-until
   "Polls `pred` every `interval-ms` and checks if it is true.
    If true, returns. Otherwise, `poll-until` will wait
-   up to `max-wait-ms` at which point `poll-until` returns raises an exception"
-  [pred interval-ms max-wait-ms]
-  (let [start-ms (.getTime (java.util.Date.))]
-    (loop []
-      (when-not (pred)
-        (if (< (.getTime (java.util.Date.)) (+ start-ms max-wait-ms))
-          (recur)
-          (throw (ex-info "pred not true" {:interval-ms interval-ms
-                                           :max-wait-ms max-wait-ms})))))))
+   up to `max-wait-ms` at which point `poll-until` returns raises an exception
+   The exception will include the output of `on-exceed-str-fn`"
+  ([pred interval-ms max-wait-ms]
+   (poll-until pred interval-ms max-wait-ms (fn [] "")))
+  ([pred interval-ms max-wait-ms on-exceed-str-fn]
+   (let [start-ms (.getTime (java.util.Date.))]
+     (loop []
+       (when-not (pred)
+         (if (< (.getTime (java.util.Date.)) (+ start-ms max-wait-ms))
+           (recur)
+           (throw (ex-info (str "pred not true : " (on-exceed-str-fn))
+                           {:interval-ms interval-ms
+                                            :max-wait-ms max-wait-ms})))))))
 
-(deftest mesos-driver-mock-offers
+  )
+
+(deftest mesos-mock-offers
   (testing "offers sent and received"
     (let [registered-atom (atom false)
           offer-atom (atom [])
@@ -410,9 +416,9 @@
                                   (reset! registered-atom true))
                       (resource-offers [this driver offers]
                                        (swap! offer-atom into offers )))
-          host (make-random-host)
+          host (dummy-host)
           speed-multiplier 20
-          mock-driver (mm/mesos-driver-mock [host] speed-multiplier scheduler)]
+          mock-driver (mm/mesos-mock [host] speed-multiplier scheduler)]
       (mesos/start! mock-driver)
       (poll-until #(= (count @offer-atom) 1) 20 600)
       (mesos/stop! mock-driver)
@@ -437,9 +443,9 @@
                                                (catch Exception ex
                                                  (log/error ex))))))
                                        (swap! offer-atom into offers)))
-          hosts [(make-random-host)]
+          hosts [(dummy-host)]
           speed-multiplier 20
-          mock-driver (mm/mesos-driver-mock hosts speed-multiplier scheduler)]
+          mock-driver (mm/mesos-mock hosts speed-multiplier scheduler)]
       (mesos/start! mock-driver)
       (poll-until #(= (count @offer-atom) 2) 20 600)
       (mesos/stop! mock-driver)
@@ -463,16 +469,16 @@
                                                (catch Exception ex
                                                  (log/error ex))))))
                                        (swap! offer-atom into offers)))
-          hosts [(make-random-host) (make-random-host) (make-random-host)]
+          hosts [(dummy-host) (dummy-host) (dummy-host)]
           speed-multiplier 20
-          mock-driver (mm/mesos-driver-mock hosts speed-multiplier scheduler)]
+          mock-driver (mm/mesos-mock hosts speed-multiplier scheduler)]
       (mesos/start! mock-driver)
       (poll-until #(= (count @offer-atom) 6) 20 1000)
       (mesos/stop! mock-driver)
       (is @registered-atom)
       (is (= (count @offer-atom) 6)))))
 
-(defn random-task
+(defn dummy-task
   [& {:keys [task-id slave-id name command-str env user uris mem cpus ports labels data]
       :or {task-id (str (java.util.UUID/randomUUID))
            slave-id (str (java.util.UUID/randomUUID))
@@ -504,7 +510,7 @@
      :labels labels
      :data data}))
 
-(deftest mesos-driver-mock-launch
+(deftest mesos-mock-launch
   ;; Note, both loading classes and jit-ing mesomatic files takes a long time
   ;; which can cause tests to fail if they rely on tight
   ;; timing assumptions and are only run once...
@@ -522,7 +528,7 @@
               cpus {"*" 2}
               mem {"*" 1000}
               ports {"*" [{:begin 1 :end 100}]}
-              task (random-task :mem mem :cpus cpus :ports ports :slave-id slave-id)
+              task (dummy-task :mem mem :cpus cpus :ports ports :slave-id slave-id)
               scheduler (mesos/scheduler
                           (registered [this driver framework-id master-info]
                                       (reset! registered-atom true))
@@ -540,9 +546,9 @@
                                            :task-finished (swap! task-complete-atom conj (-> status :task-id :value))
                                            :task-running (swap! task-running-atom conj (-> status :task-id :value))
                                            (throw (ex-info "Unexpected status sent" {:status status})))))
-              hosts [(make-random-host :mem mem :cpus cpus :ports ports :slave-id slave-id)]
+              hosts [(dummy-host :mem mem :cpus cpus :ports ports :slave-id slave-id)]
               speed-multiplier 20
-              mock-driver (mm/mesos-driver-mock hosts speed-multiplier scheduler)]
+              mock-driver (mm/mesos-mock hosts speed-multiplier scheduler)]
           (mesos/start! mock-driver)
           (poll-until #(= (count @task-complete-atom) 1) 20 1000)
           (log/warn "Calling stop")
@@ -567,8 +573,8 @@
               cpus {"*" 2}
               mem {"*" 1000}
               ports {"*" [{:begin 1 :end 100}]}
-              task-a (random-task :mem mem :cpus cpus :ports ports :slave-id slave-id)
-              task-b (random-task :mem mem :cpus cpus :ports ports :slave-id slave-id)
+              task-a (dummy-task :mem mem :cpus cpus :ports ports :slave-id slave-id)
+              task-b (dummy-task :mem mem :cpus cpus :ports ports :slave-id slave-id)
               scheduler (mesos/scheduler
                           (registered [this driver framework-id master-info]
                                       (reset! registered-atom true))
@@ -591,9 +597,9 @@
                                            :task-finished (swap! task-complete-atom conj (-> status :task-id :value))
                                            :task-running (swap! task-running-atom conj (-> status :task-id :value))
                                            (throw (ex-info "Unexpected status sent" {:status status})))))
-              hosts [(make-random-host :mem mem :cpus cpus :ports ports :slave-id slave-id)]
+              hosts [(dummy-host :mem mem :cpus cpus :ports ports :slave-id slave-id)]
               speed-multiplier 20
-              mock-driver (mm/mesos-driver-mock hosts speed-multiplier scheduler)]
+              mock-driver (mm/mesos-mock hosts speed-multiplier scheduler)]
           (mesos/start! mock-driver)
           (poll-until #(= (count @task-complete-atom) 2) 20 1000)
           (mesos/stop! mock-driver)
@@ -604,8 +610,7 @@
         (catch Throwable t
           (throw (ex-info "Error while testing launch" atom-map t)))))))
 
-
-(deftest mesos-driver-mock-kill
+(deftest mesos-mock-kill
   (testing "kill task"
     (let [registered-atom (atom false)
           offer-atom (atom [])
@@ -622,7 +627,7 @@
               cpus {"*" 2}
               mem {"*" 1000}
               ports {"*" [{:begin 1 :end 100}]}
-              task (random-task :mem mem :cpus cpus :ports ports :slave-id slave-id)
+              task (dummy-task :mem mem :cpus cpus :ports ports :slave-id slave-id)
               scheduler (mesos/scheduler
                           (registered [this driver framework-id master-info]
                                       (reset! registered-atom true))
@@ -645,9 +650,9 @@
                                                            (mesos/kill-task! driver {:value task-id})
                                                            (swap! task-running-atom conj task-id))
                                            (throw (ex-info "Unexpected status sent" {:status status})))))
-              hosts [(make-random-host :mem mem :cpus cpus :ports ports :slave-id slave-id)]
+              hosts [(dummy-host :mem mem :cpus cpus :ports ports :slave-id slave-id)]
               speed-multiplier 20
-              mock-driver (mm/mesos-driver-mock hosts speed-multiplier scheduler)]
+              mock-driver (mm/mesos-mock hosts speed-multiplier scheduler)]
           (mesos/start! mock-driver)
           (poll-until #(= (count @offer-atom) 2) 20 1000)
           (log/warn "Calling stop")
@@ -671,8 +676,7 @@
          ;; recommendation
          zookeeper-server (org.apache.curator.test.TestingServer. zk-port false)
          zk-str (str "localhost:" zk-port)
-         curator-framework (CuratorFrameworkFactory/newClient zk-str 180000 30000 retry-policy)
-         ]
+         curator-framework (CuratorFrameworkFactory/newClient zk-str 180000 30000 retry-policy)]
      (.start zookeeper-server)
      (.. curator-framework
          getConnectionStateListenable
@@ -687,7 +691,7 @@
   [conn make-mesos-driver-fn
    {:keys [get-mesos-utilization mesos-datomic-mult zk-prefix offer-incubate-time-ms
            mea-culpa-failure-limit task-constraints riemann-host riemann-port
-           mesos-pending-jobs-atom gpu-enabled? rebalancer-config fenzo-config]
+           mesos-pending-jobs-atom offer-cache gpu-enabled? rebalancer-config fenzo-config]
     :or {get-mesos-utilization (fn [] 0.9) ; can get this from mesos mock later
          zk-prefix "/cook"
          offer-incubate-time-ms 1000
@@ -715,15 +719,20 @@
    & body]
   `(let [[zookeeper-server# curator-framework#] (setup-test-curator-framework)
          mesos-mult# (or ~mesos-datomic-mult (async/mult (async/chan)))
-         pending-jobs-atom# (or ~mesos-pending-jobs-atom (atom []))]
+         pending-jobs-atom# (or ~mesos-pending-jobs-atom (atom []))
+         offer-cache# (or ~offer-cache
+                          (-> {}
+                              (cache/fifo-cache-factory :threshold 100)
+                              (cache/ttl-cache-factory :ttl 10000)
+                              atom))]
      (try
        (let [scheduler# (c/start-mesos-scheduler ~make-mesos-driver-fn ~get-mesos-utilization
                                                  curator-framework# ~conn
                                                  mesos-mult# ~zk-prefix
                                                  ~offer-incubate-time-ms ~mea-culpa-failure-limit
                                                  ~task-constraints ~riemann-host ~riemann-port
-                                                 pending-jobs-atom# ~gpu-enabled?
-                                                 ~rebalancer-config ~fenzo-config)]
+                                                 pending-jobs-atom# offer-cache#
+                                                 ~gpu-enabled? ~rebalancer-config ~fenzo-config)]
          ~@body)
        (finally
          (.close curator-framework#)
@@ -776,10 +785,10 @@
           ports [{:begin 1 :end 100}]
           num-hosts 10
           hosts (for [_ (range num-hosts)]
-                  (make-random-host :mem {"*" mem} :cpus {"*" cpus} :ports {"*" ports}))
+                  (dummy-host :mem {"*" mem} :cpus {"*" cpus} :ports {"*" ports}))
           speed-multiplier 20
           make-mesos-driver-fn (fn [scheduler _];; _ is framework-id
-                                 (mm/mesos-driver-mock hosts speed-multiplier scheduler))]
+                                 (mm/mesos-mock hosts speed-multiplier scheduler))]
       (with-cook-scheduler mesos-datomic-conn make-mesos-driver-fn {}
         (share/set-share! mesos-datomic-conn "default" :mem mem :cpus cpus :gpus 1.0)
         ;; Note these two vars are lazy, need to realize to put them in db.
@@ -802,7 +811,15 @@
           ;; Transact user "a"s jobs
           (doall user-a-job-ent-ids)
           ;; Let them get scheduled
-          (Thread/sleep 5000)
+          (poll-until (fn [] (>= (count (filter #(= (:job/state (d/entity (d/db mesos-datomic-conn) %))
+                                                   :job.state/running)
+                                               user-a-job-ent-ids))
+                                10))
+                      200
+                      10000
+                      (fn [] (str (into [] (map (comp :job/state (partial d/entity (d/db mesos-datomic-conn)))
+                                     user-a-job-ent-ids))))
+                      )
           ;; Transact user "b"s jobs
           (doall user-b-job-ent-ids)
           ;; Let the system complete
@@ -839,6 +856,5 @@
                         (.getTime (:instance/start-time instance))
                         (read-string (:job/command job-ent)))
                      update-status-error-ms))))
-          (dump-jobs-to-csv (d/db mesos-datomic-conn) "trace-basic-scheduling-rebalancing-test.csv")
           (when (log/enabled? :debug)
             (dump-jobs-to-csv (d/db mesos-datomic-conn) "trace-basic-scheduling-rebalancing-test.csv")))))))

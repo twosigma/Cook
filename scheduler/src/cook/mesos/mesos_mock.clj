@@ -267,7 +267,6 @@
   (log/debug "Killing task " {:task-id task-id})
   (complete-task! state task-id scheduler driver :task-killed))
 
-
 (defmethod handle-action! :launch
   [action {:keys [offer-ids tasks] :as in} {:keys [offer-id->offer task-id->task slave-id->host] :as state} driver scheduler]
   (log/debug "In launch handle-action!" in)
@@ -330,7 +329,41 @@
   :task-finished)
 
 (defn mesos-driver-mock
-  "A mock mesos implementation.
+  "Creates an instance of org.apache.mesos.SchedulerDriver which will:
+      1. Close the start-chan when start is called
+      2. Will try to pull off exit-chan when join is called
+      3. Will close the exit-chan when stop is called
+      4. Put events on the action chan when all other methods are called"
+  [start-chan action-chan exit-chan]
+  (reify SchedulerDriver
+    (declineOffer [this offer-id]
+      (log/debug "Declining offer" {:offer-id offer-id})
+      (async/>!! action-chan [:decline (:value (mesos-type/pb->data offer-id))])
+      Protos$Status/DRIVER_RUNNING)
+    (join [this]
+      (async/<!! exit-chan)
+      Protos$Status/DRIVER_RUNNING)
+    (stop [this]
+      (async/close! exit-chan))
+    (killTask [this task-id]
+      (log/debug "In driver killTask" {:task-id task-id :pb->data (mesos-type/pb->data task-id) :value (:value (mesos-type/pb->data task-id))})
+      (async/>!! action-chan [:kill-task (:value (mesos-type/pb->data task-id))])
+      Protos$Status/DRIVER_RUNNING)
+    (^Protos$Status launchTasks [this ^java.util.Collection offer-ids ^java.util.Collection tasks]
+      (log/debug "Launch tasks called" {:tasks tasks :offer-ids offer-ids})
+      (async/>!! action-chan [:launch {:offer-ids (map (comp :value mesos-type/pb->data) offer-ids)
+                                       :tasks (map mesos-type/pb->data tasks)}])
+      Protos$Status/DRIVER_RUNNING)
+    (reconcileTasks [this statuses]
+      (async/>!! action-chan [:reconcile statuses])
+      Protos$Status/DRIVER_RUNNING)
+    (start [this]
+      (async/close! start-chan)
+      Protos$Status/DRIVER_RUNNING)))
+
+(defn mesos-mock
+  "A mock mesos implementation which returns a mesos driver to interact with
+   the mock.
 
    It stores the 'hosts' in the cluster, how much resources are available on
    each host, what jobs are running on each 'host' and how much longer each
@@ -340,41 +373,20 @@
    `hosts` is a seq of maps that contain a hostname, agent id, resources and attributes
    `speed-multiplier` is a number >1 which is how much to speed up 'time'
    `task->runtime-ms` is a function that takes a task spec and returns the runtime in millis
-   `task->complete-status` is a function that takes atask spec and returns a mesos complete status
-   `scheduler` is an implementation of the mesomatic scheduler protocol"
+   `task->complete-status` is a function that takes a task spec and returns a mesos complete status
+   `scheduler` is an implementation of the mesomatic scheduler protocol
+   
+   Returns a mesos driver"
   ([hosts speed-multiplier scheduler]
-   (mesos-driver-mock hosts speed-multiplier default-task->runtime-ms scheduler))
+   (mesos-mock hosts speed-multiplier default-task->runtime-ms scheduler))
   ([hosts speed-multiplier task->runtime-ms scheduler]
-   (mesos-driver-mock hosts speed-multiplier task->runtime-ms default-task->complete-status scheduler))
+   (mesos-mock hosts speed-multiplier task->runtime-ms default-task->complete-status scheduler))
   ([hosts speed-multiplier task->runtime-ms task->complete-status scheduler]
    (let [action-chan (async/chan 10) ; This will block calls to the driver. This may be problematic..
          exit-chan (async/chan)
          start-chan (async/chan)
-         driver (reify SchedulerDriver
-                  (declineOffer [this offer-id]
-                    (log/debug "Declining offer" {:offer-id offer-id})
-                    (async/>!! action-chan [:decline (:value (mesos-type/pb->data offer-id))])
-                    Protos$Status/DRIVER_RUNNING)
-                  (join [this]
-                    (async/<!! exit-chan)
-                    Protos$Status/DRIVER_RUNNING)
-                  (stop [this]
-                    (async/close! exit-chan))
-                  (killTask [this task-id]
-                    (log/debug "In driver killTask" {:task-id task-id :pb->data (mesos-type/pb->data task-id) :value (:value (mesos-type/pb->data task-id))})
-                    (async/>!! action-chan [:kill-task (:value (mesos-type/pb->data task-id))])
-                    Protos$Status/DRIVER_RUNNING)
-                  (^Protos$Status launchTasks [this ^java.util.Collection offer-ids ^java.util.Collection tasks]
-                    (log/debug "Launch tasks called" {:tasks tasks :offer-ids offer-ids})
-                    (async/>!! action-chan [:launch {:offer-ids (map (comp :value mesos-type/pb->data) offer-ids)
-                                                     :tasks (map mesos-type/pb->data tasks)}])
-                    Protos$Status/DRIVER_RUNNING)
-                  (reconcileTasks [this statuses]
-                    (async/>!! action-chan [:reconcile statuses])
-                    Protos$Status/DRIVER_RUNNING)
-                  (start [this]
-                    (async/close! start-chan)
-                    Protos$Status/DRIVER_RUNNING))
+         driver (mesos-driver-mock start-chan action-chan exit-chan)
+         new-offer-delay-ms (/ 1000 speed-multiplier)
          hosts (->> hosts
                     (map #(assoc % :available-resources (:resources %)))
                     (map #(update % :slave-id str)))]
@@ -396,7 +408,7 @@
                        :task-id->task {}
                        :task-id->completed-task {} ;;TODO test this in kill
                        :complete-chan->task-id {}}
-                new-offer-chan (async/timeout (/ 1000 speed-multiplier))]
+                new-offer-chan (async/timeout new-offer-delay-ms)]
            (log/info "State before " state)
            (let [[v ch] (async/alts!! (concat [exit-chan action-chan new-offer-chan]
                                               (keys (:complete-chan->task-id state)))
@@ -414,7 +426,7 @@
                                     (log/debug "Sending offers" {:offers new-offers})
                                     (when (seq new-offers)
                                       (.resourceOffers scheduler driver (mapv (partial mesos-type/->pb :Offer) new-offers)))
-                                    [state' (async/timeout (/ 1000 speed-multiplier))])
+                                    [state' (async/timeout new-offer-delay-ms)])
                    ;; Else
                    (let [task-id ((:complete-chan->task-id state) ch)
                          _ (log/debug "Task complete: " task-id)

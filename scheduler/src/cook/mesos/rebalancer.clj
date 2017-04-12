@@ -215,7 +215,6 @@
    value
    host->spare-resources A map from host to spare resources.
    user->dru-divisors A map from user to dru divisors."
-<<<<<<< 9683d7a9dcdce0bdfdcb28f5d2b9ae02471f7a5e
   ([db running-task-ents pending-job-ents host->spare-resources category]
    (init-state db running-task-ents pending-job-ents host->spare-resources category []))
   ([db running-task-ents pending-job-ents host->spare-resources category preempted-tasks]
@@ -388,7 +387,7 @@
         jobs-to-make-room-for (filter (partial util/job-allowed-to-start? db)
                                       pending-job-ents)
         init-state (init-state db (util/get-running-task-ents db) jobs-to-make-room-for host->spare-resources category)]
-    (log/debug "Jobs to make room for" jobs-to-make-room-for)
+    (log/debug "Jobs to make room for:" jobs-to-make-room-for)
     (loop [state init-state
            remaining-preemption max-preemption
            [pending-job-ent & jobs-to-make-room-for] jobs-to-make-room-for
