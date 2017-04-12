@@ -19,6 +19,7 @@
             [clojure.walk :refer (keywordize-keys)]
             [cook.authorization :as auth]
             [cook.mesos.api :as api :refer (main-handler)]
+            [cook.mesos.reason :as reason]
             [cook.mesos.util :as util]
             [cook.test.testutil :refer (restore-fresh-database! create-dummy-job create-dummy-instance)]
             [datomic.api :as d :refer (q db)]
@@ -669,6 +670,65 @@
         (is (<= 201 (:status post-resp1) 299))
         (is (<= 400 (:status post-resp2) 499))))
     ))
+
+
+(deftest reasons-api
+  (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
+        db (d/db conn)
+        default-limit 10]
+    ;; set default failure limit.
+    @(d/transact conn [{:db/id :scheduler/config
+                        :scheduler.config/mea-culpa-failure-limit default-limit}])
+
+    (testing "reason-entity->consumable-map"
+      (let [not-mea-culpa {:db/id 17592186045473
+                           :reason/code 4003
+                           :reason/string "Container launch failed"
+                           :reason/mesos-reason :reason-container-launch-failed
+                           :reason/name :mesos-container-launch-failed
+                           :reason/mea-culpa? false}
+            mea-culpa-with-limit {:db/id 17592186045473
+                                  :reason/code 4003
+                                  :reason/string "Container launch failed"
+                                  :reason/mesos-reason :reason-container-launch-failed
+                                  :reason/name :mesos-container-launch-failed
+                                  :reason/mea-culpa? true
+                                  :reason/failure-limit 8}
+            mea-culpa-with-default {:db/id 17592186045473
+                                    :reason/code 4003
+                                    :reason/string "Container launch failed"
+                                    :reason/mesos-reason :reason-container-launch-failed
+                                    :reason/name :mesos-container-launch-failed
+                                    :reason/mea-culpa? true}]
+        (is (= (api/reason-entity->consumable-map default-limit not-mea-culpa)
+               {:code 4003
+                :name "mesos-container-launch-failed"
+                :description "Container launch failed"
+                :mea_culpa false}))
+        (is (= (api/reason-entity->consumable-map default-limit mea-culpa-with-limit)
+               {:code 4003
+                :name "mesos-container-launch-failed"
+                :description "Container launch failed"
+                :mea_culpa true
+                :failure_limit 8}))
+        (is (= (api/reason-entity->consumable-map default-limit mea-culpa-with-default)
+               {:code 4003
+                :name "mesos-container-launch-failed"
+                :description "Container launch failed"
+                :mea_culpa true
+                :failure_limit default-limit}))))
+
+    (testing "reasons-handler"
+      (let [handler (basic-handler conn :retry-limit 200)
+            reasons-response (handler {:request-method :get
+                                       :scheme :http
+                                       :uri "/failure_reasons"
+                                       :headers {"Content-Type" "application/json"}
+                                       :authorization/user "user"})
+            reasons-body (response->body-data reasons-response)]
+        (is (= (:status reasons-response 200)))
+        (is (= (count reasons-body)
+               (count (reason/all-known-reasons db))))))))
 
 (deftest retry-validator
   (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")

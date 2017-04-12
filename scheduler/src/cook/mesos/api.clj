@@ -1331,6 +1331,36 @@
     :post! (fn [ctx]
              (apply set-limit-fn conn (get-in ctx [:request :body-params :user]) (reduce into [] (::limits ctx))))}))
 
+
+;; /failure-reasons
+
+(s/defschema FailureReasonsResponse
+  [{:code s/Int
+    :name s/Str
+    :description s/Str
+    :mea_culpa s/Bool
+    (s/optional-key :failure_limit) s/Int}])
+
+(defn reason-entity->consumable-map
+  [default-failure-limit e]
+  (cond-> {:code (:reason/code e)
+           :name (name (:reason/name e))
+           :description (:reason/string e)
+           :mea_culpa (:reason/mea-culpa? e)}
+    (:reason/mea-culpa? e)
+    (assoc :failure_limit (or (:reason/failure-limit e) default-failure-limit))))
+
+(defn failure-reasons-handler
+  [conn is-authorized-fn]
+  (base-cook-handler
+   {:allowed-methods [:get]
+    :handle-ok (fn [_]
+                 (let [db (d/db conn)
+                       default-limit (reason/default-failure-limit db)]
+                   (->> (reason/all-known-reasons db)
+                        (mapv (partial reason-entity->consumable-map
+                                       default-limit)))))}))
+
 (defn- str->state-attr
   [state-str]
   (when (contains? #{"running" "waiting" "completed"} state-str)
@@ -1546,7 +1576,17 @@
                               :description "The groups were returned."}
                          400 {:description "Non-UUID values were passed."}
                          403 {:description "The supplied UUIDs don't correspond to valid groups."}}
-             :handler (read-groups-handler conn fid task-constraints is-authorized-fn)}})))
+             :handler (read-groups-handler conn fid task-constraints is-authorized-fn)}}))
+
+    (c-api/context
+     "/failure_reasons" []
+     (c-api/resource
+      {:get {:summary "Returns a description of all possible task failure reasons"
+             :responses {200 {:schema FailureReasonsResponse
+                              :description "The failure reasons were returned."}}
+             :handler (failure-reasons-handler conn is-authorized-fn)}})))
+
+
     (ANY "/queue" []
          (waiting-jobs mesos-pending-jobs-fn is-authorized-fn))
     (ANY "/running" []
