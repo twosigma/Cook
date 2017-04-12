@@ -1111,7 +1111,7 @@
   (or (vectorize (get-in ctx [:request :query-params :job]))
       ;; if the query params are coerceable, both :job and "job" keys will be
       ;; present, but in that case we only want to read the coerced version
-      (if-let [uncoerced-query-params (get-in ctx [:request :query-params "job"])]
+      (when-let [uncoerced-query-params (get-in ctx [:request :query-params "job"])]
         (mapv #(UUID/fromString %) (vectorize uncoerced-query-params)))
       (get-in ctx [:request :body-params :jobs])
       [(get-in ctx [:request :body-params :job])]))
