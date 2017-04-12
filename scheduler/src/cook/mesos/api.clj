@@ -76,7 +76,6 @@
   [resource-attrs]
   (mapply liberator/resource (merge cook-liberator-attrs resource-attrs)))
 
-
 ;;
 ;; /rawscheduler
 ;;
@@ -250,12 +249,20 @@
   "A schema for the parameters of a host placement with type attribute-equals"
   {:attribute s/Str})
 
+(def Balanced-Parameters
+  "A schema for the parameters of a host placement with type balanced"
+  {:attribute s/Str
+   :minimum PosInt})
+
 (def HostPlacement
   "A schema for host placement"
   (s/conditional
     #(= (:type %) :attribute-equals)
       {:type (s/eq :attribute-equals)
        :parameters Attribute-Equals-Parameters}
+    #(= (:type %) :balanced)
+      {:type (s/eq :balanced)
+       :parameters Balanced-Parameters}
     :else
       {:type (s/pred #(contains? (set (map util/without-ns host-placement-types)) %)
                      'host-placement-type-exists?)
@@ -297,7 +304,6 @@
   "Schema for a request to the raw scheduler endpoint."
   {:jobs [JobRequest]
    (s/optional-key :groups) [Group]})
-
 
 (defn- mk-container-params
   "Helper for build-container.  Transforms parameters into the datomic schema."
@@ -1030,8 +1036,7 @@
                    (if (empty? unauthorized-guuids)
                      true
                      [false {::error (str "You are not authorized to view access the following groups "
-                                          (str/join \space unauthorized-guuids))}]
-                     )))
+                                          (str/join \space unauthorized-guuids))}])))
      :handle-ok (fn [ctx]
                   (if (get-in ctx [:request :query-params "detailed"])
                     (mapv #(merge (fetch-group-map (db conn) %)

@@ -221,4 +221,24 @@
              uncommitted-count))
       (is (= (count (util/clear-uncommitted-jobs conn (t/yesterday) false)) 0)))))
 
+(deftest test-make-guuid->juuids
+  (let [jobs [{:job/uuid "1"
+               :group/_job #{{:group/uuid "a"} {:group/uuid "b"} {:group/uuid "c"} {:group/uuid "d"} {:group/uuid "e"}}}
+              {:job/uuid "2"
+               :group/_job #{{:group/uuid "b"} {:group/uuid "c"} {:group/uuid "d"} {:group/uuid "e"}}}
+              {:job/uuid "3"
+               :group/_job #{{:group/uuid "c"} {:group/uuid "d"} {:group/uuid "e"}}}
+              {:job/uuid "4"
+               :group/_job #{{:group/uuid "d"} {:group/uuid "e"}}}
+              {:job/uuid "5"
+               :group/_job #{{:group/uuid "e"}}}
+              {:job/uuid "6"
+               :group/_job #{}}]
+        guuid->juuids (util/make-guuid->juuids jobs)]
+    (is (= (guuid->juuids "a") #{"1"}))
+    (is (= (guuid->juuids "b") #{"1" "2"}))
+    (is (= (guuid->juuids "c") #{"1" "2" "3"}))
+    (is (= (guuid->juuids "d") #{"1" "2" "3" "4"}))
+    (is (= (guuid->juuids "e") #{"1" "2" "3" "4" "5"}))))
+
 (comment (run-tests))

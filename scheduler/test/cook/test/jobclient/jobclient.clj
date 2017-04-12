@@ -211,5 +211,5 @@
       ; Looping infinitely after finishing the tests keeps the server running on a separate thread
       ; This allows interaction with the server from other sources (such as curl), which is useful when
       ; debugging broken tests.
-      ; (while true))
+      ;(while true)
     )))

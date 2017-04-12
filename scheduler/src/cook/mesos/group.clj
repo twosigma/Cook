@@ -43,3 +43,26 @@
             max-runtime-seconds (* target-runtime-seconds multiplier)]
         (filter #(> (t/in-seconds (util/task-run-time %)) max-runtime-seconds)
                 running-tasks)))))
+
+(defn group->running-task-set
+  "Returns all the possibly running (running or unknown, unknown-state instances are in an unknown
+   limbo between where mesos has been instructed to run them, but the action has not been confirmed
+   by mesos) instances. Returns set to allow set operations (difference, union) with the result of
+   datomic queries for job instances (also sets)."
+  [group]
+  (->> group
+       :group/job
+       (mapcat :job/instance)
+       (filter #(#{:instance.status/running :instance.status/unknown} (:instance/status %)))
+       set))
+
+(defn group->running-task-id-set
+  "A wrapper around group->running-task-id-set that returns a set of task-ids instead of task
+   entities. Returns a set so that set operations can be used to manipulate the result in
+   conjunction with the result of cotask-getters, which also return sets."
+  [group]
+  (->> group
+       group->running-task-set
+       (map :instance/task-id)
+       set))
+

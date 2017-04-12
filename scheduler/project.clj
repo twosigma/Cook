@@ -67,7 +67,7 @@
                  ;;Networking
                  [clj-http "2.0.0"]
                  [io.netty/netty "3.10.1.Final"]
-                 [cc.qbits/jet "0.5.7" :exclusions [org.eclipse.jetty/jetty-io
+                 [cc.qbits/jet "0.6.4" :exclusions [org.eclipse.jetty/jetty-io
                                                     org.eclipse.jetty/jetty-security
                                                     org.eclipse.jetty/jetty-server
                                                     org.eclipse.jetty/jetty-http

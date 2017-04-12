@@ -15,27 +15,144 @@
 ;;
 
 (ns cook.test.mesos.scheduler
-  (:use clojure.test)
+  (:use [clojure.test])
   (:require [clj-time.coerce :as tc]
             [clj-time.core :as t]
             [clojure.core.async :as async]
             [clojure.edn :as edn]
             [clojure.string :as str]
+            [cook.curator :as curator]
             [cook.mesos :as mesos]
             [cook.mesos.scheduler :as sched]
             [cook.mesos.schema :as schem]
             [cook.mesos.share :as share]
             [cook.mesos.util :as util]
-            [cook.test.testutil :refer (restore-fresh-database! create-dummy-group create-dummy-job create-dummy-instance)]
+            [cook.test.testutil :refer (restore-fresh-database! create-dummy-group create-dummy-job create-dummy-instance init-offer-cache)]
             [datomic.api :as d :refer (q db)]
             [mesomatic.scheduler :as msched]
             [mesomatic.types :as mtypes]
             [plumbing.core :as pc])
   (:import (com.netflix.fenzo TaskAssignmentResult TaskScheduler)
+           (com.netflix.fenzo.plugins BinPackingFitnessCalculators)
            (java.util UUID)
            (org.mockito Mockito)))
 
 (def datomic-uri "datomic:mem://test-mesos-jobs")
+
+(defn make-uuid
+  []
+  (str  (UUID/randomUUID)))
+
+(defn create-running-job
+  [conn host & args]
+  (let [job (apply create-dummy-job (cons conn args))
+        inst (create-dummy-instance conn job :instance-status :instance.status/running :hostname host)]
+  [job inst]))
+
+(defn make-dummy-scheduler
+  []
+  (let [driver  (atom nil)]
+    (.. (com.netflix.fenzo.TaskScheduler$Builder.)
+      (disableShortfallEvaluation) ;; We're not using the autoscaling features
+      (withLeaseOfferExpirySecs 1) ;; should be at least 1 second
+      (withRejectAllExpiredOffers)
+      (withFitnessCalculator BinPackingFitnessCalculators/cpuMemBinPacker)
+      (withFitnessGoodEnoughFunction (reify com.netflix.fenzo.functions.Func1
+                                       (call [_ fitness]
+                                         (> fitness 0.8))))
+      (withLeaseRejectAction (reify com.netflix.fenzo.functions.Action1
+                               (call [_ lease] (do))))
+      (build))))
+
+(defn make-resource
+  [name type val]
+  (mesomatic.types/map->Resource (merge
+                                   {:name name
+                                    :type type
+                                    :scalar nil
+                                    :ranges []
+                                    :set #{}
+                                    :role "*"}
+                                   (case type
+                                     :value-scalar {:scalar val}
+                                     :value-ranges {:ranges [(mesomatic.types/map->ValueRange val)]}
+                                     :value-set {:set #{val}}
+                                     {}))))
+
+(defn make-offer-resources
+  [cpus mem disk ports gpus]
+  [(make-resource "cpus" :value-scalar cpus)
+   (make-resource "mem" :value-scalar mem)
+   (make-resource "disk" :value-scalar disk)
+   (make-resource "ports" :value-ranges ports)
+   (make-resource "gpus" :value-scalar gpus)])
+
+(defn make-attribute
+  [name type val]
+  (mesomatic.types/map->Attribute (merge
+                                    {:name name
+                                     :type type
+                                     :scalar nil
+                                     :ranges []
+                                     :set #{}
+                                     :role "*"}
+                                    (case type
+                                      :value-scalar {:scalar val}
+                                      :value-text {:text val}
+                                      :value-ranges {:ranges [(mesomatic.types/map->ValueRange val)]}
+                                      :value-set {:set #{val}}
+                                      nil))))
+
+(defn make-offer-attributes
+  [attrs]
+  (mapv #(make-attribute (key %) :value-text (val %)) attrs))
+
+(defn make-mesos-offer
+  [id fid slave-id hostname & {:keys [cpus mem disk ports gpus attrs]
+                               :or {cpus 40.0 mem 5000.0 disk 6000.0 ports {:begin 31000 :end 32000} gpus 0.0 attrs {}}}]
+  (mesomatic.types/map->Offer {:id (mesomatic.types/map->OfferID {:value id})
+                               :framework-id fid
+                               :slave-id (mesomatic.types/map->SlaveID {:value slave-id})
+                               :hostname hostname
+                               :resources (make-offer-resources cpus mem disk ports gpus)
+                               :attributes (make-offer-attributes (merge attrs {"HOSTNAME" hostname}))
+                               :executor-ids []}))
+
+(defn make-vm-offer
+  [fid host offid & {:keys [attrs cpus mem disk] :or {attrs {} cpus 100.0 mem 100000.0 disk 100000.0}}]
+  (sched/->VirtualMachineLeaseAdapter
+    (make-mesos-offer offid fid "test-slave" host
+                      :cpus cpus :mem mem :disk disk :attrs attrs) 0))
+
+;(.getOffer (make-vm-offer (make-uuid) "lol" (make-uuid)))
+
+(defn schedule-and-run-jobs
+  [conn fid scheduler offers job-ids]
+    (let [jobs (map #(d/entity (d/db conn) %) job-ids)
+          task-ids (take (count jobs) (repeatedly #(str (java.util.UUID/randomUUID))))
+          guuid->considerable-cotask-ids (util/make-guuid->considerable-cotask-ids (zipmap jobs task-ids))
+          tasks (map #(sched/make-task-request %1 :task-id %2 :guuid->considerable-cotask-ids guuid->considerable-cotask-ids)
+                     jobs task-ids)
+          result (-> scheduler
+                   (.scheduleOnce tasks offers))
+          tasks-assigned  (some->> result
+                                   .getResultMap
+                                   vals
+                                   (mapcat #(.getTasksAssigned %)))
+          tid-to-task (zipmap task-ids tasks)
+          tid-to-job (zipmap task-ids jobs)
+          tid-to-hostname (into {} (map (juxt #(.getTaskId %) #(.getHostname %)) tasks-assigned))
+          scheduled (set (keys tid-to-hostname))]
+      (if (> (count scheduled) 0)
+        (do
+          ; Create an instance as if job was running
+          (doall (map #(create-dummy-instance conn (:db/id (get tid-to-job (key %))) :instance-status :instance.status/running
+                        :task-id (key %) :hostname (val %)) tid-to-hostname))
+          ; Tell fenzo the job was scheduled
+          (doall (map #(.call (.getTaskAssigner scheduler) (get tid-to-task (key %)) (val %)) tid-to-hostname))
+          ; Return
+          {:scheduled scheduled :result result})
+        {:result result})))
 
 (deftest test-tuplify-offer
   (is (= ["1234" 40.0 100.0] (sched/tuplify-offer {:slave-id {:value "1234"}
@@ -192,8 +309,8 @@
 (deftest test-match-offer-to-schedule
   (let [schedule (map #(d/entity (db c) %) [j1 j2 j3 j4]) ; all 1gb 1 cpu
         offer-maker (fn [cpus mem]
-                      [{:resources [{:name "cpus" :scalar cpus}
-                                    {:name "mem" :scalar mem}]
+                      [{:resources [{:name "cpus" :type :value-scalar :scalar cpus}
+                                    {:name "mem" :type :value-scalar :scalar mem}]
                         :id {:value (str "id-" (UUID/randomUUID))}
                         :slave-id {:value (str "slave-" (UUID/randomUUID))}
                         :hostname (str "host-" (UUID/randomUUID))}])
@@ -220,6 +337,52 @@
                                                (fenzo-maker) schedule offers))))
                     (offer-maker 4 4000)
                     (offer-maker 5 5000)))))
+
+(deftest test-match-offer-to-schedule-ordering
+  (let [datomic-uri "datomic:mem://test-match-offer-to-schedule-ordering"
+        conn (restore-fresh-database! datomic-uri)
+        conflict-host "test-host"
+
+        offer-maker (fn [cpus hostname]
+                      (make-mesos-offer (make-uuid) (make-uuid) (make-uuid) hostname :cpus cpus :mem 200000.0))
+        constraint-group (create-dummy-group conn :host-placement
+                           {:host-placement/type :host-placement.type/balanced
+                            :host-placement/parameters {:host-placement.balanced/attribute "HOSTNAME"
+                                                        :host-placement.balanced/minimum 10}})
+        conflicting-job-id (create-dummy-job conn :ncpus 1.0 :memory 1.0 :name "conflict"
+                                             :group constraint-group)
+        low-priority-ids (doall (repeatedly 8
+                                       #(create-dummy-job conn :ncpus 1.0
+                                                               :memory 1000.0
+                                                               :name "low-priority"
+                                                               :priority 1
+                                                               :job-state :job.state/waiting)))
+        high-priority-ids (doall (repeatedly 1
+                                             #(create-dummy-job conn :ncpus 1.0
+                                                                     :memory 1000.0
+                                                                     :name "high-priority"
+                                                                     :priority 100
+                                                                     :job-state :job.state/waiting)))
+        fid (str "framework-id-" (java.util.UUID/randomUUID))
+        fenzo (make-dummy-scheduler)
+        ; Schedule conflicting
+        _ (schedule-and-run-jobs conn fid fenzo [(make-vm-offer (make-uuid)
+                                                                conflict-host
+                                                                (make-uuid))] [conflicting-job-id])
+        low-priority (map #(d/entity (d/db conn) %) low-priority-ids)
+        high-priority (map #(d/entity (d/db conn) %) high-priority-ids)
+        considerable (concat high-priority low-priority)]
+    (testing "Scheduling order respected?"
+      (let [schedule (sched/match-offer-to-schedule fenzo considerable [(offer-maker 1.0 "empty_host")])]
+        (is (= {"empty_host" ["high-priority"]}
+               (->> schedule
+                    (map :tasks)
+                    (mapcat seq)
+                    (map (juxt #(.getHostname %) #(vector (:job/name (:job (.getRequest %))))))
+                    (map (partial apply hash-map))
+                    (cons concat)
+                    (apply merge-with))))))))
+
 
 (deftest test-get-user->used-resources
   (let [uri "datomic:mem://test-get-used-resources"
@@ -477,109 +640,170 @@
     (is (= (:task-state interpreted-status) :task-lost))
     (is (= (:reason interpreted-status) :reason-invalid-offers))))
 
-(deftest test-gpu-constraint
-  (let [fid #mesomatic.types.FrameworkID{:value "my-framework-id"}
-        gpu-offer #mesomatic.types.Offer{:id #mesomatic.types.OfferID{:value "my-offer-id"}
-                                         :framework-id fid
-                                         :slave-id #mesomatic.types.SlaveID{:value "my-slave-id"},
-                                         :hostname "slave3",
-                                         :resources [#mesomatic.types.Resource{:name "cpus", :type :value-scalar, :scalar 40.0, :ranges [], :set #{}, :role "*"}
-                                                     #mesomatic.types.Resource{:name "mem", :type :value-scalar, :scalar 5000.0, :ranges [], :set #{}, :role "*"}
-                                                     #mesomatic.types.Resource{:name "disk", :type :value-scalar, :scalar 6000.0, :ranges [], :set #{}, :role "*"}
-                                                     #mesomatic.types.Resource{:name "ports", :type :value-ranges, :scalar 0.0, :ranges [#mesomatic.types.ValueRange{:begin 31000, :end 32000}], :set #{}, :role "*"}
-                                                     #mesomatic.types.Resource{:name "gpus", :type :value-scalar :scalar 2.0 :role "*"}],
-                                         :attributes [],
-                                         :executor-ids []}
-        non-gpu-offer #mesomatic.types.Offer{:id #mesomatic.types.OfferID{:value "my-offer-id"}
-                                             :framework-id fid
-                                             :slave-id #mesomatic.types.SlaveID{:value "my-slave-id"},
-                                             :hostname "slave3",
-                                             :resources [#mesomatic.types.Resource{:name "cpus", :type :value-scalar, :scalar 40.0, :ranges [], :set #{}, :role "*"}
-                                                         #mesomatic.types.Resource{:name "mem", :type :value-scalar, :scalar 5000.0, :ranges [], :set #{}, :role "*"}
-                                                         #mesomatic.types.Resource{:name "disk", :type :value-scalar, :scalar 6000.0, :ranges [], :set #{}, :role "*"}
-                                                         #mesomatic.types.Resource{:name "ports", :type :value-ranges, :scalar 0.0, :ranges [#mesomatic.types.ValueRange{:begin 31000, :end 32000}], :set #{}, :role "*"}],
-                                             :attributes [],
-                                             :executor-ids []}
-        uri "datomic:mem://test-gpu-constraint"
-        conn (restore-fresh-database! uri)
-        gpu-job-id (create-dummy-job conn :user "ljin" :ncpus 5.0 :memory 5.0 :gpus 1.0)
-        other-gpu-job-id (create-dummy-job conn :user "ljin" :ncpus 5.0 :memory 5.0 :gpus 1.0)
-        non-gpu-job-id (create-dummy-job conn :user "ljin" :ncpus 5.0 :memory 5.0 :gpus 0.0)
-        db (db conn)
-        gpu-job (d/entity db gpu-job-id)
-        other-gpu-job (d/entity db other-gpu-job-id)
-        non-gpu-job (d/entity db non-gpu-job-id)
-        mock-gpu-assignment #(-> (Mockito/when (.getRequest (Mockito/mock TaskAssignmentResult)))
-                                 (.thenReturn (sched/->TaskRequestAdapter other-gpu-job
-                                                                          (util/job-ent->resources other-gpu-job)
-                                                                          (str (UUID/randomUUID))
-                                                                          (atom nil)))
-                                 (.getMock))]
-    (doseq [[type gpu-lease] [["gpu avail"
-                               (reify com.netflix.fenzo.VirtualMachineCurrentState
-                                 (getHostname [_] "test-host")
-                                 (getRunningTasks [_] [])
-                                 (getTasksCurrentlyAssigned [_] [])
-                                 (getCurrAvailableResources [_] (sched/->VirtualMachineLeaseAdapter gpu-offer 0)))]
-                              ["running gpu"
-                               (reify com.netflix.fenzo.VirtualMachineCurrentState
-                                 (getHostname [_] "test-host")
-                                 (getRunningTasks [_] [(sched/->TaskRequestAdapter other-gpu-job
-                                                                                   (util/job-ent->resources other-gpu-job)
-                                                                                   (str (UUID/randomUUID))
-                                                                                   (atom nil))])
-                                 (getTasksCurrentlyAssigned [_] [])
-                                 (getCurrAvailableResources [_] (sched/->VirtualMachineLeaseAdapter non-gpu-offer 0)))]
-                              ["gpu assigned"
-                               (reify com.netflix.fenzo.VirtualMachineCurrentState
-                                 (getHostname [_] "test-host")
-                                 (getRunningTasks [_] [])
-                                 (getTasksCurrentlyAssigned [_] [(mock-gpu-assignment)])
-                                 (getCurrAvailableResources [_] (sched/->VirtualMachineLeaseAdapter non-gpu-offer 0)))]]]
-      (is (.isSuccessful
-            (.evaluate (sched/gpu-host-constraint gpu-job)
-                       (sched/->TaskRequestAdapter gpu-job
-                                                   (util/job-ent->resources gpu-job)
-                                                   (str (UUID/randomUUID))
-                                                   (atom nil))
-                       gpu-lease
-                       nil))
-          (str "GPU task on GPU host with " type " should succeed"))
-      (is (not (.isSuccessful
-                 (.evaluate (sched/gpu-host-constraint non-gpu-job)
-                            (sched/->TaskRequestAdapter non-gpu-job
-                                                        (util/job-ent->resources non-gpu-job)
-                                                        (str (UUID/randomUUID))
-                                                        (atom nil))
-                            gpu-lease
-                            nil)))
-          (str "GPU task on GPU host with " type " should fail"))
-      (is (not (.isSuccessful
-                 (.evaluate (sched/gpu-host-constraint gpu-job)
-                            (sched/->TaskRequestAdapter gpu-job
-                                                        (util/job-ent->resources gpu-job)
-                                                        (str (UUID/randomUUID))
-                                                        (atom nil))
-                            (reify com.netflix.fenzo.VirtualMachineCurrentState
-                              (getHostname [_] "test-host")
-                              (getRunningTasks [_] [])
-                              (getTasksCurrentlyAssigned [_] [])
-                              (getCurrAvailableResources [_] (sched/->VirtualMachineLeaseAdapter non-gpu-offer 0)))
-                            nil)))
-          "GPU task on non GPU host should fail")
-      (is (.isSuccessful
-            (.evaluate (sched/gpu-host-constraint non-gpu-job)
-                       (sched/->TaskRequestAdapter non-gpu-job
-                                                   (util/job-ent->resources non-gpu-job)
-                                                   (str (UUID/randomUUID))
-                                                   (atom nil))
-                       (reify com.netflix.fenzo.VirtualMachineCurrentState
-                         (getHostname [_] "test-host")
-                         (getRunningTasks [_] [])
-                         (getTasksCurrentlyAssigned [_] [])
-                         (getCurrAvailableResources [_] (sched/->VirtualMachineLeaseAdapter non-gpu-offer 0)))
-                       nil))
-          "non GPU task on non GPU host should succeed"))))
+(deftest test-unique-host-placement-constraint
+  (let  [uri "datomic:mem://test-unique-host-placement-constraint"
+         conn (restore-fresh-database! uri)
+         fid #mesomatic.types.FrameworkID{:value "my-original-framework-id"}]
+    (testing "conflicting jobs, different scheduling cycles"
+      (let [scheduler (make-dummy-scheduler)
+            shared-host "test-host"
+            ; Group jobs, setting unique host-placement constraint
+            group-id (create-dummy-group conn :host-placement {:host-placement/type :host-placement.type/unique})
+            conflicted-job-id (create-dummy-job conn :group group-id)
+            conflicting-job-id (create-dummy-job conn :group group-id)
+            make-offers #(vector (make-vm-offer fid shared-host (make-uuid)))
+            group (d/entity (d/db conn) group-id)
+            ; Schedule first job
+            scheduled-tasks (schedule-and-run-jobs conn fid scheduler (make-offers) [conflicting-job-id])
+            _ (is  (= 1 (count (:scheduled scheduled-tasks))))
+            conflicting-task-id (first (:scheduled scheduled-tasks))
+            ; Try to schedule conflicted job, but fail
+            failures (-> (schedule-and-run-jobs conn fid scheduler (make-offers) [conflicted-job-id])
+                         :result
+                         .getFailures)
+            task-results (-> failures
+                             vals
+                             first)
+            fail-reason (-> task-results
+                            first
+                            .getConstraintFailure
+                            .getReason)]
+        (is  (= 1 (count failures)))
+        (is  (= 1 (count task-results)))
+        (is  (= fail-reason (format "The hostname %s is being used by other instances in group %s"
+                                 shared-host (:group/uuid group))))))
+    (testing "conflicting jobs, same scheduling cycle"
+      (let [scheduler (make-dummy-scheduler)
+            shared-host "test-host"
+            ; Group jobs, setting unique host-placement constraint
+            group-id (create-dummy-group conn :host-placement {:host-placement/type :host-placement.type/unique})
+            conflicted-job-id (create-dummy-job conn :group group-id)
+            conflicting-job-id (create-dummy-job conn :group group-id)
+            make-offers #(vector (make-vm-offer fid shared-host (make-uuid)))
+            group (d/entity (d/db conn) group-id)
+            ; Schedule first job
+            result (schedule-and-run-jobs conn fid scheduler (make-offers) [conflicting-job-id
+                                                                            conflicted-job-id])
+            _ (is  (= 1 (count (:scheduled result))))
+            conflicting-task-id (-> result :scheduled first)
+            ; Try to schedule conflicted job, but fail
+            failures (-> result :result .getFailures)
+            task-results (-> failures
+                             vals
+                             first)
+            fail-reason (-> task-results
+                            first
+                            .getConstraintFailure
+                            .getReason)]
+        (is  (= 1 (count failures)))
+        (is  (= 1 (count task-results)))
+        (is  (= fail-reason (format "The hostname %s is being used by other instances in group %s"
+                                 shared-host (:group/uuid group))))))
+    (testing "non conflicting jobs"
+      (let [scheduler (make-dummy-scheduler)
+            shared-host "test-host"
+            make-offers #(vector (make-vm-offer fid shared-host (make-uuid)))
+            isolated-job-id1 (create-dummy-job conn)
+            isolated-job-id2 (create-dummy-job conn)]
+        (is  (= 1 (count (:scheduled (schedule-and-run-jobs conn fid scheduler (make-offers) [isolated-job-id1])))))
+        (is  (= 1 (count (:scheduled (schedule-and-run-jobs conn fid scheduler (make-offers) [isolated-job-id2])))))))))
+
+
+(deftest test-balanced-host-placement-constraint
+  (let  [uri "datomic:mem://test-balanced-host-placement-constraint"
+         conn (restore-fresh-database! uri)
+         fid #mesomatic.types.FrameworkID{:value "my-original-framework-id"}]
+    (testing "schedule 9 jobs with hp-type balanced on 3 hosts, each host should get 3 jobs"
+      (let [scheduler (make-dummy-scheduler)
+            hostnames ["straw" "sticks" "bricks"]
+            make-offers (fn [] (mapv #(make-vm-offer fid % (make-uuid)) hostnames))
+            ; Group jobs, setting balanced host-placement constraint
+            group-id (create-dummy-group conn
+                       :host-placement {:host-placement/type :host-placement.type/balanced
+                                        :host-placement/parameters {:host-placement.balanced/attribute "HOSTNAME"
+                                                                    :host-placement.balanced/minimum 3}})
+            job-ids (doall (repeatedly 9 #(create-dummy-job conn :group group-id)))]
+        (is (= {"straw" 3 "sticks" 3 "bricks" 3}
+               (->> job-ids
+                    (schedule-and-run-jobs conn fid scheduler (make-offers))
+                    :result
+                    .getResultMap
+                    (pc/map-vals #(count (.getTasksAssigned %))))))))
+    (testing "schedule 9 jobs with no placement constraints on 3 hosts, assignment not balanced"
+      (let [scheduler (make-dummy-scheduler)
+            hostnames ["straw" "sticks" "bricks"]
+            make-offers (fn [] (mapv #(make-vm-offer fid % (make-uuid)) hostnames))
+            job-ids (doall (repeatedly 9 #(create-dummy-job conn)))]
+        (is (not (= (list 3) (->> job-ids
+                                  (schedule-and-run-jobs conn fid scheduler (make-offers))
+                                  :result
+                                  .getResultMap
+                                  vals
+                                  (map #(count (.getTasksAssigned %)))
+                                  distinct))))))))
+
+(deftest test-attr-equals-host-placement-constraint
+  (let  [uri "datomic:mem://test-attr-equals-host-placement-constraint"
+         conn (restore-fresh-database! uri)
+         fid #mesomatic.types.FrameworkID{:value "my-original-framework-id"}
+         make-hostname #(str (java.util.UUID/randomUUID))
+         attr-name "az"
+         attr-val "east"
+         make-attr-offer (fn [cpus]
+                           (make-vm-offer fid (make-hostname) (make-uuid)
+                                          :cpus cpus :attrs {attr-name attr-val}))
+         ; Each non-attr offer can take only one job
+         make-non-attr-offers (fn [n]
+                                (into [] (repeatedly n #(make-vm-offer fid (make-hostname) (make-uuid)
+                                                                       :cpus 1.0 :attrs {attr-name "west"}))))]
+    (testing "Create group, schedule one job unto VM, then all subsequent jobs must have same attr as the VM."
+      (let [scheduler (make-dummy-scheduler)
+            group-id (create-dummy-group conn :host-placement
+                       {:host-placement/type :host-placement.type/attribute-equals
+                        :host-placement/parameters {:host-placement.attribute-equals/attribute attr-name}})
+            first-job (create-dummy-job conn :group group-id)
+            other-jobs (doall (repeatedly 20 #(create-dummy-job conn :ncpus 1.0 :group group-id)))
+            ; Group jobs, setting balanced host-placement constraint
+            ; Schedule the first job
+            _ (is (= 1 (->> (schedule-and-run-jobs conn fid scheduler [(make-attr-offer 1.0)] [first-job])
+                            :scheduled
+                            count)))
+            batch-result (->> (schedule-and-run-jobs conn fid scheduler
+                                                     (conj (make-non-attr-offers 20) (make-attr-offer 5.0)) other-jobs)
+                              :result)]
+        (testing "Other jobs all pile up on attr-offer."
+          (is (= (list attr-val)
+                 (->> batch-result
+                      .getResultMap
+                      vals
+                      (filter #(> (count (.getTasksAssigned %)) 0))
+                      (mapcat #(.getLeasesUsed %))
+                      (map #(.getAttributeMap %))
+                      (map #(get % attr-name))
+                      distinct))))
+        (testing "attr offer only fits five jobs."
+          (is (= 5 (->> batch-result
+                        .getResultMap
+                        vals
+                        (reduce #(+ %1 (count (.getTasksAssigned %2))) 0)))))
+        (testing "Other 15 jobs are unscheduled."
+          (is  (= 15 (->> batch-result
+                          .getFailures
+                          count))))))
+    (testing "Jobs use any vm freely when forced and no attr-equals constraint is given"
+      (let [scheduler (make-dummy-scheduler)
+            first-job (create-dummy-job conn)
+            other-jobs (doall (repeatedly 20 #(create-dummy-job conn)))
+            _ (is (= 1 (->> (schedule-and-run-jobs conn fid scheduler [(make-attr-offer 2.0)] [first-job])
+                            :scheduled
+                            count)))]
+        ; Need to use all offers to fit all 20 other-jobs
+        (is  (= 20 (->> (schedule-and-run-jobs conn fid scheduler
+                          (conj (make-non-attr-offers 15) (make-attr-offer 5.0)) other-jobs)
+                        :result
+                        .getResultMap
+                        vals
+                        (reduce #(+ %1 (count (.getTasksAssigned %2))) 0))))))))
 
 (deftest test-gpu-share-prioritization
   (let [uri "datomic:mem://test-gpu-shares"
@@ -943,14 +1167,12 @@
 (deftest test-matches->category->job-uuids
   (let [create-task-result (fn [job-uuid cpus mem gpus]
                              (-> (Mockito/when (.getRequest (Mockito/mock TaskAssignmentResult)))
-                                 (.thenReturn (sched/->TaskRequestAdapter
+                                 (.thenReturn (sched/make-task-request
                                                 {:job/uuid job-uuid
                                                  :job/resource (cond-> [{:resource/type :resource.type/mem, :resource/amount 1000.0}
                                                                         {:resource/type :resource.type/cpus, :resource/amount 1.0}]
                                                                        gpus (conj {:resource/type :resource.type/gpus, :resource/amount gpus}))}
-                                                {}
-                                                (str "task-id-" job-uuid)
-                                                []))
+                                                :task-id (str "task-id-" job-uuid)))
                                  (.getMock)))
         job-1 (create-task-result "job-1" 1 1024 nil)
         job-2 (create-task-result "job-2" 2 2048 nil)
@@ -1072,7 +1294,7 @@
                                                                                :gpu [job-5 job-6]})
                                             user->usage (or user->usage {test-user {:count 1, :cpus 2, :mem 1024, :gpus 0}})
                                             user->quota (or user-quota {test-user {:count 10, :cpus 50, :mem 32768, :gpus 10}})
-                                            result (sched/handle-resource-offers! conn driver fenzo fid category->pending-jobs-atom user->usage user->quota
+                                            result (sched/handle-resource-offers! conn driver fenzo fid category->pending-jobs-atom (init-offer-cache) user->usage user->quota
                                                                                   num-considerable offers-chan offers)]
                                         (async/>!! offers-chan :end-marker)
                                         result))]

@@ -141,7 +141,7 @@
     (if user
       ;; priority-map doesn't support transients :(
       (recur (-<> task->scored-task
-                  (apply dissoc <> (get user->sorted-running-task-ents user))
-                  (into <> (compute-task-scored-task-pairs (get user->dru-divisors user) (get user->sorted-running-task-ents' user))))
+                  (apply dissoc <> (user->sorted-running-task-ents user))
+                  (into <> (compute-task-scored-task-pairs (user->dru-divisors user) (get user->sorted-running-task-ents' user))))
              remaining-users)
       task->scored-task)))

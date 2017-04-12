@@ -15,7 +15,9 @@
 ;;
 
 (ns cook.test.testutil
+  (:use clojure.test)
   (:require [clojure.core.async :as async]
+            [clojure.core.cache :as cache]
             [cook.mesos.api :as api :refer (main-handler)]
             [cook.mesos.schema :as schema]
             [datomic.api :as d :refer (q db)]
@@ -114,7 +116,7 @@
 (defn create-dummy-instance
   "Return the entity id for the created instance."
   [conn job & {:keys [job-state instance-status start-time end-time hostname
-                      task-id progress reason slave-id executor-id
+                      task-id progress reason slave-id executor-id preempted?
                       cancelled]
                :or  {job-state :job.state/running
                      instance-status :instance.status/unknown
@@ -125,7 +127,8 @@
                      progress 0
                      reason nil
                      slave-id  (str (java.util.UUID/randomUUID))
-                     executor-id  (str (java.util.UUID/randomUUID))} :as cfg}]
+                     executor-id  (str (java.util.UUID/randomUUID))
+                     preempted? false} :as cfg}]
   (let [id (d/tempid :db.part/user)
         val @(d/transact conn [(merge
                                  {:db/id id
@@ -136,7 +139,8 @@
                                   :instance/start-time start-time
                                   :instance/task-id task-id
                                   :instance/executor-id executor-id
-                                  :instance/slave-id slave-id}
+                                  :instance/slave-id slave-id
+                                  :instance/preempted? preempted?}
                                   (when end-time {:instance/end-time end-time})
                                   (if (nil? reason) {} {:instance/reason [:reason/name reason]})
                                   (if (nil? cancelled) {} {:instance/cancelled true}))])]
@@ -144,14 +148,25 @@
 
 (defn create-dummy-group
   "Return the entity id for the created group"
-  [conn & {:keys [group-uuid group-name straggler-handling]
+  [conn & {:keys [group-uuid group-name host-placement straggler-handling]
            :or  {group-uuid (java.util.UUID/randomUUID)
                  group-name "my-cool-group"
+                 host-placement {:host-placement/type :host-placement.type/all}
                  straggler-handling {:straggler-handling/type :straggler-handling.type/none}}}]
   (let [id (d/tempid :db.part/user)
         group-txn {:db/id id
                    :group/uuid group-uuid
                    :group/name group-name
+                   :group/host-placement host-placement
                    :group/straggler-handling straggler-handling}
         val @(d/transact conn [group-txn])]
     (d/resolve-tempid (db conn) (:tempids val) id)))
+
+(defn init-offer-cache
+  [& init]
+  (-> init
+      (or {}) 
+      (cache/fifo-cache-factory :threshold 10000)
+      (cache/ttl-cache-factory :ttl (* 1000 60))
+      atom))
+

@@ -24,6 +24,7 @@
             [clojure.set :as set]
             [clojure.tools.logging :as log]
             [cook.datomic :as datomic :refer (transact-with-retries)]
+            [cook.mesos.constraints :as constraints]
             [cook.mesos.dru :as dru]
             [cook.mesos.group :as group]
             [cook.mesos.heartbeat :as heartbeat]
@@ -41,7 +42,7 @@
             [metrics.histograms :as histograms]
             [metrics.meters :as meters]
             [metrics.timers :as timers]
-            [plumbing.core :as pc :refer (map-vals)])
+            [plumbing.core :as pc])
   (import [com.netflix.fenzo ConstraintEvaluator ConstraintEvaluator$Result TaskAssignmentResult TaskRequest
                              TaskScheduler TaskScheduler$Builder VirtualMachineLease VirtualMachineLease$Range
                              VirtualMachineCurrentState]
@@ -66,6 +67,28 @@
 (defn offer-resource-ranges
   [offer resource-name]
   (reduce into [] (offer-resource-values offer resource-name :ranges)))
+
+(defn get-offer-attr-map
+  "Gets all the attributes from an offer and puts them in a simple, less structured map of the form
+   name->value"
+  [offer]
+  (let [mesos-attributes (->> offer
+                              :attributes
+                              (map #(vector (:name %) (case (:type %)
+                                                        :value-scalar (:scalar %)
+                                                        :value-ranges (:ranges %)
+                                                        :value-set (:set %)
+                                                        :value-text (:text %)
+                                                        ; Default
+                                                        (:value %))))
+                              (into {}))
+        cook-attributes {"HOSTNAME" (:hostname offer)
+                         "COOK_GPU?" (-> offer
+                                         (offer-resource-scalar "gpus")
+                                         (or 0.0)
+                                         (> 0))}]
+    (merge mesos-attributes cook-attributes)))
+
 
 (defn tuplify-offer
   "Takes an offer (from Mesomatic) and converts it to a queryable format for datomic"
@@ -334,7 +357,9 @@
                 result))
             {}
             (:resources offer)))
-  (getAttributeMap [_] {}) ;;TODO
+  ; Some Fenzo plugins (which are included with fenzo, such as host attribute constraints) expect the "HOSTNAME"
+  ; attribute to contain the hostname of this virtual machine.
+  (getAttributeMap [_] (get-offer-attr-map offer))
   (getId [_] (-> offer :id :value))
   (getOffer [_] (throw (UnsupportedOperationException.)))
   (getOfferedTime [_] time)
@@ -387,11 +412,14 @@
               (not has-gpus?))
             (str "The machine " (.getHostname target-vm) (if @needs-gpus? " doesn't have" " has") " gpus")))))))
 
-(defrecord TaskRequestAdapter [job resources task-id assigned-resources]
+(defrecord TaskRequestAdapter [job resources task-id assigned-resources guuid->considerable-cotask-ids]
   TaskRequest
   (getCPUs [_] (:cpus resources))
   (getDisk [_] 0.0)
-  (getHardConstraints [_] [(novel-host-constraint job) (gpu-host-constraint job)])
+  (getHardConstraints [_] (into (constraints/make-fenzo-job-constraints job)
+                            (remove nil?
+                              (mapv #(constraints/make-fenzo-group-constraint
+                                       % (guuid->considerable-cotask-ids (:group/uuid %))) (:group/_job job)))))
   (getId [_] task-id)
   (getScalarRequests [_]
     (reduce (fn [result resource]
@@ -409,6 +437,18 @@
   (getSoftConstraints [_] [])
   (taskGroupName [_] (str (:job/uuid job))))
 
+(defn make-task-request
+  "Helper to create a TaskRequest using TaskRequestAdapter. TaskRequestAdapter implements Fenzo's TaskRequest interface
+   given a job, its resources, its task-id and a function assigned-cotask-getter. assigned-cotask-getter should be a
+   function that takes a group uuid and returns a set of task-ids, which correspond to the tasks that will be assigned
+   during the same Fenzo scheduling cycle as the newly created TaskRequest."
+  [job & {:keys [resources task-id assigned-resources guuid->considerable-cotask-ids]
+          :or {resources (util/job-ent->resources job)
+               task-id (str (java.util.UUID/randomUUID))
+               assigned-resources (atom nil)
+               guuid->considerable-cotask-ids (constantly #{})}}]
+  (->TaskRequestAdapter job resources task-id assigned-resources guuid->considerable-cotask-ids))
+
 (defn match-offer-to-schedule
   "Given an offer and a schedule, computes all the tasks should be launched as a result.
 
@@ -418,17 +458,17 @@
    Returns a list of tasks that got matched to the offer"
   [^TaskScheduler fenzo considerable offers]
   (log/debug "Matching" (count offers) "offers to" (count considerable) "jobs with fenzo")
-  (log/debug "offer to scheduleOnce" offers)
+  (log/debug "offers to scheduleOnce" offers)
   (log/debug "tasks to scheduleOnce" considerable)
   (let [t (System/currentTimeMillis)
         _ (log/debug "offer to scheduleOnce" offers)
         _ (log/debug "tasks to scheduleOnce" considerable)
         leases (mapv #(->VirtualMachineLeaseAdapter % t) offers)
+        considerable->task-id (plumbing.core/map-from-keys (fn [_] (str (java.util.UUID/randomUUID))) considerable)
+        guuid->considerable-cotask-ids (util/make-guuid->considerable-cotask-ids considerable->task-id)
+        ; Important that requests maintains the same order as considerable
         requests (mapv (fn [job]
-                         (->TaskRequestAdapter job
-                                               (util/job-ent->resources job)
-                                               (str (java.util.UUID/randomUUID))
-                                               (atom nil)))
+                         (make-task-request job :task-id (considerable->task-id job) :guuid->considerable-cotask-ids guuid->considerable-cotask-ids))
                        considerable)
         ;; Need to lock on fenzo when accessing scheduleOnce because scheduleOnce and
         ;; task assigner can not be called at the same time.
@@ -437,7 +477,6 @@
                  (.scheduleOnce fenzo requests leases))
         failure-results (.. result getFailures values)
         assignments (.. result getResultMap values)]
-    (log/debug "Found this assigment:" result)
     (when (and (seq failure-results) (log/enabled? :debug))
       (log/debug "Task placement failure information follows:")
       (doseq [failure-result failure-results
@@ -521,7 +560,7 @@
   (->> (util/get-running-task-ents unfiltered-db)
        (map :job/_instance)
        (group-by :job/user)
-       (map-vals (fn [jobs]
+       (pc/map-vals (fn [jobs]
                    (->> jobs
                         (map job->usage)
                         (reduce (partial merge-with +)))))))
@@ -540,7 +579,7 @@
                                                   (util/job-allowed-to-start? db job)))
                                         (take num-considerable)))
         category->considerable-jobs (->> category->pending-jobs
-                                         (map-vals filter-considerable-jobs))]
+                                         (pc/map-vals filter-considerable-jobs))]
     (log/debug "We'll consider scheduling" (map (fn [[k v]] [k (count v)]) category->considerable-jobs)
                "of those pending jobs (limited to " num-considerable " due to backdown)")
     category->considerable-jobs))
@@ -553,8 +592,8 @@
                                       (map #(-> % :tasks vec))
                                       flatten
                                       (map #(-> % .getRequest :job))))
-        category->job-uuids (map-vals #(set (map :job/uuid %)) category->jobs)]
-    (log/debug "matched jobs:" (map-vals count category->job-uuids))
+        category->job-uuids (pc/map-vals #(set (map :job/uuid %)) category->jobs)]
+    (log/debug "matched jobs:" (pc/map-vals count category->job-uuids))
     (when (not (empty? matches))
       (let [matched-normal-jobs-resource-requirements (-> category->jobs :normal util/sum-resources-of-jobs)]
         (meters/mark! matched-tasks-cpus (:cpus matched-normal-jobs-resource-requirements))
@@ -641,9 +680,9 @@
 (defn handle-resource-offers!
   "Gets a list of offers from mesos. Decides what to do with them all--they should all
    be accepted or rejected at the end of the function."
-  [conn driver ^TaskScheduler fenzo fid category->pending-jobs-atom user->usage user->quota num-considerable offers-chan offers]
+  [conn driver ^TaskScheduler fenzo fid category->pending-jobs-atom offer-cache user->usage user->quota num-considerable offers-chan offers]
   (log/debug "invoked handle-resource-offers!")
-  (let [offer-stash (atom nil)] ;; This is a way to ensure we never lose offers fenzo assigned if an errors occures in the middle of processing
+  (let [offer-stash (atom nil)] ;; This is a way to ensure we never lose offers fenzo assigned if an error occurs in the middle of processing
     ;; TODO: It is possible to have an offer expire by mesos because we recycle it a bunch of times.
     ;; TODO: If there is an exception before offers are sent to fenzo (scheduleOnce) then the offers will be lost. This is fine with offer expiration, but not great.
     (timers/time!
@@ -710,7 +749,7 @@
 (counters/defcounter [cook-mesos scheduler offer-chan-depth])
 
 (defn make-offer-handler
-  [conn driver-atom fenzo fid-atom pending-jobs-atom
+  [conn driver-atom fenzo fid-atom pending-jobs-atom offer-cache
    max-considerable scaleback
    floor-iterations-before-warn floor-iterations-before-reset]
   (let [chan-length 100
@@ -726,7 +765,7 @@
         (let [next-considerable
               (try
                 (let [;; There are implications to generating the user->usage here:
-                      ;;s ok  1. Currently cook has two oddities in state changes.
+                      ;;  1. Currently cook has two oddities in state changes.
                       ;;  We plan to correct both of these but are important for the time being.
                       ;;    a. Cook doesn't mark as a job as running when it schedules a job.
                       ;;       While this is technically correct, it confuses some process.
@@ -734,7 +773,7 @@
                       ;;       may not include jobs that have been scheduled but haven't started.
                       ;;       Since we do the filter for quota first, this is ok because those jobs
                       ;;       show up in the queue. However, it is important to know about
-                      ;;    b. Cook doesn't updat ethe job state when cook hears from mesos about the
+                      ;;    b. Cook doesn't update the job state when cook hears from mesos about the
                       ;;       state of an instance. Cook waits until it hears from datomic about the
                       ;;       instance state change to change the state of the job. This means that it
                       ;;       is possible to have large delays between when a instance changes status
@@ -753,9 +792,17 @@
                       offers (->> (repeatedly chan-length #(async/poll! offers-chan))
                                   (filter nil?)
                                   (reduce into offers))
+                      _ (doseq [offer offers
+                                :let [slave-id (-> offer :slave-id :value)
+                                      attrs (get-offer-attr-map offer)]]
+                          ; Cache all used offers (offer-cache is a map of hostnames to most recent offer) 
+                          (swap! offer-cache (fn [c]
+                                               (if (cache/has? c slave-id)
+                                                 (cache/hit c slave-id)
+                                                 (cache/miss c slave-id attrs)))))
                       _ (log/debug "Passing following offers to handle-resource-offers!" offers)
                       user->quota (quota/create-user->quota-fn (d/db conn))
-                      matched-head? (handle-resource-offers! conn @driver-atom fenzo @fid-atom pending-jobs-atom @user->usage-future user->quota num-considerable offers-chan offers)]
+                      matched-head? (handle-resource-offers! conn @driver-atom fenzo @fid-atom pending-jobs-atom offer-cache @user->usage-future user->quota num-considerable offers-chan offers)]
                   (when (seq offers)
                     (reset! resources-atom (view-incubating-offers fenzo)))
                   ;; This check ensures that, although we value Fenzo's optimizations,
@@ -827,7 +874,7 @@
               :let [task-ent (d/entity db [:instance/task-id task-id])
                     hostname (:instance/hostname task-ent)
                     job (:job/_instance task-ent)
-                    task-request (->TaskRequestAdapter job (util/job-ent->resources job) task-id (atom nil))]]
+                    task-request (make-task-request job :task-id task-id)]]
         ;; Need to lock on fenzo when accessing taskAssigner because taskAssigner and
         ;; scheduleOnce can not be called at the same time.
         (locking fenzo
@@ -1030,7 +1077,7 @@
                sort-jobs-hierarchy-duration
                (->> tasks
                     (group-by util/task-ent->user)
-                    (map-vals (fn [task-ents]
+                    (pc/map-vals (fn [task-ents]
                                 (into (sorted-set-by task-comparator) task-ents)))
                     (dru/sorted-task-scored-task-pairs user->dru-divisors)
                     (filter (fn [[task scored-task]]
@@ -1048,7 +1095,7 @@
                sort-gpu-jobs-hierarchy-duration
                (->> (concat running-task-ents pending-task-ents)
                     (group-by util/task-ent->user)
-                    (map-vals (fn [task-ents] (into (sorted-set-by (util/same-user-task-comparator)) task-ents)))
+                    (pc/map-vals (fn [task-ents] (into (sorted-set-by (util/same-user-task-comparator)) task-ents)))
                     (dru/sorted-task-cumulative-gpu-score-pairs user->dru-divisors)
                     (filter (fn [[task _]] (contains? pending-task-ents task)))
                     (map (fn [[task _]] (:job/_instance task)))))]
@@ -1237,13 +1284,13 @@
               (log/error e "Unable to decline offers!")))))))
 
 (defn create-datomic-scheduler
-  [conn set-framework-id driver-atom pending-jobs-atom heartbeat-ch offer-incubate-time-ms mea-culpa-failure-limit fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset task-constraints gpu-enabled? good-enough-fitness]
+  [conn set-framework-id driver-atom pending-jobs-atom offer-cache heartbeat-ch offer-incubate-time-ms mea-culpa-failure-limit fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset task-constraints gpu-enabled? good-enough-fitness]
 
   (persist-mea-culpa-failure-limit! conn mea-culpa-failure-limit)
 
   (let [fid (atom nil)
         fenzo (make-fenzo-scheduler driver-atom offer-incubate-time-ms good-enough-fitness)
-        [offers-chan resources-atom] (make-offer-handler conn driver-atom fenzo fid pending-jobs-atom fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset)]
+        [offers-chan resources-atom] (make-offer-handler conn driver-atom fenzo fid pending-jobs-atom offer-cache fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset)]
     (start-jobs-prioritizer! conn pending-jobs-atom task-constraints)
     {:scheduler
      (mesos/scheduler

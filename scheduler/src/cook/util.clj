@@ -325,4 +325,3 @@
       (throw (ex-info "Can only load vars that are ns-qualified!" {})))
     (require (symbol ns))
     (resolve var-sym)))
-
