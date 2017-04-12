@@ -1131,7 +1131,8 @@
   {:job [s/Uuid]})
 
 (def UpdateRetriesRequest
-  {(s/optional-key :jobs) [s/Uuid]
+  {(s/optional-key :job) s/Uuid
+   (s/optional-key :jobs) [s/Uuid]
    (s/optional-key :retries) PosNum
    (s/optional-key :increment) PosNum})
 
@@ -1140,17 +1141,18 @@
   (:job/max-retries (d/entity (db conn) [:job/uuid (-> ctx ::jobs first)])))
 
 (defn jobs-from-request
-  "compojure-api doesn't support applying a schema to a combination of
-   query parameters and body parameters.  So some manual work is needed to combine
-   ?job=a&job=b with the retries specified in the JSON body payload."
+  "Reads a set of job UUIDs from the request, supporting \"job\" in the query,
+  and either \"job\" or \"jobs\" in the body, while accommodating some aspects of
+  liberator and compojure-api. For example, compojure-api doesn't support
+  applying a schema to a combination of query parameters and body parameters."
   [ctx]
-  (let [query-jobs-coerced (vectorize (get-in ctx [:request :query-params :job]))
-        query-jobs-uncoerced (vectorize (get-in ctx [:request :query-params "job"]))
-        ;; if the query params are coerceable, both :job and "job" keys will be
-        ;; present, but in that case we only want to read the coerced version
-        query-jobs (or query-jobs-coerced (mapv #(UUID/fromString %) query-jobs-uncoerced))
-        body-jobs (get-in ctx [:request :body-params :jobs])]
-    (reduce conj query-jobs body-jobs)))
+  (or (vectorize (get-in ctx [:request :query-params :job]))
+      ;; if the query params are coerceable, both :job and "job" keys will be
+      ;; present, but in that case we only want to read the coerced version
+      (when-let [uncoerced-query-params (get-in ctx [:request :query-params "job"])]
+        (mapv #(UUID/fromString %) (vectorize uncoerced-query-params)))
+      (get-in ctx [:request :body-params :jobs])
+      [(get-in ctx [:request :body-params :job])]))
 
 (defn check-jobs-exist
   [conn ctx]
@@ -1171,6 +1173,18 @@
     (cond
       (empty? jobs)
       [true {:error "Need to specify at least 1 job."}]
+
+      (and (get-in ctx [:request :body-params :job])
+           (get-in ctx [:request :body-params :jobs]))
+      [true {:error "Can't specify both \"job\" and \"jobs\"."}]
+
+      (and (get-in ctx [:request :query-params :job])
+           (get-in ctx [:request :body-params :job]))
+      [true {:error "Can't specify \"job\" in both query and body."}]
+
+      (and (get-in ctx [:request :query-params :job])
+           (get-in ctx [:request :body-params :jobs]))
+      [true {:error "Can't specify both \"job\" in query and \"jobs\" in body."}]
 
       (and (nil? retries) (nil? increment))
       [true {::error "Need to specify either retries or increment."}]
