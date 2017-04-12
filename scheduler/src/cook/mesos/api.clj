@@ -186,12 +186,18 @@
   {:name (s/constrained s/Str non-empty-max-128-characters-and-alphanum?)
    :version (s/constrained s/Str non-empty-max-128-characters-and-alphanum?)})
 
+(s/defschema JobName
+  (s/both s/Str (s/both s/Str (s/pred max-128-characters-and-alphanum? 'max-128-characters-and-alphanum?))))
+
+(s/defschema JobPriority
+  (s/both s/Int (s/pred #(<= 0 % 100) 'between-0-and-100)))
+
 (def Job
   "A schema for a job"
   {:uuid s/Uuid
    :command s/Str
-   :name (s/both s/Str (s/pred max-128-characters-and-alphanum? 'max-128-characters-and-alphanum?))
-   :priority (s/both s/Int (s/pred #(<= 0 % 100) 'between-0-and-100))
+   :name JobName
+   :priority JobPriority
    :max-retries PosInt
    :max-runtime PosInt
    (s/optional-key :uris) [Uri]
@@ -214,9 +220,13 @@
   (-> Job
     ;; make max-runtime optional.
     ;; It is *not* optional internally but don't want to force users to set it
+    (dissoc :name)
+    (dissoc :priority)
     (dissoc :max-runtime)
     (dissoc :user)
-    (merge {(s/optional-key :uris) [UriRequest]
+    (merge {(s/optional-key :name) JobName
+            (s/optional-key :priority) JobPriority
+            (s/optional-key :uris) [UriRequest]
             (s/optional-key :env) {s/Keyword s/Str}
             (s/optional-key :labels) {s/Keyword s/Str}
             (s/optional-key :max-runtime) PosInt

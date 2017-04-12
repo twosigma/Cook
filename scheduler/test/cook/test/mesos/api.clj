@@ -193,6 +193,24 @@
                                         "cpus" cpus
                                         "mem" mem})
         h (basic-handler conn :gpus-enabled true :cpus 3 :memory-gb 2 :retry-limit 200)]
+    (testing "default attributes"
+      (let [job-with-defaults (dissoc (job 1 500 100) "name" "priority")
+            create-response (h {:request-method :post
+                                :scheme :http
+                                :uri "/rawscheduler"
+                                :headers {"Content-Type" "application/json"}
+                                :authorization/user "mforsyth"
+                                :body-params {"jobs" [job-with-defaults]}})
+            get-response (h {:scheme :http
+                             :uri "/rawscheduler"
+                             :authorization/user "mforsyth"
+                             :request-method :get
+                             :query-params {"job" (job-with-defaults "uuid")}})
+            new-job (-> get-response response->body-data first)]
+        (is (= (:status create-response) 201))
+        (is (= (:status get-response) 200))
+        (is (= (new-job "name") "cookjob"))
+        (is (= (new-job "priority") util/default-job-priority))))
     (testing "All within limits"
       (is (<= 200
               (:status (h {:request-method :post
