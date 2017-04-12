@@ -7,9 +7,16 @@ import uuid
 
 from retrying import retry
 
+def is_connection_error(exception):
+    return isinstance(exception, requests.exceptions.ConnectionError)
 
 class CookTest(unittest.TestCase):
     _multiprocess_can_split_ = True
+
+    @retry(retry_on_exception=is_connection_error, stop_max_delay=240000, wait_fixed=1000)
+    def wait_for_cook(self):
+        # if connection is refused, an exception will be thrown
+        self.session.get(self.cook_url)
 
     @retry(stop_max_delay=120000, wait_fixed=1000)
     def wait_for_job(self, job_id, status):
@@ -51,6 +58,7 @@ class CookTest(unittest.TestCase):
         self.cook_url = os.getenv('COOK_SCHEDULER_URL', 'http://localhost:12321')
         self.session = requests.Session()
         self.logger = logging.getLogger(__name__)
+        self.wait_for_cook()
 
     def test_basic_submit(self):
         job_spec = self.minimal_job()

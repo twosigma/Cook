@@ -21,5 +21,6 @@ env:
     - TEST_DIR=scheduler DEPS_CMD='lein with-profiles +test deps' TEST_CMD='lein test :all'
     - TEST_DIR=jobclient DEPS_CMD='mvn dependency:resolve' TEST_CMD='mvn test'
     - TEST_DIR=simulator DEPS_CMD='travis/prepare_simulation.sh' TEST_CMD='travis/run_simulation.sh'
+    - TEST_DIR=integration DEPS_CMD='travis/prepare_integration.sh' TEST_CMD='travis/run_integration.sh'
 before_script: (cd $TEST_DIR && $DEPS_CMD)
 script: cd $TEST_DIR && $TEST_CMD
