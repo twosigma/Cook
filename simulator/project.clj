@@ -13,6 +13,7 @@
                    [org.clojure/algo.generic "0.1.2"]
                    ;; [reloaded.repl "0.2.1"]
                    [clj-http "2.0.1"]
+                   [prismatic/schema "1.1.3"]
                    [robert/bruce "0.8.0"]
                    [incanter "1.5.7"]]
   :resource-paths ["resources"]

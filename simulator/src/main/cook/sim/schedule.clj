@@ -29,20 +29,21 @@
         (simu/tx-ent user-tempid))))
 
 (defn create-db-job
-  "Creates a new Simulant Action (job requet).  Returns the Datomic entity."
+  "Creates a new Simulant Action (job request).  Returns the Datomic entity."
   [conn job-spec user-spec user-id]
-  @(d/transact conn [{:db/id (d/tempid :test)
-                      :agent/_actions user-id
-                      :action/atTime (:at-ms job-spec)
-                      :action/type :action.type/job
-                      :job/username (:username user-spec)
-                      :job/name (:name job-spec)
-                      :job/priority (:priority job-spec)
-                      :job/duration (:duration job-spec)
-                      :job/memory (:memory job-spec)
-                      :job/cpu (:cpu job-spec)
-                      :job/docker? (:docker? job-spec)
-                      :job/exit-code (:exit-code job-spec)}]))
+  @(d/transact conn [(cond-> {:db/id (d/tempid :test)
+                              :agent/_actions user-id
+                              :action/atTime (:at-ms job-spec)
+                              :action/type :action.type/job
+                              :job/username (:username user-spec)
+                              :job/name (:name job-spec)
+                              :job/priority (:priority job-spec)
+                              :job/duration (:duration job-spec)
+                              :job/memory (:memory job-spec)
+                              :job/cpu (:cpu job-spec)
+                              :job/docker? (:docker? job-spec)
+                              :job/exit-code (:exit-code job-spec)}
+                       (:group job-spec) (assoc :job/group (:group job-spec)))]))
 
 ;;Implements a Simulant multimethod.  Creates a simulation, all of the users that
 ;; will act in the sim, and all of their jobs."
@@ -83,20 +84,47 @@
    ;; TODO simulate jobs that will always fail, or fail sometimes?
    :exit-code 0})
 
-(defn random-user
-  "Returns a randomly generated user with a specified name,
-   but a randomly generated collection of jobs.
-   The jobs will be influenced by the duration of the sim, (test-duration) as well
-   as the details of the user profile."
-  [test-duration profile name]
+(defn random-job-sequence
+  "Bases on a test duration and a user profile, generate a sequence
+   of jobs."
+  [test-duration profile]
   (let [duration-ms (* test-duration 1000)
         step #(random-long (fmap (partial * 1000) (:seconds-between-jobs profile)))]
-    {:username name
-     :profile (:description profile)
-     :jobs (->> (reductions + (repeatedly step))
-                (take-while (fn [t] (< t duration-ms)))
-                (map (partial random-job profile))
-                (into []))}))
+    (->> (reductions + (repeatedly step))
+         (take-while (fn [t] (< t duration-ms)))
+         (map (partial random-job profile))
+         (into []))))
+
+(defn assign-groups
+  "Given a sequence of jobs and a user profile (which includes grouping
+  behavior membership), assign groups to the jobs."
+  [{:keys [group-tendency group-size] :as profile} jobs]
+  (let [jobs-in-any-group (vec (random-sample group-tendency (range (count jobs))))
+        grouped-job-count (count jobs-in-any-group)
+        group-size-fn #(random-long {:mean (:mean group-size)
+                                     :std-dev (:std-dev group-size)
+                                     :floor (:floor group-size)
+                                     :ceiling (:ceiling group-size)})
+        group-names (loop [names [] i 0]
+                      (if (>= (count names) grouped-job-count)
+                        names
+                        (recur (into names (repeat (group-size-fn) (str "group-" i)))
+                               (inc i))))]
+    (map-indexed (fn [i job]
+                   (let [index-in-group-ids (.indexOf jobs-in-any-group i)]
+                     (if (>= index-in-group-ids 0)
+                       (assoc job :group (group-names index-in-group-ids))
+                       job)))
+                 jobs)))
+
+(defn random-user
+  "Returns a randomly generated user with a specified name,
+   but a randomly generated collection of jobs."
+  [test-duration profile name]
+  {:username name
+   :profile (:description profile)
+   :jobs (->> (random-job-sequence test-duration profile)
+              (assign-groups profile))})
 
 (defn users-for-profile
   "Given a test duration and a user profile, returns a vector of randomly

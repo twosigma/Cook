@@ -8,6 +8,11 @@
              [{:description "Profile 1"
                :usernames ["testuser1" "testuser2"]
                :docker-tendency 0.5
+               :group-tendency 0.5
+               :group-size {:mean 3
+                            :std-dev 1
+                            :floor 2
+                            :ceiling 6}
                :seconds-between-jobs {:mean 3
                                       :std-dev 1
                                       :floor 1

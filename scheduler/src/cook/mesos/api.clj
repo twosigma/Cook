@@ -313,6 +313,7 @@
 (def RawSchedulerRequest
   "Schema for a request to the raw scheduler endpoint."
   {:jobs [JobRequest]
+   (s/optional-key :override-group-immutability) s/Bool
    (s/optional-key :groups) [Group]})
 
 (defn- mk-container-params
@@ -903,7 +904,6 @@
                             s/Uuid str}
                            s))))))))
 
-(def override-group-str "override-group-immutability")
 
 (defn create-jobs!
   "Based on the context, persists the specified jobs, along with their groups,
@@ -967,7 +967,7 @@
                         jobs (get params :jobs)
                         groups (get params :groups)
                         user (get-in ctx [:request :authorization/user])
-                        override-group-immutability? (boolean (get params override-group-str))]
+                        override-group-immutability? (boolean (get params :override-group-immutability))]
                     (try
                       (cond
                         (empty? params)

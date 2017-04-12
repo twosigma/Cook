@@ -590,6 +590,24 @@
         (is (contains? (-> group-resp2 first (get "jobs") set) (get juuids 3)))
         (is (contains? (-> group-resp2 first (get "jobs") set) (get juuids 4)))))
 
+    (testing "Overriding group immutability"
+      (let [guuid (str (java.util.UUID/randomUUID))
+            juuids (vec (repeatedly 2 #(str (java.util.UUID/randomUUID))))
+            post (fn [params]
+               (h {:request-method :post
+                   :scheme :http
+                   :uri "/rawscheduler"
+                   :headers {"Content-Type" "application/json"}
+                   :authorization/user "dgrnbrg"
+                   :body-params params}))
+            initial-resp (post {"jobs" [(make-job :uuid (get juuids 0) :group guuid)]})
+            no-override-resp (post {"jobs" [(make-job :uuid (get juuids 1) :group guuid)]})
+            override-resp (post {"override-group-immutability" true
+                                 "jobs" [(make-job :uuid (get juuids 1) :group guuid)]})]
+        (is (<= 200 (:status initial-resp) 299))
+        (is (<= 400 (:status no-override-resp) 499))
+        (is (<= 200 (:status override-resp) 299))))
+
     (testing "Group with defaulted host placement"
       (let [guuid (str (UUID/randomUUID))
             post-resp (post {"groups" [{"uuid" guuid}]

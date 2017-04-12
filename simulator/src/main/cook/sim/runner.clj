@@ -1,5 +1,6 @@
 (ns cook.sim.runner
   (:require [clojure.java.io :as io]
+            [clojure.set :as set]
             [clj-http.client :as http]
             [clj-time.core :as t]
             [cheshire.core :as json]
@@ -8,6 +9,8 @@
             [simulant.util :as simu]
             [cook.sim.database :as db]
             [cook.sim.database :as data]))
+
+(def group-ids-atom (atom {"(group-name)" "(group-uuid)"}))
 
 (defmethod sim/create-sim :test.type/cook
   [sim-conn test sim]
@@ -22,6 +25,7 @@
   no actual resources, but will run for the specified number of seconds before exiting
   with the specified code."
   [cook-uri job-id {name :job/name
+                    group :job/group
                     username :job/username
                     priority :job/priority
                     duration :job/duration
@@ -30,10 +34,12 @@
                     docker? :job/docker?
                     exit-code :job/exit-code}]
   (let [cmd (str "sleep " duration "; exit " exit-code)
+        group-id (@group-ids-atom group)
         ;; TODO: determine if max_retries and max_runtime need to be configured,
         ;; or even randomized per job?
         body (json/generate-string
-              {:jobs [(merge {:name name
+              {:override-group-immutability true
+               :jobs [(merge {:name name
                               :priority priority
                               :max_retries 3
                               :max_runtime 86400000
@@ -46,7 +52,8 @@
                                             :docker {:image "python:3"}
                                             :volumes [{:container-path "/host-tmp"
                                                        :host-path "/tmp"
-                                                       :mode "RW"}]}}))]})]
+                                                       :mode "RW"}]}})
+                             (when group-id {:group group-id}))]})]
     (println "scheduling cook job with payload: " body)
     (http/post (str cook-uri "/rawscheduler")
                {:body body
@@ -70,6 +77,23 @@
                   :job/requested-at before-millis
                   :job/uuid job-uuid}])))
 
+
+(defn group-uuids-for-sim
+  "Each conceptual group in a test needs to be assigned a new UUID
+  for each sim run.  This function accepts a test id, finds all of the
+  group names in the sim, and creates a map of group-name->uuid"
+  [db test-id]
+  (let [test-entity (d/entity db test-id)]
+    (->> test-entity
+         :test/agents
+         (map :agent/actions)
+         (apply set/union)
+         (map :job/group)
+         (filter identity)
+         distinct
+         (map (fn [g] [g (d/squuid)]))
+         (into {}))))
+
 (defn simulate!
   "Top level function that runs all of the jobs in a Simulation at their specified
   times.
@@ -81,8 +105,9 @@
   (println "Running a simulation for schedule " test-id "...")
   (let [{:keys [sim-db-uri cook-api-uri process-count]} settings
         conn (:conn sim-db)
+        db (d/db conn)
         cook-sim (sim/create-sim conn
-                                 (-> (d/db conn) (d/entity test-id))
+                                 (d/entity db test-id)
                                  {:db/id  (d/tempid :sim)
                                   :sim/systemURI cook-api-uri
                                   :sim/label label
@@ -92,6 +117,9 @@
     (println "Created simulation " sim-id ".")
     (println "Label is \"" label "\".")
     (println "After jobs are finished, try running report -e " sim-id ".")
+
+    (reset! group-ids-atom (group-uuids-for-sim db test-id))
+
     (sim/create-action-log conn cook-sim)
     ;; Since this test relies on real cook, we can never configure the clock
     ;; to run at any speed other than 1x
