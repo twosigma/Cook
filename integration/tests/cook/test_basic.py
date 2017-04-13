@@ -7,8 +7,10 @@ import uuid
 
 from retrying import retry
 
+
 def is_connection_error(exception):
     return isinstance(exception, requests.exceptions.ConnectionError)
+
 
 class CookTest(unittest.TestCase):
     _multiprocess_can_split_ = True
@@ -24,14 +26,11 @@ class CookTest(unittest.TestCase):
         self.assertEqual(200, job.status_code)
         job = job.json()[0]
         if not job['status'] == status:
-            error_msg = 'Job %s had status %s - expected %s' % (job_id,
-                                                                job['status'],
-                                                                status)
+            error_msg = 'Job %s had status %s - expected %s' % (job_id, job['status'], status)
             self.logger.debug(error_msg)
             raise RuntimeError(error_msg)
         else:
-            self.logger.debug('Job %s has status %s - %s', job_id, status,
-                              job)
+            self.logger.debug('Job %s has status %s - %s', job_id, status, job)
         return job
 
     @staticmethod
@@ -314,3 +313,4 @@ class CookTest(unittest.TestCase):
         self.assertEqual(resp.status_code, 201, resp.text)
         job = self.wait_for_job(job_spec['uuid'], 'completed')
         self.assertEqual('success', job['instances'][0]['status'])
+        self.assertEqual(1, job['expected_runtime'])

@@ -566,7 +566,7 @@
    new-groups (submitted in the same request as the job). Returns proper Job
    objects, or else throws an exception"
   [db user task-constraints gpu-enabled? new-group-uuids
-   {:keys [cpus mem gpus uuid command priority max-retries max-runtime name
+   {:keys [cpus mem gpus uuid command priority max-retries max-runtime expected-runtime name
            uris ports env labels container group]
     :or {group nil}
     :as job}
@@ -601,7 +601,9 @@
                  (when group-uuid
                    {:group group-uuid})
                  (when container
-                   {:container container}))]
+                   {:container container})
+                 (when expected-runtime
+                   {:expected-runtime expected-runtime}))]
     (s/validate Job munged)
     (when (and (:gpus munged) (not gpu-enabled?))
       (throw (ex-info (str "GPU support is not enabled") {:gpus gpus})))
