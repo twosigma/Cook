@@ -59,29 +59,29 @@ class CookTest(unittest.TestCase):
         self.logger = logging.getLogger(__name__)
         self.wait_for_cook()
 
-    def test_basic_submit(self):
-        job_spec = self.minimal_job()
+    def submit_job(self, **kwargs):
+        job_spec = self.minimal_job(**kwargs)
         request_body = {'jobs': [job_spec]}
         resp = self.session.post('%s/rawscheduler' % self.cook_url, json=request_body)
+        return job_spec['uuid'], resp
+
+    def test_basic_submit(self):
+        job_uuid, resp = self.submit_job()
         self.assertEqual(resp.status_code, 201)
-        job = self.wait_for_job(job_spec['uuid'], 'completed')
+        job = self.wait_for_job(job_uuid, 'completed')
         self.assertEqual('success', job['instances'][0]['status'])
 
     def test_failing_submit(self):
-        job_spec = self.minimal_job(command='exit 1')
-        resp = self.session.post('%s/rawscheduler' % self.cook_url,
-                                 json={'jobs': [job_spec]})
+        job_uuid, resp = self.submit_job(command='exit 1')
         self.assertEqual(201, resp.status_code)
-        job = self.wait_for_job(job_spec['uuid'], 'completed')
+        job = self.wait_for_job(job_uuid, 'completed')
         self.assertEqual(1, len(job['instances']))
         self.assertEqual('failed', job['instances'][0]['status'])
 
     def test_max_runtime_exceeded(self):
-        job_spec = self.minimal_job(command='sleep 60', max_runtime=5000)
-        resp = self.session.post('%s/rawscheduler' % self.cook_url,
-                                 json={'jobs': [job_spec]})
+        job_uuid, resp = self.submit_job(command='sleep 60', max_runtime=5000)
         self.assertEqual(201, resp.status_code)
-        job = self.wait_for_job(job_spec['uuid'], 'completed')
+        job = self.wait_for_job(job_uuid, 'completed')
         self.assertEqual(1, len(job['instances']))
         self.assertEqual('failed', job['instances'][0]['status'])
         self.assertEqual(2003, job['instances'][0]['reason_code'])
@@ -207,46 +207,40 @@ class CookTest(unittest.TestCase):
         self.assertFalse(any(job for job in jobs if job['uuid'] == job_specs[1]['uuid']))
 
     def test_cancel_job(self):
-        job_spec = self.minimal_job(command='sleep 300')
-        self.session.post('%s/rawscheduler' % self.cook_url,
-                          json={'jobs': [job_spec]})
-        self.wait_for_job(job_spec['uuid'], 'running')
+        job_uuid, _ = self.submit_job(command='sleep 300')
+        self.wait_for_job(job_uuid, 'running')
         resp = self.session.delete(
-            '%s/rawscheduler?job=%s' % (self.cook_url, job_spec['uuid']))
+            '%s/rawscheduler?job=%s' % (self.cook_url, job_uuid))
         self.assertEqual(204, resp.status_code)
         job = self.session.get(
-            '%s/rawscheduler?job=%s' % (self.cook_url, job_spec['uuid'])).json()[0]
+            '%s/rawscheduler?job=%s' % (self.cook_url, job_uuid)).json()[0]
         self.assertEqual('failed', job['state'])
 
     def test_change_retries(self):
-        job_spec = self.minimal_job(command='sleep 10')
-        self.session.post('%s/rawscheduler' % self.cook_url,
-                          json={'jobs': [job_spec]})
-        self.wait_for_job(job_spec['uuid'], 'running')
+        job_uuid, _ = self.submit_job(command='sleep 10')
+        self.wait_for_job(job_uuid, 'running')
         resp = self.session.delete(
-            '%s/rawscheduler?job=%s' % (self.cook_url, job_spec['uuid']))
+            '%s/rawscheduler?job=%s' % (self.cook_url, job_uuid))
         self.assertEqual(204, resp.status_code)
         job = self.session.get(
-            '%s/rawscheduler?job=%s' % (self.cook_url, job_spec['uuid'])).json()[0]
+            '%s/rawscheduler?job=%s' % (self.cook_url, job_uuid)).json()[0]
         self.assertEqual('failed', job['state'])
-        resp = self.session.put('%s/retry' % self.cook_url, json={'retries': 2, 'jobs': [job_spec['uuid']]})
+        resp = self.session.put('%s/retry' % self.cook_url, json={'retries': 2, 'jobs': [job_uuid]})
         self.assertEqual(201, resp.status_code, resp.text)
         job = self.session.get(
-            '%s/rawscheduler?job=%s' % (self.cook_url, job_spec['uuid'])).json()[0]
+            '%s/rawscheduler?job=%s' % (self.cook_url, job_uuid)).json()[0]
         self.assertEqual('waiting', job['status'])
-        job = self.wait_for_job(job_spec['uuid'], 'completed')
+        job = self.wait_for_job(job_uuid, 'completed')
         self.assertEqual('success', job['state'])
 
     def test_cancel_instance(self):
-        job_spec = self.minimal_job(command='sleep 10', max_retries=2)
-        self.session.post('%s/rawscheduler' % self.cook_url,
-                          json={'jobs': [job_spec]})
-        job = self.wait_for_job(job_spec['uuid'], 'running')
+        job_uuid, _ = self.submit_job(command='sleep 10', max_retries=2)
+        job = self.wait_for_job(job_uuid, 'running')
         task_id = job['instances'][0]['task_id']
         resp = self.session.delete(
             '%s/rawscheduler?instance=%s' % (self.cook_url, task_id))
         self.assertEqual(204, resp.status_code)
-        job = self.wait_for_job(job_spec['uuid'], 'completed')
+        job = self.wait_for_job(job_uuid, 'completed')
         self.assertEqual('success', job['state'])
 
     def test_implicit_group(self):
@@ -307,10 +301,9 @@ class CookTest(unittest.TestCase):
         self.assertEqual(2004, jobs[1]['instances'][0]['reason_code'])
 
     def test_expected_runtime_field(self):
-        job_spec = self.minimal_job(expected_runtime=1)
-        request_body = {'jobs': [job_spec]}
-        resp = self.session.post('%s/rawscheduler' % self.cook_url, json=request_body)
+        expected_runtime = 1
+        job_uuid, resp = self.submit_job(expected_runtime=expected_runtime)
         self.assertEqual(resp.status_code, 201, resp.text)
-        job = self.wait_for_job(job_spec['uuid'], 'completed')
+        job = self.wait_for_job(job_uuid, 'completed')
         self.assertEqual('success', job['instances'][0]['status'])
-        self.assertEqual(1, job['expected_runtime'])
+        self.assertEqual(expected_runtime, job['expected_runtime'])
