@@ -9,8 +9,17 @@ if [ "$(docker ps -aq -f name=${NAME})" ]; then
 fi
 
 $(minimesos info | grep ZOOKEEPER)
+EXIT_CODE=$?
+if [ ${EXIT_CODE} -eq 0 ]
+then
+    ZK=${MINIMESOS_ZOOKEEPER%;}
+    echo "ZK = ${ZK}"
+else
+    echo "Could not get ZK URI from minimesos; you may need to restart minimesos"
+    exit ${EXIT_CODE}
+fi
 
-ZK=${MINIMESOS_ZOOKEEPER%;}
+echo "Starting cook..."
 docker run \
     -i \
     -t \
