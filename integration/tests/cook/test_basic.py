@@ -306,3 +306,11 @@ class CookTest(unittest.TestCase):
         self.assertEqual('success', jobs[0]['state'])
         self.assertEqual('failed', jobs[1]['state'])
         self.assertEqual(2004, jobs[1]['instances'][0]['reason_code'])
+
+    def test_expected_runtime_field(self):
+        job_spec = self.minimal_job(expected_runtime=1)
+        request_body = {'jobs': [job_spec]}
+        resp = self.session.post('%s/rawscheduler' % self.cook_url, json=request_body)
+        self.assertEqual(resp.status_code, 201, resp.text)
+        job = self.wait_for_job(job_spec['uuid'], 'completed')
+        self.assertEqual('success', job['instances'][0]['status'])

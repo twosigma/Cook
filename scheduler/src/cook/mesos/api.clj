@@ -192,8 +192,16 @@
 (s/defschema JobPriority
   (s/both s/Int (s/pred #(<= 0 % 100) 'between-0-and-100)))
 
-(def Job
-  "A schema for a job"
+(defn valid-runtimes?
+  "Returns false if the expected-runtime of the given job
+  is greater than the max-runtime; otherwise, returns true"
+  [{:keys [expected-runtime max-runtime]}]
+  (if (and expected-runtime max-runtime)
+    (<= expected-runtime max-runtime)
+    true))
+
+(def JobMap
+  "Schema for the fields of a job"
   {:uuid s/Uuid
    :command s/Str
    :name JobName
@@ -213,31 +221,40 @@
    ;; Make sure the user name is valid. It must begin with a lower case character, end with
    ;; a lower case character or a digit, and has length between 2 to (62 + 2).
    :user UserName
-   (s/optional-key :application) Application})
+   (s/optional-key :application) Application
+   (s/optional-key :expected-runtime) PosInt})
+
+(def Job
+  "Full schema for a job"
+  (s/constrained JobMap valid-runtimes?))
+
+(def JobRequestMap
+  "Schema for the fields of a job request"
+  (-> JobMap
+      ;; make max-runtime optional.
+      ;; It is *not* optional internally but don't want to force users to set it
+      (dissoc :name)
+      (dissoc :priority)
+      (dissoc :max-runtime)
+      (dissoc :user)
+      (merge {(s/optional-key :name) JobName
+              (s/optional-key :priority) JobPriority
+              (s/optional-key :uris) [UriRequest]
+              (s/optional-key :env) {s/Keyword s/Str}
+              (s/optional-key :labels) {s/Keyword s/Str}
+              (s/optional-key :max-runtime) PosInt
+              :cpus PosNum
+              :mem PosNum})))
 
 (def JobRequest
   "Schema for the part of a request that launches a single job."
-  (-> Job
-    ;; make max-runtime optional.
-    ;; It is *not* optional internally but don't want to force users to set it
-    (dissoc :name)
-    (dissoc :priority)
-    (dissoc :max-runtime)
-    (dissoc :user)
-    (merge {(s/optional-key :name) JobName
-            (s/optional-key :priority) JobPriority
-            (s/optional-key :uris) [UriRequest]
-            (s/optional-key :env) {s/Keyword s/Str}
-            (s/optional-key :labels) {s/Keyword s/Str}
-            (s/optional-key :max-runtime) PosInt
-            :cpus PosNum
-            :mem PosNum})))
+  (s/constrained JobRequestMap valid-runtimes?))
 
 (def JobResponse
   "Schema for a description of a job (as returned by the API).
   The structure is similar to JobRequest, but has some differences.
   For example, it can include descriptions of instances for the job."
-  (-> JobRequest
+  (-> JobRequestMap
       (dissoc (s/optional-key :group))
       (merge {:framework-id (s/maybe s/Str)
               :status s/Str
@@ -386,7 +403,7 @@
 (s/defn make-job-txn
   "Creates the necessary txn data to insert a job into the database"
   [job :- Job]
-  (let [{:keys [uuid command max-retries max-runtime priority cpus mem gpus
+  (let [{:keys [uuid command max-retries max-runtime expected-runtime priority cpus mem gpus
                 user name ports uris env labels container group application disable-mea-culpa-retries]
          :or {group nil
               disable-mea-culpa-retries false}} job
@@ -459,7 +476,8 @@
                                      :resource/amount mem}]}
                     application (assoc :job/application
                                        {:application/name (:name application)
-                                        :application/version (:version application)}))]
+                                        :application/version (:version application)})
+                    expected-runtime (assoc :job/expected-runtime expected-runtime))]
 
     ;; TODO batch these transactions to improve performance
     (-> ports
@@ -691,6 +709,7 @@
         resources (util/job-ent->resources job)
         groups (:group/_job job)
         application (:job/application job)
+        expected-runtime (:job/expected-runtime job)
         job-map {:command (:job/command job)
                  :uuid (str (:job/uuid job))
                  :name (:job/name job "cookjob")
@@ -762,7 +781,8 @@
                       (:job/instance job))}]
     (cond-> job-map
             groups (assoc :groups (map #(str (:group/uuid %)) groups))
-            application (assoc :application (util/remove-datomic-namespacing application)))))
+            application (assoc :application (util/remove-datomic-namespacing application))
+            expected-runtime (assoc :expected-runtime expected-runtime))))
 
 (defn fetch-group-job-details
   [db guuid]
@@ -888,7 +908,7 @@
                   (or (their-matchers s)
                       (get {;; can't use form->kebab-case because env and label
                             ;; accept arbitrary kvs
-                            JobRequest (partial map-keys ->kebab-case)
+                            JobRequestMap (partial map-keys ->kebab-case)
                             Group (partial map-keys ->kebab-case)
                             HostPlacement (fn [hp]
                                             (update hp :type keyword))
