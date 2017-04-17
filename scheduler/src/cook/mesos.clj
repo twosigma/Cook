@@ -14,7 +14,9 @@
 ;; limitations under the License.
 ;;
 (ns cook.mesos
-  (:require [clojure.core.async :as async]
+  (:require [clj-http.client :as http]
+            [clojure.core.async :as async]
+            [clojure.data.json :as json]
             [clojure.tools.logging :as log]
             [cook.curator :as curator]
             [cook.datomic :refer (transact-with-retries)]
@@ -28,7 +30,8 @@
             [mesomatic.types]
             [metatransaction.core :as mt :refer (db)]
             [metatransaction.utils :as dutils]
-            [metrics.counters :as counters])
+            [metrics.counters :as counters]
+            [swiss.arrows :refer :all])
   (:import [org.apache.curator.framework.recipes.leader LeaderSelector LeaderSelectorListener]
            org.apache.curator.framework.state.ConnectionState))
 
@@ -75,9 +78,93 @@
 
 (counters/defcounter [cook-mesos mesos mesos-leader])
 
+(defn make-mesos-driver
+  "Creates a mesos driver
+
+   Parameters:
+   mesos-framework-name     -- string, name to use when connecting to mesos.
+                               Will be appended with version of cook
+   mesos-role               -- string, (optional) The role to connect to mesos with
+   mesos-principal          -- string, (optional) principal to connect to mesos with
+   gpu-enabled?             -- boolean, (optional) whether cook will schedule gpu jobs
+   mesos-failover-timeout   -- long, (optional) time in milliseconds mesos will wait
+                               for framework to reconnect.
+                               See http://mesos.apache.org/documentation/latest/high-availability-framework-guide/
+                               and search for failover_timeout
+   mesos-master             -- str, (optional) connection string for mesos masters
+   scheduler                -- mesos scheduler implementation
+   framework-id             -- str, (optional) Id of framework if it has connected to mesos before
+   "
+  ([config scheduler]
+   (make-mesos-driver config scheduler nil))
+  ([{:keys [mesos-framework-name mesos-role mesos-principal gpu-enabled?
+            mesos-failover-timeout mesos-master] :as config}
+    scheduler framework-id]
+   (apply mesomatic.scheduler/scheduler-driver
+          scheduler
+          (merge
+            {:user ""
+             :name (str mesos-framework-name
+                        "-"
+                        cook.util/version)
+             :checkpoint true}
+            (when mesos-role
+              {:role mesos-role})
+            (when mesos-principal
+              {:principal mesos-principal})
+            (when gpu-enabled?
+              {:capabilities [{:type :framework-capability-gpu-resources}]})
+            (when mesos-failover-timeout
+              {:failover-timeout mesos-failover-timeout})
+            (when framework-id
+              {:id {:value framework-id}}))
+          mesos-master
+          (when mesos-principal
+            [{:principal mesos-principal}]))))
+
+(defn get-mesos-utilization
+  "Queries the mesos master to get the utilization.
+   Returns the max of cpu and mem utilization as a decimal (e.g. 0.92)"
+  [mesos-master-hosts]
+  (let [mesos-master-urls (map #(str "http://" % ":5050/metrics/snapshot") mesos-master-hosts)
+        get-stats (fn [url] (some->> url
+                                     (http/get)
+                                     (:body)
+                                     (json/read-str)))
+        utilization (some-<>> mesos-master-urls
+                              (map get-stats)
+                              (filter #(pos? (get % "master/elected")))
+                              (first)
+                              (select-keys <> ["master/cpus_percent" "master/mem_percent"])
+                              (vals)
+                              (apply max))]
+    utilization))
+
 (defn start-mesos-scheduler
-  "Starts a leader elector that runs a mesos."
-  [mesos-master mesos-master-hosts curator-framework mesos-datomic-conn mesos-datomic-mult zk-prefix mesos-failover-timeout mesos-principal mesos-role mesos-framework-name offer-incubate-time-ms mea-culpa-failure-limit task-constraints riemann-host riemann-port mesos-pending-jobs-atom offer-cache gpu-enabled? rebalancer-config
+  "Starts a leader elector. When the process is leader, it starts the mesos
+   scheduler and associated threads to interact with mesos.
+
+   Parameters
+   make-mesos-driver-fn     -- fn, function that accepts a mesos scheduler and framework id
+                                   and returns a mesos driver
+   get-mesos-utilization    -- fn, function with no parameters, returns utilization of cluster [0,1]
+   mesos-master-hosts       -- seq[strings], url of mesos masters to query for cluster info
+   curator-framework        -- curator object, object for interacting with zk
+   mesos-datomic-conn       -- datomic conn, connection to datomic db for interacting with datomic
+   mesos-datomic-mult       -- async channel, feed of db writes
+   zk-prefix                -- str, prefix in zk for cook data
+   offer-incubate-time-ms   -- long, time in millis that offers are allowed to sit before they are declined
+   mea-culpa-failure-limit  -- long, max failures of mea culpa reason before it is considered a 'real' failure
+                                     see scheduler/docs/configuration.asc for more details
+   task-constraints         -- map, constraints on task. See scheduler/docs/configuration.asc for more details
+   riemann-host             -- str, dns name of riemann
+   riemann-port             -- int, port for riemann
+   mesos-pending-jobs-atom  -- atom, Populate (and update) list of pending jobs into atom
+   offer-cache              -- atom, map from host to most recent offer. Used to get attributes
+   gpu-enabled?             -- boolean, whether cook will schedule gpus
+   rebalancer-config        -- map, config for rebalancer. See scheduler/docs/rebalancer-config.asc for details
+   fenzo-config             -- map, config for fenzo, See scheduler/docs/configuration.asc for more details"
+  [make-mesos-driver-fn get-mesos-utilization curator-framework mesos-datomic-conn mesos-datomic-mult zk-prefix offer-incubate-time-ms mea-culpa-failure-limit task-constraints riemann-host riemann-port mesos-pending-jobs-atom offer-cache gpu-enabled? rebalancer-config
    {:keys [fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn
            fenzo-floor-iterations-before-reset good-enough-fitness]
     :as fenzo-config}]
@@ -119,27 +206,7 @@
                               ;; TODO: get the framework ID and try to reregister
                               (let [normal-exit (atom true)]
                                 (try
-                                  (let [driver (apply mesomatic.scheduler/scheduler-driver
-                                                      scheduler
-                                                      (merge
-                                                        {:user ""
-                                                         :name (str mesos-framework-name
-                                                                    "-"
-                                                                    cook.util/version)
-                                                         :checkpoint true}
-                                                        (when mesos-role
-                                                          {:role mesos-role})
-                                                        (when mesos-principal
-                                                          {:principal mesos-principal})
-                                                        (when gpu-enabled?
-                                                          {:capabilities [{:type :framework-capability-gpu-resources}]})
-                                                        (when mesos-failover-timeout
-                                                          {:failover-timeout mesos-failover-timeout})
-                                                        (when framework-id
-                                                          {:id {:value framework-id}}))
-                                                      mesos-master
-                                                      (when mesos-principal
-                                                        [{:principal mesos-principal}]))]
+                                  (let [driver (make-mesos-driver-fn scheduler framework-id)]
                                     (mesomatic.scheduler/start! driver)
                                     (reset! current-driver driver)
                                     (when riemann-host
@@ -151,7 +218,7 @@
                                     (cook.mesos.heartbeat/start-heartbeat-watcher! mesos-datomic-conn mesos-heartbeat-chan)
                                     (cook.mesos.rebalancer/start-rebalancer! {:conn  mesos-datomic-conn
                                                                               :driver driver
-                                                                              :mesos-master-hosts mesos-master-hosts
+                                                                              :get-mesos-utilization get-mesos-utilization
                                                                               :pending-jobs-atom mesos-pending-jobs-atom
                                                                               :offer-cache offer-cache
                                                                               :config rebalancer-config

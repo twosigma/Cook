@@ -15,12 +15,10 @@
 ;;
 (ns cook.mesos.rebalancer
   (:require [chime :refer [chime-at]]
-            [clj-http.client :as http]
             [clj-time.core :as time]
             [clj-time.periodic :as periodic]
             [clojure.core.async :as async]
-            [clojure.core.reducers :as r]
-            [clojure.data.json :as json]
+            [clojure.core.reducers :as r] 
             [clojure.data.priority-map :as pm]
             [clojure.tools.logging :as log]
             [clojure.walk :refer (keywordize-keys)]
@@ -230,24 +228,26 @@
          user->sorted-running-task-ents (->> running-task-ents
                                              (group-by util/task-ent->user)
                                              (map (fn [[user task-ents]]
-                                                    [user (into (sorted-set-by (case category
-                                                                                 :normal (util/same-user-task-comparator)
-                                                                                 :gpu (util/same-user-task-comparator))) task-ents)]))
+                                                    [user (into (sorted-set-by (util/same-user-task-comparator)) 
+                                                                task-ents)]))
                                              (into {}))
+         scored-task-pairs (case category
+                             :normal (dru/sorted-task-scored-task-pairs user->dru-divisors user->sorted-running-task-ents)
+                             :gpu (dru/sorted-task-cumulative-gpu-score-pairs user->dru-divisors user->sorted-running-task-ents))
          task->scored-task (into (pm/priority-map-keyfn (case category
                                                           :normal (comp - :dru)
                                                           :gpu (fnil - 0)))
-                                 (case category
-                                   :normal (dru/sorted-task-scored-task-pairs user->dru-divisors user->sorted-running-task-ents)
-                                   :gpu (dru/sorted-task-cumulative-gpu-score-pairs user->dru-divisors user->sorted-running-task-ents)))]
-     (->State task->scored-task
-              user->sorted-running-task-ents
-              host->spare-resources
-              user->dru-divisors
+                                 scored-task-pairs)]
+     (->State task->scored-task 
+              user->sorted-running-task-ents 
+              host->spare-resources 
+              user->dru-divisors 
               (case category
                 :normal compute-pending-normal-job-dru
                 :gpu compute-pending-gpu-job-dru)
               preempted-tasks))))
+   
+
 
 (defn next-state
   "Takes state, a pending job entity to launch and a preemption decision, returns the next state"
@@ -372,6 +372,7 @@
 (defn compute-next-state-and-preemption-decision
   "Takes state, params and a pending job entity, returns new state and preemption decision"
   [offer-cache state params pending-job]
+  (log/debug "Trying to find space for: " pending-job)
   (if-let [preemption-decision (compute-preemption-decision offer-cache state params pending-job)]
     [(next-state state pending-job preemption-decision) preemption-decision]
     [state nil]))
@@ -386,6 +387,7 @@
         jobs-to-make-room-for (filter (partial util/job-allowed-to-start? db)
                                       pending-job-ents)
         init-state (init-state db (util/get-running-task-ents db) jobs-to-make-room-for host->spare-resources category)]
+    (log/debug "Jobs to make room for:" jobs-to-make-room-for)
     (loop [state init-state
            remaining-preemption max-preemption
            [pending-job-ent & jobs-to-make-room-for] jobs-to-make-room-for
@@ -448,21 +450,7 @@
         (when-let [task-id (:instance/task-id task-ent)]
           (mesos/kill-task! driver {:value task-id}))))))
 
-(defn get-mesos-utilization
-  [mesos-master-hosts]
-  (let [mesos-master-urls (map #(str "http://" % ":5050/metrics/snapshot") mesos-master-hosts)
-        get-stats (fn [url] (some->> url
-                                     (http/get)
-                                     (:body)
-                                     (json/read-str)))
-        utilization (some-<>> mesos-master-urls
-                              (map get-stats)
-                              (filter #(pos? (get % "master/elected")))
-                              (first)
-                              (select-keys <> ["master/cpus_percent" "master/mem_percent"])
-                              (vals)
-                              (apply max))]
-    utilization))
+
 
 (def datomic-params [:min-utilization-threshold
                      :safe-dru-threshold
@@ -487,7 +475,7 @@
                                            recognized-params))])))))
 
 (defn start-rebalancer!
-  [{:keys [conn driver mesos-master-hosts pending-jobs-atom offer-cache view-incubating-offers view-mature-offers config]}]
+  [{:keys [conn driver get-mesos-utilization pending-jobs-atom offer-cache view-incubating-offers view-mature-offers config]}]
   (binding [metrics-dru-scale (:dru-scale config)]
     (update-datomic-params-from-config! conn config)
 
@@ -507,8 +495,9 @@
                                                  host->combined-offers))))
           shutdown-rebalancer (chime-at (periodic/periodic-seq (time/now) rebalance-interval)
                                         (fn [now]
+                                          (log/info "Rebalance cycle starting")
                                           (let [params (read-datomic-params conn)
-                                                utilization (get-mesos-utilization mesos-master-hosts)
+                                                utilization (get-mesos-utilization)
                                                 host->spare-resources (->> @host->combined-offers-atom
                                                                            (map (fn [[k v]]
                                                                                   (when (time/before?

@@ -91,7 +91,7 @@
    Initial code from: http://blog.malcolmsparks.com/?p=42"
   ([key-fn ^java.util.Comparator comp-fn colls]
    (letfn [(next-item [[_ colls]]
-             (if (nil? colls)
+             (if-not (seq colls)
                [:end nil] ; Allow nil items in colls
                (let [[[yield & remaining] & other-colls]
                      (sort-by (comp key-fn first) comp-fn colls)]

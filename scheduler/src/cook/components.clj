@@ -86,36 +86,40 @@
 
 (def mesos-scheduler
   {:mesos-scheduler (fnk [[:settings mesos-master mesos-master-hosts mesos-leader-path mesos-failover-timeout mesos-principal mesos-role mesos-framework-name offer-incubate-time-ms mea-culpa-failure-limit fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset task-constraints riemann mesos-gpu-enabled rebalancer good-enough-fitness] mesos-datomic mesos-datomic-mult curator-framework mesos-pending-jobs-atom mesos-offer-cache]
-                         (try
-                           (Class/forName "org.apache.mesos.Scheduler")
-                           ((lazy-load-var 'cook.mesos/start-mesos-scheduler)
-                            mesos-master
-                            mesos-master-hosts
-                            curator-framework
-                            mesos-datomic
-                            mesos-datomic-mult
-                            mesos-leader-path
-                            mesos-failover-timeout
-                            mesos-principal
-                            mesos-role
-                            mesos-framework-name
-                            offer-incubate-time-ms
-                            mea-culpa-failure-limit
-                            task-constraints
-                            (:host riemann)
-                            (:port riemann)
-                            mesos-pending-jobs-atom
-                            mesos-offer-cache
-                            mesos-gpu-enabled
-                            rebalancer
-                            {:fenzo-max-jobs-considered fenzo-max-jobs-considered
-                             :fenzo-scaleback fenzo-scaleback
-                             :fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-warn
-                             :fenzo-floor-iterations-before-reset fenzo-floor-iterations-before-reset
-                             :good-enough-fitness good-enough-fitness})
-                           (catch ClassNotFoundException e
-                             (log/warn e "Not loading mesos support...")
-                             nil)))})
+                         (let [make-mesos-driver-fn (partial (lazy-load-var 'cook.mesos/make-mesos-driver)
+                                                             {:mesos-master mesos-master
+                                                              :mesos-failover-timeout mesos-failover-timeout
+                                                              :mesos-principal mesos-principal
+                                                              :mesos-role mesos-role
+                                                              :mesos-framework-name mesos-framework-name
+                                                              :gpus-enabled? mesos-gpu-enabled})
+                               get-mesos-utilization-fn (partial (lazy-load-var 'cook.mesos/get-mesos-utilization) mesos-master-hosts)]
+                           (try
+                             (Class/forName "org.apache.mesos.Scheduler")
+                             ((lazy-load-var 'cook.mesos/start-mesos-scheduler)
+                              make-mesos-driver-fn
+                              get-mesos-utilization-fn
+                              curator-framework
+                              mesos-datomic
+                              mesos-datomic-mult
+                              mesos-leader-path
+                              offer-incubate-time-ms
+                              mea-culpa-failure-limit
+                              task-constraints
+                              (:host riemann)
+                              (:port riemann)
+                              mesos-pending-jobs-atom
+                              mesos-offer-cache
+                              mesos-gpu-enabled
+                              rebalancer
+                              {:fenzo-max-jobs-considered fenzo-max-jobs-considered
+                               :fenzo-scaleback fenzo-scaleback
+                               :fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-warn
+                               :fenzo-floor-iterations-before-reset fenzo-floor-iterations-before-reset
+                               :good-enough-fitness good-enough-fitness})
+                             (catch ClassNotFoundException e
+                               (log/warn e "Not loading mesos support...")
+                               nil))))})
 
 (defn health-check-middleware
   "This adds /debug to return 200 OK"
