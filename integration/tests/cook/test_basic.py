@@ -301,9 +301,16 @@ class CookTest(unittest.TestCase):
         self.assertEqual(2004, jobs[1]['instances'][0]['reason_code'])
 
     def test_expected_runtime_field(self):
+        # Should support expected_runtime
         expected_runtime = 1
         job_uuid, resp = self.submit_job(expected_runtime=expected_runtime)
-        self.assertEqual(resp.status_code, 201, resp.text)
+        self.assertEqual(resp.status_code, 201)
         job = self.wait_for_job(job_uuid, 'completed')
         self.assertEqual('success', job['instances'][0]['status'])
         self.assertEqual(expected_runtime, job['expected_runtime'])
+
+        # Should disallow expected_runtime > max_runtime
+        expected_runtime = 2
+        max_runtime = expected_runtime - 1
+        job_uuid, resp = self.submit_job(expected_runtime=expected_runtime, max_runtime=max_runtime)
+        self.assertEqual(resp.status_code, 400)

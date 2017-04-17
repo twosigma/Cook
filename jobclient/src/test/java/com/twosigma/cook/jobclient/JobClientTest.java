@@ -84,6 +84,7 @@ public class JobClientTest {
         jobBuilder.setMemory(100.0);
         jobBuilder.setCpus(1.0);
         jobBuilder.setApplication(new Application("sleep-app", "latest"));
+        jobBuilder.setExpectedRuntime(10000L);
         _initializedJob = jobBuilder.build();
 
         // Create the job client.
