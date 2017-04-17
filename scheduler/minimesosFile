@@ -72,6 +72,8 @@ minimesos {
         loggingLevel = "# INHERIT FROM CLUSTER"
     }
 
+    // Minimesos currently has an NPE without marathon
+    // https://github.com/ContainerSolutions/minimesos/issues/532
     marathon {
         imageName = "mesosphere/marathon"
         imageTag = "v1.3.5"
