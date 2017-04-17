@@ -75,11 +75,6 @@ minimesos {
     marathon {
         imageName = "mesosphere/marathon"
         imageTag = "v1.3.5"
-
-        // Add 'app { marathonJson = "<path or URL to JSON file>" }' for every task you want to execute
-        app {
-            marathonJson = "https://raw.githubusercontent.com/ContainerSolutions/minimesos/master/opt/apps/weave-scope.json"
-        }
     }
 
     zookeeper {
