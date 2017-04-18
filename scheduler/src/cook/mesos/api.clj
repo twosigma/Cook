@@ -231,8 +231,6 @@
 (def JobRequestMap
   "Schema for the fields of a job request"
   (-> JobMap
-      ;; make max-runtime optional.
-      ;; It is *not* optional internally but don't want to force users to set it
       (dissoc :name)
       (dissoc :priority)
       (dissoc :max-runtime)
