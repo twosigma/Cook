@@ -204,7 +204,6 @@
                                    :task-lost
                                    :task-error} :instance.status/failed)
                prior-job-state (:job/state (d/entity db job))
-               instance-ent (d/entity db instance)
                current-time (now)
                instance-runtime (- (.getTime current-time) ; Used for reporting
                                    (.getTime (or (:instance/start-time instance-ent) current-time)))
