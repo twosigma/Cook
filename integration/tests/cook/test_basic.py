@@ -314,3 +314,20 @@ class CookTest(unittest.TestCase):
         max_runtime = expected_runtime - 1
         job_uuid, resp = self.submit_job(expected_runtime=expected_runtime, max_runtime=max_runtime)
         self.assertEqual(resp.status_code, 400)
+
+    def test_application_field(self):
+        # Should support application
+        application = {'name': 'foo-app', 'version': '0.1.0'}
+        job_uuid, resp = self.submit_job(application=application)
+        self.assertEqual(resp.status_code, 201)
+        job = self.wait_for_job(job_uuid, 'completed')
+        self.assertEqual('success', job['instances'][0]['status'])
+        self.assertEqual(application, job['application'])
+
+        # Should require application name
+        _, resp = self.submit_job(application={'version': '0.1.0'})
+        self.assertEqual(resp.status_code, 400)
+
+        # Should require application version
+        _, resp = self.submit_job(application={'name': 'foo-app'})
+        self.assertEqual(resp.status_code, 400)
