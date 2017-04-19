@@ -37,3 +37,18 @@
   [db instance]
   (or (:instance/reason instance)
       (reason-code->reason-entity db (:instance/reason-code instance))))
+
+(defn all-known-reasons
+  "Returns a list of Datomic entities corresponding to all
+  of the currently defined failure reasons."
+  [db]
+  (map (partial d/entity db)
+       (d/q '[:find [?e ...]
+              :in $
+              :where
+              [?e :reason/code]]
+            db)))
+
+(defn default-failure-limit
+  [db]
+  (:scheduler.config/mea-culpa-failure-limit (d/entity db :scheduler/config)))
