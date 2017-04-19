@@ -13,9 +13,11 @@
 ;; limitations under the License.
 ;;
 (ns cook.components
-  (:require [clj-logging-config.log4j :as log4j-conf]
+  (:require [chime :refer [chime-ch]]
+            [clj-logging-config.log4j :as log4j-conf]
             [clj-pid.core :as pid]
             [clj-time.core :as t]
+            [clj-time.periodic :as periodic]
             [clojure.core.cache :as cache]
             [clojure.edn :as edn]
             [clojure.java.io :as io]
@@ -83,41 +85,47 @@
 
 (def mesos-scheduler
   {:mesos-scheduler (fnk [[:settings mesos-master mesos-master-hosts mesos-leader-path mesos-failover-timeout mesos-principal mesos-role mesos-framework-name offer-incubate-time-ms mea-culpa-failure-limit fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset fenzo-fitness-calculator task-constraints riemann mesos-gpu-enabled rebalancer good-enough-fitness] mesos-datomic mesos-datomic-mult curator-framework mesos-pending-jobs-atom mesos-offer-cache]
-                      (let [make-mesos-driver-fn (partial (lazy-load-var 'cook.mesos/make-mesos-driver)
-                                                          {:mesos-master mesos-master
-                                                           :mesos-failover-timeout mesos-failover-timeout
-                                                           :mesos-principal mesos-principal
-                                                           :mesos-role mesos-role
-                                                           :mesos-framework-name mesos-framework-name
-                                                           :gpus-enabled? mesos-gpu-enabled})
-                            get-mesos-utilization-fn (partial (lazy-load-var 'cook.mesos/get-mesos-utilization) mesos-master-hosts)]
-                        (try
-                          (Class/forName "org.apache.mesos.Scheduler")
-                          ((lazy-load-var 'cook.mesos/start-mesos-scheduler)
-                            make-mesos-driver-fn
-                            get-mesos-utilization-fn
-                            curator-framework
-                            mesos-datomic
-                            mesos-datomic-mult
-                            mesos-leader-path
-                            offer-incubate-time-ms
-                            mea-culpa-failure-limit
-                            task-constraints
-                            (:host riemann)
-                            (:port riemann)
-                            mesos-pending-jobs-atom
-                            mesos-offer-cache
-                            mesos-gpu-enabled
-                            rebalancer
-                            {:fenzo-max-jobs-considered fenzo-max-jobs-considered
-                             :fenzo-scaleback fenzo-scaleback
-                             :fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-warn
-                             :fenzo-floor-iterations-before-reset fenzo-floor-iterations-before-reset
-                             :fenzo-fitness-calculator fenzo-fitness-calculator
-                             :good-enough-fitness good-enough-fitness})
-                          (catch ClassNotFoundException e
-                            (log/warn e "Not loading mesos support...")
-                            nil))))})
+                         (let [make-mesos-driver-fn (partial (lazy-load-var 'cook.mesos/make-mesos-driver)
+                                                             {:mesos-master mesos-master
+                                                              :mesos-failover-timeout mesos-failover-timeout
+                                                              :mesos-principal mesos-principal
+                                                              :mesos-role mesos-role
+                                                              :mesos-framework-name mesos-framework-name
+                                                              :gpus-enabled? mesos-gpu-enabled})
+                               get-mesos-utilization-fn (partial (lazy-load-var 'cook.mesos/get-mesos-utilization) mesos-master-hosts)]
+                           (try
+                             (Class/forName "org.apache.mesos.Scheduler")
+                             ((lazy-load-var 'cook.mesos/start-mesos-scheduler)
+                              make-mesos-driver-fn
+                              get-mesos-utilization-fn
+                              curator-framework
+                              mesos-datomic
+                              mesos-datomic-mult
+                              mesos-leader-path
+                              offer-incubate-time-ms
+                              mea-culpa-failure-limit
+                              task-constraints
+                              (:host riemann)
+                              (:port riemann)
+                              mesos-pending-jobs-atom
+                              mesos-offer-cache
+                              mesos-gpu-enabled
+                              rebalancer
+                              {:fenzo-max-jobs-considered fenzo-max-jobs-considered
+                               :fenzo-scaleback fenzo-scaleback
+                               :fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-warn
+                               :fenzo-floor-iterations-before-reset fenzo-floor-iterations-before-reset
+                               :fenzo-fitness-calculator fenzo-fitness-calculator
+                               :good-enough-fitness good-enough-fitness}
+                              ; TODO Make these configurable..
+                              {:ranker-trigger-chan (chime-ch  (periodic/periodic-seq (t/now) (t/seconds 5)))
+                               :matcher-trigger-chan (chime-ch  (periodic/periodic-seq (t/now) (t/seconds 1)))
+                               :rebalancer-trigger-chan (chime-ch (periodic/periodic-seq (t/now)
+                                                                                         (t/seconds (:interval-seconds rebalancer))))})
+                             (catch ClassNotFoundException e
+                               (log/warn e "Not loading mesos support...")
+                               nil))))})
+ 
 
 (defn health-check-middleware
   "This adds /debug to return 200 OK"
@@ -436,7 +444,7 @@
                          (throw (ex-info "You enabled nrepl but didn't configure a port. Please configure a port in your config file." {})))
                        ((lazy-load-var 'clojure.tools.nrepl.server/start-server) :port port)))}))
 
-(defn- init-logger
+(defn init-logger
   ([] (init-logger {:levels {"datomic.db" :warn
                              "datomic.peer" :warn
                              "datomic.kv-cluster" :warn

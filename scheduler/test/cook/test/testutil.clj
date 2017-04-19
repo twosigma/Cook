@@ -179,3 +179,19 @@
       (cache/ttl-cache-factory :ttl (* 1000 60))
       atom))
 
+(defn poll-until
+  "Polls `pred` every `interval-ms` and checks if it is true.
+   If true, returns. Otherwise, `poll-until` will wait
+   up to `max-wait-ms` at which point `poll-until` returns raises an exception
+   The exception will include the output of `on-exceed-str-fn`"
+  ([pred interval-ms max-wait-ms]
+   (poll-until pred interval-ms max-wait-ms (fn [] "")))
+  ([pred interval-ms max-wait-ms on-exceed-str-fn]
+   (let [start-ms (.getTime (java.util.Date.))]
+     (loop []
+       (when-not (pred)
+         (if (< (.getTime (java.util.Date.)) (+ start-ms max-wait-ms))
+           (recur)
+           (throw (ex-info (str "pred not true : " (on-exceed-str-fn))
+                           {:interval-ms interval-ms
+                                            :max-wait-ms max-wait-ms}))))))))

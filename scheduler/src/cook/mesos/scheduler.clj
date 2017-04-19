@@ -55,7 +55,7 @@
 
 (defn now
   []
-  (Date.))
+  (tc/to-date (time/now)))
 
 (defn offer-resource-values
   [offer resource-name value-type]
@@ -729,13 +729,11 @@
 
 (defn make-offer-handler
   [conn driver-atom fenzo fid-atom pending-jobs-atom offer-cache
-   max-considerable scaleback
-   floor-iterations-before-warn floor-iterations-before-reset]
+   max-considerable scaleback floor-iterations-before-warn 
+   floor-iterations-before-reset timer-chan]
   (let [chan-length 100
         offers-chan (async/chan (async/buffer chan-length))
-        resources-atom (atom (view-incubating-offers fenzo))
-        timer-chan (chime-ch (periodic/periodic-seq (time/now) (time/seconds 1))
-                             {:ch (async/chan (async/sliding-buffer 1))})]
+        resources-atom (atom (view-incubating-offers fenzo))]
     (async/thread
       (loop [num-considerable max-considerable]
         (reset! fenzo-num-considerable-atom num-considerable)
@@ -1194,13 +1192,13 @@
         {}))))
 
 (defn- start-jobs-prioritizer!
-  [conn pending-jobs-atom task-constraints]
+  [trigger-chan conn pending-jobs-atom task-constraints]
   (let [offensive-jobs-ch (make-offensive-job-stifler conn)
         offensive-job-filter (partial filter-offensive-jobs task-constraints offensive-jobs-ch)]
-    (chime-at (periodic/periodic-seq (time/now) (time/seconds 5))
-              (fn [time]
-                (reset! pending-jobs-atom
-                        (rank-jobs (db conn) (d/db conn) offensive-job-filter))))))
+    (util/chime-at-ch trigger-chan
+                      (fn [time]
+                        (reset! pending-jobs-atom
+                                (rank-jobs (db conn) (d/db conn) offensive-job-filter))))))
 
 (meters/defmeter [cook-mesos scheduler mesos-error])
 (meters/defmeter [cook-mesos scheduler offer-chan-full-error])
@@ -1293,14 +1291,12 @@
 (defn create-datomic-scheduler
   [conn set-framework-id driver-atom pending-jobs-atom offer-cache heartbeat-ch offer-incubate-time-ms mea-culpa-failure-limit
    fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset fenzo-fitness-calculator
-   task-constraints gpu-enabled? good-enough-fitness]
-
+   task-constraints gpu-enabled? good-enough-fitness {:keys [ranker-trigger-chan matcher-trigger-chan]}]
   (persist-mea-culpa-failure-limit! conn mea-culpa-failure-limit)
-
   (let [fid (atom nil)
         fenzo (make-fenzo-scheduler driver-atom offer-incubate-time-ms fenzo-fitness-calculator good-enough-fitness)
-        [offers-chan resources-atom] (make-offer-handler conn driver-atom fenzo fid pending-jobs-atom offer-cache fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset)]
-    (start-jobs-prioritizer! conn pending-jobs-atom task-constraints)
+        [offers-chan resources-atom] (make-offer-handler conn driver-atom fenzo fid pending-jobs-atom offer-cache fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset matcher-trigger-chan)]
+    (start-jobs-prioritizer! ranker-trigger-chan conn pending-jobs-atom task-constraints)
     {:scheduler
      (mesos/scheduler
        (registered [this driver framework-id master-info]

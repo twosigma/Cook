@@ -124,9 +124,10 @@
   (timers/time!
     sorted-task-scored-task-pairs-duration
     (->> user->sorted-running-task-ents
-       (map (fn [[user task-ents]]
-              (compute-task-scored-task-pairs (user->dru-divisors user) task-ents)))
-       (sorted-merge (comp :dru second)))))
+         (sort-by first)
+         (map (fn [[user task-ents]]
+                (compute-task-scored-task-pairs (user->dru-divisors user) task-ents)))
+         (sorted-merge (comp :dru second)))))
 
 (defn next-task->scored-task
   "Computes the priority-map from task to scored-task sorted by -dru for the next cycle.

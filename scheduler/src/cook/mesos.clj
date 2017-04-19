@@ -167,33 +167,12 @@
   [make-mesos-driver-fn get-mesos-utilization curator-framework mesos-datomic-conn mesos-datomic-mult zk-prefix offer-incubate-time-ms mea-culpa-failure-limit task-constraints riemann-host riemann-port mesos-pending-jobs-atom offer-cache gpu-enabled? rebalancer-config
    {:keys [fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn
            fenzo-floor-iterations-before-reset fenzo-fitness-calculator good-enough-fitness]
-    :as fenzo-config}]
+    :as fenzo-config}
+   {:keys [rebalancer-trigger-chan ranker-trigger-chan matcher-trigger-chan] :as trigger-chans}]
   (let [zk-framework-id (str zk-prefix "/framework-id")
         datomic-report-chan (async/chan (async/sliding-buffer 4096))
         mesos-heartbeat-chan (async/chan (async/buffer 4096))
-        current-driver (atom nil)
-        {:keys [scheduler view-incubating-offers]}
-        (sched/create-datomic-scheduler
-                   mesos-datomic-conn
-                   (fn set-or-create-framework-id [framework-id]
-                     (curator/set-or-create
-                      curator-framework
-                      zk-framework-id
-                      (.getBytes (-> framework-id mesomatic.types/pb->data :value) "UTF-8")))
-                   current-driver
-                   mesos-pending-jobs-atom
-                   offer-cache
-                   mesos-heartbeat-chan
-                   offer-incubate-time-ms
-                   mea-culpa-failure-limit
-                   fenzo-max-jobs-considered
-                   fenzo-scaleback
-                   fenzo-floor-iterations-before-warn
-                   fenzo-floor-iterations-before-reset
-                   fenzo-fitness-calculator
-                   task-constraints
-                   gpu-enabled?
-                   good-enough-fitness)
+        current-driver (atom nil) 
         framework-id (when-let [bytes (curator/get-or-nil curator-framework zk-framework-id)]
                        (String. bytes))
         leader-selector (LeaderSelector.
@@ -207,7 +186,30 @@
                               ;; TODO: get the framework ID and try to reregister
                               (let [normal-exit (atom true)]
                                 (try
-                                  (let [driver (make-mesos-driver-fn scheduler framework-id)]
+                                  (let [{:keys [scheduler view-incubating-offers]}
+                                        (sched/create-datomic-scheduler
+                                          mesos-datomic-conn
+                                          (fn set-or-create-framework-id [framework-id]
+                                            (curator/set-or-create
+                                              curator-framework
+                                              zk-framework-id
+                                              (.getBytes (-> framework-id mesomatic.types/pb->data :value) "UTF-8")))
+                                          current-driver
+                                          mesos-pending-jobs-atom
+                                          offer-cache
+                                          mesos-heartbeat-chan
+                                          offer-incubate-time-ms
+                                          mea-culpa-failure-limit
+                                          fenzo-max-jobs-considered
+                                          fenzo-scaleback
+                                          fenzo-floor-iterations-before-warn
+                                          fenzo-floor-iterations-before-reset
+                                          fenzo-fitness-calculator
+                                          task-constraints
+                                          gpu-enabled?
+                                          good-enough-fitness
+                                          trigger-chans) 
+                                        driver (make-mesos-driver-fn scheduler framework-id)]
                                     (mesomatic.scheduler/start! driver)
                                     (reset! current-driver driver)
                                     (when riemann-host
@@ -223,7 +225,8 @@
                                                                               :pending-jobs-atom mesos-pending-jobs-atom
                                                                               :offer-cache offer-cache
                                                                               :config rebalancer-config
-                                                                              :view-incubating-offers view-incubating-offers})
+                                                                              :view-incubating-offers view-incubating-offers
+                                                                              :trigger-chan rebalancer-trigger-chan})
                                     (counters/inc! mesos-leader)
                                     (async/tap mesos-datomic-mult datomic-report-chan)
                                     (cook.mesos.scheduler/monitor-tx-report-queue datomic-report-chan mesos-datomic-conn current-driver)
