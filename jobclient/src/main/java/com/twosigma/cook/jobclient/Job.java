@@ -87,6 +87,7 @@ final public class Job {
         private Double _cpus;
         private Integer _retries;
         private Long _maxRuntime;
+        private Long _expectedRuntime;
         private Status _status;
         private Integer _priority;
         private List<Instance> _instances = Collections.synchronizedList(new ArrayList<Instance>());
@@ -129,8 +130,8 @@ final public class Job {
             if (_name == null) {
                 _name = "cookjob";
             }
-            return new Job(_uuid, _name, _command, _memory, _cpus, _retries, _maxRuntime, _status, _priority,
-                    _instances, _env, _uris, _container, _labels, _groups, _application);
+            return new Job(_uuid, _name, _command, _memory, _cpus, _retries, _maxRuntime, _expectedRuntime, _status,
+                    _priority, _instances, _env, _uris, _container, _labels, _groups, _application);
         }
 
         /**
@@ -363,8 +364,19 @@ final public class Job {
          * @return this builder.
          */
         public Builder setMaxRuntime(Long runtime) {
-            Preconditions.checkArgument(runtime > 0, "The runtime in milliseconds must be > 0.");
+            Preconditions.checkArgument(runtime > 0, "The max runtime in milliseconds must be > 0.");
             _maxRuntime = runtime;
+            return this;
+        }
+
+        /**
+         * Set the expected runtime in milliseconds of the job expected to build.
+         * @param runtime {@link Long} specifies the expected runtime in milliseconds for a job.
+         * @return this builder.
+         */
+        public Builder setExpectedRuntime(long runtime) {
+            Preconditions.checkArgument(runtime > 0, "The expected runtime in milliseconds must be > 0.");
+            _expectedRuntime = runtime;
             return this;
         }
 
@@ -445,6 +457,7 @@ final public class Job {
     final private Double _cpus;
     final private Integer _retries;
     final private Long _maxRuntime;
+    final private Long _expectedRuntime;
     final private Integer _priority;
     final private Status _status;
     final private List<Instance> _instances;
@@ -458,7 +471,7 @@ final public class Job {
     final private Application _application;
 
     private Job(UUID uuid, String name, String command, Double memory, Double cpus, Integer retries, Long maxRuntime,
-                Status status, Integer priority, List<Instance> instances, Map<String, String> env,
+                Long expectedRuntime, Status status, Integer priority, List<Instance> instances, Map<String, String> env,
                 List<FetchableURI> uris, JSONObject container, Map<String, String> labels, List<UUID> groups,
                 Application application) {
         _uuid = uuid;
@@ -468,6 +481,7 @@ final public class Job {
         _cpus = cpus;
         _retries = retries;
         _maxRuntime = maxRuntime;
+        _expectedRuntime = expectedRuntime;
         _status = status;
         _priority = priority;
         _instances = ImmutableList.copyOf(instances);
@@ -530,6 +544,11 @@ final public class Job {
     public Long getMaxRuntime() {
         return _maxRuntime;
     }
+
+    /**
+     * @return the expected runtime in milliseconds for this job.
+     */
+    public Long getExpectedRuntime() { return _expectedRuntime; }
 
     /**
      * @return the job's environment
@@ -683,6 +702,9 @@ final public class Job {
         if (job._application != null) {
             object.put("application", Application.jsonizeApplication(job._application));
         }
+        if (job._expectedRuntime != null) {
+            object.put("expected_runtime", job._expectedRuntime);
+        }
         return object;
     }
 
@@ -817,6 +839,9 @@ final public class Job {
             if (json.has("application")) {
                 JSONObject applicationJson = json.getJSONObject("application");
                 jobBuilder.setApplication(Application.parseFromJSON(applicationJson));
+            }
+            if (json.has("expected_runtime")) {
+                jobBuilder.setExpectedRuntime(json.getLong("expected_runtime"));
             }
             jobs.add(jobBuilder.build());
         }

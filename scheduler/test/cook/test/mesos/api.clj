@@ -996,7 +996,12 @@
       (testing "should allow an optional application field"
         (is (s/validate api/Job (assoc min-job :application {:name "foo-app", :version "0.1.0"})))
         (is (thrown? Exception (s/validate api/Job (assoc min-job :application {:name "", :version "0.2.0"}))))
-        (is (thrown? Exception (s/validate api/Job (assoc min-job :application {:name "bar-app", :version ""}))))))))
+        (is (thrown? Exception (s/validate api/Job (assoc min-job :application {:name "bar-app", :version ""})))))
+
+      (testing "should allow an optional expected-runtime field"
+        (is (s/validate api/Job (assoc min-job :expected-runtime 2 :max-runtime 3)))
+        (is (s/validate api/Job (assoc min-job :expected-runtime 2 :max-runtime 2)))
+        (is (thrown? Exception (s/validate api/Job (assoc min-job :expected-runtime 3 :max-runtime 2))))))))
 
 (deftest test-create-jobs!
   (let [expected-job-map
@@ -1004,7 +1009,9 @@
           ; Converts the provided job and framework-id (fid) to the job-map we expect to get back from
           ; api/fetch-job-map. Note that we don't include the submit_time field here, so assertions below
           ; will have to dissoc it.
-          [{:keys [mem max-retries max-runtime name gpus command ports priority uuid user cpus application]} fid]
+          [{:keys [mem max-retries max-runtime expected-runtime name gpus
+                   command ports priority uuid user cpus application]}
+           fid]
           (cond-> {;; Fields we will fill in from the provided args:
                    :command command
                    :cpus cpus
@@ -1026,8 +1033,9 @@
                    :state "waiting"
                    :status "waiting"
                    :uris nil}
-                  ;; Only assoc :application if the job specified one
-                  application (assoc :application application)))]
+                  ;; Only assoc these fields if the job specifies one
+                  application (assoc :application application)
+                  expected-runtime (assoc :expected-runtime expected-runtime)))]
 
     (testing "Job creation"
 
@@ -1044,6 +1052,15 @@
         (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
               application {:name "foo-app", :version "0.1.0"}
               {:keys [uuid] :as job} (assoc (minimal-job) :application application)
+              fid #mesomatic.types.FrameworkID{:value "fid"}]
+          (is (= {::api/results (str "submitted jobs " uuid)}
+                 (api/create-jobs! conn {::api/jobs [job]})))
+          (is (= (expected-job-map job fid)
+                 (dissoc (api/fetch-job-map (db conn) fid uuid) :submit_time)))))
+
+      (testing "should work when the job specifies the expected runtime"
+        (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
+              {:keys [uuid] :as job} (assoc (minimal-job) :expected-runtime 1)
               fid #mesomatic.types.FrameworkID{:value "fid"}]
           (is (= {::api/results (str "submitted jobs " uuid)}
                  (api/create-jobs! conn {::api/jobs [job]})))

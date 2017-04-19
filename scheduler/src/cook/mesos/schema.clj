@@ -56,6 +56,13 @@
     :db/cardinality :db.cardinality/one
     :db.install/_attribute :db.part/db}
    {:db/id (d/tempid :db.part/db)
+    :db/doc "The (optional) expected running time of the job in milliseconds.
+             If provided, expected_runtime must be less than or equal to max_runtime."
+    :db/ident :job/expected-runtime
+    :db/valueType :db.type/long
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
     :db/ident :job/environment
     :db/valueType :db.type/ref
     :db/cardinality :db.cardinality/many
