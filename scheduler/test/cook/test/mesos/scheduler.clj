@@ -154,13 +154,6 @@
           {:scheduled scheduled :result result})
         {:result result})))
 
-(deftest test-tuplify-offer
-  (is (= ["1234" 40.0 100.0] (sched/tuplify-offer {:slave-id {:value "1234"}
-                                                   :resources [{:name "cpus"
-                                                                :scalar 40.0}
-                                                               {:name "mem"
-                                                                :scalar 100.0}
-                                                               ]}))))
 (deftest test-sort-jobs-by-dru
   (let [uri "datomic:mem://test-sort-jobs-by-dru"
         conn (restore-fresh-database! uri)
