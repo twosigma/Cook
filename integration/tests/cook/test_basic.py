@@ -27,10 +27,10 @@ class CookTest(unittest.TestCase):
         job = job.json()[0]
         if not job['status'] == status:
             error_msg = 'Job %s had status %s - expected %s' % (job_id, job['status'], status)
-            self.logger.debug(error_msg)
+            self.logger.info(error_msg)
             raise RuntimeError(error_msg)
         else:
-            self.logger.debug('Job %s has status %s - %s', job_id, status, job)
+            self.logger.info('Job %s has status %s - %s', job_id, status, job)
         return job
 
     @staticmethod
