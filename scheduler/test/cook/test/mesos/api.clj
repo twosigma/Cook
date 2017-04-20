@@ -15,16 +15,23 @@
 ;;
 (ns cook.test.mesos.api
   (:use clojure.test)
-  (:require [clojure.data.json :as json]
+  (:require [cheshire.core :as cheshire]
+            [clj-time.core :as t]
+            [clojure.data.json :as json]
             [clojure.walk :refer (keywordize-keys)]
             [cook.authorization :as auth]
+            [cook.components :as components]
             [cook.mesos.api :as api :refer (main-handler)]
             [cook.mesos.reason :as reason]
             [cook.mesos.util :as util]
             [cook.test.testutil :refer (restore-fresh-database! create-dummy-job create-dummy-instance)]
             [datomic.api :as d :refer (q db)]
             [schema.core :as s])
-  (:import java.util.UUID))
+  (:import com.fasterxml.jackson.core.JsonGenerationException
+           java.net.ServerSocket
+           java.util.UUID
+           org.apache.curator.test.TestingServer
+           org.joda.time.Minutes))
 
 (defn kw-keys
   [m]
@@ -63,7 +70,7 @@
 (defn basic-handler
   [conn & {:keys [cpus memory-gb gpus-enabled retry-limit] :or {cpus 12 memory-gb 100 gpus-enabled false retry-limit 200}}]
   (main-handler conn "my-framework-id" {:cpus cpus :memory-gb memory-gb :retry-limit retry-limit} gpus-enabled
-                (fn [] []) authorized-fn))
+                (fn [] []) authorized-fn nil))
 
 (defn response->body-data [response]
   (-> response :body slurp json/read-str))
@@ -1066,3 +1073,33 @@
                  (api/create-jobs! conn {::api/jobs [job]})))
           (is (= (expected-job-map job fid)
                  (dissoc (api/fetch-job-map (db conn) fid uuid) :submit_time))))))))
+
+(defn- minimal-config
+  "Returns a minimal configuration map"
+  []
+  {:config {:database {:datomic-uri "datomic:mem://cook-jobs"}
+            :mesos {:master "MESOS_MASTER"
+                    :leader-path "/cook-scheduler"}
+            :authorization {:one-user "root"}
+            :scheduler {}
+            :zookeeper {:local? true}
+            :port 10000
+            :metrics {}
+            :nrepl {}}})
+
+(deftest test-stringify
+  (is (= {:foo (str +)} (api/stringify {:foo +})))
+  (is (= {:foo {:bar (str +)}} (api/stringify {:foo {:bar +}})))
+  (is (= {:foo "bar"} (api/stringify {:foo (atom "bar")})))
+  (is (= {:foo (str +)} (api/stringify {:foo (atom +)})))
+  (let [server (TestingServer.)]
+    (is (= {:foo (str server)} (api/stringify {:foo server})))
+    (.close server))
+  (let [minutes (t/minutes 1)]
+    (is (= {:foo (str minutes)} (api/stringify {:foo minutes}))))
+  (let [socket (ServerSocket.)]
+    (is (= {:foo (str socket)} (api/stringify {:foo socket})))
+    (.close socket))
+  (let [settings (components/config-settings (minimal-config))]
+    (is (thrown? JsonGenerationException (cheshire/generate-string settings)))
+    (is (cheshire/generate-string (api/stringify settings)))))

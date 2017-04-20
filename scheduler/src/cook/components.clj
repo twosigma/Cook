@@ -67,14 +67,15 @@
     (resolve var-sym)))
 
 (def raw-scheduler-routes
-  {:scheduler (fnk [mesos-datomic framework-id mesos-pending-jobs-atom [:settings task-constraints mesos-gpu-enabled is-authorized-fn]]
+  {:scheduler (fnk [mesos-datomic framework-id mesos-pending-jobs-atom [:settings task-constraints mesos-gpu-enabled is-authorized-fn :as settings]]
                 ((lazy-load-var 'cook.mesos.api/main-handler)
                   mesos-datomic
                   framework-id
                   task-constraints
                   mesos-gpu-enabled
                   (fn [] @mesos-pending-jobs-atom)
-                  is-authorized-fn))
+                  is-authorized-fn
+                  settings))
    :view (fnk [scheduler]
            scheduler)})
 
