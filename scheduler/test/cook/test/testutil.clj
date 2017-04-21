@@ -34,7 +34,8 @@
                                     {:cpus 12 :memory-gb 100 :retry-limit 200}
                                     false
                                     (fn [] [])
-                                    authorized-fn))
+                                    authorized-fn
+                                    nil))
         ; Mock kerberization, not testing that
         api-handler-kerb (fn [req]
                            (api-handler (assoc req :authorization/user (System/getProperty "user.name"))))
