@@ -69,8 +69,10 @@
 
 (defn basic-handler
   [conn & {:keys [cpus memory-gb gpus-enabled retry-limit] :or {cpus 12 memory-gb 100 gpus-enabled false retry-limit 200}}]
-  (main-handler conn "my-framework-id" {:cpus cpus :memory-gb memory-gb :retry-limit retry-limit} gpus-enabled
-                (fn [] []) authorized-fn nil))
+  (main-handler conn "my-framework-id" (fn [] [])
+                {:task-constraints {:cpus cpus :memory-gb memory-gb :retry-limit retry-limit}
+                 :mesos-gpu-enabled gpus-enabled
+                 :is-authorized-fn authorized-fn}))
 
 (defn response->body-data [response]
   (-> response :body slurp json/read-str))

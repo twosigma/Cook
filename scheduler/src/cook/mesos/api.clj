@@ -1525,7 +1525,8 @@
 ;; "main" - the entry point that routes to other handlers
 ;;
 (defn main-handler
-  [conn fid task-constraints gpu-enabled? mesos-pending-jobs-fn is-authorized-fn settings]
+  [conn fid mesos-pending-jobs-fn
+   {:keys [task-constraints is-authorized-fn] gpu-enabled? :mesos-gpu-enabled :as settings}]
   (routes
    (c-api/api
     {:swagger {:ui "/swagger-ui"
