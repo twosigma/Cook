@@ -8,12 +8,13 @@ if [ "$(docker ps -aq -f name=${NAME})" ]; then
     docker rm ${NAME}
 fi
 
-$(minimesos info | grep ZOOKEEPER)
+$(minimesos info | grep MINIMESOS)
 EXIT_CODE=$?
 if [ ${EXIT_CODE} -eq 0 ]
 then
     ZK=${MINIMESOS_ZOOKEEPER%;}
     echo "ZK = ${ZK}"
+    echo "MINIMESOS_MASTER_IP = ${MINIMESOS_MASTER_IP}"
 else
     echo "Could not get ZK URI from minimesos; you may need to restart minimesos"
     exit ${EXIT_CODE}
@@ -29,6 +30,7 @@ docker run \
     --publish=12321:12321 \
     -e "COOK_PORT=12321" \
     -e "MESOS_MASTER=${ZK}" \
+    -e "MESOS_MASTER_HOST=${MINIMESOS_MASTER_IP}" \
     -v ${DIR}/../log:/opt/cook/log \
     cook-scheduler:latest
 
