@@ -1,0 +1,12 @@
+# JetBrains IDE files
+.idea
+*.iml
+
+# Python setup
+build
+dist
+.cache
+.eggs
+__pycache__
+*.egg-info
+*.spec
