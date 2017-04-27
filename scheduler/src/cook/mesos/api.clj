@@ -45,8 +45,11 @@
             [ring.middleware.json]
             [schema.core :as s]
             [swiss.arrows :refer :all])
-  (:import java.net.URLEncoder
+  (:import (java.net ServerSocket URLEncoder)
            (java.util Date UUID)
+           clojure.lang.Atom
+           org.apache.curator.test.TestingServer
+           org.joda.time.Minutes
            schema.core.OptionalKey))
 
 ;; This is necessary to prevent a user from requesting a uid:gid
@@ -1397,6 +1400,26 @@
                         (mapv (partial reason-entity->consumable-map
                                        default-limit)))))}))
 
+;; /settings
+
+(defn stringify
+  "Converts values to strings as needed for conversion to JSON"
+  [v]
+  (cond
+    (fn? v) (str v)
+    (map? v) (map-vals stringify v)
+    (instance? Atom v) (stringify (deref v))
+    (instance? TestingServer v) (str v)
+    (instance? Minutes v) (str v)
+    (instance? ServerSocket v) (str v)
+    :else v))
+
+(defn settings-handler
+  [settings]
+  (base-cook-handler
+    {:allowed-methods [:get]
+     :handle-ok (fn [_] (stringify settings))}))
+
 (defn- str->state-attr
   [state-str]
   (when (contains? #{"running" "waiting" "completed"} state-str)
@@ -1502,7 +1525,8 @@
 ;; "main" - the entry point that routes to other handlers
 ;;
 (defn main-handler
-  [conn fid task-constraints gpu-enabled? mesos-pending-jobs-fn is-authorized-fn]
+  [conn fid mesos-pending-jobs-fn
+   {:keys [task-constraints is-authorized-fn] gpu-enabled? :mesos-gpu-enabled :as settings}]
   (routes
    (c-api/api
     {:swagger {:ui "/swagger-ui"
@@ -1615,12 +1639,19 @@
              :handler (read-groups-handler conn fid task-constraints is-authorized-fn)}}))
 
     (c-api/context
-     "/failure_reasons" []
-     (c-api/resource
-      {:get {:summary "Returns a description of all possible task failure reasons"
-             :responses {200 {:schema FailureReasonsResponse
-                              :description "The failure reasons were returned."}}
-             :handler (failure-reasons-handler conn is-authorized-fn)}})))
+      "/failure_reasons" []
+      (c-api/resource
+        {:get {:summary "Returns a description of all possible task failure reasons"
+               :responses {200 {:schema FailureReasonsResponse
+                                :description "The failure reasons were returned."}}
+               :handler (failure-reasons-handler conn is-authorized-fn)}}))
+
+    (c-api/context
+      "/settings" []
+      (c-api/resource
+        {:get {:summary "Returns the settings that cook is configured with"
+               :responses {200 {:description "The settings were returned."}}
+               :handler (settings-handler settings)}})))
 
 
     (ANY "/queue" []

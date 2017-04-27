@@ -7,6 +7,8 @@ import uuid
 
 from retrying import retry
 
+from tests.cook.util import get_in
+
 
 def is_connection_error(exception):
     return isinstance(exception, requests.exceptions.ConnectionError)
@@ -65,6 +67,9 @@ class CookTest(unittest.TestCase):
         resp = self.session.post('%s/rawscheduler' % self.cook_url, json=request_body)
         return job_spec['uuid'], resp
 
+    def settings(self):
+        return self.session.get('%s/settings' % self.cook_url).json()
+
     def test_basic_submit(self):
         job_uuid, resp = self.submit_job()
         self.assertEqual(resp.status_code, 201)
@@ -79,7 +84,8 @@ class CookTest(unittest.TestCase):
         self.assertEqual('failed', job['instances'][0]['status'])
 
     def test_max_runtime_exceeded(self):
-        job_uuid, resp = self.submit_job(command='sleep 60', max_runtime=5000)
+        timeout_interval_seconds = get_in(self.settings(), 'task-constraints', 'timeout-interval-minutes') * 60
+        job_uuid, resp = self.submit_job(command='sleep %s' % timeout_interval_seconds, max_runtime=5000)
         self.assertEqual(201, resp.status_code)
         job = self.wait_for_job(job_uuid, 'completed')
         self.assertEqual(1, len(job['instances']))
