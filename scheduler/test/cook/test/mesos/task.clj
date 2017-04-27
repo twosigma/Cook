@@ -1,6 +1,7 @@
 (ns cook.test.mesos.task
   (:use clojure.test)
-  (:require [clojure.edn :as edn]
+  (:require [clojure.data.json :as json]
+            [clojure.edn :as edn]
             [clojure.string :as str]
             [cook.mesos.scheduler :as sched]
             [cook.mesos.task :as task]
@@ -171,7 +172,7 @@
 
       (testing "command-executor"
         (let [command-executor-task (assoc task :data (.getBytes (pr-str {:instance "5"}) "UTF-8")
-                                                :executor-key :command)
+                                                :executor-key :command-executor)
               command-executor-msg (->> command-executor-task
                                         task/task-info->mesos-message
                                         (mtypes/->pb :TaskInfo)
@@ -189,7 +190,7 @@
             (is (= (:extract command-executor-msg-uri) (:extract command-executor-task-uri)))
             (is (= (:value command-executor-msg-uri) (:value command-executor-task-uri))))))
 
-      (let [executor-key :executor]
+      (doseq [executor-key [:cook-executor :custom-executor]]
         (testing (str "common-fields-" executor-key)
           (let [task (assoc task :executor-key executor-key)
                 ;; roundrip to and from Mesos protobuf to validate clojure data format
@@ -217,9 +218,24 @@
               (is (= (-> msg-env :variables first :name) "MYENV"))
               (is (= (-> msg-env :variables first :value) "VAR"))))))
 
+      (testing "cook-executor"
+        (let [cook-executor-task (assoc task :data (.getBytes command "UTF-8")
+                                             :executor-key :cook-executor)
+              cook-executor-msg (->> cook-executor-task
+                                     task/task-info->mesos-message
+                                     (mtypes/->pb :TaskInfo)
+                                     mtypes/pb->data)]
+          ;; Check custom executor built correctly
+          (is (= command (String. (.toByteArray (:data cook-executor-msg)))))
+          (is (= (-> cook-executor-msg :executor :command :value) (-> task :command :value)))
+          (is (= (-> cook-executor-msg :executor :executor-id :value) (:task-id task)))
+          (is (= (-> cook-executor-msg :executor :framework-id :value) (-> task :framework-id :value)))
+          (is (= (-> cook-executor-msg :executor :name) task/cook-executor-name))
+          (is (= (-> cook-executor-msg :executor :source) task/cook-executor-source))))
+
       (testing "custom-executor"
         (let [custom-executor-task (assoc task :data (.getBytes (pr-str {:instance "5"}) "UTF-8")
-                                               :executor-key :executor)
+                                               :executor-key :custom-executor)
               custom-executor-msg (->> custom-executor-task
                                        task/task-info->mesos-message
                                        (mtypes/->pb :TaskInfo)
@@ -251,7 +267,7 @@
         (testing "container-command"
           (let [container-executor-task (assoc task :container container
                                                     :data (.getBytes (pr-str {:instance "5"}) "UTF-8")
-                                                    :executor-key :command)
+                                                    :executor-key :container-command-executor)
                 container-executor-msg (->> container-executor-task
                                             task/task-info->mesos-message
                                             (mtypes/->pb :TaskInfo)
@@ -270,7 +286,7 @@
         (testing "container-executor"
           (let [container-executor-task (assoc task :container container
                                                     :data (.getBytes (pr-str {:instance "5"}) "UTF-8")
-                                                    :executor-key :executor)
+                                                    :executor-key :container-executor)
                 container-executor-msg (->> container-executor-task
                                             task/task-info->mesos-message
                                             (mtypes/->pb :TaskInfo)
@@ -288,7 +304,17 @@
 
 (deftest test-job->task-metadata
   (let [uri "datomic:mem://test-job-task-metadata"
-        conn (tu/restore-fresh-database! uri)]
+        conn (tu/restore-fresh-database! uri)
+        executor {:command "./cook-executor"
+                  :log-level "INFO"
+                  :max-message-length 512
+                  :progress-output-name "stdout"
+                  :progress-regex-string "regex-string"
+                  :progress-sample-interval-ms 1000
+                  :uri {:cache true
+                        :executable true
+                        :extract false
+                        :value "file:///path/to/cook-executor"}}]
 
     (testing "custom-executor with simple job"
       (let [task-id (str (UUID/randomUUID))
@@ -296,11 +322,11 @@
             db (d/db conn)
             job-ent (d/entity db job)
             framework-id {:value "framework-id"}
-            task-metadata (task/job->task-metadata db framework-id job-ent task-id)]
+            task-metadata (task/job->task-metadata db framework-id executor job-ent task-id)]
         (is (= {:command {:value "run-my-command", :environment {}, :user "test-user", :uris []}
                 :container nil
                 :environment {}
-                :executor-key :executor
+                :executor-key :custom-executor
                 :framework-id framework-id
                 :labels {}
                 :name (format "dummy_job_%s_%s" (:job/user job-ent) task-id)
@@ -317,11 +343,11 @@
             db (d/db conn)
             job-ent (d/entity db job)
             framework-id {:value "framework-id"}
-            task-metadata (task/job->task-metadata db framework-id job-ent task-id)]
+            task-metadata (task/job->task-metadata db framework-id executor job-ent task-id)]
         (is (= {:command {:value "run-my-command", :environment {}, :user "test-user", :uris []}
                 :container nil
                 :environment {}
-                :executor-key :executor
+                :executor-key :custom-executor
                 :framework-id framework-id
                 :labels {}
                 :name (format "dummy_job_%s_%s" (:job/user job-ent) task-id)
@@ -331,6 +357,39 @@
                (dissoc task-metadata :data)))
         (is (= (pr-str {:instance "0"}) (-> task-metadata :data (String. "UTF-8"))))))
 
+    (testing "cook-executor with simple job"
+      (let [task-id (str (UUID/randomUUID))
+            job (tu/create-dummy-job conn :user "test-user" :job-state :job.state/running :command "run-my-command"
+                                     :custom-executor? false)
+            db (d/db conn)
+            job-ent (d/entity db job)
+            fid {:value "framework-id"}
+            task-metadata (task/job->task-metadata db fid executor job-ent task-id)]
+        (is (= {:command {:environment {"EXECUTOR_LOG_LEVEL" (:log-level executor)
+                                        "EXECUTOR_MAX_MESSAGE_LENGTH" (:max-message-length executor)
+                                        "PROGRESS_OUTPUT_FILE" "stdout"
+                                        "PROGRESS_REGEX_STRING" "regex-string"
+                                        "PROGRESS_SAMPLE_INTERVAL_MS" (:progress-sample-interval-ms executor)}
+                          :uris [(:uri executor)]
+                          :user "test-user"
+                          :value (:command executor)}
+                :container nil
+                :environment {"EXECUTOR_LOG_LEVEL" (:log-level executor)
+                              "EXECUTOR_MAX_MESSAGE_LENGTH" (:max-message-length executor)
+                              "PROGRESS_OUTPUT_FILE" "stdout"
+                              "PROGRESS_REGEX_STRING" "regex-string"
+                              "PROGRESS_SAMPLE_INTERVAL_MS" (:progress-sample-interval-ms executor)}
+                :executor-key :cook-executor
+                :framework-id fid
+                :labels {}
+                :name (format "dummy_job_%s_%s" (:job/user job-ent) task-id)
+                :num-ports 0
+                :resources {:cpus 1.0, :mem 10.0}
+                :task-id task-id}
+               (dissoc task-metadata :data)))
+        (is (= (json/write-str {"command" "run-my-command"})
+               (-> task-metadata :data (String. "UTF-8"))))))
+
     (testing "command-executor with simple job"
       (let [task-id (str (UUID/randomUUID))
             job (tu/create-dummy-job conn :user "test-user" :job-state :job.state/running :command "run-my-command"
@@ -338,14 +397,14 @@
             db (d/db conn)
             job-ent (d/entity db job)
             framework-id {:value "framework-id"}
-            task-metadata (task/job->task-metadata db framework-id job-ent task-id)]
+            task-metadata (task/job->task-metadata db framework-id {} job-ent task-id)]
         (is (= {:command {:environment {}
                           :uris []
                           :user "test-user"
                           :value "run-my-command"}
                 :container nil
                 :environment {}
-                :executor-key :command
+                :executor-key :command-executor
                 :framework-id framework-id
                 :labels {}
                 :name (format "dummy_job_%s_%s" (:job/user job-ent) task-id)
@@ -370,7 +429,7 @@
             db (d/db conn)
             job-ent (d/entity db job)
             framework-id {:value "framework-id"}
-            task-metadata (task/job->task-metadata db framework-id job-ent task-id)]
+            task-metadata (task/job->task-metadata db framework-id {} job-ent task-id)]
         (is (= {:command {:environment {}
                           :uris []
                           :user "test-user"
@@ -379,7 +438,7 @@
                                      :network "HOST"}
                             :type "DOCKER"}
                 :environment {}
-                :executor-key :executor
+                :executor-key :container-executor
                 :framework-id framework-id
                 :labels {}
                 :name (format "dummy_job_%s_%s" (:job/user job-ent) task-id)
@@ -404,7 +463,7 @@
             db (d/db conn)
             job-ent (d/entity db job)
             framework-id {:value "framework-id"}
-            task-metadata (task/job->task-metadata db framework-id job-ent task-id)]
+            task-metadata (task/job->task-metadata db framework-id {} job-ent task-id)]
         (is (= {:command {:environment {}
                           :uris []
                           :user "test-user"
@@ -413,7 +472,7 @@
                                      :network "HOST"}
                             :type "DOCKER"}
                 :environment {}
-                :executor-key :command
+                :executor-key :container-command-executor
                 :framework-id framework-id
                 :labels {}
                 :name (format "dummy_job_%s_%s" (:job/user job-ent) task-id)

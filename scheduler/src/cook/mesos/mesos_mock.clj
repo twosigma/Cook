@@ -251,7 +251,7 @@
    `state` the current state of 'mesos'
    `driver` the driver used by the scheduler
    `scheduler` the scheduler framework connected to mesos"
-  (fn [action data state driver scheduler]
+  (fn [action _ _ _ _]
     action))
 
 (defmethod handle-action! :decline
@@ -323,6 +323,7 @@
   "Takes a task spec and extracts a number as runtime from the command's environment."
   [task]
   (->> task
+       :executor
        :command
        :environment
        .getVariablesList

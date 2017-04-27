@@ -178,6 +178,8 @@
    mea-culpa-failure-limit  -- long, max failures of mea culpa reason before it is considered a 'real' failure
                                      see scheduler/docs/configuration.asc for more details
    task-constraints         -- map, constraints on task. See scheduler/docs/configuration.asc for more details
+   executor                 -- cook executor config includes command, log-level, message-length, progress-output-name,
+                                     progress-regex-string, progress-sample-interval-ms and uri.
    riemann-host             -- str, dns name of riemann
    riemann-port             -- int, port for riemann
    mesos-pending-jobs-atom  -- atom, Populate (and update) list of pending jobs into atom
@@ -187,7 +189,8 @@
    framework-id             -- str, the Mesos framework id from the cook settings
    fenzo-config             -- map, config for fenzo, See scheduler/docs/configuration.asc for more details"
   [make-mesos-driver-fn get-mesos-utilization curator-framework mesos-datomic-conn mesos-datomic-mult zk-prefix
-   offer-incubate-time-ms mea-culpa-failure-limit task-constraints riemann-host riemann-port mesos-pending-jobs-atom
+   offer-incubate-time-ms
+   mea-culpa-failure-limit task-constraints executor riemann-host riemann-port mesos-pending-jobs-atom
    offer-cache gpu-enabled? rebalancer-config framework-id mesos-leadership-atom
    {:keys [fenzo-fitness-calculator fenzo-floor-iterations-before-reset fenzo-floor-iterations-before-warn
            fenzo-max-jobs-considered fenzo-scaleback good-enough-fitness]
@@ -224,6 +227,7 @@
                                           fenzo-floor-iterations-before-reset
                                           fenzo-fitness-calculator
                                           task-constraints
+                                          executor
                                           gpu-enabled?
                                           good-enough-fitness
                                           framework-id
@@ -240,7 +244,7 @@
                                     (cook.mesos.scheduler/cancelled-task-killer mesos-datomic-conn driver cancelled-task-trigger-chan)
                                     (cook.mesos.heartbeat/start-heartbeat-watcher! mesos-datomic-conn mesos-heartbeat-chan)
                                     (cook.mesos.rebalancer/start-rebalancer! {:config rebalancer-config
-                                                                              :conn  mesos-datomic-conn
+                                                                              :conn mesos-datomic-conn
                                                                               :driver driver
                                                                               :get-mesos-utilization get-mesos-utilization
                                                                               :offer-cache offer-cache

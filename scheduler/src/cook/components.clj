@@ -18,6 +18,7 @@
             [clojure.core.cache :as cache]
             [clojure.edn :as edn]
             [clojure.pprint :refer (pprint)]
+            [clojure.string :as str]
             [clojure.tools.logging :as log]
             [compojure.core :refer (GET POST routes context)]
             [compojure.route :as route]
@@ -81,12 +82,12 @@
                    (route/not-found "<h1>Not a valid route</h1>")))})
 
 (def mesos-scheduler
-  {:mesos-scheduler (fnk [[:settings fenzo-fitness-calculator fenzo-floor-iterations-before-reset
+  {:mesos-scheduler (fnk [[:settings executor fenzo-fitness-calculator fenzo-floor-iterations-before-reset
                            fenzo-floor-iterations-before-warn fenzo-max-jobs-considered fenzo-scaleback
                            good-enough-fitness mea-culpa-failure-limit mesos-failover-timeout mesos-framework-name
                            mesos-gpu-enabled mesos-leader-path mesos-master mesos-master-hosts mesos-principal
                            mesos-role offer-incubate-time-ms rebalancer riemann task-constraints]
-                          curator-framework framework-id mesos-datomic mesos-datomic-mult mesos-leadership-atom 
+                          curator-framework framework-id mesos-datomic mesos-datomic-mult mesos-leadership-atom
                           mesos-offer-cache mesos-pending-jobs-atom]
                       (log/info "Initializing mesos scheduler")
                       (let [make-mesos-driver-fn (partial (lazy-load-var 'cook.mesos/make-mesos-driver)
@@ -110,6 +111,7 @@
                             offer-incubate-time-ms
                             mea-culpa-failure-limit
                             task-constraints
+                            executor
                             (:host riemann)
                             (:port riemann)
                             mesos-pending-jobs-atom
@@ -230,17 +232,19 @@
                     (let [rate-limit-storage (storage/local-storage)
                           jetty ((lazy-load-var 'qbits.jet.server/run-jetty)
                                   {:port server-port
-                                   :ring-handler (-> view
-                                                     tell-jetty-about-usename
-                                                     (wrap-rate-limit {:storage rate-limit-storage
-                                                                       :limit user-limit})
-                                                     authorization-middleware
-                                                     wrap-stacktrace
-                                                     wrap-no-cache
-                                                     wrap-cookies
-                                                     wrap-params
-                                                     (health-check-middleware mesos-leadership-atom leader-reports-unhealthy)
-                                                     instrument)
+                                   :ring-handler (routes
+                                                   (route/resources "/resource")
+                                                   (-> view
+                                                       tell-jetty-about-usename
+                                                       (wrap-rate-limit {:storage rate-limit-storage
+                                                                         :limit user-limit})
+                                                       authorization-middleware
+                                                       wrap-stacktrace
+                                                       wrap-no-cache
+                                                       wrap-cookies
+                                                       wrap-params
+                                                       (health-check-middleware mesos-leadership-atom leader-reports-unhealthy)
+                                                       instrument))
                                    :join? false
                                    :configurator configure-jet-logging
                                    :max-threads 200
@@ -364,6 +368,27 @@
                           :or {user-limit-per-m 600}} rate-limit]
                      {:user-limit (->UserRateLimit :user-limit user-limit-per-m (t/minutes 1))}))
      :sim-agent-path (fnk [] "/usr/bin/sim-agent")
+     :executor (fnk [[:config {executor {}}]]
+                 (if (seq executor)
+                   (do
+                     (when (str/blank? (:command executor))
+                       (throw (ex-info "Executor command is missing!" {:executor executor})))
+                     (when (and (:uri executor) (nil? (get-in executor [:uri :value])))
+                       (throw (ex-info "Executor uri value is missing!" {:executor executor})))
+                     (let [default-executor-config {:log-level "INFO"
+                                                    :max-message-length 512
+                                                    :progress-output-name "stdout"
+                                                    :progress-regex-string "\\^\\^\\^\\^JOB-PROGRESS: (\\d*)(?: )?(.*)"
+                                                    :progress-sample-interval-ms 1000}
+                           default-uri-config {:cache true
+                                               :executable true
+                                               :extract false}]
+                       (cond-> (merge default-executor-config executor)
+                               (:uri executor)
+                               (update :uri #(merge default-uri-config %1)))))
+                   (do
+                     (log/info "Executor config is missing, will use the command executor for jobs when custom-executor is false")
+                     {})))
      :mesos-datomic-uri (fnk [[:config [:database datomic-uri]]]
                           (when-not datomic-uri
                             (throw (ex-info "Must set a the :database's :datomic-uri!" {})))

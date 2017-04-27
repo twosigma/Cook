@@ -135,35 +135,38 @@
 
 (defn create-dummy-instance
   "Return the entity id for the created instance."
-  [conn job & {:keys [job-state instance-status start-time end-time hostname
-                      task-id progress reason slave-id executor-id preempted?
-                      cancelled]
-               :or  {job-state :job.state/running
-                     instance-status :instance.status/unknown
-                     start-time (java.util.Date.)
-                     end-time nil
+  [conn job & {:keys [cancelled end-time executor-id exit-code hostname instance-status job-state preempted?
+                      progress progress-message reason sandbox slave-id start-time task-id ]
+               :or  {end-time nil
+                     executor-id  (str (UUID/randomUUID))
                      hostname "localhost"
-                     task-id (str (str (UUID/randomUUID)))
+                     instance-status :instance.status/unknown
+                     job-state :job.state/running
+                     preempted? false
                      progress 0
+                     progress-message nil
                      reason nil
                      slave-id  (str (UUID/randomUUID))
-                     executor-id  (str (UUID/randomUUID))
-                     preempted? false} :as cfg}]
+                     start-time (java.util.Date.)
+                     task-id (str (str (UUID/randomUUID)))} :as cfg}]
   (let [id (d/tempid :db.part/user)
-        val @(d/transact conn [(merge
+        val @(d/transact conn [(cond->
                                  {:db/id id
-                                  :job/_instance job
-                                  :instance/hostname hostname
-                                  :instance/progress progress
-                                  :instance/status instance-status
-                                  :instance/start-time start-time
-                                  :instance/task-id task-id
                                   :instance/executor-id executor-id
+                                  :instance/hostname hostname
+                                  :instance/preempted? preempted?
+                                  :instance/progress progress
                                   :instance/slave-id slave-id
-                                  :instance/preempted? preempted?}
-                                 (when end-time {:instance/end-time end-time})
-                                 (when reason {:instance/reason [:reason/name reason]})
-                                 (when cancelled {:instance/cancelled true}))])]
+                                  :instance/start-time start-time
+                                  :instance/status instance-status
+                                  :instance/task-id task-id
+                                  :job/_instance job}
+                                 cancelled (assoc :instance/cancelled true)
+                                 end-time (assoc :instance/end-time end-time)
+                                 exit-code (assoc :instance/exit-code exit-code)
+                                 progress-message (assoc :instance/progress-message progress-message)
+                                 reason (assoc :instance/reason [:reason/name reason])
+                                 sandbox (assoc :instance/sandbox sandbox))])]
     (d/resolve-tempid (db conn) (:tempids val) id)))
 
 (defn create-dummy-group

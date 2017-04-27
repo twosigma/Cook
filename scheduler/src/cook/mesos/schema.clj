@@ -104,9 +104,8 @@
     :db/cardinality :db.cardinality/one
     :db.install/_attribute :db.part/db}
    {:db/id (d/tempid :db.part/db)
-    :db/doc "Determines if this job uses a custom executor (true) or the command
-             executor (false). If unset, then uses a custom executor (for legacy
-             compatibility)."
+    :db/doc "Determines if this job uses a custom executor (true) or the cook executor (false).
+             If unset, then uses a custom executor (for legacy compatibility)."
     :db/ident :job/custom-executor
     :db/valueType :db.type/boolean
     :db/cardinality :db.cardinality/one
@@ -474,6 +473,12 @@ for a job. E.g. {:resources {:cpus 4 :mem 3} :constraints {\"unique_host_constra
     :db/cardinality :db.cardinality/one
     :db.install/_attribute :db.part/db}
    {:db/id (d/tempid :db.part/db)
+    :db/ident :instance/progress-message
+    :db/doc "represents the progress message of the instance"
+    :db/valueType :db.type/string
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
     :db/ident :instance/backfilled?
     ;;;   In a future version, datomic adds these schema values, leaving the info here when that occurs
     ;;     :schema/deprecated true
@@ -546,6 +551,18 @@ for a job. E.g. {:resources {:cpus 4 :mem 3} :constraints {\"unique_host_constra
    {:db/id (d/tempid :db.part/db)
     :db/ident :instance/cancelled
     :db/valueType :db.type/boolean
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :instance/sandbox
+    :db/doc "represents the sandbox location of the instance"
+    :db/valueType :db.type/string
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :instance/exit-code
+    :db/doc "represents the return code of executing the command of the instance"
+    :db/valueType :db.type/long
     :db/cardinality :db.cardinality/one
     :db.install/_attribute :db.part/db}
 
