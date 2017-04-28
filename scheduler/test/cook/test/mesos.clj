@@ -80,30 +80,6 @@
    :resources [{:name "cpus" :scalar cpus}
                {:name "mem" :scalar mem}]})
 
-(deftest test-resource-matching
-  ;; Should have at least one match
-  (is (seq (sched/get-job-resource-matches
-             (make-jobs-in-db [[1.0 1.0]])
-             [[0]]
-             (make-offer 1.0 1.0))))
-  (is (seq (sched/get-job-resource-matches
-             (make-jobs-in-db [[1.0 1.0] [1.0 1.0] [1.0 1.0] [1.0 1.0]])
-             [[0] [1] [2] [3]]
-             (make-offer 1.0 1.0))))
-  ;; Shouldn't have any matches
-  (is (empty? (sched/get-job-resource-matches
-             (make-jobs-in-db [[1.0 1.0]])
-             [[0]]
-             (make-offer 0.5 1.0))))
-  (is (empty? (sched/get-job-resource-matches
-             (make-jobs-in-db [[1.0 1.0]])
-             [[0]]
-             (make-offer 1.0 0.5))))
-  (is (empty? (sched/get-job-resource-matches
-             (make-jobs-in-db [[1.0 1.0] [1.0 1.0] [1.0 1.0] [1.0 1.0]])
-             [[0] [1] [2] [3]]
-             (make-offer 1.0 0.5)))))
-
 (defn make-fake-job-with-tasks
   "Takes the state of the job and the statuses of the instances. Returns the
    id given to the job, for easy future querying"

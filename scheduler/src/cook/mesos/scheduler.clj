@@ -89,30 +89,6 @@
                                          (> 0))}]
     (merge mesos-attributes cook-attributes)))
 
-
-(defn tuplify-offer
-  "Takes an offer (from Mesomatic) and converts it to a queryable format for datomic"
-  [offer]
-  [(-> offer :slave-id :value)
-   (offer-resource-scalar offer "cpus")
-   (offer-resource-scalar offer "mem")])
-
-(defn get-job-resource-matches
-  "Given an offer and a set of pending jobs, figure out which ones match the offer"
-  [db pending-jobs offer]
-  (q '[:find ?j ?slave
-       :in $ [[?j]] [?slave ?cpus ?mem]
-       :where
-       [?j :job/resource ?r-cpu]
-       [?r-cpu :resource/type :resource.type/cpus]
-       [?r-cpu :resource/amount ?cpu-req]
-       [(>= ?cpus ?cpu-req)]
-       [?j :job/resource ?r-mem]
-       [?r-mem :resource/type :resource.type/mem]
-       [?r-mem :resource/amount ?mem-req]
-       [(>= ?mem ?mem-req)]]
-     db pending-jobs (tuplify-offer offer)))
-
 (timers/deftimer [cook-mesos scheduler handle-status-update-duration])
 (meters/defmeter [cook-mesos scheduler tasks-killed-in-status-update])
 
@@ -228,7 +204,6 @@
                                    :task-lost
                                    :task-error} :instance.status/failed)
                prior-job-state (:job/state (d/entity db job))
-               instance-ent (d/entity db instance)
                current-time (now)
                instance-runtime (- (.getTime current-time) ; Used for reporting
                                    (.getTime (or (:instance/start-time instance-ent) current-time)))
