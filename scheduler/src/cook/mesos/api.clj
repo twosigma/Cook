@@ -1304,7 +1304,8 @@
 
 (defn set-limit-params
   [limit-type]
-  {:body-params (merge UserParam {limit-type {s/Keyword s/Num}})})
+  {:body-params (merge UserParam {limit-type {s/Keyword s/Num}
+                                  :reason s/Str})})
 
 (defn retrieve-user-limit
   [get-limit-fn conn ctx]
@@ -1339,7 +1340,9 @@
    limit-type is-authorized-fn
    {:allowed-methods [:delete]
     :delete!  (fn [ctx]
-                (retract-limit-fn conn (get-in ctx [:request :query-params :user])))}))
+                (retract-limit-fn conn
+                                  (get-in ctx [:request :query-params :user])
+                                  (get-in ctx [:request :query-params :reason])))}))
 
 (defn coerce-limit-values
   [limits-from-request]
@@ -1368,7 +1371,11 @@
                       [false {::limits limits}])))
 
     :post! (fn [ctx]
-             (apply set-limit-fn conn (get-in ctx [:request :body-params :user]) (reduce into [] (::limits ctx))))}))
+             (apply set-limit-fn
+                    conn
+                    (get-in ctx [:request :body-params :user])
+                    (get-in ctx [:request :body-params :reason])
+                    (reduce into [] (::limits ctx))))}))
 
 
 ;; /failure-reasons

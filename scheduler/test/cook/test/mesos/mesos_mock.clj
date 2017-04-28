@@ -790,7 +790,8 @@
           make-mesos-driver-fn (fn [scheduler _];; _ is framework-id
                                  (mm/mesos-mock hosts speed-multiplier scheduler))]
       (with-cook-scheduler mesos-datomic-conn make-mesos-driver-fn {}
-        (share/set-share! mesos-datomic-conn "default" :mem mem :cpus cpus :gpus 1.0)
+        (share/set-share! mesos-datomic-conn "default" "new cluster settings"
+                          :mem mem :cpus cpus :gpus 1.0)
         ;; Note these two vars are lazy, need to realize to put them in db.
         (let [user-a-job-ent-ids (for [_ (range 20)]
                                    (create-dummy-job mesos-datomic-conn

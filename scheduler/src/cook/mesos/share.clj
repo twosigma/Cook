@@ -69,13 +69,36 @@
        (map (fn [type] [type (get-share-by-type db type user)]))
        (into {})))
 
+(defn share-history
+  "Return changes to a user's own share, in the form
+  [{:time (inst when change occurred)
+    :reason (stated reason for change)
+    :share (share as would have been returned by get-share after change)}]"
+  [db user]
+  (->> (d/q '[:find ?e ?a ?v ?added ?tx
+              :in $ ?a ?e
+              :where
+              [?e ?a ?v ?tx ?added]]
+            (d/history db)
+            :share/reason
+            [:share/user user])
+       (sort-by last)
+       (map (fn [[e attr v added tx]]
+              (let [tx-db (d/as-of db tx)
+                    tx-e (d/entity tx-db e)]
+                {:time (:db/txInstant (d/entity db tx))
+                 :reason (:share/reason tx-e)
+                 :share (get-share tx-db user)})))
+       distinct))
+
 (defn retract-share!
-  [conn user]
+  [conn user reason]
   (let [db (d/db conn)]
     (->> (util/get-all-resource-types db)
          (map (fn [type]
                 [type (retract-share-by-type! conn type user)]))
-         (into {}))))
+         (into {})))
+  @(d/transact conn [[:db/add [:share/user user] :share/reason reason]]))
 
 (defn set-share!
   "Set the share for a user. Note that the type of resource must be in the
@@ -86,7 +109,7 @@
    or
    (set-share! conn \"u1\" :cpus 20.0)
    etc."
-  [conn user & kvs]
+  [conn user reason & kvs]
   (loop [[type amount & kvs] kvs
          txns []]
     (if (and amount (pos? amount))
@@ -106,7 +129,8 @@
                     :share/resource [{:resource/type type
                                       :resource/amount amount}]}])]
         (recur kvs (into txn txns)))
-      @(d/transact conn txns))))
+      @(d/transact conn txns)))
+  @(d/transact conn [[:db/add [:share/user user] :share/reason reason]]))
 
 (timers/deftimer [cook-mesos share create-user->share-fn-duration])
 

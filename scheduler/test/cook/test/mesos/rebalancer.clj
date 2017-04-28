@@ -73,7 +73,9 @@
 
           tasks (shuffle [task-ent1 task-ent2 task-ent3 task-ent4
                            task-ent5 task-ent6 task-ent7 task-ent8])]
-      (let [_ (share/set-share! conn "default" :mem 25.0 :cpus 25.0 :gpus 1.0)
+      (let [_ (share/set-share! conn "default"
+                                "Limits for new cluster"
+                                :mem 25.0 :cpus 25.0 :gpus 1.0)
             scored-task1 (dru/->ScoredTask task-ent1 0.4 10.0 10.0)
             scored-task2 (dru/->ScoredTask task-ent2 0.6 5.0 5.0)
             scored-task3 (dru/->ScoredTask task-ent3 1.6 15.0 25.0)
@@ -133,7 +135,9 @@
           task-ent7 (d/entity (d/db conn) task7)
           task-ent8 (d/entity (d/db conn) task8)
 
-          _ (share/set-share! conn "default" :mem 25.0 :cpus 25.0 :gpus 1.0)
+          _ (share/set-share! conn "default"
+                              "limits for new cluster"
+                              :mem 25.0 :cpus 25.0 :gpus 1.0)
 
           db (d/db conn)
           running-tasks (util/get-running-task-ents db)
@@ -177,7 +181,9 @@
         task-ent7 (d/entity (d/db conn) task7)
         task-ent8 (d/entity (d/db conn) task8)
 
-        _ (share/set-share! conn "default" :mem 25.0 :cpus 25.0 :gpus 1.0)
+        _ (share/set-share! conn "default"
+                            "limits for new cluster"
+                            :mem 25.0 :cpus 25.0 :gpus 1.0)
 
         db (d/db conn)
         running-tasks (util/get-running-task-ents db)
@@ -260,7 +266,9 @@
           task-ent7 (d/entity (d/db conn) task7)
           task-ent8 (d/entity (d/db conn) task8)
 
-          _ (share/set-share! conn "default" :mem 25.0 :cpus 25.0 :gpus 1.0)
+          _ (share/set-share! conn "default"
+                              "limits for new cluster"
+                              :mem 25.0 :cpus 25.0 :gpus 1.0)
 
           offer-cache (init-offer-cache)
           db (d/db conn)
@@ -431,7 +439,8 @@
                        "bricks" {"HOSTNAME" "bricks"}
                        "rebar" {"HOSTNAME" "rebar"}}
           offer-cache (init-offer-cache)]
-      (share/set-share! conn "default" :mem 10.0 :cpus 10.0 :gpus 10.0)
+      (share/set-share! conn "default" "new cluster settings"
+                        :mem 10.0 :cpus 10.0 :gpus 10.0)
       ; Fill up hosts with preemptable tasks
       (doall (for [[user host] user->host]
                (create-and-cache-running-job conn host offer-cache hostname->props
@@ -509,7 +518,8 @@
                        "bricks" {"HOSTNAME" "bricks"}
                        "rebar" {"HOSTNAME" "rebar"}}
           offer-cache (init-offer-cache)]
-      (share/set-share! conn "default" :mem 10.0 :cpus 10.0 :gpus 1.0)
+      (share/set-share! conn "default" "new cluster settings"
+                        :mem 10.0 :cpus 10.0 :gpus 1.0)
       ; Fill up hosts with preemptable tasks
       (doall (for [[user host] user->host]
                (do (create-and-cache-running-job conn host offer-cache hostname->props :user user :ncpus 100.0))))
@@ -567,7 +577,8 @@
                            "bricks" {"az" "east" "HOSTNAME" "bricks"}
                            "rebar" {"az" "west" "HOSTNAME" "rebar"}}
           offer-cache (init-offer-cache)]
-      (share/set-share! conn "default" :mem 10.0 :cpus 10.0 :gpus 1.0)
+      (share/set-share! conn "default" "new cluster limits"
+                        :mem 10.0 :cpus 10.0 :gpus 1.0)
       ; Fill up hosts with preemptable tasks
       (doall (for [[user host] user->host]
                (do (create-and-cache-running-job conn host offer-cache hostname->props :user user :ncpus 100.0))))
@@ -641,7 +652,8 @@
 
       (testing "try placing job with one unconstrained-host available"
         (let [conn (restore-fresh-database! datomic-uri)
-              _ (share/set-share! conn "default" :mem 20.0 :cpus 20.0 :gpus 1.0)
+              _ (share/set-share! conn "default""new cluster limits"
+                                  :mem 20.0 :cpus 20.0 :gpus 1.0)
               offer-cache (init-offer-cache)
               ; Fill up hosts with preemptable tasks
               preemptable (doall
@@ -674,7 +686,8 @@
 
       (testing "try placing job with two unconstrained hosts available, but one has already been preempted this cycle"
         (let [conn (restore-fresh-database! datomic-uri)
-              _ (share/set-share! conn "default" :mem 20.0 :cpus 20.0 :gpus 1.0)
+              _ (share/set-share! conn "default" "new cluster limits"
+                                  :mem 20.0 :cpus 20.0 :gpus 1.0)
               offer-cache (init-offer-cache)
               ; Fill up hosts with preemptable tasks
               preemptable (doall
@@ -764,11 +777,13 @@
                                        :slave-id "testA"
                                        :hostname "hostA")
           task8 (create-dummy-instance conn
-                                       job8
-                                       :instance-status :instance.status/running
-                                       :slave-id "testB"
-                                       :hostname "hostB")
-          _ (share/set-share! conn "default" :mem 25.0 :cpus 25.0 :gpus 1.0)
+                                             job8
+                                             :instance-status :instance.status/running
+                                             :slave-id "testB"
+                                             :hostname "hostB")
+          _ (share/set-share! conn "default"
+                              "limits for new cluster"
+                              :mem 25.0 :cpus 25.0 :gpus 1.0)
           db (d/db conn)
 
           job-ent9 (d/entity db job9)
@@ -935,7 +950,9 @@
                                       job8
                                       :instance-status :instance.status/running
                                       :hostname "hostB")
-          _ (share/set-share! conn "default" :mem 25.0 :cpus 25.0)
+          _ (share/set-share! conn "default"
+                              "limits for new cluster"
+                              :mem 25.0 :cpus 25.0)
 
           db (d/db conn)
 
@@ -1026,7 +1043,9 @@
           (is (= [task-ent4]
                  task-ents-to-preempt))))
 
-      (let [_ (share/set-share! conn "sunil" :mem 50.0 :cpus 50.0)
+      (let [_ (share/set-share! conn "sunil"
+                                "needs more resources"
+                                :mem 50.0 :cpus 50.0)
             db (d/db conn)
             offer-cache (init-offer-cache)
             pending-job-ents (map #(d/entity db %) [job19 job20 job21 job22 job23
@@ -1053,7 +1072,9 @@
           pending-job-gen  (gen/tuple pending-user-gen mem-gen cpus-gen)]
       (let [conn (restore-fresh-database! datomic-uri)
             offer-cache (init-offer-cache)
-            _ (share/set-share! conn "default" :mem 1024.0 :cpus Double/MAX_VALUE)
+            _ (share/set-share! conn "default"
+                                "limits for new cluster"
+                                :mem 1024.0 :cpus Double/MAX_VALUE)
             running-tasks-sample-size 10240
             pending-jobs-sample-size 1024
 

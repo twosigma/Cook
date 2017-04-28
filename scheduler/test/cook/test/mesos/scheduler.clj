@@ -169,12 +169,18 @@
         _ (create-dummy-instance conn j5)
         _ (create-dummy-instance conn j7)]
     (testing "sort-jobs-by-dru default share for everyone"
-      (let [_ (share/set-share! conn "default" :mem 10.0 :cpus 10.0)
+      (let [_ (share/set-share! conn "default"
+                                "limits for new cluster"
+                                :mem 10.0 :cpus 10.0)
             db (d/db conn)]
         (is (= [j2 j3 j6 j4 j8] (map :db/id (:normal (sched/sort-jobs-by-dru db db)))))))
     (testing "sort-jobs-by-dru one user has non-default share"
-      (let [_ (share/set-share! conn "default" :mem 10.0 :cpus 10.0)
-            _ (share/set-share! conn "sunil" :mem 100.0 :cpus 100.0)
+      (let [_ (share/set-share! conn "default"
+                                "limits for new cluster"
+                                :mem 10.0 :cpus 10.0)
+            _ (share/set-share! conn "sunil"
+                                "needs more resources"
+                                :mem 100.0 :cpus 100.0)
             db (d/db conn)]
         (is (= [j8 j2 j3 j6 j4] (map :db/id (:normal (sched/sort-jobs-by-dru db db))))))))
 
@@ -810,15 +816,21 @@
         ; Update ljin-1 to running
         inst (create-dummy-instance conn ljin-1 :instance-status :instance.status/unknown)
         _ @(d/transact conn [[:instance/update-state inst :instance.status/running [:reason/name :unknown]]])
-        _ (share/set-share! conn "default" :cpus 1.0 :mem 2.0 :gpus 1.0)]
+        _ (share/set-share! conn "default"
+                            "limits for new cluster"
+                            :cpus 1.0 :mem 2.0 :gpus 1.0)]
     (testing "one user has double gpu share"
-      (let [_ (share/set-share! conn "ljin" :gpus 2.0)
+      (let [_ (share/set-share! conn "ljin"
+                                "Needs some GPUs"
+                                :gpus 2.0)
             db (d/db conn)]
         (is (= [ljin-2 wzhao-1 ljin-3 ljin-4 wzhao-2] (map :db/id (:gpu (sched/sort-jobs-by-dru db db)))))))
     (testing "one user has single gpu share"
-      (let [_ (share/set-share! conn "ljin" :gpus 1.0)
-            db (d/db conn)]
-        (is (= [wzhao-1 wzhao-2 ljin-2 ljin-3 ljin-4] (map :db/id (:gpu (sched/sort-jobs-by-dru db db)))))))))
+      (let [_ (share/set-share! conn "ljin"
+                                "Doesn't need lots of gpus"
+                                :gpus 1.0)
+              db (d/db conn)]
+          (is (= [wzhao-1 wzhao-2 ljin-2 ljin-3 ljin-4] (map :db/id (:gpu (sched/sort-jobs-by-dru db db)))))))))
 
 (deftest test-cancelled-task-killer
   (let [uri "datomic:mem://test-gpu-shares"

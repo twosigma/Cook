@@ -65,8 +65,12 @@
           db (d/db conn)
           running-task-ents (util/get-running-task-ents db)
           pending-job-ents [(d/entity db job3)]]
-      (let [_ (share/set-share! conn "default" :mem 25.0 :cpus 25.0 :gpus 1.0)
-            _ (share/set-share! conn "wzhao" :mem 10.0 :cpus 10.0)
+      (let [_ (share/set-share! conn "default"
+                                "Raising limits for new cluster"
+                                :mem 25.0 :cpus 25.0 :gpus 1.0)
+            _ (share/set-share! conn "wzhao"
+                                "Tends to use too much stuff"
+                                :mem 10.0 :cpus 10.0)
             db (d/db conn)]
         (is (= {"ljin" {:mem 25.0 :cpus 25.0 :gpus 1.0}
                 "wzhao" {:mem 10.0 :cpus 10.0 :gpus 1.0}

@@ -518,6 +518,11 @@
     :db/unique :db.unique/identity
     :db/cardinality :db.cardinality/one
     :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :share/reason
+    :db/valueType :db.type/string
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
 
    ;; Quota attributes
    {:db/id (d/tempid :db.part/db)
@@ -535,6 +540,11 @@
    {:db/id (d/tempid :db.part/db)
     :db/ident :quota/count
     :db/valueType :db.type/long
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :quota/reason
+    :db/valueType :db.type/string
     :db/cardinality :db.cardinality/one
     :db.install/_attribute :db.part/db}
 
