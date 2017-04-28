@@ -136,6 +136,19 @@
     :db/isComponent true
     :db/cardinality :db.cardinality/one
     :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :job/last-fenzo-placement-failure
+    :db/valueType :db.type/string
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db
+    :db/doc "Serialized EDN representing a summary of Fenzo placement failures
+for a job. E.g. {:resources {:cpus 4 :mem 3} :constraints {\"unique_host_constraint\" 2}}"}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :job/under-investigation
+    :db/valueType :db.type/boolean
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db
+    :db/doc "Whether a summary of Fenzo placement failures should be recorded for the job at next opportunity."}
    ;; Group attributes
    {:db/id (d/tempid :db.part/db)
     :db/ident :group/uuid

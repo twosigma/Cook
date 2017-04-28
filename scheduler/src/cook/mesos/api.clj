@@ -22,8 +22,7 @@
             [clojure.data.json :as json]
             [clojure.string :as str]
             [clojure.tools.logging :as log]
-            [clojure.walk :as walk]
-            [clojure.walk :refer (keywordize-keys)]
+            [clojure.walk :as walk :refer (keywordize-keys)]
             [compojure.api.middleware :as c-mw]
             [compojure.api.sweet :as c-api]
             [compojure.core :refer (GET POST ANY routes)]
@@ -32,6 +31,7 @@
             [cook.mesos.reason :as reason]
             [cook.mesos.schema :refer (host-placement-types straggler-handling-types)]
             [cook.mesos.share :as share]
+            [cook.mesos.unscheduled :as unscheduled]
             [cook.mesos.util :as util]
             [cook.mesos]
             [datomic.api :as d :refer (q)]
@@ -43,7 +43,7 @@
             [metrics.timers :as timers]
             [plumbing.core :refer [map-from-vals map-keys map-vals mapply]]
             [ring.middleware.json]
-            [schema.core :as s]
+            [schema.core :as s :refer (defschema)]
             [swiss.arrows :refer :all])
   (:import (java.net ServerSocket URLEncoder)
            (java.util Date UUID)
@@ -854,14 +854,17 @@
       false
       [true {::error "must supply at least one job or instance query param"}])))
 
+(defn user-authorized-for-job?
+  [conn is-authorized-fn ctx job-uuid]
+  (let [request-user (get-in ctx [:request :authorization/user])
+        job-user (:job/user (d/entity (db conn) [:job/uuid job-uuid]))
+        request-method (get-in ctx [:request :request-method])]
+    (is-authorized-fn request-user request-method {:owner job-user :item :job})))
+
 (defn job-request-allowed?
   [conn is-authorized-fn ctx]
   (let [uuids (::jobs ctx)
-        user (get-in ctx [:request :authorization/user])
-        job-user (fn [uuid]
-                   (:job/user (d/entity (db conn) [:job/uuid uuid])))
-        authorized? (fn [uuid]
-                      (is-authorized-fn user (get-in ctx [:request :request-method]) {:owner (job-user uuid) :item :job}))]
+        authorized? (partial user-authorized-for-job? conn is-authorized-fn ctx)]
     (if (every? authorized? uuids)
       true
       [false {::error (str "You are not authorized to view access the following jobs "
@@ -1528,6 +1531,40 @@
                          (mapv (partial fetch-job-map db framework-id) job-uuids)))))
       ring.middleware.json/wrap-json-params))
 
+
+;;
+;; /unscheduled_jobs
+;;
+
+(defschema UnscheduledJobResponse [{:uuid s/Uuid
+                                    :reasons [{:reason s/Str
+                                               :data {s/Any s/Any}}]}])
+
+(defn job-reasons
+  "Given a job, load the unscheduled reasons from the database and massage them
+  into a presentation-friendly structure. For example:
+  [{:reason \"reason1\" :data {:attr1 1 :attr2 2}}}
+   {:reason \"reason2\" :data {:attra 3 :attrb 4}}}]"
+  [conn job-uuid]
+  (let [db (d/db conn)
+        job (d/entity db [:job/uuid job-uuid])
+        reasons (unscheduled/reasons conn job)
+        representation (map (fn [[reason data]] {:reason reason :data data})
+                            reasons)]
+    representation))
+
+(defn read-unscheduled-handler
+  [conn is-authorized-fn]
+  (base-cook-handler
+   {:allowed-methods [:get]
+    :exists? (partial check-jobs-exist conn)
+    :allowed? (partial job-request-allowed? conn is-authorized-fn)
+    :handle-ok (fn [ctx]
+                 (map (fn [job] {:uuid job
+                                 :reasons (job-reasons conn job)})
+                      (::jobs ctx)))}))
+
+
 ;;
 ;; "main" - the entry point that routes to other handlers
 ;;
@@ -1658,8 +1695,19 @@
       (c-api/resource
         {:get {:summary "Returns the settings that cook is configured with"
                :responses {200 {:description "The settings were returned."}}
-               :handler (settings-handler settings)}})))
+               :handler (settings-handler settings)}}))
 
+     (c-api/context
+      "/unscheduled_jobs" []
+      (c-api/resource
+       {:produces ["application/json"],
+        :get {:summary "Read reasons why a job isn't being scheduled."
+              :parameters {:query-params {:job s/Uuid}}
+              :handler (read-unscheduled-handler conn is-authorized-fn)
+              :responses {200 {:schema UnscheduledJobResponse
+                               :description "Reasons the job isn't being scheduled."}
+                          400 {:description "Invalid request format."}
+                          404 {:description "The UUID doesn't correspond to a job."}}}})))
 
     (ANY "/queue" []
          (waiting-jobs mesos-pending-jobs-fn is-authorized-fn))

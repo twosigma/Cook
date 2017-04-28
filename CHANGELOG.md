@@ -6,6 +6,7 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/) and this p
  
 ## [Unreleased]
 ### Added
+- /unscheduled_jobs API endpoint, from @mforsyth
 ### Changed
 - Require an explicit reason when changing shares or quotas (from @mforsyth).  This intentionally breaks backwards compatibility.
 

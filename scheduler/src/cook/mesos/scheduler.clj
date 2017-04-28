@@ -28,6 +28,8 @@
             [cook.datomic :as datomic :refer (transact-with-retries)]
             [cook.mesos.constraints :as constraints]
             [cook.mesos.dru :as dru]
+            [cook.mesos.fenzo-utils :as fenzo]
+            [cook.mesos.task :as task]
             [cook.mesos.group :as group]
             [cook.mesos.heartbeat :as heartbeat]
             [cook.mesos.quota :as quota]
@@ -433,7 +435,8 @@
    A schedule is just a sorted list of tasks, and we're going to greedily assign them to
    the offer.
 
-   Returns a list of tasks that got matched to the offer"
+   Returns {:matches (list of tasks that got matched to the offer)
+            :failures (list of unmatched tasks, and why they weren't matched)}"
   [^TaskScheduler fenzo considerable offers]
   (log/debug "Matching" (count offers) "offers to" (count considerable) "jobs with fenzo")
   (log/debug "offers to scheduleOnce" offers)
@@ -455,19 +458,15 @@
                  (.scheduleOnce fenzo requests leases))
         failure-results (.. result getFailures values)
         assignments (.. result getResultMap values)]
-    (when (and (seq failure-results) (log/enabled? :debug))
-      (log/debug "Task placement failure information follows:")
-      (doseq [failure-result failure-results
-              failure failure-result
-              :let [_ (log/debug (str (.getConstraintFailure failure)))]
-              f (.getFailures failure)]
-        (log/debug (str f)))
-      (log/debug "Task placement failure information concluded."))
-    (mapv (fn [assignment]
-            {:leases (.getLeasesUsed assignment)
-             :tasks (.getTasksAssigned assignment)
-             :hostname (.getHostname assignment)})
-          assignments)))
+
+    (log/debug "Found this assigment:" result)
+
+    {:matches (mapv (fn [assignment]
+                      {:leases (.getLeasesUsed assignment)
+                       :tasks (.getTasksAssigned assignment)
+                       :hostname (.getHostname assignment)})
+                    assignments)
+     :failures failure-results}))
 
 (meters/defmeter [cook-mesos scheduler scheduler-offer-declined])
 
@@ -672,9 +671,9 @@
                                             handle-resource-offer!-considerable-jobs-duration
                                             (category->pending-jobs->category->considerable-jobs
                                               db category->pending-jobs user->quota user->usage num-considerable))
-              matches (timers/time!
-                        handle-resource-offer!-match-duration
-                        (match-offer-to-schedule fenzo (apply concat (vals category->considerable-jobs)) offers))
+              {:keys [matches failures]} (timers/time!
+                                          handle-resource-offer!-match-duration
+                                          (match-offer-to-schedule fenzo (apply concat (vals category->considerable-jobs)) offers))
               _ (log/debug "got matches:" matches)
               offers-scheduled (for [{:keys [leases]} matches
                                      lease leases]
@@ -684,9 +683,13 @@
                                                                            (matches->category->job-uuids matches))
               first-normal-considerable-job-resources (-> category->considerable-jobs :normal first util/job-ent->resources)
               matched-normal-considerable-jobs-head? (contains? matched-normal-job-uuids (-> category->considerable-jobs :normal first :job/uuid))]
+
+          (fenzo/record-placement-failures! conn failures)
+
           (reset! offer-stash offers-scheduled)
           (reset! front-of-job-queue-mem-atom (or (:mem first-normal-considerable-job-resources) 0))
           (reset! front-of-job-queue-cpus-atom (or (:cpus first-normal-considerable-job-resources) 0))
+
           (cond
             ;; Possible innocuous reasons for no matches: no offers, or no pending jobs.
             ;; Even beyond that, if Fenzo fails to match ANYTHING, "penalizing" it in the form of giving
