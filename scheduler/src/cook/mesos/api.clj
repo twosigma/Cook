@@ -906,8 +906,15 @@
       x
       [x]))
 
-;;TODO (Diego): add docs for this
 (def cook-coercer
+  "This coercer adds to compojure-api's default-coercion-matchers by
+  converting keys from snake_case to kebab-case for requests and from
+  kebab-case to snake_case for responses. For example, this allows clients to
+  pass 'max_retries' when submitting a job, even though the job schema has
+  :max-retries (with a dash instead of an underscore). For more information on
+  coercion in compojure-api, see:
+
+    https://github.com/metosin/compojure-api/wiki/Validation-and-coercion"
   (constantly
     (-> c-mw/default-coercion-matchers
       (update :body
