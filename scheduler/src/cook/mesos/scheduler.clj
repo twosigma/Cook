@@ -566,8 +566,7 @@
   [matches]
   (let [category->jobs (group-by util/categorize-job
                                  (->> matches
-                                      (map #(-> % :tasks vec))
-                                      flatten
+                                      (mapcat #(-> % :tasks))
                                       (map #(-> % .getRequest :job))))
         category->job-uuids (pc/map-vals #(set (map :job/uuid %)) category->jobs)]
     (log/debug "matched jobs:" (pc/map-vals count category->job-uuids))
