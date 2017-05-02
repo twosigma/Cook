@@ -88,19 +88,19 @@
                                 (getTasksCurrentlyAssigned [_] [(mock-gpu-assignment)])
                                 (getCurrAvailableResources [_]  (sched/->VirtualMachineLeaseAdapter non-gpu-offer 0)))]]]
       (is (.isSuccessful
-            (.evaluate (constraints/fenzoize-job-constraint (constraints/->gpu-host-constraint gpu-job))
+            (.evaluate (constraints/fenzoize-job-constraint (constraints/build-gpu-host-constraint gpu-job))
                        (sched/make-task-request gpu-job)
                        gpu-lease
                        nil))
           (str "GPU task on GPU host with " type " should succeed"))
       (is (not (.isSuccessful
-                 (.evaluate (constraints/fenzoize-job-constraint (constraints/->gpu-host-constraint non-gpu-job))
+                 (.evaluate (constraints/fenzoize-job-constraint (constraints/build-gpu-host-constraint non-gpu-job))
                             (sched/make-task-request non-gpu-job)
                             gpu-lease
                             nil)))
           (str "non GPU task on GPU host with " type " should fail"))
       (is (not (.isSuccessful
-                 (.evaluate (constraints/fenzoize-job-constraint (constraints/->gpu-host-constraint gpu-job))
+                 (.evaluate (constraints/fenzoize-job-constraint (constraints/build-gpu-host-constraint gpu-job))
                             (sched/make-task-request gpu-job)
                             (reify com.netflix.fenzo.VirtualMachineCurrentState
                               (getHostname [_] "test-host")
@@ -110,7 +110,7 @@
                             nil)))
           "GPU task on non GPU host should fail")
       (is (.isSuccessful
-            (.evaluate (constraints/fenzoize-job-constraint (constraints/->gpu-host-constraint non-gpu-job))
+            (.evaluate (constraints/fenzoize-job-constraint (constraints/build-gpu-host-constraint non-gpu-job))
                        (sched/make-task-request non-gpu-job)
                        (reify com.netflix.fenzo.VirtualMachineCurrentState
                          (getHostname [_] "test-host")

@@ -63,15 +63,12 @@
   [object]
   (.getSimpleName (type object)))
 
-(defrecord novel-host-constraint [job]
+(defrecord novel-host-constraint [job previous-hosts]
   JobConstraint
   (job-constraint-name [this] (get-class-name this))
   (job-constraint-evaluate
     [this _ vm-attributes]
     (let [job (:job this)
-          previous-hosts (->> (:job/instance job)
-                              (remove #(true? (:instance/preempted? %)))
-                              (mapv :instance/hostname))
           target-hostname (get vm-attributes "HOSTNAME")]
       [(not-any? #(= target-hostname %) previous-hosts)
        (str "Can't run on " target-hostname
@@ -82,7 +79,16 @@
     [this _ vm-attributes _]
     (job-constraint-evaluate this _ vm-attributes)))
 
-(defrecord gpu-host-constraint [job]
+(defn build-novel-host-constraint
+  "Constructs a novel-host-constraint. 
+  The constraint prevents the job from running on hosts it has already run on"
+  [job]
+  (let [previous-hosts (->> (:job/instance job)
+                            (remove #(true? (:instance/preempted? %)))
+                            (mapv :instance/hostname))]
+    (->novel-host-constraint job previous-hosts)))
+
+(defrecord gpu-host-constraint [job needs-gpus?]
   JobConstraint
   (job-constraint-name [this] (get-class-name this))
   (job-constraint-evaluate
@@ -92,30 +98,42 @@
     [this _ vm-attributes target-vm-tasks-assigned]
     (let [; Look at attribute and running jobs to determine if vm has gpus
           vm-has-gpus? (or (get vm-attributes "COOK_GPU?") ; Set when putting attributes in cache
-                           (some (fn gpu-task? [req]
-                                   (job-needs-gpus? (:job req)))
+                           (some (fn gpu-task? [{:keys [needs-gpus?]}]
+                                   needs-gpus?)
                                  target-vm-tasks-assigned))
           job (:job this)
-          needs-gpus? (job-needs-gpus? job)
           passes? (or (and needs-gpus? vm-has-gpus?)
                       (and (not needs-gpus?) (not vm-has-gpus?)))]
       [passes? (when-not passes? (if (and needs-gpus? (not vm-has-gpus?))
                                    "Job needs gpus, host does not have gpus."
                                    "Job does not need gpus, host has gpus."))])))
 
-(def job-constraint-constructors [->novel-host-constraint ->gpu-host-constraint])
+(defn build-gpu-host-constraint
+  "Constructs a gpu-host-constraint.
+  The constraint prevents a gpu job from running on a non-gpu host (resources should also handle this)
+  and a non-gpu job from running on a gpu host because we consider gpus scarce resources."
+  [job]
+  (let [needs-gpus? (job-needs-gpus? job)]
+    (->gpu-host-constraint job needs-gpus?)))
+
+(def job-constraint-constructors [build-novel-host-constraint build-gpu-host-constraint])
 
 (defn fenzoize-job-constraint
   "Makes the JobConstraint 'constraint' Fenzo-compatible."
   [constraint]
   (reify com.netflix.fenzo.ConstraintEvaluator
     (getName [_] (job-constraint-name constraint))
-    (evaluate [_ task-request target-vm _]
+    (^com.netflix.fenzo.ConstraintEvaluator$Result evaluate
+      [^com.netflix.fenzo.ConstraintEvaluator _
+       ^com.netflix.fenzo.TaskRequest task-request
+       ^com.netflix.fenzo.VirtualMachineCurrentState target-vm
+       ^com.netflix.fenzo.TaskTrackerState _]
       (let [vm-resources (.getCurrAvailableResources target-vm)
             vm-attributes (get-vm-lease-attr-map vm-resources)
             [passes? reason] (job-constraint-evaluate constraint vm-resources vm-attributes
                                                       (concat (.getRunningTasks target-vm)
-                                                              (mapv #(.getRequest %)
+                                                              (mapv (fn [^com.netflix.fenzo.TaskAssignmentResult result]
+                                                                      (.getRequest result))
                                                                      (.getTasksCurrentlyAssigned target-vm))))]
         (com.netflix.fenzo.ConstraintEvaluator$Result. passes? reason)))))
 

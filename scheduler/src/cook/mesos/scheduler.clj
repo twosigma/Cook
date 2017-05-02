@@ -389,24 +389,13 @@
               (not has-gpus?))
             (str "The machine " (.getHostname target-vm) (if @needs-gpus? " doesn't have" " has") " gpus")))))))
 
-(defrecord TaskRequestAdapter [job resources task-id assigned-resources guuid->considerable-cotask-ids]
+(defrecord TaskRequestAdapter [job resources task-id assigned-resources guuid->considerable-cotask-ids constraints needs-gpus? scalar-requests]
   TaskRequest
   (getCPUs [_] (:cpus resources))
   (getDisk [_] 0.0)
-  (getHardConstraints [_] (into
-                            (constraints/make-fenzo-job-constraints job)
-                            (remove
-                              nil?
-                              (mapv #(constraints/make-fenzo-group-constraint
-                                       % (guuid->considerable-cotask-ids (:group/uuid %))) (:group/_job job)))))
+  (getHardConstraints [_] constraints)
   (getId [_] task-id)
-  (getScalarRequests [_]
-    (reduce (fn [result resource]
-              (if-let [value (:resource/amount resource)]
-                (assoc result (name (:resource/type resource)) value)
-                result))
-            {}
-            (:job/resource job)))
+  (getScalarRequests [_] scalar-requests)
   (getAssignedResources [_] @assigned-resources)
   (setAssignedResources [_ v] (reset! assigned-resources v))
   (getCustomNamedResources [_] {})
@@ -426,7 +415,18 @@
                task-id (str (java.util.UUID/randomUUID))
                assigned-resources (atom nil)
                guuid->considerable-cotask-ids (constantly #{})}}]
-  (->TaskRequestAdapter job resources task-id assigned-resources guuid->considerable-cotask-ids))
+  (let [constraints (into (constraints/make-fenzo-job-constraints job)
+                            (remove nil?
+                              (mapv #(constraints/make-fenzo-group-constraint
+                                       % (guuid->considerable-cotask-ids (:group/uuid %))) (:group/_job job))))
+        needs-gpus? (constraints/job-needs-gpus? job)
+        scalar-requests (reduce (fn [result resource]
+                                  (if-let [value (:resource/amount resource)]
+                                    (assoc result (name (:resource/type resource)) value)
+                                    result))
+                                {}
+                                (:job/resource job))]
+    (->TaskRequestAdapter job resources task-id assigned-resources guuid->considerable-cotask-ids constraints needs-gpus? scalar-requests)))
 
 (defn match-offer-to-schedule
   "Given an offer and a schedule, computes all the tasks should be launched as a result.
