@@ -21,11 +21,10 @@
             [clojure.core.async :as async]
             [clojure.core.cache :as cache]
             [clojure.edn :as edn]
-            [clojure.set :as set]
             [clojure.string :as str]
             [clojure.tools.logging :as log]
             [cook.components :refer (default-fitness-calculator)]
-            [cook.datomic :as datomic :refer (transact-with-retries)]
+            [cook.datomic :refer (transact-with-retries)]
             [cook.mesos.constraints :as constraints]
             [cook.mesos.dru :as dru]
             [cook.mesos.fenzo-utils :as fenzo]
@@ -39,7 +38,6 @@
             [cook.mesos.util :as util]
             [datomic.api :as d :refer (q)]
             [mesomatic.scheduler :as mesos]
-            [mesomatic.types :as mtypes]
             [metatransaction.core :refer (db)]
             [metrics.counters :as counters]
             [metrics.gauges :as gauges]
@@ -52,10 +50,8 @@
            VMTaskFitnessCalculator VirtualMachineLease VirtualMachineLease$Range
            VirtualMachineCurrentState]
           [com.netflix.fenzo.functions Action1 Func1]
-          com.netflix.fenzo.plugins.BinPackingFitnessCalculators
           java.util.Date
-          java.util.concurrent.TimeUnit
-          org.apache.mesos.Protos$Offer))
+          java.util.concurrent.TimeUnit))
 
 (defn now
   []
@@ -175,7 +171,7 @@
 (defn handle-status-update
   "Takes a status update from mesos."
   [conn driver ^TaskScheduler fenzo status]
-  (log/info "Mesos status is: " status)
+  (log/info "Mesos status is:" status)
   (timers/time!
     handle-status-update-duration
     (try (let [db (db conn)
@@ -257,7 +253,8 @@
              ;; transaction; see the comment in the definition of :instance/update-state for more details
              (transact-with-retries
                conn
-               (reduce into
+               (reduce
+                 into
                  [[:instance/update-state instance instance-status (or (:db/id previous-reason)
                                                                        (reason/mesos-reason->cook-reason-entity-id db reason)
                                                                        [:reason.name :unknown])]] ; Warning: Default is not mea-culpa
@@ -271,8 +268,8 @@
                     [[:db/add instance :instance/mesos-start-time (now)]])
                   (when progress
                     [[:db/add instance :instance/progress progress]])]))))
-      (catch Exception e
-        (log/error e "Mesos scheduler status update error")))))
+         (catch Exception e
+           (log/error e "Mesos scheduler status update error")))))
 
 (timers/deftimer [cook-mesos scheduler tx-report-queue-processing-duration])
 (meters/defmeter [cook-mesos scheduler tx-report-queue-datoms])
@@ -396,8 +393,10 @@
   TaskRequest
   (getCPUs [_] (:cpus resources))
   (getDisk [_] 0.0)
-  (getHardConstraints [_] (into (constraints/make-fenzo-job-constraints job)
-                            (remove nil?
+  (getHardConstraints [_] (into
+                            (constraints/make-fenzo-job-constraints job)
+                            (remove
+                              nil?
                               (mapv #(constraints/make-fenzo-group-constraint
                                        % (guuid->considerable-cotask-ids (:group/uuid %))) (:group/_job job)))))
   (getId [_] task-id)
@@ -459,7 +458,7 @@
         failure-results (.. result getFailures values)
         assignments (.. result getResultMap values)]
 
-    (log/debug "Found this assigment:" result)
+    (log/debug "Found this assignment:" result)
 
     {:matches (mapv (fn [assignment]
                       {:leases (.getLeasesUsed assignment)
@@ -538,9 +537,9 @@
        (map :job/_instance)
        (group-by :job/user)
        (pc/map-vals (fn [jobs]
-                   (->> jobs
-                        (map job->usage)
-                        (reduce (partial merge-with +)))))))
+                      (->> jobs
+                           (map job->usage)
+                           (reduce (partial merge-with +)))))))
 
 (defn category->pending-jobs->category->considerable-jobs
   "Limit the pending jobs to considerable jobs based on usage and quota.
@@ -671,8 +670,8 @@
                                             (category->pending-jobs->category->considerable-jobs
                                               db category->pending-jobs user->quota user->usage num-considerable))
               {:keys [matches failures]} (timers/time!
-                                          handle-resource-offer!-match-duration
-                                          (match-offer-to-schedule fenzo (apply concat (vals category->considerable-jobs)) offers))
+                                           handle-resource-offer!-match-duration
+                                           (match-offer-to-schedule fenzo (apply concat (vals category->considerable-jobs)) offers))
               _ (log/debug "got matches:" matches)
               offers-scheduled (for [{:keys [leases]} matches
                                      lease leases]
@@ -775,7 +774,7 @@
                       _ (doseq [offer offers
                                 :let [slave-id (-> offer :slave-id :value)
                                       attrs (get-offer-attr-map offer)]]
-                          ; Cache all used offers (offer-cache is a map of hostnames to most recent offer) 
+                          ; Cache all used offers (offer-cache is a map of hostnames to most recent offer)
                           (swap! offer-cache (fn [c]
                                                (if (cache/has? c slave-id)
                                                  (cache/hit c slave-id)
@@ -1058,7 +1057,7 @@
                (->> tasks
                     (group-by util/task-ent->user)
                     (pc/map-vals (fn [task-ents]
-                                (into (sorted-set-by task-comparator) task-ents)))
+                                   (into (sorted-set-by task-comparator) task-ents)))
                     (dru/sorted-task-scored-task-pairs user->dru-divisors)
                     (filter (fn [[task scored-task]]
                               (contains? pending-task-ents task)))
@@ -1228,11 +1227,11 @@
                 (clojure.lang.Reflector/getStaticField java-class field-name))
               (catch Exception e
                 (throw (IllegalArgumentException.
-                        (str config-string " could not be resolved to a clojure symbol or to a java static field")))))))]
+                         (str config-string " could not be resolved to a clojure symbol or to a java static field")))))))]
     (if (instance? VMTaskFitnessCalculator calculator)
       calculator
       (throw (IllegalArgumentException.
-              (str config-string " is not a VMTaskFitnessCalculator"))))))
+               (str config-string " is not a VMTaskFitnessCalculator"))))))
 
 (defn make-fenzo-scheduler
   [driver offer-incubate-time-ms fitness-calculator good-enough-fitness]
@@ -1292,7 +1291,9 @@
               (log/error e "Unable to decline offers!")))))))
 
 (defn create-datomic-scheduler
-  [conn set-framework-id driver-atom pending-jobs-atom offer-cache heartbeat-ch offer-incubate-time-ms mea-culpa-failure-limit fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset fenzo-fitness-calculator task-constraints gpu-enabled? good-enough-fitness]
+  [conn set-framework-id driver-atom pending-jobs-atom offer-cache heartbeat-ch offer-incubate-time-ms mea-culpa-failure-limit
+   fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset fenzo-fitness-calculator
+   task-constraints gpu-enabled? good-enough-fitness]
 
   (persist-mea-culpa-failure-limit! conn mea-culpa-failure-limit)
 
@@ -1332,8 +1333,8 @@
        (offer-rescinded [this driver offer-id]
                         ;; TODO: Rescind the offer in fenzo
                         )
-       (framework-message [this driver executor-id slave-id data]
-                          (heartbeat/notify-heartbeat heartbeat-ch executor-id slave-id data))
+       (framework-message [this driver executor-id slave-id message]
+                          (heartbeat/notify-heartbeat heartbeat-ch executor-id slave-id message))
        (disconnected [this driver]
                      (log/error "Disconnected from the previous master"))
        ;; We don't care about losing slaves or executors--only tasks
