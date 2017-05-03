@@ -19,14 +19,12 @@
             [clj-http.client :as http]
             [clj-time.core :as t]
             [clojure.core.cache :as cache]
-            [clojure.data.json :as json]
             [clojure.string :as str]
             [clojure.tools.logging :as log]
             [clojure.walk :as walk :refer (keywordize-keys)]
             [compojure.api.middleware :as c-mw]
             [compojure.api.sweet :as c-api]
-            [compojure.core :refer (GET POST ANY routes)]
-            [compojure.core :refer (routes ANY)]
+            [compojure.core :refer (ANY GET POST routes)]
             [cook.mesos.quota :as quota]
             [cook.mesos.reason :as reason]
             [cook.mesos.schema :refer (host-placement-types straggler-handling-types)]
@@ -42,8 +40,8 @@
             [metatransaction.core :refer (db)]
             [metrics.timers :as timers]
             [plumbing.core :refer [map-from-vals map-keys map-vals mapply]]
-            [ring.middleware.json]
-            [schema.core :as s :refer (defschema)]
+            [ring.middleware.json :as json]
+            [schema.core :as s]
             [swiss.arrows :refer :all])
   (:import (java.net ServerSocket URLEncoder)
            (java.util Date UUID)
@@ -54,7 +52,8 @@
 
 ;; This is necessary to prevent a user from requesting a uid:gid
 ;; pair other than their own (for example, root)
-(sh/let-programs [_id "/usr/bin/id"]
+(sh/let-programs
+  [_id "/usr/bin/id"]
   (defn uid [user-name]
     (clojure.string/trim (_id "-u" user-name)))
   (defn gid [user-name]
@@ -286,15 +285,15 @@
   "A schema for host placement"
   (s/conditional
     #(= (:type %) :attribute-equals)
-      {:type (s/eq :attribute-equals)
-       :parameters Attribute-Equals-Parameters}
+    {:type (s/eq :attribute-equals)
+     :parameters Attribute-Equals-Parameters}
     #(= (:type %) :balanced)
-      {:type (s/eq :balanced)
-       :parameters Balanced-Parameters}
+    {:type (s/eq :balanced)
+     :parameters Balanced-Parameters}
     :else
-      {:type (s/pred #(contains? (set (map util/without-ns host-placement-types)) %)
-                     'host-placement-type-exists?)
-       (s/optional-key :parameters) {}}))
+    {:type (s/pred #(contains? (set (map util/without-ns host-placement-types)) %)
+                   'host-placement-type-exists?)
+     (s/optional-key :parameters) {}}))
 
 (def Quantile-Deviation-Parameters
   {:multiplier (s/both s/Num (s/pred #(> % 1.0) 'greater-than-one))
@@ -304,12 +303,12 @@
   "A schema for host placement"
   (s/conditional
     #(= (:type %) :quantile-deviation)
-      {:type (s/eq :quantile-deviation)
-       :parameters Quantile-Deviation-Parameters}
+    {:type (s/eq :quantile-deviation)
+     :parameters Quantile-Deviation-Parameters}
     :else
-      {:type (s/pred #(contains? (set (map util/without-ns straggler-handling-types)) %)
-                     'straggler-handling-type-exists?)
-       (s/optional-key :parameters) {}}))
+    {:type (s/pred #(contains? (set (map util/without-ns straggler-handling-types)) %)
+                   'straggler-handling-type-exists?)
+     (s/optional-key :parameters) {}}))
 
 (def Group
   "A schema for a job group"
@@ -323,9 +322,9 @@
   (-> Group
       (merge
         {:jobs [s/Uuid]
-          (s/optional-key :waiting) s/Int
-          (s/optional-key :running) s/Int
-          (s/optional-key :completed) s/Int})
+         (s/optional-key :waiting) s/Int
+         (s/optional-key :running) s/Int
+         (s/optional-key :completed) s/Int})
       prepare-schema-response))
 
 (def RawSchedulerRequest
@@ -396,7 +395,7 @@
          (merge {:db/id docker-id
                  :docker/image (:image docker)
                  :docker/force-pull-image (:force-pull-image docker false)}
-                (when (:network docker) {:docker/network(:network docker)})
+                (when (:network docker) {:docker/network (:network docker)})
                 (mk-container-params docker-id params)
                 (mk-docker-ports docker-id port-mappings))])
       {})))
@@ -436,12 +435,12 @@
                           :environment/value v}]))
                     env)
         labels (mapcat (fn [[k v]]
-                      (let [label-var-id (d/tempid :db.part/user)]
-                        [[:db/add db-id :job/label label-var-id]
-                         {:db/id label-var-id
-                          :label/key k
-                          :label/value v}]))
-                    labels)
+                         (let [label-var-id (d/tempid :db.part/user)]
+                           [[:db/add db-id :job/label label-var-id]
+                            {:db/id label-var-id
+                             :label/key k
+                             :label/value v}]))
+                       labels)
         container (if (nil? container) [] (build-container user db-id container))
         ;; These are optionally set datoms w/ default values
         maybe-datoms (reduce into
@@ -451,11 +450,11 @@
                               (when (and max-runtime (not= Long/MAX_VALUE max-runtime))
                                 [[:db/add db-id :job/max-runtime max-runtime]])
                               (when (and gpus (not (zero? gpus)))
-                                  (let [gpus-id (d/tempid :db.part/user)]
-                                    [[:db/add db-id :job/resource gpus-id]
-                                     {:db/id gpus-id
-                                      :resource/type :resource.type/gpus
-                                      :resource/amount (double gpus)}]))])
+                                (let [gpus-id (d/tempid :db.part/user)]
+                                  [[:db/add db-id :job/resource gpus-id]
+                                   {:db/id gpus-id
+                                    :resource/type :resource.type/gpus
+                                    :resource/amount (double gpus)}]))])
         commit-latch-id (d/tempid :db.part/user)
         commit-latch {:db/id commit-latch-id
                       :commit-latch/uuid (UUID/randomUUID)
@@ -753,36 +752,22 @@
                               mesos-start (:instance/mesos-start-time instance)
                               end (:instance/end-time instance)
                               cancelled (:instance/cancelled instance)
-                              reason (reason/instance-entity->reason-entity db instance)
-                              base {:task_id (:instance/task-id instance)
-                                    :hostname hostname
-                                    :ports (:instance/ports instance)
-                                    :backfilled false ;; Backfill has been deprecated
-                                    :preempted (:instance/preempted? instance false)
-                                    :slave_id (:instance/slave-id instance)
-                                    :executor_id (:instance/executor-id instance)
-                                    :status (name (:instance/status instance))}
-                              base (if url-path
-                                     (assoc base :output_url url-path)
-                                     base)
-                              base (if start
-                                     (assoc base :start_time (.getTime start))
-                                     base)
-                              base (if mesos-start
-                                     (assoc base :mesos_start_time (.getTime mesos-start))
-                                     base)
-                              base (if end
-                                     (assoc base :end_time (.getTime end))
-                                     base)
-                              base (if cancelled
-                                     (assoc base :cancelled cancelled)
-                                     base)
-                              base (if reason
-                                     (assoc base
-                                       :reason_code (:reason/code reason)
-                                       :reason_string (:reason/string reason))
-                                     base)]
-                          base))
+                              reason (reason/instance-entity->reason-entity db instance)]
+                          (cond-> {:task_id (:instance/task-id instance)
+                                   :hostname hostname
+                                   :ports (:instance/ports instance)
+                                   :backfilled false ;; Backfill has been deprecated
+                                   :preempted (:instance/preempted? instance false)
+                                   :slave_id (:instance/slave-id instance)
+                                   :executor_id (:instance/executor-id instance)
+                                   :status (name (:instance/status instance))}
+                                  url-path (assoc :output_url url-path)
+                                  start (assoc :start_time (.getTime start))
+                                  mesos-start (assoc :mesos_start_time (.getTime mesos-start))
+                                  end (assoc :end_time (.getTime end))
+                                  cancelled (assoc :cancelled cancelled)
+                                  reason (assoc :reason_code (:reason/code reason)
+                                                :reason_string (:reason/string reason)))))
                       (:job/instance job))}]
     (cond-> job-map
             groups (assoc :groups (map #(str (:group/uuid %)) groups))
@@ -794,9 +779,9 @@
   (let [group (d/entity db [:group/uuid guuid])
         jobs (:group/job group)
         jobs-by-state (group-by :job/state jobs)]
-          {:waiting (count (:job.state/waiting jobs-by-state))
-           :running (count (:job.state/running jobs-by-state))
-           :completed (count (:job.state/completed jobs-by-state))}))
+    {:waiting (count (:job.state/waiting jobs-by-state))
+     :running (count (:job.state/running jobs-by-state))
+     :completed (count (:job.state/completed jobs-by-state))}))
 
 (defn fetch-group-map
   [db guuid]
@@ -890,21 +875,21 @@
 (defn destroy-jobs-handler
   [conn fid task-constraints gpu-enabled? is-authorized-fn]
   (base-cook-handler
-   {:allowed-methods [:delete]
-    :malformed? check-job-params-present
-    :allowed? (partial job-request-allowed? conn is-authorized-fn)
-    :exists? (partial retrieve-jobs conn)
-    :delete! (fn [ctx]
-               (cook.mesos/kill-job conn (::jobs-requested ctx))
-               (cook.mesos/kill-instances conn (::instances-requested ctx)))
-    :handle-ok (partial render-jobs-for-response conn fid)}))
+    {:allowed-methods [:delete]
+     :malformed? check-job-params-present
+     :allowed? (partial job-request-allowed? conn is-authorized-fn)
+     :exists? (partial retrieve-jobs conn)
+     :delete! (fn [ctx]
+                (cook.mesos/kill-job conn (::jobs-requested ctx))
+                (cook.mesos/kill-instances conn (::instances-requested ctx)))
+     :handle-ok (partial render-jobs-for-response conn fid)}))
 
 (defn vectorize
   "If x is not a vector (or nil), turns it into a vector"
   [x]
   (if (or (nil? x) (vector? x))
-      x
-      [x]))
+    x
+    [x]))
 
 (def cook-coercer
   "This coercer adds to compojure-api's default-coercion-matchers by
@@ -973,15 +958,15 @@
                                                   []))
                           groups)]
       @(d/transact
-        conn
-        (concat job-txns group-txns))
+         conn
+         (concat job-txns group-txns))
 
       {::results (str/join
-                  \space (concat ["submitted jobs"]
-                                 (map (comp str :uuid) jobs)
-                                 (if (not (empty? groups))
-                                   (concat ["submitted groups"]
-                                           (map (comp str :uuid) groups)))))})
+                   \space (concat ["submitted jobs"]
+                                  (map (comp str :uuid) jobs)
+                                  (if (not (empty? groups))
+                                    (concat ["submitted groups"]
+                                            (map (comp str :uuid) groups)))))})
     (catch Exception e
       (log/error e "Error submitting jobs through raw api")
       [false {::error (str e)}])))
@@ -996,58 +981,58 @@
 (defn create-jobs-handler
   [conn fid task-constraints gpu-enabled? is-authorized-fn]
   (base-cook-handler
-   {:allowed-methods [:post]
-    :malformed? (fn [ctx]
-                  (let [params (get-in ctx [:request :body-params])
-                        jobs (get params :jobs)
-                        groups (get params :groups)
-                        user (get-in ctx [:request :authorization/user])
-                        override-group-immutability? (boolean (get params :override-group-immutability))]
-                    (try
-                      (cond
-                        (empty? params)
-                        [true {::error (str "Must supply at least one job or group to start."
-                                            "Are you specifying that this is application/json?")}]
-                        :else
-                        (let [groups (mapv #(validate-and-munge-group (db conn) %) groups)
-                              jobs (mapv #(validate-and-munge-job
-                                            (db conn)
-                                            user
-                                            task-constraints
-                                            gpu-enabled?
-                                            (set (map :uuid groups))
-                                            %
-                                            :override-group-immutability?
-                                            override-group-immutability?) jobs)]
-                          [false {::groups groups ::jobs jobs}]))
-                      (catch Exception e
-                        (log/warn e "Malformed raw api request")
-                        [true {::error (.getMessage e)}]))))
+    {:allowed-methods [:post]
+     :malformed? (fn [ctx]
+                   (let [params (get-in ctx [:request :body-params])
+                         jobs (get params :jobs)
+                         groups (get params :groups)
+                         user (get-in ctx [:request :authorization/user])
+                         override-group-immutability? (boolean (get params :override-group-immutability))]
+                     (try
+                       (cond
+                         (empty? params)
+                         [true {::error (str "Must supply at least one job or group to start."
+                                             "Are you specifying that this is application/json?")}]
+                         :else
+                         (let [groups (mapv #(validate-and-munge-group (db conn) %) groups)
+                               jobs (mapv #(validate-and-munge-job
+                                             (db conn)
+                                             user
+                                             task-constraints
+                                             gpu-enabled?
+                                             (set (map :uuid groups))
+                                             %
+                                             :override-group-immutability?
+                                             override-group-immutability?) jobs)]
+                           [false {::groups groups ::jobs jobs}]))
+                       (catch Exception e
+                         (log/warn e "Malformed raw api request")
+                         [true {::error (.getMessage e)}]))))
 
-    :exists? (fn [ctx]
-               (let [db (d/db conn)
-                     existing (filter (partial job-exists? db) (map :uuid (::jobs ctx)))]
-                 [(seq existing) {::existing existing}]))
+     :exists? (fn [ctx]
+                (let [db (d/db conn)
+                      existing (filter (partial job-exists? db) (map :uuid (::jobs ctx)))]
+                  [(seq existing) {::existing existing}]))
 
-    ;; To ensure compatibility with existing clients,
-    ;; we need to return 409 (conflict) when a client POSTs a Job UUID that already exists.
-    ;; Liberator normally only supports 409 responses to PUT requests, so we need to override
-    ;; the specific decisions that will lead to a 409 response on a POST request as well.
-    ;; (see https://clojure-liberator.github.io/liberator/tutorial/decision-graph.html)
-    :post-to-existing? (fn [ctx] false)
-    :put-to-existing? (fn [ctx] true)
-    ;; conflict? will only be invoked if exists? was true, and if so, we always want
-    ;; to indicate a conflict.
-    :conflict? (fn [ctx] true)
-    :handle-conflict (fn [ctx] {:error (str "The following job UUIDs were already used: "
-                                            (str/join ", " (::existing ctx)))})
-    ;; Implementing put! doesn't mean that PUT requests are actually supported
-    ;; (see :allowed-methods above). It is simply what liberator eventually calls to persist
-    ;; resource changes when conflict? has returned false.
-    :put! (partial create-jobs! conn)
+     ;; To ensure compatibility with existing clients,
+     ;; we need to return 409 (conflict) when a client POSTs a Job UUID that already exists.
+     ;; Liberator normally only supports 409 responses to PUT requests, so we need to override
+     ;; the specific decisions that will lead to a 409 response on a POST request as well.
+     ;; (see https://clojure-liberator.github.io/liberator/tutorial/decision-graph.html)
+     :post-to-existing? (fn [ctx] false)
+     :put-to-existing? (fn [ctx] true)
+     ;; conflict? will only be invoked if exists? was true, and if so, we always want
+     ;; to indicate a conflict.
+     :conflict? (fn [ctx] true)
+     :handle-conflict (fn [ctx] {:error (str "The following job UUIDs were already used: "
+                                             (str/join ", " (::existing ctx)))})
+     ;; Implementing put! doesn't mean that PUT requests are actually supported
+     ;; (see :allowed-methods above). It is simply what liberator eventually calls to persist
+     ;; resource changes when conflict? has returned false.
+     :put! (partial create-jobs! conn)
 
-    :post! (partial create-jobs! conn)
-    :handle-created (fn [ctx] (::results ctx))}))
+     :post! (partial create-jobs! conn)
+     :handle-created (fn [ctx] (::results ctx))}))
 
 
 (defn read-groups-handler
@@ -1063,10 +1048,10 @@
                        (if (empty? not-found-guuids)
                          [false {::guuids requested-guuids}]
                          [true {::error (str "UUID "
-                                                 (str/join
-                                                   \space
-                                                   not-found-guuids)
-                                                 " didn't correspond to a group")}]))
+                                             (str/join
+                                               \space
+                                               not-found-guuids)
+                                             " didn't correspond to a group")}]))
                      (catch Exception e
                        [true {::error e}])))
      :allowed? (fn [ctx]
@@ -1106,12 +1091,12 @@
                         (catch Exception e
                           [true {::error (str (.getMessage e))}])))
         :allowed? (fn [ctx]
-                       (let [user (get-in ctx [:request :authorization/user])]
-                         (if (is-authorized-fn user :read {:owner ::system :item :queue})
-                           true
-                           (do
-                             (log/info user " has failed auth")
-                             [false {::error "Unauthorized"}]))))
+                    (let [user (get-in ctx [:request :authorization/user])]
+                      (if (is-authorized-fn user :read {:owner ::system :item :queue})
+                        true
+                        (do
+                          (log/info user " has failed auth")
+                          [false {::error "Unauthorized"}]))))
         :handle-forbidden (fn [ctx]
                             (log/info (get-in ctx [:request :authorization/user]) " is not authorized to access queue")
                             (render-error ctx))
@@ -1123,7 +1108,7 @@
                                           (map d/touch)))
                                    (mesos-pending-jobs-fn))
                          cheshire/generate-string)))
-      ring.middleware.json/wrap-json-params))
+      json/wrap-json-params))
 
 
 ;;
@@ -1144,10 +1129,10 @@
                         (catch Exception e
                           [true {::error (str (.getMessage e))}])))
         :allowed? (fn [ctx]
-                       (let [user (get-in ctx [:request :authorization/user])]
-                         (if (is-authorized-fn user :read {:owner ::system :item :running})
-                           true
-                           [false {::error "Unauthorized"}])))
+                    (let [user (get-in ctx [:request :authorization/user])]
+                      (if (is-authorized-fn user :read {:owner ::system :item :running})
+                        true
+                        [false {::error "Unauthorized"}])))
         :handle-forbidden render-error
         :handle-malformed render-error
         :handle-ok (fn [ctx]
@@ -1155,7 +1140,7 @@
                           (take (::limit ctx))
                           (map d/touch)
                           cheshire/generate-string)))
-      ring.middleware.json/wrap-json-params))
+      json/wrap-json-params))
 
 
 ;;
@@ -1263,16 +1248,16 @@
 (defn base-retries-handler
   [conn is-authorized-fn liberator-attrs]
   (base-cook-handler
-   (merge {:allowed? (partial check-retry-allowed conn is-authorized-fn)}
-          liberator-attrs)))
+    (merge {:allowed? (partial check-retry-allowed conn is-authorized-fn)}
+           liberator-attrs)))
 
 (defn read-retries-handler
   [conn is-authorized-fn]
   (base-retries-handler
-   conn is-authorized-fn
-   {:allowed-methods [:get]
-    :exists? (partial check-jobs-exist conn)
-    :handle-ok (partial display-retries conn)}))
+    conn is-authorized-fn
+    {:allowed-methods [:get]
+     :exists? (partial check-jobs-exist conn)
+     :handle-ok (partial display-retries conn)}))
 
 (defn retry-jobs!
   [conn ctx]
@@ -1286,25 +1271,25 @@
 (defn post-retries-handler
   [conn is-authorized-fn task-constraints]
   (base-retries-handler
-   conn is-authorized-fn
-   {:allowed-methods [:post]
-    ;; we need to check if it's a valid job UUID in malformed? here,
-    ;; because this endpoint currently isn't restful (POST used for what is
-    ;; actually an idempotent update; it should be PUT).
-    :exists? (partial check-jobs-exist conn)
-    :malformed? (partial validate-retries conn task-constraints)
-    :handle-created (partial display-retries conn)
-    :post! (partial retry-jobs! conn)}))
+    conn is-authorized-fn
+    {:allowed-methods [:post]
+     ;; we need to check if it's a valid job UUID in malformed? here,
+     ;; because this endpoint currently isn't restful (POST used for what is
+     ;; actually an idempotent update; it should be PUT).
+     :exists? (partial check-jobs-exist conn)
+     :malformed? (partial validate-retries conn task-constraints)
+     :handle-created (partial display-retries conn)
+     :post! (partial retry-jobs! conn)}))
 
 (defn put-retries-handler
   [conn is-authorized-fn task-constraints]
   (base-retries-handler
-   conn is-authorized-fn
-   {:allowed-methods [:put]
-    :exists? (partial check-jobs-exist conn)
-    :malformed? (partial validate-retries conn task-constraints)
-    :handle-created (partial display-retries conn)
-    :put! (partial retry-jobs! conn)}))
+    conn is-authorized-fn
+    {:allowed-methods [:put]
+     :exists? (partial check-jobs-exist conn)
+     :malformed? (partial validate-retries conn task-constraints)
+     :handle-created (partial display-retries conn)
+     :put! (partial retry-jobs! conn)}))
 
 ;; /share and /quota
 (def UserParam {:user s/Str})
@@ -1335,21 +1320,21 @@
 (defn base-limit-handler
   [limit-type is-authorized-fn resource-attrs]
   (base-cook-handler
-   (merge {:allowed? (partial check-limit-allowed limit-type is-authorized-fn)}
-          resource-attrs)))
+    (merge {:allowed? (partial check-limit-allowed limit-type is-authorized-fn)}
+           resource-attrs)))
 
 (defn read-limit-handler
   [limit-type get-limit-fn conn is-authorized-fn]
   (base-limit-handler
-   limit-type is-authorized-fn
-   {:handle-ok (partial retrieve-user-limit get-limit-fn conn)}))
+    limit-type is-authorized-fn
+    {:handle-ok (partial retrieve-user-limit get-limit-fn conn)}))
 
 (defn destroy-limit-handler
   [limit-type retract-limit-fn conn is-authorized-fn]
   (base-limit-handler
-   limit-type is-authorized-fn
-   {:allowed-methods [:delete]
-    :delete!  (fn [ctx]
+    limit-type is-authorized-fn
+    {:allowed-methods [:delete]
+     :delete! (fn [ctx]
                 (retract-limit-fn conn
                                   (get-in ctx [:request :query-params :user])
                                   (get-in ctx [:request :query-params :reason])))}))
@@ -1362,30 +1347,30 @@
 (defn update-limit-handler
   [limit-type extra-resource-types get-limit-fn set-limit-fn conn is-authorized-fn]
   (base-limit-handler
-   limit-type is-authorized-fn
-   {:allowed-methods [:post]
-    :handle-created (partial retrieve-user-limit get-limit-fn conn)
-    :malformed? (fn [ctx]
-                  (let [resource-types
-                        (set (apply conj (util/get-all-resource-types (d/db conn))
-                                    extra-resource-types))
-                        limits (->> (get-in ctx [:request :body-params limit-type])
-                                    keywordize-keys
-                                    coerce-limit-values)]
-                    (cond
-                      (not (seq limits))
-                      [true {::error "No " (name limit-type) " set. Are you specifying that this is application/json?"}]
-                      (not (every? (partial contains? resource-types) (keys limits)))
-                      [true {::error (str "Unknown resource type(s)" (str/join \space (remove (partial contains? resource-types) (keys limits))))}]
-                      :else
-                      [false {::limits limits}])))
+    limit-type is-authorized-fn
+    {:allowed-methods [:post]
+     :handle-created (partial retrieve-user-limit get-limit-fn conn)
+     :malformed? (fn [ctx]
+                   (let [resource-types
+                         (set (apply conj (util/get-all-resource-types (d/db conn))
+                                     extra-resource-types))
+                         limits (->> (get-in ctx [:request :body-params limit-type])
+                                     keywordize-keys
+                                     coerce-limit-values)]
+                     (cond
+                       (not (seq limits))
+                       [true {::error "No " (name limit-type) " set. Are you specifying that this is application/json?"}]
+                       (not (every? (partial contains? resource-types) (keys limits)))
+                       [true {::error (str "Unknown resource type(s)" (str/join \space (remove (partial contains? resource-types) (keys limits))))}]
+                       :else
+                       [false {::limits limits}])))
 
-    :post! (fn [ctx]
-             (apply set-limit-fn
-                    conn
-                    (get-in ctx [:request :body-params :user])
-                    (get-in ctx [:request :body-params :reason])
-                    (reduce into [] (::limits ctx))))}))
+     :post! (fn [ctx]
+              (apply set-limit-fn
+                     conn
+                     (get-in ctx [:request :body-params :user])
+                     (get-in ctx [:request :body-params :reason])
+                     (reduce into [] (::limits ctx))))}))
 
 
 ;; /failure-reasons
@@ -1403,19 +1388,19 @@
            :name (name (:reason/name e))
            :description (:reason/string e)
            :mea_culpa (:reason/mea-culpa? e)}
-    (:reason/mea-culpa? e)
-    (assoc :failure_limit (or (:reason/failure-limit e) default-failure-limit))))
+          (:reason/mea-culpa? e)
+          (assoc :failure_limit (or (:reason/failure-limit e) default-failure-limit))))
 
 (defn failure-reasons-handler
   [conn is-authorized-fn]
   (base-cook-handler
-   {:allowed-methods [:get]
-    :handle-ok (fn [_]
-                 (let [db (d/db conn)
-                       default-limit (reason/default-failure-limit db)]
-                   (->> (reason/all-known-reasons db)
-                        (mapv (partial reason-entity->consumable-map
-                                       default-limit)))))}))
+    {:allowed-methods [:get]
+     :handle-ok (fn [_]
+                  (let [db (d/db conn)
+                        default-limit (reason/default-failure-limit db)]
+                    (->> (reason/all-known-reasons db)
+                         (mapv (partial reason-entity->consumable-map
+                                        default-limit)))))}))
 
 ;; /settings
 
@@ -1467,8 +1452,8 @@
                       ;; please use start-ms and end-ms instead
                       (let [{:keys [state user since-hours-ago start-ms end-ms limit]
                              :as params}
-                              (keywordize-keys (or (get-in ctx [:request :query-params])
-                                                   (get-in ctx [:request :body-params])))]
+                            (keywordize-keys (or (get-in ctx [:request :query-params])
+                                                 (get-in ctx [:request :body-params])))]
                         (if (and state user)
                           (let [state-strs (clojure.string/split state #"\+")
                                 states (->> state-strs
@@ -1536,16 +1521,16 @@
                                          job-uuids
                                          (take limit job-uuids))]
                          (mapv (partial fetch-job-map db framework-id) job-uuids)))))
-      ring.middleware.json/wrap-json-params))
+      json/wrap-json-params))
 
 
 ;;
 ;; /unscheduled_jobs
 ;;
 
-(defschema UnscheduledJobResponse [{:uuid s/Uuid
-                                    :reasons [{:reason s/Str
-                                               :data {s/Any s/Any}}]}])
+(s/defschema UnscheduledJobResponse [{:uuid s/Uuid
+                                      :reasons [{:reason s/Str
+                                                 :data {s/Any s/Any}}]}])
 
 (defn job-reasons
   "Given a job, load the unscheduled reasons from the database and massage them
@@ -1563,13 +1548,13 @@
 (defn read-unscheduled-handler
   [conn is-authorized-fn]
   (base-cook-handler
-   {:allowed-methods [:get]
-    :exists? (partial check-jobs-exist conn)
-    :allowed? (partial job-request-allowed? conn is-authorized-fn)
-    :handle-ok (fn [ctx]
-                 (map (fn [job] {:uuid job
-                                 :reasons (job-reasons conn job)})
-                      (::jobs ctx)))}))
+    {:allowed-methods [:get]
+     :exists? (partial check-jobs-exist conn)
+     :allowed? (partial job-request-allowed? conn is-authorized-fn)
+     :handle-ok (fn [ctx]
+                  (map (fn [job] {:uuid job
+                                  :reasons (job-reasons conn job)})
+                       (::jobs ctx)))}))
 
 
 ;;
@@ -1717,8 +1702,8 @@
                           404 {:description "The UUID doesn't correspond to a job."}}}})))
 
     (ANY "/queue" []
-         (waiting-jobs mesos-pending-jobs-fn is-authorized-fn))
+      (waiting-jobs mesos-pending-jobs-fn is-authorized-fn))
     (ANY "/running" []
-         (running-jobs conn is-authorized-fn))
+      (running-jobs conn is-authorized-fn))
     (ANY "/list" []
-         (list-resource (db conn) fid is-authorized-fn))))
+      (list-resource (db conn) fid is-authorized-fn))))

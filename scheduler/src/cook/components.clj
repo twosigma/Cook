@@ -520,7 +520,7 @@
       (System/exit 1))))
 
 (comment
-  ;; Here are some helpful fragments for changing debug levels, especiall with datomic
+  ;; Here are some helpful fragments for changing debug levels, especially with datomic
   (require 'datomic.api)
   (log4j-conf/set-logger! :level :debug)
 
