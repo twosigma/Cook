@@ -276,6 +276,12 @@
   {(s/optional-key :job) [s/Uuid]
    (s/optional-key :instance) [s/Uuid]})
 
+(def QueryJobsParams
+  "Schema for querying for jobs by job and/or instance uuid, allowing optionally
+  for 'partial' results, meaning that some uuids can be valid and others not"
+  (-> JobOrInstanceIds
+      (assoc (s/optional-key :partial) s/Bool)))
+
 (def Attribute-Equals-Parameters
   "A schema for the parameters of a host placement with type attribute-equals"
   {:attribute s/Str})
@@ -811,16 +817,26 @@
 (defn retrieve-jobs
   [conn ctx]
   (let [jobs (get-in ctx [:request :query-params :job])
-        instances (get-in ctx [:request :query-params :instance])]
+        instances (get-in ctx [:request :query-params :instance])
+        allow-partial-results (get-in ctx [:request :query-params :partial])]
     (let [instance-uuid->job-uuid #(instance-uuid->job-uuid (d/db conn) %)
           instance-jobs (mapv instance-uuid->job-uuid instances)
           used? (partial job-exists? (db conn))]
       (cond
-        (and (every? used? jobs)
-             (every? (complement nil?) instance-jobs))
+        (and (not allow-partial-results)
+             (every? used? jobs)
+             (every? some? instance-jobs))
         [true {::jobs (into jobs instance-jobs)
                ::jobs-requested jobs
                ::instances-requested instances}]
+
+        (and allow-partial-results
+             (or (some used? jobs)
+                 (some some? instance-jobs)))
+        [true {::jobs (into (filter used? jobs) (filter some? instance-jobs))
+               ::jobs-requested jobs
+               ::instances-requested instances}]
+
         (some nil? instance-jobs)
         [false {::error (str "UUID "
                              (str/join
@@ -828,6 +844,7 @@
                                (filter (comp nil? instance-uuid->job-uuid)
                                        instances))
                              " didn't correspond to an instance")}]
+
         :else
         [false {::error (str "UUID "
                              (str/join
@@ -1597,7 +1614,7 @@
       "/rawscheduler" []
       (c-api/resource
        {:get {:summary "Returns info about a set of Jobs"
-              :parameters {:query-params JobOrInstanceIds}
+              :parameters {:query-params QueryJobsParams}
               :responses {200 {:schema [JobResponse]
                                :description "The jobs and their instances were returned."}
                           400 {:description "Non-UUID values were passed as jobs."}

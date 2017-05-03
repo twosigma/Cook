@@ -92,9 +92,12 @@ class CookTest(unittest.TestCase):
         self.assertEqual('failed', job['instances'][0]['status'])
         self.assertEqual(2003, job['instances'][0]['reason_code'])
 
-    # load a job by UUID using GET /rawscheduler
+    def query_jobs(self, **kwargs):
+        return self.session.get('%s/rawscheduler' % self.cook_url, params=kwargs)
+
     def get_job(self, job_uuid):
-        return self.session.get('%s/rawscheduler?job=%s' % (self.cook_url, job_uuid)).json()[0]
+        """Loads a job by UUID using GET /rawscheduler"""
+        return self.query_jobs(job=[job_uuid]).json()[0]
 
     def test_get_job(self):
         # schedule a job
@@ -337,3 +340,42 @@ class CookTest(unittest.TestCase):
         # Should require application version
         _, resp = self.submit_job(application={'name': 'foo-app'})
         self.assertEqual(resp.status_code, 400)
+
+    def test_allow_partial(self):
+        job_uuid, resp = self.submit_job()
+        self.assertEqual(201, resp.status_code)
+
+        # Single, valid job uuid
+        resp = self.query_jobs(job=[job_uuid])
+        self.assertEqual(200, resp.status_code)
+
+        # One valid job uuid, one invalid job uuid
+        bogus_uuid = str(uuid.uuid4())
+        resp = self.query_jobs(job=[job_uuid, bogus_uuid])
+        self.assertEqual(404, resp.status_code)
+        resp = self.query_jobs(job=[job_uuid, bogus_uuid], partial='false')
+        self.assertEqual(404, resp.status_code, resp.json())
+
+        # Partial results with one valid job uuid, one invalid job uuid
+        resp = self.query_jobs(job=[job_uuid, bogus_uuid], partial='true')
+        self.assertEqual(200, resp.status_code, resp.json())
+        self.assertEqual(1, len(resp.json()))
+        self.assertEqual(job_uuid, resp.json()[0]['uuid'])
+
+        # Single, valid instance uuid
+        job = self.wait_for_job(job_uuid, 'completed')
+        instance_uuid = job['instances'][0]['task_id']
+        resp = self.query_jobs(instance=[instance_uuid])
+        self.assertEqual(200, resp.status_code)
+
+        # One valid instance uuid, one invalid instance uuid
+        resp = self.query_jobs(instance=[instance_uuid, bogus_uuid])
+        self.assertEqual(404, resp.status_code)
+        resp = self.query_jobs(instance=[instance_uuid, bogus_uuid], partial='false')
+        self.assertEqual(404, resp.status_code)
+
+        # Partial results with one valid instance uuid, one invalid instance uuid
+        resp = self.query_jobs(instance=[instance_uuid, bogus_uuid], partial='true')
+        self.assertEqual(200, resp.status_code)
+        self.assertEqual(1, len(resp.json()))
+        self.assertEqual(job_uuid, resp.json()[0]['uuid'])
