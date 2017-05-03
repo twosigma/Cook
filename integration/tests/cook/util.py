@@ -107,3 +107,7 @@ def query_jobs(cook_url, **kwargs):
     the request.
     """
     return session.get('%s/rawscheduler' % cook_url, params=kwargs)
+
+
+def multi_cluster_tests_enabled():
+    return os.getenv('COOK_MULTI_CLUSTER') is not None
