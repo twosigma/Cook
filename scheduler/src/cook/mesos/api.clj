@@ -45,11 +45,11 @@
             [ring.util.response :as res]
             [schema.core :as s]
             [swiss.arrows :refer :all])
-  (:import (java.io OutputStreamWriter)
+  (:import clojure.lang.Atom
+           (java.io OutputStreamWriter)
            (java.net ServerSocket URLEncoder)
            (java.util Date UUID)
            javax.servlet.ServletResponse
-           clojure.lang.Atom
            org.apache.curator.test.TestingServer
            org.joda.time.Minutes
            schema.core.OptionalKey))
@@ -1556,12 +1556,18 @@
                        (::jobs ctx)))}))
 
 (defn- streaming-json-encoder
+  "Takes as input the response body which can be converted into JSON,
+  and returns a function which takes a ServletResponse and writes the JSON
+  encoded response data. This is suitable for use with jet's server API."
   [data]
   (fn [^ServletResponse resp]
     (cheshire/generate-stream data
                               (OutputStreamWriter. (.getOutputStream resp)))))
 
-(defn- streaming-json-middleware [handler]
+(defn- streaming-json-middleware
+  "Ring middleware which encodes JSON responses with streaming-json-encoder.
+  All other response types are unaffected."
+  [handler]
   (fn streaming-json-handler [req]
     (let [{:keys [headers body] :as resp} (handler req)
           json-response (= "application/json" (get headers "Content-Type" "application/json"))]
