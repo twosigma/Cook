@@ -28,8 +28,11 @@
             [datomic.api :as d :refer (q db)]
             [schema.core :as s])
   (:import com.fasterxml.jackson.core.JsonGenerationException
+           java.io.ByteArrayOutputStream
            java.net.ServerSocket
            java.util.UUID
+           (javax.servlet ServletOutputStream
+                          ServletResponse)
            org.apache.curator.test.TestingServer
            org.joda.time.Minutes))
 
@@ -74,8 +77,16 @@
                  :mesos-gpu-enabled gpus-enabled
                  :is-authorized-fn authorized-fn}))
 
-(defn response->body-data [response]
-  (-> response :body slurp json/read-str))
+(defn response->body-data [{:keys [body]}]
+  (let [baos (ByteArrayOutputStream.)
+        sos (proxy [ServletOutputStream] []
+              (write
+                ([b] (.write baos b))
+                ([b o l] (.write baos b o l))))
+        response (proxy [ServletResponse] []
+                   (getOutputStream [] sos))
+        _ (body response)]
+    (json/read-str (.toString baos))))
 
 (deftest handler-db-roundtrip
   (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
@@ -872,15 +883,15 @@
              "cpus" 2.0
              "mem" 2048.0}
         h (basic-handler conn :cpus 12 :memory-gb 100 :retry-limit 500)]
-    (is (= "[]"
-          (:body (h {:request-method :get
-            :scheme :http
-            :uri "/list"
-            :authorization/user "wyegelwe"
-            :body-params {"start-ms" (str (System/currentTimeMillis))
-                          "end-ms" (str (+ (System/currentTimeMillis) 10))
-                          "state" "running"
-                          "user" "wyegelwe"}}))))
+    (is (= []
+          (response->body-data (h {:request-method :get
+                                   :scheme :http
+                                   :uri "/list"
+                                   :authorization/user "wyegelwe"
+                                   :body-params {"start-ms" (str (System/currentTimeMillis))
+                                                 "end-ms" (str (+ (System/currentTimeMillis) 10))
+                                                 "state" "running"
+                                                 "user" "wyegelwe"}}))))
 
     ; Fail because missing user
     (is (<= 400
@@ -927,29 +938,25 @@
                      :body-params {"jobs" [job]}}))
         299))
 
-    (let [list-str (:body (h {:request-method :get
-                              :scheme :http
-                              :uri "/list"
-                              :authorization/user "wyegelwe"
-                              :body-params {"start-ms" (str (- (System/currentTimeMillis) 1000))
-                                       "end-ms" (str (+ (System/currentTimeMillis) 1000))
-                                       "state" "running+waiting+completed"
-                                       "user" "dgrnbrg"
-                                       }
-                              }))
-          jobs (json/read-str list-str)]
+    (let [jobs (response->body-data (h {:request-method :get
+                                        :scheme :http
+                                        :uri "/list"
+                                        :authorization/user "wyegelwe"
+                                        :body-params {"start-ms" (str (- (System/currentTimeMillis) 1000))
+                                                      "end-ms" (str (+ (System/currentTimeMillis) 1000))
+                                                      "state" "running+waiting+completed"
+                                                      "user" "dgrnbrg"}}))]
       (is (= 1 (count jobs)))
       (is (= (str uuid) (-> jobs first (get "uuid")))))
 
-    (let [list-str (:body (h {:request-method :get
-                              :scheme :http
-                              :uri "/list"
-                              :authorization/user "wyegelwe"
-                              :body-params {"start-ms" (str (+ (System/currentTimeMillis) 1000))
-                                       "end-ms" (str (+ (System/currentTimeMillis) 1000))
-                                       "state" "running+waiting+completed"
-                                       "user" "dgrnbrg"}}))
-          jobs (json/read-str list-str)]
+    (let [jobs (response->body-data (h {:request-method :get
+                                        :scheme :http
+                                        :uri "/list"
+                                        :authorization/user "wyegelwe"
+                                        :body-params {"start-ms" (str (+ (System/currentTimeMillis) 1000))
+                                                      "end-ms" (str (+ (System/currentTimeMillis) 1000))
+                                                      "state" "running+waiting+completed"
+                                                      "user" "dgrnbrg"}}))]
       (is (= 0 (count jobs))))))
 
 (deftest test-make-type-parameter-txn
@@ -1129,7 +1136,7 @@
                      :uri "/unscheduled_jobs/"
                      :authorization/user "mforsyth"
                      :query-params {:job uuid}})
-        get-body (-> get-resp :body slurp json/read-str)]
+        get-body (response->body-data get-resp)]
     (is (= get-body [{"uuid" (str uuid)
                       "reasons" [{"reason" "The job is now under investigation. Check back in a minute for more details!"
                                   "data" {}}]}]))))
