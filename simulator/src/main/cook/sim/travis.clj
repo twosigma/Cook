@@ -3,6 +3,8 @@
             [clojure.string :as string]
             [clojure.tools.cli :refer [parse-opts]]
             [clj-http.client :as http]
+            [clj-time.core :as t]
+            [clj-time.format :as f]
             [cook.sim.database :as db]
             [cook.sim.schedule :as schedule]
             [cook.sim.runner :as runner]
@@ -58,8 +60,8 @@
   (let [progress (sim-progress sim-db cook-db sim-id)
         count-unscheduled (-> progress :schedulable :unscheduled)
         count-unfinished (-> progress :schedulable :unfinished)]
-    (println count-unscheduled "unscheduled schedulable jobs.")
-    (println count-unfinished "unfinished schedulable jobs.")
+    (println count-unscheduled "unscheduled schedulable jobs," count-unfinished "unfinished schedulable jobs at"
+             (f/unparse (f/formatters :mysql) (t/now)))
     (if (zero? count-unfinished) progress false)))
 
 (defn wait-for-sim-to-finish
@@ -90,14 +92,12 @@
         schedule-id (schedule/import-schedule! sim-db file)
         _ (wait-for-cook settings)
         sim-id (runner/simulate! settings sim-db schedule-id "Travis run")
-        final-progress (wait-for-sim-to-finish sim-db cook-db sim-id timeout-secs)
-        unschedulable-jobs (:unschedulable final-progress)
-        num-scheduled-unschedulable (if final-progress
-                                      (- (:total unschedulable-jobs)
-                                         (:unscheduled unschedulable-jobs)))]
+        final-progress (wait-for-sim-to-finish sim-db cook-db sim-id timeout-secs)]
     (reporting/analyze settings sim-db cook-db sim-id)
     (if (not final-progress)
-      (throw (Exception. "Sim never finished.")))
-    (if (zero? num-scheduled-unschedulable)
-      (println (:total unschedulable-jobs) " intentionally unschedulable jobs were never scheduled.  Perfect!")
-      (throw (Exception. (str num-scheduled-unschedulable " supposedly unschedulable jobs were scheduled."))))))
+      (throw (Exception. "Sim never finished!")))
+    (let [unschedulable-jobs (:unschedulable final-progress)
+          num-scheduled-unschedulable (- (:total unschedulable-jobs) (:unscheduled unschedulable-jobs))]
+      (if (zero? num-scheduled-unschedulable)
+        (println (:total unschedulable-jobs) "intentionally unschedulable jobs were never scheduled.  Perfect!")
+        (throw (Exception. (str num-scheduled-unschedulable "supposedly unschedulable jobs were scheduled.")))))))
