@@ -12,7 +12,8 @@
             [datomic.api :as d]
             [mesomatic.scheduler :as mesos]
             [mesomatic.types :as mesos-types])
-  (:import org.apache.curator.framework.CuratorFrameworkFactory
+  (:import java.util.UUID
+           org.apache.curator.framework.CuratorFrameworkFactory
            org.apache.curator.framework.state.ConnectionStateListener
            org.apache.curator.retry.BoundedExponentialBackoffRetry))
 
@@ -20,7 +21,7 @@
   "Parses the uuid if `uuid-str` is a uuid, returns nil otherwise"
   [uuid-str]
   (try
-    (java.util.UUID/fromString uuid-str)
+    (UUID/fromString uuid-str)
     (catch Exception e
       nil)))
 
@@ -310,7 +311,8 @@
                 :slave-id {:value "a5cb3212-3023-4546-888d-67cc13eac3dd"}
                 :name "to-launch"
                 :command {:value "10000"
-                          :environment {}
+                          :environment {:variables [{:name "EXECUTION_TIME"
+                                                     :value "10000"}]}
                           :user "user-A"
                           :uris []}
                 :resources [{:name "cpus" :role "*" :scalar 8 :type :value-scalar}
@@ -378,8 +380,8 @@
       :or {mem {"*" 12000}
            cpus {"*" 24}
            ports {"*" [{:begin 0 :end 1000}]}
-           uuid (str (java.util.UUID/randomUUID))
-           slave-id (str (java.util.UUID/randomUUID))
+           uuid (str (UUID/randomUUID))
+           slave-id (str (UUID/randomUUID))
            attributes {}}}]
   {:hostname (or hostname slave-id)
    :attributes attributes
@@ -403,7 +405,7 @@
            (recur)
            (throw (ex-info (str "pred not true : " (on-exceed-str-fn))
                            {:interval-ms interval-ms
-                                            :max-wait-ms max-wait-ms})))))))
+                            :max-wait-ms max-wait-ms})))))))
 
   )
 
@@ -415,7 +417,7 @@
                       (registered [this driver framework-id master-info]
                                   (reset! registered-atom true))
                       (resource-offers [this driver offers]
-                                       (swap! offer-atom into offers )))
+                                       (swap! offer-atom into offers)))
           host (dummy-host)
           speed-multiplier 20
           mock-driver (mm/mesos-mock [host] speed-multiplier scheduler)]
@@ -479,19 +481,21 @@
       (is (= (count @offer-atom) 6)))))
 
 (defn dummy-task
-  [& {:keys [task-id slave-id name command-str env user uris mem cpus ports labels data]
-      :or {task-id (str (java.util.UUID/randomUUID))
-           slave-id (str (java.util.UUID/randomUUID))
+  [& {:keys [task-id slave-id name command-str env user uris mem cpus ports labels data exec-time-ms-str]
+      :or {task-id (str (UUID/randomUUID))
+           slave-id (str (UUID/randomUUID))
            name "my-cool-job"
-           command-str "50"
-           env {}
+           command-str "dummy command"
+           env {:variables [{:name "EXECUTION_TIME"
+                             :value "50"}]}
            user "user-a"
            uris []
            mem {"*" 1000}
            cpus {"*" 2}
            ports {"*" [{:begin 1 :end 100}]}
            labels {}
-           data nil}}]
+           data nil
+           exec-time-ms-str "50"}}]
   (let [make-scalar-resources (fn [name [role scalar]]
                                 {:name name :role role :scalar scalar :type :value-scalar})
         make-ranges-resources (fn [name [role ranges]]
@@ -524,7 +528,7 @@
                     :task-running-atom task-running-atom
                     :task-complete-atom task-complete-atom}]
       (try
-        (let [slave-id (str (java.util.UUID/randomUUID))
+        (let [slave-id (str (UUID/randomUUID))
               cpus {"*" 2}
               mem {"*" 1000}
               ports {"*" [{:begin 1 :end 100}]}
@@ -569,7 +573,7 @@
                     :task-running-atom task-running-atom
                     :task-complete-atom task-complete-atom}]
       (try
-        (let [slave-id (str (java.util.UUID/randomUUID))
+        (let [slave-id (str (UUID/randomUUID))
               cpus {"*" 2}
               mem {"*" 1000}
               ports {"*" [{:begin 1 :end 100}]}
@@ -623,7 +627,7 @@
                     :task-running-atom task-running-atom
                     :task-complete-atom task-complete-atom}]
       (try
-        (let [slave-id (str (java.util.UUID/randomUUID))
+        (let [slave-id (str (UUID/randomUUID))
               cpus {"*" 2}
               mem {"*" 1000}
               ports {"*" [{:begin 1 :end 100}]}
@@ -773,7 +777,7 @@
                              (map #(vals (select-keys % headers)) tasks))))))
 
 (deftest cook-scheduler-integration
-  ;; This tests the the case where one user has all the resources in the cluster
+  ;; This tests the case where one user has all the resources in the cluster
   ;; and then another user shows up which causes the scheduler to preempt jobs
   ;; so both may run.
   ;; TODO: Explicitly check that both users have ~same resources instead of
@@ -787,40 +791,44 @@
           hosts (for [_ (range num-hosts)]
                   (dummy-host :mem {"*" mem} :cpus {"*" cpus} :ports {"*" ports}))
           speed-multiplier 20
-          make-mesos-driver-fn (fn [scheduler _];; _ is framework-id
+          make-mesos-driver-fn (fn [scheduler _] ;; _ is framework-id
                                  (mm/mesos-mock hosts speed-multiplier scheduler))]
-      (with-cook-scheduler mesos-datomic-conn make-mesos-driver-fn {}
+      (with-cook-scheduler
+        mesos-datomic-conn make-mesos-driver-fn {}
         (share/set-share! mesos-datomic-conn "default" "new cluster settings"
                           :mem mem :cpus cpus :gpus 1.0)
         ;; Note these two vars are lazy, need to realize to put them in db.
-        (let [user-a-job-ent-ids (for [_ (range 20)]
+        (let [user-a-job-exec-time-ms 10000
+              user-a-job-ent-ids (for [_ (range 20)]
                                    (create-dummy-job mesos-datomic-conn
                                                      :user "a"
-                                                     :command "10000"
+                                                     :command "dummy command"
                                                      :custom-executor? false
                                                      :memory mem
-                                                     :ncpus cpus))
+                                                     :ncpus cpus
+                                                     :env {"EXECUTION_TIME" (str user-a-job-exec-time-ms)}))
 
+              user-b-job-exec-time-ms 1000
               user-b-job-ent-ids (for [_ (range 5)]
                                    (create-dummy-job mesos-datomic-conn
                                                      :user "b"
-                                                     :command "1000"
+                                                     :command "dummy command"
                                                      :custom-executor? false
                                                      :memory mem
-                                                     :ncpus cpus))
+                                                     :ncpus cpus
+                                                     :env {"EXECUTION_TIME" (str user-b-job-exec-time-ms)}))
               update-status-error-ms 500]
           ;; Transact user "a"s jobs
           (doall user-a-job-ent-ids)
           ;; Let them get scheduled
           (poll-until (fn [] (>= (count (filter #(= (:job/state (d/entity (d/db mesos-datomic-conn) %))
-                                                   :job.state/running)
-                                               user-a-job-ent-ids))
-                                10))
+                                                    :job.state/running)
+                                                user-a-job-ent-ids))
+                                 10))
                       200
                       10000
                       (fn [] (str (into [] (map (comp :job/state (partial d/entity (d/db mesos-datomic-conn)))
-                                     user-a-job-ent-ids))))
-                      )
+                                                user-a-job-ent-ids)))))
           ;; Transact user "b"s jobs
           (doall user-b-job-ent-ids)
           ;; Let the system complete
@@ -843,19 +851,20 @@
                     (is (< 0
                            (- (.getTime (:instance/end-time instance))
                               (.getTime (:instance/start-time instance))
-                              (read-string (:job/command job-ent)))
+                              user-a-job-exec-time-ms)
                            update-status-error-ms)))))))
           (doseq [job-ent-id user-b-job-ent-ids]
             (let [job-ent (d/entity (d/db mesos-datomic-conn) job-ent-id)
                   instances (:job/instance job-ent)
                   instance (first instances)]
               (is (= (count instances) 1))
-              (is (= (:job/state job-ent) :job.state/completed ))
+              (is (= (:job/state job-ent) :job.state/completed))
               (log/info "job i: " (d/touch job-ent))
               (is (< 0
                      (- (.getTime (:instance/end-time instance))
                         (.getTime (:instance/start-time instance))
-                        (read-string (:job/command job-ent)))
-                     update-status-error-ms))))
+                        user-b-job-exec-time-ms)
+                     update-status-error-ms)
+                  (str "Invalid execution time of" job-ent))))
           (when (log/enabled? :debug)
             (dump-jobs-to-csv (d/db mesos-datomic-conn) "trace-basic-scheduling-rebalancing-test.csv")))))))

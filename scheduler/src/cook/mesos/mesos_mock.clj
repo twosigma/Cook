@@ -15,32 +15,15 @@
 ;;
 (ns cook.mesos.mesos-mock
   (:require [chime :refer [chime-at chime-ch]]
-            [clj-time.coerce :as tc]
             [clj-time.core :as t]
-            [clj-time.periodic :as periodic]
             [clojure.core.async :as async]
-            [clojure.edn :as edn]
             [clojure.tools.logging :as log]
-            [cook.mesos.scheduler :as s]
-            [datomic.api :as d :refer (q)]
+            [datomic.api :refer (q)]
             [mesomatic.scheduler :as mesos]
             [mesomatic.types :as mesos-type]
-            [mesomatic.types :as mtypes]
-            [metrics.counters :as counters]
-            [metrics.gauges :as gauges]
-            [metrics.histograms :as histograms]
-            [metrics.meters :as meters]
-            [metrics.timers :as timers]
             [plumbing.core :refer (map-vals map-from-vals)])
-  (import com.netflix.fenzo.TaskAssignmentResult
-          com.netflix.fenzo.TaskScheduler
-          com.netflix.fenzo.VirtualMachineLease
-          com.netflix.fenzo.plugins.BinPackingFitnessCalculators
-          java.util.concurrent.TimeUnit
-          org.apache.mesos.Protos$OfferID
-          org.apache.mesos.Protos$Status
-          org.apache.mesos.SchedulerDriver
-          org.mockito.Mockito))
+  (import org.apache.mesos.Protos$Status
+          org.apache.mesos.SchedulerDriver))
 
 (def resource->type {:cpus :scalar
                      :mem :scalar
@@ -85,7 +68,7 @@
    `state` the state of the mock mesos, see above for a description of the schema
 
    returns [new-offers new-state]"
-  [{:keys [slave-id->host offer-id->offer task-id->task] :as state}]
+  [{:keys [slave-id->host] :as state}]
   (let [new-offers (filter (comp seq :resources)
                            (map make-offer (vals slave-id->host)))
         new-offers (filter (fn [{:keys [resources]}]
@@ -93,11 +76,11 @@
                            new-offers)]
     [new-offers
      (-> state
-          (update :slave-id->host
-                  #(map-vals (fn [host]
-                               (update host :available-resources clear-out-resources))
-                             %))
-          (update :offer-id->offer #(into % (map-from-vals (comp :value :id) new-offers))))]))
+         (update :slave-id->host
+                 #(map-vals (fn [host]
+                              (update host :available-resources clear-out-resources))
+                            %))
+         (update :offer-id->offer #(into % (map-from-vals (comp :value :id) new-offers))))]))
 
 
 (defn combine-ranges
@@ -116,8 +99,8 @@
                                                    :end (:end new-range)})
                     (conj ranges' new-range))
                   (conj ranges' new-range))))
-      []
-      ranges)))
+            []
+            ranges)))
 
 (defn range-contains?
   "Returns true if range-a contains range-b"
@@ -213,10 +196,10 @@
          (let [role->resource-a (get resource-map-a resource)
                role->resource-b (get resource-map-b resource)
                _ (when-not (every? #(contains? (set (keys role->resource-a)) %)
-                                 (keys role->resource-b))
-                         (throw (ex-info "Every role to subtract must exist in `a`"
-                                         {:roles-a (keys role->resource-a)
-                                          :roles-b (keys role->resource-b)})))
+                                   (keys role->resource-b))
+                   (throw (ex-info "Every role to subtract must exist in `a`"
+                                   {:roles-a (keys role->resource-a)
+                                    :roles-b (keys role->resource-b)})))
                role->resource' (condp = (resource->type resource)
                                  :scalar (merge-with - role->resource-a role->resource-b)
                                  :ranges (merge-with subtract-ranges role->resource-a role->resource-b))]
@@ -254,7 +237,7 @@
     action))
 
 (defmethod handle-action! :decline
-  [action offer-id {:keys [offer-id->offer task-id->task slave-id->host] :as state} driver scheduler]
+  [_ offer-id {:keys [offer-id->offer] :as state} _ _]
   (if-let [offer (get offer-id->offer offer-id)]
     (-> state
         (update :offer-id->offer #(dissoc % offer-id))
@@ -263,12 +246,12 @@
     (throw (ex-info "Unknown offer-id" {:offer-id offer-id}))))
 
 (defmethod handle-action! :kill-task
-  [action task-id {:keys [offer-id->offer task-id->task slave-id->host] :as state} driver scheduler]
+  [_ task-id state driver scheduler]
   (log/debug "Killing task " {:task-id task-id})
   (complete-task! state task-id scheduler driver :task-killed))
 
 (defmethod handle-action! :launch
-  [action {:keys [offer-ids tasks] :as in} {:keys [offer-id->offer task-id->task slave-id->host] :as state} driver scheduler]
+  [_ {:keys [offer-ids tasks] :as in} {:keys [offer-id->offer slave-id->host] :as state} driver scheduler]
   (log/debug "In launch handle-action!" in)
   (let [offers (map offer-id->offer offer-ids)
         slave-id (:value (:slave-id (first tasks)))]
@@ -312,15 +295,22 @@
           (update :offer-id->offer #(apply dissoc % offer-ids))))))
 
 (defmethod handle-action! :reconcile
-  [action statuses {:keys [offer-id->offer task-id->task slave-id->host] :as state} driver scheduler]
+  [_ _ _ _ _]
   ;; TODO: implement
   )
 
 (defn default-task->runtime-ms
-  "Takes a task spec and casts the command to a number
-   as runtime"
+  "Takes a task spec and extracts a number as runtime from the command's environment."
   [task]
-  (-> task :command :value read-string))
+  (->> task
+       :command
+       :environment
+       .getVariablesList
+       seq
+       (filter #(= "EXECUTION_TIME" (.getName %)))
+       first
+       .getValue
+       read-string))
 
 (defn default-task->complete-status
   "Returns completed successfully"
@@ -336,28 +326,28 @@
       4. Put events on the action chan when all other methods are called"
   [start-chan action-chan exit-chan]
   (reify SchedulerDriver
-    (declineOffer [this offer-id]
+    (declineOffer [_ offer-id]
       (log/debug "Declining offer" {:offer-id offer-id})
       (async/>!! action-chan [:decline (:value (mesos-type/pb->data offer-id))])
       Protos$Status/DRIVER_RUNNING)
-    (join [this]
+    (join [_]
       (async/<!! exit-chan)
       Protos$Status/DRIVER_RUNNING)
-    (stop [this]
+    (stop [_]
       (async/close! exit-chan))
-    (killTask [this task-id]
+    (killTask [_ task-id]
       (log/debug "In driver killTask" {:task-id task-id :pb->data (mesos-type/pb->data task-id) :value (:value (mesos-type/pb->data task-id))})
       (async/>!! action-chan [:kill-task (:value (mesos-type/pb->data task-id))])
       Protos$Status/DRIVER_RUNNING)
-    (^Protos$Status launchTasks [this ^java.util.Collection offer-ids ^java.util.Collection tasks]
+    (^Protos$Status launchTasks [_ ^java.util.Collection offer-ids ^java.util.Collection tasks]
       (log/debug "Launch tasks called" {:tasks tasks :offer-ids offer-ids})
       (async/>!! action-chan [:launch {:offer-ids (map (comp :value mesos-type/pb->data) offer-ids)
                                        :tasks (map mesos-type/pb->data tasks)}])
       Protos$Status/DRIVER_RUNNING)
-    (reconcileTasks [this statuses]
+    (reconcileTasks [_ statuses]
       (async/>!! action-chan [:reconcile statuses])
       Protos$Status/DRIVER_RUNNING)
-    (start [this]
+    (start [_]
       (async/close! start-chan)
       Protos$Status/DRIVER_RUNNING)))
 
@@ -375,7 +365,7 @@
    `task->runtime-ms` is a function that takes a task spec and returns the runtime in millis
    `task->complete-status` is a function that takes a task spec and returns a mesos complete status
    `scheduler` is an implementation of the mesomatic scheduler protocol
-   
+
    Returns a mesos driver"
   ([hosts speed-multiplier scheduler]
    (mesos-mock hosts speed-multiplier default-task->runtime-ms scheduler))

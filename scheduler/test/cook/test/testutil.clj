@@ -70,7 +70,7 @@
 (defn create-dummy-job
   "Return the entity id for the created dummy job."
   [conn & {:keys [user uuid command ncpus memory name retry-count max-runtime priority job-state submit-time custom-executor? gpus group committed?
-                  disable-mea-culpa-retries]
+                  disable-mea-culpa-retries env]
            :or {user (System/getProperty "user.name")
                 uuid (d/squuid)
                 committed? true
@@ -110,7 +110,16 @@
                    (update-in job-info [:job/resource] conj {:resource/type :resource.type/gpus
                                                              :resource/amount (double gpus)})
                    job-info)
-        val @(d/transact conn [job-info commit-latch])]
+        environment (when (seq env)
+                      (mapcat (fn [[k v]]
+                                (let [env-var-id (d/tempid :db.part/user)]
+                                  [[:db/add id :job/environment env-var-id]
+                                   {:db/id env-var-id
+                                    :environment/name k
+                                    :environment/value v}]))
+                              env))
+        val @(d/transact conn (cond-> [job-info commit-latch]
+                                      environment (into environment)))]
     (d/resolve-tempid (db conn) (:tempids val) id)))
 
 (defn create-dummy-instance
@@ -141,9 +150,9 @@
                                   :instance/executor-id executor-id
                                   :instance/slave-id slave-id
                                   :instance/preempted? preempted?}
-                                  (when end-time {:instance/end-time end-time})
-                                  (if (nil? reason) {} {:instance/reason [:reason/name reason]})
-                                  (if (nil? cancelled) {} {:instance/cancelled true}))])]
+                                 (when end-time {:instance/end-time end-time})
+                                 (when reason {:instance/reason [:reason/name reason]})
+                                 (when cancelled {:instance/cancelled true}))])]
     (d/resolve-tempid (db conn) (:tempids val) id)))
 
 (defn create-dummy-group
@@ -165,7 +174,7 @@
 (defn init-offer-cache
   [& init]
   (-> init
-      (or {}) 
+      (or {})
       (cache/fifo-cache-factory :threshold 10000)
       (cache/ttl-cache-factory :ttl (* 1000 60))
       atom))
