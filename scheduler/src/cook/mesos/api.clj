@@ -841,8 +841,7 @@
           instance-jobs (mapv instance-uuid->job-uuid instances)
           exists? #(job-exists? (db conn) %)]
       (cond
-        (and (not allow-partial-results)
-             (every? exists? jobs)
+        (and (every? exists? jobs)
              (every? some? instance-jobs))
         [true {::jobs (into jobs instance-jobs)
                ::jobs-requested jobs
