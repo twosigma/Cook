@@ -55,6 +55,17 @@
     (if finished-at
       (- finished-at (+ scheduled-at execution-time)))))
 
+(defn- instance->instance-detail [cook-db instance]
+  "Load fields of an instance for detailed display."
+  (let [instance' (d/touch instance)]
+    (try
+      (if-let [reason-id (-> instance' :instance/reason :db/id)]
+        (let [reason-ent (->> reason-id (d/entity cook-db) d/touch)]
+          (assoc instance' :instance/reason reason-ent))
+        instance')
+      (catch Throwable e
+        instance'))))
+
 (defn job-result
   "Given db's from both Cook scheduler and Cook simulator, and a description of
   a job request (job id and time of request), return a data structure
@@ -72,19 +83,20 @@
                    ;; for now, each job can only belong to 1 group
                    first)]
     (job-result-validator
-     (merge
-      {:id job-id
-       :requested-at action-at
-       :name (:job/name sim-job)
-       :username (:job/username sim-job)
-       :details (into {} (d/touch cook-job))
-       :started-at started-at
-       :finished-at finished-at
-       :wait-time (when started-at (- started-at action-at))
-       :turnaround (when finished-at (- finished-at action-at))
-       :overhead (overhead-time sim-job action-at instances)
-       :instance-count (count instances)}
-      (when group {:group group})))))
+      (merge
+        {:id job-id
+         :requested-at action-at
+         :name (:job/name sim-job)
+         :username (:job/username sim-job)
+         :details (into {:instances (map #(instance->instance-detail cook-db %) instances)}
+                        (d/touch cook-job))
+         :started-at started-at
+         :finished-at finished-at
+         :wait-time (when started-at (- started-at action-at))
+         :turnaround (when finished-at (- finished-at action-at))
+         :overhead (overhead-time sim-job action-at instances)
+         :instance-count (count instances)}
+        (when group {:group group})))))
 
 (defn warn-about-unscheduled
   "The only effect of this function is to print out to STDOUT (for the cli).
@@ -95,14 +107,13 @@
         unscheduled-count (count unscheduled-jobs)]
     (if (pos? unscheduled-count)
       (do
-        (println "Warning!  This simulation had " unscheduled-count
-                 " jobs that were never scheduled by Cook.")
+        (println "Warning!  This simulation had" unscheduled-count "jobs that were never scheduled by Cook.")
         (println "This could be because you are analyzing before the jobs had a chance to finish...")
-       (println "or it could mean that there's a problem with Cook,")
-       (println "or with the Simulator's ability to connect to Cook.")
-       (doseq [job unscheduled-jobs]
-         (println "Job" (:id job))
-         (println "details from Cook DB:" (:details job)))))))
+        (println "or it could mean that there's a problem with Cook,")
+        (println "or with the Simulator's ability to connect to Cook.")
+        (doseq [job unscheduled-jobs]
+          (println "Unscheduled job" (:id job))
+          (println "  details from Cook DB:" (:details job)))))))
 
 (defn unfinished-jobs
   "Given a collection of job-results, returns a filtered version that contains only
@@ -120,12 +131,12 @@
         unfinished-count (count unfinished)]
     (if (pos? unfinished-count)
       (do
-        (println "Warning!  This simulation had " unfinished-count " jobs that were started but never finished.")
+        (println "Warning!  This simulation had" unfinished-count "jobs that were started but never finished.")
         (println "This makes it so that some creativity must be used in order to present average turnaround/overhead time for the entire sim, or to do job-by-job performance comparisions against another sim.")
         (doseq [job unfinished]
-          (println "Job" (:id job))
-          ;;(println "details from Cook DB:" (:details job))
-          )))))
+          (println "Unfinished job:" (:id job))
+          (println "  details about job:" (dissoc job :details))
+          (println "  details from Cook DB:" (:details job)))))))
 
 (defn summarize-preemption
   "This function prints out to STDOUT (for the cli).
@@ -240,7 +251,7 @@
   at the start of each of the sims."
   [sim-db cook-db setting sim-ids]
   (map (fn [sim-id] (setting (preemption-settings-as-of-sim-start
-                              sim-db cook-db sim-id)))
+                               sim-db cook-db sim-id)))
        sim-ids))
 
 (defn add-line-for-cook-version
@@ -279,8 +290,7 @@
            sift-pred identity
            sift-label "all"}}]
   (let [baseline-chart
-        (chart/line-chart (preemption-settings-x-axis sim-db cook-db
-                                                      knob baseline-sims)
+        (chart/line-chart (preemption-settings-x-axis sim-db cook-db knob baseline-sims)
                           (repeat (count baseline-sims) 0.5)
                           :title (str (name metric) " with changing "
                                       (name knob) " for " sift-label " jobs")
@@ -289,15 +299,15 @@
                           :legend true
                           :series-label "baseline")]
     (reduce
-     #(add-line-for-cook-version :sim-db sim-db
-                                 :cook-db cook-db
-                                 :baseline-sims baseline-sims
-                                 :sift-pred sift-pred
-                                 :metric metric
-                                 :knob knob
-                                 :chart %1
-                                 :compared-sims %2)
-     baseline-chart compared-sim-sets)))
+      #(add-line-for-cook-version :sim-db sim-db
+                                  :cook-db cook-db
+                                  :baseline-sims baseline-sims
+                                  :sift-pred sift-pred
+                                  :metric metric
+                                  :knob knob
+                                  :chart %1
+                                  :compared-sims %2)
+      baseline-chart compared-sim-sets)))
 
 
 (defn add-line-for-sim
