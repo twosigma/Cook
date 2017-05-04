@@ -93,6 +93,11 @@ class CookTest(unittest.TestCase):
         self.assertEqual(2003, job['instances'][0]['reason_code'])
 
     def query_jobs(self, **kwargs):
+        """
+        Queries cook for a set of jobs, by job and/or instance uuid. The kwargs
+        passed to this function are sent straight through as query parameters on
+        the request.
+        """
         return self.session.get('%s/rawscheduler' % self.cook_url, params=kwargs)
 
     def get_job(self, job_uuid):

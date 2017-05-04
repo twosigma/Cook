@@ -815,25 +815,43 @@
        :job/uuid))
 
 (defn retrieve-jobs
+  "Returns a tuple that either has the shape:
+
+    [true {::jobs ...
+           ::jobs-requested ...
+           ::instances-requested ...}]
+
+  or:
+
+    [false {::error ...}]
+
+  Given a collection of job and/or instance uuids, attempts to return the
+  corresponding set of existing job uuids. By default (or if the 'partial'
+  query parameter is false), the function returns an ::error if any of the
+  provided job or instance uuids cannot be found. If 'partial' is true, the
+  function will return the subset of job uuids that were found, assuming at
+  least one was found. This 'partial' flag allows a client to query a
+  particular cook cluster for a set of uuids, where some of them may not belong
+  to that cluster, and get back the data for those that do match."
   [conn ctx]
   (let [jobs (get-in ctx [:request :query-params :job])
         instances (get-in ctx [:request :query-params :instance])
         allow-partial-results (get-in ctx [:request :query-params :partial])]
     (let [instance-uuid->job-uuid #(instance-uuid->job-uuid (d/db conn) %)
           instance-jobs (mapv instance-uuid->job-uuid instances)
-          used? (partial job-exists? (db conn))]
+          exists? #(job-exists? (db conn) %)]
       (cond
         (and (not allow-partial-results)
-             (every? used? jobs)
+             (every? exists? jobs)
              (every? some? instance-jobs))
         [true {::jobs (into jobs instance-jobs)
                ::jobs-requested jobs
                ::instances-requested instances}]
 
         (and allow-partial-results
-             (or (some used? jobs)
+             (or (some exists? jobs)
                  (some some? instance-jobs)))
-        [true {::jobs (into (filter used? jobs) (filter some? instance-jobs))
+        [true {::jobs (into (filter exists? jobs) (filter some? instance-jobs))
                ::jobs-requested jobs
                ::instances-requested instances}]
 
@@ -849,7 +867,7 @@
         [false {::error (str "UUID "
                              (str/join
                                \space
-                               (remove used? jobs))
+                               (remove exists? jobs))
                              " didn't correspond to a job")}]))))
 
 (defn check-job-params-present
