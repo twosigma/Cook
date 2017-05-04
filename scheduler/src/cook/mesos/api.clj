@@ -40,12 +40,16 @@
             [metatransaction.core :refer (db)]
             [metrics.timers :as timers]
             [plumbing.core :refer [map-from-vals map-keys map-vals mapply]]
+            [ring.middleware.format-params :as format-params]
             [ring.middleware.json :as json]
+            [ring.util.response :as res]
             [schema.core :as s]
             [swiss.arrows :refer :all])
-  (:import (java.net ServerSocket URLEncoder)
+  (:import clojure.lang.Atom
+           (java.io OutputStreamWriter)
+           (java.net ServerSocket URLEncoder)
            (java.util Date UUID)
-           clojure.lang.Atom
+           javax.servlet.ServletResponse
            org.apache.curator.test.TestingServer
            org.joda.time.Minutes
            schema.core.OptionalKey))
@@ -1079,37 +1083,35 @@
 
 (defn waiting-jobs
   [mesos-pending-jobs-fn is-authorized-fn]
-  (-> (liberator/resource
-        :available-media-types ["application/json"]
-        :allowed-methods [:get]
-        :malformed? (fn [ctx]
-                      (try
-                        (if-let [limit (Integer/parseInt (get-in ctx [:request :query-params "limit"] "1000"))]
-                          (if-not (pos? limit)
-                            [true {::error (str "Limit " limit " most be positive")}]
-                            [false {::limit limit}]))
-                        (catch Exception e
-                          [true {::error (str (.getMessage e))}])))
-        :allowed? (fn [ctx]
-                    (let [user (get-in ctx [:request :authorization/user])]
-                      (if (is-authorized-fn user :read {:owner ::system :item :queue})
-                        true
-                        (do
-                          (log/info user " has failed auth")
-                          [false {::error "Unauthorized"}]))))
-        :handle-forbidden (fn [ctx]
-                            (log/info (get-in ctx [:request :authorization/user]) " is not authorized to access queue")
-                            (render-error ctx))
-        :handle-malformed render-error
-        :handle-ok (fn [ctx]
-                     (-> (map-vals (fn [queue]
-                                     (->> queue
-                                          (take (::limit ctx))
-                                          (map d/touch)))
-                                   (mesos-pending-jobs-fn))
-                         cheshire/generate-string)))
-      json/wrap-json-params))
-
+  (liberator/resource
+   :available-media-types ["application/json"]
+   :allowed-methods [:get]
+   :as-response (fn [data ctx] {:body data})
+   :malformed? (fn [ctx]
+                 (try
+                   (if-let [limit (Integer/parseInt (get-in ctx [:request :query-params "limit"] "1000"))]
+                     (if-not (pos? limit)
+                       [true {::error (str "Limit " limit " most be positive")}]
+                       [false {::limit limit}]))
+                   (catch Exception e
+                     [true {::error (str (.getMessage e))}])))
+   :allowed? (fn [ctx]
+               (let [user (get-in ctx [:request :authorization/user])]
+                 (if (is-authorized-fn user :read {:owner ::system :item :queue})
+                   true
+                   (do
+                     (log/info user " has failed auth")
+                     [false {::error "Unauthorized"}]))))
+   :handle-forbidden (fn [ctx]
+                       (log/info (get-in ctx [:request :authorization/user]) " is not authorized to access queue")
+                       (render-error ctx))
+   :handle-malformed render-error
+   :handle-ok (fn [ctx]
+                (map-vals (fn [queue]
+                            (->> queue
+                                 (take (::limit ctx))
+                                 (map d/touch)))
+                          (mesos-pending-jobs-fn)))))
 
 ;;
 ;; /running
@@ -1117,31 +1119,29 @@
 
 (defn running-jobs
   [conn is-authorized-fn]
-  (-> (liberator/resource
-        :available-media-types ["application/json"]
-        :allowed-methods [:get]
-        :malformed? (fn [ctx]
-                      (try
-                        (if-let [limit (Integer/parseInt (get-in ctx [:request :query-params "limit"] "1000"))]
-                          (if-not (pos? limit)
-                            [true {::error (str "Limit " limit " most be positive")}]
-                            [false {::limit limit}]))
-                        (catch Exception e
-                          [true {::error (str (.getMessage e))}])))
-        :allowed? (fn [ctx]
-                    (let [user (get-in ctx [:request :authorization/user])]
-                      (if (is-authorized-fn user :read {:owner ::system :item :running})
-                        true
-                        [false {::error "Unauthorized"}])))
-        :handle-forbidden render-error
-        :handle-malformed render-error
-        :handle-ok (fn [ctx]
-                     (->> (util/get-running-task-ents (db conn))
-                          (take (::limit ctx))
-                          (map d/touch)
-                          cheshire/generate-string)))
-      json/wrap-json-params))
-
+  (liberator/resource
+   :available-media-types ["application/json"]
+   :allowed-methods [:get]
+   :as-response (fn [data ctx] {:body data})
+   :malformed? (fn [ctx]
+                 (try
+                   (if-let [limit (Integer/parseInt (get-in ctx [:request :query-params "limit"] "1000"))]
+                     (if-not (pos? limit)
+                       [true {::error (str "Limit " limit " most be positive")}]
+                       [false {::limit limit}]))
+                   (catch Exception e
+                     [true {::error (str (.getMessage e))}])))
+   :allowed? (fn [ctx]
+               (let [user (get-in ctx [:request :authorization/user])]
+                 (if (is-authorized-fn user :read {:owner ::system :item :running})
+                   true
+                   [false {::error "Unauthorized"}])))
+   :handle-forbidden render-error
+   :handle-malformed render-error
+   :handle-ok (fn [ctx]
+                (->> (util/get-running-task-ents (db conn))
+                     (take (::limit ctx))
+                     (map d/touch)))))
 
 ;;
 ;; /retry
@@ -1444,85 +1444,84 @@
 
 (defn list-resource
   [db framework-id is-authorized-fn]
-  (-> (liberator/resource
-        :available-media-types ["application/json"]
-        :allowed-methods [:get]
-        :malformed? (fn [ctx]
-                      ;; since-hours-ago is included for backwards compatibility but is deprecated
-                      ;; please use start-ms and end-ms instead
-                      (let [{:keys [state user since-hours-ago start-ms end-ms limit]
-                             :as params}
-                            (keywordize-keys (or (get-in ctx [:request :query-params])
-                                                 (get-in ctx [:request :body-params])))]
-                        (if (and state user)
-                          (let [state-strs (clojure.string/split state #"\+")
-                                states (->> state-strs
-                                            (map str->state-attr)
-                                            (filter (comp not nil?)))]
-                            (if (= (count state-strs) (count states))
-                              (try
-                                [false {::states states
-                                        ::user user
-                                        ::since-hours-ago (parse-int-default since-hours-ago 24)
-                                        ::start-ms (parse-long-default start-ms nil)
-                                        ::limit (parse-int-default limit Integer/MAX_VALUE)
-                                        ::end-ms (parse-long-default end-ms (System/currentTimeMillis))}]
-                                (catch NumberFormatException e
-                                  [true {::error (.toString e)}]))
-                              [true {::error (str "unsupported state in " state ", must be running, waiting, or completed")}]))
-                          [true {::error "must supply the state and the user name"}])))
-        :allowed? (fn [ctx]
-                    (let [{limit ::limit
-                           user ::user
-                           since-hours-ago ::since-hours-ago
-                           start-ms ::start-ms
-                           end-ms ::end-ms} ctx
-                          request-user (get-in ctx [:request :authorization/user])]
-                      (cond
-                        (not (is-authorized-fn request-user :get {:owner user :item :job}))
-                        [false {::error (str "You are not authorized to list jobs for " user)}]
-                        (or (< 168 since-hours-ago)
-                            (> 0 since-hours-ago))
-                        [false {::error (str "since-hours-ago must be between 0 and 168 (7 days)")}]
-                        (> 1 limit)
-                        [false {::error (str "limit must be positive")}]
-                        (and start-ms (> start-ms end-ms))
-                        [false {::error (str "start-ms (" start-ms ") must be before end-ms (" end-ms ")")}]
-                        :else true)))
-        :handle-malformed ::error
-        :handle-forbidden ::error
-        :handle-ok (fn [ctx]
-                     (timers/time!
-                       list-endpoint
-                       (let [{states ::states
-                              user ::user
-                              start-ms ::start-ms
-                              end-ms ::end-ms
-                              since-hours-ago ::since-hours-ago
-                              limit ::limit} ctx
-                             start (if start-ms
-                                     (Date. start-ms)
-                                     (Date. (- end-ms (-> since-hours-ago t/hours t/in-millis))))
-                             end (Date. end-ms)
-                             job-uuids (->> (timers/time!
-                                              fetch-jobs
-                                              ;; Get valid timings
-                                              (doall
-                                                (mapcat #(util/get-jobs-by-user-and-state db
-                                                                                          user
-                                                                                          %
-                                                                                          start
-                                                                                          end)
-                                                        states)))
-                                            (sort-by :job/submit-time)
-                                            reverse
-                                            (map :job/uuid))
-                             job-uuids (if (nil? limit)
-                                         job-uuids
-                                         (take limit job-uuids))]
-                         (mapv (partial fetch-job-map db framework-id) job-uuids)))))
-      json/wrap-json-params))
-
+  (liberator/resource
+   :available-media-types ["application/json"]
+   :allowed-methods [:get]
+   :as-response (fn [data ctx] {:body data})
+   :malformed? (fn [ctx]
+                 ;; since-hours-ago is included for backwards compatibility but is deprecated
+                 ;; please use start-ms and end-ms instead
+                 (let [{:keys [state user since-hours-ago start-ms end-ms limit]
+                        :as params}
+                       (keywordize-keys (or (get-in ctx [:request :query-params])
+                                            (get-in ctx [:request :body-params])))]
+                   (if (and state user)
+                     (let [state-strs (clojure.string/split state #"\+")
+                           states (->> state-strs
+                                       (map str->state-attr)
+                                       (filter (comp not nil?)))]
+                       (if (= (count state-strs) (count states))
+                         (try
+                           [false {::states states
+                                   ::user user
+                                   ::since-hours-ago (parse-int-default since-hours-ago 24)
+                                   ::start-ms (parse-long-default start-ms nil)
+                                   ::limit (parse-int-default limit Integer/MAX_VALUE)
+                                   ::end-ms (parse-long-default end-ms (System/currentTimeMillis))}]
+                           (catch NumberFormatException e
+                             [true {::error (.toString e)}]))
+                         [true {::error (str "unsupported state in " state ", must be running, waiting, or completed")}]))
+                     [true {::error "must supply the state and the user name"}])))
+   :allowed? (fn [ctx]
+               (let [{limit ::limit
+                      user ::user
+                      since-hours-ago ::since-hours-ago
+                      start-ms ::start-ms
+                      end-ms ::end-ms} ctx
+                     request-user (get-in ctx [:request :authorization/user])]
+                 (cond
+                   (not (is-authorized-fn request-user :get {:owner user :item :job}))
+                   [false {::error (str "You are not authorized to list jobs for " user)}]
+                   (or (< 168 since-hours-ago)
+                       (> 0 since-hours-ago))
+                   [false {::error (str "since-hours-ago must be between 0 and 168 (7 days)")}]
+                   (> 1 limit)
+                   [false {::error (str "limit must be positive")}]
+                   (and start-ms (> start-ms end-ms))
+                   [false {::error (str "start-ms (" start-ms ") must be before end-ms (" end-ms ")")}]
+                   :else true)))
+   :handle-malformed ::error
+   :handle-forbidden ::error
+   :handle-ok (fn [ctx]
+                (timers/time!
+                 list-endpoint
+                 (let [{states ::states
+                        user ::user
+                        start-ms ::start-ms
+                        end-ms ::end-ms
+                        since-hours-ago ::since-hours-ago
+                        limit ::limit} ctx
+                       start (if start-ms
+                               (Date. start-ms)
+                               (Date. (- end-ms (-> since-hours-ago t/hours t/in-millis))))
+                       end (Date. end-ms)
+                       job-uuids (->> (timers/time!
+                                       fetch-jobs
+                                       ;; Get valid timings
+                                       (doall
+                                        (mapcat #(util/get-jobs-by-user-and-state db
+                                                                                  user
+                                                                                  %
+                                                                                  start
+                                                                                  end)
+                                                states)))
+                                      (sort-by :job/submit-time)
+                                      reverse
+                                      (map :job/uuid))
+                       job-uuids (if (nil? limit)
+                                   job-uuids
+                                   (take limit job-uuids))]
+                   (mapv (partial fetch-job-map db framework-id) job-uuids))))))
 
 ;;
 ;; /unscheduled_jobs
@@ -1556,6 +1555,26 @@
                                   :reasons (job-reasons conn job)})
                        (::jobs ctx)))}))
 
+(defn- streaming-json-encoder
+  "Takes as input the response body which can be converted into JSON,
+  and returns a function which takes a ServletResponse and writes the JSON
+  encoded response data. This is suitable for use with jet's server API."
+  [data]
+  (fn [^ServletResponse resp]
+    (cheshire/generate-stream data
+                              (OutputStreamWriter. (.getOutputStream resp)))))
+
+(defn- streaming-json-middleware
+  "Ring middleware which encodes JSON responses with streaming-json-encoder.
+  All other response types are unaffected."
+  [handler]
+  (fn streaming-json-handler [req]
+    (let [{:keys [headers body] :as resp} (handler req)
+          json-response (or (= "application/json" (get headers "Content-Type"))
+                            (coll? body))]
+      (cond-> resp
+        json-response (res/content-type "application/json")
+        (and json-response body) (assoc :body (streaming-json-encoder body))))))
 
 ;;
 ;; "main" - the entry point that routes to other handlers
@@ -1563,131 +1582,133 @@
 (defn main-handler
   [conn fid mesos-pending-jobs-fn
    {:keys [task-constraints is-authorized-fn] gpu-enabled? :mesos-gpu-enabled :as settings}]
-  (routes
-   (c-api/api
-    {:swagger {:ui "/swagger-ui"
-               :spec "/swagger-docs"
-               :data {:info {:title "Cook API"
-                             :description "How to Cook things"}
-                      :tags [{:name "api", :description "some apis"}]}}
-     :coercion cook-coercer}
+  (->
+   (routes
+    (c-api/api
+     {:swagger {:ui "/swagger-ui"
+                :spec "/swagger-docs"
+                :data {:info {:title "Cook API"
+                              :description "How to Cook things"}
+                       :tags [{:name "api", :description "some apis"}]}}
+      :format nil
+      :coercion cook-coercer}
 
-    (c-api/context
-     "/rawscheduler" []
-     (c-api/resource
-      {:get {:summary "Returns info about a set of Jobs"
-             :parameters {:query-params JobOrInstanceIds}
-             :responses {200 {:schema [JobResponse]
-                              :description "The jobs and their instances were returned."}
-                         400 {:description "Non-UUID values were passed as jobs."}
-                         403 {:description "The supplied UUIDs don't correspond to valid jobs."}}
-             :handler (read-jobs-handler conn fid task-constraints gpu-enabled? is-authorized-fn)}
-       :post {:summary "Schedules one or more jobs."
-              :parameters {:body-params RawSchedulerRequest}
-              :responses {201 {:description "The jobs were successfully scheduled."}
-                          400 {:description "One or more of the jobs were incorrectly specified."}
-                          409 {:description "One or more of the jobs UUIDs are already in use."}}
-              :handler (create-jobs-handler conn fid task-constraints gpu-enabled? is-authorized-fn)}
-       :delete {:summary "Cancels jobs, halting execution when possible."
-                :responses {204 {:description "The jobs have been marked for termination."}
-                            400 {:description "Non-UUID values were passed as jobs."}
-                            403 {:description "The supplied UUIDs don't correspond to valid jobs."}}
-                :parameters {:query-params JobOrInstanceIds}
-                :handler (destroy-jobs-handler conn fid task-constraints gpu-enabled? is-authorized-fn)}}))
-
-    (c-api/context
-     "/share" []
-     (c-api/resource
-      {:produces ["application/json"],
-       :responses {200 {:schema UserLimitsResponse
-                        :description "User's share found"}
-                   401 {:description "Not authorized to read shares."}
-                   403 {:description "Invalid request format."}}
-       :get {:summary "Read a user's share"
-             :parameters {:query-params UserParam}
-             :handler (read-limit-handler :share share/get-share conn is-authorized-fn)}
-       :post {:summary "Change a user's share"
-              :parameters (set-limit-params :share)
-              :handler (update-limit-handler :share []
-                                             share/get-share share/set-share!
-                                             conn is-authorized-fn)}
-       :delete {:summary "Reset a user's share to the default"
-                :parameters {:query-params UserParam}
-                :handler (destroy-limit-handler :share share/retract-share! conn is-authorized-fn)}}))
-
-    (c-api/context
-     "/quota" []
-     (c-api/resource
-      {:produces ["application/json"],
-       :responses {200 {:schema UserLimitsResponse
-                        :description "User's quota found"}
-                   401 {:description "Not authorized to read quota."}
-                   403 {:description "Invalid request format."}}
-       :get {:summary "Read a user's quota"
-             :parameters {:query-params UserParam}
-             :handler (read-limit-handler :quota quota/get-quota conn is-authorized-fn)}
-       :post {:summary "Change a user's quota"
-              :parameters (set-limit-params :quota)
-              :handler (update-limit-handler :quota [:count]
-                                             quota/get-quota quota/set-quota!
-                                             conn is-authorized-fn)}
-       :delete {:summary "Reset a user's quota to the default"
-                :parameters {:query-params UserParam}
-                :handler (destroy-limit-handler :delete quota/retract-quota! conn is-authorized-fn)}}))
-
-    (c-api/context
-     "/retry" []
-     (c-api/resource
-      {:produces ["application/json"],
-       :get {:summary "Read a job's retry count"
-             :parameters {:query-params ReadRetriesRequest}
-             :handler (read-retries-handler conn is-authorized-fn)
-             :responses {200 {:schema PosInt
-                              :description "The number of retries for the job"}
-                         400 {:description "Invalid request format."}
-                         404 {:description "The UUID doesn't correspond to a job."}}}
-       :put
-       {:summary "Change a job's retry count"
-        :parameters {:body-params UpdateRetriesRequest}
-        :handler (put-retries-handler conn is-authorized-fn task-constraints)
-        :responses {201 {:schema PosInt
-                         :description "The number of retries for the jobs."}
-                    400 {:description "Invalid request format."}
-                    401 {:description "Request user not authorized to access those jobs."}
-                    404 {:description "Unrecognized job UUID."}}}
-       :post
-       {:summary "Change a job's retry count (deprecated)"
-        :parameters {:body-params UpdateRetriesRequest}
-        :handler (post-retries-handler conn is-authorized-fn task-constraints)
-        :responses {201 {:schema PosInt
-                         :description "The number of retries for the job"}
-                    400 {:description "Invalid request format or bad job UUID."}
-                    401 {:description "Request user not authorized to access that job."}}}}))
      (c-api/context
-     "/group" []
-     (c-api/resource
-      {:get {:summary "Returns info about a set of groups"
-             :parameters {:query-params {:uuid [s/Uuid] (s/optional-key :detailed) s/Bool}}
-             :responses {200 {:schema [GroupResponse]
-                              :description "The groups were returned."}
-                         400 {:description "Non-UUID values were passed."}
-                         403 {:description "The supplied UUIDs don't correspond to valid groups."}}
-             :handler (read-groups-handler conn fid task-constraints is-authorized-fn)}}))
+      "/rawscheduler" []
+      (c-api/resource
+       {:get {:summary "Returns info about a set of Jobs"
+              :parameters {:query-params JobOrInstanceIds}
+              :responses {200 {:schema [JobResponse]
+                               :description "The jobs and their instances were returned."}
+                          400 {:description "Non-UUID values were passed as jobs."}
+                          403 {:description "The supplied UUIDs don't correspond to valid jobs."}}
+              :handler (read-jobs-handler conn fid task-constraints gpu-enabled? is-authorized-fn)}
+        :post {:summary "Schedules one or more jobs."
+               :parameters {:body-params RawSchedulerRequest}
+               :responses {201 {:description "The jobs were successfully scheduled."}
+                           400 {:description "One or more of the jobs were incorrectly specified."}
+                           409 {:description "One or more of the jobs UUIDs are already in use."}}
+               :handler (create-jobs-handler conn fid task-constraints gpu-enabled? is-authorized-fn)}
+        :delete {:summary "Cancels jobs, halting execution when possible."
+                 :responses {204 {:description "The jobs have been marked for termination."}
+                             400 {:description "Non-UUID values were passed as jobs."}
+                             403 {:description "The supplied UUIDs don't correspond to valid jobs."}}
+                 :parameters {:query-params JobOrInstanceIds}
+                 :handler (destroy-jobs-handler conn fid task-constraints gpu-enabled? is-authorized-fn)}}))
 
-    (c-api/context
+     (c-api/context
+      "/share" []
+      (c-api/resource
+       {:produces ["application/json"],
+        :responses {200 {:schema UserLimitsResponse
+                         :description "User's share found"}
+                    401 {:description "Not authorized to read shares."}
+                    403 {:description "Invalid request format."}}
+        :get {:summary "Read a user's share"
+              :parameters {:query-params UserParam}
+              :handler (read-limit-handler :share share/get-share conn is-authorized-fn)}
+        :post {:summary "Change a user's share"
+               :parameters (set-limit-params :share)
+               :handler (update-limit-handler :share []
+                                              share/get-share share/set-share!
+                                              conn is-authorized-fn)}
+        :delete {:summary "Reset a user's share to the default"
+                 :parameters {:query-params UserParam}
+                 :handler (destroy-limit-handler :share share/retract-share! conn is-authorized-fn)}}))
+
+     (c-api/context
+      "/quota" []
+      (c-api/resource
+       {:produces ["application/json"],
+        :responses {200 {:schema UserLimitsResponse
+                         :description "User's quota found"}
+                    401 {:description "Not authorized to read quota."}
+                    403 {:description "Invalid request format."}}
+        :get {:summary "Read a user's quota"
+              :parameters {:query-params UserParam}
+              :handler (read-limit-handler :quota quota/get-quota conn is-authorized-fn)}
+        :post {:summary "Change a user's quota"
+               :parameters (set-limit-params :quota)
+               :handler (update-limit-handler :quota [:count]
+                                              quota/get-quota quota/set-quota!
+                                              conn is-authorized-fn)}
+        :delete {:summary "Reset a user's quota to the default"
+                 :parameters {:query-params UserParam}
+                 :handler (destroy-limit-handler :delete quota/retract-quota! conn is-authorized-fn)}}))
+
+     (c-api/context
+      "/retry" []
+      (c-api/resource
+       {:produces ["application/json"],
+        :get {:summary "Read a job's retry count"
+              :parameters {:query-params ReadRetriesRequest}
+              :handler (read-retries-handler conn is-authorized-fn)
+              :responses {200 {:schema PosInt
+                               :description "The number of retries for the job"}
+                          400 {:description "Invalid request format."}
+                          404 {:description "The UUID doesn't correspond to a job."}}}
+        :put
+        {:summary "Change a job's retry count"
+         :parameters {:body-params UpdateRetriesRequest}
+         :handler (put-retries-handler conn is-authorized-fn task-constraints)
+         :responses {201 {:schema PosInt
+                          :description "The number of retries for the jobs."}
+                     400 {:description "Invalid request format."}
+                     401 {:description "Request user not authorized to access those jobs."}
+                     404 {:description "Unrecognized job UUID."}}}
+        :post
+        {:summary "Change a job's retry count (deprecated)"
+         :parameters {:body-params UpdateRetriesRequest}
+         :handler (post-retries-handler conn is-authorized-fn task-constraints)
+         :responses {201 {:schema PosInt
+                          :description "The number of retries for the job"}
+                     400 {:description "Invalid request format or bad job UUID."}
+                     401 {:description "Request user not authorized to access that job."}}}}))
+     (c-api/context
+      "/group" []
+      (c-api/resource
+       {:get {:summary "Returns info about a set of groups"
+              :parameters {:query-params {:uuid [s/Uuid] (s/optional-key :detailed) s/Bool}}
+              :responses {200 {:schema [GroupResponse]
+                               :description "The groups were returned."}
+                          400 {:description "Non-UUID values were passed."}
+                          403 {:description "The supplied UUIDs don't correspond to valid groups."}}
+              :handler (read-groups-handler conn fid task-constraints is-authorized-fn)}}))
+
+     (c-api/context
       "/failure_reasons" []
       (c-api/resource
-        {:get {:summary "Returns a description of all possible task failure reasons"
-               :responses {200 {:schema FailureReasonsResponse
-                                :description "The failure reasons were returned."}}
-               :handler (failure-reasons-handler conn is-authorized-fn)}}))
+       {:get {:summary "Returns a description of all possible task failure reasons"
+              :responses {200 {:schema FailureReasonsResponse
+                               :description "The failure reasons were returned."}}
+              :handler (failure-reasons-handler conn is-authorized-fn)}}))
 
-    (c-api/context
+     (c-api/context
       "/settings" []
       (c-api/resource
-        {:get {:summary "Returns the settings that cook is configured with"
-               :responses {200 {:description "The settings were returned."}}
-               :handler (settings-handler settings)}}))
+       {:get {:summary "Returns the settings that cook is configured with"
+              :responses {200 {:description "The settings were returned."}}
+              :handler (settings-handler settings)}}))
 
      (c-api/context
       "/unscheduled_jobs" []
@@ -1700,10 +1721,13 @@
                                :description "Reasons the job isn't being scheduled."}
                           400 {:description "Invalid request format."}
                           404 {:description "The UUID doesn't correspond to a job."}}}})))
-
     (ANY "/queue" []
-      (waiting-jobs mesos-pending-jobs-fn is-authorized-fn))
+         (waiting-jobs mesos-pending-jobs-fn is-authorized-fn))
     (ANY "/running" []
-      (running-jobs conn is-authorized-fn))
+         (running-jobs conn is-authorized-fn))
     (ANY "/list" []
-      (list-resource (db conn) fid is-authorized-fn))))
+         (list-resource (db conn) fid is-authorized-fn)))
+   (format-params/wrap-restful-params {:formats [:json-kw]
+                                       :handle-error c-mw/handle-req-error})
+   (streaming-json-middleware)))
+
