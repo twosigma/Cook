@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/) and this p
 - /unscheduled_jobs API endpoint, from @mforsyth
 ### Changed
 - Require an explicit reason when changing shares or quotas (from @mforsyth).  This intentionally breaks backwards compatibility.
+- Optimized matching code to speed schedule time @wyegelwel
 
 ## [1.2.1] - 2017-03-13
 ### Fixed
