@@ -1721,9 +1721,9 @@
                           400 {:description "Invalid request format."}
                           404 {:description "The UUID doesn't correspond to a job."}}}})))
     (ANY "/queue" []
-      (waiting-jobs mesos-pending-jobs-fn is-authorized-fn))
+         (waiting-jobs mesos-pending-jobs-fn is-authorized-fn))
     (ANY "/running" []
-      (running-jobs conn is-authorized-fn))
+         (running-jobs conn is-authorized-fn))
     (ANY "/list" []
          (list-resource (db conn) fid is-authorized-fn)))
    (format-params/wrap-restful-params {:formats [:json-kw]
