@@ -55,6 +55,17 @@
     (if finished-at
       (- finished-at (+ scheduled-at execution-time)))))
 
+(defn- instance->instance-detail [cook-db instance]
+  "Load fields of an instance for detailed display."
+  (let [instance' (d/touch instance)]
+    (try
+      (if-let [reason-id (-> instance' :instance/reason :db/id)]
+        (let [reason-ent (->> reason-id (d/entity cook-db) d/touch)]
+          (assoc instance' :instance/reason reason-ent))
+        instance')
+      (catch Throwable e
+        instance'))))
+
 (defn job-result
   "Given db's from both Cook scheduler and Cook simulator, and a description of
   a job request (job id and time of request), return a data structure
@@ -77,16 +88,7 @@
          :requested-at action-at
          :name (:job/name sim-job)
          :username (:job/username sim-job)
-         :details (into {:instances (map (fn instance-detail [instance]
-                                           (let [instance' (d/touch instance)]
-                                             (try
-                                               (if-let [reason-id (-> instance' :instance/reason :db/id)]
-                                                 (let [reason-ent (->> reason-id (d/entity cook-db) d/touch)]
-                                                   (assoc instance' :instance/reason reason-ent))
-                                                 instance')
-                                               (catch Throwable e
-                                                 instance'))))
-                                         instances)}
+         :details (into {:instances (map #(instance->instance-detail cook-db %) instances)}
                         (d/touch cook-job))
          :started-at started-at
          :finished-at finished-at
@@ -288,8 +290,7 @@
            sift-pred identity
            sift-label "all"}}]
   (let [baseline-chart
-        (chart/line-chart (preemption-settings-x-axis sim-db cook-db
-                                                      knob baseline-sims)
+        (chart/line-chart (preemption-settings-x-axis sim-db cook-db knob baseline-sims)
                           (repeat (count baseline-sims) 0.5)
                           :title (str (name metric) " with changing "
                                       (name knob) " for " sift-label " jobs")
