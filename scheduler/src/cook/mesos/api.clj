@@ -1570,7 +1570,8 @@
   [handler]
   (fn streaming-json-handler [req]
     (let [{:keys [headers body] :as resp} (handler req)
-          json-response (= "application/json" (get headers "Content-Type" "application/json"))]
+          json-response (or (= "application/json" (get headers "Content-Type"))
+                            (coll? body))]
       (cond-> resp
         json-response (res/content-type "application/json")
         (and json-response body) (assoc :body (streaming-json-encoder body))))))
