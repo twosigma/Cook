@@ -839,18 +839,19 @@
         allow-partial-results (get-in ctx [:request :query-params :partial])]
     (let [instance-uuid->job-uuid #(instance-uuid->job-uuid (d/db conn) %)
           instance-jobs (mapv instance-uuid->job-uuid instances)
-          exists? #(job-exists? (db conn) %)]
+          exists? #(job-exists? (db conn) %)
+          existing-jobs (filter exists? jobs)]
       (cond
-        (and (every? exists? jobs)
+        (and (= (count existing-jobs) (count jobs))
              (every? some? instance-jobs))
         [true {::jobs (into jobs instance-jobs)
                ::jobs-requested jobs
                ::instances-requested instances}]
 
         (and allow-partial-results
-             (or (some exists? jobs)
+             (or (> (count existing-jobs) 0)
                  (some some? instance-jobs)))
-        [true {::jobs (into (filter exists? jobs) (filter some? instance-jobs))
+        [true {::jobs (into existing-jobs (filter some? instance-jobs))
                ::jobs-requested jobs
                ::instances-requested instances}]
 

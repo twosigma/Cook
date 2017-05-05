@@ -347,40 +347,44 @@ class CookTest(unittest.TestCase):
         self.assertEqual(resp.status_code, 400)
 
     def test_allow_partial(self):
-        job_uuid, resp = self.submit_job()
+        job_uuid_1, resp = self.submit_job()
+        self.assertEqual(201, resp.status_code)
+        job_uuid_2, resp = self.submit_job()
         self.assertEqual(201, resp.status_code)
 
-        # Single, valid job uuid
-        resp = self.query_jobs(job=[job_uuid])
+        # Only valid job uuids
+        resp = self.query_jobs(job=[job_uuid_1, job_uuid_2])
         self.assertEqual(200, resp.status_code)
 
-        # One valid job uuid, one invalid job uuid
+        # Mixed valid, invalid job uuids
         bogus_uuid = str(uuid.uuid4())
-        resp = self.query_jobs(job=[job_uuid, bogus_uuid])
+        resp = self.query_jobs(job=[job_uuid_1, job_uuid_2, bogus_uuid])
         self.assertEqual(404, resp.status_code)
-        resp = self.query_jobs(job=[job_uuid, bogus_uuid], partial='false')
+        resp = self.query_jobs(job=[job_uuid_1, job_uuid_2, bogus_uuid], partial='false')
         self.assertEqual(404, resp.status_code, resp.json())
 
-        # Partial results with one valid job uuid, one invalid job uuid
-        resp = self.query_jobs(job=[job_uuid, bogus_uuid], partial='true')
+        # Partial results with mixed valid, invalid job uuids
+        resp = self.query_jobs(job=[job_uuid_1, job_uuid_2, bogus_uuid], partial='true')
         self.assertEqual(200, resp.status_code, resp.json())
-        self.assertEqual(1, len(resp.json()))
-        self.assertEqual(job_uuid, resp.json()[0]['uuid'])
+        self.assertEqual(2, len(resp.json()))
+        self.assertEqual([job_uuid_1, job_uuid_2].sort(), [job['uuid'] for job in resp.json()].sort())
 
-        # Single, valid instance uuid
-        job = self.wait_for_job(job_uuid, 'completed')
-        instance_uuid = job['instances'][0]['task_id']
-        resp = self.query_jobs(instance=[instance_uuid])
+        # Only valid instance uuids
+        job = self.wait_for_job(job_uuid_1, 'completed')
+        instance_uuid_1 = job['instances'][0]['task_id']
+        job = self.wait_for_job(job_uuid_2, 'completed')
+        instance_uuid_2 = job['instances'][0]['task_id']
+        resp = self.query_jobs(instance=[instance_uuid_1, instance_uuid_2])
         self.assertEqual(200, resp.status_code)
 
-        # One valid instance uuid, one invalid instance uuid
-        resp = self.query_jobs(instance=[instance_uuid, bogus_uuid])
+        # Mixed valid, invalid instance uuids
+        resp = self.query_jobs(instance=[instance_uuid_1, instance_uuid_2, bogus_uuid])
         self.assertEqual(404, resp.status_code)
-        resp = self.query_jobs(instance=[instance_uuid, bogus_uuid], partial='false')
+        resp = self.query_jobs(instance=[instance_uuid_1, instance_uuid_2, bogus_uuid], partial='false')
         self.assertEqual(404, resp.status_code)
 
-        # Partial results with one valid instance uuid, one invalid instance uuid
-        resp = self.query_jobs(instance=[instance_uuid, bogus_uuid], partial='true')
+        # Partial results with mixed valid, invalid instance uuids
+        resp = self.query_jobs(instance=[instance_uuid_1, instance_uuid_2, bogus_uuid], partial='true')
         self.assertEqual(200, resp.status_code)
-        self.assertEqual(1, len(resp.json()))
-        self.assertEqual(job_uuid, resp.json()[0]['uuid'])
+        self.assertEqual(2, len(resp.json()))
+        self.assertEqual([job_uuid_1, job_uuid_2].sort(), [job['uuid'] for job in resp.json()].sort())
