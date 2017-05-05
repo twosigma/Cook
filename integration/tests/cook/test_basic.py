@@ -7,7 +7,7 @@ import uuid
 
 from retrying import retry
 
-from tests.cook.util import get_in
+from tests.cook.util import get_in, is_valid_uuid
 
 
 def is_connection_error(exception):
@@ -347,6 +347,9 @@ class CookTest(unittest.TestCase):
         self.assertEqual(resp.status_code, 400)
 
     def test_allow_partial(self):
+        def absent_uuids(response):
+            return [part for part in response.json()['error'].split() if is_valid_uuid(part)]
+
         job_uuid_1, resp = self.submit_job()
         self.assertEqual(201, resp.status_code)
         job_uuid_2, resp = self.submit_job()
@@ -360,8 +363,10 @@ class CookTest(unittest.TestCase):
         bogus_uuid = str(uuid.uuid4())
         resp = self.query_jobs(job=[job_uuid_1, job_uuid_2, bogus_uuid])
         self.assertEqual(404, resp.status_code)
+        self.assertEqual([bogus_uuid], absent_uuids(resp))
         resp = self.query_jobs(job=[job_uuid_1, job_uuid_2, bogus_uuid], partial='false')
         self.assertEqual(404, resp.status_code, resp.json())
+        self.assertEqual([bogus_uuid], absent_uuids(resp))
 
         # Partial results with mixed valid, invalid job uuids
         resp = self.query_jobs(job=[job_uuid_1, job_uuid_2, bogus_uuid], partial='true')
@@ -380,8 +385,10 @@ class CookTest(unittest.TestCase):
         # Mixed valid, invalid instance uuids
         resp = self.query_jobs(instance=[instance_uuid_1, instance_uuid_2, bogus_uuid])
         self.assertEqual(404, resp.status_code)
+        self.assertEqual([bogus_uuid], absent_uuids(resp))
         resp = self.query_jobs(instance=[instance_uuid_1, instance_uuid_2, bogus_uuid], partial='false')
         self.assertEqual(404, resp.status_code)
+        self.assertEqual([bogus_uuid], absent_uuids(resp))
 
         # Partial results with mixed valid, invalid instance uuids
         resp = self.query_jobs(instance=[instance_uuid_1, instance_uuid_2, bogus_uuid], partial='true')

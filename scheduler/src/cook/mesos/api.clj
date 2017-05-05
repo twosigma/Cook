@@ -19,6 +19,7 @@
             [clj-http.client :as http]
             [clj-time.core :as t]
             [clojure.core.cache :as cache]
+            [clojure.set :as set]
             [clojure.string :as str]
             [clojure.tools.logging :as log]
             [clojure.walk :as walk :refer (keywordize-keys)]
@@ -867,7 +868,7 @@
         [false {::error (str "UUID "
                              (str/join
                                \space
-                               (remove exists? jobs))
+                               (set/difference (set jobs) (set existing-jobs)))
                              " didn't correspond to a job")}]))))
 
 (defn check-job-params-present
