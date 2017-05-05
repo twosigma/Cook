@@ -850,7 +850,7 @@
                ::instances-requested instances}]
 
         (and allow-partial-results
-             (or (pos? existing-jobs)
+             (or (pos? (count existing-jobs))
                  (some some? instance-jobs)))
         [true {::jobs (into existing-jobs (filter some? instance-jobs))
                ::jobs-requested jobs
