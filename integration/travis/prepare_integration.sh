@@ -2,5 +2,6 @@
 
 set -ev
 
-export PROJECT_DIR=`pwd`
-../travis/prepare.sh
+PROJECT_DIR=`pwd`
+cd ${PROJECT_DIR}/../scheduler
+lein deps

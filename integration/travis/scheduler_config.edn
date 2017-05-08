@@ -1,7 +1,7 @@
 {:port 12321
  :hostname "172.17.0.1"
  :authorization {:one-user "vagrant"}
- :database {:datomic-uri "datomic:free://localhost:4334/cook-jobs"}
+ :database {:datomic-uri "datomic:mem://cook-jobs"}
  :zookeeper {:local? true}
  :scheduler {:offer-incubate-ms 15000
              :task-constraints {:timeout-hours 1
