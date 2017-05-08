@@ -18,7 +18,7 @@
  :unhandled-exceptions {:log-level :error}
  :metrics {:jmx true}
  :nrepl {:enabled? true
-         :port 8888}
+         :port #config/env-int "COOK_NREPL_PORT"}
  :log {:file "log/cook.log"
        :levels {"datomic.db" :warn
                 "datomic.peer" :warn

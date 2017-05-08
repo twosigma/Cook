@@ -19,6 +19,7 @@ class CookTest(unittest.TestCase):
 
     @retry(retry_on_exception=is_connection_error, stop_max_delay=240000, wait_fixed=1000)
     def wait_for_cook(self):
+        self.logger.debug('Waiting for connection to cook...')
         # if connection is refused, an exception will be thrown
         self.session.get(self.cook_url)
 
@@ -59,6 +60,7 @@ class CookTest(unittest.TestCase):
         self.cook_url = os.getenv('COOK_SCHEDULER_URL', 'http://localhost:12321')
         self.session = requests.Session()
         self.logger = logging.getLogger(__name__)
+        self.logger.info('Using cook url %s' % self.cook_url)
         self.wait_for_cook()
 
     def submit_job(self, **kwargs):
