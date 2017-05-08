@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 
+COOK_PORT=${1:-12321}
+COOK_NREPL_PORT=${2:-8888}
+
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-NAME=cook-scheduler
+NAME=cook-scheduler-${COOK_PORT}
 
 if [ "$(docker ps -aq -f name=${NAME})" ]; then
     # Cleanup
@@ -26,9 +29,10 @@ docker run \
     -t \
     --network=bridge \
     --name=${NAME} \
-    --publish=8888:8888 \
-    --publish=12321:12321 \
-    -e "COOK_PORT=12321" \
+    --publish=${COOK_NREPL_PORT}:${COOK_NREPL_PORT} \
+    --publish=${COOK_PORT}:${COOK_PORT} \
+    -e "COOK_PORT=${COOK_PORT}" \
+    -e "COOK_NREPL_PORT=${COOK_NREPL_PORT}" \
     -e "MESOS_MASTER=${ZK}" \
     -e "MESOS_MASTER_HOST=${MINIMESOS_MASTER_IP}" \
     -v ${DIR}/../log:/opt/cook/log \
