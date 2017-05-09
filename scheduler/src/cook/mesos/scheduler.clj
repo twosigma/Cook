@@ -1299,7 +1299,13 @@
 
   (let [fid (atom nil)
         fenzo (make-fenzo-scheduler driver-atom offer-incubate-time-ms fenzo-fitness-calculator good-enough-fitness)
-        [offers-chan resources-atom] (make-offer-handler conn driver-atom fenzo fid pending-jobs-atom offer-cache fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset)]
+        [offers-chan resources-atom] (make-offer-handler conn driver-atom fenzo fid pending-jobs-atom offer-cache fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset)
+        order-enforcer-agent (agent nil)
+        agent-processor (fn agent-processor [_ body-fn]
+                          (try
+                            (body-fn)
+                            (catch Exception e
+                              (log/error e "Error processing mesos status/message."))))]
     (start-jobs-prioritizer! conn pending-jobs-atom task-constraints)
     {:scheduler
      (mesos/scheduler
@@ -1346,5 +1352,5 @@
        (resource-offers [this driver offers]
                         (receive-offers offers-chan driver offers))
        (status-update [this driver status]
-                      (future (handle-status-update conn driver fenzo status))))
+                      (send order-enforcer-agent agent-processor #(handle-status-update conn driver fenzo status))))
      :view-incubating-offers (fn get-resources-atom [] @resources-atom)}))
