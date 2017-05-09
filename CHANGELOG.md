@@ -7,13 +7,13 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/) and this p
 ## [1.3.0] - 2017-05-05
 ### Added
 - /unscheduled_jobs API endpoint, from @mforsyth
-- Added application to job description, from @dpo
+- Added application to job description, from @dposada
 - Added disable-mea-culpa-retries flag, from @pschorf
-- Added docker, from @dpo
+- Added docker, from @dposada
 - Added support for job groups in simulator, from @mforsyth
 - Added /failure_reasons API endpoint, from @mforsyth
-- Added expected-runtime to job description, from @dpo
-- Added /settings API endpoint, from @dpo
+- Added expected-runtime to job description, from @dposada
+- Added /settings API endpoint, from @dposada
 ### Changed
 - Require an explicit reason when changing shares or quotas (from @mforsyth).  This intentionally breaks backwards compatibility.
 - Optimized matching code to speed schedule time @wyegelwel
