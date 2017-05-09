@@ -35,6 +35,7 @@
   (:import (com.netflix.fenzo TaskAssignmentResult TaskScheduler VMTaskFitnessCalculator)
            (com.netflix.fenzo.plugins BinPackingFitnessCalculators)
            (java.util UUID)
+           (java.util.concurrent CountDownLatch TimeUnit)
            (org.mockito Mockito)))
 
 (def datomic-uri "datomic:mem://test-mesos-jobs")
@@ -1456,6 +1457,21 @@
   (testing "something other than a VMTaskFitnessCalculator"
     (is (thrown? IllegalArgumentException (sched/config-string->fitness-calculator
                                            "System/out")))))
+
+(deftest test-in-order-status-update-processing
+  (let [status-store (atom [])
+        latch (CountDownLatch. 3)]
+    (with-redefs [sched/handle-status-update
+                  (fn [_ _ _ status]
+                    (swap! status-store conj (-> status mtypes/pb->data :state))
+                    (Thread/sleep (rand-int 100))
+                    (.countDown latch))]
+      (let [s (sched/create-mesos-scheduler (atom nil) (constantly true) true nil nil nil nil)]
+        (.statusUpdate s nil (mtypes/->pb :TaskStatus {:task-id {:value "T1"} :state :task-starting}))
+        (.statusUpdate s nil (mtypes/->pb :TaskStatus {:task-id {:value "T1"} :state :task-running}))
+        (.statusUpdate s nil (mtypes/->pb :TaskStatus {:task-id {:value "T1"} :state :task-finished}))
+        (.await latch 2 TimeUnit/SECONDS)
+        (is (= [:task-starting :task-running :task-finished] @status-store))))))
 
 (comment
   (run-tests))
