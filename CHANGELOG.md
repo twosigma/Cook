@@ -9,7 +9,7 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/) and this p
 - /unscheduled_jobs API endpoint, from @mforsyth
 - Added application to job description, from @dpo
 - Added disable-mea-culpa-retries flag, from @pschorf
-- Added docker and minimesos support, from @dpo
+- Added docker, from @dpo
 - Added support for job groups in simulator, from @mforsyth
 - Added /failure_reasons API endpoint, from @mforsyth
 - Added expected-runtime to job description, from @dpo
