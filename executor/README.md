@@ -3,6 +3,7 @@ Cook Executor
 
 The Cook executor is a custom executor written in Python.
 It replaces the default command executor in order to enable a number of features for both operators and end users.
+For more information on Mesos executors, see the "Working with Executors" section at http://mesos.apache.org/documentation/latest/app-framework-development-guide/
 
 For Users
 ---------
@@ -18,7 +19,7 @@ For Operators
 
 The Cook executor replaces the default command executor.
 It can either be installed on each agent, or downloaded on each agent via a `uri`.
-As the executor communicates with Mesos agent via HTTP, the agent must support the HTTP API and have it enabled.
+Because the executor communicates with Mesos agent via HTTP, the agent must support the HTTP API and have it enabled.
 
 ### Installation
 
@@ -111,4 +112,4 @@ If the executor is installed correctly, it will log info and errors to the `exec
 This should be the first place to look for stack traces and other error information.
 Each lifecycle callback is logged (`registered`, `launchTask`, etc), which can help to narrow down the issue.
 
-When troubleshooting any issues with running the executor on the agent, it may be helpful to use a simple job command until you confirm that executor is being launched correctly.
+When troubleshooting any issues with running the executor on the agent, it may be helpful to use a simple job command until you confirm that the executor is being launched correctly.
