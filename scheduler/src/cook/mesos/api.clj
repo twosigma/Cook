@@ -19,6 +19,7 @@
             [clj-http.client :as http]
             [clj-time.core :as t]
             [clojure.core.cache :as cache]
+            [clojure.set :as set]
             [clojure.string :as str]
             [clojure.tools.logging :as log]
             [clojure.walk :as walk :refer (keywordize-keys)]
@@ -275,6 +276,12 @@
   "Schema for any number of job and/or instance uuids"
   {(s/optional-key :job) [s/Uuid]
    (s/optional-key :instance) [s/Uuid]})
+
+(def QueryJobsParams
+  "Schema for querying for jobs by job and/or instance uuid, allowing optionally
+  for 'partial' results, meaning that some uuids can be valid and others not"
+  (-> JobOrInstanceIds
+      (assoc (s/optional-key :partial) s/Bool)))
 
 (def Attribute-Equals-Parameters
   "A schema for the parameters of a host placement with type attribute-equals"
@@ -809,18 +816,46 @@
        :job/uuid))
 
 (defn retrieve-jobs
+  "Returns a tuple that either has the shape:
+
+    [true {::jobs ...
+           ::jobs-requested ...
+           ::instances-requested ...}]
+
+  or:
+
+    [false {::error ...}]
+
+  Given a collection of job and/or instance uuids, attempts to return the
+  corresponding set of existing job uuids. By default (or if the 'partial'
+  query parameter is false), the function returns an ::error if any of the
+  provided job or instance uuids cannot be found. If 'partial' is true, the
+  function will return the subset of job uuids that were found, assuming at
+  least one was found. This 'partial' flag allows a client to query a
+  particular cook cluster for a set of uuids, where some of them may not belong
+  to that cluster, and get back the data for those that do match."
   [conn ctx]
   (let [jobs (get-in ctx [:request :query-params :job])
-        instances (get-in ctx [:request :query-params :instance])]
+        instances (get-in ctx [:request :query-params :instance])
+        allow-partial-results (get-in ctx [:request :query-params :partial])]
     (let [instance-uuid->job-uuid #(instance-uuid->job-uuid (d/db conn) %)
           instance-jobs (mapv instance-uuid->job-uuid instances)
-          used? (partial job-exists? (db conn))]
+          exists? #(job-exists? (db conn) %)
+          existing-jobs (filter exists? jobs)]
       (cond
-        (and (every? used? jobs)
-             (every? (complement nil?) instance-jobs))
+        (and (= (count existing-jobs) (count jobs))
+             (every? some? instance-jobs))
         [true {::jobs (into jobs instance-jobs)
                ::jobs-requested jobs
                ::instances-requested instances}]
+
+        (and allow-partial-results
+             (or (pos? (count existing-jobs))
+                 (some some? instance-jobs)))
+        [true {::jobs (into existing-jobs (filter some? instance-jobs))
+               ::jobs-requested jobs
+               ::instances-requested instances}]
+
         (some nil? instance-jobs)
         [false {::error (str "UUID "
                              (str/join
@@ -828,11 +863,12 @@
                                (filter (comp nil? instance-uuid->job-uuid)
                                        instances))
                              " didn't correspond to an instance")}]
+
         :else
         [false {::error (str "UUID "
                              (str/join
                                \space
-                               (remove used? jobs))
+                               (set/difference (set jobs) (set existing-jobs)))
                              " didn't correspond to a job")}]))))
 
 (defn check-job-params-present
@@ -1597,7 +1633,7 @@
       "/rawscheduler" []
       (c-api/resource
        {:get {:summary "Returns info about a set of Jobs"
-              :parameters {:query-params JobOrInstanceIds}
+              :parameters {:query-params QueryJobsParams}
               :responses {200 {:schema [JobResponse]
                                :description "The jobs and their instances were returned."}
                           400 {:description "Non-UUID values were passed as jobs."}

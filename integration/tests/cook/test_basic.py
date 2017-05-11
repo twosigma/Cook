@@ -7,7 +7,7 @@ import uuid
 
 from retrying import retry
 
-from tests.cook.util import get_in
+from tests.cook.util import get_in, is_valid_uuid
 
 
 def is_connection_error(exception):
@@ -94,9 +94,17 @@ class CookTest(unittest.TestCase):
         self.assertEqual('failed', job['instances'][0]['status'])
         self.assertEqual(2003, job['instances'][0]['reason_code'])
 
-    # load a job by UUID using GET /rawscheduler
+    def query_jobs(self, **kwargs):
+        """
+        Queries cook for a set of jobs, by job and/or instance uuid. The kwargs
+        passed to this function are sent straight through as query parameters on
+        the request.
+        """
+        return self.session.get('%s/rawscheduler' % self.cook_url, params=kwargs)
+
     def get_job(self, job_uuid):
-        return self.session.get('%s/rawscheduler?job=%s' % (self.cook_url, job_uuid)).json()[0]
+        """Loads a job by UUID using GET /rawscheduler"""
+        return self.query_jobs(job=[job_uuid]).json()[0]
 
     def test_get_job(self):
         # schedule a job
@@ -339,3 +347,53 @@ class CookTest(unittest.TestCase):
         # Should require application version
         _, resp = self.submit_job(application={'name': 'foo-app'})
         self.assertEqual(resp.status_code, 400)
+
+    def test_allow_partial(self):
+        def absent_uuids(response):
+            return [part for part in response.json()['error'].split() if is_valid_uuid(part)]
+
+        job_uuid_1, resp = self.submit_job()
+        self.assertEqual(201, resp.status_code)
+        job_uuid_2, resp = self.submit_job()
+        self.assertEqual(201, resp.status_code)
+
+        # Only valid job uuids
+        resp = self.query_jobs(job=[job_uuid_1, job_uuid_2])
+        self.assertEqual(200, resp.status_code)
+
+        # Mixed valid, invalid job uuids
+        bogus_uuid = str(uuid.uuid4())
+        resp = self.query_jobs(job=[job_uuid_1, job_uuid_2, bogus_uuid])
+        self.assertEqual(404, resp.status_code)
+        self.assertEqual([bogus_uuid], absent_uuids(resp))
+        resp = self.query_jobs(job=[job_uuid_1, job_uuid_2, bogus_uuid], partial='false')
+        self.assertEqual(404, resp.status_code, resp.json())
+        self.assertEqual([bogus_uuid], absent_uuids(resp))
+
+        # Partial results with mixed valid, invalid job uuids
+        resp = self.query_jobs(job=[job_uuid_1, job_uuid_2, bogus_uuid], partial='true')
+        self.assertEqual(200, resp.status_code, resp.json())
+        self.assertEqual(2, len(resp.json()))
+        self.assertEqual([job_uuid_1, job_uuid_2].sort(), [job['uuid'] for job in resp.json()].sort())
+
+        # Only valid instance uuids
+        job = self.wait_for_job(job_uuid_1, 'completed')
+        instance_uuid_1 = job['instances'][0]['task_id']
+        job = self.wait_for_job(job_uuid_2, 'completed')
+        instance_uuid_2 = job['instances'][0]['task_id']
+        resp = self.query_jobs(instance=[instance_uuid_1, instance_uuid_2])
+        self.assertEqual(200, resp.status_code)
+
+        # Mixed valid, invalid instance uuids
+        resp = self.query_jobs(instance=[instance_uuid_1, instance_uuid_2, bogus_uuid])
+        self.assertEqual(404, resp.status_code)
+        self.assertEqual([bogus_uuid], absent_uuids(resp))
+        resp = self.query_jobs(instance=[instance_uuid_1, instance_uuid_2, bogus_uuid], partial='false')
+        self.assertEqual(404, resp.status_code)
+        self.assertEqual([bogus_uuid], absent_uuids(resp))
+
+        # Partial results with mixed valid, invalid instance uuids
+        resp = self.query_jobs(instance=[instance_uuid_1, instance_uuid_2, bogus_uuid], partial='true')
+        self.assertEqual(200, resp.status_code)
+        self.assertEqual(2, len(resp.json()))
+        self.assertEqual([job_uuid_1, job_uuid_2].sort(), [job['uuid'] for job in resp.json()].sort())
