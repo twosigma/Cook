@@ -14,8 +14,7 @@
 ;; limitations under the License.
 ;;
 (ns cook.test.mesos.fenzo-utils
-  (:use clojure.test
-        lucid.core.java)
+  (:use clojure.test)
   (:require [cook.mesos.fenzo-utils :as fenzo])
   (import com.netflix.fenzo.SimpleAssignmentResult
           com.netflix.fenzo.AssignmentFailure
