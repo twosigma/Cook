@@ -75,7 +75,7 @@ Supported configuration options:
 | `:log-level` | string | The log level for the executor process. Defaults to "INFO".|
 | `:max-message-length` | long | The maximum length for the custom failure message set by a task via the Mesos executor HTTP API. The default is 512.|
 | `:progress-output-name` | string | The file to track for progress updates. The default is stdout.|
-| `:progress-regex-string` | string | The regex used to identify progress update messages. The regex should have two capture groups, the first being an integer representing the progress percent. The second being a message about the progress. When not provided, progress updates will not be tracked.|
+| `:progress-regex-string` | string | The regex used to identify progress update messages. The regex should have two capture groups, the first being an integer representing the progress percent. The second being a message about the progress. Defaults to "progress: (\d*), (.*)".|
 | `:progress-sample-interval-ms` | long | The interval in ms after which to send progress updates. The default is 1000.|
 | `:uri` | map | A description of the `uri` used to download the executor executable. The `uri` structure is defined below.|
 

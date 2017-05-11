@@ -1,10 +1,10 @@
-import os
-import re
 import json
 import logging
 import time
-
 from threading import Event, Lock, Thread
+
+import os
+import re
 
 
 class ProgressUpdater(object):
@@ -12,6 +12,7 @@ class ProgressUpdater(object):
         This class is responsible for sending progress updates to the scheduler.
         It throttles the rate at which progress updates are sent.
     """
+
     def __init__(self, poll_interval_ms):
         self.poll_interval_ms = poll_interval_ms
         self.last_reported_time = None
@@ -46,6 +47,7 @@ class ProgressWatcher(object):
         This class tails the output from the target file listening for progress messages.
         The retrieve_progress_states generates all progress messages iteratively.
     """
+
     @staticmethod
     def match_progress_update(progress_regex_str, input_string):
         matches = re.findall(progress_regex_str, input_string)
@@ -70,7 +72,7 @@ class ProgressWatcher(object):
         :return: an incrementally generated list of lines in the file being tailed.
         """
         try:
-            sleep_param = (1.0 * sleep_time_ms) / 1000
+            sleep_param = sleep_time_ms / 1000
             while True:
                 if os.path.isfile(self.target_file):
                     logging.info('{} has been created, reading contents'.format(self.target_file))

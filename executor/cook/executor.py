@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 
-import cook
-import cook.progress as cp
 import json
 import logging
 import subprocess
 import time
+from threading import Event, Thread
 
 from pymesos import Executor, MesosExecutorDriver, decode_data, encode_data
-from threading import Event, Thread
+
+import cook
+import cook.progress as cp
 
 
 def get_task_id(task):
@@ -234,6 +235,7 @@ class CookExecutor(Executor):
     """
         This class is responsible for launching the task sent by the scheduler.
     """
+
     def __init__(self, stop_signal, config):
         self.stop_signal = stop_signal
         self.completed_signal = Event()

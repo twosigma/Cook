@@ -7,16 +7,19 @@ This module configures logging and starts the executor's driver thread.
 
 """
 
-import cook.config as cc
-import cook.executor as ce
-# CPython bug: including the idna encoding registers it, the encoding is loaded with the built-in frozen importer
-# https://github.com/pyinstaller/pyinstaller/issues/1113
-import encodings.idna
 import logging
-import os
 import signal
 import sys
 from threading import Event, Thread
+
+import os
+
+# CPython bug: including the idna encoding registers it, the encoding is loaded with the built-in frozen importer
+# https://github.com/pyinstaller/pyinstaller/issues/1113
+import encodings.idna
+
+import cook.config as cc
+import cook.executor as ce
 
 
 def main(args=None):
