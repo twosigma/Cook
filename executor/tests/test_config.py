@@ -1,8 +1,9 @@
-import cook.config as cc
 import logging
 import unittest
 
 from nose.tools import *
+
+import cook.config as cc
 
 
 class ConfigTest(unittest.TestCase):

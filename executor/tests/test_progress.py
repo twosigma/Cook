@@ -1,14 +1,16 @@
+import logging
+import math
+import time
+import unittest
+from threading import Event, Thread
+
+import os
+from nose.tools import *
+
 import cook.config as cc
 import cook.executor as ce
 import cook.progress as cp
-import logging
-import os
-import time
-import unittest
-
-from nose.tools import *
 from tests.utils import assert_message, get_random_task_id, FakeMesosExecutorDriver
-from threading import Event, Thread
 
 
 class ProgressTest(unittest.TestCase):
@@ -133,6 +135,38 @@ class ProgressTest(unittest.TestCase):
             if os.path.isfile(file_name):
                 os.remove(file_name)
 
+    def test_progress_watcher_tail_lot_of_writes(self):
+        file_name = 'build/tail_progress_test.' + get_random_task_id()
+        config = cc.ExecutorConfig(progress_output_name=file_name)
+        items_to_write = 250000
+        completed_signal = Event()
+        tail_sleep_ms = 25
+
+        try:
+            def write_to_file():
+                file = open(file_name, 'w+')
+                for item in range(items_to_write):
+                    file.write("{}\n".format(item))
+                    file.flush()
+                file.close()
+                time.sleep(0.15)
+                completed_signal.set()
+
+            Thread(target=write_to_file, args=()).start()
+
+            progress_watcher = cp.ProgressWatcher(config, completed_signal)
+            collected_data = []
+            for line in progress_watcher.tail(tail_sleep_ms):
+                collected_data.append(line.strip())
+
+            logging.info('Items read: {}'.format(len(collected_data)))
+            self.assertEqual(items_to_write, len(collected_data))
+            expected_data = list(map(lambda x: str(x), range(items_to_write)))
+            self.assertEqual(expected_data, collected_data)
+        finally:
+            if os.path.isfile(file_name):
+                os.remove(file_name)
+
     def test_progress_watcher_tail_with_read_limit(self):
         file_name = 'build/tail_progress_test.' + get_random_task_id()
         config = cc.ExecutorConfig(max_bytes_read_per_line=10,
@@ -188,6 +222,7 @@ class ProgressTest(unittest.TestCase):
             def read_progress_states():
                 for _ in progress_watcher.retrieve_progress_states():
                     pass
+
             Thread(target=read_progress_states, args=()).start()
 
             file.write("Stage One complete\n")
@@ -232,6 +267,58 @@ class ProgressTest(unittest.TestCase):
             if os.path.isfile(file_name):
                 os.remove(file_name)
 
+    def test_collect_progress_updates_lots_of_writes(self):
+        file_name = 'build/collect_progress_test.' + get_random_task_id()
+        progress_regex_string = 'progress: (\d*), (.*)'
+        config = cc.ExecutorConfig(progress_output_name=file_name,
+                                   progress_regex_string=progress_regex_string)
+
+        items_to_write = 250000
+        completed_signal = Event()
+
+        def write_to_file():
+            target_file = open(file_name, 'w+')
+            unit_progress_granularity = int(items_to_write / 100)
+            for item in range(items_to_write):
+                remainder = (item + 1) % unit_progress_granularity
+                if remainder == 0:
+                    progress_percent = math.ceil(item / unit_progress_granularity)
+                    target_file.write('progress: {0}, completed-{0}-percent\n'.format(progress_percent))
+                    target_file.flush()
+                target_file.write("{}\n".format(item))
+                target_file.flush()
+            target_file.close()
+            time.sleep(0.15)
+            completed_signal.set()
+
+        write_thread = Thread(target=write_to_file, args=())
+        write_thread.start()
+
+        progress_watcher = cp.ProgressWatcher(config, completed_signal)
+
+        try:
+            collected_data = []
+
+            def read_progress_states():
+                for progress in progress_watcher.retrieve_progress_states():
+                    logging.info('Received: {}'.format(progress))
+                    collected_data.append(progress)
+
+            read_progress_states_thread = Thread(target=read_progress_states, args=())
+            read_progress_states_thread.start()
+
+            read_progress_states_thread.join()
+
+            expected_data = list(map(lambda x: {'progress-message': 'completed-{}-percent'.format(x),
+                                                'progress-percent': x},
+                                     range(1, 101)))
+
+            self.assertEqual(expected_data, collected_data)
+        finally:
+            completed_signal.set()
+            if os.path.isfile(file_name):
+                os.remove(file_name)
+
     def test_collect_progress_updates_with_empty_regex(self):
         file_name = 'build/collect_progress_test.' + get_random_task_id()
         progress_regex_string = ''
@@ -247,6 +334,7 @@ class ProgressTest(unittest.TestCase):
             def read_progress_states():
                 for _ in progress_watcher.retrieve_progress_states():
                     pass
+
             Thread(target=read_progress_states, args=()).start()
 
             file.write("Stage One complete\n")

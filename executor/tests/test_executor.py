@@ -1,18 +1,19 @@
-import cook
-import cook.config as cc
-import cook.executor as ce
 import json
 import logging
-import os
 import signal
 import subprocess
 import time
 import unittest
+from threading import Event
 
+import os
 from nose.tools import *
 from pymesos import encode_data
+
+import cook
+import cook.config as cc
+import cook.executor as ce
 from tests.utils import assert_message, assert_status, cleanup_output, get_random_task_id, FakeMesosExecutorDriver
-from threading import Event
 
 
 class ExecutorTest(unittest.TestCase):
