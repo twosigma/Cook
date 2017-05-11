@@ -1290,7 +1290,9 @@
             (catch Exception e
               (log/error e "Unable to decline offers!")))))))
 
-(let [processor-agent (agent nil)
+(let [in-order-queue-counter (counters/counter ["cook-mesos" "scheduler" "in-order-queue-size"])
+      in-order-queue-timer (timers/timer ["cook-mesos" "scheduler" "in-order-queue-delay-duration"])
+      processor-agent (agent nil)
       safe-call (fn agent-processor [_ body-fn]
                   (try
                     (body-fn)
@@ -1299,7 +1301,13 @@
   (defn- async-in-order-processing
     "Asynchronously processes the body-fn by queueing the task in an agent to ensure in-order processing."
     [body-fn]
-    (send processor-agent safe-call body-fn)))
+    (counters/inc! in-order-queue-counter)
+    (let [timer-context (timers/start in-order-queue-timer)]
+      (send processor-agent safe-call
+            #(do
+               (timers/stop timer-context)
+               (counters/dec! in-order-queue-counter)
+               (body-fn))))))
 
 (defn create-mesos-scheduler
   "Creates the mesos scheduler which processes status updates asynchronously but in order of receipt."
