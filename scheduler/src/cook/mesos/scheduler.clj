@@ -1291,7 +1291,8 @@
               (log/error e "Unable to decline offers!")))))))
 
 (defn create-mesos-scheduler
-  "Creates the mesos scheduler which offloads processing of status updates to an agent."
+  "Creates the mesos scheduler which offloads processing of status updates to an agent.
+   The agent is used to ensure in-order asynchronous processing of status updates."
   [fid set-framework-id gpu-enabled? conn heartbeat-ch fenzo offers-chan]
   (let [processor-agent (agent nil)
         safe-call (fn agent-processor [_ body-fn]
