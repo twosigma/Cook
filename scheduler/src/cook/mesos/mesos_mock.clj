@@ -16,6 +16,7 @@
 (ns cook.mesos.mesos-mock
   (:require [chime :refer [chime-at chime-ch]]
             [clj-time.core :as t]
+            [clj-time.periodic :as periodic]
             [clojure.core.async :as async]
             [clojure.tools.logging :as log]
             [datomic.api :refer (q)]

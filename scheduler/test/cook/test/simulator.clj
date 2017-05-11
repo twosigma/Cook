@@ -501,15 +501,24 @@
 
   (def users ["a" "b" "c" "d"])
 
-  (def jobs (for [minute (range 15)
-                  sim-i (range (+ (rand-int 100) 20))]
-                (create-trace-job (+ (rand-int 1200000) 60000) ; 1 to 20 minutes
-                                  (+ (* 1000 60 minute) (+ (rand-int 2000) -1000))
-                                  :user (first (shuffle users))
-                                  :command "sleep 10" ;; Doesn't matter
-                                  :custom-executor? false
-                                  :memory (+ (rand-int 2000) 2000)
-                                  :ncpus (+ (rand-int 3) 1))))
+  (def jobs (-> (for [minute (range 10)
+                       sim-i (range (+ (rand-int 1000) 200))]
+                   (create-trace-job (+ (rand-int 1200000) 600000) ; 1 to 20 minutes
+                                     (+ (* 1000 60 minute) (+ (rand-int 2000) -1000))
+                                     :user (first (shuffle users))
+                                     :command "sleep 10" ;; Doesn't matter
+                                     :custom-executor? false
+                                     :memory (+ (rand-int 10000) 24000)
+                                     :ncpus (+ (rand-int 3) 1)))
+                 (conj (create-trace-job 10000
+                                         (-> 2 t/hours t/in-millis)
+                                         :user "e"
+                                         :command "sleep 10"
+                                         :custom-executor? false
+                                         :memory 10000
+                                         :ncpus 3
+                                         ))
+                 ))
 
   (for [_ (range 20)]
     (create-trace-job 10000
@@ -535,7 +544,7 @@
                                         :ncpus 2.0))))
 
 
-  (spit "big-trace-nice.json" (generate-string jobs {:pretty true}))
+  (spit "bin-packing-trace.json" (generate-string jobs {:pretty true}))
 
   (defn trace-host
     [host-name mem cpus]
@@ -547,10 +556,10 @@
                                :end 100}]}}
      :slave-id (java.util.UUID/randomUUID)})
 
-  (def hosts (map #(trace-host % 20000 20) (range 30)))
+  (def hosts (map #(trace-host % 240000 20) (range 30)))
 
 
 
-  (spit "medium-hosts.json" (generate-string hosts {:pretty true}))
+  (spit "bin-packing-hosts.json" (generate-string hosts {:pretty true}))
 
   )

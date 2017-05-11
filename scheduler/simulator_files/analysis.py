@@ -150,6 +150,38 @@ def colors_for_values(vs):
     scalarMap = cmx.ScalarMappable(norm=cNorm, cmap=c_map)
     return [scalarMap.to_rgba(unique_vs.index(v)) for v in vs]
 
+def time_series_events(events):
+    """Given a list of events, [time_ms, count, cpus, mem], 
+    returns a dataframe where each row is the utilization at a given time
+     
+     Parameters:
+     -----------
+     events : list of tuples [time_ms, count, cpus, mem]
+         time series of events, such as job starting or completing
+         
+     Returns:
+     --------
+     pandas.DataFrame
+         dataframe time series of utilization with keys 
+         'time_ms', 'count', 'cpus', 'mem'
+         where 
+         1. 'count' is the number of tasks running
+         2. 'mem' is the memory utilized 
+         3. 'cpus' is the cpus utilized
+         at time 'time_ms'."""
+    ordered_events = sorted(events, key=lambda x: x[0])
+    time_series = []
+    count_total = 0
+    mem_total = 0
+    cpus_total = 0
+    for time, count, mem, cpus in ordered_events:
+        count_total += count
+        mem_total += mem
+        cpus_total += cpus
+        time_series.append({"time_ms" : time, "count" : count_total, "cpus" : cpus_total, "mem": mem_total})
+    return pandas.DataFrame(time_series)
+
+
 def running_concurrently(df):
     """Given a dataframe of tasks, returns a dataframe where each row 
     is the utilization at a given time
@@ -173,14 +205,31 @@ def running_concurrently(df):
     rows = df.to_records()
     events = [e for r in rows for e in [(r["start_time_ms"], 1, r["mem"], r["cpus"]), 
                                         (r["end_time_ms"], -1, -r["mem"], -r["cpus"])]]
-    ordered_events = sorted(events, key=lambda x: x[0])
-    time_series = []
-    count_total = 0
-    mem_total = 0
-    cpus_total = 0
-    for time, count, mem, cpus in ordered_events:
-        count_total += count
-        mem_total += mem
-        cpus_total += cpus
-        time_series.append({"time_ms" : time, "count" : count_total, "cpus" : cpus_total, "mem": mem_total})
-    return pandas.DataFrame(time_series)
+    return time_series_events(events)
+
+def waiting_over_time(df):
+    """Given a dataframe of tasks, returns a dataframe where each row 
+    is the resources waiting at a given time
+    
+     
+     Parameters:
+     -----------
+     df : pandas.DataFrame
+         dataframe output from prepare_df
+         
+     Returns:
+     --------
+     pandas.DataFrame
+         dataframe time series of utilization with keys 
+         'time_ms', 'count', 'cpus', 'mem'
+         where 
+         1. 'count' is the number of tasks waiting 
+         2. 'mem' is the memory waiting 
+         3. 'cpus' is the cpus waiting 
+         at time 'time_ms'."""
+    rows = df.to_records()
+    events = [e for r in rows for e in [(r["submit_time_ms"], 1, r["mem"], r["cpus"]), 
+                                        (r["start_time_ms"], -1, -r["mem"], -r["cpus"])]]
+    return time_series_events(events)
+
+    
