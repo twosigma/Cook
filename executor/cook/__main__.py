@@ -1,10 +1,7 @@
 #!/usr/bin/env python3
 
-"""
-
-The primary entry point for Cook's custom executor.
+"""The primary entry point for Cook's custom executor.
 This module configures logging and starts the executor's driver thread.
-
 """
 
 import logging
@@ -14,7 +11,8 @@ from threading import Event, Thread
 
 import os
 
-# CPython bug: including the idna encoding registers it, the encoding is loaded with the built-in frozen importer
+# CPython bug: including the idna encoding registers it,
+# the encoding is loaded with the built-in frozen importer
 # https://github.com/pyinstaller/pyinstaller/issues/1113
 import encodings.idna
 

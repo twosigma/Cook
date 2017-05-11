@@ -6,12 +6,21 @@ from pymesos.utils import parse_duration
 
 
 class ExecutorConfig(object):
-    """
-        This class is responsible for storing the executor config.
-    """
+    """This class is responsible for storing the executor config."""
 
     @staticmethod
     def parse_time_ms(time_string):
+        """Parses the time string and return the milliseconds value.
+        
+        Parameters
+        ----------
+        :param time_string: string
+            the input string to parse.
+            
+        Returns
+        -------
+        :return: the parsed time as milliseconds. 
+        """
         try:
             return int(1000 * parse_duration(time_string))
         except:
@@ -37,6 +46,9 @@ class ExecutorConfig(object):
 
 
 def initialize_config(environment):
+    """Initializes the config using the environment.
+    Populates the default values for missing environment variables.
+    """
     max_bytes_read_per_line = 4 * 1024
     max_message_length = int(environment.get('EXECUTOR_MAX_MESSAGE_LENGTH', 512))
     progress_output_name = environment.get('PROGRESS_OUTPUT_FILE', 'stdout')
