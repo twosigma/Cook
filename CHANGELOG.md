@@ -4,12 +4,21 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
  
-## [Unreleased]
+## [1.3.0] - 2017-05-05
 ### Added
 - /unscheduled_jobs API endpoint, from @mforsyth
+- Added application to job description, from @dposada
+- Added disable-mea-culpa-retries flag, from @pschorf
+- Added docker, from @dposada
+- Added support for job groups in simulator, from @mforsyth
+- Added /failure_reasons API endpoint, from @mforsyth
+- Added expected-runtime to job description, from @dposada
+- Added /settings API endpoint, from @dposada
 ### Changed
 - Require an explicit reason when changing shares or quotas (from @mforsyth).  This intentionally breaks backwards compatibility.
 - Optimized matching code to speed schedule time @wyegelwel
+- Stream JSON responses, from @pschorf
+- Speed up ranking with commit latch and caching from @wyegelwel
 
 ## [1.2.1] - 2017-03-13
 ### Fixed
