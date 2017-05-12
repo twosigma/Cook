@@ -1,3 +1,4 @@
+import importlib
 import logging
 import os
 import requests
@@ -23,18 +24,20 @@ class CookTest(unittest.TestCase):
         # if connection is refused, an exception will be thrown
         self.session.get(self.cook_url)
 
-    @retry(stop_max_delay=120000, wait_fixed=1000)
-    def wait_for_job(self, job_id, status):
-        job = self.session.get('%s/rawscheduler?job=%s' % (self.cook_url, job_id))
-        self.assertEqual(200, job.status_code)
-        job = job.json()[0]
-        if not job['status'] == status:
-            error_msg = 'Job %s had status %s - expected %s' % (job_id, job['status'], status)
-            self.logger.info(error_msg)
-            raise RuntimeError(error_msg)
-        else:
-            self.logger.info('Job %s has status %s - %s', job_id, status, job)
-        return job
+    def wait_for_job(self, job_id, status, max_delay=120000):
+        @retry(stop_max_delay=max_delay, wait_fixed=1000)
+        def wait_for_job_inner():
+            job = self.session.get('%s/rawscheduler?job=%s' % (self.cook_url, job_id))
+            self.assertEqual(200, job.status_code)
+            job = job.json()[0]
+            if not job['status'] == status:
+                error_msg = 'Job %s had status %s - expected %s' % (job_id, job['status'], status)
+                self.logger.info(error_msg)
+                raise RuntimeError(error_msg)
+            else:
+                self.logger.info('Job %s has status %s - %s', job_id, status, job)
+                return job
+        return wait_for_job_inner()
 
     @staticmethod
     def minimal_job(**kwargs):
@@ -58,7 +61,8 @@ class CookTest(unittest.TestCase):
 
     def setUp(self):
         self.cook_url = os.getenv('COOK_SCHEDULER_URL', 'http://localhost:12321')
-        self.session = requests.Session()
+        session_module = importlib.import_module(os.getenv('COOK_SESSION_MODULE', 'requests'))
+        self.session = session_module.Session()
         self.logger = logging.getLogger(__name__)
         self.logger.info('Using cook url %s' % self.cook_url)
         self.wait_for_cook()
@@ -89,7 +93,7 @@ class CookTest(unittest.TestCase):
         timeout_interval_seconds = get_in(self.settings(), 'task-constraints', 'timeout-interval-minutes') * 60
         job_uuid, resp = self.submit_job(command='sleep %s' % timeout_interval_seconds, max_runtime=5000)
         self.assertEqual(201, resp.status_code)
-        job = self.wait_for_job(job_uuid, 'completed')
+        job = self.wait_for_job(job_uuid, 'completed', timeout_interval_seconds * 1000)
         self.assertEqual(1, len(job['instances']))
         self.assertEqual('failed', job['instances'][0]['status'])
         self.assertEqual(2003, job['instances'][0]['reason_code'])
