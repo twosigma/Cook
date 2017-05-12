@@ -46,7 +46,8 @@
             [ring.util.response :as res]
             [schema.core :as s]
             [swiss.arrows :refer :all])
-  (:import clojure.lang.Atom
+  (:import (clojure.lang Atom Var)
+           com.codahale.metrics.riemann.RiemannReporter
            (java.io OutputStreamWriter)
            (java.net ServerSocket URLEncoder)
            (java.util Date UUID)
@@ -1450,6 +1451,8 @@
     (instance? TestingServer v) (str v)
     (instance? Minutes v) (str v)
     (instance? ServerSocket v) (str v)
+    (instance? Var v) (str v)
+    (instance? RiemannReporter v) (str v)
     :else v))
 
 (defn settings-handler
