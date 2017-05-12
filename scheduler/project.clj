@@ -43,7 +43,6 @@
                  [org.clojure/data.priority-map "0.0.5"]
                  [swiss-arrows "1.0.0"]
                  [riddley "0.1.10"]
-                 [org.apache.mesos/mesos "1.0.1"]
                  [com.netflix.fenzo/fenzo-core "0.10.0"
                   :exclusions [org.apache.mesos/mesos
                                com.fasterxml.jackson.core/jackson-core
