@@ -16,6 +16,7 @@
 (ns cook.mesos.mesos-mock
   (:require [chime :refer [chime-at chime-ch]]
             [clj-time.core :as t]
+            [clj-time.periodic :as periodic]
             [clojure.core.async :as async]
             [clojure.tools.logging :as log]
             [datomic.api :refer (q)]
@@ -209,19 +210,38 @@
 (defn complete-task!
   "Marks the task as complete in the state and updates the resources
    Returns the updated state"
-  [state task-id scheduler driver task-state]
-  (log/debug "Completing task" {:task-id task-id :state task-state :task (get-in state [:task-id->task task-id])})
-  (if-let [task (get-in state [:task-id->task task-id])]
-    (do
-      (.statusUpdate scheduler driver (mesos-type/->pb :TaskStatus
-                                                       {:task-id {:value task-id}
-                                                        :state task-state}))
-      (-> state
-          (update :task-id->task #(dissoc % task-id))
-          (update :task-id->completed-task #(assoc % task-id (assoc task :complete-time (t/now))))
-          (update-in [:slave-id->host (:value (:slave-id task)) :available-resources]
-                     #(combine-resources (:resources task) %))))
-    state))
+  ([state task-id scheduler driver]
+   (complete-task! state task-id scheduler driver nil))
+  ([state task-id scheduler driver task-state]
+   (log/debug "Completing task" {:task-id task-id :state task-state :task (get-in state [:task-id->task task-id])})
+   (if-let [task (get-in state [:task-id->task task-id])]
+     (do
+       (let [task->complete-status (get-in state [:config :task->complete-status]) ;; TODO make srue this is correct names
+             task-state (or task-state (task->complete-status task))]
+         (.statusUpdate scheduler driver (mesos-type/->pb :TaskStatus
+                                                          {:task-id {:value task-id}
+                                                           :state task-state}))
+         (-> state
+             (update :task-id->task #(dissoc % task-id))
+             (update :task-id->completed-task #(assoc % task-id (assoc task :complete-time (t/now))))
+             (update-in [:slave-id->host (:value (:slave-id task)) :available-resources]
+                        #(combine-resources (:resources task) %)))))
+     state)))
+
+(defn complete-tasks!
+  "Removes tasks from state that have completed and calls complete-task!"
+  [state scheduler driver]
+  (let [now (:now state)
+        time-task-id-pairs (:time-task-id-pairs state)
+        complete? (comp (partial t/after? now) first)
+        to-complete-pairs (filter complete? time-task-id-pairs)
+;        remaining (reduce disj time-task-id-pairs to-complete-pairs)
+        remaining (remove complete? time-task-id-pairs)
+        to-complete-task-ids (map second to-complete-pairs)
+        state' (reduce #(complete-task! %1 %2 scheduler driver) state to-complete-task-ids)]
+    (log/debug "Completing" to-complete-pairs)
+    (-> state'
+        (assoc :time-task-id-pairs remaining))))
 
 (defmulti handle-action!
   "Handles the particular action, likely calling methods on the scheduler
@@ -275,8 +295,12 @@
           requested-resources (combine-resources (mapcat :resources tasks))
           resources' (subtract-resources available-resources requested-resources)
           tasks (map #(assoc % :launched-time (t/now)) tasks)
-          task->runtime-ms (-> state :config :task->runtime-ms)]
-      (log/info "Resources requested by tasks: " {:requested-resources requested-resources})
+          task->runtime-ms (-> state :config :task->runtime-ms)
+          new-time-task-id-pairs (map (fn [{:keys [task-id] :as task}]
+                                        [(t/plus (t/now) (t/millis (task->runtime-ms task))) 
+                                         (:value task-id)])
+                                      tasks)]     
+      (log/debug "Resources requested by tasks: " {:requested-resources requested-resources})
       ;; May need to put this in a thread..
       (doseq [task tasks]
         (.statusUpdate scheduler
@@ -287,10 +311,8 @@
       (log/debug "Launching tasks " {:tasks tasks})
       (-> state
           (update :task-id->task #(into % (map-from-vals (comp :value :task-id) tasks)))
-          (update :complete-chan->task-id
-                  #(into % (map (fn [{:keys [task-id] :as task}]
-                                  [(async/timeout (task->runtime-ms task)) (:value task-id)]))
-                         tasks))
+          (update :time-task-id-pairs
+                  #(into % new-time-task-id-pairs))
           (assoc-in [:slave-id->host slave-id :available-resources] resources')
           (update :offer-id->offer #(apply dissoc % offer-ids))))))
 
@@ -361,22 +383,25 @@
 
    Parameters:
    `hosts` is a seq of maps that contain a hostname, agent id, resources and attributes
-   `speed-multiplier` is a number >1 which is how much to speed up 'time'
+   `offer-trigger-chan` chan that has an item put on it when offers should be sent
+   `scheduler` is an implementation of the mesomatic scheduler protocol
+   `state-atom` will reset atom after each cycle with updated state -- useful for debugging
    `task->runtime-ms` is a function that takes a task spec and returns the runtime in millis
    `task->complete-status` is a function that takes a task spec and returns a mesos complete status
    `scheduler` is an implementation of the mesomatic scheduler protocol
 
    Returns a mesos driver"
-  ([hosts speed-multiplier scheduler]
-   (mesos-mock hosts speed-multiplier default-task->runtime-ms scheduler))
-  ([hosts speed-multiplier task->runtime-ms scheduler]
-   (mesos-mock hosts speed-multiplier task->runtime-ms default-task->complete-status scheduler))
-  ([hosts speed-multiplier task->runtime-ms task->complete-status scheduler]
+  ([hosts offer-trigger-chan scheduler & 
+    {:keys [task->complete-status task->runtime-ms state-atom
+            complete-trigger-chan]
+     :or {task->complete-status default-task->complete-status
+          task->runtime-ms default-task->runtime-ms
+          state-atom (atom nil)
+          complete-trigger-chan (chime-ch (periodic/periodic-seq (t/now) (t/millis 20)))}}]
    (let [action-chan (async/chan 10) ; This will block calls to the driver. This may be problematic..
          exit-chan (async/chan)
          start-chan (async/chan)
          driver (mesos-driver-mock start-chan action-chan exit-chan)
-         new-offer-delay-ms (/ 1000 speed-multiplier)
          hosts (->> hosts
                     (map #(assoc % :available-resources (:resources %)))
                     (map #(update % :slave-id str)))]
@@ -391,42 +416,34 @@
                                                     :port 5050
                                                     :version "1.0.1"}))
          (loop [state {:config {:task->runtime-ms task->runtime-ms
-                                :task->complete-status task->complete-status
-                                :speed-multiplier speed-multiplier}
+                                :task->complete-status task->complete-status}
                        :slave-id->host (map-from-vals :slave-id hosts)
                        :offer-id->offer {}
                        :task-id->task {}
-                       :task-id->completed-task {} ;;TODO test this in kill
-                       :complete-chan->task-id {}}
-                new-offer-chan (async/timeout new-offer-delay-ms)]
-           (log/info "State before " state)
-           (let [[v ch] (async/alts!! (concat [exit-chan action-chan new-offer-chan]
-                                              (keys (:complete-chan->task-id state)))
+                       :task-id->completed-task {}
+                       :time-task-id-pairs []; (sorted-set-by #(t/before? (first %1) (first %2)))
+                       :now (t/now)}]
+           (log/debug "State before " state)
+           (reset! state-atom state)
+           (let [[v ch] (async/alts!! [exit-chan action-chan offer-trigger-chan complete-trigger-chan]
                                       :priority true)
                  _ (log/debug "Picked next decision" {:v v :ch ch})
-                 [state' new-offer-chan]
+                 state'
                  (condp = ch
                    exit-chan nil
                    action-chan (let [[action data] v
                                      _ (log/debug "Handling action" {:action action :data data})
                                      state' (handle-action! action data state driver scheduler)]
                                  (log/trace {:action action :data data :state' state'})
-                                 [state' new-offer-chan])
-                   new-offer-chan (let [[new-offers state'] (prepare-new-offers state)]
-                                    (log/debug "Sending offers" {:offers new-offers})
-                                    (when (seq new-offers)
-                                      (.resourceOffers scheduler driver (mapv (partial mesos-type/->pb :Offer) new-offers)))
-                                    [state' (async/timeout new-offer-delay-ms)])
-                   ;; Else
-                   (let [task-id ((:complete-chan->task-id state) ch)
-                         _ (log/debug "Task complete: " task-id)
-                         task ((:task-id->task state) task-id)
-                         state' (-> state
-                                    (complete-task! task-id scheduler driver (task->complete-status task))
-                                    (update :complete-chan->task-id #(dissoc % ch)))]
-                     [state' new-offer-chan]))]
+                                 state')
+                   offer-trigger-chan (let [[new-offers state'] (prepare-new-offers state)]
+                                        (log/debug "Sending offers" {:offers new-offers})
+                                        (when (seq new-offers)
+                                          (.resourceOffers scheduler driver (mapv (partial mesos-type/->pb :Offer) new-offers)))
+                                        state')
+                   complete-trigger-chan (complete-tasks! (assoc state :now (t/now)) scheduler driver))]
              (when state'
-               (recur state' new-offer-chan))))
+               (recur state'))))
          (catch Exception ex
            (log/fatal ex "Error while simulating mesos"))))
      (mesos/wrap-driver driver))))
