@@ -454,17 +454,17 @@
 
    Will try to close the item pulled from ch once f has completed if the item is a channel"
   [ch f & [{:keys [error-handler on-finished]
-			:or {error-handler identity
-				 on-finished #()}}]]
+            :or {error-handler identity
+                 on-finished #()}}]]
   (async/go-loop []
-				 (if-let [x (async/<! ch)]
-				   (do (async/<! (async/thread
-								   (try
-									 (f x)
-									 (catch Exception e
-									   (error-handler e)))))
+                 (if-let [x (async/<! ch)]
+                   (do (async/<! (async/thread
+                                   (try
+                                     (f x)
+                                     (catch Exception e
+                                       (error-handler e)))))
                        (close-when-ch! x)
-					   (recur))
-				   (on-finished)))
+                       (recur))
+                   (on-finished)))
   (fn cancel! []
-	(async/close! ch)))
+    (async/close! ch)))
