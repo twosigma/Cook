@@ -53,7 +53,7 @@
   (let [uuid (d/squuid)]
     (fn [db & args]
       (d/invoke db :utils/idempotent-transaction db uuid)
-      (concat [[:utils/idempotent-transaction uuid]] (apply f db args)))))
+      (into [[:utils/idempotent-transaction uuid]] (apply f db args)))))
 
 (defn idempotent-exception?
   "Checks if the exception thrown was due to the data
