@@ -242,9 +242,9 @@
                                       (cook.mesos.monitor/riemann-reporter mesos-datomic-conn :riemann-host riemann-host :riemann-port riemann-port))
                                     #_(cook.mesos.scheduler/reconciler mesos-datomic-conn driver)
                                     (cook.mesos.scheduler/lingering-task-killer mesos-datomic-conn driver task-constraints lingering-task-trigger-chan)
-                                    ;(cook.mesos.scheduler/straggler-handler mesos-datomic-conn driver straggler-trigger-chan)
-                                    ;(cook.mesos.scheduler/cancelled-task-killer mesos-datomic-conn driver cancelled-task-trigger-chan)
-                                    ;(cook.mesos.heartbeat/start-heartbeat-watcher! mesos-datomic-conn mesos-heartbeat-chan)
+                                    (cook.mesos.scheduler/straggler-handler mesos-datomic-conn driver straggler-trigger-chan)
+                                    (cook.mesos.scheduler/cancelled-task-killer mesos-datomic-conn driver cancelled-task-trigger-chan)
+                                    (cook.mesos.heartbeat/start-heartbeat-watcher! mesos-datomic-conn mesos-heartbeat-chan)
                                     (cook.mesos.rebalancer/start-rebalancer! {:conn  mesos-datomic-conn
                                                                               :driver driver
                                                                               :get-mesos-utilization get-mesos-utilization
