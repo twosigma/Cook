@@ -148,7 +148,7 @@
    {:keys [timeout-interval-minutes]
     :or {timeout-interval-minutes 10}
     :as task-constraints}]
-  (let [match-trigger-chan (async/chan)]
+  (let [match-trigger-chan (async/chan (async/sliding-buffer 1))]
     ;; Use a normal channel for match-trigger-chan because other events besides chimes will go on channel
     (async/pipe (chime-ch (periodic/periodic-seq (time/now) (time/seconds 1)))
                 match-trigger-chan)
