@@ -982,7 +982,7 @@
                                distinct
                                (remove #(contains? group-uuids %))
                                (map make-default-group))
-          groups (concat implicit-groups groups)
+          groups (into (vec implicit-groups) groups)
           job-txns (mapcat #(make-job-txn %) jobs)
           job-uuids->dbids (->> job-txns
                                 ;; Not all txns are for the top level job
@@ -1000,7 +1000,7 @@
                           groups)]
       @(d/transact
          conn
-         (concat job-txns group-txns))
+         (into (vec job-txns) group-txns))
 
       {::results (str/join
                    \space (concat ["submitted jobs"]

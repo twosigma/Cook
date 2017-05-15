@@ -329,7 +329,7 @@
                                         (partial util/get-slave-attrs-from-cache offer-cache)
                                         preempted-tasks))
                                 (remove nil?))
-         constraints (concat job-constraints group-constraints)
+         constraints (into (vec job-constraints) group-constraints)
 
          preemptable-host->slave-id (->> task->scored-task
                                          keys

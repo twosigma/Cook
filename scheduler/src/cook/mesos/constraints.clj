@@ -131,7 +131,7 @@
       (let [vm-resources (.getCurrAvailableResources target-vm)
             vm-attributes (get-vm-lease-attr-map vm-resources)
             [passes? reason] (job-constraint-evaluate constraint vm-resources vm-attributes
-                                                      (concat (.getRunningTasks target-vm)
+                                                      (into (vec (.getRunningTasks target-vm))
                                                               (mapv (fn [^com.netflix.fenzo.TaskAssignmentResult result]
                                                                       (.getRequest result))
                                                                      (.getTasksCurrentlyAssigned target-vm))))]
@@ -177,7 +177,7 @@
                              .getAllCurrentlyAssignedTasks
                              (select-keys cotask-ids)
                              vals)]
-    (concat running-cotasks assigned-cotasks)))
+    (into (vec running-cotasks) assigned-cotasks)))
 
 (defn get-fenzo-cotasks
   "Given a group, a map of guuids to task-ids, a task-id and a Fenzo task-tracker-state, returns a
@@ -318,7 +318,7 @@
       (fn group-constraint [job target-slave-id]
         (let [cotask-slave-ids (->> (get-cotasks group job)
                                     (map :instance/slave-id)
-                                    (concat (remove nil? (map :instance/slave-id tasks-preempted-so-far))))
+                                    (into (vec (remove nil? (map :instance/slave-id tasks-preempted-so-far)))))
               target-attr-map (slave-attrs-getter target-slave-id)
               cotask-attr-maps (map slave-attrs-getter cotask-slave-ids)
               [passes? _] (group-constraint-evaluate constraint target-attr-map cotask-attr-maps)]

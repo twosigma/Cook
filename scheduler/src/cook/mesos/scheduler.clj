@@ -381,7 +381,7 @@
         (let [has-gpus? (boolean (or (> (or (.getScalarValue (.getCurrAvailableResources target-vm) "gpus") 0.0) 0)
                                      (some (fn gpu-task? [req]
                                              @(job-needs-gpus? (:job req)))
-                                           (concat (.getRunningTasks target-vm)
+                                           (into (vec (.getRunningTasks target-vm))
                                                    (mapv #(.getRequest %) (.getTasksCurrentlyAssigned target-vm))))))]
           (ConstraintEvaluator$Result.
             (if @needs-gpus?
@@ -671,7 +671,7 @@
                                               db category->pending-jobs user->quota user->usage num-considerable))
               {:keys [matches failures]} (timers/time!
                                            handle-resource-offer!-match-duration
-                                           (match-offer-to-schedule fenzo (apply concat (vals category->considerable-jobs)) offers))
+                                           (match-offer-to-schedule fenzo (reduce into [] (vals category->considerable-jobs)) offers))
               _ (log/debug "got matches:" matches)
               offers-scheduled (for [{:keys [leases]} matches
                                      lease leases]
@@ -1072,7 +1072,7 @@
   [pending-task-ents running-task-ents user->dru-divisors]
   (let [jobs (timers/time!
                sort-gpu-jobs-hierarchy-duration
-               (->> (concat running-task-ents pending-task-ents)
+               (->> (into (vec running-task-ents) pending-task-ents)
                     (group-by util/task-ent->user)
                     (pc/map-vals (fn [task-ents] (into (sorted-set-by (util/same-user-task-comparator)) task-ents)))
                     (dru/sorted-task-cumulative-gpu-score-pairs user->dru-divisors)
