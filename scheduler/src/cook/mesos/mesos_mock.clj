@@ -19,6 +19,7 @@
             [clj-time.periodic :as periodic]
             [clojure.core.async :as async]
             [clojure.tools.logging :as log]
+            [cook.mesos.util :as util]
             [datomic.api :refer (q)]
             [mesomatic.scheduler :as mesos]
             [mesomatic.types :as mesos-type]
@@ -216,7 +217,7 @@
    (log/debug "Completing task" {:task-id task-id :state task-state :task (get-in state [:task-id->task task-id])})
    (if-let [task (get-in state [:task-id->task task-id])]
      (do
-       (let [task->complete-status (get-in state [:config :task->complete-status]) ;; TODO make srue this is correct names
+       (let [task->complete-status (get-in state [:config :task->complete-status]) 
              task-state (or task-state (task->complete-status task))]
          (.statusUpdate scheduler driver (mesos-type/->pb :TaskStatus
                                                           {:task-id {:value task-id}
@@ -235,7 +236,6 @@
         time-task-id-pairs (:time-task-id-pairs state)
         complete? (comp (partial t/after? now) first)
         to-complete-pairs (filter complete? time-task-id-pairs)
-;        remaining (reduce disj time-task-id-pairs to-complete-pairs)
         remaining (remove complete? time-task-id-pairs)
         to-complete-task-ids (map second to-complete-pairs)
         state' (reduce #(complete-task! %1 %2 scheduler driver) state to-complete-task-ids)]
@@ -337,7 +337,6 @@
 (defn default-task->complete-status
   "Returns completed successfully"
   [_]
-  ;; TODO: support more completion states
   :task-finished)
 
 (defn mesos-driver-mock
@@ -421,7 +420,7 @@
                        :offer-id->offer {}
                        :task-id->task {}
                        :task-id->completed-task {}
-                       :time-task-id-pairs []; (sorted-set-by #(t/before? (first %1) (first %2)))
+                       :time-task-id-pairs []
                        :now (t/now)}]
            (log/debug "State before " state)
            (reset! state-atom state)
@@ -440,8 +439,11 @@
                                         (log/debug "Sending offers" {:offers new-offers})
                                         (when (seq new-offers)
                                           (.resourceOffers scheduler driver (mapv (partial mesos-type/->pb :Offer) new-offers)))
+                                        (util/close-when-ch! v)
                                         state')
-                   complete-trigger-chan (complete-tasks! (assoc state :now (t/now)) scheduler driver))]
+                   complete-trigger-chan (let [state' (complete-tasks! (assoc state :now (t/now)) scheduler driver)]
+                                           (util/close-when-ch! v)
+                                           state'))]
              (when state'
                (recur state'))))
          (catch Exception ex

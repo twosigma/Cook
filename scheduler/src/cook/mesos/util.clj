@@ -440,6 +440,13 @@
   (some #{(:instance/status instance)} #{:instance.status/running
                                          :instance.status/unknown}))
 
+(defn close-when-ch!
+  "When the value passed in is a channel, close it. Otherwise, do nothing"
+  [maybe-ch]
+  (try
+    (async/close! maybe-ch)
+    (catch Exception e)))
+
 (defn chime-at-ch
   "Like chime-at (from chime[https://github.com/jarohen/chime])
    but pass in an arbitrary chan instead of times to make a chime chan
@@ -456,9 +463,7 @@
 									 (f x)
 									 (catch Exception e
 									   (error-handler e)))))
-					   (try
-						 (async/close! x)
-						 (catch Exception e))
+                       (close-when-ch! x)
 					   (recur))
 				   (on-finished)))
   (fn cancel! []
