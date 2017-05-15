@@ -18,7 +18,7 @@
             [clj-time.core :as time]
             [clj-time.periodic :as periodic]
             [clojure.core.async :as async]
-            [clojure.core.reducers :as r] 
+            [clojure.core.reducers :as r]
             [clojure.data.priority-map :as pm]
             [clojure.tools.logging :as log]
             [clojure.walk :refer (keywordize-keys)]
@@ -31,7 +31,7 @@
             [metatransaction.core :as mt]
             [metrics.histograms :as histograms]
             [metrics.timers :as timers]
-            [plumbing.core :refer [map-keys]]
+            [plumbing.core :refer [map-keys map-vals map-from-vals]]
             [swiss.arrows :refer :all]))
 
 ;;; Design
@@ -228,7 +228,7 @@
          user->sorted-running-task-ents (->> running-task-ents
                                              (group-by util/task-ent->user)
                                              (map (fn [[user task-ents]]
-                                                    [user (into (sorted-set-by (util/same-user-task-comparator)) 
+                                                    [user (into (sorted-set-by (util/same-user-task-comparator))
                                                                 task-ents)]))
                                              (into {}))
          scored-task-pairs (case category
@@ -238,15 +238,15 @@
                                                           :normal (comp - :dru)
                                                           :gpu (fnil - 0)))
                                  scored-task-pairs)]
-     (->State task->scored-task 
-              user->sorted-running-task-ents 
-              host->spare-resources 
-              user->dru-divisors 
+     (->State task->scored-task
+              user->sorted-running-task-ents
+              host->spare-resources
+              user->dru-divisors
               (case category
                 :normal compute-pending-normal-job-dru
                 :gpu compute-pending-gpu-job-dru)
               preempted-tasks))))
-   
+
 
 
 (defn next-state
@@ -475,49 +475,36 @@
                                            recognized-params))])))))
 
 (defn start-rebalancer!
-  [{:keys [conn driver get-mesos-utilization pending-jobs-atom offer-cache view-incubating-offers view-mature-offers config]}]
+  [{:keys [conn driver get-mesos-utilization pending-jobs-atom offer-cache
+           view-incubating-offers view-mature-offers config
+           trigger-chan]}]
   (binding [metrics-dru-scale (:dru-scale config)]
     (update-datomic-params-from-config! conn config)
-
-    (let [rebalance-interval (time/seconds (:interval-seconds config))
-          observe-interval (time/seconds 5)
-          observe-refreshness-threshold (time/seconds 30)
-          host->combined-offers-atom (atom {})
-          shutdown-observer (chime-at (periodic/periodic-seq (time/now) observe-interval)
-                                      (fn [now]
-                                        (let [host->combined-offers
-                                              (-<>> (view-incubating-offers)
-                                                    (map (fn [v]
-                                                           [(:hostname v) (assoc v :time-observed now)]))
-                                                    (into {}))]
-                                          (swap! host->combined-offers-atom
-                                                 merge
-                                                 host->combined-offers))))
-          shutdown-rebalancer (chime-at (periodic/periodic-seq (time/now) rebalance-interval)
-                                        (fn [now]
-                                          (log/info "Rebalance cycle starting")
-                                          (let [params (read-datomic-params conn)
-                                                utilization (get-mesos-utilization)
-                                                host->spare-resources (->> @host->combined-offers-atom
-                                                                           (map (fn [[k v]]
-                                                                                  (when (time/before?
-                                                                                         (time/minus now observe-refreshness-threshold)
-                                                                                         (:time-observed v))
-                                                                                    [k (select-keys (keywordize-keys (:resources v)) [:cpus :mem :gpus])])))
-                                                                           (into {}))]
-                                            (when (and (seq params)
-                                                       (> utilization (:min-utilization-threshold params)))
-                                              (let [{normal-pending-jobs :normal gpu-pending-jobs :gpu} @pending-jobs-atom]
-                                                (rebalance! conn driver offer-cache normal-pending-jobs host->spare-resources (assoc params
-                                                                                                                         :compute-pending-job-dru compute-pending-normal-job-dru
-                                                                                                                         :category :normal))
-                                                (rebalance! conn driver offer-cache gpu-pending-jobs host->spare-resources (assoc params
-                                                                                                                      :compute-pending-job-dru compute-pending-gpu-job-dru
-                                                                                                                      :category :gpu))))))
-                                        {:error-handler (fn [ex] (log/error ex "Rebalance failed"))})]
-      #(do
-         (shutdown-observer)
-         (shutdown-rebalancer)))))
+    (util/chime-at-ch
+      trigger-chan
+      (fn [now]
+        (log/info "Rebalance cycle starting")
+        (let [params (read-datomic-params conn)
+              utilization (get-mesos-utilization)
+              host->combined-offers
+              (try (-<>> (view-incubating-offers)
+                         (map-from-vals :hostname))
+                   (catch Exception e
+                     (log/warn e "Error viewing incubating offers")
+                     {}))
+              host->spare-resources (->> host->combined-offers
+                                         (map-vals #(select-keys (keywordize-keys (:resources %))
+                                                                 [:cpus :mem :gpus])))]
+          (when (and (seq params)
+                     (> utilization (:min-utilization-threshold params)))
+            (let [{normal-pending-jobs :normal gpu-pending-jobs :gpu} @pending-jobs-atom]
+              (rebalance! conn driver offer-cache normal-pending-jobs host->spare-resources (assoc params
+                                                                                                   :compute-pending-job-dru compute-pending-normal-job-dru
+                                                                                                   :category :normal))
+              (rebalance! conn driver offer-cache gpu-pending-jobs host->spare-resources (assoc params
+                                                                                                :compute-pending-job-dru compute-pending-gpu-job-dru
+                                                                                                :category :gpu))))))
+      {:error-handler (fn [ex] (log/error ex "Rebalance failed"))})))
 
 (comment
   ; Useful function to simulate preemptions
@@ -548,7 +535,7 @@
 
   (update-task-by-name "sometask" :unknown)
   (update-task-by-name "sometask" :preempted-by-rebalancer)
-  
+
   (let [conn (d/connect "datomic:mem://mesos-jobs")]
     (share/set-share! conn "default" :cpus 20.0 :mem 2500000.0))
 

@@ -27,6 +27,7 @@
                   :exclusions [org.clojure/tools.reader]]
                  [circleci/clj-yaml "0.5.5"]
                  [camel-snake-kebab "0.4.0"]
+                 [com.rpl/specter "1.0.1"]
 
                  ;;Utility
                  [amalloy/ring-buffer "1.1"]
@@ -37,6 +38,7 @@
                  [org.clojure/core.memoize "0.5.8"]
                  [clj-time "0.9.0"]
                  [org.clojure/core.async "0.3.442" :exclusions [org.clojure/tools.reader]]
+                 [org.clojure/tools.cli "0.3.5"] 
                  [prismatic/schema "1.1.3"]
                  [clojure-miniprofiler "0.4.0"]
                  [jarohen/chime "0.1.6"]

@@ -17,6 +17,7 @@
   (:require [clj-time.coerce :as tc]
             [clj-time.core :as t]
             [clojure.core.cache :as cache]
+            [clojure.core.async :as async]
             [clojure.walk :as walk]
             [datomic.api :as d :refer (q)]
             [metatransaction.core :refer (db)]
@@ -438,3 +439,27 @@
   [instance]
   (some #{(:instance/status instance)} #{:instance.status/running
                                          :instance.status/unknown}))
+(defn chime-at-ch
+ "Like chime-at (from chime[https://github.com/jarohen/chime])
+  but pass in an arbitrary chan instead of times to make a chime chan
+
+  Passes whatever comes off ch to f
+  
+  Will try to close the item pulled from ch once f has completed if the item is a channel" 
+  [ch f & [{:keys [error-handler on-finished]
+               :or {error-handler #(.printStackTrace %)
+                    on-finished #()}}]]
+  (async/go-loop []
+           (if-let [x (async/<! ch)]
+             (do (async/<! (async/thread
+                       (try
+                         (f x)
+                         (catch Exception e
+                           (error-handler e)))))
+                 (try
+                   (async/close! x)
+                   (catch Exception e))
+                 (recur))
+             (on-finished)))
+    (fn cancel! []
+      (async/close! ch)))
