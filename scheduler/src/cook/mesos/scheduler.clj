@@ -652,13 +652,6 @@
                 (getTaskAssigner)
                 (call (.getRequest task) (get-in (first leases) [:offer :hostname])))))))))
 
-(defn- concat-vec [& seqs]
-  (loop [[x & rest] seqs
-         acc []]
-    (if x
-      (recur rest (into acc x))
-      acc)))
-
 (defn handle-resource-offers!
   "Gets a list of offers from mesos. Decides what to do with them all--they should all
    be accepted or rejected at the end of the function."
@@ -678,7 +671,7 @@
                                               db category->pending-jobs user->quota user->usage num-considerable))
               {:keys [matches failures]} (timers/time!
                                            handle-resource-offer!-match-duration
-                                           (match-offer-to-schedule fenzo (apply concat-vec (vals category->considerable-jobs)) offers))
+                                           (match-offer-to-schedule fenzo (reduce into [] (vals category->considerable-jobs)) offers))
               _ (log/debug "got matches:" matches)
               offers-scheduled (for [{:keys [leases]} matches
                                      lease leases]
