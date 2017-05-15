@@ -728,7 +728,8 @@
                           (-> {}
                               (cache/fifo-cache-factory :threshold 100)
                               (cache/ttl-cache-factory :ttl 10000)
-                              atom))]
+                              atom))
+         trigger-chans# (c/make-trigger-chans ~rebalancer-config ~task-constraints)]
      (try
        (let [scheduler# (c/start-mesos-scheduler ~make-mesos-driver-fn ~get-mesos-utilization
                                                  curator-framework# ~conn
@@ -736,7 +737,8 @@
                                                  ~offer-incubate-time-ms ~mea-culpa-failure-limit
                                                  ~task-constraints ~riemann-host ~riemann-port
                                                  pending-jobs-atom# offer-cache#
-                                                 ~gpu-enabled? ~rebalancer-config ~fenzo-config)]
+                                                 ~gpu-enabled? ~rebalancer-config ~fenzo-config
+                                                 trigger-chans#)]
          ~@body)
        (finally
          (.close curator-framework#)
