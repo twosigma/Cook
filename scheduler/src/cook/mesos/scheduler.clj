@@ -55,7 +55,7 @@
 
 (defn now
   []
-  (Date.))
+  (tc/to-date (time/now)))
 
 (defn offer-resource-values
   [offer resource-name value-type]
