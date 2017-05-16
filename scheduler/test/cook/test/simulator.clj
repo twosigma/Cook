@@ -1,6 +1,6 @@
 (ns cook.test.simulator
   (:use clojure.test)
-  (:require [cheshire.core :refer (generate-string)]
+  (:require [cheshire.core :as cheshire]
             [chime :refer [chime-ch]]
             [clj-time.core :as t]
             [clj-time.coerce :as tc]
@@ -255,6 +255,11 @@
        (str "task-")
        (keyword)))
 
+(defn sorted-order?
+  "Returns true if the coll is sorted, false otherwise"
+  [coll]
+  (= coll (sort coll)))
+
 ;; TODO need way of setting share
 (defn simulate
   "Starts cook scheduler connected to a mock of mesos and submits jobs in the
@@ -264,8 +269,7 @@
 
    Returns a list of the task entities run"
   [mesos-hosts trace cycle-step-ms config]
-  (let [trace (sort-by :submit-time-ms trace)
-        simulation-time (-> trace first :submit-time-ms)
+  (let [simulation-time (-> trace first :submit-time-ms)
         mesos-datomic-conn (restore-fresh-database! (str "datomic:mem://mock-mesos"))
         offer-trigger-chan (async/chan)
         complete-trigger-chan (async/chan)
@@ -313,6 +317,10 @@
                 match-complete-chan (async/chan)
                 rank-complete-chan (async/chan)
                 rebalancer-complete-chan (async/chan)]
+            (when-not (sorted-order? (map :submit-time-ms submission-batch))
+              (throw (ex-info "Trace jobs are expected to be sorted by submit-time-ms" 
+                              {:simulation-time simulation-time
+                               :first-100-times (vec (take 100 (map :submit-time-ms submission-batch)))})))
             (log/info "Simulation time: " simulation-time)
             (log/info "submission-batch size: " (count submission-batch))
 
@@ -423,6 +431,7 @@
 ;; Consider having a simulation config file
 (defn -main
   [& args]
+  (println "Starting simulation")
   (init-logger)
   (let [{:keys [options errors summary]} (parse-opts args cli-options)
         {:keys [trace-file host-file cycle-step-ms out-trace-file config-file help]} options]
@@ -442,8 +451,8 @@
                   (map name)))
       (println (usage summary))
       (System/exit 1))
-    (let [trace (keywordize-keys (json/read-str (slurp trace-file)))
-          hosts (->> (json/read-str (slurp host-file))
+    (log/info "Pulling input files")
+    (let [hosts (->> (json/read-str (slurp host-file))
                      keywordize-keys
                      ;; This is needed because we want the roles to be strings
                      (transform [ALL :resources MAP-VALS MAP-KEYS] name))
@@ -453,7 +462,10 @@
           cycle-step-ms (or cycle-step-ms (:cycle-step-ms config))
           _ (when-not cycle-step-ms
               (throw (ex-info "Must configure cycle-step-ms on command line or config file")))
-          task-ents (simulate hosts trace cycle-step-ms config)]
+          task-ents (simulate hosts 
+                              (keywordize-keys (cheshire/parse-stream (clojure.java.io/reader trace-file))) 
+                              cycle-step-ms 
+                              config)]
       (println "tasks run: " (count task-ents))
       (dump-jobs-to-csv task-ents out-trace-file)
       (println "Done writing trace")
@@ -550,7 +562,10 @@
                                         :ncpus 2.0))))
 
 
-  (spit "bin-packing-trace.json" (generate-string jobs {:pretty true}))
+  (spit "bin-packing-trace.json" (cheshire/generate-string jobs {:pretty true}))
+
+  (def job-trace (cheshire/parse-stream (clojure.java.io/reader "simulator_files/example-trace.json")))
+  (spit "simulator_files/example-trace.json" (cheshire/generate-string (sort-by #(get % "submit-time-ms") job-trace) {:pretty true}))
 
   (defn trace-host
     [host-name mem cpus]
@@ -566,6 +581,6 @@
 
 
 
-  (spit "bin-packing-hosts.json" (generate-string hosts {:pretty true}))
+  (spit "bin-packing-hosts.json" (cheshire/generate-string hosts {:pretty true}))
 
   )
