@@ -944,7 +944,7 @@
                       config)]
     (util/chime-at-ch trigger-chan
                       (fn kill-linger-task-event []
-                        (kill-lingering-tasks (now) conn driver config))
+                        (kill-lingering-tasks (time/now) conn driver config))
                       {:error-handler (fn [e]
                                         (log/error e "Failed to reap timeout tasks!"))})))
 
