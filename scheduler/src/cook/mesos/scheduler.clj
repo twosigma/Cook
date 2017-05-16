@@ -1290,6 +1290,74 @@
             (catch Exception e
               (log/error e "Unable to decline offers!")))))))
 
+(let [in-order-queue-counter (counters/counter ["cook-mesos" "scheduler" "in-order-queue-size"])
+      in-order-queue-timer (timers/timer ["cook-mesos" "scheduler" "in-order-queue-delay-duration"])
+      processor-agent (agent nil)
+      safe-call (fn agent-processor [_ body-fn]
+                  (try
+                    (body-fn)
+                    (catch Exception e
+                      (log/error e "Error processing mesos status/message."))))]
+  (defn- async-in-order-processing
+    "Asynchronously processes the body-fn by queueing the task in an agent to ensure in-order processing."
+    [body-fn]
+    (counters/inc! in-order-queue-counter)
+    (let [timer-context (timers/start in-order-queue-timer)]
+      (send processor-agent safe-call
+            #(do
+               (timers/stop timer-context)
+               (counters/dec! in-order-queue-counter)
+               (body-fn))))))
+
+(defn create-mesos-scheduler
+  "Creates the mesos scheduler which processes status updates asynchronously but in order of receipt."
+  [fid set-framework-id gpu-enabled? conn heartbeat-ch fenzo offers-chan]
+  (mesos/scheduler
+    (registered [this driver framework-id master-info]
+                (log/info "Registered with mesos with framework-id " framework-id)
+                (reset! fid framework-id)
+                (set-framework-id framework-id)
+                (when (and gpu-enabled? (not (re-matches #"1\.\d+\.\d+" (:version master-info))))
+                  (binding [*out* *err*]
+                    (println "Cannot enable GPU support on pre-mesos 1.0. The version we found was " (:version master-info)))
+                  (log/error "Cannot enable GPU support on pre-mesos 1.0. The version we found was " (:version master-info))
+                  (Thread/sleep 1000)
+                  (System/exit 1))
+                ;; Use future because the thread that runs mesos/scheduler doesn't load classes correctly. for reasons.
+                ;; As Sophie says, you want to future proof your code.
+                (future
+                  (try
+                    (reconcile-jobs conn)
+                    (reconcile-tasks (db conn) driver @fid fenzo)
+                    (catch Exception e
+                      (log/error e "Reconciliation error")))))
+    (reregistered [this driver master-info]
+                  (log/info "Reregistered with new master")
+                  (future
+                    (try
+                      (reconcile-jobs conn)
+                      (reconcile-tasks (db conn) driver @fid fenzo)
+                      (catch Exception e
+                        (log/error e "Reconciliation error")))))
+    ;; Ignore this--we can just wait for new offers
+    (offer-rescinded [this driver offer-id]
+                     ;; TODO: Rescind the offer in fenzo
+                     )
+    (framework-message [this driver executor-id slave-id message]
+                       (heartbeat/notify-heartbeat heartbeat-ch executor-id slave-id message))
+    (disconnected [this driver]
+                  (log/error "Disconnected from the previous master"))
+    ;; We don't care about losing slaves or executors--only tasks
+    (slave-lost [this driver slave-id])
+    (executor-lost [this driver executor-id slave-id status])
+    (error [this driver message]
+           (meters/mark! mesos-error)
+           (log/error "Got a mesos error!!!!" message))
+    (resource-offers [this driver offers]
+                     (receive-offers offers-chan driver offers))
+    (status-update [this driver status]
+                   (async-in-order-processing #(handle-status-update conn driver fenzo status)))))
+
 (defn create-datomic-scheduler
   [conn set-framework-id driver-atom pending-jobs-atom offer-cache heartbeat-ch offer-incubate-time-ms mea-culpa-failure-limit
    fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset fenzo-fitness-calculator
@@ -1301,50 +1369,5 @@
         fenzo (make-fenzo-scheduler driver-atom offer-incubate-time-ms fenzo-fitness-calculator good-enough-fitness)
         [offers-chan resources-atom] (make-offer-handler conn driver-atom fenzo fid pending-jobs-atom offer-cache fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset)]
     (start-jobs-prioritizer! conn pending-jobs-atom task-constraints)
-    {:scheduler
-     (mesos/scheduler
-       (registered [this driver framework-id master-info]
-                   (log/info "Registered with mesos with framework-id " framework-id)
-                   (reset! fid framework-id)
-                   (set-framework-id framework-id)
-                   (when (and gpu-enabled? (not (re-matches #"1\.\d+\.\d+" (:version master-info))))
-                     (binding [*out* *err*]
-                       (println "Cannot enable GPU support on pre-mesos 1.0. The version we found was " (:version master-info)))
-                     (log/error "Cannot enable GPU support on pre-mesos 1.0. The version we found was " (:version master-info))
-                     (Thread/sleep 1000)
-                     (System/exit 1))
-                   ;; Use future because the thread that runs mesos/scheduler doesn't load classes correctly. for reasons.
-                   ;; As Sophie says, you want to future proof your code.
-                   (future
-                     (try
-                       (reconcile-jobs conn)
-                       (reconcile-tasks (db conn) driver @fid fenzo)
-                       (catch Exception e
-                         (log/error e "Reconciliation error")))))
-       (reregistered [this driver master-info]
-                     (log/info "Reregistered with new master")
-                     (future
-                       (try
-                         (reconcile-jobs conn)
-                         (reconcile-tasks (db conn) driver @fid fenzo)
-                         (catch Exception e
-                           (log/error e "Reconciliation error")))))
-       ;; Ignore this--we can just wait for new offers
-       (offer-rescinded [this driver offer-id]
-                        ;; TODO: Rescind the offer in fenzo
-                        )
-       (framework-message [this driver executor-id slave-id message]
-                          (heartbeat/notify-heartbeat heartbeat-ch executor-id slave-id message))
-       (disconnected [this driver]
-                     (log/error "Disconnected from the previous master"))
-       ;; We don't care about losing slaves or executors--only tasks
-       (slave-lost [this driver slave-id])
-       (executor-lost [this driver executor-id slave-id status])
-       (error [this driver message]
-              (meters/mark! mesos-error)
-              (log/error "Got a mesos error!!!!" message))
-       (resource-offers [this driver offers]
-                        (receive-offers offers-chan driver offers))
-       (status-update [this driver status]
-                      (future (handle-status-update conn driver fenzo status))))
+    {:scheduler (create-mesos-scheduler fid set-framework-id gpu-enabled? conn heartbeat-ch fenzo offers-chan)
      :view-incubating-offers (fn get-resources-atom [] @resources-atom)}))
