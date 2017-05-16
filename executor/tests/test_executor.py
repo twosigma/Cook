@@ -80,7 +80,7 @@ class ExecutorTest(unittest.TestCase):
         task_id = get_random_task_id()
         command = 'echo "Hello World"; echo "Error Message" >&2'
         task = {'task_id': {'value': task_id},
-                'data': encode_data(str(command).encode('utf8'))}
+                'data': encode_data(json.dumps({'command': command}).encode('utf8'))}
         stdout_name = 'build/stdout.' + str(task_id)
         stderr_name = 'build/stderr.' + str(task_id)
 
@@ -249,7 +249,7 @@ class ExecutorTest(unittest.TestCase):
         driver = FakeMesosExecutorDriver()
         task_id = get_random_task_id()
         task = {'task_id': {'value': task_id},
-                'data': encode_data(str(command).encode('utf8'))}
+                'data': encode_data(json.dumps({'command': command}).encode('utf8'))}
 
         stdout_name = 'build/stdout.' + str(task_id)
         stderr_name = 'build/stderr.' + str(task_id)

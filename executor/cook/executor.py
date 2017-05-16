@@ -93,7 +93,7 @@ def send_message(driver, message, max_message_length):
 
 
 def launch_task(driver, task, stdout_name, stderr_name):
-    """Launches the task using the command available in the data field.
+    """Launches the task using the command available in the json map from the data field.
 
     Parameters
     ----------
@@ -114,7 +114,9 @@ def launch_task(driver, task, stdout_name, stderr_name):
     try:
         update_status(driver, task_id, cook.TASK_RUNNING)
 
-        command = decode_data(task['data']).decode('utf8')
+        data_string = decode_data(task['data']).decode('utf8')
+        data_json = json.loads(data_string)
+        command = data_json['command']
         logging.info('Command: {}'.format(command))
         stdout = open(stdout_name, 'a+')
         stderr = open(stderr_name, 'a+')
@@ -171,7 +173,7 @@ def kill_task(driver, task, process_info, shutdown_grace_period_ms):
     :param driver: MesosExecutorDriver
         The mesos driver to use.
     :param task: map
-        The task to execute.
+        The task to kill.
     :param process_info: tuple
         Tuple of (process, stdout_file, stderr_file)
     :param shutdown_grace_period_ms: int
@@ -212,7 +214,7 @@ def await_process_completion(driver, task, stop_signal, process_info, shutdown_g
     :param driver: MesosExecutorDriver
         The mesos driver to use.
     :param task: map
-        The task to execute.
+        The task that is executing.
     :param stop_signal: Event
         Event that determines if an interrupt was sent
     :param process_info: tuple
@@ -240,7 +242,10 @@ def await_process_completion(driver, task, stop_signal, process_info, shutdown_g
 
 
 def manage_task(driver, task, stop_signal, completed_signal, config, stdout_name, stderr_name):
-    """Manages the execution of a task.
+    """Manages the execution of a task waiting for it to terminate normally or be killed.
+       It also sends the task status updates, sandbox location and exit code back to the scheduler.
+       Progress updates are tracked on a separate thread and are also sent to the scheduler.
+       Setting the stop_signal will trigger termination of the task and associated cleanup.
 
     Returns
     -------
