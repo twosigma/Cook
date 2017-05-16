@@ -761,16 +761,10 @@
                       ;;     reflect *Cook*'s understanding of the state of the world at this point.
                       ;;     When this happens, users should never exceed their quota
                       user->usage-future (future (generate-user-usage-map (d/db conn)))
-                      offers (async/alt!!
-                               offers-chan ([offers]
-                                            (counters/dec! offer-chan-depth)
-                                            offers)
-                               trigger-chan ([_] [])
-                               :priority true)
                       ;; Try to clear the channel
                       offers (->> (repeatedly chan-length #(async/poll! offers-chan))
-                                  (filter nil?)
-                                  (reduce into offers))
+                                  (remove nil?)
+                                  (reduce into []))
                       _ (doseq [offer offers
                                 :let [slave-id (-> offer :slave-id :value)
                                       attrs (get-offer-attr-map offer)]]
@@ -813,7 +807,8 @@
                                  "now give Fenzo " max-considerable " jobs to look at.")
                       (meters/mark! fenzo-abandon-and-reset-meter)
                       max-considerable)
-                    next-considerable)))))
+                    next-considerable))))
+      {:error-handler (fn [ex] (log/error ex "Error occurred in match"))})
     [offers-chan resources-atom]))
 
 (defn reconcile-jobs
