@@ -8,7 +8,7 @@ For more information on Mesos executors, see the "Working with Executors" sectio
 For Users
 ---------
 
-The cook executor supports a number of (completely optional) features beyond the standard Mesos command executor.
+The cook executor supports a number of features beyond the standard Mesos command executor.
 The executor sends the following information to the scheduler:
 1. progress update messages from the task (at intervals of `progress-sample-interval-ms` ms, see below),
 2. the exit code of the task, and
