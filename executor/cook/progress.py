@@ -74,7 +74,7 @@ class ProgressWatcher(object):
 
     @staticmethod
     def match_progress_update(progress_regex_str, input_string):
-        """Verifies whether the input string matches the provided regex.
+        """Returns the progress tuple when the input string matches the provided regex.
         
         Parameters
         ----------
@@ -85,7 +85,8 @@ class ProgressWatcher(object):
         
         Returns
         -------
-        :return: whether the input string matches the provided regex. 
+        :return: the tuple (percent, message) if the string matches the provided regex, 
+                 else return None. 
         """
         matches = re.findall(progress_regex_str, input_string)
         return matches[0] if len(matches) >= 1 else None
@@ -117,24 +118,23 @@ class ProgressWatcher(object):
         """
         try:
             sleep_param = sleep_time_ms / 1000
-            while True:
-                if os.path.isfile(self.target_file):
-                    logging.info('{} has been created, reading contents'.format(self.target_file))
-                    break
-                if self.completed_signal.isSet():
-                    logging.info('No output has been read to parse progress messages')
-                    return
+
+            while not os.path.isfile(self.target_file) and not self.completed_signal.isSet():
                 logging.debug('{} has not yet been created, sleeping {} ms'.format(self.target_file, sleep_time_ms))
                 time.sleep(sleep_param)
 
+            if self.completed_signal.isSet():
+                logging.info('No output has been read to parse progress messages')
+                return
+
+            if os.path.isfile(self.target_file):
+                logging.info('{} has been created, reading contents'.format(self.target_file))
+
             target_file_obj = open(self.target_file, 'r')
-            while True:
+            while not self.completed_signal.isSet():
                 line = target_file_obj.readline(self.max_bytes_read_per_line)
                 if not line:
                     # no new line available, sleep before trying again
-                    if self.completed_signal.isSet():
-                        target_file_obj.close()
-                        break
                     time.sleep(sleep_param)
                     continue
                 yield line
