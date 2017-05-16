@@ -1013,6 +1013,7 @@
 (deftest test-receive-offers
   (let [declined-offer-ids-atom (atom [])
         offers-chan (async/chan (async/buffer 1))
+        match-trigger-chan (async/chan (async/sliding-buffer 5))
         mock-driver (reify msched/SchedulerDriver
                       (decline-offer [driver id]
                         (swap! declined-offer-ids-atom conj id)))
@@ -1020,10 +1021,12 @@
         offer-2 {:id {:value "bar"}}
         offer-3 {:id {:value "baz"}}]
     (testing "offer chan overflow"
-      (sched/receive-offers offers-chan mock-driver [offer-1])
-      @(sched/receive-offers offers-chan mock-driver [offer-2])
-      @(sched/receive-offers offers-chan mock-driver [offer-3])
-      (is (= @declined-offer-ids-atom [(:id offer-2) (:id offer-3)])))))
+      (sched/receive-offers offers-chan match-trigger-chan mock-driver [offer-1])
+      @(sched/receive-offers offers-chan match-trigger-chan mock-driver [offer-2])
+      @(sched/receive-offers offers-chan match-trigger-chan mock-driver [offer-3])
+      (is (= @declined-offer-ids-atom [(:id offer-2) (:id offer-3)]))
+      (async/close! match-trigger-chan)
+      (is (= (count (async/<!! (async/into [] match-trigger-chan))) 1)))))
 
 (deftest test-below-quota?
   (testing "not using quota"
@@ -1466,7 +1469,7 @@
                     (swap! status-store conj (-> status mtypes/pb->data :state))
                     (Thread/sleep (rand-int 100))
                     (.countDown latch))]
-      (let [s (sched/create-mesos-scheduler (atom nil) (constantly true) true nil nil nil nil)]
+      (let [s (sched/create-mesos-scheduler (atom nil) (constantly true) true nil nil nil nil nil)]
         (.statusUpdate s nil (mtypes/->pb :TaskStatus {:task-id {:value "T1"} :state :task-starting}))
         (.statusUpdate s nil (mtypes/->pb :TaskStatus {:task-id {:value "T1"} :state :task-running}))
         (.statusUpdate s nil (mtypes/->pb :TaskStatus {:task-id {:value "T1"} :state :task-finished}))

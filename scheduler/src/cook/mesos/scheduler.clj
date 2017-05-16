@@ -730,20 +730,20 @@
 (defn make-offer-handler
   [conn driver-atom fenzo fid-atom pending-jobs-atom offer-cache
    max-considerable scaleback
-   floor-iterations-before-warn floor-iterations-before-reset]
+   floor-iterations-before-warn floor-iterations-before-reset
+   trigger-chan]
   (let [chan-length 100
         offers-chan (async/chan (async/buffer chan-length))
-        resources-atom (atom (view-incubating-offers fenzo))
-        timer-chan (chime-ch (periodic/periodic-seq (time/now) (time/seconds 1))
-                             {:ch (async/chan (async/sliding-buffer 1))})]
-    (async/thread
-      (loop [num-considerable max-considerable]
-        (reset! fenzo-num-considerable-atom num-considerable)
-
-        ;;TODO make this cancelable (if we want to be able to restart the server w/o restarting the JVM)
-        (let [next-considerable
+        resources-atom (atom (view-incubating-offers fenzo))]
+    (reset! fenzo-num-considerable-atom max-considerable)
+    (util/chime-at-ch
+      trigger-chan
+      (fn match-jobs-event []
+        (let [num-considerable @fenzo-num-considerable-atom
+              next-considerable
               (try
-                (let [;; There are implications to generating the user->usage here:
+                (let [
+                      ;; There are implications to generating the user->usage here:
                       ;;  1. Currently cook has two oddities in state changes.
                       ;;  We plan to correct both of these but are important for the time being.
                       ;;    a. Cook doesn't mark as a job as running when it schedules a job.
@@ -763,9 +763,9 @@
                       user->usage-future (future (generate-user-usage-map (d/db conn)))
                       offers (async/alt!!
                                offers-chan ([offers]
-                                             (counters/dec! offer-chan-depth)
-                                             offers)
-                               timer-chan ([_] [])
+                                            (counters/dec! offer-chan-depth)
+                                            offers)
+                               trigger-chan ([_] [])
                                :priority true)
                       ;; Try to clear the channel
                       offers (->> (repeatedly chan-length #(async/poll! offers-chan))
@@ -804,16 +804,16 @@
             (log/warn "Offer handler has been showing Fenzo only 1 job for "
                       (counters/value iterations-at-fenzo-floor) " iterations."))
 
-          (recur
-            (if (>= (counters/value iterations-at-fenzo-floor) floor-iterations-before-reset)
-              (do
-                (log/error "FENZO CANNOT MATCH THE MOST IMPORTANT JOB."
-                           "Fenzo has seen only 1 job for " (counters/value iterations-at-fenzo-floor)
-                           "iterations, and still hasn't matched it.  Cook is now giving up and will "
-                           "now give Fenzo " max-considerable " jobs to look at.")
-                (meters/mark! fenzo-abandon-and-reset-meter)
-                max-considerable)
-              next-considerable)))))
+          (reset! fenzo-num-considerable-atom
+                  (if (>= (counters/value iterations-at-fenzo-floor) floor-iterations-before-reset)
+                    (do
+                      (log/error "FENZO CANNOT MATCH THE MOST IMPORTANT JOB."
+                                 "Fenzo has seen only 1 job for " (counters/value iterations-at-fenzo-floor)
+                                 "iterations, and still hasn't matched it.  Cook is now giving up and will "
+                                 "now give Fenzo " max-considerable " jobs to look at.")
+                      (meters/mark! fenzo-abandon-and-reset-meter)
+                      max-considerable)
+                    next-considerable)))))
     [offers-chan resources-atom]))
 
 (defn reconcile-jobs
@@ -938,16 +938,15 @@
   "Periodically kill lingering tasks.
 
    The config is a map with optional keys where
-   :interval-minutes specifies the frequency of killing
    :timout-hours specifies the timeout hours for lingering tasks"
-  [conn driver config]
-  (let [config (merge {:timeout-interval-minutes 10
-                       :timeout-hours (* 2 24)}
+  [conn driver config trigger-chan]
+  (let [config (merge {:timeout-hours (* 2 24)}
                       config)]
-    (chime-at (periodic/periodic-seq (time/now) (time/minutes (:timeout-interval-minutes config)))
-              (fn [now] (kill-lingering-tasks now conn driver config))
-              {:error-handler (fn [e]
-                                (log/error e "Failed to reap timeout tasks!"))})))
+    (util/chime-at-ch trigger-chan
+                      (fn kill-linger-task-event []
+                        (kill-lingering-tasks (now) conn driver config))
+                      {:error-handler (fn [e]
+                                        (log/error e "Failed to reap timeout tasks!"))})))
 
 (defn handle-stragglers
   "Searches for running jobs in groups and runs the associated straggler handler"
@@ -973,11 +972,12 @@
 (defn straggler-handler
   "Periodically checks for running jobs that are in groups and runs the associated
    straggler handler."
-  [conn driver {:keys [interval-minutes] :or {interval-minutes 1}}]
-  (chime-at (periodic/periodic-seq (time/now) (time/minutes interval-minutes))
-            (fn [now] (handle-stragglers conn #(mesos/kill-task! driver {:value (:instance/task-id %)})))
-            {:error-handler (fn [e]
-                              (log/error e "Failed to handle stragglers"))}))
+  [conn driver trigger-chan]
+  (util/chime-at-ch trigger-chan
+                    (fn straggler-handler-event []
+                      (handle-stragglers conn #(mesos/kill-task! driver {:value (:instance/task-id %)})))
+                    {:error-handler (fn [e]
+                                      (log/error e "Failed to handle stragglers"))}))
 
 (defn killable-cancelled-tasks
   [db]
@@ -992,19 +992,20 @@
 (timers/deftimer [cook-mesos scheduler killing-cancelled-tasks-duration])
 
 (defn cancelled-task-killer
-  "Every 3 seconds, kill tasks that have been cancelled (e.g. via the API)."
-  [conn driver]
-  (chime-at (periodic/periodic-seq (time/now) (time/seconds 3))
-            (fn [now]
-              (timers/time!
-                killing-cancelled-tasks-duration
-                (doseq [task (killable-cancelled-tasks (d/db conn))]
-                  (log/warn "killing cancelled task " (:instance/task-id task))
-                  @(d/transact conn [[:db/add (:db/id task) :instance/reason
-                                      [:reason/name :mesos-executor-terminated]]])
-                  (mesos/kill-task! driver {:value (:instance/task-id task)}))))
-            {:error-handler (fn [e]
-                              (log/error e "Failed to kill cancelled tasks!"))}))
+  "Every trigger, kill tasks that have been cancelled (e.g. via the API)."
+  [conn driver trigger-chan]
+  (util/chime-at-ch
+    trigger-chan
+    (fn cancelled-task-killer-event []
+      (timers/time!
+        killing-cancelled-tasks-duration
+        (doseq [task (killable-cancelled-tasks (d/db conn))]
+          (log/warn "killing cancelled task " (:instance/task-id task))
+          @(d/transact conn [[:db/add (:db/id task) :instance/reason
+                              [:reason/name :mesos-executor-terminated]]])
+          (mesos/kill-task! driver {:value (:instance/task-id task)}))))
+    {:error-handler (fn [e]
+                      (log/error e "Failed to kill cancelled tasks!"))}))
 
 (defn get-user->used-resources
   "Return a map from user'name to his allocated resources, in the form of
@@ -1194,13 +1195,13 @@
         {}))))
 
 (defn- start-jobs-prioritizer!
-  [conn pending-jobs-atom task-constraints]
+  [conn pending-jobs-atom task-constraints trigger-chan]
   (let [offensive-jobs-ch (make-offensive-job-stifler conn)
         offensive-job-filter (partial filter-offensive-jobs task-constraints offensive-jobs-ch)]
-    (chime-at (periodic/periodic-seq (time/now) (time/seconds 5))
-              (fn [time]
-                (reset! pending-jobs-atom
-                        (rank-jobs (db conn) (d/db conn) offensive-job-filter))))))
+    (util/chime-at-ch trigger-chan
+                      (fn rank-jobs-event []
+                        (reset! pending-jobs-atom
+                                (rank-jobs (db conn) (d/db conn) offensive-job-filter))))))
 
 (meters/defmeter [cook-mesos scheduler mesos-error])
 (meters/defmeter [cook-mesos scheduler offer-chan-full-error])
@@ -1275,13 +1276,15 @@
                         :scheduler.config/mea-culpa-failure-limit limits}])))
 
 (defn receive-offers
-  [offers-chan driver offers]
+  [offers-chan match-trigger-chan driver offers]
   (log/info "Got offers, putting them into the offer channel:" offers)
   (doseq [offer offers]
     (histograms/update! offer-size-cpus (get-in offer [:resources :cpus] 0))
     (histograms/update! offer-size-mem (get-in offer [:resources :mem] 0)))
   (if (async/offer! offers-chan offers)
-    (counters/inc! offer-chan-depth)
+    (do
+      (counters/inc! offer-chan-depth)
+      (async/offer! match-trigger-chan :trigger)) ; :trigger is arbitrary, the value is ignored
     (do (log/warn "Offer chan is full. Are we not handling offers fast enough?")
         (meters/mark! offer-chan-full-error)
         (future
@@ -1311,7 +1314,7 @@
 
 (defn create-mesos-scheduler
   "Creates the mesos scheduler which processes status updates asynchronously but in order of receipt."
-  [fid set-framework-id gpu-enabled? conn heartbeat-ch fenzo offers-chan]
+  [fid set-framework-id gpu-enabled? conn heartbeat-ch fenzo offers-chan match-trigger-chan]
   (mesos/scheduler
     (registered [this driver framework-id master-info]
                 (log/info "Registered with mesos with framework-id " framework-id)
@@ -1354,20 +1357,20 @@
            (meters/mark! mesos-error)
            (log/error "Got a mesos error!!!!" message))
     (resource-offers [this driver offers]
-                     (receive-offers offers-chan driver offers))
+                     (receive-offers offers-chan match-trigger-chan driver offers))
     (status-update [this driver status]
                    (async-in-order-processing #(handle-status-update conn driver fenzo status)))))
 
 (defn create-datomic-scheduler
   [conn set-framework-id driver-atom pending-jobs-atom offer-cache heartbeat-ch offer-incubate-time-ms mea-culpa-failure-limit
    fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset fenzo-fitness-calculator
-   task-constraints gpu-enabled? good-enough-fitness]
+   task-constraints gpu-enabled? good-enough-fitness {:keys [match-trigger-chan rank-trigger-chan] :as trigger-chans}]
 
   (persist-mea-culpa-failure-limit! conn mea-culpa-failure-limit)
 
   (let [fid (atom nil)
         fenzo (make-fenzo-scheduler driver-atom offer-incubate-time-ms fenzo-fitness-calculator good-enough-fitness)
-        [offers-chan resources-atom] (make-offer-handler conn driver-atom fenzo fid pending-jobs-atom offer-cache fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset)]
-    (start-jobs-prioritizer! conn pending-jobs-atom task-constraints)
-    {:scheduler (create-mesos-scheduler fid set-framework-id gpu-enabled? conn heartbeat-ch fenzo offers-chan)
+        [offers-chan resources-atom] (make-offer-handler conn driver-atom fenzo fid pending-jobs-atom offer-cache fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset match-trigger-chan)]
+    (start-jobs-prioritizer! conn pending-jobs-atom task-constraints rank-trigger-chan)
+    {:scheduler (create-mesos-scheduler fid set-framework-id gpu-enabled? conn heartbeat-ch fenzo offers-chan match-trigger-chan)
      :view-incubating-offers (fn get-resources-atom [] @resources-atom)}))

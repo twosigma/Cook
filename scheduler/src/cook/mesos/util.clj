@@ -16,6 +16,7 @@
 (ns cook.mesos.util
   (:require [clj-time.coerce :as tc]
             [clj-time.core :as t]
+            [clojure.core.async :as async]
             [clojure.core.cache :as cache]
             [clojure.walk :as walk]
             [datomic.api :as d :refer (q)]
@@ -438,3 +439,33 @@
   [instance]
   (some #{(:instance/status instance)} #{:instance.status/running
                                          :instance.status/unknown}))
+
+(defn close-when-ch!
+  "When the value passed in is a channel, close it. Otherwise, do nothing"
+  [maybe-ch]
+  (try
+    (async/close! maybe-ch)
+    (catch Exception e)))
+
+(defn chime-at-ch
+  "Like chime-at (from chime[https://github.com/jarohen/chime])
+   but pass in an arbitrary chan instead of times to make a chime chan
+
+   Calls f with no arguments
+
+   Will try to close the item pulled from ch once f has completed if the item is a channel"
+  [ch f & [{:keys [error-handler on-finished]
+            :or {error-handler identity
+                 on-finished #()}}]]
+  (async/go-loop []
+                 (if-let [x (async/<! ch)]
+                   (do (async/<! (async/thread
+                                   (try
+                                     (f)
+                                     (catch Exception e
+                                       (error-handler e)))))
+                       (close-when-ch! x)
+                       (recur))
+                   (on-finished)))
+  (fn cancel! []
+    (async/close! ch)))

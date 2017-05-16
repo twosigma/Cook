@@ -90,7 +90,8 @@
                                                            :mesos-role mesos-role
                                                            :mesos-framework-name mesos-framework-name
                                                            :gpus-enabled? mesos-gpu-enabled})
-                            get-mesos-utilization-fn (partial (lazy-load-var 'cook.mesos/get-mesos-utilization) mesos-master-hosts)]
+                            get-mesos-utilization-fn (partial (lazy-load-var 'cook.mesos/get-mesos-utilization) mesos-master-hosts)
+                            trigger-chans ((lazy-load-var 'cook.mesos/make-trigger-chans) rebalancer task-constraints)]
                         (try
                           (Class/forName "org.apache.mesos.Scheduler")
                           ((lazy-load-var 'cook.mesos/start-mesos-scheduler)
@@ -114,7 +115,8 @@
                              :fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-warn
                              :fenzo-floor-iterations-before-reset fenzo-floor-iterations-before-reset
                              :fenzo-fitness-calculator fenzo-fitness-calculator
-                             :good-enough-fitness good-enough-fitness})
+                             :good-enough-fitness good-enough-fitness}
+                            trigger-chans)
                           (catch ClassNotFoundException e
                             (log/warn e "Not loading mesos support...")
                             nil))))})
