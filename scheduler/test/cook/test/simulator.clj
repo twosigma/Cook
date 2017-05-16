@@ -463,7 +463,7 @@
           _ (when-not cycle-step-ms
               (throw (ex-info "Must configure cycle-step-ms on command line or config file")))
           task-ents (simulate hosts 
-                              (keywordize-keys (cheshire/parse-stream (clojure.java.io/reader trace-file))) 
+                              (cheshire/parse-stream (clojure.java.io/reader trace-file) true) 
                               cycle-step-ms 
                               config)]
       (println "tasks run: " (count task-ents))
