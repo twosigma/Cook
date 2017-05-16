@@ -102,17 +102,17 @@
       ;; Check that the order of users doesn't affect dru order
       (testing "order of users doesn't affect dru order"
         (is (= (dru/sorted-task-scored-task-pairs
-               {"ljin" share "wzhao" share "sunil" share}
-               (map-vals (partial sort-by identity (util/same-user-task-comparator))
-                         (group-by util/task-ent->user task-ents)))
-             (dru/sorted-task-scored-task-pairs
-               {"ljin" share "wzhao" share "sunil" share}
-               (->> task-ents
-                    (group-by util/task-ent->user)
-                    (map-vals (partial sort-by identity (util/same-user-task-comparator)))
-                    seq
-                    shuffle
-                    (into {})))))))))
+                 {"ljin" share "wzhao" share "sunil" share}
+                 (map-vals (partial sort-by identity (util/same-user-task-comparator))
+                           (group-by util/task-ent->user task-ents)))
+               (dru/sorted-task-scored-task-pairs
+                 {"ljin" share "wzhao" share "sunil" share}
+                 (->> task-ents
+                      (group-by util/task-ent->user)
+                      (map-vals (partial sort-by identity (util/same-user-task-comparator)))
+                      seq
+                      shuffle
+                      (into {})))))))))
 
 (deftest test-compute-sorted-task-cumulative-gpu-score-pairs
   (testing "return empty set on input empty set"
