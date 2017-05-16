@@ -149,7 +149,7 @@
    possible to send additional events as desired"
   [rebalancer-config
    {:keys [timeout-interval-minutes]
-    :or {timeout-interval-minutes 10}
+    :or {timeout-interval-minutes 1}
     :as task-constraints}]
   (letfn [(prepare-trigger-chan [interval]
             (let [ch (async/chan (async/sliding-buffer 1))]
