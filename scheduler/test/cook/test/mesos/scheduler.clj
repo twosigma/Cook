@@ -1013,7 +1013,7 @@
 (deftest test-receive-offers
   (let [declined-offer-ids-atom (atom [])
         offers-chan (async/chan (async/buffer 1))
-        match-trigger-chan (async/chan (async/sliding-buffer 1))
+        match-trigger-chan (async/chan (async/sliding-buffer 5))
         mock-driver (reify msched/SchedulerDriver
                       (decline-offer [driver id]
                         (swap! declined-offer-ids-atom conj id)))
@@ -1024,7 +1024,9 @@
       (sched/receive-offers offers-chan match-trigger-chan mock-driver [offer-1])
       @(sched/receive-offers offers-chan match-trigger-chan mock-driver [offer-2])
       @(sched/receive-offers offers-chan match-trigger-chan mock-driver [offer-3])
-      (is (= @declined-offer-ids-atom [(:id offer-2) (:id offer-3)])))))
+      (is (= @declined-offer-ids-atom [(:id offer-2) (:id offer-3)]))
+      (async/close! match-trigger-chan)
+      (is (= (count (async/<!! (async/into [] match-trigger-chan))) 1)))))
 
 (deftest test-below-quota?
   (testing "not using quota"

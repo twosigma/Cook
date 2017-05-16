@@ -231,12 +231,11 @@
 
 (defn complete-tasks!
   "Removes tasks from state that have completed and calls complete-task!"
-  [state scheduler driver]
-  (let [now (:now state)
-        time-task-id-pairs (:time-task-id-pairs state)
-        complete? (comp (partial t/after? now) first)
-        to-complete-pairs (filter complete? time-task-id-pairs)
-        remaining (remove complete? time-task-id-pairs)
+  [{:keys [now time-task-id-pairs] :as state} scheduler driver]
+  (let [complete? (comp (partial t/after? now) first)
+        complete?->pairs (group-by complete? time-task-id-pairs)
+        to-complete-pairs (get complete?->pairs true) 
+        remaining (get complete?->pairs false)
         to-complete-task-ids (map second to-complete-pairs)
         state' (reduce #(complete-task! %1 %2 scheduler driver) state to-complete-task-ids)]
     (log/debug "Completing" to-complete-pairs)
@@ -297,7 +296,8 @@
           tasks (map #(assoc % :launched-time (t/now)) tasks)
           task->runtime-ms (-> state :config :task->runtime-ms)
           new-time-task-id-pairs (map (fn [{:keys [task-id] :as task}]
-                                        [(t/plus (t/now) (t/millis (task->runtime-ms task))) 
+                                        [(-> (t/now) 
+                                             (t/plus (t/millis (task->runtime-ms task)))) 
                                          (:value task-id)])
                                       tasks)]     
       (log/debug "Resources requested by tasks: " {:requested-resources requested-resources})
@@ -311,8 +311,7 @@
       (log/debug "Launching tasks " {:tasks tasks})
       (-> state
           (update :task-id->task #(into % (map-from-vals (comp :value :task-id) tasks)))
-          (update :time-task-id-pairs
-                  #(into % new-time-task-id-pairs))
+          (update :time-task-id-pairs #(into % new-time-task-id-pairs))
           (assoc-in [:slave-id->host slave-id :available-resources] resources')
           (update :offer-id->offer #(apply dissoc % offer-ids))))))
 

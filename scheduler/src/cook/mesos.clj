@@ -144,23 +144,24 @@
     utilization))
 
 (defn make-trigger-chans
+  "Creates a map of of the trigger channels expected by `start-mesos-scheduler`
+   Each channel receives chime triggers at particular intervals and it is
+   possible to send additional events as desired"
   [rebalancer-config
    {:keys [timeout-interval-minutes]
     :or {timeout-interval-minutes 10}
     :as task-constraints}]
-  (let [match-trigger-chan (async/chan (async/sliding-buffer 1))]
-    ;; Use a normal channel for match-trigger-chan because other events besides chimes will go on channel
-    (async/pipe (chime-ch (periodic/periodic-seq (time/now) (time/seconds 1)))
-                match-trigger-chan)
-    {:rebalancer-trigger-chan (chime-ch (periodic/periodic-seq (time/now)
-                                                               (time/seconds (:interval-seconds rebalancer-config))))
-     :match-trigger-chan match-trigger-chan
-     :rank-trigger-chan (chime-ch (periodic/periodic-seq (time/now) (time/seconds 5)))
-     :lingering-task-trigger-chan (chime-ch (periodic/periodic-seq (time/now)
-                                                                   (time/minutes timeout-interval-minutes)))
-     :straggler-trigger-chan (chime-ch (periodic/periodic-seq (time/now)
-                                                              (time/minutes timeout-interval-minutes)))
-     :cancelled-task-trigger-chan (chime-ch (periodic/periodic-seq (time/now) (time/seconds 3)))}))
+  (letfn [(prepare-trigger-chan [interval]
+            (let [ch (async/chan (async/sliding-buffer 1))]
+              (async/pipe (chime-ch (periodic/periodic-seq (time/now) interval))
+                          ch)
+              ch))]
+    {:cancelled-task-trigger-chan (prepare-trigger-chan (time/seconds 3))
+     :lingering-task-trigger-chan (prepare-trigger-chan (time/minutes timeout-interval-minutes))
+     :match-trigger-chan (prepare-trigger-chan (time/seconds 1))
+     :rank-trigger-chan (prepare-trigger-chan (time/seconds 5))
+     :rebalancer-trigger-chan (prepare-trigger-chan (time/seconds (:interval-seconds rebalancer-config)))
+     :straggler-trigger-chan (prepare-trigger-chan (time/minutes timeout-interval-minutes))}))
 
 (defn start-mesos-scheduler
   "Starts a leader elector. When the process is leader, it starts the mesos
@@ -232,8 +233,7 @@
                                           task-constraints
                                           gpu-enabled?
                                           good-enough-fitness
-                                          trigger-chans
-                                          )
+                                          trigger-chans)
                                         driver (make-mesos-driver-fn scheduler framework-id)]
                                     (mesomatic.scheduler/start! driver)
                                     (reset! current-driver driver)

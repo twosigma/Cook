@@ -734,12 +734,11 @@
    trigger-chan]
   (let [chan-length 100
         offers-chan (async/chan (async/buffer chan-length))
-        resources-atom (atom (view-incubating-offers fenzo))
-        num-considerable-atom (reset! fenzo-num-considerable-atom max-considerable)]
+        resources-atom (atom (view-incubating-offers fenzo))]
+    (reset! fenzo-num-considerable-atom max-considerable)
     (util/chime-at-ch
       trigger-chan
-      (fn [_]
-        ;;TODO make this cancelable (if we want to be able to restart the server w/o restarting the JVM)
+      (fn match-jobs-event []
         (let [num-considerable @fenzo-num-considerable-atom
               next-considerable
               (try
@@ -944,7 +943,8 @@
   (let [config (merge {:timeout-hours (* 2 24)}
                       config)]
     (util/chime-at-ch trigger-chan
-                      (fn [now] (kill-lingering-tasks now conn driver config))
+                      (fn kill-linger-task-event []
+                        (kill-lingering-tasks (now) conn driver config))
                       {:error-handler (fn [e]
                                         (log/error e "Failed to reap timeout tasks!"))})))
 
@@ -974,7 +974,8 @@
    straggler handler."
   [conn driver trigger-chan]
   (util/chime-at-ch trigger-chan
-                    (fn [now] (handle-stragglers conn #(mesos/kill-task! driver {:value (:instance/task-id %)})))
+                    (fn straggler-handler-event []
+                      (handle-stragglers conn #(mesos/kill-task! driver {:value (:instance/task-id %)})))
                     {:error-handler (fn [e]
                                       (log/error e "Failed to handle stragglers"))}))
 
@@ -993,17 +994,18 @@
 (defn cancelled-task-killer
   "Every trigger, kill tasks that have been cancelled (e.g. via the API)."
   [conn driver trigger-chan]
-  (chime-at trigger-chan
-            (fn [now]
-              (timers/time!
-                killing-cancelled-tasks-duration
-                (doseq [task (killable-cancelled-tasks (d/db conn))]
-                  (log/warn "killing cancelled task " (:instance/task-id task))
-                  @(d/transact conn [[:db/add (:db/id task) :instance/reason
-                                      [:reason/name :mesos-executor-terminated]]])
-                  (mesos/kill-task! driver {:value (:instance/task-id task)}))))
-            {:error-handler (fn [e]
-                              (log/error e "Failed to kill cancelled tasks!"))}))
+  (util/chime-at-ch
+    trigger-chan
+    (fn cancelled-task-killer-event []
+      (timers/time!
+        killing-cancelled-tasks-duration
+        (doseq [task (killable-cancelled-tasks (d/db conn))]
+          (log/warn "killing cancelled task " (:instance/task-id task))
+          @(d/transact conn [[:db/add (:db/id task) :instance/reason
+                              [:reason/name :mesos-executor-terminated]]])
+          (mesos/kill-task! driver {:value (:instance/task-id task)}))))
+    {:error-handler (fn [e]
+                      (log/error e "Failed to kill cancelled tasks!"))}))
 
 (defn get-user->used-resources
   "Return a map from user'name to his allocated resources, in the form of
@@ -1197,7 +1199,7 @@
   (let [offensive-jobs-ch (make-offensive-job-stifler conn)
         offensive-job-filter (partial filter-offensive-jobs task-constraints offensive-jobs-ch)]
     (util/chime-at-ch trigger-chan
-                      (fn [time]
+                      (fn rank-jobs-event []
                         (reset! pending-jobs-atom
                                 (rank-jobs (db conn) (d/db conn) offensive-job-filter))))))
 

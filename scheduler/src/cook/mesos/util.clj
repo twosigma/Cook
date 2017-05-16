@@ -450,7 +450,8 @@
 (defn chime-at-ch
   "Like chime-at (from chime[https://github.com/jarohen/chime])
    but pass in an arbitrary chan instead of times to make a chime chan
-   Passes whatever comes off ch to f
+
+   Calls f with no arguments
 
    Will try to close the item pulled from ch once f has completed if the item is a channel"
   [ch f & [{:keys [error-handler on-finished]
@@ -460,7 +461,7 @@
                  (if-let [x (async/<! ch)]
                    (do (async/<! (async/thread
                                    (try
-                                     (f x)
+                                     (f)
                                      (catch Exception e
                                        (error-handler e)))))
                        (close-when-ch! x)

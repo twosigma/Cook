@@ -475,13 +475,13 @@
                                            recognized-params))])))))
 
 (defn start-rebalancer!
-  [{:keys [conn driver get-mesos-utilization pending-jobs-atom offer-cache
-           view-incubating-offers view-mature-offers config trigger-chan]}]
+  [{:keys [config conn driver get-mesos-utilization pending-jobs-atom offer-cache
+           trigger-chan view-incubating-offers view-mature-offers]}]
   (binding [metrics-dru-scale (:dru-scale config)]
     (update-datomic-params-from-config! conn config)
     (util/chime-at-ch
       trigger-chan
-      (fn [now]
+      (fn []
         (log/info "Rebalance cycle starting")
         (let [params (read-datomic-params conn)
               utilization (get-mesos-utilization)
