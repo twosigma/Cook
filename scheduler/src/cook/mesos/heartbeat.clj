@@ -21,7 +21,6 @@
             [clojure.core.async :as async :refer [alts! go-loop go >!]]
             [clojure.data.json :as json]
             [clojure.tools.logging :as log]
-            [cook.reporter :as reporter]
             [datomic.api :as d :refer (q)]
             [metatransaction.core :refer (db)]
             [metrics.meters :as meters]
@@ -39,9 +38,7 @@ The second is a map from task id to its timeout channel. The third is a timeout 
   "Notify a heartbeat."
   [ch executor-id slave-id data]
   (try
-    (let [{:strs [task-id] :as data} (-> data
-                                         (String. "UTF-8")
-                                         (json/read-str))]
+    (let [{:strs [task-id] :as data} (-> data (String. "UTF-8") (json/read-str))]
       (case (async/alt!!
              [[ch data]] :success
              :default :dropped
@@ -50,7 +47,7 @@ The second is a map from task id to its timeout channel. The third is a timeout 
         :success (log/debug "Received heartbeat from task" task-id)
         nil))
     (catch Throwable ex
-      (log/error ex "Failed to handle heartbeat"))))
+      (log/error ex "Failed to handle heartbeat" {:data data, :executor-id executor-id, :slave-id slave-id}))))
 
 (defn update-heartbeat
   "Update state upon receving an heartbeat."

@@ -37,23 +37,24 @@
                  :user (:job/user job-ent)
                  :uris (:uris resources [])}
         ;; executor-key configure whether this is a command or custom executor
-        executor-key (if custom-executor :executor :command)]
+        executor-key (if custom-executor :executor :command)
+        ;;TODO this data is a race-condition
+        data (.getBytes
+               (pr-str
+                 {:instance (str (count (:job/instance job-ent)))})
+               "UTF-8")]
     ;; If the there is no value for key :job/name, the following name will contain a substring "null".
-    {:name (format "%s_%s_%s" (:job/name job-ent "cookjob") (:job/user job-ent) task-id)
-     :task-id task-id
-     :labels labels
-     :num-ports  (:ports resources)
-     :resources  (select-keys resources  [:mem :cpus])
-     ;;TODO this data is a race-condition
-     :data (.getBytes
-             (pr-str
-               {:instance (str (count (:job/instance job-ent)))})
-             "UTF-8")
-     :environment environment
+    {:data data
      :command command
-     :executor-key executor-key
      :container container
-     :framework-id fid}))
+     :environment environment
+     :executor-key executor-key
+     :framework-id fid
+     :labels labels
+     :name (format "%s_%s_%s" (:job/name job-ent "cookjob") (:job/user job-ent) task-id)
+     :num-ports (:ports resources)
+     :resources (select-keys resources [:mem :cpus])
+     :task-id task-id}))
 
 (defn TaskAssignmentResult->task-metadata
   "Organizes the info Fenzo has already told us about the task we need to run"
@@ -178,14 +179,14 @@
    Returns the input tasks, decorated with :scalar-resource-messages"
   [available-resources tasks]
   (:handled-tasks
-   (reduce (fn [{:keys [remaining-resources handled-tasks]} task]
-             (let [adjustment (take-all-scalar-resources-for-task remaining-resources task)
-                   new-task (assoc task :scalar-resource-messages (:mesos-messages adjustment))]
-               {:remaining-resources (:remaining-resources adjustment)
-                :handled-tasks (conj handled-tasks new-task)}))
-           {:remaining-resources available-resources
-            :handled-tasks []}
-           tasks)))
+    (reduce (fn [{:keys [remaining-resources handled-tasks]} task]
+              (let [adjustment (take-all-scalar-resources-for-task remaining-resources task)
+                    new-task (assoc task :scalar-resource-messages (:mesos-messages adjustment))]
+                {:remaining-resources (:remaining-resources adjustment)
+                 :handled-tasks (conj handled-tasks new-task)}))
+            {:remaining-resources available-resources
+             :handled-tasks []}
+            tasks)))
 
 (defn map->mesos-kv
   "Converts a normal clojure map to a format sometimes employed in mesos messages.
@@ -207,7 +208,7 @@
   {"RW" :volume-rw
    "RO" :volume-ro
    ;; nil volume produces a Mesomatic serializion error
-   nil  :volume-ro})
+   nil :volume-ro})
 
 (def cook-container-type->mesomatic-container-type
   "Converts the string representation of container type to a value mesomatic understands"
@@ -218,8 +219,8 @@
   "Given a clojure data structure (based on Cook's internal data format for jobs),
    which has already been decorated with everything we need to know about
    a task, return a Mesos message that will actually launch that task"
-  [{:keys [name slave-id task-id scalar-resource-messages ports-resource-messages
-           executor-key command labels data container framework-id] :as t}]
+  [{:keys [command container data executor-key framework-id labels name ports-resource-messages
+           scalar-resource-messages slave-id task-id]}]
   (let [command (update command
                         :environment
                         (fn [env] {:variables (map->mesos-kv env :name)}))
@@ -232,25 +233,25 @@
                                     (update docker :network cook-network->mesomatic-network)
                                     docker)))
                         (update :volumes
-                                   (fn [volumes]
-                                     (map #(update % :mode cook-volume-mode->mesomatic-volume-mode)
-                                          volumes)))))]
-    (merge {:name name
-            :task-id {:value task-id}
+                                (fn [volumes]
+                                  (map #(update % :mode cook-volume-mode->mesomatic-volume-mode)
+                                       volumes)))))]
+    (merge {:data (com.google.protobuf.ByteString/copyFrom data)
+            :labels {:labels (map->mesos-kv labels :key)}
             :resources (into scalar-resource-messages
                              ports-resource-messages)
-            :labels {:labels (map->mesos-kv labels :key)}
-            :data (com.google.protobuf.ByteString/copyFrom data)
+            :name name
+            :task-id {:value task-id}
             executor-key (if (= executor-key :executor)
-                            ;; executor-id matches txn code in handle-resource-offer
-                            (merge {:executor-id {:value (str task-id)}
-                                    :framework-id framework-id
-                                    :name custom-executor-name
-                                    :source custom-executor-source
-                                    :command command}
-                                   (when (seq container)
-                                     {:container container}))
-                            command)
+                           ;; executor-id matches txn code in handle-resource-offer
+                           (merge {:command command
+                                   :executor-id {:value (str task-id)}
+                                   :framework-id framework-id
+                                   :name custom-executor-name
+                                   :source custom-executor-source}
+                                  (when (seq container)
+                                    {:container container}))
+                           command)
             :slave-id slave-id}
            (when (and (seq container) (not= executor-key :executor))
              {:container container}))))

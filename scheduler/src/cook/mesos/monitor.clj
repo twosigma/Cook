@@ -17,17 +17,14 @@
   (:require [chime :refer [chime-at]]
             [clj-time.core :as time]
             [clj-time.periodic :as periodic]
-            [clojure.core.async :as async]
             [clojure.set :refer (union difference)]
             [clojure.tools.logging :as log]
             [cook.datomic :refer (transact-with-retries)]
-            [cook.mesos.scheduler :as sched]
             [cook.mesos.share :as share]
             [cook.mesos.util :as util]
             [datomic.api :as d :refer (q)]
             [metatransaction.core :refer (db)]
-            [riemann.client :as riemann])
-  (:import [java.util.concurrent Executors TimeUnit]))
+            [riemann.client :as riemann]))
 
 ;;; ===========================================================================
 

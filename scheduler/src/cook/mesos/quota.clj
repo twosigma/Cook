@@ -14,8 +14,7 @@
 ;; limitations under the License.
 ;;
 (ns cook.mesos.quota
-  (:require [clojure.tools.logging :as log]
-            [cook.mesos.schema]
+  (:require [cook.mesos.schema]
             [cook.mesos.util :as util]
             [datomic.api :as d :refer (q)]
             [metatransaction.core :refer (db)]))
