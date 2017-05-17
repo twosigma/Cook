@@ -174,7 +174,7 @@
                                 "limits for new cluster"
                                 :mem 10.0 :cpus 10.0)
             db (d/db conn)]
-        (is (= [j2 j3 j6 j4 j8] (map :db/id (:normal (sched/sort-jobs-by-dru db db)))))))
+        (is (= [j2 j3 j6 j4 j8] (map :db/id (:normal (sched/sort-jobs-by-dru db)))))))
     (testing "sort-jobs-by-dru one user has non-default share"
       (let [_ (share/set-share! conn "default"
                                 "limits for new cluster"
@@ -183,7 +183,7 @@
                                 "needs more resources"
                                 :mem 100.0 :cpus 100.0)
             db (d/db conn)]
-        (is (= [j8 j2 j3 j6 j4] (map :db/id (:normal (sched/sort-jobs-by-dru db db))))))))
+        (is (= [j8 j2 j3 j6 j4] (map :db/id (:normal (sched/sort-jobs-by-dru db))))))))
 
   (let [uri "datomic:mem://test-sort-jobs-by-dru"
         conn (restore-fresh-database! uri)
@@ -208,7 +208,7 @@
 
         test-db (d/db conn)]
     (testing
-      (is (= [job-id-2 job-id-3 job-id-1 job-id-4] (map :db/id (:normal (sched/sort-jobs-by-dru test-db test-db))))))))
+      (is (= [job-id-2 job-id-3 job-id-1 job-id-4] (map :db/id (:normal (sched/sort-jobs-by-dru test-db))))))))
 
 (d/delete-database "datomic:mem://preemption-testdb")
 (d/create-database "datomic:mem://preemption-testdb")
@@ -567,13 +567,11 @@
         job-entity-1 (d/entity test-db job-id-1)
         job-entity-2 (d/entity test-db job-id-2)
         jobs [job-entity-1 job-entity-2]
-        offensive-jobs-ch (async/chan (count jobs))
-        offensive-jobs #{job-entity-1 job-entity-2}
         offensive-jobs-ch (sched/make-offensive-job-stifler conn)
         offensive-job-filter (partial sched/filter-offensive-jobs constraints offensive-jobs-ch)]
     (is (= {:normal (list job-entity-2)
             :gpu ()}
-           (sched/rank-jobs test-db test-db offensive-job-filter)))))
+           (sched/rank-jobs test-db offensive-job-filter)))))
 
 (deftest test-get-lingering-tasks
   (let [uri "datomic:mem://test-lingering-tasks"
@@ -828,13 +826,13 @@
                                 "Needs some GPUs"
                                 :gpus 2.0)
             db (d/db conn)]
-        (is (= [ljin-2 wzhao-1 ljin-3 ljin-4 wzhao-2] (map :db/id (:gpu (sched/sort-jobs-by-dru db db)))))))
+        (is (= [ljin-2 wzhao-1 ljin-3 ljin-4 wzhao-2] (map :db/id (:gpu (sched/sort-jobs-by-dru db)))))))
     (testing "one user has single gpu share"
       (let [_ (share/set-share! conn "ljin"
                                 "Doesn't need lots of gpus"
                                 :gpus 1.0)
               db (d/db conn)]
-          (is (= [wzhao-1 wzhao-2 ljin-2 ljin-3 ljin-4] (map :db/id (:gpu (sched/sort-jobs-by-dru db db)))))))))
+          (is (= [wzhao-1 wzhao-2 ljin-2 ljin-3 ljin-4] (map :db/id (:gpu (sched/sort-jobs-by-dru db)))))))))
 
 (deftest test-cancelled-task-killer
   (let [uri "datomic:mem://test-gpu-shares"
