@@ -69,41 +69,41 @@
 
 (defn create-dummy-job
   "Return the entity id for the created dummy job."
-  [conn & {:keys [user uuid command ncpus memory name retry-count max-runtime priority job-state submit-time custom-executor? gpus group committed?
-                  disable-mea-culpa-retries env]
-           :or {user (System/getProperty "user.name")
-                uuid (d/squuid)
+  [conn & {:keys [command committed? custom-executor? disable-mea-culpa-retries env gpus group job-state max-runtime
+                  memory name ncpus priority retry-count submit-time user uuid]
+           :or {command "dummy command"
                 committed? true
-                command "dummy command"
-                ncpus 1.0
-                memory 10.0
-                name "dummy_job"
-                submit-time (java.util.Date.)
-                retry-count 5
-                max-runtime Long/MAX_VALUE
-                priority 50
+                disable-mea-culpa-retries false
                 job-state :job.state/waiting
-                disable-mea-culpa-retries false}}]
+                max-runtime Long/MAX_VALUE
+                memory 10.0
+                ncpus 1.0
+                name "dummy_job"
+                priority 50
+                retry-count 5
+                submit-time (java.util.Date.)
+                user (System/getProperty "user.name")
+                uuid (d/squuid)}}]
   (let [id (d/tempid :db.part/user)
         commit-latch-id (d/tempid :db.part/user)
         commit-latch {:db/id commit-latch-id
                       :commit-latch/committed? committed?}
         job-info (merge {:db/id id
-                         :job/uuid uuid
                          :job/command command
                          :job/commit-latch commit-latch-id
-                         :job/user user
-                         :job/name name
+                         :job/disable-mea-culpa-retries disable-mea-culpa-retries
                          :job/max-retries retry-count
                          :job/max-runtime max-runtime
+                         :job/name name
                          :job/priority priority
-                         :job/state job-state
-                         :job/submit-time submit-time
-                         :job/disable-mea-culpa-retries disable-mea-culpa-retries
                          :job/resource [{:resource/type :resource.type/cpus
                                          :resource/amount (double ncpus)}
                                         {:resource/type :resource.type/mem
-                                         :resource/amount (double memory)}]}
+                                         :resource/amount (double memory)}]
+                         :job/state job-state
+                         :job/submit-time submit-time
+                         :job/user user
+                         :job/uuid uuid}
                         (when (not (nil? custom-executor?)) {:job/custom-executor custom-executor?})
                         (when group {:group/_job group}))
         job-info (if gpus
