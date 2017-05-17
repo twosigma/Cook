@@ -6,16 +6,25 @@ from threading import Event, Lock, Thread
 import os
 import re
 
+import cook
+
 
 class ProgressUpdater(object):
     """This class is responsible for sending progress updates to the scheduler.
     It throttles the rate at which progress updates are sent.
     """
 
-    def __init__(self, poll_interval_ms):
+    def __init__(self, poll_interval_ms, send_message_fn):
+        """
+        :param poll_interval_ms: int
+            The interval after which to send a subsequent progress update.
+        :param send_message: function(driver, message, max_message_length)
+            The helper function used to send the message.
+        """
         self.poll_interval_ms = poll_interval_ms
         self.last_reported_time = None
         self.last_progress_data = None
+        self.send_message = send_message_fn
         self.lock = Lock()
 
     def has_enough_time_elapsed_since_last_update(self):
@@ -29,7 +38,7 @@ class ProgressUpdater(object):
             time_diff_ms = (current_time - self.last_reported_time) * 1000
             return time_diff_ms >= self.poll_interval_ms
 
-    def send_progress_update(self, driver, task_id, max_message_length, progress_data, send_message, force_send=False):
+    def send_progress_update(self, driver, task_id, max_message_length, progress_data, force_send=False):
         """Sends a progress update if enough time has elapsed since the last progress update.
         The force_send flag can be used to ignore the check for enough time having elapsed.
         Using this method is thread-safe.
@@ -44,8 +53,6 @@ class ProgressUpdater(object):
             The allowed max message length after encoding.
         :param progress_data: map 
             The progress data to send.
-        :param send_message: function(driver, message, max_message_length)
-            The helper function used to send the message.
         :param force_send: boolean, optional
             Defaults to false.
             
@@ -60,7 +67,17 @@ class ProgressUpdater(object):
                     message_dict = dict(progress_data)
                     message_dict['task-id'] = task_id
                     progress_message = json.dumps(message_dict)
-                    send_message(driver, progress_message, max_message_length)
+
+                    if len(progress_message) > max_message_length and cook.PROGRESS_MESSAGE_KEY in message_dict:
+                        progress_str = message_dict[cook.PROGRESS_MESSAGE_KEY]
+                        num_extra_chars = len(progress_message) - max_message_length
+                        allowed_progress_message_length = max(len(progress_str) - num_extra_chars - 3, 0)
+                        new_progress_str = progress_str[:allowed_progress_message_length].strip() + '...'
+                        logging.info('Progress message trimmed to {}'.format(new_progress_str))
+                        message_dict[cook.PROGRESS_MESSAGE_KEY] = new_progress_str
+                        progress_message = json.dumps(message_dict)
+
+                    self.send_message(driver, progress_message, max_message_length)
                     self.last_reported_time = time.time()
                     self.last_progress_data = progress_data
                 else:
@@ -160,12 +177,12 @@ class ProgressWatcher(object):
                 if progress_report is not None:
                     percent, message = progress_report
                     logging.info('Updating progress to {} percent, message: {}'.format(percent, message))
-                    self.progress = {'progress-message': message.strip(), 'progress-percent': int(percent)}
+                    self.progress = {cook.PROGRESS_MESSAGE_KEY: message.strip(), 'progress-percent': int(percent)}
                     yield self.progress
 
 
 def track_progress(driver, task_id, progress_watcher, max_message_length, progress_complete_event,
-                   send_progress_update, send_message):
+                   send_progress_update):
     """Sends progress updates to the mesos driver until the stop_signal is set.
     
     Parameters
@@ -180,7 +197,7 @@ def track_progress(driver, task_id, progress_watcher, max_message_length, progre
         Allowed max message length to send
     :param progress_complete_event: Event
         Event that triggers completion of progress tracking
-    :param send_progress_update: function(driver, task_id, max_message_length, current_progress, send_message)
+    :param send_progress_update: function(driver, task_id, max_message_length, current_progress)
         The function to invoke while sending progress updates
         
     Returns
@@ -190,18 +207,18 @@ def track_progress(driver, task_id, progress_watcher, max_message_length, progre
     try:
         for current_progress in progress_watcher.retrieve_progress_states():
             logging.debug('Latest progress: {}'.format(current_progress))
-            send_progress_update(driver, task_id, max_message_length, current_progress, send_message)
+            send_progress_update(driver, task_id, max_message_length, current_progress)
     except:
         logging.exception('Exception while tracking progress')
     finally:
         progress_complete_event.set()
 
 
-def launch_progress_tracker(driver, task, max_message_length, progress_watcher, progress_updater, send_message):
+def launch_progress_tracker(driver, task, max_message_length, progress_watcher, progress_updater):
     """Launches the threads that track progress and send progress updates to the driver."""
     progress_complete_event = Event()
     progress_update_thread = Thread(target=track_progress,
                                     args=(driver, task, progress_watcher, max_message_length, progress_complete_event,
-                                          progress_updater.send_progress_update, send_message))
+                                          progress_updater.send_progress_update))
     progress_update_thread.start()
     return progress_complete_event

@@ -36,7 +36,7 @@ class ProgressTest(unittest.TestCase):
                     logging.info('Yielding progress state {}'.format(v))
                     yield v
 
-            def send_progress_update_helper(self, _1, _2, _3, last_progress, _4):
+            def send_progress_update_helper(self, _1, _2, _3, last_progress):
                 self.count_calls += 1
                 self.progress_states.append(last_progress)
                 return self.count_calls
@@ -49,7 +49,7 @@ class ProgressTest(unittest.TestCase):
         progress_complete_event = Event()
 
         cp.track_progress(driver, task, progress_watcher, max_message_length, progress_complete_event,
-                          progress_watcher.send_progress_update_helper, ce.send_message)
+                          progress_watcher.send_progress_update_helper)
 
         self.assertTrue(progress_complete_event.isSet())
         self.assertEqual(4, progress_watcher.method_call_count())
@@ -80,9 +80,9 @@ class ProgressTest(unittest.TestCase):
         max_message_length = 100
         poll_interval_ms = 100
 
-        progress_updater = cp.ProgressUpdater(poll_interval_ms)
+        progress_updater = cp.ProgressUpdater(poll_interval_ms, ce.send_message)
         progress_data_0 = {'progress-message': 'Progress message-0'}
-        progress_updater.send_progress_update(driver, task_id, max_message_length, progress_data_0, ce.send_message)
+        progress_updater.send_progress_update(driver, task_id, max_message_length, progress_data_0)
 
         self.assertEqual(1, driver.method_call_count())
         actual_encoded_message_0 = driver.messages[0]
@@ -90,18 +90,46 @@ class ProgressTest(unittest.TestCase):
         assert_message(expected_message_0, actual_encoded_message_0)
 
         progress_data_1 = {'progress-message': 'Progress message-1'}
-        progress_updater.send_progress_update(driver, task_id, max_message_length, progress_data_1, ce.send_message)
+        progress_updater.send_progress_update(driver, task_id, max_message_length, progress_data_1)
 
         self.assertEqual(1, driver.method_call_count())
 
         time.sleep(poll_interval_ms / 1000.0)
         progress_data_2 = {'progress-message': 'Progress message-2'}
-        progress_updater.send_progress_update(driver, task_id, max_message_length, progress_data_2, ce.send_message)
+        progress_updater.send_progress_update(driver, task_id, max_message_length, progress_data_2)
 
         self.assertEqual(2, driver.method_call_count())
         actual_encoded_message_2 = driver.messages[1]
         expected_message_2 = {'progress-message': 'Progress message-2', 'task-id': task_id}
         assert_message(expected_message_2, actual_encoded_message_2)
+
+    def test_send_progress_update_trims_progress_message(self):
+        driver = FakeMesosExecutorDriver()
+        task_id = get_random_task_id()
+        max_message_length = 100
+        poll_interval_ms = 10
+
+        progress_updater = cp.ProgressUpdater(poll_interval_ms, ce.send_message)
+        progress_data_0 = {'progress-message': 'Progress message-0 is really long lorem ipsum dolor sit amet text'}
+        progress_updater.send_progress_update(driver, task_id, max_message_length, progress_data_0)
+
+        self.assertEqual(1, driver.method_call_count())
+        actual_encoded_message_0 = driver.messages[0]
+        expected_message_0 = {'progress-message': 'Progress message-0 is really long lorem ipsum dolor...',
+                              'task-id': task_id}
+        assert_message(expected_message_0, actual_encoded_message_0)
+
+    def test_send_progress_does_not_trim_unknown_field(self):
+        driver = FakeMesosExecutorDriver()
+        task_id = get_random_task_id()
+        max_message_length = 100
+        poll_interval_ms = 10
+
+        progress_updater = cp.ProgressUpdater(poll_interval_ms, ce.send_message)
+        progress_data_0 = {'unknown': 'Unknown field has a really long lorem ipsum dolor sit amet exceed limit text'}
+        progress_updater.send_progress_update(driver, task_id, max_message_length, progress_data_0)
+
+        self.assertEqual(0, driver.method_call_count())
 
     def test_progress_watcher_tail(self):
         file_name = 'build/tail_progress_test.' + get_random_task_id()

@@ -261,9 +261,9 @@ def manage_task(driver, task, stop_signal, completed_signal, config, stdout_name
         process, _, _ = process_info
 
         progress_watcher = cp.ProgressWatcher(config, completed_signal)
-        progress_updater = cp.ProgressUpdater(config.progress_sample_interval_ms)
+        progress_updater = cp.ProgressUpdater(config.progress_sample_interval_ms, send_message)
         progress_complete_event = cp.launch_progress_tracker(driver, task_id, config.max_message_length,
-                                                             progress_watcher, progress_updater, send_message)
+                                                             progress_watcher, progress_updater)
 
         process_killed = await_process_completion(driver, task, stop_signal, process_info,
                                                   config.shutdown_grace_period_ms)
@@ -282,7 +282,7 @@ def manage_task(driver, task, stop_signal, completed_signal, config, stdout_name
 
         # send the latest progress state if available
         latest_progress = progress_watcher.current_progress()
-        progress_updater.send_progress_update(driver, task_id, config.max_message_length, latest_progress, send_message,
+        progress_updater.send_progress_update(driver, task_id, config.max_message_length, latest_progress,
                                               force_send=True)
 
         if not process_killed:
