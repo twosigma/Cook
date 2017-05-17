@@ -82,13 +82,14 @@ def send_message(driver, message, max_message_length):
     :return: whether the message was successfully sent
     """
     logging.debug('Sending framework message {}'.format(message))
-    encoded_message = encode_data(str(message).encode('utf8'))
-    if len(encoded_message) < max_message_length:
+    message_string = str(message).encode('utf8')
+    if len(message_string) < max_message_length:
+        encoded_message = encode_data(message_string)
         driver.sendFrameworkMessage(encoded_message)
         return True
     else:
         log_message_template = 'Unable to send message {} as it exceeds allowed max length of {}'
-        logging.info(log_message_template.format(message, max_message_length))
+        logging.warning(log_message_template.format(message, max_message_length))
         return False
 
 

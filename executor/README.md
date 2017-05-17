@@ -73,7 +73,7 @@ Supported configuration options:
 |--------|------|-------------|
 | `:command` | string | A string containing the command executed on the mesos agent to launch the cook executor. If the executor is installed using the instructions above, the default value of `cook-executor` should not need to be changed.|
 | `:log-level` | string | The log level for the executor process. Defaults to "INFO".|
-| `:max-message-length` | long | The maximum length for the custom failure message set by a task via the Mesos executor HTTP API. The default is 512.|
+| `:max-message-length` | long | The maximum length for the unencoded string messages sent from a task via the Mesos executor HTTP API. The default is 512.|
 | `:progress-output-name` | string | The file to track for progress updates. The default is stdout.|
 | `:progress-regex-string` | string | The regex used to identify progress update messages. The regex should have two capture groups, the first being an integer representing the progress percent. The second being a message about the progress. Defaults to "progress: (\d*), (.*)".|
 | `:progress-sample-interval-ms` | long | The interval in ms after which to send progress updates. The default is 1000.|
