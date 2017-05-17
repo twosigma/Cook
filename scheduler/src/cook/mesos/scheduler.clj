@@ -1088,23 +1088,23 @@
   ;; e.g. running jobs or when it is always considered committed e.g. shares
   ;; The unfiltered db can also be used on pending job entities once the filtered db is used to limit
   ;; to only those jobs that have been committed.
-  (let [pending-job-ents-by (group-by util/categorize-job (util/get-pending-job-ents unfiltered-db))
-        pending-task-ents-by (reduce-kv (fn [m category pending-job-ents]
-                                          (assoc m category
-                                                   (into #{}
-                                                         (map util/create-task-ent)
-                                                         pending-job-ents)))
-                                        {}
-                                        pending-job-ents-by)
-        running-task-ents-by (group-by (comp util/categorize-job :job/_instance)
-                                       (util/get-running-task-ents unfiltered-db))
+  (let [category->pending-job-ents (group-by util/categorize-job (util/get-pending-job-ents unfiltered-db))
+        category->pending-task-ents (reduce-kv (fn [m category pending-job-ents]
+                                                 (assoc m category
+                                                          (into #{}
+                                                                (map util/create-task-ent)
+                                                                pending-job-ents)))
+                                               {}
+                                               category->pending-job-ents)
+        category->running-task-ents (group-by (comp util/categorize-job :job/_instance)
+                                              (util/get-running-task-ents unfiltered-db))
         user->dru-divisors (share/create-user->share-fn unfiltered-db)]
-    {:normal (sort-normal-jobs-by-dru (:normal pending-task-ents-by)
-                                      (:normal running-task-ents-by)
-                                      user->dru-divisors)
-     :gpu (sort-gpu-jobs-by-dru (:gpu pending-task-ents-by)
-                                (:gpu running-task-ents-by)
-                                user->dru-divisors)}))
+    (->> {:normal sort-normal-jobs-by-dru, :gpu sort-gpu-jobs-by-dru}
+         (map (fn sort-jobs-by-dru-helper [[category sort-jobs-by-dru]]
+                (let [pending-tasks (category->pending-task-ents category)
+                      running-tasks (category->running-task-ents category)]
+                  [category (sort-jobs-by-dru pending-tasks running-tasks user->dru-divisors)])))
+         (into {}))))
 
 (timers/deftimer [cook-mesos scheduler filter-offensive-jobs-duration])
 
