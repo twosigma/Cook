@@ -1082,7 +1082,7 @@
 
 (defn sort-jobs-by-dru
   "Returns a map from job category to a list of job entities, ordered by dru"
-  [filtered-db unfiltered-db]
+  [unfiltered-db]
   ;; This function does not use the filtered db when it is not necessary in order to get better performance
   ;; The filtered db is not necessary when an entity could only arrive at a given state if it was already committed
   ;; e.g. running jobs or when it is always considered committed e.g. shares
@@ -1174,11 +1174,11 @@
   "Return a map of lists of job entities ordered by dru, keyed by category.
 
    It ranks the jobs by dru first and then apply several filters if provided."
-  [filtered-db unfiltered-db offensive-job-filter]
+  [unfiltered-db offensive-job-filter]
   (timers/time!
     rank-jobs-duration
     (try
-      (let [jobs (->> (sort-jobs-by-dru filtered-db unfiltered-db)
+      (let [jobs (->> (sort-jobs-by-dru unfiltered-db)
                       ;; Apply the offensive job filter first before taking.
                       (map (fn [[category jobs]]
                              (log/debug "filtering category" category jobs)
@@ -1200,7 +1200,7 @@
     (util/chime-at-ch trigger-chan
                       (fn rank-jobs-event []
                         (reset! pending-jobs-atom
-                                (rank-jobs (db conn) (d/db conn) offensive-job-filter))))))
+                                (rank-jobs (d/db conn) offensive-job-filter))))))
 
 (meters/defmeter [cook-mesos scheduler mesos-error])
 (meters/defmeter [cook-mesos scheduler offer-chan-full-error])
