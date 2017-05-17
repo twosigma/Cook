@@ -19,7 +19,7 @@
             [datomic.api :as d :refer (q)]
             [metatransaction.core :refer (db)]
             [metrics.timers :as timers]
-            cook.mesos.schema))
+            [plumbing.core :as pc]))
 
 (def default-user "default")
 
@@ -44,19 +44,28 @@
                    [[:db.fn/retractEntity resource]])
       (log/warn "Resource" type "for user" user "does not exist, could not retract"))))
 
-(defn- get-share-by-type
-  [db type user]
-  (let [type (resource-type->datomic-resource-type type)
-        query '[:find ?a
-                :in $ ?u ?t
-                :where
-                [?e :share/user ?u]
-                [?e :share/resource ?r]
-                [?r :resource/type ?t]
-                [?r :resource/amount ?a]]]
-    (or (-> (q query db user type) ffirst)
-        (-> (q query db default-user type) ffirst)
-        (Double/MAX_VALUE))))
+(let [query '[:find ?a
+              :in $ ?u ?t
+              :where
+              [?e :share/user ?u]
+              [?e :share/resource ?r]
+              [?r :resource/type ?t]
+              [?r :resource/amount ?a]]]
+  (defn- get-share-by-type
+    "Query a user's pre-defined share by type (e.g. :cpus, :mem, :gpus).
+
+     If a user's pre-defined share is NOT defined, return either:
+     1. the explicitly provided default value, or
+     2. the share for the \"default\" user. If there is NO \"default\"
+        value for a specific type, return Double.MAX_VALUE."
+    ([db type user]
+     (let [datomic-resource-type (resource-type->datomic-resource-type type)]
+       (or (-> (q query db user datomic-resource-type) ffirst)
+           (get-share-by-type db type default-user Double/MAX_VALUE))))
+    ([db type user default]
+     (let [datomic-resource-type (resource-type->datomic-resource-type type)]
+       (or (-> (q query db user datomic-resource-type) ffirst)
+           default)))))
 
 (defn get-share
   "Query a user's pre-defined share.
@@ -64,10 +73,30 @@
    If a user's pre-defined share is NOT defined, return the share for the
    \"default\" user. If there is NO \"default\" value for a specific type,
    return Double.MAX_VALUE."
-  [db user]
-  (->> (util/get-all-resource-types db)
-       (map (fn [type] [type (get-share-by-type db type user)]))
-       (into {})))
+  ([db user]
+   (get-share db user (util/get-all-resource-types db)))
+  ([db user all-resource-types]
+   (->> all-resource-types
+        (pc/map-from-keys (fn [type] (get-share-by-type db type user)))))
+  ([db user all-resource-types type->default]
+   (->> all-resource-types
+        (pc/map-from-keys (fn [type] (get-share-by-type db type user (type->default type)))))))
+
+(timers/deftimer [cook-mesos share get-shares-duration])
+
+(defn get-shares
+  "The result returned is equivalent to: (pc/map-from-keys #(get-share db %1) users).
+
+   This function minimize db calls by locally caching the results for the default-user
+   share and all the available resource-types."
+  [db users]
+  (timers/time!
+    get-shares-duration
+    (let [all-resource-types (util/get-all-resource-types db)
+          type->default (-> (fn [type] (get-share-by-type db type default-user Double/MAX_VALUE))
+                            (pc/map-from-keys all-resource-types))]
+      (-> (fn [user] (get-share db user all-resource-types type->default))
+          (pc/map-from-keys users)))))
 
 (defn share-history
   "Return changes to a user's own share, in the form
