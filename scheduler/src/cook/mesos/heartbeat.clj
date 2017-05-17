@@ -38,7 +38,7 @@ The second is a map from task id to its timeout channel. The third is a timeout 
   "Notify a heartbeat."
   [ch executor-id slave-id data]
   (try
-    (let [{:strs [task-id] :as data} (-> data (String. "UTF-8") (json/read-str))]
+    (let [{:strs [task-id] :as data} (-> data (String. "UTF-8") json/read-str)]
       (case (async/alt!!
              [[ch data]] :success
              :default :dropped
