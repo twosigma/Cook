@@ -90,10 +90,13 @@ class CookTest(unittest.TestCase):
         self.assertEqual('failed', job['instances'][0]['status'])
 
     def test_max_runtime_exceeded(self):
-        timeout_interval_seconds = get_in(self.settings(), 'task-constraints', 'timeout-interval-minutes') * 60
-        job_uuid, resp = self.submit_job(command='sleep %s' % timeout_interval_seconds, max_runtime=5000)
+        settings_timeout_interval_minutes = get_in(self.settings(), 'task-constraints', 'timeout-interval-minutes')
+        # the value needs to be a little more than 2 times settings_timeout_interval_minutes to allow
+        # at least two runs of the lingering task killer
+        job_timeout_interval_seconds = (2 * settings_timeout_interval_minutes * 60) + 15
+        job_uuid, resp = self.submit_job(command='sleep %s' % job_timeout_interval_seconds, max_runtime=5000)
         self.assertEqual(201, resp.status_code)
-        job = self.wait_for_job(job_uuid, 'completed', timeout_interval_seconds * 1000)
+        job = self.wait_for_job(job_uuid, 'completed', job_timeout_interval_seconds * 1000)
         self.assertEqual(1, len(job['instances']))
         self.assertEqual('failed', job['instances'][0]['status'])
         self.assertEqual(2003, job['instances'][0]['reason_code'])
