@@ -762,8 +762,7 @@
                       ;;     When this happens, users should never exceed their quota
                       user->usage-future (future (generate-user-usage-map (d/db conn)))
                       ;; Try to clear the channel
-                      offers (->> (repeatedly chan-length #(async/poll! offers-chan))
-                                  (remove nil?)
+                      offers (->> (util/read-chan offers-chan chan-length)
                                   (reduce into []))
                       _ (doseq [offer offers
                                 :let [slave-id (-> offer :slave-id :value)
