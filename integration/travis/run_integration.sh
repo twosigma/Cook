@@ -7,16 +7,17 @@ export PROJECT_DIR=`pwd`
 cd ${PROJECT_DIR}/../travis
 ./minimesos up
 
-# Start cook scheduler
+# Start two cook schedulers
 cd ${PROJECT_DIR}/../scheduler
 ## on travis, ports on 172.17.0.1 are bindable from the host OS, and are also
 ## available for processes inside minimesos containers to connect to
-LIBPROCESS_IP=172.17.0.1 lein run ${PROJECT_DIR}/travis/scheduler_config.edn &
+LIBPROCESS_IP=172.17.0.1 COOK_PORT=12321 COOK_ZOOKEEPER_LOCAL_PORT=3291 lein run ${PROJECT_DIR}/travis/scheduler_config.edn &
+LIBPROCESS_IP=172.17.0.1 COOK_PORT=22321 COOK_ZOOKEEPER_LOCAL_PORT=4291 lein run ${PROJECT_DIR}/travis/scheduler_config.edn &
 
 # Run the integration tests
 set +e
 cd ${PROJECT_DIR}
-python setup.py nosetests
+COOK_MULTI_CLUSTER= python setup.py nosetests
 TESTS_EXIT_CODE=$?
 
 # If there were failures, dump the executor logs

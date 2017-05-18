@@ -1,8 +1,9 @@
-{:port 12321
+{:port #config/env-int "COOK_PORT"
  :hostname "172.17.0.1"
  :authorization {:one-user "vagrant"}
  :database {:datomic-uri "datomic:mem://cook-jobs"}
- :zookeeper {:local? true}
+ :zookeeper {:local? true
+             :local-port #config/env-int "COOK_ZOOKEEPER_LOCAL_PORT"}
  :scheduler {:offer-incubate-ms 15000
              :task-constraints {:timeout-hours 1
                                 :timeout-interval-minutes 1
@@ -18,8 +19,7 @@
          :role "cook"}
  :unhandled-exceptions {:log-level :error}
  :metrics {:jmx true}
- :nrepl {:enabled? true
-         :port 8888}
+ :nrepl {:enabled? false}
  :log {:file "log/cook.log"
        :levels {"datomic.db" :warn
                 "datomic.peer" :warn
