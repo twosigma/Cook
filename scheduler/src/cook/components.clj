@@ -245,7 +245,7 @@
      :mesos-pending-jobs-atom (fnk [] (atom {}))
      :mesos-offer-cache (fnk [[:settings [:offer-cache max-size ttl-ms]]]
                           (-> {}
-                              (cache/fifo-cache-factory :threshold max-size)
+                              (cache/lru-cache-factory :threshold max-size)
                               (cache/ttl-cache-factory :ttl ttl-ms)
                               atom))
      :curator-framework curator-framework}))
