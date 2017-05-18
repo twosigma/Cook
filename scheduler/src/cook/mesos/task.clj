@@ -44,9 +44,9 @@
                  {:instance (str (count (:job/instance job-ent)))})
                "UTF-8")]
     ;; If the there is no value for key :job/name, the following name will contain a substring "null".
-    {:data data
-     :command command
+    {:command command
      :container container
+     :data data
      :environment environment
      :executor-key executor-key
      :framework-id fid
@@ -141,22 +141,22 @@
   (let [avail (available-resources resource-name)
         ;; to be polite to other frameworks, take from role-specific pool first.
         sorted-roles (sort-by #(= "*" %) (keys avail))
-        init-state {:remaining-resources avail
+        init-state {:amount-still-needed amount
                     :mesos-messages []
-                    :amount-still-needed amount}]
-    (reduce (fn [{:keys [remaining-resources mesos-messages amount-still-needed]
+                    :remaining-resources avail}]
+    (reduce (fn [{:keys [amount-still-needed mesos-messages remaining-resources]
                   :as state} role-name]
               (let [amount-avail (or (remaining-resources role-name) 0)
                     amount-to-take (min amount-still-needed amount-avail)]
                 (if (pos? amount-to-take)
-                  {:remaining-resources
-                   (assoc remaining-resources role-name (- amount-avail amount-to-take))
+                  {:amount-still-needed (- amount-still-needed amount-to-take)
                    :mesos-messages
                    (conj mesos-messages {:name resource-name
-                                         :type :value-scalar
                                          :role role-name
-                                         :scalar amount-to-take})
-                   :amount-still-needed (- amount-still-needed amount-to-take)}
+                                         :scalar amount-to-take
+                                         :type :value-scalar})
+                   :remaining-resources
+                   (assoc remaining-resources role-name (- amount-avail amount-to-take))}
                   state)))
             init-state
             sorted-roles)))
@@ -164,13 +164,13 @@
 (defn take-all-scalar-resources-for-task
   [resources task]
   (reduce
-    (fn [{:keys [remaining-resources mesos-messages]} [resource-keyword amount]]
+    (fn [{:keys [mesos-messages remaining-resources]} [resource-keyword amount]]
       (let [resource-name (name resource-keyword)
             adjustment (take-resources remaining-resources resource-name amount)]
-        {:remaining-resources (assoc remaining-resources resource-name (:remaining-resources adjustment))
-         :mesos-messages (into mesos-messages (:mesos-messages adjustment))}))
-    {:remaining-resources resources
-     :mesos-messages []}
+        {:mesos-messages (into mesos-messages (:mesos-messages adjustment))
+         :remaining-resources (assoc remaining-resources resource-name (:remaining-resources adjustment))}))
+    {:mesos-messages []
+     :remaining-resources resources}
     (.getScalarRequests ^com.netflix.fenzo.TaskRequest (:task-request task))))
 
 (defn add-scalar-resources-to-task-infos
@@ -179,13 +179,13 @@
    Returns the input tasks, decorated with :scalar-resource-messages"
   [available-resources tasks]
   (:handled-tasks
-    (reduce (fn [{:keys [remaining-resources handled-tasks]} task]
+    (reduce (fn [{:keys [handled-tasks remaining-resources]} task]
               (let [adjustment (take-all-scalar-resources-for-task remaining-resources task)
                     new-task (assoc task :scalar-resource-messages (:mesos-messages adjustment))]
-                {:remaining-resources (:remaining-resources adjustment)
-                 :handled-tasks (conj handled-tasks new-task)}))
-            {:remaining-resources available-resources
-             :handled-tasks []}
+                {:handled-tasks (conj handled-tasks new-task)
+                 :remaining-resources (:remaining-resources adjustment)}))
+            {:handled-tasks []
+             :remaining-resources available-resources}
             tasks)))
 
 (defn map->mesos-kv
@@ -238,9 +238,10 @@
                                        volumes)))))]
     (merge {:data (com.google.protobuf.ByteString/copyFrom data)
             :labels {:labels (map->mesos-kv labels :key)}
+            :name name
             :resources (into scalar-resource-messages
                              ports-resource-messages)
-            :name name
+            :slave-id slave-id
             :task-id {:value task-id}
             executor-key (if (= executor-key :executor)
                            ;; executor-id matches txn code in handle-resource-offer
@@ -251,8 +252,7 @@
                                    :source custom-executor-source}
                                   (when (seq container)
                                     {:container container}))
-                           command)
-            :slave-id slave-id}
+                           command)}
            (when (and (seq container) (not= executor-key :executor))
              {:container container}))))
 

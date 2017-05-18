@@ -726,12 +726,12 @@
         application (:job/application job)
         expected-runtime (:job/expected-runtime job)
         state (case (:job/state job)
-                :job.state/waiting "waiting"
-                :job.state/running "running"
                 :job.state/completed
                 (if (some #{:instance.status/success}
                           (map :instance/status (:job/instance job)))
-                  "success" "failed"))
+                  "success" "failed")
+                :job.state/running "running"
+                :job.state/waiting "waiting")
         instances (map (fn [instance]
                          (let [hostname (:instance/hostname instance)
                                executor-states (get-executor-states fid hostname)
@@ -744,14 +744,14 @@
                                end (:instance/end-time instance)
                                cancelled (:instance/cancelled instance)
                                reason (reason/instance-entity->reason-entity db instance)]
-                           (cond-> {:task_id (:instance/task-id instance)
+                           (cond-> {:backfilled false ;; Backfill has been deprecated
+                                    :executor_id (:instance/executor-id instance)
                                     :hostname hostname
                                     :ports (:instance/ports instance)
-                                    :backfilled false ;; Backfill has been deprecated
                                     :preempted (:instance/preempted? instance false)
                                     :slave_id (:instance/slave-id instance)
-                                    :executor_id (:instance/executor-id instance)
-                                    :status (name (:instance/status instance))}
+                                    :status (name (:instance/status instance))
+                                    :task_id (:instance/task-id instance)}
                                    url-path (assoc :output_url url-path)
                                    start (assoc :start_time (.getTime start))
                                    mesos-start (assoc :mesos_start_time (.getTime mesos-start))
@@ -780,9 +780,9 @@
                  :state state
                  :status (name (:job/state job))
                  :submit_time submit-time
-                 :uuid (:job/uuid job)
                  :uris (:uris resources)
-                 :user (:job/user job)}]
+                 :user (:job/user job)
+                 :uuid (:job/uuid job)}]
     (cond-> job-map
             groups (assoc :groups (map #(str (:group/uuid %)) groups))
             application (assoc :application (util/remove-datomic-namespacing application))
