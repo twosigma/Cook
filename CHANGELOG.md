@@ -8,7 +8,6 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/) and this p
 ### Changed
 - Make DRU order deterministic, from @wyegelwel
 - Remove concat usage, from @pschorf
-- Use agent to ensure processing order, from @shams
 ## [1.3.0] - 2017-05-05
 ### Added
 - /unscheduled_jobs API endpoint, from @mforsyth
