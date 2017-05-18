@@ -60,11 +60,11 @@
         value for a specific type, return Double.MAX_VALUE."
     ([db type user]
      (let [datomic-resource-type (resource-type->datomic-resource-type type)]
-       (or (-> (q query db user datomic-resource-type) ffirst)
+       (or (ffirst (q query db user datomic-resource-type))
            (get-share-by-type db type default-user Double/MAX_VALUE))))
     ([db type user default]
      (let [datomic-resource-type (resource-type->datomic-resource-type type)]
-       (or (-> (q query db user datomic-resource-type) ffirst)
+       (or (ffirst (q query db user datomic-resource-type))
            default)))))
 
 (defn get-share
@@ -75,12 +75,12 @@
    return Double.MAX_VALUE."
   ([db user]
    (get-share db user (util/get-all-resource-types db)))
-  ([db user all-resource-types]
-   (->> all-resource-types
-        (pc/map-from-keys (fn [type] (get-share-by-type db type user)))))
-  ([db user all-resource-types type->default]
-   (->> all-resource-types
-        (pc/map-from-keys (fn [type] (get-share-by-type db type user (type->default type)))))))
+  ([db user resource-types]
+   (pc/map-from-keys (fn get-share-3p-helper [type] (get-share-by-type db type user))
+                     resource-types))
+  ([db user resource-types type->default]
+   (pc/map-from-keys (fn get-share-4p-helper [type] (get-share-by-type db type user (type->default type)))
+                     resource-types)))
 
 (timers/deftimer [cook-mesos share get-shares-duration])
 
