@@ -3,10 +3,10 @@
   "attributes" : { },
   "resources" : {
     "cpus" : {
-      "*" : 20
+      "*" : 10
     },
     "mem" : {
-      "*" : 20000
+      "*" : 10000
     },
     "ports" : {
       "*" : [ {
@@ -15,16 +15,16 @@
       } ]
     }
   },
-  "slave-id" : "aefa2279-652c-463b-ba71-182e4cd98716"
+  "slave-id" : "a05a4ac2-7eb2-40a1-8259-111b961874c1"
 }, {
   "hostname" : "1",
   "attributes" : { },
   "resources" : {
     "cpus" : {
-      "*" : 20
+      "*" : 10
     },
     "mem" : {
-      "*" : 20000
+      "*" : 10000
     },
     "ports" : {
       "*" : [ {
@@ -33,16 +33,16 @@
       } ]
     }
   },
-  "slave-id" : "1b898b4c-7f41-4b08-8bd3-4637d5245d4b"
+  "slave-id" : "eba83456-8596-44c2-9de5-fb29cfaf1647"
 }, {
   "hostname" : "2",
   "attributes" : { },
   "resources" : {
     "cpus" : {
-      "*" : 20
+      "*" : 10
     },
     "mem" : {
-      "*" : 20000
+      "*" : 10000
     },
     "ports" : {
       "*" : [ {
@@ -51,16 +51,16 @@
       } ]
     }
   },
-  "slave-id" : "c3748b9b-1cb1-4ccb-8b1c-33bf2d429ce7"
+  "slave-id" : "4696a9c8-fc9f-46b4-8a83-23b384f3f616"
 }, {
   "hostname" : "3",
   "attributes" : { },
   "resources" : {
     "cpus" : {
-      "*" : 20
+      "*" : 10
     },
     "mem" : {
-      "*" : 20000
+      "*" : 10000
     },
     "ports" : {
       "*" : [ {
@@ -69,16 +69,16 @@
       } ]
     }
   },
-  "slave-id" : "3d67a5c5-1ddc-4787-be23-058d8994300d"
+  "slave-id" : "a45be252-35f7-434a-8ec3-1e85265213ac"
 }, {
   "hostname" : "4",
   "attributes" : { },
   "resources" : {
     "cpus" : {
-      "*" : 20
+      "*" : 10
     },
     "mem" : {
-      "*" : 20000
+      "*" : 10000
     },
     "ports" : {
       "*" : [ {
@@ -87,455 +87,5 @@
       } ]
     }
   },
-  "slave-id" : "1de4a1ae-e690-441a-be37-c5e446996396"
-}, {
-  "hostname" : "5",
-  "attributes" : { },
-  "resources" : {
-    "cpus" : {
-      "*" : 20
-    },
-    "mem" : {
-      "*" : 20000
-    },
-    "ports" : {
-      "*" : [ {
-        "begin" : 1,
-        "end" : 100
-      } ]
-    }
-  },
-  "slave-id" : "fc7db7ee-65df-403f-8063-6c00ac0af179"
-}, {
-  "hostname" : "6",
-  "attributes" : { },
-  "resources" : {
-    "cpus" : {
-      "*" : 20
-    },
-    "mem" : {
-      "*" : 20000
-    },
-    "ports" : {
-      "*" : [ {
-        "begin" : 1,
-        "end" : 100
-      } ]
-    }
-  },
-  "slave-id" : "b962bbbb-4fbc-461a-8b22-fa8c5401d727"
-}, {
-  "hostname" : "7",
-  "attributes" : { },
-  "resources" : {
-    "cpus" : {
-      "*" : 20
-    },
-    "mem" : {
-      "*" : 20000
-    },
-    "ports" : {
-      "*" : [ {
-        "begin" : 1,
-        "end" : 100
-      } ]
-    }
-  },
-  "slave-id" : "1760bb41-eb5e-4499-9fe0-c7f380ff5388"
-}, {
-  "hostname" : "8",
-  "attributes" : { },
-  "resources" : {
-    "cpus" : {
-      "*" : 20
-    },
-    "mem" : {
-      "*" : 20000
-    },
-    "ports" : {
-      "*" : [ {
-        "begin" : 1,
-        "end" : 100
-      } ]
-    }
-  },
-  "slave-id" : "d006cf15-a72c-4e9b-ba3a-fb64d5be7317"
-}, {
-  "hostname" : "9",
-  "attributes" : { },
-  "resources" : {
-    "cpus" : {
-      "*" : 20
-    },
-    "mem" : {
-      "*" : 20000
-    },
-    "ports" : {
-      "*" : [ {
-        "begin" : 1,
-        "end" : 100
-      } ]
-    }
-  },
-  "slave-id" : "063b7da0-affa-49ee-99fe-a194375ead25"
-}, {
-  "hostname" : "10",
-  "attributes" : { },
-  "resources" : {
-    "cpus" : {
-      "*" : 20
-    },
-    "mem" : {
-      "*" : 20000
-    },
-    "ports" : {
-      "*" : [ {
-        "begin" : 1,
-        "end" : 100
-      } ]
-    }
-  },
-  "slave-id" : "f630ab3d-efbe-41d2-aeae-8b284218eac5"
-}, {
-  "hostname" : "11",
-  "attributes" : { },
-  "resources" : {
-    "cpus" : {
-      "*" : 20
-    },
-    "mem" : {
-      "*" : 20000
-    },
-    "ports" : {
-      "*" : [ {
-        "begin" : 1,
-        "end" : 100
-      } ]
-    }
-  },
-  "slave-id" : "d019688b-cc50-44f8-88bb-b0627f275228"
-}, {
-  "hostname" : "12",
-  "attributes" : { },
-  "resources" : {
-    "cpus" : {
-      "*" : 20
-    },
-    "mem" : {
-      "*" : 20000
-    },
-    "ports" : {
-      "*" : [ {
-        "begin" : 1,
-        "end" : 100
-      } ]
-    }
-  },
-  "slave-id" : "25c26ed8-515a-4cdb-a2d6-100f862d8df7"
-}, {
-  "hostname" : "13",
-  "attributes" : { },
-  "resources" : {
-    "cpus" : {
-      "*" : 20
-    },
-    "mem" : {
-      "*" : 20000
-    },
-    "ports" : {
-      "*" : [ {
-        "begin" : 1,
-        "end" : 100
-      } ]
-    }
-  },
-  "slave-id" : "9726622d-6c92-40b8-ba31-94d6c795b57a"
-}, {
-  "hostname" : "14",
-  "attributes" : { },
-  "resources" : {
-    "cpus" : {
-      "*" : 20
-    },
-    "mem" : {
-      "*" : 20000
-    },
-    "ports" : {
-      "*" : [ {
-        "begin" : 1,
-        "end" : 100
-      } ]
-    }
-  },
-  "slave-id" : "c7a0a45f-79b2-4ac8-be52-31e88d92991e"
-}, {
-  "hostname" : "15",
-  "attributes" : { },
-  "resources" : {
-    "cpus" : {
-      "*" : 20
-    },
-    "mem" : {
-      "*" : 20000
-    },
-    "ports" : {
-      "*" : [ {
-        "begin" : 1,
-        "end" : 100
-      } ]
-    }
-  },
-  "slave-id" : "130b2191-76ab-4399-bee0-509213dd08cf"
-}, {
-  "hostname" : "16",
-  "attributes" : { },
-  "resources" : {
-    "cpus" : {
-      "*" : 20
-    },
-    "mem" : {
-      "*" : 20000
-    },
-    "ports" : {
-      "*" : [ {
-        "begin" : 1,
-        "end" : 100
-      } ]
-    }
-  },
-  "slave-id" : "967b82aa-2833-4d18-8562-071ec7be50cb"
-}, {
-  "hostname" : "17",
-  "attributes" : { },
-  "resources" : {
-    "cpus" : {
-      "*" : 20
-    },
-    "mem" : {
-      "*" : 20000
-    },
-    "ports" : {
-      "*" : [ {
-        "begin" : 1,
-        "end" : 100
-      } ]
-    }
-  },
-  "slave-id" : "ee1bd949-f848-4a88-882f-d2a416c02a06"
-}, {
-  "hostname" : "18",
-  "attributes" : { },
-  "resources" : {
-    "cpus" : {
-      "*" : 20
-    },
-    "mem" : {
-      "*" : 20000
-    },
-    "ports" : {
-      "*" : [ {
-        "begin" : 1,
-        "end" : 100
-      } ]
-    }
-  },
-  "slave-id" : "7dbc11fd-a710-4436-9728-768faf15adf7"
-}, {
-  "hostname" : "19",
-  "attributes" : { },
-  "resources" : {
-    "cpus" : {
-      "*" : 20
-    },
-    "mem" : {
-      "*" : 20000
-    },
-    "ports" : {
-      "*" : [ {
-        "begin" : 1,
-        "end" : 100
-      } ]
-    }
-  },
-  "slave-id" : "7a6a5518-2ed3-440c-b058-e176089758ba"
-}, {
-  "hostname" : "20",
-  "attributes" : { },
-  "resources" : {
-    "cpus" : {
-      "*" : 20
-    },
-    "mem" : {
-      "*" : 20000
-    },
-    "ports" : {
-      "*" : [ {
-        "begin" : 1,
-        "end" : 100
-      } ]
-    }
-  },
-  "slave-id" : "b1d513e2-cf74-4e84-ab7f-9fae6c5343f6"
-}, {
-  "hostname" : "21",
-  "attributes" : { },
-  "resources" : {
-    "cpus" : {
-      "*" : 20
-    },
-    "mem" : {
-      "*" : 20000
-    },
-    "ports" : {
-      "*" : [ {
-        "begin" : 1,
-        "end" : 100
-      } ]
-    }
-  },
-  "slave-id" : "f0e61839-bdea-4aa8-9122-1901b83aadba"
-}, {
-  "hostname" : "22",
-  "attributes" : { },
-  "resources" : {
-    "cpus" : {
-      "*" : 20
-    },
-    "mem" : {
-      "*" : 20000
-    },
-    "ports" : {
-      "*" : [ {
-        "begin" : 1,
-        "end" : 100
-      } ]
-    }
-  },
-  "slave-id" : "e29ca590-dce7-43bf-846e-fb41907a87b0"
-}, {
-  "hostname" : "23",
-  "attributes" : { },
-  "resources" : {
-    "cpus" : {
-      "*" : 20
-    },
-    "mem" : {
-      "*" : 20000
-    },
-    "ports" : {
-      "*" : [ {
-        "begin" : 1,
-        "end" : 100
-      } ]
-    }
-  },
-  "slave-id" : "45b5dbda-8e32-4d66-be69-962769f97094"
-}, {
-  "hostname" : "24",
-  "attributes" : { },
-  "resources" : {
-    "cpus" : {
-      "*" : 20
-    },
-    "mem" : {
-      "*" : 20000
-    },
-    "ports" : {
-      "*" : [ {
-        "begin" : 1,
-        "end" : 100
-      } ]
-    }
-  },
-  "slave-id" : "5462151a-bfb5-44d4-8ddb-5c79ff11734f"
-}, {
-  "hostname" : "25",
-  "attributes" : { },
-  "resources" : {
-    "cpus" : {
-      "*" : 20
-    },
-    "mem" : {
-      "*" : 20000
-    },
-    "ports" : {
-      "*" : [ {
-        "begin" : 1,
-        "end" : 100
-      } ]
-    }
-  },
-  "slave-id" : "4cb9d1f8-61a4-4d4c-bfdd-4f67ce43a607"
-}, {
-  "hostname" : "26",
-  "attributes" : { },
-  "resources" : {
-    "cpus" : {
-      "*" : 20
-    },
-    "mem" : {
-      "*" : 20000
-    },
-    "ports" : {
-      "*" : [ {
-        "begin" : 1,
-        "end" : 100
-      } ]
-    }
-  },
-  "slave-id" : "d0717fc1-c0ab-4512-a14c-9a27e4ccf493"
-}, {
-  "hostname" : "27",
-  "attributes" : { },
-  "resources" : {
-    "cpus" : {
-      "*" : 20
-    },
-    "mem" : {
-      "*" : 20000
-    },
-    "ports" : {
-      "*" : [ {
-        "begin" : 1,
-        "end" : 100
-      } ]
-    }
-  },
-  "slave-id" : "8367242c-fbf7-4f36-bc56-84634c34686d"
-}, {
-  "hostname" : "28",
-  "attributes" : { },
-  "resources" : {
-    "cpus" : {
-      "*" : 20
-    },
-    "mem" : {
-      "*" : 20000
-    },
-    "ports" : {
-      "*" : [ {
-        "begin" : 1,
-        "end" : 100
-      } ]
-    }
-  },
-  "slave-id" : "23d9e903-336f-4d37-bf25-dbb16718cdca"
-}, {
-  "hostname" : "29",
-  "attributes" : { },
-  "resources" : {
-    "cpus" : {
-      "*" : 20
-    },
-    "mem" : {
-      "*" : 20000
-    },
-    "ports" : {
-      "*" : [ {
-        "begin" : 1,
-        "end" : 100
-      } ]
-    }
-  },
-  "slave-id" : "0a3e319d-628c-44a9-b0e8-489fe57a8c0c"
+  "slave-id" : "67194c23-61d6-4901-87a8-38d84af57f95"
 } ]
