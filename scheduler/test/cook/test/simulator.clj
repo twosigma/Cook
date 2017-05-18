@@ -42,8 +42,6 @@
 ;;; [:submit-time-ms :run-time-ms :job/uuid :job/command :job/user :job/name :job/max-retries
 ;;;  :job/max-runtime :job/priority :job/disable-mea-culpa-retries :job/resource]
 
-;;TODO provide a way of getting utilization from mesos mock
-
 (defn setup-test-curator-framework
   ([]
    (setup-test-curator-framework 2282))
@@ -98,8 +96,7 @@
                               (cache/ttl-cache-factory :ttl 10000)
                               atom))
          get-mesos-utilization# (or (:get-mesos-utilization ~scheduler-config)
-                                    (fn [] 0.9) ; get this from mesos-mock
-                                    )
+                                    (fn [] 0.9))
          zk-prefix# (or (:zk-prefix ~scheduler-config)
                         "/cook")
          offer-incubate-time-ms# (or (:offer-incubate-time-ms ~scheduler-config)
@@ -131,6 +128,37 @@
            (log/info "Shutting down" trigger-service#)
            (async/close! trigger-chan#))))))
 
+(defn generate-task-trace-map
+  [task]
+  (let [job (:job/_instance task)
+        resources (util/job-ent->resources job)]
+    {:job_id  (str (:job/uuid job))
+     :instance_id  (:instance/task-id task)
+     :submit_time_ms  (.getTime (:job/submit-time job))
+     :mesos_start_time_ms  (if (:instance/mesos-start-time task)
+                             (.getTime (:instance/mesos-start-time task))
+                             -1)
+     :start_time_ms  (.getTime (:instance/start-time task))
+     :end_time_ms  (.getTime (or (:instance/end-time task) (tc/to-date (t/now))))
+     :status  (:instance/status task)
+     :hostname  (:instance/hostname task)
+     :slave_id  (:instance/slave-id task)
+     :reason  (or (when (= (:instance/status task) :instance.status/failed)
+                    (:reason/string (:instance/reason task)))
+                  "")
+     :user  (:job/user job)
+     :mem  (or (:mem resources) -1)
+     :cpus  (or (:cpus resources) -1)
+     :job_name  (or (:job/name job) "")
+     :requested_run_time  (->> (:job/label job)
+                               (filter #(= (:label/key %) "JOB-RUNTIME"))
+                               first
+                               :label/value)
+     :requested_status  (->> (:job/label job)
+                             (filter #(= (:label/key %) "JOB-STATUS"))
+                             first
+                             :label/value)}))
+
 (defn dump-jobs-to-csv
   "Given a mesos db, dump a csv with a row per task
 
@@ -156,35 +184,7 @@
   (let [headers [:job_id :instance_id :submit_time_ms :mesos_start_time_ms :start_time_ms
                  :end_time_ms :hostname :slave_id :status :reason :user :mem :cpus :job_name
                  :requested_run_time :requested_status]
-        tasks (for [task task-ents
-                    :let [job (:job/_instance task)
-                          resources (util/job-ent->resources job)]]
-                {:job_id  (str (:job/uuid job))
-                 :instance_id  (:instance/task-id task)
-                 :submit_time_ms  (.getTime (:job/submit-time job))
-                 :mesos_start_time_ms  (if (:instance/mesos-start-time task)
-                                        (.getTime (:instance/mesos-start-time task))
-                                        -1)
-                 :start_time_ms  (.getTime (:instance/start-time task))
-                 :end_time_ms  (.getTime (or (:instance/end-time task) (tc/to-date (t/now))))
-                 :status  (:instance/status task)
-                 :hostname  (:instance/hostname task)
-                 :slave_id  (:instance/slave-id task)
-                 :reason  (or (when (= (:instance/status task) :instance.status/failed)
-                               (:reason/string (:instance/reason task)))
-                             "")
-                 :user  (:job/user job)
-                 :mem  (or (:mem resources) -1)
-                 :cpus  (or (:cpus resources) -1)
-                 :job_name  (or (:job/name job) "")
-                 :requested_run_time  (->> (:job/label job)
-                                          (filter #(= (:label/key %) "JOB-RUNTIME"))
-                                          first
-                                          :label/value)
-                 :requested_status  (->> (:job/label job)
-                                         (filter #(= (:label/key %) "JOB-STATUS"))
-                                         first
-                                         :label/value)})]
+        tasks (map generate-task-trace-map task-ents)]
     (with-open [out-file (io/writer file)]
       (csv/write-csv out-file
                      (concat [(mapv name headers)]
@@ -275,9 +275,9 @@
         complete-trigger-chan (async/chan)
 		ranker-trigger-chan (async/chan)
         matcher-trigger-chan (async/chan)
-        rebalancer-trigger-chan (async/chan) 
+        rebalancer-trigger-chan (async/chan)
         state-atom (atom {})
-        make-mesos-driver-fn (fn [scheduler _];; _ is framework-id
+        make-mesos-driver-fn (fn [scheduler _]
                                (mm/mesos-mock mesos-hosts offer-trigger-chan scheduler
                                               :task->runtime-ms task->runtime-ms
                                               :task->complete-status task->complete-status
@@ -318,7 +318,7 @@
                 rank-complete-chan (async/chan)
                 rebalancer-complete-chan (async/chan)]
             (when-not (sorted-order? (map :submit-time-ms submission-batch))
-              (throw (ex-info "Trace jobs are expected to be sorted by submit-time-ms" 
+              (throw (ex-info "Trace jobs are expected to be sorted by submit-time-ms"
                               {:simulation-time simulation-time
                                :first-100-times (vec (take 100 (map :submit-time-ms submission-batch)))})))
             (log/info "Simulation time: " simulation-time)
@@ -356,7 +356,7 @@
             (org.joda.time.DateTimeUtils/setCurrentMillisFixed (inc (.getTime (tc/to-date (t/now)))))
             (async/>!! complete-trigger-chan flush-complete-chan)
             (async/<!! flush-complete-chan)
-            
+
             ;; Ensure mesos and cook state of running jobs matches
             (poll-until #(= (set (map (comp str :instance/task-id)
                                      (util/get-running-task-ents (d/db mesos-datomic-conn))))
@@ -462,9 +462,9 @@
           cycle-step-ms (or cycle-step-ms (:cycle-step-ms config))
           _ (when-not cycle-step-ms
               (throw (ex-info "Must configure cycle-step-ms on command line or config file")))
-          task-ents (simulate hosts 
-                              (cheshire/parse-stream (clojure.java.io/reader trace-file) true) 
-                              cycle-step-ms 
+          task-ents (simulate hosts
+                              (cheshire/parse-stream (clojure.java.io/reader trace-file) true)
+                              cycle-step-ms
                               config)]
       (println "tasks run: " (count task-ents))
       (dump-jobs-to-csv task-ents out-trace-file)
@@ -509,78 +509,91 @@
                    job-info)]
     job-info))
 
+(defn trace-host
+  [host-name mem cpus]
+  {:hostname (str host-name)
+   :attributes {}
+   :resources {:cpus {"*" cpus}
+               :mem {"*" mem}
+               :ports {"*" [{:begin 1
+                             :end 100}]}}
+   :slave-id (java.util.UUID/randomUUID)})
+
 (defn summary-stats [jobs]
   (->> jobs
        (map util/job-ent->resources)
        (map #(assoc % :count 1))
        (reduce (partial merge-with +))))
 
-(comment
+(defn normalize-trace
+  "Normalizes the trace so that all times are based off the min submit time"
+  [trace]
+  (let [min-submit-time (apply min (map :submit_time_ms trace))]
+    (->> trace
+         (transform [ALL :submit_time_ms] #(- % min-submit-time))
+         (transform [ALL :start_time_ms] #(- % min-submit-time))
+         (transform [ALL :end_time_ms] #(- % min-submit-time)))))
 
-  (def users ["a" "b" "c" "d"])
+(defn trace-diffs
+  [trace-a trace-b]
+  (let [job-trace-fn (fn job-trace-fn [tasks]
+                       {:job-id (:job_id (first tasks))
+                        :submit-time (:submit_time_ms (first tasks))
+                        :start-times (vec (sort (map :start_time_ms tasks)))
+                        :tasks tasks})
+        ks [:job-id :submit-time :start-times]
+        job-trace-a (->> trace-a
+                         (map generate-task-trace-map)
+                         normalize-trace
+                         (group-by :job_id)
+                         (map-vals job-trace-fn)
+                         vals)
+        job-trace-b (->> trace-b
+                         (map generate-task-trace-map)
+                         normalize-trace
+                         (group-by :job_id)
+                         (map-vals job-trace-fn)
+                         vals)
+        joined-trace (group-by :job-id (concat job-trace-a job-trace-b))]
+    (->> joined-trace
+         (remove (comp #(when (= (count %) 2)
+                          (= (select-keys (first %) ks)
+                             (select-keys (second %) ks)))
+                       second)))))
 
-  (def jobs (-> (for [minute (range 10)
-                       sim-i (range (+ (rand-int 1000) 200))]
+(defn traces-equivalent?
+  [trace-a trace-b]
+  (not (seq (trace-diffs trace-a trace-b))))
+
+(deftest test-simulator
+  (let [users ["a" "b" "c" "d"]
+        jobs (-> (for [minute (range 5)
+                       sim-i (range (+ (rand-int 50) 30))]
                    (create-trace-job (+ (rand-int 1200000) 600000) ; 1 to 20 minutes
                                      (+ (* 1000 60 minute) (+ (rand-int 2000) -1000))
                                      :user (first (shuffle users))
                                      :command "sleep 10" ;; Doesn't matter
                                      :custom-executor? false
-                                     :memory (+ (rand-int 10000) 24000)
+                                     :memory (+ (rand-int 1000) 2000)
                                      :ncpus (+ (rand-int 3) 1)))
                  (conj (create-trace-job 10000
-                                         (-> 2 t/hours t/in-millis)
+                                         (-> 1 t/hours t/in-millis)
                                          :user "e"
                                          :command "sleep 10"
                                          :custom-executor? false
                                          :memory 10000
-                                         :ncpus 3
-                                         ))
-                 ))
-
-  (for [_ (range 20)]
-    (create-trace-job 10000
-                      0
-                      :user "a"
-                      :command "sleep 10"
-                      :custom-executor? false
-                      :memory 2000.0
-                      :ncpus 2.0))
-  (def jobs (concat (for [_ (range 20)]
-                      (create-trace-job 10000
-                                        0
-                                        :user "a"
-                                        :command "sleep 10"
-                                        :memory 2000.0
-                                        :ncpus 2.0))
-                    (for [_ (range 5)]
-                      (create-trace-job 1000
-                                        5000
-                                        :user "b"
-                                        :command "eco 1000"
-                                        :memory 2000.0
-                                        :ncpus 2.0))))
-
-
-  (spit "bin-packing-trace.json" (cheshire/generate-string jobs {:pretty true}))
-
-  (def job-trace (cheshire/parse-stream (clojure.java.io/reader "simulator_files/example-trace.json")))
-  (spit "simulator_files/example-trace.json" (cheshire/generate-string (sort-by #(get % "submit-time-ms") job-trace) {:pretty true}))
-
-  (defn trace-host
-    [host-name mem cpus]
-    {:hostname (str host-name)
-     :attributes {}
-     :resources {:cpus {"*" cpus}
-                 :mem {"*" mem}
-                 :ports {"*" [{:begin 1
-                               :end 100}]}}
-     :slave-id (java.util.UUID/randomUUID)})
-
-  (def hosts (map #(trace-host % 240000 20) (range 30)))
-
-
-
-  (spit "bin-packing-hosts.json" (cheshire/generate-string hosts {:pretty true}))
-
-  )
+                                         :ncpus 3)))
+        jobs (sort-by :submit-time-ms jobs)
+        hosts (for [i (range 10)]
+                (trace-host i 20000.0 20.0))
+        cycle-step-ms 30000
+        config {:shares [{:user "default" :mem 2000.0 :cpus 2.0 :gpus 1.0}]
+               :scheduler-config {:rebalancer-config {:max-preemption 1.0}
+                                  :fenzo-config {:fenzo-max-jobs-considered 200}}}
+        out-trace-a (simulate hosts jobs cycle-step-ms config)
+        out-trace-b (simulate hosts jobs cycle-step-ms config)]
+    (is (> (count out-trace-a) 0))
+    (is (> (count out-trace-b) 0))
+    (is (traces-equivalent? out-trace-a out-trace-b)
+        {:diffs (sort-by (comp :submit-time first second)
+                         (trace-diffs out-trace-a out-trace-b))})))

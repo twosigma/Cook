@@ -590,7 +590,9 @@
   (for [{:keys [tasks leases]} matches
         :let [offers (mapv :offer leases)
               slave-id (-> offers first :slave-id :value)]
-        ^TaskAssignmentResult task tasks
+        ^TaskAssignmentResult task (->> tasks
+                                        ;; sort-by makes match transaction deterministic
+                                        (sort-by (comp :db/id :job #(.getRequest %))))
         :let [request (.getRequest task)
               task-id (:task-id request)
               job-id (get-in request [:job :db/id])]]
@@ -763,6 +765,9 @@
                       user->usage-future (future (generate-user-usage-map (d/db conn)))
                       ;; Try to clear the channel
                       offers (->> (util/read-chan offers-chan chan-length)
+                                  ((fn [offer-lists]
+                                     (counters/dec! offer-chan-depth (count offer-lists))
+                                     offer-lists))
                                   (reduce into []))
                       _ (doseq [offer offers
                                 :let [slave-id (-> offer :slave-id :value)
