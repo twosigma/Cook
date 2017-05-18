@@ -46,9 +46,9 @@
             [metrics.timers :as timers]
             [plumbing.core :as pc])
   (import [com.netflix.fenzo ConstraintEvaluator ConstraintEvaluator$Result
-           TaskAssignmentResult TaskRequest TaskScheduler TaskScheduler$Builder
-           VMTaskFitnessCalculator VirtualMachineLease VirtualMachineLease$Range
-           VirtualMachineCurrentState]
+                             TaskAssignmentResult TaskRequest TaskScheduler TaskScheduler$Builder
+                             VMTaskFitnessCalculator VirtualMachineLease VirtualMachineLease$Range
+                             VirtualMachineCurrentState]
           [com.netflix.fenzo.functions Action1 Func1]
           java.util.Date
           java.util.concurrent.TimeUnit))
@@ -382,7 +382,7 @@
                                      (some (fn gpu-task? [req]
                                              @(job-needs-gpus? (:job req)))
                                            (into (vec (.getRunningTasks target-vm))
-                                                   (mapv #(.getRequest %) (.getTasksCurrentlyAssigned target-vm))))))]
+                                                 (mapv #(.getRequest %) (.getTasksCurrentlyAssigned target-vm))))))]
           (ConstraintEvaluator$Result.
             (if @needs-gpus?
               has-gpus?
@@ -416,9 +416,9 @@
                assigned-resources (atom nil)
                guuid->considerable-cotask-ids (constantly #{})}}]
   (let [constraints (into (constraints/make-fenzo-job-constraints job)
-                            (remove nil?
-                              (mapv #(constraints/make-fenzo-group-constraint
-                                       % (guuid->considerable-cotask-ids (:group/uuid %))) (:group/_job job))))
+                          (remove nil?
+                                  (mapv #(constraints/make-fenzo-group-constraint
+                                           % (guuid->considerable-cotask-ids (:group/uuid %))) (:group/_job job))))
         needs-gpus? (constraints/job-needs-gpus? job)
         scalar-requests (reduce (fn [result resource]
                                   (if-let [value (:resource/amount resource)]
@@ -1098,13 +1098,13 @@
                                                category->pending-job-ents)
         category->running-task-ents (group-by (comp util/categorize-job :job/_instance)
                                               (util/get-running-task-ents unfiltered-db))
-        user->dru-divisors (share/create-user->share-fn unfiltered-db)]
-    (->> {:normal sort-normal-jobs-by-dru, :gpu sort-gpu-jobs-by-dru}
-         (map (fn sort-jobs-by-dru-helper [[category sort-jobs-by-dru]]
-                (let [pending-tasks (category->pending-task-ents category)
-                      running-tasks (category->running-task-ents category)]
-                  [category (sort-jobs-by-dru pending-tasks running-tasks user->dru-divisors)])))
-         (into {}))))
+        user->dru-divisors (share/create-user->share-fn unfiltered-db)
+        category->sort-jobs-by-dru-fn {:normal sort-normal-jobs-by-dru, :gpu sort-gpu-jobs-by-dru}]
+    (letfn [(sort-jobs-by-dru-helper [[category sort-jobs-by-dru]]
+             (let [pending-tasks (category->pending-task-ents category)
+                   running-tasks (category->running-task-ents category)]
+               [category (sort-jobs-by-dru pending-tasks running-tasks user->dru-divisors)]))]
+      (into {} (map sort-jobs-by-dru-helper category->sort-jobs-by-dru-fn)))))
 
 (timers/deftimer [cook-mesos scheduler filter-offensive-jobs-duration])
 
