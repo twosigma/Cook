@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
  
+## [1.3.1] - 2017-05-18
+### Changed
+- Make DRU order deterministic, from @wyegelwel
+- Change default cycle time for checking max-runtime exceeded to 1m, from @wyegelwel
+- Remove concat usage, from @pschorf
 ## [1.3.0] - 2017-05-05
 ### Added
 - /unscheduled_jobs API endpoint, from @mforsyth
