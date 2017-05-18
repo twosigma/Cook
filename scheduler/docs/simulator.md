@@ -96,7 +96,7 @@ See an example config file in Cook/scheduler/simulator_files/example-config.edn
 The output of the simulator is a csv of the tasks run. An example output can be found in Cook/scheduler/simulator_files/example-out-trace.csv
 
 
-## How to analyze the output
+## How to analyze the output (coming soon!)
 
 It is important to note that two simulations should only be compared if all inputs were the same (what is being compared is code changes). 
 
