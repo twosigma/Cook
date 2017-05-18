@@ -62,8 +62,8 @@
                                           :resource/amount (double memory)}]
                           :job/state :job.state/waiting
                           :job/submit-time submit-time
-                          :job/uuid uuid
-                          :job/user user}
+                          :job/user user
+                          :job/uuid uuid}
                      retries 5
                      base-wait 500 ; millis
                      opts {:retry-schedule (cook.util/rand-exponential-seq retries base-wait)}]]

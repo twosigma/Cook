@@ -481,8 +481,8 @@
                                      :resource/amount mem}]
                      :job/state :job.state/waiting
                      :job/submit-time (Date.)
-                     :job/uuid uuid
-                     :job/user user}
+                     :job/user user
+                     :job/uuid uuid}
                     application (assoc :job/application
                                        {:application/name (:name application)
                                         :application/version (:version application)})
