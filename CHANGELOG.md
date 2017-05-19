@@ -19,6 +19,7 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/) and this p
 - Added /failure_reasons API endpoint, from @mforsyth
 - Added expected-runtime to job description, from @dposada
 - Added /settings API endpoint, from @dposada
+- Added group host placement constraints, from @DiegoAlbertoTorres
 ### Changed
 - Require an explicit reason when changing shares or quotas (from @mforsyth).  This intentionally breaks backwards compatibility.
 - Optimized matching code to speed schedule time @wyegelwel
