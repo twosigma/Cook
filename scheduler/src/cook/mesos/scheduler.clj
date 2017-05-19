@@ -1046,40 +1046,37 @@
              ;; Return all 0's for a user who does NOT have any running job.
              (zipmap (util/get-all-resource-types db) (repeat 0.0)))})))
 
-(timers/deftimer [cook-mesos scheduler sort-jobs-hierarchy-duration])
-
-(defn sort-normal-jobs-by-dru
-  "Return a list of normal job entities ordered by dru"
-  [pending-task-ents running-task-ents user->dru-divisors]
-  (let [tasks (into running-task-ents pending-task-ents)
+(defn- sort-jobs-by-dru-helper
+  "Return a list of job entities ordered by the provided sort function"
+  [pending-task-ents running-task-ents user->dru-divisors sort-task-scored-task-pairs sort-jobs-duration]
+  (let [tasks (into (vec running-task-ents) pending-task-ents)
         task-comparator (util/same-user-task-comparator tasks)
+        pending-task-ents-set (into #{} pending-task-ents)
         jobs (timers/time!
-               sort-jobs-hierarchy-duration
+               sort-jobs-duration
                (->> tasks
                     (group-by util/task-ent->user)
-                    (pc/map-vals (fn [task-ents]
-                                   (into (sorted-set-by task-comparator) task-ents)))
-                    (dru/sorted-task-scored-task-pairs user->dru-divisors)
-                    (filter (fn [[task scored-task]]
-                              (contains? pending-task-ents task)))
-                    (map (fn [[task scored-task]]
-                           (:job/_instance task)))))]
+                    (pc/map-vals (fn [task-ents] (into (sorted-set-by task-comparator) task-ents)))
+                    (sort-task-scored-task-pairs user->dru-divisors)
+                    (filter (fn [[task _]] (contains? pending-task-ents-set task)))
+                    (map (fn [[task _]] (:job/_instance task)))))]
     jobs))
+
+(timers/deftimer [cook-mesos scheduler sort-jobs-hierarchy-duration])
+
+(defn- sort-normal-jobs-by-dru
+  "Return a list of normal job entities ordered by dru"
+  [pending-task-ents running-task-ents user->dru-divisors]
+  (sort-jobs-by-dru-helper pending-task-ents running-task-ents user->dru-divisors
+                           dru/sorted-task-scored-task-pairs sort-jobs-hierarchy-duration))
 
 (timers/deftimer [cook-mesos scheduler sort-gpu-jobs-hierarchy-duration])
 
-(defn sort-gpu-jobs-by-dru
+(defn- sort-gpu-jobs-by-dru
   "Return a list of gpu job entities ordered by dru"
   [pending-task-ents running-task-ents user->dru-divisors]
-  (let [jobs (timers/time!
-               sort-gpu-jobs-hierarchy-duration
-               (->> (into (vec running-task-ents) pending-task-ents)
-                    (group-by util/task-ent->user)
-                    (pc/map-vals (fn [task-ents] (into (sorted-set-by (util/same-user-task-comparator)) task-ents)))
-                    (dru/sorted-task-cumulative-gpu-score-pairs user->dru-divisors)
-                    (filter (fn [[task _]] (contains? pending-task-ents task)))
-                    (map (fn [[task _]] (:job/_instance task)))))]
-    jobs))
+  (sort-jobs-by-dru-helper pending-task-ents running-task-ents user->dru-divisors
+                           dru/sorted-task-cumulative-gpu-score-pairs sort-gpu-jobs-hierarchy-duration))
 
 (defn sort-jobs-by-dru
   "Returns a map from job category to a list of job entities, ordered by dru"
@@ -1091,10 +1088,7 @@
   ;; to only those jobs that have been committed.
   (let [category->pending-job-ents (group-by util/categorize-job (util/get-pending-job-ents unfiltered-db))
         category->pending-task-ents (reduce-kv (fn [m category pending-job-ents]
-                                                 (assoc m category
-                                                          (into #{}
-                                                                (map util/create-task-ent)
-                                                                pending-job-ents)))
+                                                 (assoc m category (map util/create-task-ent pending-job-ents)))
                                                {}
                                                category->pending-job-ents)
         category->running-task-ents (group-by (comp util/categorize-job :job/_instance)
