@@ -1,10 +1,11 @@
-import importlib
-import os
+import logging
 import uuid
 
-import logging
+import importlib
+import os
 
 import requests
+from functools import reduce
 from retrying import retry
 
 logger = logging.getLogger(__name__)
@@ -18,6 +19,28 @@ def get_in(dct, *keys):
         except KeyError:
             return None
     return dct
+
+
+def dict_as_string(dct):
+    def value_to_string(value):
+        if not value:
+            return str(value)
+        elif isinstance(value, str):
+            return repr(value)
+        elif isinstance(value, dict):
+            return dict_as_string(value)
+        elif isinstance(value, list):
+            return reduce(lambda acc, item: acc + value_to_string(item) + ', ', value, '[')[:-2] + ']'
+        else:
+            return str(value)
+    if dct and isinstance(dct, dict):
+        return reduce(lambda acc, item: acc + value_to_string(item[0]) + ': ' + value_to_string(item[1]) + ', ',
+                      sorted(dct.items()),
+                      '{')[:-2] + '}'
+    elif not dct:
+        return str(dct)
+    else:
+        return str(dct) + ' [type=' + str(type(dct)) + ']'
 
 
 def is_valid_uuid(uuid_to_test, version=4):
@@ -81,13 +104,13 @@ def settings(cook_url):
 
 def minimal_job(**kwargs):
     job = {
-        'max_retries': 1,
-        'mem': 10,
-        'cpus': 1,
-        'uuid': str(uuid.uuid4()),
         'command': 'echo hello',
+        'cpus': 1,
+        'max_retries': 1,
+        'mem': 256,
         'name': 'echo',
-        'priority': 1
+        'priority': 1,
+        'uuid': str(uuid.uuid4())
     }
     job.update(kwargs)
     return job
@@ -100,18 +123,24 @@ def submit_job(cook_url, **kwargs):
     return job_spec['uuid'], resp
 
 
+def load_job(cook_url, job_id):
+    response = session.get('%s/rawscheduler?job=%s' % (cook_url, job_id))
+    return response.json()[0]
+
+
 def wait_for_job(cook_url, job_id, status, max_delay=120000):
     @retry(stop_max_delay=max_delay, wait_fixed=2000)
     def wait_for_job_inner():
-        job = session.get('%s/rawscheduler?job=%s' % (cook_url, job_id))
-        assert 200 == job.status_code
-        job = job.json()[0]
+        response = session.get('%s/rawscheduler?job=%s' % (cook_url, job_id))
+        assert 200 == response.status_code
+        job = response.json()[0]
         if not job['status'] == status:
-            error_msg = 'Job %s had status %s - expected %s' % (job_id, job['status'], status)
+            error_msg = 'Job {} had status {} - expected {}. Details: {}'.format(
+                job_id, job['status'], status, dict_as_string(job))
             logger.info(error_msg)
             raise RuntimeError(error_msg)
         else:
-            logger.info('Job %s has status %s - %s', job_id, status, job)
+            logger.info('Job {} has status {}'.format(job_id, status))
             return job
 
     try:
