@@ -59,6 +59,13 @@
                   "u4" {:cpus 3.0 :mem Double/MAX_VALUE :gpus 1.0}}
                  (share/get-shares db ["u1" "u2" "u3" "u4"])))))
 
+      (testing "create-user->share-fn"
+        (let [user->share-fn (share/create-user->share-fn db)]
+          (is (={:cpus 5.0 :mem 10.0 :gpus 1.0} (user->share-fn "u1")))
+          (is (= {:cpus 5.0 :mem 10.0 :gpus 1.0} (user->share-fn "u2")))
+          (is (= {:cpus 10.0 :mem 20.0 :gpus 4.0} (user->share-fn "u3")))
+          (is (= {:cpus 1.0 :mem 2.0 :gpus 1.0} (user->share-fn "u4")))))
+
       (testing "share history"
         (let [db-after (d/db conn)
               share-history-u1 (share/share-history db-after "u1")

@@ -150,7 +150,7 @@
                               [?e :share/resource ?r]
                               [?r :resource/type ?type]]
                             (d/db conn) user type)
-                     ffirst)
+                         ffirst)
             txn (if resource
                   [[:db/add resource :resource/amount amount]]
                   [{:db/id (d/tempid :db.part/user)
@@ -175,13 +175,11 @@
                                  :where
                                  [?q :share/user ?user]]
                                db)
-          user->share-cache (->> all-share-users
-                                 (map (fn [user]
-                                        [user (get-share db user)]))
-                                 ;; In case default-user doesn't have an explicit share
-                                 (cons [default-user (get-share db default-user)])
-                                 (into {}))]
+          default-user-share (get-share db default-user)
+          user->share-cache (-> (get-shares db all-share-users)
+                                ;; In case default-user doesn't have an explicit share
+                                (assoc default-user default-user-share))]
       (fn user->share
         [user]
         (or (get user->share-cache user)
-            (get user->share-cache default-user))))))
+            default-user-share)))))
