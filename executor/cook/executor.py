@@ -277,7 +277,7 @@ def manage_task(driver, task, stop_signal, completed_signal, config, stdout_name
             progress_complete_event.wait(1)
 
         logging.info('Process completed with exit code {}'.format(exit_code))
-        exit_message = json.dumps({'exit-code': exit_code, 'task-id': task_id})
+        exit_message = json.dumps({'exit-code': abs(exit_code), 'task-id': task_id})
         send_message(driver, exit_message, config.max_message_length)
 
         # send the latest progress state if available
