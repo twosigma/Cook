@@ -90,6 +90,7 @@ final public class Job {
         private Long _expectedRuntime;
         private Status _status;
         private Integer _priority;
+        private Boolean _isMeaCulpaRetriesDisabled;
         private List<Instance> _instances = Collections.synchronizedList(new ArrayList<Instance>());
         private List<FetchableURI> _uris = new ArrayList<>();
         private Map<String,String> _env = new HashMap<>();
@@ -130,8 +131,12 @@ final public class Job {
             if (_name == null) {
                 _name = "cookjob";
             }
+            if (_isMeaCulpaRetriesDisabled == null) {
+                _isMeaCulpaRetriesDisabled = false;
+            }
             return new Job(_uuid, _name, _command, _memory, _cpus, _retries, _maxRuntime, _expectedRuntime, _status,
-                    _priority, _instances, _env, _uris, _container, _labels, _groups, _application);
+                    _priority, _isMeaCulpaRetriesDisabled, _instances, _env, _uris, _container, _labels, _groups,
+                    _application);
         }
 
         /**
@@ -150,6 +155,11 @@ final public class Job {
             setUris(job.getUris());
             setContainer(job.getContainer());
             setLabels(job.getLabels());
+            if (job.isMeaCulpaRetriesDisabled()) {
+                disableMeaCulpaRetries();
+            } else {
+                enableMeaCulpaRetries();
+            }
             return this;
         }
 
@@ -358,6 +368,32 @@ final public class Job {
         }
 
         /**
+         * Disable the "mea-culpa" retries.
+         *
+         * @see <a href ="https://github.com/twosigma/Cook/blob/master/scheduler/docs/faq.md#how-can-i-configure-my-job-to-run-exactly-once">
+         *      how-can-i-configure-my-job-to-run-exactly-once
+         *      </a>
+         * @return this builder.
+         */
+        public Builder disableMeaCulpaRetries() {
+            _isMeaCulpaRetriesDisabled = true;
+            return this;
+        }
+
+        /**
+         * Enable the "mea-culpa" retries.
+         *
+         * @see <a href ="https://github.com/twosigma/Cook/blob/master/scheduler/docs/faq.md#how-can-i-configure-my-job-to-run-exactly-once">
+         *      how-can-i-configure-my-job-to-run-exactly-once
+         *      </a>
+         * @return this builder.
+         */
+        public Builder enableMeaCulpaRetries() {
+            _isMeaCulpaRetriesDisabled = false;
+            return this;
+        }
+
+        /**
          * Set the maximum runtime in milliseconds of the job expected to build.
          *
          * @param runtime {@link Long} specifies the maximun runtime in milliseconds for a job.
@@ -460,6 +496,7 @@ final public class Job {
     final private Long _expectedRuntime;
     final private Integer _priority;
     final private Status _status;
+    final private Boolean _isMeaCulpaRetriesDisabled;
     final private List<Instance> _instances;
     final private Map<String, String> _env;
     final private List<FetchableURI> _uris;
@@ -471,9 +508,9 @@ final public class Job {
     final private Application _application;
 
     private Job(UUID uuid, String name, String command, Double memory, Double cpus, Integer retries, Long maxRuntime,
-                Long expectedRuntime, Status status, Integer priority, List<Instance> instances, Map<String, String> env,
-                List<FetchableURI> uris, JSONObject container, Map<String, String> labels, List<UUID> groups,
-                Application application) {
+                Long expectedRuntime, Status status, Integer priority, Boolean isMeaCulpaRetriesDisabled,
+                List<Instance> instances, Map<String, String> env, List<FetchableURI> uris, JSONObject container,
+                Map<String, String> labels, List<UUID> groups, Application application) {
         _uuid = uuid;
         _name = name;
         _command = command;
@@ -484,6 +521,7 @@ final public class Job {
         _expectedRuntime = expectedRuntime;
         _status = status;
         _priority = priority;
+        _isMeaCulpaRetriesDisabled = isMeaCulpaRetriesDisabled;
         _instances = ImmutableList.copyOf(instances);
         _env = ImmutableMap.copyOf(env);
         _uris = ImmutableList.copyOf(uris);
@@ -611,6 +649,16 @@ final public class Job {
     }
 
     /**
+     * @return whether "mea-culpa" retries is disabled.
+     * @see <a href ="https://github.com/twosigma/Cook/blob/master/scheduler/docs/faq.md#how-can-i-configure-my-job-to-run-exactly-once">
+     *      how-can-i-configure-my-job-to-run-exactly-once
+     *      </a>
+     */
+    public Boolean isMeaCulpaRetriesDisabled() {
+        return _isMeaCulpaRetriesDisabled;
+    }
+
+    /**
      * @return the job instances.
      */
     public List<Instance> getInstances() {
@@ -685,6 +733,7 @@ final public class Job {
         object.put("cpus", job.getCpus());
         object.put("priority", job.getPriority());
         object.put("max_retries", job.getRetries());
+        object.put("disable_mea_culpa_retries", job.isMeaCulpaRetriesDisabled());
         object.put("max_runtime", job.getMaxRuntime());
         object.put("env", env);
         object.put("labels", labels);
@@ -795,6 +844,11 @@ final public class Job {
             jobBuilder.setCommand(json.getString("command"));
             jobBuilder.setPriority(json.getInt("priority"));
             jobBuilder.setStatus(Status.fromString(json.getString("status")));
+            if (json.getBoolean("disable_mea_culpa_retries")) {
+                jobBuilder.disableMeaCulpaRetries();
+            } else {
+                jobBuilder.enableMeaCulpaRetries();
+            }
             if (json.has("name")) {
                 jobBuilder.setName(json.getString("name"));
             }
@@ -866,7 +920,8 @@ final public class Job {
         stringBuilder
             .append("Job [_uuid=" + _uuid + ", _name=" + _name + ", _command=" + _command + ", _memory=" + _memory
                     + ", _cpus=" + _cpus + ", _retries=" + _retries + ", _maxRuntime=" + _maxRuntime
-                    + ", _status=" + _status + ", _priority=" + _priority + "]");
+                    + ", _status=" + _status + ", _priority=" + _priority
+                    + ", _isMeaCulpaRetriesDisabled" + _isMeaCulpaRetriesDisabled + "]");
         stringBuilder.append('\n');
         for (Instance instance : getInstances()) {
             stringBuilder.append(instance.toString()).append('\n');

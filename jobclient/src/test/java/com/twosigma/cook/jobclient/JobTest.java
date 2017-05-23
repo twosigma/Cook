@@ -48,6 +48,7 @@ public class JobTest {
         jobBuilder.addEnv("FOO", "test");
         jobBuilder.addLabel("foobar", "frobnicator");
         jobBuilder.setMaxRuntime(1000L);
+        jobBuilder.disableMeaCulpaRetries();
         jobBuilder.addUri(new FetchableURI.Builder().setValue("http://example.com/my_resource").build());
         jobBuilder.setApplication(new Application("baz-app", "1.2.3"));
         jobBuilder.setExpectedRuntime(500L);
@@ -62,6 +63,7 @@ public class JobTest {
                 jsonJob.getJSONObject("application").toString(),
                 new JSONObject().put("name", "baz-app").put("version", "1.2.3").toString());
         Assert.assertEquals(500L, jsonJob.getLong("expected_runtime"));
+        Assert.assertEquals(true, jsonJob.getBoolean("disable_mea_culpa_retries"));
     }
 
     @Test
