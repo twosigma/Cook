@@ -131,6 +131,9 @@ final public class Job {
             if (_name == null) {
                 _name = "cookjob";
             }
+            if (_isMeaCulpaRetriesDisabled == null) {
+                _isMeaCulpaRetriesDisabled = false;
+            }
             return new Job(_uuid, _name, _command, _memory, _cpus, _retries, _maxRuntime, _expectedRuntime, _status,
                     _priority, _isMeaCulpaRetriesDisabled, _instances, _env, _uris, _container, _labels, _groups,
                     _application);
