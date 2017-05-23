@@ -844,7 +844,7 @@ final public class Job {
             jobBuilder.setCommand(json.getString("command"));
             jobBuilder.setPriority(json.getInt("priority"));
             jobBuilder.setStatus(Status.fromString(json.getString("status")));
-            if (json.getBoolean("disable_mea_culpa_retries")) {
+            if (json.has("disable_mea_culpa_retries") && json.getBoolean("disable_mea_culpa_retries")) {
                 jobBuilder.disableMeaCulpaRetries();
             } else {
                 jobBuilder.enableMeaCulpaRetries();
