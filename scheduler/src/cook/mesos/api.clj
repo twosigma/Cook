@@ -579,8 +579,9 @@
    objects, or else throws an exception"
   [db user task-constraints gpu-enabled? new-group-uuids
    {:keys [cpus mem gpus uuid command priority max-retries max-runtime expected-runtime name
-           uris ports env labels container group application]
-    :or {group nil}
+           uris ports env labels container group application disable-mea-culpa-retries]
+    :or {group nil
+         disable-mea-culpa-retries false}
     :as job}
    & {:keys [commit-latch-id override-group-immutability?]
       :or {commit-latch-id nil
@@ -596,7 +597,8 @@
                   :max-runtime (or max-runtime Long/MAX_VALUE)
                   :ports (or ports 0)
                   :cpus (double cpus)
-                  :mem (double mem)}
+                  :mem (double mem)
+                  :disable-mea-culpa-retries disable-mea-culpa-retries}
                  (when gpus
                    {:gpus (int gpus)})
                  (when env
@@ -752,6 +754,7 @@
                  :env (util/job-ent->env job)
                  :labels (util/job-ent->label job)
                  :ports (:job/ports job 0)
+                 :disable_mea_culpa_retries (:job/disable-mea-culpa-retries job)
                  :instances
                  (map (fn [instance]
                         (let [hostname (:instance/hostname instance)

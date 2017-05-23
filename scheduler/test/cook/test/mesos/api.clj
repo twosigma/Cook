@@ -1032,7 +1032,9 @@
           ; api/fetch-job-map. Note that we don't include the submit_time field here, so assertions below
           ; will have to dissoc it.
           [{:keys [mem max-retries max-runtime expected-runtime name gpus
-                   command ports priority uuid user cpus application]}
+                   command ports priority uuid user cpus application
+                   disable-mea-culpa-retries]
+            :or {disable-mea-culpa-retries false}}
            fid]
           (cond-> {;; Fields we will fill in from the provided args:
                    :command command
@@ -1054,7 +1056,8 @@
                    :retries_remaining 1
                    :state "waiting"
                    :status "waiting"
-                   :uris nil}
+                   :uris nil
+                   :disable_mea_culpa_retries disable-mea-culpa-retries}
                   ;; Only assoc these fields if the job specifies one
                   application (assoc :application application)
                   expected-runtime (assoc :expected-runtime expected-runtime)))]
@@ -1083,6 +1086,15 @@
       (testing "should work when the job specifies the expected runtime"
         (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
               {:keys [uuid] :as job} (assoc (minimal-job) :expected-runtime 1)
+              fid #mesomatic.types.FrameworkID{:value "fid"}]
+          (is (= {::api/results (str "submitted jobs " uuid)}
+                 (api/create-jobs! conn {::api/jobs [job]})))
+          (is (= (expected-job-map job fid)
+                 (dissoc (api/fetch-job-map (db conn) fid uuid) :submit_time)))))
+
+      (testing "should work when the job specifies disable-mea-culpa-retries"
+        (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
+              {:keys [uuid] :as job} (assoc (minimal-job) :disable-mea-culpa-retries true)
               fid #mesomatic.types.FrameworkID{:value "fid"}]
           (is (= {::api/results (str "submitted jobs " uuid)}
                  (api/create-jobs! conn {::api/jobs [job]})))

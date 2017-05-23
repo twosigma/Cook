@@ -29,6 +29,12 @@ class CookTest(unittest.TestCase):
         job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
         self.assertEqual('success', job['instances'][0]['status'])
 
+    def test_disable_mea_culpa(self):
+        job_uuid, resp = util.submit_job(self.cook_url, disable_mea_culpa_retries=True)
+        self.assertEqual(201, resp.status_code)
+        job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
+        self.assertEqual(True, job['disable_mea_culpa_retries'])
+
     def test_failing_submit(self):
         job_uuid, resp = util.submit_job(self.cook_url, command='exit 1')
         self.assertEqual(201, resp.status_code)
