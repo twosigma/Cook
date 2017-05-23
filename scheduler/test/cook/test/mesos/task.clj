@@ -5,6 +5,20 @@
             [cook.mesos.task :as task]
             [mesomatic.types :as mtypes]))
 
+(deftest test-combine-like-resources
+  (let [one-range[{:type :value-ranges :ranges [{:begin 100 :end 200}]}]
+        two-ranges [{:type :value-ranges :ranges [{:begin 100 :end 200}]}
+                    {:type :value-ranges :ranges [{:begin 300 :end 400}]}]
+        many-ranges [{:type :value-ranges :ranges [{:begin 100 :end 200}]}
+                     {:type :value-ranges :ranges [{:begin 300 :end 400}
+                                                   {:begin 500 :end 600}]}]]
+    (is (= (task/combine-like-resources one-range)
+           [{:begin 100 :end 200}]))
+    (is (= (task/combine-like-resources two-ranges)
+           [{:begin 100 :end 200} {:begin 300 :end 400}]))
+    (is (= (task/combine-like-resources many-ranges)
+           [{:begin 100 :end 200} {:begin 300 :end 400} {:begin 500 :end 600}]))))
+
 (deftest test-resources-by-role
   (let [
         offers [{:resources [{:name "mem", :type :value-scalar, :scalar 100.0, :role "cook"}
