@@ -1039,7 +1039,7 @@
           (cond-> {;; Fields we will fill in from the provided args:
                    :command command
                    :cpus cpus
-                   :framework_id fid
+                   :framework_id (str fid)
                    :gpus (or gpus 0)
                    :max_retries max-retries
                    :max_runtime max-runtime
@@ -1048,7 +1048,7 @@
                    :ports (or ports 0)
                    :priority priority
                    :user user
-                   :uuid (str uuid)
+                   :uuid uuid
                    ;; Fields we will simply hardcode for this test:
                    :env {}
                    :instances ()
@@ -1069,24 +1069,22 @@
               fid #mesomatic.types.FrameworkID{:value "fid"}
               job-ent {:db/id (d/tempid :db.part/user)
                        :job/uuid uuid
-                       :job/command "ls"
-                       :job/name ""
+                       :job/command (:command job)
+                       :job/name (:name job)
                        :job/state :job.state/waiting
-                       :job/priority 0
-                       :job/max-retries 1
-                       :job/max-runtime 1
-                       :job/user "user"
+                       :job/priority (:priority job)
+                       :job/max-retries (:max-retries job)
+                       :job/max-runtime (:max-runtime job)
+                       :job/user (:user job)
                        :job/resource [{:resource/type :resource.type/cpus
-                                       :resource/amount 0.1}
+                                       :resource/amount (:cpus job)}
                                       {:resource/type :resource.type/mem
-                                       :resource/amount 128.}]}
+                                       :resource/amount (:mem job)}]}
               _ @(d/transact conn [job-ent])
               job-resp (api/fetch-job-map (db conn) fid uuid)]
           (is (= (expected-job-map job fid)
                  (dissoc job-resp :submit_time)))
-          (s/validate api/JobResponse (assoc job-resp
-                                             :framework_id (str (:framework_id job-resp))
-                                             :uuid (UUID/fromString (:uuid job-resp))))))
+          (s/validate api/JobResponse job-resp)))
 
       (testing "should work with a minimal job"
         (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")

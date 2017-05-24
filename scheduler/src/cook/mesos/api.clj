@@ -729,7 +729,7 @@
         application (:job/application job)
         expected-runtime (:job/expected-runtime job)
         job-map {:command (:job/command job)
-                 :uuid (str (:job/uuid job))
+                 :uuid (:job/uuid job)
                  :name (:job/name job "cookjob")
                  :priority (:job/priority job util/default-job-priority)
                  :submit_time (when (:job/submit-time job) ; due to a bug, submit time may not exist for some jobs
@@ -741,7 +741,7 @@
                  :max_retries (:job/max-retries job) ; consistent with input
                  :retries_remaining (- (:job/max-retries job) (util/job-ent->attempts-consumed db job))
                  :max_runtime (:job/max-runtime job Long/MAX_VALUE) ; consistent with input
-                 :framework_id fid
+                 :framework_id (str fid)
                  :status (name (:job/state job))
                  :state (case (:job/state job)
                           :job.state/waiting "waiting"
