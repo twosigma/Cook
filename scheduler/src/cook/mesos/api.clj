@@ -754,7 +754,7 @@
                  :env (util/job-ent->env job)
                  :labels (util/job-ent->label job)
                  :ports (:job/ports job 0)
-                 :disable_mea_culpa_retries (:job/disable-mea-culpa-retries job)
+                 :disable_mea_culpa_retries (:job/disable-mea-culpa-retries job false)
                  :instances
                  (map (fn [instance]
                         (let [hostname (:instance/hostname instance)
