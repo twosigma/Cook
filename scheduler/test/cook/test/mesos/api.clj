@@ -1063,6 +1063,30 @@
                   expected-runtime (assoc :expected-runtime expected-runtime)))]
 
     (testing "Job creation"
+      (testing "should work with a minimal job manually inserted"
+        (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
+              {:keys [uuid] :as job} (minimal-job)
+              fid #mesomatic.types.FrameworkID{:value "fid"}
+              job-ent {:db/id (d/tempid :db.part/user)
+                       :job/uuid uuid
+                       :job/command "ls"
+                       :job/name ""
+                       :job/state :job.state/waiting
+                       :job/priority 0
+                       :job/max-retries 1
+                       :job/max-runtime 1
+                       :job/user "user"
+                       :job/resource [{:resource/type :resource.type/cpus
+                                       :resource/amount 0.1}
+                                      {:resource/type :resource.type/mem
+                                       :resource/amount 128.}]}
+              _ @(d/transact conn [job-ent])
+              job-resp (api/fetch-job-map (db conn) fid uuid)]
+          (is (= (expected-job-map job fid)
+                 (dissoc job-resp :submit_time)))
+          (s/validate api/JobResponse (assoc job-resp
+                                             :framework_id (str (:framework_id job-resp))
+                                             :uuid (UUID/fromString (:uuid job-resp))))))
 
       (testing "should work with a minimal job"
         (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")

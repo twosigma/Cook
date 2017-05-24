@@ -265,7 +265,7 @@
       (merge {:framework-id (s/maybe s/Str)
               :status s/Str
               :state s/Str
-              :submit-time PosInt
+              :submit-time (s/maybe PosInt)
               :retries-remaining NonNegInt
               :user UserName
               (s/optional-key :groups) [s/Uuid]
