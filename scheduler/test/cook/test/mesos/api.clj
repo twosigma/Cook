@@ -1039,7 +1039,7 @@
           (cond-> {;; Fields we will fill in from the provided args:
                    :command command
                    :cpus cpus
-                   :framework_id (str fid)
+                   :framework_id (:value fid)
                    :gpus (or gpus 0)
                    :max_retries max-retries
                    :max_runtime max-runtime
