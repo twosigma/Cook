@@ -265,7 +265,7 @@
       (merge {:framework-id (s/maybe s/Str)
               :status s/Str
               :state s/Str
-              :submit-time PosInt
+              :submit-time (s/maybe PosInt)
               :retries-remaining NonNegInt
               :user UserName
               (s/optional-key :groups) [s/Uuid]
@@ -729,7 +729,7 @@
         application (:job/application job)
         expected-runtime (:job/expected-runtime job)
         job-map {:command (:job/command job)
-                 :uuid (str (:job/uuid job))
+                 :uuid (:job/uuid job)
                  :name (:job/name job "cookjob")
                  :priority (:job/priority job util/default-job-priority)
                  :submit_time (when (:job/submit-time job) ; due to a bug, submit time may not exist for some jobs
@@ -754,7 +754,7 @@
                  :env (util/job-ent->env job)
                  :labels (util/job-ent->label job)
                  :ports (:job/ports job 0)
-                 :disable_mea_culpa_retries (:job/disable-mea-culpa-retries job)
+                 :disable_mea_culpa_retries (:job/disable-mea-culpa-retries job false)
                  :instances
                  (map (fn [instance]
                         (let [hostname (:instance/hostname instance)

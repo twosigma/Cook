@@ -1048,7 +1048,7 @@
                    :ports (or ports 0)
                    :priority priority
                    :user user
-                   :uuid (str uuid)
+                   :uuid uuid
                    ;; Fields we will simply hardcode for this test:
                    :env {}
                    :instances ()
@@ -1063,6 +1063,30 @@
                   expected-runtime (assoc :expected-runtime expected-runtime)))]
 
     (testing "Job creation"
+      (testing "should work with a minimal job manually inserted"
+        (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
+              {:keys [uuid] :as job} (minimal-job)
+              fid #mesomatic.types.FrameworkID{:value "fid"}
+              job-ent {:db/id (d/tempid :db.part/user)
+                       :job/uuid uuid
+                       :job/command (:command job)
+                       :job/name (:name job)
+                       :job/state :job.state/waiting
+                       :job/priority (:priority job)
+                       :job/max-retries (:max-retries job)
+                       :job/max-runtime (:max-runtime job)
+                       :job/user (:user job)
+                       :job/resource [{:resource/type :resource.type/cpus
+                                       :resource/amount (:cpus job)}
+                                      {:resource/type :resource.type/mem
+                                       :resource/amount (:mem job)}]}
+              _ @(d/transact conn [job-ent])
+              job-resp (api/fetch-job-map (db conn) fid uuid)]
+          (is (= (expected-job-map job fid)
+                 (dissoc job-resp :submit_time)))
+          (s/validate api/JobResponse
+                      ; fetch-job-map returns a FrameworkID object instead of a string
+                      (assoc job-resp :framework_id (str (:framework_id job-resp))))))
 
       (testing "should work with a minimal job"
         (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
