@@ -8,6 +8,8 @@ The simulator operates on a cycle in which it submits new sims, triggers mesos t
 
 The simulator outputs will not account for the time it takes to rank, match or rebalance as time is effectively frozen while each operation is happening. Therefore, the simulator may be used to compare scheduling decisions but not performance changes.
 
+Note, this is different than the "simulator" project at the root of this project. This is a faster than real time simulation of just the scheduling components of cook scheduler. The other simulator is a "system simulator" that stands up cook and all of its dependencies as well as clients which submit jobs. This faster than real time simulator is more useful for understanding and tuning the scheduling algorithms in cook whereas the "system simulator" is more useful for testing and understanding the full system interactions. 
+
 ## How to run the simulator
 
 The help message for the simulator run under Cook/scheduler is:
