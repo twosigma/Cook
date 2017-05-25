@@ -741,7 +741,7 @@
                  :max_retries (:job/max-retries job) ; consistent with input
                  :retries_remaining (- (:job/max-retries job) (util/job-ent->attempts-consumed db job))
                  :max_runtime (:job/max-runtime job Long/MAX_VALUE) ; consistent with input
-                 :framework_id (:value fid)
+                 :framework_id fid
                  :status (name (:job/state job))
                  :state (case (:job/state job)
                           :job.state/waiting "waiting"

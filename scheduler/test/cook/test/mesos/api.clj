@@ -1039,7 +1039,7 @@
           (cond-> {;; Fields we will fill in from the provided args:
                    :command command
                    :cpus cpus
-                   :framework_id (:value fid)
+                   :framework_id fid
                    :gpus (or gpus 0)
                    :max_retries max-retries
                    :max_runtime max-runtime
@@ -1084,7 +1084,9 @@
               job-resp (api/fetch-job-map (db conn) fid uuid)]
           (is (= (expected-job-map job fid)
                  (dissoc job-resp :submit_time)))
-          (s/validate api/JobResponse job-resp)))
+          (s/validate api/JobResponse
+                      ; fetch-job-map returns a FrameworkID object instead of a string
+                      (assoc job-resp :framework_id (str (:framework_id job-resp))))))
 
       (testing "should work with a minimal job"
         (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
