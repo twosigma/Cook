@@ -14,10 +14,15 @@ cd ${PROJECT_DIR}/../scheduler
 LIBPROCESS_IP=172.17.0.1 COOK_PORT=12321 COOK_ZOOKEEPER_LOCAL_PORT=3291 lein run ${PROJECT_DIR}/travis/scheduler_config.edn &
 LIBPROCESS_IP=172.17.0.1 COOK_PORT=22321 COOK_ZOOKEEPER_LOCAL_PORT=4291 lein run ${PROJECT_DIR}/travis/scheduler_config.edn &
 
+# Install the CLI
+cd ${PROJECT_DIR}/../cli
+python setup.py install
+cs --help
+
 # Run the integration tests
 set +e
 cd ${PROJECT_DIR}
-COOK_MULTI_CLUSTER= python setup.py nosetests
+COOK_MULTI_CLUSTER= python setup.py nosetests --verbosity=3
 TESTS_EXIT_CODE=$?
 
 # If there were failures, dump the executor logs
