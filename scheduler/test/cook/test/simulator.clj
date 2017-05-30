@@ -283,7 +283,7 @@
    Returns a list of the task entities run"
   [mesos-hosts trace cycle-step-ms config]
   (let [simulation-time (-> trace first :submit-time-ms)
-        mesos-datomic-conn (restore-fresh-database! (str "datomic:mem://mock-mesos"))
+        mesos-datomic-conn (restore-fresh-database! (get config :mesos-url "datomic:mem://mock-mesos"))
         offer-trigger-chan (async/chan)
         complete-trigger-chan (async/chan)
         ranker-trigger-chan (async/chan)
@@ -298,7 +298,8 @@
                                               :complete-trigger-chan complete-trigger-chan
                                               :state-atom state-atom))
         initial-time (System/currentTimeMillis)
-        config (merge {:shares [{:user "default" :mem 4000.0 :cpus 4.0 :gpus 1.0}]}
+        config (merge {:shares [{:user "default" :mem 4000.0 :cpus 4.0 :gpus 1.0}]
+                       :time-ms-between-rebalancing (-> 30 t/minutes t/in-millis)}
                       config)
         opt-config {:host-feed {:create-fn 'cook.mesos.optimizer/create-dummy-host-feed
                                 :config {}}
@@ -326,7 +327,8 @@
           (share/set-share! mesos-datomic-conn user "simulation" :mem mem :cpus cpus :gpus gpus))
         (loop [trace trace
                simulation-time simulation-time
-               fake-real-time initial-time]
+               fake-real-time initial-time
+               time-ms-since-last-rebalancer 0]
 
           (org.joda.time.DateTimeUtils/setCurrentMillisFixed fake-real-time)
 
@@ -364,13 +366,6 @@
                         50
                         60000))
             (log/info "Batch submission complete")
-
-            ;; Rebalance
-            (log/info "Starting rebalance")
-            (org.joda.time.DateTimeUtils/setCurrentMillisFixed (inc (.getTime (tc/to-date (t/now)))))
-            (async/>!! rebalancer-trigger-chan rebalancer-complete-chan)
-            (async/<!! rebalancer-complete-chan)
-            (log/info "Rebalance complete")
 
             ;; Request for jobs that are complete to have cook be notified
             (log/info "Send completion status to scheduler")
@@ -420,11 +415,21 @@
                         60000)
             (log/info "Match complete")
 
+            ;; Rebalance
+            (when (> time-ms-since-last-rebalancer (:time-ms-between-rebalancing config))
+              (log/info "Starting rebalance")
+              (org.joda.time.DateTimeUtils/setCurrentMillisFixed (inc (.getTime (tc/to-date (t/now)))))
+              (async/>!! rebalancer-trigger-chan rebalancer-complete-chan)
+              (async/<!! rebalancer-complete-chan)
+              (log/info "Rebalance complete"))
 
             (when (seq trace)
               (recur (drop (count submission-batch) trace)
                      (+ simulation-time cycle-step-ms)
-                     (+ fake-real-time cycle-step-ms)))))
+                     (+ fake-real-time cycle-step-ms)
+                     (if (> time-ms-since-last-rebalancer (:time-ms-between-rebalancing config))
+                       0
+                       (+ time-ms-since-last-rebalancer cycle-step-ms))))))
         (println "count of jobs submitted " (count (d/q '[:find ?e
                                                           :where
                                                           [?e :job/uuid _]]
