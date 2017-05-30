@@ -14,12 +14,12 @@ class ExecutorConfig(object):
         
         Parameters
         ----------
-        :param time_string: string
+        time_string: string
             the input string to parse.
             
         Returns
         -------
-        :return: the parsed time as milliseconds. 
+        the parsed time as milliseconds. 
         """
         try:
             return int(1000 * parse_duration(time_string))

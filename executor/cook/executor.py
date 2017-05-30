@@ -17,12 +17,12 @@ def get_task_id(task):
 
     Parameters
     ----------
-    :param task: map
+    task: map
         The task
 
     Returns
     -------
-    :return: The id of the task.
+    the id of the task.
     """
     return task['task_id']['value']
 
@@ -32,12 +32,12 @@ def create_status(task_id, task_state):
 
     Parameters
     ----------
-    :param task_id: The task id.
-    :param task_state: The state of the task to report.
+    task_id: The task id.
+    task_state: The state of the task to report.
 
     Returns
     -------
-    :return: a status dictionary that can be sent to the driver.
+    a status dictionary that can be sent to the driver.
     """
     return {'task_id': {'value': task_id},
             'state': task_state,
@@ -49,16 +49,16 @@ def update_status(driver, task_id, task_state):
 
     Parameters
     ----------
-    :param driver: MesosExecutorDriver
+    driver: MesosExecutorDriver
         The driver to send the status update to.
-    :param task: map
+    task: map
         The task whose status update to send.
-    :param task_state: string
+    task_state: string
         The state of the task which will be sent to the driver.
 
     Returns
     -------
-    :return: Nothing.
+    Nothing.
     """
     logging.debug('Updating task {} state to {}'.format(task_id, task_state))
     status = create_status(task_id, task_state)
@@ -70,16 +70,16 @@ def send_message(driver, message, max_message_length):
 
     Parameters
     ----------
-    :param driver: MesosExecutorDriver
+    driver: MesosExecutorDriver
         The driver to send the message to.
-    :param message: object
+    message: object
         The raw message to send.
-    :param max_message_length: int
+    max_message_length: int
         The allowed max message length after encoding.
 
     Returns
     -------
-    :return: whether the message was successfully sent
+    whether the message was successfully sent
     """
     logging.debug('Sending framework message {}'.format(message))
     message_string = str(message).encode('utf8')
@@ -98,18 +98,18 @@ def launch_task(driver, task, stdout_name, stderr_name):
 
     Parameters
     ----------
-    :param driver: MesosExecutorDriver
+    driver: MesosExecutorDriver
         The mesos driver to use.
-    :param task: map
+    task: map
         The task to execute.
-    :param stdout_name: string
+    stdout_name: string
         The file to use to redirect stdout.
-    :param stderr_name: string
+    stderr_name: string
         The file to use to redirect stderr.
 
     Returns
     -------
-    :return: The tuple containing the process launched, stdout file, and stderr file.
+    the tuple containing the process launched, stdout file, and stderr file.
     """
     task_id = get_task_id(task)
     try:
@@ -134,12 +134,12 @@ def is_running(process):
 
     Parameters
     ----------
-    :param process: 
+    process: 
         The process to query
 
     Returns
     -------
-    :return: whether the process is still running.
+    whether the process is still running.
     """
     return process.poll() is None
 
@@ -149,12 +149,12 @@ def cleanup_process(process_info):
     
     Parameters
     ----------
-    :param process_info: tuple
+    process_info: tuple
         Tuple of (process, stdout_file, stderr_file)
 
     Returns
     -------
-    :return: Nothing
+    Nothing
     """
     _, stdout, stderr = process_info
     logging.info('Closing {}'.format(stdout.name))
@@ -171,18 +171,18 @@ def kill_task(driver, task, process_info, shutdown_grace_period_ms):
 
     Parameters
     ----------
-    :param driver: MesosExecutorDriver
+    driver: MesosExecutorDriver
         The mesos driver to use.
-    :param task: map
+    task: map
         The task to kill.
-    :param process_info: tuple
+    process_info: tuple
         Tuple of (process, stdout_file, stderr_file)
-    :param shutdown_grace_period_ms: int
+    shutdown_grace_period_ms: int
         Grace period before forceful kill
 
     Returns
     -------
-    :return: Nothing
+    Nothing
     """
     task_id = get_task_id(task)
     try:
@@ -212,20 +212,20 @@ def await_process_completion(driver, task, stop_signal, process_info, shutdown_g
 
     Parameters
     ----------
-    :param driver: MesosExecutorDriver
+    driver: MesosExecutorDriver
         The mesos driver to use.
-    :param task: map
+    task: map
         The task that is executing.
-    :param stop_signal: Event
+    stop_signal: Event
         Event that determines if an interrupt was sent
-    :param process_info: tuple
+    process_info: tuple
         Tuple of (process, stdout_file, stderr_file)
-    :param shutdown_grace_period_ms: int
+    shutdown_grace_period_ms: int
         Grace period before forceful kill
 
     Returns
     -------
-    :return: True if the process was killed, False if it terminated naturally.
+    True if the process was killed, False if it terminated naturally.
     """
     process, _, _ = process_info
 
@@ -250,7 +250,7 @@ def manage_task(driver, task, stop_signal, completed_signal, config, stdout_name
 
     Returns
     -------
-    :return: Nothing
+    Nothing
     """
     task_id = get_task_id(task)
     try:

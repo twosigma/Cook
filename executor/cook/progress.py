@@ -16,9 +16,9 @@ class ProgressUpdater(object):
 
     def __init__(self, poll_interval_ms, send_message_fn):
         """
-        :param poll_interval_ms: int
+        poll_interval_ms: int
             The interval after which to send a subsequent progress update.
-        :param send_message: function(driver, message, max_message_length)
+        send_message: function(driver, message, max_message_length)
             The helper function used to send the message.
         """
         self.poll_interval_ms = poll_interval_ms
@@ -45,20 +45,20 @@ class ProgressUpdater(object):
         
         Parameters
         ----------
-        :param driver: MesosExecutorDriver
+        driver: MesosExecutorDriver
             The mesos driver to use.
-        :param task_id: string
+        task_id: string
             The task id.
-        :param max_message_length: int
+        max_message_length: int
             The allowed max message length after encoding.
-        :param progress_data: map 
+        progress_data: map 
             The progress data to send.
-        :param force_send: boolean, optional
+        force_send: boolean, optional
             Defaults to false.
             
         Returns
         -------
-        :return: Nothing 
+        Nothing 
         """
         with self.lock:
             if progress_data is not None and self.last_progress_data != progress_data:
@@ -95,14 +95,14 @@ class ProgressWatcher(object):
         
         Parameters
         ----------
-        :param progress_regex_str: string
+        progress_regex_str: string
             The progress regex to match against, it must return two capture groups.
-        :param input_string: string
+        input_string: string
             The input string.
         
         Returns
         -------
-        :return: the tuple (percent, message) if the string matches the provided regex, 
+        the tuple (percent, message) if the string matches the provided regex, 
                  else return None. 
         """
         matches = re.findall(progress_regex_str, input_string)
@@ -125,13 +125,13 @@ class ProgressWatcher(object):
         
         Parameters
         ----------
-        :param sleep_time_ms: int
+        sleep_time_ms: int
             The unit of time in ms to repetitively sleep when the file has not been created or no new
             content is available in the file being tailed.
         
         Returns
         -------
-        :return: an incrementally generated list of lines in the file being tailed.
+        an incrementally generated list of lines in the file being tailed.
         """
         try:
             sleep_param = sleep_time_ms / 1000
@@ -168,7 +168,7 @@ class ProgressWatcher(object):
         
         Returns
         -------
-        :return: an incrementally generated list of progress states.
+        an incrementally generated list of progress states.
         """
         if self.progress_regex_string:
             sleep_time_ms = 50
@@ -187,22 +187,22 @@ def track_progress(driver, task_id, progress_watcher, max_message_length, progre
     
     Parameters
     ----------
-    :param driver: MesosExecutorDriver
+    driver: MesosExecutorDriver
         The mesos driver to use.
-    :param task_id: string
+    task_id: string
         The id of the task to execute.
-    :param progress_watcher: ProgressWatcher
+    progress_watcher: ProgressWatcher
         The progress watcher which maintains the current progress state
-    :param max_message_length: int
+    max_message_length: int
         Allowed max message length to send
-    :param progress_complete_event: Event
+    progress_complete_event: Event
         Event that triggers completion of progress tracking
-    :param send_progress_update: function(driver, task_id, max_message_length, current_progress)
+    send_progress_update: function(driver, task_id, max_message_length, current_progress)
         The function to invoke while sending progress updates
         
     Returns
     -------
-    :return: Nothing.
+    Nothing.
     """
     try:
         for current_progress in progress_watcher.retrieve_progress_states():
