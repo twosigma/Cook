@@ -44,28 +44,27 @@
                    [[:db.fn/retractEntity resource]])
       (log/warn "Resource" type "for user" user "does not exist, could not retract"))))
 
-(let [query '[:find ?a
-              :in $ ?u ?t
-              :where
-              [?e :share/user ?u]
-              [?e :share/resource ?r]
-              [?r :resource/type ?t]
-              [?r :resource/amount ?a]]]
-  (defn- get-share-by-type
-    "Query a user's pre-defined share by type (e.g. :cpus, :mem, :gpus).
+(defn- get-share-by-type
+  "Query a user's pre-defined share by type (e.g. :cpus, :mem, :gpus).
 
-     If a user's pre-defined share is NOT defined, return either:
-     1. the explicitly provided default value, or
-     2. the share for the \"default\" user. If there is NO \"default\"
-        value for a specific type, return Double.MAX_VALUE."
-    ([db type user]
-     (let [datomic-resource-type (resource-type->datomic-resource-type type)]
-       (or (ffirst (q query db user datomic-resource-type))
-           (get-share-by-type db type default-user Double/MAX_VALUE))))
-    ([db type user default]
-     (let [datomic-resource-type (resource-type->datomic-resource-type type)]
-       (or (ffirst (q query db user datomic-resource-type))
-           default)))))
+   If a user's pre-defined share is NOT defined, return either:
+   1. the explicitly provided default value, or
+   2. the share for the \"default\" user. If there is NO \"default\"
+      value for a specific type, return Double.MAX_VALUE."
+  ([db type user]
+   (or (get-share-by-type db type user nil)
+       (get-share-by-type db type default-user Double/MAX_VALUE)))
+  ([db type user default]
+   (let [query '[:find ?a
+                 :in $ ?u ?t
+                 :where
+                 [?e :share/user ?u]
+                 [?e :share/resource ?r]
+                 [?r :resource/type ?t]
+                 [?r :resource/amount ?a]]
+         datomic-resource-type (resource-type->datomic-resource-type type)]
+     (or (ffirst (q query db user datomic-resource-type))
+         default))))
 
 (defn get-share
   "Query a user's pre-defined share.
