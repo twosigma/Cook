@@ -2,6 +2,8 @@
 
 This project is a CLI interface to generated simulated workloads, to run them against a real instance of Cook, and to report on how the jobs in a given simulation were handled.
 
+Note, this is different than the "simulator" within the scheduler code proper. This is a system simulator that stands up cook and all of its dependencies as well as clients which submit jobs. The other simulator is a faster than real time simulator of just the scheduling components. The faster than real time simulator is more useful for understanding and tuning the scheduling algorithms in cook whereas the system simulator is more useful for testing and understanding the full system interactions. 
+
 ## Example usage
 
 First, edit your intended settings file (e.g. config/settings.edn) as you see fit.
