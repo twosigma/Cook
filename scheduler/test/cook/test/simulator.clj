@@ -205,10 +205,10 @@
                (-> (select-keys job job-keys)
                    (assoc :db/id (d/tempid :db.part/user)
                           :job/commit-latch commit-latch-id
-                          :job/submit-time (tc/to-date (t/now))
-                          :job/state :job.state/waiting
+                          :job/custom-executor false
                           :job/label [status-label-id runtime-label-id]
-                          :job/custom-executor false)
+                          :job/state :job.state/waiting
+                          :job/submit-time (tc/to-date (t/now)))
                    (update :job/uuid #(java.util.UUID/fromString %))
                    (update :job/command #(or % ""))
                    (update :job/name #(or % ""))
