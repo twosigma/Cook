@@ -345,6 +345,7 @@
          preemption-decision (->> (merge-with into host->formatted-spare-resources host->scored-tasks)
                                   ; Only evaluate tasks in unconstrained slaves
                                   (filter (comp passes-constraints? key))
+                                  (sort-by first)
                                   (mapcat (fn compute-aggregations [[host scored-tasks]]
                                             (rest
                                              (reductions

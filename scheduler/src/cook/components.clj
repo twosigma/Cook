@@ -438,7 +438,7 @@
                          (throw (ex-info "You enabled nrepl but didn't configure a port. Please configure a port in your config file." {})))
                        ((lazy-load-var 'clojure.tools.nrepl.server/start-server) :port port)))}))
 
-(defn- init-logger
+(defn init-logger
   ([] (init-logger {:levels {"datomic.db" :warn
                              "datomic.peer" :warn
                              "datomic.kv-cluster" :warn

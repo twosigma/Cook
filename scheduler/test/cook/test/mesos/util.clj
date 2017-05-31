@@ -17,6 +17,7 @@
  (:use clojure.test)
  (:require [clj-time.coerce :as tc]
            [clj-time.core :as t]
+           [clojure.core.async :as async]
            [cook.mesos.util :as util]
            [cook.test.testutil :as testutil :refer (create-dummy-instance create-dummy-job restore-fresh-database!)]
            [datomic.api :as d :refer (q db)]))
@@ -240,5 +241,16 @@
     (is (= (guuid->juuids "c") #{"1" "2" "3"}))
     (is (= (guuid->juuids "d") #{"1" "2" "3" "4"}))
     (is (= (guuid->juuids "e") #{"1" "2" "3" "4" "5"}))))
+
+(deftest test-read-chan
+  (is (= (count (util/read-chan (async/chan) 10)) 0))
+  (let [ch (async/chan 10)]
+    (async/<!! (async/onto-chan ch [1 2 3 4 5] false))
+    (is (= (count (util/read-chan ch 10)) 5))
+    (is (= (count (util/read-chan ch 10)) 0))
+    (async/<!! (async/onto-chan ch (range 10) false))
+    (async/onto-chan ch (range 10) false)
+    (is (= (count (util/read-chan ch 10)) 10))
+    (is (= (count (util/read-chan ch 10)) 10))))
 
 (comment (run-tests))

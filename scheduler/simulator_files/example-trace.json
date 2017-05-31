@@ -1,0 +1,2143 @@
+[ {
+  "run-time-ms" : 1157730,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : -855,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 2.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2817.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c97d8-1a66-49ec-abd6-cf1165b28799",
+  "job/user" : "a"
+}, {
+  "run-time-ms" : 1342741,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : -562,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 3.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2877.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c97d8-a492-4692-8639-df9ceb97d3f0",
+  "job/user" : "b"
+}, {
+  "run-time-ms" : 1649093,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : -422,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 3.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2008.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c97d8-6ef0-427d-86e1-4edf738f8d97",
+  "job/user" : "a"
+}, {
+  "run-time-ms" : 1137685,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : -422,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 3.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2688.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c97d8-9061-41b2-9b09-78fc15fd37a6",
+  "job/user" : "b"
+}, {
+  "run-time-ms" : 1686852,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : -235,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 2.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2833.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c97d8-308a-47be-8fe3-8d1a7442f783",
+  "job/user" : "b"
+}, {
+  "run-time-ms" : 914887,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : -66,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 2.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2611.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c97d8-a592-4bbc-b91f-fb5459082102",
+  "job/user" : "d"
+}, {
+  "run-time-ms" : 1042667,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 216,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 1.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2860.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c97d8-de12-4373-b2e7-c224849abd1f",
+  "job/user" : "c"
+}, {
+  "run-time-ms" : 1710329,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 341,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 3.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2270.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c97d8-0c53-4e02-a1b5-82924ba3386d",
+  "job/user" : "c"
+}, {
+  "run-time-ms" : 1637818,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 662,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 3.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2478.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c97d8-6704-43aa-897d-1ddf4c472322",
+  "job/user" : "d"
+}, {
+  "run-time-ms" : 1247128,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 741,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 3.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2080.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c97d8-c41d-4827-a646-2289910e0104",
+  "job/user" : "b"
+}, {
+  "run-time-ms" : 1129021,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 764,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 2.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2095.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c97d8-94fd-419d-99af-21c8f94177e4",
+  "job/user" : "a"
+}, {
+  "run-time-ms" : 1270976,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 978,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 3.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2608.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c97d8-6a71-4015-9062-372072f8dc5f",
+  "job/user" : "d"
+}, {
+  "run-time-ms" : 847634,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 59316,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 3.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2830.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-9389-4aa7-bd3d-2fdc63014106",
+  "job/user" : "d"
+}, {
+  "run-time-ms" : 1040484,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 59366,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 1.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2762.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-4a4c-41a2-99ac-fadd76695421",
+  "job/user" : "c"
+}, {
+  "run-time-ms" : 1751764,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 59446,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 1.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2615.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-dcff-4fc6-9c7d-15e47dfe6e34",
+  "job/user" : "c"
+}, {
+  "run-time-ms" : 1574247,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 59512,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 3.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2412.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-1865-4933-a091-2ee79cdc670f",
+  "job/user" : "a"
+}, {
+  "run-time-ms" : 1061746,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 59528,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 3.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2020.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-af8c-4aaf-a7e4-a298ef00bbb4",
+  "job/user" : "b"
+}, {
+  "run-time-ms" : 923567,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 59631,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 2.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2977.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-565c-47ca-961f-503fd3861dff",
+  "job/user" : "a"
+}, {
+  "run-time-ms" : 1310620,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 59770,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 2.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2478.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-2db5-4cdd-a26b-837af1a27fca",
+  "job/user" : "b"
+}, {
+  "run-time-ms" : 972318,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 59779,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 1.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2288.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-7724-47da-925f-c8d695347e6f",
+  "job/user" : "d"
+}, {
+  "run-time-ms" : 1379653,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 59892,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 3.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2450.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-98a5-4673-b8d0-92c443b59ab1",
+  "job/user" : "b"
+}, {
+  "run-time-ms" : 1627139,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 60120,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 1.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2953.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-82fb-4e33-af0c-628f7d969dc4",
+  "job/user" : "b"
+}, {
+  "run-time-ms" : 779352,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 60223,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 3.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2183.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-010f-48a7-83f9-8edae2a38752",
+  "job/user" : "c"
+}, {
+  "run-time-ms" : 1392621,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 60631,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 1.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2744.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-b536-4a9a-a1ca-e4ef6092e06a",
+  "job/user" : "d"
+}, {
+  "run-time-ms" : 643200,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 119210,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 3.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2670.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-13f5-4fa8-b5fd-71bb0d80fd8e",
+  "job/user" : "a"
+}, {
+  "run-time-ms" : 1533789,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 119298,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 2.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2233.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-d4e2-4380-b0d1-29093e4e1b7a",
+  "job/user" : "b"
+}, {
+  "run-time-ms" : 710637,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 119352,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 2.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2294.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-10af-425e-8a5b-7c4e4f69f7b5",
+  "job/user" : "b"
+}, {
+  "run-time-ms" : 1137253,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 119435,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 3.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2237.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-ff2c-487d-9b3c-e6daf71468fc",
+  "job/user" : "d"
+}, {
+  "run-time-ms" : 1279902,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 119509,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 1.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2892.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-a3df-4920-ae39-6d261d56cc61",
+  "job/user" : "d"
+}, {
+  "run-time-ms" : 1072833,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 119605,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 1.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2668.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-b791-49fc-a4e7-9c13365ab6d4",
+  "job/user" : "c"
+}, {
+  "run-time-ms" : 1381033,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 119944,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 3.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2406.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-7947-4773-bcbd-1b5bbd5b9e6e",
+  "job/user" : "d"
+}, {
+  "run-time-ms" : 856535,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 120353,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 3.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2797.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-8778-4446-a119-a9e05abf3b5b",
+  "job/user" : "a"
+}, {
+  "run-time-ms" : 747943,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 120434,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 2.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2483.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-d04c-41b7-b081-00e7e6d7ace3",
+  "job/user" : "d"
+}, {
+  "run-time-ms" : 1319347,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 120542,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 2.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2113.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-1da0-494b-a9c8-688245fe5f0b",
+  "job/user" : "c"
+}, {
+  "run-time-ms" : 1634462,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 120746,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 3.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2174.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-eba6-41a1-b97e-0291f47211aa",
+  "job/user" : "c"
+}, {
+  "run-time-ms" : 1239201,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 120967,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 2.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2244.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-91e9-4bab-adc2-5c3bb1d2fac0",
+  "job/user" : "d"
+}, {
+  "run-time-ms" : 788378,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 120970,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 2.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2621.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-5dbe-469e-8420-18183bf3717c",
+  "job/user" : "a"
+}, {
+  "run-time-ms" : 1557088,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 120979,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 3.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2389.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-8b37-4ca7-92cb-130dec2f227f",
+  "job/user" : "a"
+}, {
+  "run-time-ms" : 1764452,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 179649,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 3.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2963.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-d0f1-4bda-9c52-66b1c61016d2",
+  "job/user" : "a"
+}, {
+  "run-time-ms" : 1453444,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 179658,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 3.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2793.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-1fda-4b04-9c2e-634a20069cf9",
+  "job/user" : "d"
+}, {
+  "run-time-ms" : 778186,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 179920,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 1.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2018.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-290d-4bdc-af3c-aff32163e232",
+  "job/user" : "a"
+}, {
+  "run-time-ms" : 738744,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 180015,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 1.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2194.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-aa9a-4a82-864d-34493922701c",
+  "job/user" : "d"
+}, {
+  "run-time-ms" : 1386441,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 180093,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 2.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2371.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-db51-432d-ab96-ec340aee78f6",
+  "job/user" : "c"
+}, {
+  "run-time-ms" : 1082455,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 180154,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 1.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2695.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-4190-4a0c-b9e3-80aed5000de1",
+  "job/user" : "b"
+}, {
+  "run-time-ms" : 1114235,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 180275,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 1.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2418.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-5519-4581-b5c1-cadccffc6192",
+  "job/user" : "a"
+}, {
+  "run-time-ms" : 1689714,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 180398,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 1.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2130.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-d0ac-4db7-9eab-7f038ebc1a58",
+  "job/user" : "b"
+}, {
+  "run-time-ms" : 791691,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 180529,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 3.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2262.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-40c4-466a-ab73-0ca9be21f2c5",
+  "job/user" : "d"
+}, {
+  "run-time-ms" : 695402,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 180986,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 3.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2315.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-7f6d-435f-9fff-5371e5fce706",
+  "job/user" : "a"
+}, {
+  "run-time-ms" : 894247,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 239013,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 2.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2623.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-47fc-4020-bb29-ac21109c49e6",
+  "job/user" : "a"
+}, {
+  "run-time-ms" : 1100897,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 239073,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 3.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2696.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-94bd-451e-9fc1-c6684603557d",
+  "job/user" : "c"
+}, {
+  "run-time-ms" : 1301963,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 239216,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 1.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2951.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-b13c-4a4d-aa5d-7de1f60462bd",
+  "job/user" : "b"
+}, {
+  "run-time-ms" : 1574273,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 239558,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 2.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2601.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-34d4-462d-bcd8-bcfc86573cfe",
+  "job/user" : "b"
+}, {
+  "run-time-ms" : 1798304,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 239737,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 2.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2637.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-9b37-465e-abac-c2acebcae88d",
+  "job/user" : "c"
+}, {
+  "run-time-ms" : 1216866,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 239849,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 2.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2402.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-d5ce-4132-ad60-1d03b0acec9b",
+  "job/user" : "d"
+}, {
+  "run-time-ms" : 879108,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 240556,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 3.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2058.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-9a54-48db-a070-38552763767c",
+  "job/user" : "a"
+}, {
+  "run-time-ms" : 863186,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 240781,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 3.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2610.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-9570-44a3-9b72-bd0c9d7834a8",
+  "job/user" : "c"
+}, {
+  "run-time-ms" : 874920,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 240880,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 1.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2800.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-5c15-4ee5-91dc-1daee0ae797f",
+  "job/user" : "c"
+}, {
+  "run-time-ms" : 1294044,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 240901,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 1.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2895.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-5021-488d-9c3d-5b867491f4e2",
+  "job/user" : "c"
+}, {
+  "run-time-ms" : 737726,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 240977,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 1.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2666.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-eb73-401b-9059-fcb2079f34a7",
+  "job/user" : "c"
+}, {
+  "run-time-ms" : 1300068,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 299159,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 2.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2047.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-4231-469d-80ca-c09266a0713c",
+  "job/user" : "a"
+}, {
+  "run-time-ms" : 1205637,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 299266,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 1.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2084.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-3e59-4bff-bc3b-be7f68b7bc3a",
+  "job/user" : "c"
+}, {
+  "run-time-ms" : 1530272,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 299696,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 2.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2643.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-0826-47ad-a3db-ce5b4e38bbf9",
+  "job/user" : "c"
+}, {
+  "run-time-ms" : 1393362,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 299765,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 1.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2733.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-58d8-4b7f-ab90-e34b29f1fa53",
+  "job/user" : "a"
+}, {
+  "run-time-ms" : 1151987,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 299802,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 1.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2107.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-9c85-4ba6-870a-94b8cf8be5e6",
+  "job/user" : "c"
+}, {
+  "run-time-ms" : 776470,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 299966,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 3.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2841.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-207e-404e-993d-1bcd661c6b67",
+  "job/user" : "b"
+}, {
+  "run-time-ms" : 1423176,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 300001,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 3.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2550.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-19a9-48e7-97c8-6663a44280c2",
+  "job/user" : "c"
+}, {
+  "run-time-ms" : 1322070,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 300034,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 1.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2840.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-1aa5-461e-b6b4-d998c912375b",
+  "job/user" : "b"
+}, {
+  "run-time-ms" : 1381844,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 300091,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 1.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2602.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-41c9-4396-92ca-44035ecf8e20",
+  "job/user" : "a"
+}, {
+  "run-time-ms" : 1146075,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 300336,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 2.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2252.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-41b3-4abe-90d2-49cd0f3afe9e",
+  "job/user" : "c"
+}, {
+  "run-time-ms" : 1515483,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 300347,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 2.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2940.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-edf6-4e10-a9d8-4fd6cb701c68",
+  "job/user" : "a"
+}, {
+  "run-time-ms" : 986822,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 359229,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 1.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2986.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-141e-4049-9cf6-2d12c3c78336",
+  "job/user" : "b"
+}, {
+  "run-time-ms" : 1021028,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 359385,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 3.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2009.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-3ec7-4d22-bad1-935459bd2407",
+  "job/user" : "d"
+}, {
+  "run-time-ms" : 964409,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 359524,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 3.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2813.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-9501-4a40-b1b4-9ba984481f44",
+  "job/user" : "a"
+}, {
+  "run-time-ms" : 1799200,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 359537,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 2.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2232.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-365f-4282-80d4-ba8a9286ccf3",
+  "job/user" : "a"
+}, {
+  "run-time-ms" : 983931,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 359646,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 1.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2923.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-0439-49a1-9e74-8a7fe1e4f773",
+  "job/user" : "b"
+}, {
+  "run-time-ms" : 1617308,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 359889,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 2.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2480.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-0f7b-4c79-a284-4f01bca24001",
+  "job/user" : "b"
+}, {
+  "run-time-ms" : 910866,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 360072,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 1.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2703.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-b677-4e63-a24d-ac3c812d543c",
+  "job/user" : "b"
+}, {
+  "run-time-ms" : 1507039,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 360133,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 3.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2376.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-51dd-4c5f-9fce-818b37c93055",
+  "job/user" : "b"
+}, {
+  "run-time-ms" : 1030435,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 360447,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 1.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2632.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-1e3c-41bd-be69-eb495116936d",
+  "job/user" : "a"
+}, {
+  "run-time-ms" : 1442445,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 360497,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 1.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2884.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-6f9c-4c61-adb3-b212c83acd61",
+  "job/user" : "b"
+}, {
+  "run-time-ms" : 1498509,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 360601,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 1.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2764.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-05ba-4c2f-bce7-091bb1fc6879",
+  "job/user" : "b"
+}, {
+  "run-time-ms" : 785293,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 360624,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 1.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2657.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-64a7-420c-b4e1-a5b4f69fa1fe",
+  "job/user" : "d"
+}, {
+  "run-time-ms" : 1621856,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 360755,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 3.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2793.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-6a25-4cfe-bd7f-740141cf8f27",
+  "job/user" : "d"
+}, {
+  "run-time-ms" : 971956,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 360907,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 2.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2349.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-6412-4698-9a80-c04ad910d7d1",
+  "job/user" : "a"
+}, {
+  "run-time-ms" : 695752,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 419087,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 2.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2805.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-7ffb-44f0-81d0-c7543e6ee56e",
+  "job/user" : "b"
+}, {
+  "run-time-ms" : 1771676,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 419227,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 1.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2132.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-584a-4dcd-b5b2-9a388ccac14e",
+  "job/user" : "a"
+}, {
+  "run-time-ms" : 821761,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 419831,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 2.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2331.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-c92c-4de0-a761-c6eedb2ec050",
+  "job/user" : "a"
+}, {
+  "run-time-ms" : 1305801,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 419968,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 1.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2561.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-73f5-4176-a080-c4b3491af778",
+  "job/user" : "a"
+}, {
+  "run-time-ms" : 1101663,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 420182,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 1.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2177.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-267a-4abe-8966-25e62b695a9d",
+  "job/user" : "c"
+}, {
+  "run-time-ms" : 609469,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 420185,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 2.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2314.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-b4bc-4ce1-aacc-2000b695a79b",
+  "job/user" : "a"
+}, {
+  "run-time-ms" : 1379540,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 420299,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 1.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2599.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-66b5-4ea0-b68c-062ea23ae7bc",
+  "job/user" : "a"
+}, {
+  "run-time-ms" : 1241889,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 420371,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 1.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2743.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-e70e-4f5a-b32e-723bb84d619b",
+  "job/user" : "c"
+}, {
+  "run-time-ms" : 1270162,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 420434,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 3.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2785.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-8dec-47ba-8ab2-fd56d07495a4",
+  "job/user" : "b"
+}, {
+  "run-time-ms" : 1068379,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 420512,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 3.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2710.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-c943-451d-8dcd-7abda2d1ae04",
+  "job/user" : "c"
+}, {
+  "run-time-ms" : 1521709,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 420776,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 3.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2443.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-27cf-47a2-9018-9b4ea5622f60",
+  "job/user" : "b"
+}, {
+  "run-time-ms" : 1350031,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 420842,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 3.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2907.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-e55d-4a0f-8c3d-f261af4d9f34",
+  "job/user" : "b"
+}, {
+  "run-time-ms" : 1403308,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 420958,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 3.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2411.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-3f1a-4cee-9b1d-bfc42b8ecdda",
+  "job/user" : "a"
+}, {
+  "run-time-ms" : 1603326,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 479569,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 2.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2342.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-5934-4d7b-9512-f3c95c2c7239",
+  "job/user" : "d"
+}, {
+  "run-time-ms" : 1597397,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 480032,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 1.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2701.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-54a5-458c-a9ee-34e54c56ec90",
+  "job/user" : "d"
+}, {
+  "run-time-ms" : 642468,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 480197,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 1.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2279.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-6e90-4e69-917d-353fba762aa8",
+  "job/user" : "a"
+}, {
+  "run-time-ms" : 1129674,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 480230,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 1.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2742.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-e9a7-4e3a-9d97-65462ab82f43",
+  "job/user" : "b"
+}, {
+  "run-time-ms" : 1352540,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 480339,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 1.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2868.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-6c4f-4f6e-a66e-330f3272eeea",
+  "job/user" : "d"
+}, {
+  "run-time-ms" : 1067620,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 480498,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 3.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2092.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-70a9-4030-bb05-0f5e9a010aab",
+  "job/user" : "c"
+}, {
+  "run-time-ms" : 1125975,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 480599,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 3.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2730.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-d480-4a0c-8e58-6e32884b8820",
+  "job/user" : "b"
+}, {
+  "run-time-ms" : 1269026,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 480663,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 1.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2329.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-62e6-4822-8c92-f5f88cfd537d",
+  "job/user" : "a"
+}, {
+  "run-time-ms" : 1259803,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 480752,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 1.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2232.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-8987-4f64-bcce-3b9b4737634b",
+  "job/user" : "d"
+}, {
+  "run-time-ms" : 1755566,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 480777,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 2.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2936.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-b2b3-4d86-96b9-fb331ccc92b5",
+  "job/user" : "a"
+}, {
+  "run-time-ms" : 1736564,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 539185,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 2.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2643.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-c297-4bc6-a3a6-d32d6bfa9cce",
+  "job/user" : "d"
+}, {
+  "run-time-ms" : 1439847,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 539212,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 3.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2662.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-2694-4f3a-a83f-209b2b4fc585",
+  "job/user" : "d"
+}, {
+  "run-time-ms" : 1015492,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 539647,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 3.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2818.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-fc9b-49b4-9ac7-aac3e63b6660",
+  "job/user" : "a"
+}, {
+  "run-time-ms" : 894640,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 540008,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 2.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2060.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-818f-4fe3-9ead-f86b01ba6cd5",
+  "job/user" : "b"
+}, {
+  "run-time-ms" : 667081,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 540014,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 3.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2807.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-b78d-49fd-a6af-e023b8f0f161",
+  "job/user" : "a"
+}, {
+  "run-time-ms" : 1642188,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 540252,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 1.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2596.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-4a95-46f3-a389-13b0494b95a4",
+  "job/user" : "a"
+}, {
+  "run-time-ms" : 1794793,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 540307,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 3.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2573.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-1cb6-4435-971e-be5cf7c2b276",
+  "job/user" : "c"
+}, {
+  "run-time-ms" : 1189909,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 540484,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 3.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2144.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-0ab7-4b7f-87e8-51f4650ba4f9",
+  "job/user" : "d"
+}, {
+  "run-time-ms" : 1172663,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 540546,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 1.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2092.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-d4fd-4409-9d9c-60ff005e327f",
+  "job/user" : "c"
+}, {
+  "run-time-ms" : 1442781,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 540638,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 3.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2626.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-57ef-4da1-a4a4-46c54964194f",
+  "job/user" : "d"
+}, {
+  "run-time-ms" : 1265907,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 540762,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 3.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 2425.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c9805-3f78-4083-abfc-88078414ba2d",
+  "job/user" : "d"
+}, {
+  "run-time-ms" : 10000,
+  "job/max-runtime" : 432000000,
+  "submit-time-ms" : 7200000,
+  "job/priority" : 50,
+  "job/resource" : [ {
+    "resource/type" : "resource.type/cpus",
+    "resource/amount" : 3.0
+  }, {
+    "resource/type" : "resource.type/mem",
+    "resource/amount" : 10000.0
+  } ],
+  "job/max-retries" : 5,
+  "job/command" : "sleep 10",
+  "job/disable-mea-culpa-retries" : false,
+  "job/name" : "dummy_job",
+  "job/uuid" : "591c97d8-e699-4d73-8eff-c78023fe78cc",
+  "job/user" : "e"
+} ]

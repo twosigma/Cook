@@ -469,3 +469,13 @@
                    (on-finished)))
   (fn cancel! []
     (async/close! ch)))
+
+(defn read-chan
+  "Tries to read `ch-size` elements immediately from the channel and
+   returns the values on the channel.
+
+   This function does not block and may return an empty list if the channel
+   is currently empty."
+  [ch ch-size]
+  (->> (repeatedly ch-size #(async/poll! ch))
+       (remove nil?)))

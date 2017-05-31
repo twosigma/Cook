@@ -590,7 +590,9 @@
   (for [{:keys [tasks leases]} matches
         :let [offers (mapv :offer leases)
               slave-id (-> offers first :slave-id :value)]
-        ^TaskAssignmentResult task tasks
+        ^TaskAssignmentResult task (->> tasks
+                                        ;; sort-by makes match transaction deterministic
+                                        (sort-by (comp :db/id :job #(.getRequest %))))
         :let [request (.getRequest task)
               task-id (:task-id request)
               job-id (get-in request [:job :db/id])]]
@@ -761,16 +763,12 @@
                       ;;     reflect *Cook*'s understanding of the state of the world at this point.
                       ;;     When this happens, users should never exceed their quota
                       user->usage-future (future (generate-user-usage-map (d/db conn)))
-                      offers (async/alt!!
-                               offers-chan ([offers]
-                                            (counters/dec! offer-chan-depth)
-                                            offers)
-                               trigger-chan ([_] [])
-                               :priority true)
                       ;; Try to clear the channel
-                      offers (->> (repeatedly chan-length #(async/poll! offers-chan))
-                                  (filter nil?)
-                                  (reduce into offers))
+                      offers (->> (util/read-chan offers-chan chan-length)
+                                  ((fn decrement-offer-chan-depth [offer-lists]
+                                     (counters/dec! offer-chan-depth (count offer-lists))
+                                     offer-lists))
+                                  (reduce into []))
                       _ (doseq [offer offers
                                 :let [slave-id (-> offer :slave-id :value)
                                       attrs (get-offer-attr-map offer)]]
@@ -813,7 +811,8 @@
                                  "now give Fenzo " max-considerable " jobs to look at.")
                       (meters/mark! fenzo-abandon-and-reset-meter)
                       max-considerable)
-                    next-considerable)))))
+                    next-considerable))))
+      {:error-handler (fn [ex] (log/error ex "Error occurred in match"))})
     [offers-chan resources-atom]))
 
 (defn reconcile-jobs
