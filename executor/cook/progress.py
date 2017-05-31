@@ -14,13 +14,22 @@ class ProgressUpdater(object):
     It throttles the rate at which progress updates are sent.
     """
 
-    def __init__(self, poll_interval_ms, send_message_fn):
+    def __init__(self, driver, task_id, max_message_length, poll_interval_ms, send_message_fn):
         """
+        driver: MesosExecutorDriver
+            The mesos driver to use.
+        task_id: string
+            The task id.
+        max_message_length: int
+            The allowed max message length after encoding.
         poll_interval_ms: int
             The interval after which to send a subsequent progress update.
         send_message: function(driver, message, max_message_length)
             The helper function used to send the message.
         """
+        self.driver = driver
+        self.task_id = task_id
+        self.max_message_length = max_message_length
         self.poll_interval_ms = poll_interval_ms
         self.last_reported_time = None
         self.last_progress_data = None
@@ -38,19 +47,13 @@ class ProgressUpdater(object):
             time_diff_ms = (current_time - self.last_reported_time) * 1000
             return time_diff_ms >= self.poll_interval_ms
 
-    def send_progress_update(self, driver, task_id, max_message_length, progress_data, force_send=False):
+    def send_progress_update(self, progress_data, force_send=False):
         """Sends a progress update if enough time has elapsed since the last progress update.
         The force_send flag can be used to ignore the check for enough time having elapsed.
         Using this method is thread-safe.
         
         Parameters
         ----------
-        driver: MesosExecutorDriver
-            The mesos driver to use.
-        task_id: string
-            The task id.
-        max_message_length: int
-            The allowed max message length after encoding.
         progress_data: map 
             The progress data to send.
         force_send: boolean, optional
@@ -65,19 +68,19 @@ class ProgressUpdater(object):
                 if force_send or self.has_enough_time_elapsed_since_last_update():
                     logging.info('Sending progress message {}'.format(progress_data))
                     message_dict = dict(progress_data)
-                    message_dict['task-id'] = task_id
+                    message_dict['task-id'] = self.task_id
                     progress_message = json.dumps(message_dict)
 
-                    if len(progress_message) > max_message_length and cook.PROGRESS_MESSAGE_KEY in message_dict:
+                    if len(progress_message) > self.max_message_length and cook.PROGRESS_MESSAGE_KEY in message_dict:
                         progress_str = message_dict[cook.PROGRESS_MESSAGE_KEY]
-                        num_extra_chars = len(progress_message) - max_message_length
+                        num_extra_chars = len(progress_message) - self.max_message_length
                         allowed_progress_message_length = max(len(progress_str) - num_extra_chars - 3, 0)
                         new_progress_str = progress_str[:allowed_progress_message_length].strip() + '...'
                         logging.info('Progress message trimmed to {}'.format(new_progress_str))
                         message_dict[cook.PROGRESS_MESSAGE_KEY] = new_progress_str
                         progress_message = json.dumps(message_dict)
 
-                    self.send_message(driver, progress_message, max_message_length)
+                    self.send_message(self.driver, progress_message, self.max_message_length)
                     self.last_reported_time = time.time()
                     self.last_progress_data = progress_data
                 else:
@@ -144,9 +147,7 @@ class ProgressWatcher(object):
                 logging.info('No output has been read to parse progress messages')
                 return
 
-            if os.path.isfile(self.target_file):
-                logging.info('{} has been created, reading contents'.format(self.target_file))
-
+            logging.info('{} has been created, reading contents'.format(self.target_file))
             target_file_obj = open(self.target_file, 'r')
             while not self.completed_signal.isSet():
                 line = target_file_obj.readline(self.max_bytes_read_per_line)
@@ -181,23 +182,16 @@ class ProgressWatcher(object):
                     yield self.progress
 
 
-def track_progress(driver, task_id, progress_watcher, max_message_length, progress_complete_event,
-                   send_progress_update):
+def track_progress(progress_watcher, progress_complete_event, send_progress_update):
     """Sends progress updates to the mesos driver until the stop_signal is set.
     
     Parameters
     ----------
-    driver: MesosExecutorDriver
-        The mesos driver to use.
-    task_id: string
-        The id of the task to execute.
     progress_watcher: ProgressWatcher
         The progress watcher which maintains the current progress state
-    max_message_length: int
-        Allowed max message length to send
     progress_complete_event: Event
         Event that triggers completion of progress tracking
-    send_progress_update: function(driver, task_id, max_message_length, current_progress)
+    send_progress_update: function(current_progress)
         The function to invoke while sending progress updates
         
     Returns
@@ -207,18 +201,48 @@ def track_progress(driver, task_id, progress_watcher, max_message_length, progre
     try:
         for current_progress in progress_watcher.retrieve_progress_states():
             logging.debug('Latest progress: {}'.format(current_progress))
-            send_progress_update(driver, task_id, max_message_length, current_progress)
+            send_progress_update(current_progress)
     except:
         logging.exception('Exception while tracking progress')
     finally:
         progress_complete_event.set()
 
 
-def launch_progress_tracker(driver, task, max_message_length, progress_watcher, progress_updater):
-    """Launches the threads that track progress and send progress updates to the driver."""
+def launch_progress_tracker(progress_watcher, progress_updater):
+    """Launches the threads that track progress and send progress updates to the driver.
+
+    Parameters
+    ----------
+    progress_watcher: ProgressWatcher
+        The progress watcher which maintains the current progress state.
+    progress_updater: ProgressUpdater
+        The progress updater which sends progress updates to the scheduler.
+        
+    Returns
+    -------
+    The progress complete threading.Event.
+    """
     progress_complete_event = Event()
     progress_update_thread = Thread(target=track_progress,
-                                    args=(driver, task, progress_watcher, max_message_length, progress_complete_event,
+                                    args=(progress_watcher, progress_complete_event,
                                           progress_updater.send_progress_update))
     progress_update_thread.start()
     return progress_complete_event
+
+
+def force_send_progress_update(progress_watcher, progress_updater):
+    """Retrieves the latest progress message and attempts to force send it to the scheduler.
+
+    Parameters
+    ----------
+    progress_watcher: ProgressWatcher
+        The progress watcher which maintains the current progress state.
+    progress_updater: ProgressUpdater
+        The progress updater which sends progress updates to the scheduler.
+        
+    Returns
+    -------
+    Nothing.
+    """
+    latest_progress = progress_watcher.current_progress()
+    progress_updater.send_progress_update(latest_progress, force_send=True)

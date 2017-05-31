@@ -38,17 +38,11 @@ def cleanup_output(stdout_name, stderr_name):
 
 class FakeMesosExecutorDriver(object):
     def __init__(self):
-        self.count_calls = 0
-        self.statuses = []
         self.messages = []
-
-    def sendStatusUpdate(self, status):
-        self.count_calls += 1
-        self.statuses.append(status)
+        self.statuses = []
 
     def sendFrameworkMessage(self, message):
-        self.count_calls += 1
         self.messages.append(message)
 
-    def method_call_count(self):
-        return self.count_calls
+    def sendStatusUpdate(self, status):
+        self.statuses.append(status)

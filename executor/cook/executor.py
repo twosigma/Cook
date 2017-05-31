@@ -93,13 +93,11 @@ def send_message(driver, message, max_message_length):
         return False
 
 
-def launch_task(driver, task, stdout_name, stderr_name):
+def launch_task(task, stdout_name, stderr_name):
     """Launches the task using the command available in the json map from the data field.
 
     Parameters
     ----------
-    driver: MesosExecutorDriver
-        The mesos driver to use.
     task: map
         The task to execute.
     stdout_name: string
@@ -109,16 +107,19 @@ def launch_task(driver, task, stdout_name, stderr_name):
 
     Returns
     -------
-    the tuple containing the process launched, stdout file, and stderr file.
+    When command is provided and a process can be started, the tuple containing the process launched, stdout file, 
+    and stderr file.
+    Else it logs the reason and returns None.
     """
-    task_id = get_task_id(task)
     try:
-        update_status(driver, task_id, cook.TASK_RUNNING)
-
         data_string = decode_data(task['data']).decode('utf8')
         data_json = json.loads(data_string)
-        command = data_json['command']
+        command = str(data_json['command']).strip()
         logging.info('Command: {}'.format(command))
+        if not command:
+            logging.warning('No command provided!')
+            return None
+
         stdout = open(stdout_name, 'a+')
         stderr = open(stderr_name, 'a+')
         process = subprocess.Popen(command, shell=True, stdout=stdout, stderr=stderr)
@@ -126,7 +127,7 @@ def launch_task(driver, task, stdout_name, stderr_name):
         return process, stdout, stderr
     except Exception:
         logging.exception('Error in launch_task')
-        update_status(driver, task_id, cook.TASK_FAILED)
+        return None
 
 
 def is_running(process):
@@ -238,7 +239,7 @@ def await_process_completion(driver, task, stop_signal, process_info, shutdown_g
             process_killed = True
             break
 
-        time.sleep(1)
+        time.sleep(cook.RUNNING_POLL_INTERVAL_SECS)
     return process_killed
 
 
@@ -254,16 +255,27 @@ def manage_task(driver, task, stop_signal, completed_signal, config, stdout_name
     """
     task_id = get_task_id(task)
     try:
+        # not yet started to run the task
+        update_status(driver, task_id, cook.TASK_STARTING)
+
         sandbox_message = json.dumps({'sandbox-location': config.sandbox_location, 'task-id': task_id})
         send_message(driver, sandbox_message, config.max_message_length)
 
-        process_info = launch_task(driver, task, stdout_name, stderr_name)
-        process, _, _ = process_info
+        process_info = launch_task(task, stdout_name, stderr_name)
+        if process_info:
+            # task has begun running successfully
+            update_status(driver, task_id, cook.TASK_RUNNING)
+        else:
+            # task launch failed, report an error
+            logging.info('Error in launching task')
+            update_status(driver, task_id, cook.TASK_ERROR)
+            return
 
+        process, _, _ = process_info
         progress_watcher = cp.ProgressWatcher(config, completed_signal)
-        progress_updater = cp.ProgressUpdater(config.progress_sample_interval_ms, send_message)
-        progress_complete_event = cp.launch_progress_tracker(driver, task_id, config.max_message_length,
-                                                             progress_watcher, progress_updater)
+        progress_updater = cp.ProgressUpdater(driver, task_id, config.max_message_length,
+                                              config.progress_sample_interval_ms, send_message)
+        progress_complete_event = cp.launch_progress_tracker(progress_watcher, progress_updater)
 
         process_killed = await_process_completion(driver, task, stop_signal, process_info,
                                                   config.shutdown_grace_period_ms)
@@ -281,15 +293,15 @@ def manage_task(driver, task, stop_signal, completed_signal, config, stdout_name
         send_message(driver, exit_message, config.max_message_length)
 
         # send the latest progress state if available
-        latest_progress = progress_watcher.current_progress()
-        progress_updater.send_progress_update(driver, task_id, config.max_message_length, latest_progress,
-                                              force_send=True)
+        cp.force_send_progress_update(progress_watcher, progress_updater)
 
         if not process_killed:
+            # task either completed successfully or aborted with an error
             task_state = cook.TASK_FINISHED if exit_code == 0 else cook.TASK_FAILED
             update_status(driver, task_id, task_state)
 
     except Exception:
+        # task aborted with an error
         logging.exception('Error in executing task')
         update_status(driver, task_id, cook.TASK_FAILED)
 

@@ -4,7 +4,7 @@ import signal
 import subprocess
 import time
 import unittest
-from threading import Event
+from threading import Event, Thread
 
 import os
 from nose.tools import *
@@ -44,7 +44,6 @@ class ExecutorTest(unittest.TestCase):
 
         ce.update_status(driver, task_id, task_state)
 
-        self.assertEqual(1, driver.method_call_count())
         self.assertEqual(1, len(driver.statuses))
         actual_status = driver.statuses[0]
         expected_status = {'task_id': {'value': task_id},
@@ -61,7 +60,6 @@ class ExecutorTest(unittest.TestCase):
         result = ce.send_message(driver, message, max_message_length)
 
         self.assertTrue(result)
-        self.assertEqual(1, driver.method_call_count())
         self.assertEqual(1, len(driver.messages))
         actual_encoded_message = driver.messages[0]
         assert_message(expected_message, actual_encoded_message)
@@ -76,7 +74,6 @@ class ExecutorTest(unittest.TestCase):
         self.assertFalse(result)
 
     def test_launch_task(self):
-        driver = FakeMesosExecutorDriver()
         task_id = get_random_task_id()
         command = 'echo "Hello World"; echo "Error Message" >&2'
         task = {'task_id': {'value': task_id},
@@ -88,7 +85,7 @@ class ExecutorTest(unittest.TestCase):
             os.mkdir("build")
 
         try:
-            process, stdout, stderr = ce.launch_task(driver, task, stdout_name, stderr_name)
+            process, stdout, stderr = ce.launch_task(task, stdout_name, stderr_name)
 
             self.assertIsNotNone(process)
             for i in range(100):
@@ -100,13 +97,6 @@ class ExecutorTest(unittest.TestCase):
 
             if process.poll() is None:
                 process.kill()
-
-            self.assertEqual(1, driver.method_call_count())
-            self.assertEqual(1, len(driver.statuses))
-            actual_status = driver.statuses[0]
-            expected_status = {'task_id': {'value': task_id},
-                               'state': cook.TASK_RUNNING}
-            assert_status(expected_status, actual_status)
 
             self.assertEqual(0, process.poll())
 
@@ -121,39 +111,26 @@ class ExecutorTest(unittest.TestCase):
         finally:
             cleanup_output(stdout_name, stderr_name)
 
-    def test_launch_task_error(self):
-        class FakeMesosExecutorDriver(object):
-            def __init__(self):
-                self.count_calls = 0
-                self.statuses = []
-
-            def sendStatusUpdate(self, status):
-                self.count_calls += 1
-                self.statuses.append(status)
-                if self.count_calls == 1:
-                    raise Exception('Thrown from test')
-
-            def method_call_count(self):
-                return self.count_calls
-
-        driver = FakeMesosExecutorDriver()
+    def test_launch_task_no_command(self):
         task_id = get_random_task_id()
-        task = {'task_id': {'value': task_id}}
-        stdout_name = None
-        stderr_name = None
+        task = {'task_id': {'value': task_id},
+                'data': encode_data(json.dumps({'command': ''}).encode('utf8'))}
+        stdout_name = ''
+        stderr_name = ''
 
-        result = ce.launch_task(driver, task, stdout_name, stderr_name)
+        result = ce.launch_task(task, stdout_name, stderr_name)
 
         self.assertIsNone(result)
-        self.assertEqual(2, driver.method_call_count())
 
-        actual_status_0 = driver.statuses[0]
-        expected_status_0 = {'task_id': {'value': task_id}, 'state': cook.TASK_RUNNING}
-        assert_status(expected_status_0, actual_status_0)
+    def test_launch_task_handle_exception(self):
+        task_id = get_random_task_id()
+        task = {'task_id': {'value': task_id}}
+        stdout_name = ''
+        stderr_name = ''
 
-        actual_status_1 = driver.statuses[1]
-        expected_status_1 = {'task_id': {'value': task_id}, 'state': cook.TASK_FAILED}
-        assert_status(expected_status_1, actual_status_1)
+        result = ce.launch_task(task, stdout_name, stderr_name)
+
+        self.assertIsNone(result)
 
     def test_cleanup_process(self):
         task_id = get_random_task_id()
@@ -195,7 +172,6 @@ class ExecutorTest(unittest.TestCase):
                 time.sleep(0.01)
             self.assertEqual(-1 * signal.SIGTERM, process.poll())
 
-            self.assertEqual(1, driver.method_call_count())
             self.assertEqual(1, len(driver.statuses))
             actual_status = driver.statuses[0]
             expected_status = {'task_id': {'value': task_id},
@@ -226,13 +202,17 @@ class ExecutorTest(unittest.TestCase):
             shutdown_grace_period_ms = 2000
 
             stop_signal = Event()
-            stop_signal.set()
+
+            def sleep_and_set_stop_signal():
+                time.sleep(3 * cook.RUNNING_POLL_INTERVAL_SECS)
+                stop_signal.set()
+            thread = Thread(target=sleep_and_set_stop_signal, args=())
+            thread.start()
 
             result = ce.await_process_completion(driver, task, stop_signal, process_info, shutdown_grace_period_ms)
 
             self.assertTrue(result)
 
-            self.assertEqual(1, driver.method_call_count())
             self.assertEqual(1, len(driver.statuses))
             actual_status = driver.statuses[0]
             expected_status = {'task_id': {'value': task_id},
@@ -279,19 +259,21 @@ class ExecutorTest(unittest.TestCase):
 
     def test_manage_task_successful_exit(self):
         def assertions(driver, task_id, sandbox_location):
-            logging.info('driver.method_call_count() = {}'.format(driver.method_call_count()))
-            self.assertEqual(4, driver.method_call_count())
-
+            
             logging.info('Statuses: {}'.format(driver.statuses))
-            self.assertEqual(2, len(driver.statuses))
+            self.assertEqual(3, len(driver.statuses))
 
             actual_status_0 = driver.statuses[0]
-            expected_status_0 = {'task_id': {'value': task_id}, 'state': cook.TASK_RUNNING}
+            expected_status_0 = {'task_id': {'value': task_id}, 'state': cook.TASK_STARTING}
             assert_status(expected_status_0, actual_status_0)
 
             actual_status_1 = driver.statuses[1]
-            expected_status_1 = {'task_id': {'value': task_id}, 'state': cook.TASK_FINISHED}
+            expected_status_1 = {'task_id': {'value': task_id}, 'state': cook.TASK_RUNNING}
             assert_status(expected_status_1, actual_status_1)
+
+            actual_status_2 = driver.statuses[2]
+            expected_status_2 = {'task_id': {'value': task_id}, 'state': cook.TASK_FINISHED}
+            assert_status(expected_status_2, actual_status_2)
 
             logging.info('Messages: {}'.format(driver.messages))
             self.assertEqual(2, len(driver.messages))
@@ -307,21 +289,47 @@ class ExecutorTest(unittest.TestCase):
         command = 'echo "Hello World"'
         self.manage_task_runner(command, assertions)
 
-    def test_manage_task_involved_command_successful_exit(self):
+    def test_manage_task_empty_command(self):
         def assertions(driver, task_id, sandbox_location):
-            logging.info('driver.method_call_count() = {}'.format(driver.method_call_count()))
-            self.assertEqual(5, driver.method_call_count())
 
             logging.info('Statuses: {}'.format(driver.statuses))
             self.assertEqual(2, len(driver.statuses))
 
             actual_status_0 = driver.statuses[0]
-            expected_status_0 = {'task_id': {'value': task_id}, 'state': cook.TASK_RUNNING}
+            expected_status_0 = {'task_id': {'value': task_id}, 'state': cook.TASK_STARTING}
             assert_status(expected_status_0, actual_status_0)
 
             actual_status_1 = driver.statuses[1]
-            expected_status_1 = {'task_id': {'value': task_id}, 'state': cook.TASK_FINISHED}
+            expected_status_1 = {'task_id': {'value': task_id}, 'state': cook.TASK_ERROR}
             assert_status(expected_status_1, actual_status_1)
+
+            logging.info('Messages: {}'.format(driver.messages))
+            self.assertEqual(1, len(driver.messages))
+
+            actual_encoded_message_0 = driver.messages[0]
+            expected_message_0 = {'sandbox-location': sandbox_location, 'task-id': task_id}
+            assert_message(expected_message_0, actual_encoded_message_0)
+
+        command = ''
+        self.manage_task_runner(command, assertions)
+
+    def test_manage_task_involved_command_successful_exit(self):
+        def assertions(driver, task_id, sandbox_location):
+            
+            logging.info('Statuses: {}'.format(driver.statuses))
+            self.assertEqual(3, len(driver.statuses))
+
+            actual_status_0 = driver.statuses[0]
+            expected_status_0 = {'task_id': {'value': task_id}, 'state': cook.TASK_STARTING}
+            assert_status(expected_status_0, actual_status_0)
+
+            actual_status_1 = driver.statuses[1]
+            expected_status_1 = {'task_id': {'value': task_id}, 'state': cook.TASK_RUNNING}
+            assert_status(expected_status_1, actual_status_1)
+
+            actual_status_2 = driver.statuses[2]
+            expected_status_2 = {'task_id': {'value': task_id}, 'state': cook.TASK_FINISHED}
+            assert_status(expected_status_2, actual_status_2)
 
             logging.info('Messages: {}'.format(driver.messages))
             self.assertEqual(3, len(driver.messages))
@@ -346,18 +354,21 @@ class ExecutorTest(unittest.TestCase):
 
     def test_manage_task_successful_exit_with_progress_message(self):
         def assertions(driver, task_id, sandbox_location):
-            self.assertEqual(6, driver.method_call_count())
-
+            
             logging.info('Statuses: {}'.format(driver.statuses))
-            self.assertEqual(2, len(driver.statuses))
+            self.assertEqual(3, len(driver.statuses))
 
             actual_status_0 = driver.statuses[0]
-            expected_status_0 = {'task_id': {'value': task_id}, 'state': cook.TASK_RUNNING}
+            expected_status_0 = {'task_id': {'value': task_id}, 'state': cook.TASK_STARTING}
             assert_status(expected_status_0, actual_status_0)
 
             actual_status_1 = driver.statuses[1]
-            expected_status_1 = {'task_id': {'value': task_id}, 'state': cook.TASK_FINISHED}
+            expected_status_1 = {'task_id': {'value': task_id}, 'state': cook.TASK_RUNNING}
             assert_status(expected_status_1, actual_status_1)
+
+            actual_status_2 = driver.statuses[2]
+            expected_status_2 = {'task_id': {'value': task_id}, 'state': cook.TASK_FINISHED}
+            assert_status(expected_status_2, actual_status_2)
 
             logging.info('Messages: {}'.format(driver.messages))
             self.assertEqual(4, len(driver.messages))
@@ -389,18 +400,21 @@ class ExecutorTest(unittest.TestCase):
 
     def test_manage_task_erroneous_exit(self):
         def assertions(driver, task_id, sandbox_location):
-            self.assertEqual(4, driver.method_call_count())
-
+            
             logging.info('Statuses: {}'.format(driver.statuses))
-            self.assertEqual(2, len(driver.statuses))
+            self.assertEqual(3, len(driver.statuses))
 
             actual_status_0 = driver.statuses[0]
-            expected_status_0 = {'task_id': {'value': task_id}, 'state': cook.TASK_RUNNING}
+            expected_status_0 = {'task_id': {'value': task_id}, 'state': cook.TASK_STARTING}
             assert_status(expected_status_0, actual_status_0)
 
             actual_status_1 = driver.statuses[1]
-            expected_status_1 = {'task_id': {'value': task_id}, 'state': cook.TASK_FAILED}
+            expected_status_1 = {'task_id': {'value': task_id}, 'state': cook.TASK_RUNNING}
             assert_status(expected_status_1, actual_status_1)
+
+            actual_status_2 = driver.statuses[2]
+            expected_status_2 = {'task_id': {'value': task_id}, 'state': cook.TASK_FAILED}
+            assert_status(expected_status_2, actual_status_2)
 
             logging.info('Messages: {}'.format(driver.messages))
             self.assertEqual(2, len(driver.messages))
