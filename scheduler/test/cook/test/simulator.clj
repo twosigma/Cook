@@ -550,7 +550,7 @@
 
 (deftest test-simulator
   (let [users ["a" "b" "c" "d"]
-        jobs (-> (for [minute (range 40)
+        jobs (-> (for [minute (range 5)
                        sim-i (range (+ (rand-int 50) 30))]
                    (create-trace-job (+ (rand-int 1200000) 600000) ; 1 to 20 minutes
                                      (+ (* 1000 60 minute) (+ (rand-int 2000) -1000))
