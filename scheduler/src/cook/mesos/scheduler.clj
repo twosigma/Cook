@@ -765,7 +765,7 @@
                       user->usage-future (future (generate-user-usage-map (d/db conn)))
                       ;; Try to clear the channel
                       offers (->> (util/read-chan offers-chan chan-length)
-                                  ((fn [offer-lists]
+                                  ((fn decrement-offer-chan-depth [offer-lists]
                                      (counters/dec! offer-chan-depth (count offer-lists))
                                      offer-lists))
                                   (reduce into []))

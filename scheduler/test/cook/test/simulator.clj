@@ -75,7 +75,7 @@
                            :fenzo-scaleback 0.95
                            :fenzo-floor-iterations-before-warn 10
                            :fenzo-floor-iterations-before-reset 1000
-                           :good-enough-fitness 0.8})
+                           :good-enough-fitness 1.0})
 
 (def default-task-constraints {:timeout-hours 1
                                :timeout-interval-minutes 1
@@ -160,25 +160,7 @@
                              :label/value)}))
 
 (defn dump-jobs-to-csv
-  "Given a mesos db, dump a csv with a row per task
-
-   Columns:
-   * job_id
-   * instance_id
-   * submit_time
-   * mesos_start_time
-   * start_time
-   * end_time
-   * hostname
-   * slave_id
-   * status
-   * reason
-   * user
-   * mem
-   * cpus
-   * job-name
-   * requested-run-time
-   * requested-status"
+  "Given a mesos db, dump a csv with a row per task"
   [task-ents file]
   ;; Use snake case to make it easier for downstream tools to consume
   (let [headers [:job_id :instance_id :submit_time_ms :mesos_start_time_ms :start_time_ms
@@ -202,9 +184,10 @@
 (defn submit-job
   "Submits a job to datomic"
   [conn job]
-  (let [job-keys [:job/uuid :job/command :job/user :job/name :job/max-retries
-                  :job/max-runtime :job/priority :job/disable-mea-culpa-retries
-                  :job/resource]]
+  (let [job-keys [:job/command :job/disable-mea-culpa-retries
+                  :job/max-retries :job/max-runtime
+                  :job/name :job/priority :job/resource
+                  :job/user :job/uuid]]
     (let [runtime-label-id (d/tempid :db.part/user)
           runtime-env {:db/id runtime-label-id
                        :label/key "JOB-RUNTIME"
@@ -220,15 +203,15 @@
                status-env
                commit-latch
                (-> (select-keys job job-keys)
-                   (assoc :db/id (d/tempid :db.part/user))
+                   (assoc :db/id (d/tempid :db.part/user)
+                          :job/commit-latch commit-latch-id
+                          :job/submit-time (tc/to-date (t/now))
+                          :job/state :job.state/waiting
+                          :job/label [status-label-id runtime-label-id]
+                          :job/custom-executor false)
                    (update :job/uuid #(java.util.UUID/fromString %))
                    (update :job/command #(or % ""))
                    (update :job/name #(or % ""))
-                   (assoc :job/commit-latch commit-latch-id)
-                   (assoc :job/submit-time (tc/to-date (t/now)))
-                   (assoc :job/state :job.state/waiting)
-                   (assoc :job/label [status-label-id runtime-label-id])
-                   (assoc :job/custom-executor false)
                    (update :job/max-runtime #(int (or % (-> 7 t/days t/in-millis)) )))]]
       @(d/transact conn txn))))
 
@@ -567,7 +550,7 @@
 
 (deftest test-simulator
   (let [users ["a" "b" "c" "d"]
-        jobs (-> (for [minute (range 5)
+        jobs (-> (for [minute (range 40)
                        sim-i (range (+ (rand-int 50) 30))]
                    (create-trace-job (+ (rand-int 1200000) 600000) ; 1 to 20 minutes
                                      (+ (* 1000 60 minute) (+ (rand-int 2000) -1000))
@@ -584,7 +567,7 @@
                                          :memory 10000
                                          :ncpus 3)))
         jobs (sort-by :submit-time-ms jobs)
-        hosts (for [i (range 10)]
+        hosts (for [i (range 120)]
                 (trace-host i 20000.0 20.0))
         cycle-step-ms 30000
         config {:shares [{:user "default" :mem 2000.0 :cpus 2.0 :gpus 1.0}]
