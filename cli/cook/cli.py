@@ -349,8 +349,9 @@ def format_list(l):
 
 def format_instance_fields(instance):
     """Given an instance, formats the fields for display"""
-    instance['end_time'] = millis_to_date_string(instance['end_time'])
     instance['start_time'] = millis_to_date_string(instance['start_time'])
+    if 'end_time' in instance:
+        instance['end_time'] = millis_to_date_string(instance['end_time'])
     if 'mesos_start_time' in instance:
         instance['mesos_start_time'] = millis_to_date_string(instance['mesos_start_time'])
     if 'ports' in instance:
@@ -368,7 +369,7 @@ def tabulate_instances(instances, detailed_instances):
     """Returns either a table displaying the instance info or the string "(no instances)"."""
     if len(instances) > 0:
         fields = detailed_instance_fields if detailed_instances else basic_instance_fields
-        instances = [OrderedDict([(k, i[k]) for k in fields]) for i in instances]
+        instances = [OrderedDict([(k, i[k]) for k in fields if k in i]) for i in instances]
         instance_table = tabulate([format_instance_fields(i) for i in instances], headers='keys')
         return instance_table
     else:

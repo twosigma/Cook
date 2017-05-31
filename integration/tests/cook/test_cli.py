@@ -259,7 +259,7 @@ class CookCliTest(unittest.TestCase):
         elapsed_time = time.time() - start_time
         self.assertEqual(1, cp.returncode, cp.stderr)
         self.assertIn('Timeout waiting for jobs', cli.decode(cp.stderr))
-        self.assertLess(elapsed_time, 7)
+        self.assertLess(elapsed_time, 10)
         self.assertGreater(elapsed_time, 3)
         start_time = time.time()
         cp = cli.wait(uuids, self.cook_url, wait_flags='--timeout 1 --interval 1')
@@ -429,3 +429,10 @@ class CookCliTest(unittest.TestCase):
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertRegex(cli.stdout(cp), 'Instances:\\n\\ntask_id\s+status\s+start_time\s+end_time\s+mesos_start_time'
                                          '\s+slave_id\s+executor_id\s+hostname\s+ports\s+backfilled\s+preempted\s*\\n')
+
+    def test_show_running_job(self):
+        cp, uuids = cli.submit('sleep 60', self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        util.wait_for_job(self.cook_url, uuids[0], 'running')
+        cp = cli.show(uuids, self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
