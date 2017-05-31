@@ -1077,7 +1077,7 @@
   (sort-jobs-by-dru-helper pending-task-ents running-task-ents user->dru-divisors
                            dru/sorted-task-cumulative-gpu-score-pairs sort-gpu-jobs-hierarchy-duration))
 
-(defn sort-jobs-by-dru
+(defn sort-jobs-by-dru-category
   "Returns a map from job category to a list of job entities, ordered by dru"
   [unfiltered-db]
   ;; This function does not use the filtered db when it is not necessary in order to get better performance
@@ -1086,19 +1086,16 @@
   ;; The unfiltered db can also be used on pending job entities once the filtered db is used to limit
   ;; to only those jobs that have been committed.
   (let [category->pending-job-ents (group-by util/categorize-job (util/get-pending-job-ents unfiltered-db))
-        category->pending-task-ents (reduce-kv (fn [m category pending-job-ents]
-                                                 (assoc m category (map util/create-task-ent pending-job-ents)))
-                                               {}
-                                               category->pending-job-ents)
+        category->pending-task-ents (pc/map-vals #(map util/create-task-ent %1) category->pending-job-ents)
         category->running-task-ents (group-by (comp util/categorize-job :job/_instance)
                                               (util/get-running-task-ents unfiltered-db))
         user->dru-divisors (share/create-user->share-fn unfiltered-db)
         category->sort-jobs-by-dru-fn {:normal sort-normal-jobs-by-dru, :gpu sort-gpu-jobs-by-dru}]
-    (letfn [(sort-jobs-by-dru-helper [[category sort-jobs-by-dru]]
+    (letfn [(sort-jobs-by-dru-category-helper [[category sort-jobs-by-dru]]
              (let [pending-tasks (category->pending-task-ents category)
                    running-tasks (category->running-task-ents category)]
                [category (sort-jobs-by-dru pending-tasks running-tasks user->dru-divisors)]))]
-      (into {} (map sort-jobs-by-dru-helper category->sort-jobs-by-dru-fn)))))
+      (into {} (map sort-jobs-by-dru-category-helper) category->sort-jobs-by-dru-fn))))
 
 (timers/deftimer [cook-mesos scheduler filter-offensive-jobs-duration])
 
@@ -1172,7 +1169,7 @@
   (timers/time!
     rank-jobs-duration
     (try
-      (let [jobs (->> (sort-jobs-by-dru unfiltered-db)
+      (let [jobs (->> (sort-jobs-by-dru-category unfiltered-db)
                       ;; Apply the offensive job filter first before taking.
                       (map (fn [[category jobs]]
                              (log/debug "filtering category" category jobs)
