@@ -169,7 +169,7 @@ $ cs wait $(cs submit --minimal echo 1)
 
 Submit a job with a custom name, and immediately query it:
 ```
-$ cs show --json $(cs submit --name ls-job --minimal ls) | jq                                                                                                                                                          [3/1869]
+$ cs show --json $(cs submit --name ls-job --minimal ls) | jq
 [
   {
     "gpus": 0,
