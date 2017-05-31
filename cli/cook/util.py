@@ -18,11 +18,6 @@ def merge_dicts(*ds):
     return to_d
 
 
-def flatten_list(l):
-    """Flattens a list of lists down into a single list."""
-    return [item for sublist in l for item in sublist]
-
-
 def read_lines():
     """Read lines from stdin."""
     return sys.stdin.read().splitlines()

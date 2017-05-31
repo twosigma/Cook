@@ -14,7 +14,7 @@ This will install the `cs` command on your system.
 
 The Cook CLI client is designed with "end user ergonomics" in mind. Custom defaults may be provided for all commands. Multiple clusters are supported via configuration.
 
-In order to use the Cook CLI, you’ll need a configuration file. `cs` looks first for a `.cook.json` file in the current directory, and then for a `cook.json` file in your home directory. This file may also be provided manually via the command line with the `--config` option.
+In order to use the Cook CLI, you’ll need a configuration file. `cs` looks first for a `.cs.json` file in the current directory, and then for a `cook.json` file in your home directory. This file may also be provided manually via the command line with the `--config` option.
 
 The file looks something like this:
 
@@ -78,10 +78,10 @@ All global options (`--cluster`, `--config`, etc) can be provided when using sub
 You can submit one or more jobs with `submit`. A single command can be provided as a positional argument, or multiple commands can be provided, one per line, via `stdin`. Jobs can also be passed as "raw" JSON data by setting the `--raw` flag. The `submit` command returns UUIDs, one per line, for each created job.
 
 ```
-$ cs submit --help
+$ cs submit --help                                                                                                                                                                                                     [1/1895]
 usage: cs submit [-h] [--uuid UUID] [--name NAME] [--priority]
                  [--max-retries MAX-RETRIES] [--max-runtime MAX-RUNTIME]
-                 [--cpus CPUS] [--mem MEM] [--raw]
+                 [--cpus CPUS] [--mem MEM] [--raw] [--minimal]
                  [command] ...
 
 positional arguments:
@@ -100,6 +100,7 @@ optional arguments:
   --cpus CPUS           cpus to reserve for job
   --mem MEM             memory to reserve for job
   --raw, -r             raw job spec in json format
+  --minimal, -m         only output job uuid(s), without explanatory text
 ```
 
 #### `wait`
@@ -127,14 +128,15 @@ You can query jobs with `show`. Job UUIDs are passed as positional arguments. Th
 
 ```
 $ cs show --help
-usage: cs show [-h] [--json] uuid [uuid ...]
+usage: cs show [-h] [--json] [--instances] uuid [uuid ...]
 
 positional arguments:
   uuid
 
 optional arguments:
-  -h, --help  show this help message and exit
-  --json      show the job(s) in JSON format
+  -h, --help   show this help message and exit
+  --json       show the job(s) in JSON format
+  --instances  display detailed instance data
 ```
 
 ### Examples
@@ -142,53 +144,54 @@ optional arguments:
 Simple job creation:
 ```shell
 $ cs submit echo 1
-ddeebd40-656c-44c4-9843-9e5e8e06ae5a
+Job submitted successfully. Your job's UUID is eacef307-8ab4-4cb2-83d7-f0e4f054e200.
 ```
 
 Create multiple jobs, each with their own command:
 ```shell
 $ printf 'echo 1\necho 2' | cs submit
 Enter the commands, one per line (press Ctrl+D on a blank line to submit)
-7473ecdb-3931-45e0-952e-9666d6c67d77
-d0b9b056-ea76-4708-b5e4-d53b5f5300a1
+Jobs submitted successfully. Your jobs' UUIDs are: 2aa68e40-1835-417b-9dc8-7c97f7deb092, f8c8d05f-ccaf-4ba7-873f-3ffd81c02c2e.
 ```
 
 Create a job from a raw JSON spec:
 ```shell
-$ cs submit --raw '{"command": "echo 1"}'
-e47a496c-7226-4083-8988-44c262e0664b
+$ cs submit --raw
+Enter the raw job(s) JSON (press Ctrl+D on a blank line to submit)
+{"command": "echo 1"}
+Job submitted successfully. Your job's UUID is 0bc0f481-fabb-43eb-aa44-b87e8d3ecdcd.
 ```
 
 Simple job creation, and wait for job to complete:
 ```shell
-$ cs wait $(cs submit echo 1)
+$ cs wait $(cs submit --minimal echo 1)
 ```
 
 Submit a job with a custom name, and immediately query it:
 ```
-$ cs show --json $(cs submit --name ls-job ls) | jq
+$ cs show --json $(cs submit --name ls-job --minimal ls) | jq                                                                                                                                                          [3/1869]
 [
   {
-    "env": {},
-    "status": "waiting",
-    "priority": 50,
-    "labels": {},
-    "submit_time": 1495814775770,
+    "gpus": 0,
+    "command": "ls",
     "mem": 128,
+    "labels": {},
     "ports": 0,
+    "state": "waiting",
+    "submit_time": 1496244143759,
+    "max_retries": 1,
     "uris": [],
     "cpus": 1,
-    "max_runtime": 9223372036854776000,
-    "state": "waiting",
-    "command": "ls",
-    "gpus": 0,
-    "name": "ls-job",
-    "retries_remaining": 1,
     "user": "root",
-    "framework_id": null,
+    "env": {},
+    "status": "waiting",
     "instances": [],
-    "max_retries": 1,
-    "uuid": "055ea09c-768d-408d-92e2-93110e1bfb34"
+    "framework_id": null,
+    "retries_remaining": 1,
+    "uuid": "b5b23f4a-2bb6-4873-a4c6-7271d26b14fd",
+    "priority": 50,
+    "name": "ls-job",
+    "max_runtime": 9223372036854776000
   }
 ]
 ```

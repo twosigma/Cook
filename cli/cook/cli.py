@@ -1,23 +1,23 @@
 import argparse
+import datetime
 import json
 import logging
 import os
 import sys
+import time
 import uuid
+from collections import OrderedDict
 from urllib.parse import urljoin, urlparse
 
-import time
-
-import datetime
 import requests
 from tabulate import tabulate
 
-from cook.util import merge_dicts, load_first_json_file, read_lines, flatten_list, wait_until, is_valid_uuid
+from cook.util import merge_dicts, load_first_json_file, read_lines, wait_until, is_valid_uuid
 
 # Default locations to check for configuration files if one isn't given on the command line
 DEFAULT_CONFIG_PATHS = [
-    '.cook.json',
-    os.path.expanduser('~/.cook.json')
+    '.cs.json',
+    os.path.expanduser('~/.cs.json')
 ]
 
 
@@ -51,9 +51,9 @@ def default_config():
 
 def cli(args):
     """
-    Main entrypoint to the Cook CLI. Loads configuration files, 
-    processes global command line arguments, and calls other command 
-    line sub-commands (actions) if necessary.
+    Main entrypoint to the cook scheduler CLI. Loads configuration files, 
+    processes global command line arguments, and calls other command line 
+    sub-commands (actions) if necessary.
     """
     args = vars(parser.parse_args(args))
     verbose = args.pop('verbose')
@@ -126,6 +126,8 @@ submit_parser.add_argument('--max-runtime', help='maximum runtime for job', dest
 submit_parser.add_argument('--cpus', help='cpus to reserve for job', type=float)
 submit_parser.add_argument('--mem', help='memory to reserve for job', type=int)
 submit_parser.add_argument('--raw', '-r', help='raw job spec in json format', dest='raw', action='store_true')
+submit_parser.add_argument('--minimal', '-m', help='only output job uuid(s), without explanatory text', dest='minimal',
+                           action='store_true')
 submit_parser.add_argument('command', nargs='?')
 submit_parser.add_argument('args', nargs=argparse.REMAINDER)
 
@@ -180,6 +182,22 @@ def safe_pop(d, key):
     return value
 
 
+def read_commands_from_stdin():
+    """Prompts for and then reads commands, one per line, from stdin"""
+    print('Enter the commands, one per line (press Ctrl+D on a blank line to submit)', file=sys.stderr)
+    commands = read_lines()
+    if len(commands) < 1:
+        raise Exception('You must specify at least one command')
+    return commands
+
+
+def read_jobs_from_stdin():
+    """Prompts for and then reads job(s) JSON from stdin"""
+    print('Enter the raw job(s) JSON (press Ctrl+D on a blank line to submit)', file=sys.stderr)
+    jobs_json = sys.stdin.read()
+    return jobs_json
+
+
 def submit(clusters, args):
     """
     Submits a job (or multiple jobs) to cook scheduler. Assembles a list of jobs, potentially getting data 
@@ -191,22 +209,25 @@ def submit(clusters, args):
     raw = safe_pop(job, 'raw')
     command_from_command_line = safe_pop(job, 'command')
     command_args = safe_pop(job, 'args')
-
-    if command_from_command_line:
-        commands = ['%s%s' % (command_from_command_line, (' ' + ' '.join(command_args)) if command_args else '')]
-    else:
-        print('Enter the commands, one per line (press Ctrl+D on a blank line to submit)', file=sys.stderr)
-        commands = read_lines()
-        if len(commands) < 1:
-            raise Exception('You must specify at least one command')
-    logging.debug('commands: %s' % commands)
-
-    if job.get('uuid') and len(commands) > 1:
-        raise Exception('You cannot specify multiple commands with a single UUID')
+    minimal = safe_pop(job, 'minimal')
 
     if raw:
-        jobs = flatten_list([parse_raw_job_spec(job, c) for c in commands])
+        if command_from_command_line:
+            raise Exception('You cannot specify a command at the command line when using --raw/-r')
+
+        jobs_json = read_jobs_from_stdin()
+        jobs = parse_raw_job_spec(job, jobs_json)
     else:
+        if command_from_command_line:
+            commands = ['%s%s' % (command_from_command_line, (' ' + ' '.join(command_args)) if command_args else '')]
+        else:
+            commands = read_commands_from_stdin()
+
+        logging.debug('commands: %s' % commands)
+
+        if job.get('uuid') and len(commands) > 1:
+            raise Exception('You cannot specify multiple commands with a single UUID')
+
         jobs = [merge_dicts(job, {'command': c}) for c in commands]
 
     for j in jobs:
@@ -216,10 +237,18 @@ def submit(clusters, args):
         if not j.get('name'):
             j['name'] = "{0}_{1}".format(os.environ['USER'], uuid.uuid4())
 
+    def parse_submit_response(response, _):
+        uuids = [p for p in response.text.strip('"').split() if is_valid_uuid(p)]
+        if minimal:
+            return uuids
+        elif len(uuids) == 1:
+            return "Job submitted successfully. Your job's UUID is %s." % uuids[0]
+        else:
+            return "Jobs submitted successfully. Your jobs' UUIDs are: %s." % ', '.join(uuids)
+
     request_body = {'jobs': jobs}
-    return make_federated_request(clusters, lambda u: session.post(u, json=request_body), 201,
-                                  lambda r, _: [p for p in r.text.strip('"').split() if is_valid_uuid(p)],
-                                  'create job(s)')
+    return make_federated_request(clusters, lambda u: session.post(u, json=request_body),
+                                  201, parse_submit_response, 'create job(s)')
 
 
 actions.update({'submit': submit})
@@ -232,29 +261,29 @@ wait_parser.add_argument('--timeout', '-t', default=30, help='maximum time (in s
 wait_parser.add_argument('--interval', '-i', default=5, help='time (in seconds) to wait between polling', type=int)
 
 
-def fetch_jobs_on_cluster(cluster, uuids):
-    """Attempts to fetch jobs corresponding to the given uuids from cluster."""
+def query_jobs_on_cluster(cluster, uuids):
+    """Attempts to query jobs corresponding to the given uuids from cluster."""
     url = make_url(cluster, 'rawscheduler')
     resp = session.get(url, params={'job': uuids, 'partial': 'true'})
     logging.info('response from cook: %s' % resp.text)
     return resp
 
 
-def fetch_jobs(clusters, args, pred=None, timeout=None, interval=None):
+def query_jobs(clusters, args, pred=None, timeout=None, interval=None):
     """
-    Attempts to fetch jobs from the given clusters. The job uuids are provided in args. Optionally
+    Attempts to query jobs from the given clusters. The job uuids are provided in args. Optionally
     accepts a predicate, pred, which must be satisfied within the timeout.
     """
     uuids = process_uuids(args.get('uuid'))
 
     def jobs_satisfy_pred(cluster_, uuids_):
-        resp_ = fetch_jobs_on_cluster(cluster_, uuids_)
+        resp_ = query_jobs_on_cluster(cluster_, uuids_)
         return pred(resp_.json())
 
     all_jobs = []
     for cluster in clusters:
         try:
-            resp = fetch_jobs_on_cluster(cluster, uuids)
+            resp = query_jobs_on_cluster(cluster, uuids)
             if resp.status_code == 200:
                 jobs = resp.json()
                 if pred and not pred(jobs):
@@ -268,7 +297,7 @@ def fetch_jobs(clusters, args, pred=None, timeout=None, interval=None):
                     return all_jobs
         except requests.exceptions.ConnectionError as ce:
             logging.info(ce)
-    raise Exception('Unable to fetch job(s) on the following cluster(s): %s' % clusters)
+    raise Exception('Unable to query job(s) on the following cluster(s): %s' % clusters)
 
 
 def all_jobs_completed(jobs):
@@ -283,7 +312,7 @@ def wait(clusters, args):
     """Waits for job(s) with the given UUID(s) to complete."""
     timeout = args.get('timeout')
     interval = args.get('interval')
-    fetch_jobs(clusters, args, all_jobs_completed, timeout, interval)
+    query_jobs(clusters, args, all_jobs_completed, timeout, interval)
 
 
 actions.update({'wait': wait})
@@ -293,11 +322,12 @@ actions.update({'wait': wait})
 show_parser = subparsers.add_parser('show', help='show job(s) by uuid')
 show_parser.add_argument('uuid', nargs='+')
 show_parser.add_argument('--json', help='show the job(s) in JSON format', dest='json', action='store_true')
+show_parser.add_argument('--instances', help='display detailed instance data', dest='instances', action='store_true')
 
 
 def millis_to_timedelta(ms):
     """Converts milliseconds to a timedelta for display on screen"""
-    return 'MAX_LONG' if ms == sys.maxsize else datetime.timedelta(milliseconds=ms)
+    return 'none' if ms == sys.maxsize else datetime.timedelta(milliseconds=ms)
 
 
 def millis_to_date_string(ms):
@@ -307,33 +337,67 @@ def millis_to_date_string(ms):
     return string
 
 
-def format_timestamps(instance):
-    """Given an instance, formats the timestamps"""
+def format_dict(d):
+    """Formats the given dictionary for display in a table"""
+    return ' '.join(['%s=%s' % (k, v) for k, v in sorted(d.items())]) if len(d) > 0 else '(empty)'
+
+
+def format_list(l):
+    """Formats the given list for display in a table"""
+    return '; '.join([format_dict(x) if isinstance(x, dict) else x for x in l]) if len(l) > 0 else '(empty)'
+
+
+def format_instance_fields(instance):
+    """Given an instance, formats the fields for display"""
     instance['end_time'] = millis_to_date_string(instance['end_time'])
     instance['start_time'] = millis_to_date_string(instance['start_time'])
-    instance['mesos_start_time'] = millis_to_date_string(instance['mesos_start_time'])
+    if 'mesos_start_time' in instance:
+        instance['mesos_start_time'] = millis_to_date_string(instance['mesos_start_time'])
+    if 'ports' in instance:
+        instance['ports'] = format_list(instance['ports'])
     return instance
 
 
-def tabulate_job(job):
+basic_instance_fields = ['task_id', 'status', 'start_time', 'end_time']
+detailed_instance_fields = \
+    basic_instance_fields + \
+    ['mesos_start_time', 'slave_id', 'executor_id', 'hostname', 'ports', 'backfilled', 'preempted']
+
+
+def tabulate_instances(instances, detailed_instances):
+    """Returns either a table displaying the instance info or the string "(no instances)"."""
+    if len(instances) > 0:
+        fields = detailed_instance_fields if detailed_instances else basic_instance_fields
+        instances = [OrderedDict([(k, i[k]) for k in fields]) for i in instances]
+        instance_table = tabulate([format_instance_fields(i) for i in instances], headers='keys')
+        return instance_table
+    else:
+        return '(no instances)'
+
+
+def tabulate_job(job, detailed_instances):
     """Given a job, returns a string containing tables for the job and instance fields"""
     headers = ['Field', 'Value']
     instances = job.pop('instances')
     job['max_runtime'] = millis_to_timedelta(job['max_runtime'])
     job['submit_time'] = millis_to_date_string(job['submit_time'])
+    job['env'] = format_dict(job['env'])
+    job['labels'] = format_dict(job['labels'])
+    job['uris'] = format_list(job['uris'])
     job_table = tabulate(sorted(job.items()), headers=headers)
-    instance_table = tabulate([format_timestamps(i) for i in instances], headers='keys')
+    instance_table = tabulate_instances(instances, detailed_instances)
     return 'Job:\n\n%s\n\nInstances:\n\n%s' % (job_table, instance_table)
 
 
 def show(clusters, args):
     """Prints info for the job(s) with the given UUID(s)."""
     as_json = args.get('json')
-    jobs = fetch_jobs(clusters, args)
+    detailed_instances = args.get('instances')
+    jobs = query_jobs(clusters, args)
     if as_json:
         return json.dumps(jobs)
     else:
-        return '\n\n==========\n'.join([tabulate_job(job) for job in jobs])
+        return '\n\n==========\n'.join([tabulate_job(job, detailed_instances) for job in jobs])
 
 
 actions.update({'show': show})

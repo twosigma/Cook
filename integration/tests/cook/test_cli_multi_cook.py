@@ -19,7 +19,7 @@ class MultiCookCliTest(unittest.TestCase):
         util.wait_for_cook(self.cook_url_1)
         util.wait_for_cook(self.cook_url_2)
 
-    def test_federated_fetch(self):
+    def test_federated_query(self):
         # Submit to cluster #1
         cp, uuids = cli.submit('ls', self.cook_url_1)
         self.assertEqual(0, cp.returncode, cp.stderr)
@@ -30,7 +30,7 @@ class MultiCookCliTest(unittest.TestCase):
         self.assertEqual(0, cp.returncode, cp.stderr)
         uuid_2 = uuids[0]
 
-        # Single fetch for both jobs, federated across clusters
+        # Single query for both jobs, federated across clusters
         config = {'clusters': [{'name': 'cook1', 'url': self.cook_url_1},
                                {'name': 'cook2', 'url': self.cook_url_2}]}
         with cli.temp_config_file(config) as path:

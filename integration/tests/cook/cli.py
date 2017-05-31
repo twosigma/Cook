@@ -38,18 +38,32 @@ def cli(args, cook_url=None, flags=None, stdin=None):
     return cp
 
 
-def submit(command=None, cook_url=None, flags=None, submit_flags=None, stdin=None):
-    """Submits one job via the CLI"""
+def submit_non_minimal(command=None, cook_url=None, flags=None, submit_flags=None, stdin=None):
+    """Submits one job via the CLI, with the standard explanatory output"""
     args = 'submit %s%s' % (submit_flags + ' ' if submit_flags else '', command if command else '')
     cp = cli(args, cook_url, flags, stdin)
+    return cp
+
+
+def submit(command=None, cook_url=None, flags=None, submit_flags=None, stdin=None):
+    """Submits one job via the CLI, with "minimal" output"""
+    submit_flags = '%s--minimal' % ((submit_flags + ' ') if submit_flags else '')
+    cp = submit_non_minimal(command, cook_url, flags, submit_flags, stdin)
     uuids = stdout(cp).splitlines()
     return cp, uuids
 
 
 def submit_stdin(commands, cook_url, flags=None, submit_flags=None):
-    """Submits one or more jobs via the CLI using stdin"""
+    """Submits one or more jobs via the CLI using stdin, with "minimal" output"""
     cp, uuids = submit(cook_url=cook_url, flags=flags, submit_flags=submit_flags, stdin=encode('\n'.join(commands)))
     return cp, uuids
+
+
+def submit_stdin_non_minimal(commands, cook_url, flags=None, submit_flags=None):
+    """Submits one or more jobs via the CLI using stdin, with the standard explanatory output"""
+    cp = submit_non_minimal(cook_url=cook_url, flags=flags, submit_flags=submit_flags,
+                            stdin=encode('\n'.join(commands)))
+    return cp
 
 
 def jobs(cp):

@@ -6,9 +6,9 @@ import unittest
 import uuid
 from urllib.parse import urlparse
 
-from tests.cook import cli, util
-
 from nose.plugins.attrib import attr
+
+from tests.cook import cli, util
 
 
 @attr(cli=True)
@@ -186,7 +186,7 @@ class CookCliTest(unittest.TestCase):
                    'max-runtime': max_runtime,
                    'cpus': cpus,
                    'mem': mem}
-        cp, uuids = cli.submit("'" + json.dumps(raw_job) + "'", self.cook_url, submit_flags='--raw')
+        cp, uuids = cli.submit(stdin=cli.encode(json.dumps(raw_job)), cook_url=self.cook_url, submit_flags='--raw')
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual(str(juuid), uuids[0], uuids)
         cp, jobs = cli.show_json(uuids, self.cook_url)
@@ -214,7 +214,8 @@ class CookCliTest(unittest.TestCase):
                    'max-runtime': max_runtime,
                    'cpus': cpus,
                    'mem': mem}
-        cp, uuids = cli.submit("'" + json.dumps([raw_job, raw_job, raw_job]) + "'", self.cook_url, submit_flags='--raw')
+        cp, uuids = cli.submit(stdin=cli.encode(json.dumps([raw_job, raw_job, raw_job])),
+                               cook_url=self.cook_url, submit_flags='--raw')
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual(3, len(uuids), uuids)
         cp, jobs = cli.show_json(uuids, self.cook_url)
@@ -231,7 +232,7 @@ class CookCliTest(unittest.TestCase):
             self.assertEqual(mem, job['mem'])
 
     def test_submit_raw_invalid(self):
-        cp, _ = cli.submit("'1'", self.cook_url, submit_flags='--raw')
+        cp, _ = cli.submit(stdin=cli.encode('1'), cook_url=self.cook_url, submit_flags='--raw')
         self.assertEqual(1, cp.returncode, cp.stderr)
         self.assertIn('malformed JSON for raw', cli.decode(cp.stderr))
 
@@ -267,13 +268,13 @@ class CookCliTest(unittest.TestCase):
         self.assertIn('Timeout waiting for jobs', cli.decode(cp.stderr))
         self.assertLess(elapsed_time_2, 3)
 
-    def test_fetch_invalid_uuid(self):
+    def test_query_invalid_uuid(self):
         cp = cli.show([uuid.uuid4()], self.cook_url)
         self.assertEqual(1, cp.returncode, cp.stderr)
-        self.assertIn('Unable to fetch job(s)', cli.decode(cp.stderr))
+        self.assertIn('Unable to query job(s)', cli.decode(cp.stderr))
         cp = cli.wait([uuid.uuid4()], self.cook_url)
         self.assertEqual(1, cp.returncode, cp.stderr)
-        self.assertIn('Unable to fetch job(s)', cli.decode(cp.stderr))
+        self.assertIn('Unable to query job(s)', cli.decode(cp.stderr))
 
     def test_show_requires_at_least_one_uuid(self):
         cp = cli.show([], self.cook_url)
@@ -345,3 +346,86 @@ class CookCliTest(unittest.TestCase):
         cp, uuids = cli.submit('ls', self.cook_url, submit_flags='--priority 101')
         self.assertEqual(2, cp.returncode, cp.stderr)
         self.assertIn('--priority/-p: invalid choice', cli.decode(cp.stderr))
+
+    def test_default_max_runtime_displays_as_none(self):
+        cp, uuids = cli.submit('ls', self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        cp = cli.show(uuids, self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertRegex(cli.stdout(cp), 'max_runtime\s+none')
+
+    def test_submit_output_should_explain_what_happened(self):
+        cp = cli.submit_non_minimal('ls', self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertIn("Job submitted successfully. Your job's UUID is", cli.stdout(cp))
+        cp = cli.submit_stdin_non_minimal(['ls', 'ls', 'ls'], self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertIn("Jobs submitted successfully. Your jobs' UUIDs are", cli.stdout(cp))
+
+    def test_submit_raw_should_error_if_command_is_given(self):
+        cp, _ = cli.submit('ls', self.cook_url, submit_flags='--raw')
+        self.assertEqual(1, cp.returncode, cp.stderr)
+        self.assertIn('cannot specify a command at the command line when using --raw/-r', cli.decode(cp.stderr))
+
+    def test_env_should_be_nicely_formatted(self):
+        # Empty environment
+        raw_job = {'command': 'ls', 'env': {}}
+        cp, uuids = cli.submit(cook_url=self.cook_url, submit_flags='--raw', stdin=cli.encode(json.dumps(raw_job)))
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        cp = cli.show(uuids, self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertRegex(cli.stdout(cp), 'env\s+\(empty\)')
+        # Non-empty environment
+        raw_job = {'command': 'ls', 'env': {'FOO': '1', 'BAR': '2'}}
+        cp, uuids = cli.submit(cook_url=self.cook_url, submit_flags='--raw', stdin=cli.encode(json.dumps(raw_job)))
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        cp = cli.show(uuids, self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertRegex(cli.stdout(cp), 'env\s+BAR=2 FOO=1')
+
+    def test_labels_should_be_nicely_formatted(self):
+        # Empty labels
+        raw_job = {'command': 'ls', 'labels': {}}
+        cp, uuids = cli.submit(cook_url=self.cook_url, submit_flags='--raw', stdin=cli.encode(json.dumps(raw_job)))
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        cp = cli.show(uuids, self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertRegex(cli.stdout(cp), 'labels\s+\(empty\)')
+        # Non-empty labels
+        raw_job = {'command': 'ls', 'labels': {'FOO': '1', 'BAR': '2'}}
+        cp, uuids = cli.submit(cook_url=self.cook_url, submit_flags='--raw', stdin=cli.encode(json.dumps(raw_job)))
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        cp = cli.show(uuids, self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertRegex(cli.stdout(cp), 'labels\s+BAR=2 FOO=1')
+
+    def test_uris_should_be_nicely_formatted(self):
+        # Empty uris
+        raw_job = {'command': 'ls', 'uris': []}
+        cp, uuids = cli.submit(cook_url=self.cook_url, submit_flags='--raw', stdin=cli.encode(json.dumps(raw_job)))
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        cp = cli.show(uuids, self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertRegex(cli.stdout(cp), 'uris\s+\(empty\)')
+        # Non-empty uris
+        raw_job = {'command': 'ls', 'uris': [{'value': 'foo'}, {'value': 'bar'}, {'value': 'baz'}]}
+        cp, uuids = cli.submit(cook_url=self.cook_url, submit_flags='--raw', stdin=cli.encode(json.dumps(raw_job)))
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        cp = cli.show(uuids, self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertRegex(cli.stdout(cp), 'uris\s+.*cache=False executable=False extract=False value=foo')
+        self.assertRegex(cli.stdout(cp), 'uris\s+.*cache=False executable=False extract=False value=bar')
+        self.assertRegex(cli.stdout(cp), 'uris\s+.*cache=False executable=False extract=False value=baz')
+
+    def test_show_instances_flag(self):
+        cp, uuids = cli.submit('ls', self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        cp = cli.wait(uuids, self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        cp = cli.show(uuids, self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertRegex(cli.stdout(cp), 'Instances:\\n\\ntask_id\s+status\s+start_time\s+end_time\s*\\n')
+        cp = cli.show(uuids, self.cook_url, show_flags='--instances')
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertRegex(cli.stdout(cp), 'Instances:\\n\\ntask_id\s+status\s+start_time\s+end_time\s+mesos_start_time'
+                                         '\s+slave_id\s+executor_id\s+hostname\s+ports\s+backfilled\s+preempted\s*\\n')
