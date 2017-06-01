@@ -300,6 +300,13 @@ class CookTest(unittest.TestCase):
         _, resp = util.submit_job(self.cook_url, application={'name': 'foo-app'})
         self.assertEqual(resp.status_code, 400)
 
+    def test_error_while_creating_job(self):
+        job1 = util.minimal_job()
+        job2 = util.minimal_job(uuid=job1['uuid'])
+        resp = util.session.post('%s/rawscheduler' % self.cook_url,
+                                 json={'jobs':[job1, job2]})
+        self.assertEqual(resp.status_code, 500)
+
     def test_allow_partial(self):
         def absent_uuids(response):
             return [part for part in response.json()['error'].split() if util.is_valid_uuid(part)]

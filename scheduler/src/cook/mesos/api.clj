@@ -1013,7 +1013,7 @@
                                             (map (comp str :uuid) groups)))))})
     (catch Exception e
       (log/error e "Error submitting jobs through raw api")
-      [false {::error (str e)}])))
+      (throw e))))
 
 ;;; On POST; JSON blob that looks like:
 ;;; {"jobs": [{"command": "echo hello world",
@@ -1076,6 +1076,8 @@
      :put! (partial create-jobs! conn)
 
      :post! (partial create-jobs! conn)
+     :handle-exception (fn [{:keys [exception]}]
+                         {:error (str "Exception occurred while creating job - " (.getMessage exception))})
      :handle-created (fn [ctx] (::results ctx))}))
 
 
