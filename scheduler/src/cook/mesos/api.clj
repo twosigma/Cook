@@ -28,7 +28,7 @@
             [compojure.core :refer (ANY GET POST routes)]
             [cook.mesos.quota :as quota]
             [cook.mesos.reason :as reason]
-            [cook.mesos.schema :refer (host-placement-types straggler-handling-types)]
+            [cook.mesos.schema :refer (host-placement-types straggler-handling-types constraint-operators)]
             [cook.mesos.share :as share]
             [cook.mesos.unscheduled :as unscheduled]
             [cook.mesos.util :as util]
@@ -194,6 +194,15 @@
   {:name (s/constrained s/Str non-empty-max-128-characters-and-alphanum?)
    :version (s/constrained s/Str non-empty-max-128-characters-and-alphanum?)})
 
+(def Constraint
+  "Schema for user defined job host constraint"
+  [(s/one NonEmptyString "attribute")
+   (s/one (s/pred #(contains? (set (map (comp name util/without-ns) constraint-operators))
+                              (clojure.string/lower-case %))
+                  'constraint-operator-exists?)
+          "operator")
+   (s/optional NonEmptyString "pattern")])
+
 (s/defschema JobName
   (s/both s/Str (s/both s/Str (s/pred max-128-characters-and-alphanum? 'max-128-characters-and-alphanum?))))
 
@@ -220,6 +229,7 @@
    (s/optional-key :ports) (s/pred #(not (neg? %)) 'nonnegative?)
    (s/optional-key :env) {NonEmptyString s/Str}
    (s/optional-key :labels) {NonEmptyString s/Str}
+   (s/optional-key :constraints) [Constraint]
    (s/optional-key :container) Container
    (s/optional-key :group) s/Uuid
    (s/optional-key :disable-mea-culpa-retries) s/Bool
@@ -413,7 +423,8 @@
   "Creates the necessary txn data to insert a job into the database"
   [job :- Job]
   (let [{:keys [uuid command max-retries max-runtime expected-runtime priority cpus mem gpus
-                user name ports uris env labels container group application disable-mea-culpa-retries]
+                user name ports uris env labels container group application disable-mea-culpa-retries
+                constraints]
          :or {group nil
               disable-mea-culpa-retries false}} job
         db-id (d/tempid :db.part/user)
@@ -450,6 +461,16 @@
                              :label/key k
                              :label/value v}]))
                        labels)
+        constraints (mapcat (fn [[attribute operator pattern]]
+                              (let [constraint-var-id (d/tempid :db.part/user)]
+                                [[:db/add db-id :job/constraint constraint-var-id]
+                                 (merge {:db/id constraint-var-id
+                                         :constraint/attribute attribute
+                                         :constraint/operator (keyword "constraint.operator"
+                                                                       (clojure.string/lower-case operator))}
+                                        (when pattern
+                                          {:constraint/pattern pattern}))]))
+                                 constraints)
         container (if (nil? container) [] (build-container user db-id container))
         ;; These are optionally set datoms w/ default values
         maybe-datoms (reduce into
@@ -492,6 +513,7 @@
     (-> ports
         (into uris)
         (into env)
+        (into constraints)
         (into labels)
         (into container)
         (into maybe-datoms)
@@ -576,7 +598,8 @@
    objects, or else throws an exception"
   [db user task-constraints gpu-enabled? new-group-uuids
    {:keys [cpus mem gpus uuid command priority max-retries max-runtime expected-runtime name
-           uris ports env labels container group application disable-mea-culpa-retries]
+           uris ports env labels container group application disable-mea-culpa-retries
+           constraints]
     :or {group nil
          disable-mea-culpa-retries false}
     :as job}
@@ -609,6 +632,9 @@
                                uris)})
                  (when labels
                    {:labels (walk/stringify-keys labels)})
+                 (when constraints
+                   ;; Rest framework keywordifies all keys, we want these to be strings!
+                   {:constraints constraints})
                  (when group-uuid
                    {:group group-uuid})
                  (when container
@@ -740,6 +766,13 @@
                   "success" "failed")
                 :job.state/running "running"
                 :job.state/waiting "waiting")
+        constraints (->> job
+                         :job/constraint
+                         (map util/remove-datomic-namespacing)
+                         (map (fn [{:keys [attribute operator pattern]}]
+                                (->> [attribute (clojure.string/upper-case (name (util/without-ns operator))) pattern]
+                                     (remove nil?)
+                                     (map str)))))
         instances (map (fn [instance]
                          (let [hostname (:instance/hostname instance)
                                executor-id (:instance/executor-id instance)
@@ -768,6 +801,7 @@
         submit-time (when (:job/submit-time job) ; due to a bug, submit time may not exist for some jobs
                 (.getTime (:job/submit-time job)))
         job-map {:command (:job/command job)
+                 :constraints constraints 
                  :cpus (:cpus resources)
                  :disable_mea_culpa_retries (:job/disable-mea-culpa-retries job false)
                  :env (util/job-ent->env job)
@@ -788,7 +822,7 @@
                  :uris (:uris resources)
                  :user (:job/user job)
                  :uuid (:job/uuid job)}]
-    (cond-> job-map
+     (cond-> job-map
             groups (assoc :groups (map #(str (:group/uuid %)) groups))
             application (assoc :application (util/remove-datomic-namespacing application))
             expected-runtime (assoc :expected-runtime expected-runtime))))

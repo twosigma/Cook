@@ -17,6 +17,7 @@
   (:require [clojure.tools.logging :as log]
             [cook.mesos.group :as group]
             [cook.mesos.util :as util]
+            [plumbing.core :as pc]
             [swiss.arrows :refer :all])
   (:import com.netflix.fenzo.VirtualMachineLease))
 
@@ -80,7 +81,7 @@
     (job-constraint-evaluate this _ vm-attributes)))
 
 (defn build-novel-host-constraint
-  "Constructs a novel-host-constraint. 
+  "Constructs a novel-host-constraint.
   The constraint prevents the job from running on hosts it has already run on"
   [job]
   (let [previous-hosts (->> (:job/instance job)
@@ -116,7 +117,37 @@
   (let [needs-gpus? (job-needs-gpus? job)]
     (->gpu-host-constraint job needs-gpus?)))
 
-(def job-constraint-constructors [build-novel-host-constraint build-gpu-host-constraint])
+(defrecord user-defined-constraint [constraints]
+  JobConstraint
+  (job-constraint-name [this] (get-class-name this))
+  (job-constraint-evaluate
+    [this _ vm-attributes]
+    (let [vm-passes-constraint?
+          (fn vm-passes-constraint? [{attribute :constraint/attribute
+                                      pattern :constraint/pattern
+                                      operator :constraint/operator}]
+            (let [vm-attribute-value (get vm-attributes attribute)]
+              (condp = operator
+                :constraint.operator/equals (= pattern vm-attribute-value)
+                :else (do
+                        (log/error (str "Unknown operator " operator
+                                        " api.clj should have prevented this from happening."))
+                        true))))
+          constraint->passes? (pc/map-from-keys vm-passes-constraint? constraints)
+          passes? (every? val constraint->passes?)]
+      [passes? (when-not passes?
+                 "Host doesn't pass at least one user supplied constraint.")]))
+  (job-constraint-evaluate
+    [this _ vm-attributes _]
+    (job-constraint-evaluate this _ vm-attributes)))
+
+(defn build-user-defined-constraint
+  "Constructs a user-defined-constraint.
+   The constraint asserts that the vm passes the constraints the user supplied as host constraints"
+  [job]
+  (->user-defined-constraint (:job/constraint job)))
+
+(def job-constraint-constructors [build-novel-host-constraint build-gpu-host-constraint build-user-defined-constraint])
 
 (defn fenzoize-job-constraint
   "Makes the JobConstraint 'constraint' Fenzo-compatible."
