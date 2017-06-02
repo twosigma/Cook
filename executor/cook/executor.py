@@ -164,7 +164,7 @@ def cleanup_process(process_info):
     stderr.close()
 
 
-def kill_task(driver, task, process_info, shutdown_grace_period_ms):
+def kill_task(process_info, shutdown_grace_period_ms):
     """Attempts to kill a process.
      First attempt is made by sending the process a SIGTERM.
      If the process does not terminate inside (shutdown_grace_period_ms - 100) ms, it is then sent a SIGKILL.
@@ -172,10 +172,6 @@ def kill_task(driver, task, process_info, shutdown_grace_period_ms):
 
     Parameters
     ----------
-    driver: MesosExecutorDriver
-        The mesos driver to use.
-    task: map
-        The task to kill.
     process_info: tuple
         Tuple of (process, stdout_file, stderr_file)
     shutdown_grace_period_ms: int
@@ -185,38 +181,28 @@ def kill_task(driver, task, process_info, shutdown_grace_period_ms):
     -------
     Nothing
     """
-    task_id = get_task_id(task)
-    try:
-        shutdown_grace_period_ms = max(shutdown_grace_period_ms - 100, 0)
-        process, _, _ = process_info
+    shutdown_grace_period_ms = max(shutdown_grace_period_ms - 100, 0)
+    process, _, _ = process_info
+    if is_running(process):
+        logging.info('Waiting up to {} ms for process to terminate'.format(shutdown_grace_period_ms))
+        process.terminate()
+        loop_limit = int(shutdown_grace_period_ms / 10)
+        for i in range(loop_limit):
+            time.sleep(0.01)
+            if not is_running(process):
+                logging.info('Process has terminated')
+                break
         if is_running(process):
-            logging.info('Waiting up to {} ms for process to terminate'.format(shutdown_grace_period_ms))
-            process.terminate()
-            loop_limit = int(shutdown_grace_period_ms / 10)
-            for i in range(loop_limit):
-                time.sleep(0.01)
-                if not is_running(process):
-                    logging.info('Process has terminated')
-                    break
-            if is_running(process):
-                logging.info('Process did not terminate, forcefully killing it')
-                process.kill()
-        cleanup_process(process_info)
-        update_status(driver, task_id, cook.TASK_KILLED)
-    except:
-        logging.exception('Error in kill_task')
-        update_status(driver, task_id, cook.TASK_FAILED)
+            logging.info('Process did not terminate, forcefully killing it')
+            process.kill()
+    cleanup_process(process_info)
 
 
-def await_process_completion(driver, task, stop_signal, process_info, shutdown_grace_period_ms):
+def await_process_completion(stop_signal, process_info, shutdown_grace_period_ms):
     """Awaits process (available in process_info) completion.
 
     Parameters
     ----------
-    driver: MesosExecutorDriver
-        The mesos driver to use.
-    task: map
-        The task that is executing.
     stop_signal: Event
         Event that determines if an interrupt was sent
     process_info: tuple
@@ -230,17 +216,34 @@ def await_process_completion(driver, task, stop_signal, process_info, shutdown_g
     """
     process, _, _ = process_info
 
-    process_killed = False
     while is_running(process):
 
         if stop_signal.isSet():
             logging.info('Executor has been instructed to terminate')
-            kill_task(driver, task, process_info, shutdown_grace_period_ms)
-            process_killed = True
+            kill_task(process_info, shutdown_grace_period_ms)
             break
 
         time.sleep(cook.RUNNING_POLL_INTERVAL_SECS)
-    return process_killed
+
+
+def get_task_state(exit_code):
+    """Interprets the exit_code and return the corresponding task status string
+
+    Parameters
+    ----------
+    exit_code: int
+        An integer that represents the return code of the task.
+
+    Returns
+    -------
+    A task status string corresponding to the exit code.
+    """
+    if exit_code > 0:
+        return cook.TASK_FAILED
+    elif exit_code < 0:
+        return cook.TASK_KILLED
+    else:
+        return cook.TASK_FINISHED
 
 
 def manage_task(driver, task, stop_signal, completed_signal, config, stdout_name, stderr_name):
@@ -277,8 +280,7 @@ def manage_task(driver, task, stop_signal, completed_signal, config, stdout_name
                                               config.progress_sample_interval_ms, send_message)
         progress_complete_event = cp.launch_progress_tracker(progress_watcher, progress_updater)
 
-        process_killed = await_process_completion(driver, task, stop_signal, process_info,
-                                                  config.shutdown_grace_period_ms)
+        await_process_completion(stop_signal, process_info, config.shutdown_grace_period_ms)
         exit_code = process.returncode
 
         # set the completed signal to trigger progress updater termination and await progress
@@ -289,16 +291,15 @@ def manage_task(driver, task, stop_signal, completed_signal, config, stdout_name
             progress_complete_event.wait(1)
 
         logging.info('Process completed with exit code {}'.format(exit_code))
-        exit_message = json.dumps({'exit-code': abs(exit_code), 'task-id': task_id})
+        exit_message = json.dumps({'exit-code': exit_code, 'task-id': task_id})
         send_message(driver, exit_message, config.max_message_length)
 
         # send the latest progress state if available
         cp.force_send_progress_update(progress_watcher, progress_updater)
 
-        if not process_killed:
-            # task either completed successfully or aborted with an error
-            task_state = cook.TASK_FINISHED if exit_code == 0 else cook.TASK_FAILED
-            update_status(driver, task_id, task_state)
+        # task either completed successfully or aborted with an error
+        task_state = get_task_state(exit_code)
+        update_status(driver, task_id, task_state)
 
     except Exception:
         # task aborted with an error

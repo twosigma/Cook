@@ -10,15 +10,15 @@ def get_random_task_id():
     return str(random.randint(100000, 999999))
 
 
-def assert_status(expected_status, actual_status):
+def assert_status(testcase, expected_status, actual_status):
     assert actual_status['timestamp'] is not None
     if 'timestamp' in actual_status: del actual_status['timestamp']
-    assert expected_status == actual_status
+    testcase.assertEquals(expected_status, actual_status)
 
 
-def assert_message(expected_message, actual_encoded_message):
+def assert_message(testcase, expected_message, actual_encoded_message):
     actual_message = json.loads(decode_data(actual_encoded_message).decode('utf8'))
-    assert expected_message == actual_message
+    testcase.assertEquals(expected_message, actual_message)
 
 
 def cleanup_output(stdout_name, stderr_name):

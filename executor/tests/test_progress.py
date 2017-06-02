@@ -78,7 +78,7 @@ class ProgressTest(unittest.TestCase):
         self.assertEqual(1, len(driver.messages))
         actual_encoded_message_0 = driver.messages[0]
         expected_message_0 = {'progress-message': 'Progress message-0', 'task-id': task_id}
-        assert_message(expected_message_0, actual_encoded_message_0)
+        assert_message(self, expected_message_0, actual_encoded_message_0)
 
         progress_data_1 = {'progress-message': 'Progress message-1'}
         progress_updater.send_progress_update(progress_data_1)
@@ -92,7 +92,7 @@ class ProgressTest(unittest.TestCase):
         self.assertEqual(2, len(driver.messages))
         actual_encoded_message_2 = driver.messages[1]
         expected_message_2 = {'progress-message': 'Progress message-2', 'task-id': task_id}
-        assert_message(expected_message_2, actual_encoded_message_2)
+        assert_message(self, expected_message_2, actual_encoded_message_2)
 
     def test_send_progress_update_trims_progress_message(self):
         driver = FakeMesosExecutorDriver()
@@ -108,7 +108,7 @@ class ProgressTest(unittest.TestCase):
         actual_encoded_message_0 = driver.messages[0]
         expected_message_0 = {'progress-message': 'Progress message-0 is really long lorem ipsum dolor...',
                               'task-id': task_id}
-        assert_message(expected_message_0, actual_encoded_message_0)
+        assert_message(self, expected_message_0, actual_encoded_message_0)
 
     def test_send_progress_does_not_trim_unknown_field(self):
         driver = FakeMesosExecutorDriver()
