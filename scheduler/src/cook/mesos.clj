@@ -52,18 +52,18 @@
      (let [submit-time (java.util.Date.)]
        (doseq [{:keys [uuid command ncpus memory name retry-count priority]} jobs
                :let [txn {:db/id (d/tempid :db.part/user)
-                          :job/uuid uuid
                           :job/command command
                           :job/name "cooksim"
-                          :job/user user
                           :job/max-retries retry-count
                           :job/priority priority
-                          :job/submit-time submit-time
-                          :job/state :job.state/waiting
                           :job/resource [{:resource/type :resource.type/cpus
                                           :resource/amount (double ncpus)}
                                          {:resource/type :resource.type/mem
-                                          :resource/amount (double memory)}]}
+                                          :resource/amount (double memory)}]
+                          :job/state :job.state/waiting
+                          :job/submit-time submit-time
+                          :job/user user
+                          :job/uuid uuid}
                      retries 5
                      base-wait 500 ; millis
                      opts {:retry-schedule (cook.util/rand-exponential-seq retries base-wait)}]]
@@ -188,11 +188,10 @@
    rebalancer-config        -- map, config for rebalancer. See scheduler/docs/rebalancer-config.asc for details
    fenzo-config             -- map, config for fenzo, See scheduler/docs/configuration.asc for more details"
   [make-mesos-driver-fn get-mesos-utilization curator-framework mesos-datomic-conn mesos-datomic-mult zk-prefix offer-incubate-time-ms mea-culpa-failure-limit task-constraints riemann-host riemann-port mesos-pending-jobs-atom offer-cache gpu-enabled? rebalancer-config
-   {:keys [fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn
-           fenzo-floor-iterations-before-reset fenzo-fitness-calculator good-enough-fitness]
+   {:keys [fenzo-fitness-calculator fenzo-floor-iterations-before-reset fenzo-floor-iterations-before-warn
+           fenzo-max-jobs-considered fenzo-scaleback good-enough-fitness]
     :as fenzo-config}
-   {:keys [rebalancer-trigger-chan match-trigger-chan rank-trigger-chan
-           lingering-task-trigger-chan straggler-trigger-chan cancelled-task-trigger-chan]
+   {:keys [cancelled-task-trigger-chan lingering-task-trigger-chan rebalancer-trigger-chan straggler-trigger-chan]
     :as trigger-chans}]
   (let [zk-framework-id (str zk-prefix "/framework-id")
         datomic-report-chan (async/chan (async/sliding-buffer 4096))
@@ -245,14 +244,14 @@
                                     (cook.mesos.scheduler/straggler-handler mesos-datomic-conn driver straggler-trigger-chan)
                                     (cook.mesos.scheduler/cancelled-task-killer mesos-datomic-conn driver cancelled-task-trigger-chan)
                                     (cook.mesos.heartbeat/start-heartbeat-watcher! mesos-datomic-conn mesos-heartbeat-chan)
-                                    (cook.mesos.rebalancer/start-rebalancer! {:conn  mesos-datomic-conn
+                                    (cook.mesos.rebalancer/start-rebalancer! {:config rebalancer-config
+                                                                              :conn  mesos-datomic-conn
                                                                               :driver driver
                                                                               :get-mesos-utilization get-mesos-utilization
-                                                                              :pending-jobs-atom mesos-pending-jobs-atom
                                                                               :offer-cache offer-cache
-                                                                              :config rebalancer-config
-                                                                              :view-incubating-offers view-incubating-offers
-                                                                              :trigger-chan rebalancer-trigger-chan})
+                                                                              :pending-jobs-atom mesos-pending-jobs-atom
+                                                                              :trigger-chan rebalancer-trigger-chan
+                                                                              :view-incubating-offers view-incubating-offers})
                                     (counters/inc! mesos-leader)
                                     (async/tap mesos-datomic-mult datomic-report-chan)
                                     (cook.mesos.scheduler/monitor-tx-report-queue datomic-report-chan mesos-datomic-conn current-driver)

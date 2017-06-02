@@ -15,10 +15,7 @@
 ;;
 (ns cook.mesos.rebalancer
   (:require [chime :refer [chime-at]]
-            [clj-time.core :as time]
-            [clj-time.periodic :as periodic]
             [clojure.core.async :as async]
-            [clojure.core.reducers :as r]
             [clojure.data.priority-map :as pm]
             [clojure.tools.logging :as log]
             [clojure.walk :refer (keywordize-keys)]
@@ -453,10 +450,10 @@
 
 
 
-(def datomic-params [:min-utilization-threshold
-                     :safe-dru-threshold
+(def datomic-params [:max-preemption
                      :min-dru-diff
-                     :max-preemption])
+                     :min-utilization-threshold
+                     :safe-dru-threshold])
 
 (defn read-datomic-params
   [conn]
@@ -540,7 +537,7 @@
   (let [conn (d/connect "datomic:mem://mesos-jobs")
         db (d/db conn)]
     @(d/transact conn [{:db/id :rebalancer/config
-                        :rebalancer.config/min-utilization-threshold 0.0
-                        :rebalancer.config/safe-dru-threshold 0.0
+                        :rebalancer.config/max-preemption 64.0
                         :rebalancer.config/min-dru-diff 0.0000000001
-                        :rebalancer.config/max-preemption 64.0}])))
+                        :rebalancer.config/min-utilization-threshold 0.0
+                        :rebalancer.config/safe-dru-threshold 0.0}])))
