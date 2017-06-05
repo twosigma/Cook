@@ -46,9 +46,9 @@
             [metrics.timers :as timers]
             [plumbing.core :as pc])
   (import [com.netflix.fenzo ConstraintEvaluator ConstraintEvaluator$Result
-           TaskAssignmentResult TaskRequest TaskScheduler TaskScheduler$Builder
-           VMTaskFitnessCalculator VirtualMachineLease VirtualMachineLease$Range
-           VirtualMachineCurrentState]
+                             TaskAssignmentResult TaskRequest TaskScheduler TaskScheduler$Builder
+                             VMTaskFitnessCalculator VirtualMachineLease VirtualMachineLease$Range
+                             VirtualMachineCurrentState]
           [com.netflix.fenzo.functions Action1 Func1]
           java.util.Date
           java.util.concurrent.TimeUnit))
@@ -382,7 +382,7 @@
                                      (some (fn gpu-task? [req]
                                              @(job-needs-gpus? (:job req)))
                                            (into (vec (.getRunningTasks target-vm))
-                                                   (mapv #(.getRequest %) (.getTasksCurrentlyAssigned target-vm))))))]
+                                                 (mapv #(.getRequest %) (.getTasksCurrentlyAssigned target-vm))))))]
           (ConstraintEvaluator$Result.
             (if @needs-gpus?
               has-gpus?
@@ -416,9 +416,9 @@
                assigned-resources (atom nil)
                guuid->considerable-cotask-ids (constantly #{})}}]
   (let [constraints (into (constraints/make-fenzo-job-constraints job)
-                            (remove nil?
-                              (mapv #(constraints/make-fenzo-group-constraint
-                                       % (guuid->considerable-cotask-ids (:group/uuid %))) (:group/_job job))))
+                          (remove nil?
+                                  (mapv #(constraints/make-fenzo-group-constraint
+                                           % (guuid->considerable-cotask-ids (:group/uuid %))) (:group/_job job))))
         needs-gpus? (constraints/job-needs-gpus? job)
         scalar-requests (reduce (fn [result resource]
                                   (if-let [value (:resource/amount resource)]
@@ -1045,66 +1045,57 @@
              ;; Return all 0's for a user who does NOT have any running job.
              (zipmap (util/get-all-resource-types db) (repeat 0.0)))})))
 
-(timers/deftimer [cook-mesos scheduler sort-jobs-hierarchy-duration])
-
-(defn sort-normal-jobs-by-dru
-  "Return a list of normal job entities ordered by dru"
-  [pending-task-ents running-task-ents user->dru-divisors]
-  (let [tasks (into running-task-ents pending-task-ents)
+(defn- sort-jobs-by-dru-helper
+  "Return a list of job entities ordered by the provided sort function"
+  [pending-task-ents running-task-ents user->dru-divisors sort-task-scored-task-pairs sort-jobs-duration]
+  (let [tasks (into (vec running-task-ents) pending-task-ents)
         task-comparator (util/same-user-task-comparator tasks)
+        pending-task-ents-set (into #{} pending-task-ents)
         jobs (timers/time!
-               sort-jobs-hierarchy-duration
+               sort-jobs-duration
                (->> tasks
                     (group-by util/task-ent->user)
-                    (pc/map-vals (fn [task-ents]
-                                   (into (sorted-set-by task-comparator) task-ents)))
-                    (dru/sorted-task-scored-task-pairs user->dru-divisors)
-                    (filter (fn [[task scored-task]]
-                              (contains? pending-task-ents task)))
-                    (map (fn [[task scored-task]]
-                           (:job/_instance task)))))]
-    jobs))
-
-(timers/deftimer [cook-mesos scheduler sort-gpu-jobs-hierarchy-duration])
-
-(defn sort-gpu-jobs-by-dru
-  "Return a list of gpu job entities ordered by dru"
-  [pending-task-ents running-task-ents user->dru-divisors]
-  (let [jobs (timers/time!
-               sort-gpu-jobs-hierarchy-duration
-               (->> (into (vec running-task-ents) pending-task-ents)
-                    (group-by util/task-ent->user)
-                    (pc/map-vals (fn [task-ents] (into (sorted-set-by (util/same-user-task-comparator)) task-ents)))
-                    (dru/sorted-task-cumulative-gpu-score-pairs user->dru-divisors)
-                    (filter (fn [[task _]] (contains? pending-task-ents task)))
+                    (pc/map-vals (fn [task-ents] (into (sorted-set-by task-comparator) task-ents)))
+                    (sort-task-scored-task-pairs user->dru-divisors)
+                    (filter (fn [[task _]] (contains? pending-task-ents-set task)))
                     (map (fn [[task _]] (:job/_instance task)))))]
     jobs))
 
-(defn sort-jobs-by-dru
+(timers/deftimer [cook-mesos scheduler sort-jobs-hierarchy-duration])
+
+(defn- sort-normal-jobs-by-dru
+  "Return a list of normal job entities ordered by dru"
+  [pending-task-ents running-task-ents user->dru-divisors]
+  (sort-jobs-by-dru-helper pending-task-ents running-task-ents user->dru-divisors
+                           dru/sorted-task-scored-task-pairs sort-jobs-hierarchy-duration))
+
+(timers/deftimer [cook-mesos scheduler sort-gpu-jobs-hierarchy-duration])
+
+(defn- sort-gpu-jobs-by-dru
+  "Return a list of gpu job entities ordered by dru"
+  [pending-task-ents running-task-ents user->dru-divisors]
+  (sort-jobs-by-dru-helper pending-task-ents running-task-ents user->dru-divisors
+                           dru/sorted-task-cumulative-gpu-score-pairs sort-gpu-jobs-hierarchy-duration))
+
+(defn sort-jobs-by-dru-category
   "Returns a map from job category to a list of job entities, ordered by dru"
-  [filtered-db unfiltered-db]
+  [unfiltered-db]
   ;; This function does not use the filtered db when it is not necessary in order to get better performance
   ;; The filtered db is not necessary when an entity could only arrive at a given state if it was already committed
   ;; e.g. running jobs or when it is always considered committed e.g. shares
   ;; The unfiltered db can also be used on pending job entities once the filtered db is used to limit
   ;; to only those jobs that have been committed.
-  (let [pending-job-ents-by (group-by util/categorize-job (util/get-pending-job-ents unfiltered-db))
-        pending-task-ents-by (reduce-kv (fn [m category pending-job-ents]
-                                          (assoc m category
-                                                   (into #{}
-                                                         (map util/create-task-ent)
-                                                         pending-job-ents)))
-                                        {}
-                                        pending-job-ents-by)
-        running-task-ents-by (group-by (comp util/categorize-job :job/_instance)
-                                       (util/get-running-task-ents unfiltered-db))
-        user->dru-divisors (share/create-user->share-fn unfiltered-db)]
-    {:normal (sort-normal-jobs-by-dru (:normal pending-task-ents-by)
-                                      (:normal running-task-ents-by)
-                                      user->dru-divisors)
-     :gpu (sort-gpu-jobs-by-dru (:gpu pending-task-ents-by)
-                                (:gpu running-task-ents-by)
-                                user->dru-divisors)}))
+  (let [category->pending-job-ents (group-by util/categorize-job (util/get-pending-job-ents unfiltered-db))
+        category->pending-task-ents (pc/map-vals #(map util/create-task-ent %1) category->pending-job-ents)
+        category->running-task-ents (group-by (comp util/categorize-job :job/_instance)
+                                              (util/get-running-task-ents unfiltered-db))
+        user->dru-divisors (share/create-user->share-fn unfiltered-db)
+        category->sort-jobs-by-dru-fn {:normal sort-normal-jobs-by-dru, :gpu sort-gpu-jobs-by-dru}]
+    (letfn [(sort-jobs-by-dru-category-helper [[category sort-jobs-by-dru]]
+             (let [pending-tasks (category->pending-task-ents category)
+                   running-tasks (category->running-task-ents category)]
+               [category (sort-jobs-by-dru pending-tasks running-tasks user->dru-divisors)]))]
+      (into {} (map sort-jobs-by-dru-category-helper) category->sort-jobs-by-dru-fn))))
 
 (timers/deftimer [cook-mesos scheduler filter-offensive-jobs-duration])
 
@@ -1174,11 +1165,11 @@
   "Return a map of lists of job entities ordered by dru, keyed by category.
 
    It ranks the jobs by dru first and then apply several filters if provided."
-  [filtered-db unfiltered-db offensive-job-filter]
+  [unfiltered-db offensive-job-filter]
   (timers/time!
     rank-jobs-duration
     (try
-      (let [jobs (->> (sort-jobs-by-dru filtered-db unfiltered-db)
+      (let [jobs (->> (sort-jobs-by-dru-category unfiltered-db)
                       ;; Apply the offensive job filter first before taking.
                       (map (fn [[category jobs]]
                              (log/debug "filtering category" category jobs)
@@ -1200,7 +1191,7 @@
     (util/chime-at-ch trigger-chan
                       (fn rank-jobs-event []
                         (reset! pending-jobs-atom
-                                (rank-jobs (db conn) (d/db conn) offensive-job-filter))))))
+                                (rank-jobs (d/db conn) offensive-job-filter))))))
 
 (meters/defmeter [cook-mesos scheduler mesos-error])
 (meters/defmeter [cook-mesos scheduler offer-chan-full-error])
