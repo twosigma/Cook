@@ -1171,10 +1171,7 @@
     (try
       (let [jobs (->> (sort-jobs-by-dru-category unfiltered-db)
                       ;; Apply the offensive job filter first before taking.
-                      (map (fn [[category jobs]]
-                             (log/debug "filtering category" category jobs)
-                             [category (offensive-job-filter jobs)]))
-                      (into {}))]
+                      (pc/map-vals offensive-job-filter))]
         (log/debug "Total number of pending jobs is:" (apply + (map count (vals jobs)))
                    "The first 20 pending normal jobs:" (take 20 (:normal jobs))
                    "The first 5 pending gpu jobs:" (take 5 (:gpu jobs)))
