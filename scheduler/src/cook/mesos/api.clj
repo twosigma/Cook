@@ -904,24 +904,24 @@
                            (str/join \space (remove authorized? uuids)))}])))
 
 (defn render-jobs-for-response
-  [conn fid ctx]
-  (mapv (partial fetch-job-map (db conn) fid) (::jobs ctx)))
+  [conn fid-promise ctx]
+  (mapv (partial fetch-job-map (db conn) @fid-promise) (::jobs ctx)))
 
 
 ;;; On GET; use repeated job argument
 (defn read-jobs-handler
-  [conn fid task-constraints gpu-enabled? is-authorized-fn]
+  [conn fid-promise task-constraints gpu-enabled? is-authorized-fn]
   (base-cook-handler
     {:allowed-methods [:get]
      :malformed? check-job-params-present
      :allowed? (partial job-request-allowed? conn is-authorized-fn)
      :exists? (partial retrieve-jobs conn)
-     :handle-ok (partial render-jobs-for-response conn fid)}))
+     :handle-ok (partial render-jobs-for-response conn fid-promise)}))
 
 
 ;;; On DELETE; use repeated job argument
 (defn destroy-jobs-handler
-  [conn fid task-constraints gpu-enabled? is-authorized-fn]
+  [conn fid-promise task-constraints gpu-enabled? is-authorized-fn]
   (base-cook-handler
     {:allowed-methods [:delete]
      :malformed? check-job-params-present
@@ -930,7 +930,7 @@
      :delete! (fn [ctx]
                 (cook.mesos/kill-job conn (::jobs-requested ctx))
                 (cook.mesos/kill-instances conn (::instances-requested ctx)))
-     :handle-ok (partial render-jobs-for-response conn fid)}))
+     :handle-ok (partial render-jobs-for-response conn fid-promise)}))
 
 (defn vectorize
   "If x is not a vector (or nil), turns it into a vector"
@@ -1027,7 +1027,7 @@
 ;;;            "mem": 1000}]}
 ;;;
 (defn create-jobs-handler
-  [conn fid task-constraints gpu-enabled? is-authorized-fn]
+  [conn task-constraints gpu-enabled? is-authorized-fn]
   (base-cook-handler
     {:allowed-methods [:post]
      :malformed? (fn [ctx]
@@ -1086,7 +1086,7 @@
 
 
 (defn read-groups-handler
-  [conn fid task-constraints is-authorized-fn]
+  [conn task-constraints is-authorized-fn]
   (base-cook-handler
     {:allowed-methods [:get]
      :malformed? (fn [ctx]
@@ -1491,7 +1491,7 @@
 (timers/deftimer [cook-scheduler handler list-endpoint])
 
 (defn list-resource
-  [db framework-id is-authorized-fn]
+  [db fid-promise is-authorized-fn]
   (liberator/resource
    :available-media-types ["application/json"]
    :allowed-methods [:get]
@@ -1569,7 +1569,7 @@
                        job-uuids (if (nil? limit)
                                    job-uuids
                                    (take limit job-uuids))]
-                   (mapv (partial fetch-job-map db framework-id) job-uuids))))))
+                   (mapv (partial fetch-job-map db @fid-promise) job-uuids))))))
 
 ;;
 ;; /unscheduled_jobs
@@ -1628,7 +1628,7 @@
 ;; "main" - the entry point that routes to other handlers
 ;;
 (defn main-handler
-  [conn fid mesos-pending-jobs-fn
+  [conn fid-promise mesos-pending-jobs-fn
    {:keys [task-constraints is-authorized-fn] gpu-enabled? :mesos-gpu-enabled :as settings}]
   (->
    (routes
@@ -1650,19 +1650,19 @@
                                :description "The jobs and their instances were returned."}
                           400 {:description "Non-UUID values were passed as jobs."}
                           403 {:description "The supplied UUIDs don't correspond to valid jobs."}}
-              :handler (read-jobs-handler conn fid task-constraints gpu-enabled? is-authorized-fn)}
+              :handler (read-jobs-handler conn fid-promise task-constraints gpu-enabled? is-authorized-fn)}
         :post {:summary "Schedules one or more jobs."
                :parameters {:body-params RawSchedulerRequest}
                :responses {201 {:description "The jobs were successfully scheduled."}
                            400 {:description "One or more of the jobs were incorrectly specified."}
                            409 {:description "One or more of the jobs UUIDs are already in use."}}
-               :handler (create-jobs-handler conn fid task-constraints gpu-enabled? is-authorized-fn)}
+               :handler (create-jobs-handler conn task-constraints gpu-enabled? is-authorized-fn)}
         :delete {:summary "Cancels jobs, halting execution when possible."
                  :responses {204 {:description "The jobs have been marked for termination."}
                              400 {:description "Non-UUID values were passed as jobs."}
                              403 {:description "The supplied UUIDs don't correspond to valid jobs."}}
                  :parameters {:query-params JobOrInstanceIds}
-                 :handler (destroy-jobs-handler conn fid task-constraints gpu-enabled? is-authorized-fn)}}))
+                 :handler (destroy-jobs-handler conn fid-promise task-constraints gpu-enabled? is-authorized-fn)}}))
 
      (c-api/context
       "/share" []
@@ -1741,7 +1741,7 @@
                                :description "The groups were returned."}
                           400 {:description "Non-UUID values were passed."}
                           403 {:description "The supplied UUIDs don't correspond to valid groups."}}
-              :handler (read-groups-handler conn fid task-constraints is-authorized-fn)}}))
+              :handler (read-groups-handler conn task-constraints is-authorized-fn)}}))
 
      (c-api/context
       "/failure_reasons" []
@@ -1774,7 +1774,7 @@
     (ANY "/running" []
          (running-jobs conn is-authorized-fn))
     (ANY "/list" []
-         (list-resource (db conn) fid is-authorized-fn)))
+         (list-resource (db conn) fid-promise is-authorized-fn)))
    (format-params/wrap-restful-params {:formats [:json-kw]
                                        :handle-error c-mw/handle-req-error})
    (streaming-json-middleware)))

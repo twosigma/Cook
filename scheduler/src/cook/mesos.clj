@@ -186,8 +186,11 @@
    offer-cache              -- atom, map from host to most recent offer. Used to get attributes
    gpu-enabled?             -- boolean, whether cook will schedule gpus
    rebalancer-config        -- map, config for rebalancer. See scheduler/docs/rebalancer-config.asc for details
+   framework-id-promise     -- promise object to which we will deliver the Mesos framework id
    fenzo-config             -- map, config for fenzo, See scheduler/docs/configuration.asc for more details"
-  [make-mesos-driver-fn get-mesos-utilization curator-framework mesos-datomic-conn mesos-datomic-mult zk-prefix offer-incubate-time-ms mea-culpa-failure-limit task-constraints riemann-host riemann-port mesos-pending-jobs-atom offer-cache gpu-enabled? rebalancer-config
+  [make-mesos-driver-fn get-mesos-utilization curator-framework mesos-datomic-conn mesos-datomic-mult zk-prefix
+   offer-incubate-time-ms mea-culpa-failure-limit task-constraints riemann-host riemann-port mesos-pending-jobs-atom
+   offer-cache gpu-enabled? rebalancer-config framework-id-promise
    {:keys [fenzo-fitness-calculator fenzo-floor-iterations-before-reset fenzo-floor-iterations-before-warn
            fenzo-max-jobs-considered fenzo-scaleback good-enough-fitness]
     :as fenzo-config}
@@ -214,10 +217,12 @@
                                         (sched/create-datomic-scheduler
                                           mesos-datomic-conn
                                           (fn set-or-create-framework-id [framework-id]
-                                            (curator/set-or-create
-                                              curator-framework
-                                              zk-framework-id
-                                              (.getBytes (-> framework-id mesomatic.types/pb->data :value) "UTF-8")))
+                                            (let [value (-> framework-id mesomatic.types/pb->data :value)]
+                                              (deliver framework-id-promise value)
+                                              (curator/set-or-create
+                                                curator-framework
+                                                zk-framework-id
+                                                (.getBytes value "UTF-8"))))
                                           current-driver
                                           mesos-pending-jobs-atom
                                           offer-cache

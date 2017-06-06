@@ -29,9 +29,11 @@
   "Runs a minimal cook scheduler server for testing inside a thread. Note that it is not properly kerberized."
   [conn port]
   (let [authorized-fn (fn [x y z] true)
+        fid-promise (promise)
+        _ (deliver fid-promise "my-framework-id")
         api-handler (wrap-params
                       (main-handler conn
-                                    "my-framework-id"
+                                    fid-promise
                                     (fn [] [])
                                     {:task-constraints {:cpus 12 :memory-gb 100 :retry-limit 200}
                                      :mesos-gpu-enabled false

@@ -66,10 +66,10 @@
     (resolve var-sym)))
 
 (def raw-scheduler-routes
-  {:scheduler (fnk [mesos-datomic framework-id mesos-pending-jobs-atom settings]
+  {:scheduler (fnk [mesos-datomic framework-id-promise mesos-pending-jobs-atom settings]
                 ((lazy-load-var 'cook.mesos.api/main-handler)
                   mesos-datomic
-                  framework-id
+                  framework-id-promise
                   (fn [] @mesos-pending-jobs-atom)
                   settings))
    :view (fnk [scheduler]
@@ -82,7 +82,14 @@
                    (route/not-found "<h1>Not a valid route</h1>")))})
 
 (def mesos-scheduler
-  {:mesos-scheduler (fnk [[:settings mesos-master mesos-master-hosts mesos-leader-path mesos-failover-timeout mesos-principal mesos-role mesos-framework-name offer-incubate-time-ms mea-culpa-failure-limit fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset fenzo-fitness-calculator task-constraints riemann mesos-gpu-enabled rebalancer good-enough-fitness] mesos-datomic mesos-datomic-mult curator-framework mesos-pending-jobs-atom mesos-offer-cache]
+  {:mesos-scheduler (fnk [[:settings mesos-master mesos-master-hosts mesos-leader-path mesos-failover-timeout
+                           mesos-principal mesos-role mesos-framework-name offer-incubate-time-ms
+                           mea-culpa-failure-limit fenzo-max-jobs-considered fenzo-scaleback
+                           fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset
+                           fenzo-fitness-calculator task-constraints riemann mesos-gpu-enabled rebalancer
+                           good-enough-fitness]
+                          mesos-datomic mesos-datomic-mult curator-framework mesos-pending-jobs-atom mesos-offer-cache
+                          framework-id-promise]
                       (let [make-mesos-driver-fn (partial (lazy-load-var 'cook.mesos/make-mesos-driver)
                                                           {:mesos-master mesos-master
                                                            :mesos-failover-timeout mesos-failover-timeout
@@ -110,6 +117,7 @@
                             mesos-offer-cache
                             mesos-gpu-enabled
                             rebalancer
+                            framework-id-promise
                             {:fenzo-max-jobs-considered fenzo-max-jobs-considered
                              :fenzo-scaleback fenzo-scaleback
                              :fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-warn
@@ -231,10 +239,12 @@
                                    :request-header-size 32768})]
                       (fn [] (.stop jetty))))
 
-     :framework-id (fnk [curator-framework [:settings mesos-leader-path]]
-                     (when-let [bytes (curator/get-or-nil curator-framework
-                                                          (str mesos-leader-path "/framework-id"))]
-                       (String. bytes)))
+     :framework-id-promise (fnk [curator-framework [:settings mesos-leader-path]]
+                             (let [fid-promise (promise)]
+                               (when-let [bytes (curator/get-or-nil curator-framework
+                                                                    (str mesos-leader-path "/framework-id"))]
+                                 (deliver fid-promise (String. bytes)))
+                               fid-promise))
      :mesos-datomic-mult (fnk [mesos-datomic]
                            (first ((lazy-load-var 'cook.datomic/create-tx-report-mult) mesos-datomic)))
      :local-zookeeper (fnk [[:settings zookeeper-server]]
@@ -374,7 +384,7 @@
      :fenzo-floor-iterations-before-reset (fnk [[:config [:scheduler {fenzo-floor-iterations-before-reset 1000}]]]
                                             fenzo-floor-iterations-before-reset)
      :fenzo-fitness-calculator (fnk [[:config [:scheduler {fenzo-fitness-calculator default-fitness-calculator}]]]
-                                    fenzo-fitness-calculator)
+                                 fenzo-fitness-calculator)
      :mesos-gpu-enabled (fnk [[:config [:mesos {enable-gpu-support false}]]]
                           (boolean enable-gpu-support))
      :good-enough-fitness (fnk [[:config [:scheduler {good-enough-fitness 0.8}]]]
