@@ -16,6 +16,7 @@
 (ns cook.test.mesos.api
   (:use clojure.test)
   (:require [cheshire.core :as cheshire]
+            [clj-http.client :as http]
             [clj-time.core :as t]
             [clojure.data.json :as json]
             [clojure.walk :refer (keywordize-keys)]
@@ -280,7 +281,7 @@
 
 (deftest gpus-api
   (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
-        job (fn [gpus ] (merge (basic-job) {"gpus" gpus}))
+        job (fn [gpus] (merge (basic-job) {"gpus" gpus}))
         h (basic-handler conn :gpus-enabled true)]
     (testing "negative gpus invalid"
       (is (<= 400
@@ -369,8 +370,8 @@
                                    :query-params {"job" uuid1}
                                    :body-params {"retries" 45}}))
             _ (is (<= 200 (:status update-resp) 299))
-            read-resp (h (merge retry-req-attrs  {:request-method :get
-                                                  :query-params {:job uuid1}}))
+            read-resp (h (merge retry-req-attrs {:request-method :get
+                                                 :query-params {:job uuid1}}))
             read-body (response->body-data read-resp)]
         (is (= read-body 45))))
 
@@ -380,8 +381,8 @@
                                    :body-params {"job" uuid1
                                                  "increment" 2}}))
             _ (is (<= 200 (:status update-resp) 299))
-            read-resp (h (merge retry-req-attrs  {:request-method :get
-                                                  :query-params {:job uuid1}}))
+            read-resp (h (merge retry-req-attrs {:request-method :get
+                                                 :query-params {:job uuid1}}))
             read-body (response->body-data read-resp)]
         (is (= read-body 47))))
 
@@ -390,11 +391,11 @@
                                   {:request-method :put
                                    :query-params {"job" [uuid1 uuid2]}
                                    :body-params {"increment" 3}}))
-            read-resp1 (h (merge retry-req-attrs  {:request-method :get
-                                                   :query-params {"job" uuid1}}))
+            read-resp1 (h (merge retry-req-attrs {:request-method :get
+                                                  :query-params {"job" uuid1}}))
             read-body1 (response->body-data read-resp1)
-            read-resp2 (h (merge retry-req-attrs  {:request-method :get
-                                                   :query-params {"job" uuid2}}))
+            read-resp2 (h (merge retry-req-attrs {:request-method :get
+                                                  :query-params {"job" uuid2}}))
             read-body2 (response->body-data read-resp2)]
         (is (= read-body1 50))
         (is (= read-body2 33))))))
@@ -537,7 +538,7 @@
                       "host_placement" (merge {"type" placement-type}
                                               (when (= placement-type "attribute-equals")
                                                 {"parameters" {"attribute" attribute}}))
-                      "straggler_handling" (merge {"type" straggler-handling-type }
+                      "straggler_handling" (merge {"type" straggler-handling-type}
                                                   (when (= straggler-handling-type "quantile-deviation")
                                                     {"parameters" {"quantile" quantile "multiplier" multiplier}}))})
 
@@ -551,18 +552,18 @@
                    :body-params params}))
         get-group (fn [uuid]
                     (response->body-data (h {:request-method :get
-                                   :scheme :http
-                                   :uri "/group"
-                                   :headers {"Content-Type" "application/json"}
-                                   :authorization/usr "diego"
-                                   :query-params {"uuid" uuid}})))
+                                             :scheme :http
+                                             :uri "/group"
+                                             :headers {"Content-Type" "application/json"}
+                                             :authorization/usr "diego"
+                                             :query-params {"uuid" uuid}})))
         get-job (fn [uuid]
                   (response->body-data (h {:request-method :get
-                                 :scheme :http
-                                 :uri "/rawscheduler"
-                                 :headers {"Content-Type" "application/json"}
-                                 :authorization/usr "diego"
-                                 :query-params {"job" uuid}})))]
+                                           :scheme :http
+                                           :uri "/rawscheduler"
+                                           :headers {"Content-Type" "application/json"}
+                                           :authorization/usr "diego"
+                                           :query-params {"job" uuid}})))]
     (testing "One job one group"
       (let [guuid (str (UUID/randomUUID))
             juuid (str (UUID/randomUUID))
@@ -620,7 +621,7 @@
         (is (contains? (-> group-resp2 first (get "jobs") set) juuid2))
 
         (is (= (-> group-resp1 first) {"uuid" guuid1 "name" "defaultgroup" "host_placement" {"type" "all"} "jobs" [juuid1] "straggler_handling" {"type" "none"}}))
-        (is (= (-> group-resp2 first) {"uuid" guuid2 "name" "defaultgroup" "host_placement" {"type" "all"} "jobs" [juuid2] "straggler_handling"  {"type" "none"}}))
+        (is (= (-> group-resp2 first) {"uuid" guuid2 "name" "defaultgroup" "host_placement" {"type" "all"} "jobs" [juuid2] "straggler_handling" {"type" "none"}}))
         ))
 
     (testing "Multiple groups in one request"
@@ -628,12 +629,12 @@
             guuid2 (str (UUID/randomUUID))
             juuids (vec (repeatedly 5 #(str (UUID/randomUUID))))
             post (fn [params]
-               (h {:request-method :post
-                   :scheme :http
-                   :uri "/rawscheduler"
-                   :headers {"Content-Type" "application/json"}
-                   :authorization/user "dgrnbrg"
-                   :body-params params}))
+                   (h {:request-method :post
+                       :scheme :http
+                       :uri "/rawscheduler"
+                       :headers {"Content-Type" "application/json"}
+                       :authorization/user "dgrnbrg"
+                       :body-params params}))
             post-resp (post {"groups" [(make-group :uuid guuid1 :placement-type "unique")
                                        (make-group :uuid guuid2 :placement-type "all")]
                              "jobs" [(make-job :uuid (get juuids 0) :group guuid1)
@@ -656,12 +657,12 @@
       (let [guuid (str (java.util.UUID/randomUUID))
             juuids (vec (repeatedly 2 #(str (java.util.UUID/randomUUID))))
             post (fn [params]
-               (h {:request-method :post
-                   :scheme :http
-                   :uri "/rawscheduler"
-                   :headers {"Content-Type" "application/json"}
-                   :authorization/user "dgrnbrg"
-                   :body-params params}))
+                   (h {:request-method :post
+                       :scheme :http
+                       :uri "/rawscheduler"
+                       :headers {"Content-Type" "application/json"}
+                       :authorization/user "dgrnbrg"
+                       :body-params params}))
             initial-resp (post {"jobs" [(make-job :uuid (get juuids 0) :group guuid)]})
             no-override-resp (post {"jobs" [(make-job :uuid (get juuids 1) :group guuid)]})
             override-resp (post {"override-group-immutability" true
@@ -688,7 +689,7 @@
             ; for debugging
             (try (slurp (:body post-resp)) (catch Exception e (:body post-resp))))
         (is (= "test" (-> group-resp first (get "host_placement") (get "parameters")
-                        (get "attribute"))))))
+                          (get "attribute"))))))
 
     (testing "Invalid placement type"
       (let [guuid (str (UUID/randomUUID))
@@ -796,66 +797,66 @@
         uuid (UUID/randomUUID)
         job (merge (basic-job) {"uuid" (str uuid)})
         h (basic-handler conn :retry-limit 200)]
-        (testing "Initial job creation"
-          (is (= 201
-                 (:status (h {:request-method :post
-                  :scheme :http
-                  :uri "/rawscheduler"
-                  :headers {"Content-Type" "application/json"}
-                  :authorization/user "dgrnbrg"
-                  :body-params {"jobs" [job]}})))))
+    (testing "Initial job creation"
+      (is (= 201
+             (:status (h {:request-method :post
+                          :scheme :http
+                          :uri "/rawscheduler"
+                          :headers {"Content-Type" "application/json"}
+                          :authorization/user "dgrnbrg"
+                          :body-params {"jobs" [job]}})))))
 
-        (testing "Within limits"
-          (is (<= 200
-                  (:status (h {:request-method :post
-                               :scheme :http
-                               :uri "/retry"
-                               :headers {"Content-Type" "application/json"}
-                               :authorization/user "dgrnbrg"
-                               :query-params {:job uuid}
-                               :body-params {"retries" 198}}))
-                  299)))
-        (testing "Incrementing within limit"
-          (is (<= 200
-                  (:status (h {:request-method :post
-                               :scheme :http
-                               :uri "/retry"
-                               :headers {"Content-Type" "application/json"}
-                               :authorization/user "dgrnbrg"
-                               :body-params {"jobs" [uuid]
-                                             "increment" 1}}))
-                  299)))
-        (testing "At limits"
-            (is (<= 200
-                    (:status (h {:request-method :post
-                                 :scheme :http
-                                 :uri "/retry"
-                                 :headers {"Content-Type" "application/json"}
-                                 :authorization/user "dgrnbrg"
-                                 :body-params {"jobs" [uuid]
-                                               "retries" 200}}))
-                    299)))
-        (testing "Over limit"
-          (is (<= 400
-                  (:status (h {:request-method :post
-                               :scheme :http
-                               :uri "/retry"
-                               :headers {"Content-Type" "application/json"}
-                               :authorization/user "dgrnbrg"
-                               :body-params {"job" [uuid]
-                                        "retries" 201}}))
-                  499)))
+    (testing "Within limits"
+      (is (<= 200
+              (:status (h {:request-method :post
+                           :scheme :http
+                           :uri "/retry"
+                           :headers {"Content-Type" "application/json"}
+                           :authorization/user "dgrnbrg"
+                           :query-params {:job uuid}
+                           :body-params {"retries" 198}}))
+              299)))
+    (testing "Incrementing within limit"
+      (is (<= 200
+              (:status (h {:request-method :post
+                           :scheme :http
+                           :uri "/retry"
+                           :headers {"Content-Type" "application/json"}
+                           :authorization/user "dgrnbrg"
+                           :body-params {"jobs" [uuid]
+                                         "increment" 1}}))
+              299)))
+    (testing "At limits"
+      (is (<= 200
+              (:status (h {:request-method :post
+                           :scheme :http
+                           :uri "/retry"
+                           :headers {"Content-Type" "application/json"}
+                           :authorization/user "dgrnbrg"
+                           :body-params {"jobs" [uuid]
+                                         "retries" 200}}))
+              299)))
+    (testing "Over limit"
+      (is (<= 400
+              (:status (h {:request-method :post
+                           :scheme :http
+                           :uri "/retry"
+                           :headers {"Content-Type" "application/json"}
+                           :authorization/user "dgrnbrg"
+                           :body-params {"job" [uuid]
+                                         "retries" 201}}))
+              499)))
 
-        (testing "Incrementing over limit"
-            (is (<= 400
-                    (:status (h {:request-method :post
-                                 :scheme :http
-                                 :uri "/retry"
-                                 :headers {"Content-Type" "application/json"}
-                                 :authorization/user "dgrnbrg"
-                                 :body-params {"job" [uuid]
-                                               "increment" 5}}))
-                    499)))))
+    (testing "Incrementing over limit"
+      (is (<= 400
+              (:status (h {:request-method :post
+                           :scheme :http
+                           :uri "/retry"
+                           :headers {"Content-Type" "application/json"}
+                           :authorization/user "dgrnbrg"
+                           :body-params {"job" [uuid]
+                                         "increment" 5}}))
+              499)))))
 
 (deftest list-validator
   (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
@@ -884,59 +885,59 @@
              "mem" 2048.0}
         h (basic-handler conn :cpus 12 :memory-gb 100 :retry-limit 500)]
     (is (= []
-          (response->body-data (h {:request-method :get
-                                   :scheme :http
-                                   :uri "/list"
-                                   :authorization/user "wyegelwe"
-                                   :body-params {"start-ms" (str (System/currentTimeMillis))
-                                                 "end-ms" (str (+ (System/currentTimeMillis) 10))
-                                                 "state" "running"
-                                                 "user" "wyegelwe"}}))))
+           (response->body-data (h {:request-method :get
+                                    :scheme :http
+                                    :uri "/list"
+                                    :authorization/user "wyegelwe"
+                                    :body-params {"start-ms" (str (System/currentTimeMillis))
+                                                  "end-ms" (str (+ (System/currentTimeMillis) 10))
+                                                  "state" "running"
+                                                  "user" "wyegelwe"}}))))
 
     ; Fail because missing user
     (is (<= 400
-           (:status (h {:request-method :get
-                      :scheme :http
-                      :uri "/list"
-                      :authorization/user "wyegelwe"
-                      :body-params {"start-ms" (str (System/currentTimeMillis))
-                               "end-ms" (str (+ (System/currentTimeMillis) 10))
-                               "state" "running"
-                               }}))
+            (:status (h {:request-method :get
+                         :scheme :http
+                         :uri "/list"
+                         :authorization/user "wyegelwe"
+                         :body-params {"start-ms" (str (System/currentTimeMillis))
+                                       "end-ms" (str (+ (System/currentTimeMillis) 10))
+                                       "state" "running"
+                                       }}))
             499))
 
     ; Fail because missing state
     (is (<= 400
             (:status (h {:request-method :get
-                       :scheme :http
-                       :uri "/list"
-                       :authorization/user "wyegelwe"
-                       :body-params {"start-ms" (str (System/currentTimeMillis))
-                                "end-ms" (str (+ (System/currentTimeMillis) 10))
-                                "user" "wyegelwe"}}))
+                         :scheme :http
+                         :uri "/list"
+                         :authorization/user "wyegelwe"
+                         :body-params {"start-ms" (str (System/currentTimeMillis))
+                                       "end-ms" (str (+ (System/currentTimeMillis) 10))
+                                       "user" "wyegelwe"}}))
             499))
 
     ; Fail because start is after end
     (is (<= 400
             (:status (h {:request-method :get
-                       :scheme :http
-                       :uri "/list"
-                       :authorization/user "wyegelwe"
-                       :body-params {"start-ms" (str (+ (System/currentTimeMillis) 1000))
-                                "end-ms" (str (+ (System/currentTimeMillis) 10))
-                                "state" "running"
-                                "user" "wyegelwe"
-                                }}))
+                         :scheme :http
+                         :uri "/list"
+                         :authorization/user "wyegelwe"
+                         :body-params {"start-ms" (str (+ (System/currentTimeMillis) 1000))
+                                       "end-ms" (str (+ (System/currentTimeMillis) 10))
+                                       "state" "running"
+                                       "user" "wyegelwe"
+                                       }}))
             499))
 
     (is (<= 200
-        (:status (h {:request-method :post
-                     :scheme :http
-                     :uri "/rawscheduler"
-                     :headers {"Content-Type" "application/json"}
-                     :authorization/user "dgrnbrg"
-                     :body-params {"jobs" [job]}}))
-        299))
+            (:status (h {:request-method :post
+                         :scheme :http
+                         :uri "/rawscheduler"
+                         :headers {"Content-Type" "application/json"}
+                         :authorization/user "dgrnbrg"
+                         :body-params {"jobs" [job]}}))
+            299))
 
     (let [jobs (response->body-data (h {:request-method :get
                                         :scheme :http
@@ -1176,3 +1177,43 @@
     (is (= get-body [{"uuid" (str uuid)
                       "reasons" [{"reason" "The job is now under investigation. Check back in a minute for more details!"
                                   "data" {}}]}]))))
+
+(deftest test-get-executor-id->directory-impl-and-retrieve-url-path
+  (let [target-framework-id "framework-id-11"
+        agent-hostname "www.mesos-agent-com"]
+    (with-redefs [http/get (fn [url & [options]]
+                             (is (= (str "http://" agent-hostname ":5051/state.json") url))
+                             (is (= {:as :json-string-keys, :conn-timeout 5000, :socket-timeout 5000, :spnego-auth true} options))
+                             {:body
+                              {"completed_frameworks"
+                               [{"completed_executors" [{"id" "executor-000", "directory" "/path/for/executor-000"}]
+                                 "executors" [{"id" "executor-005", "directory" "/path/for/executor-005"}]
+                                 "id" "framework-id-00"}
+                                {"completed_executors" [{"id" "executor-010", "directory" "/path/for/executor-010"}]
+                                 "executors" [{"id" "executor-015", "directory" "/path/for/executor-015"}]
+                                 "id" "framework-id-01"}]
+                               "frameworks"
+                               [{"completed_executors" [{"id" "executor-101", "directory" "/path/for/executor-101"}
+                                                        {"id" "executor-102", "directory" "/path/for/executor-102"}]
+                                 "executors" [{"id" "executor-111", "directory" "/path/for/executor-111"}]
+                                 "id" target-framework-id}
+                                {"completed_executors" [{"id" "executor-201", "directory" "/path/for/executor-201"}]
+                                 "executors" [{"id" "executor-211", "directory" "/path/for/executor-211"}]
+                                 "id" "framework-id-12"}]}})]
+
+      (testing "get-executor-id->directory-impl"
+        (let [actual-result (api/get-executor-id->directory-impl target-framework-id agent-hostname)
+              expected-result {"executor-101" "/path/for/executor-101"
+                               "executor-102" "/path/for/executor-102"
+                               "executor-111" "/path/for/executor-111"}]
+          (is (= expected-result actual-result))))
+
+      (testing "retrieve-url-path"
+        (is (nil? (api/retrieve-url-path target-framework-id agent-hostname "executor-100")))
+        (is (= (str "http://" agent-hostname ":5051/files/read.json?path=%2Fpath%2Ffor%2Fexecutor-101")
+               (api/retrieve-url-path target-framework-id agent-hostname "executor-101")))
+        (is (= (str "http://" agent-hostname ":5051/files/read.json?path=%2Fpath%2Ffor%2Fexecutor-102")
+               (api/retrieve-url-path target-framework-id agent-hostname "executor-102")))
+        (is (nil? (api/retrieve-url-path target-framework-id agent-hostname "executor-103")))
+        (is (= (str "http://" agent-hostname ":5051/files/read.json?path=%2Fpath%2Ffor%2Fexecutor-111")
+               (api/retrieve-url-path target-framework-id agent-hostname "executor-111")))))))

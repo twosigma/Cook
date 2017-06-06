@@ -668,55 +668,59 @@
     group))
 
 
-(defn get-executor-states-impl
-  "Builds an indexed version of all executor states on the specified slave. Has no cache; takes
+(defn get-executor-id->directory-impl
+  "Builds an indexed version of all executor-id to directory on the specified agent. Has no cache; takes
    100-500ms to run."
   [framework-id hostname]
   (let [timeout-millis (* 5 1000)
         ;; Throw SocketTimeoutException or ConnectionTimeoutException when timeout
         slave-state (:body (http/get (str "http://" hostname ":5051/state.json")
-                                     {:socket-timeout timeout-millis
+                                     {:as :json-string-keys
                                       :conn-timeout timeout-millis
-                                      :as :json-string-keys
+                                      :socket-timeout timeout-millis
                                       :spnego-auth true}))
-        framework-executors (for [framework (reduce into
-                                                    []
-                                                    [(get slave-state "frameworks")
-                                                     (get slave-state "completed_frameworks")])
-                                  :when (= framework-id (get framework "id"))
-                                  e (reduce into
-                                            []
-                                            [(get framework "executors")
-                                             (get framework "completed_executors")])]
-                              e)]
-    (map-from-vals #(get % "id") framework-executors)))
+        framework-filter (fn framework-filter [{:strs [id] :as framework}] (when (= framework-id id) framework))
+        ;; we expect only one framework to match
+        target-framework (or (some framework-filter (get slave-state "frameworks"))
+                             (some framework-filter (get slave-state "completed_frameworks")))
+        {:strs [completed_executors executors]} target-framework
+        framework-executors (reduce into [] [completed_executors executors])]
+    (->> framework-executors
+         (map (fn executor-state->executor-id->directory [{:strs [id directory]}]
+                [id directory]))
+         (into {}))))
 
 (let [cache (-> {}
                 (cache/fifo-cache-factory :threshold 10000)
                 (cache/ttl-cache-factory :ttl (* 1000 60))
                 atom)]
-  (defn get-executor-states
-    "Builds an indexed version of all executor states on the specified slave. Cached"
-    [framework-id hostname]
-    (let [run (delay (try (get-executor-states-impl framework-id hostname)
+  (defn get-executor-id->directory
+    "Builds an indexed version of all executor-id to directory for the specified agent. Cached"
+    [framework-id agent-hostname]
+    (let [run (delay (try (get-executor-id->directory-impl framework-id agent-hostname)
                           (catch Exception e
                             (log/debug e "Failed to get executor state, purging from cache...")
-                            (swap! cache cache/evict hostname)
+                            (swap! cache cache/evict agent-hostname)
                             nil)))
           cs (swap! cache (fn [c]
-                            (if (cache/has? c hostname)
-                              (cache/hit c hostname)
-                              (cache/miss c hostname run))))
-          val (cache/lookup cs hostname)]
+                            (if (cache/has? c agent-hostname)
+                              (cache/hit c agent-hostname)
+                              (cache/miss c agent-hostname run))))
+          val (cache/lookup cs agent-hostname)]
       (if val @val @run))))
 
-(defn executor-state->url-path
-  "Takes the executor state from the slave json and constructs a URL to query it. Hardcodes fun
-   stuff like the port we run the slave on. Users will need to add the file path & offset to their query"
-  [host executor-state]
-  (str "http://" host ":5051"
-       "/files/read.json?path="
-       (URLEncoder/encode (get executor-state "directory") "UTF-8")))
+(defn retrieve-url-path
+  "Takes the executor-id->directory from the agent json and constructs a URL to query it. Hardcodes fun
+   stuff like the port we run the agent on. Users will need to add the file path & offset to their query"
+  [fid agent-hostname executor-id]
+  (try
+    (let [executor-id->directory (get-executor-id->directory fid agent-hostname)
+          directory (executor-id->directory executor-id)]
+      (str "http://" agent-hostname ":5051" "/files/read.json?path="
+           (URLEncoder/encode directory "UTF-8")))
+    (catch Exception e
+      (log/error e "Unable to retrieve directory path for" executor-id "on agent" agent-hostname)
+      nil)))
 
 (defn fetch-job-map
   [db fid job-uuid]
@@ -734,18 +738,15 @@
                 :job.state/waiting "waiting")
         instances (map (fn [instance]
                          (let [hostname (:instance/hostname instance)
-                               executor-states (get-executor-states fid hostname)
-                               url-path (try
-                                          (executor-state->url-path hostname (get executor-states (:instance/executor-id instance)))
-                                          (catch Exception e
-                                            nil))
+                               executor-id (:instance/executor-id instance)
+                               url-path (retrieve-url-path fid hostname executor-id)
                                start (:instance/start-time instance)
                                mesos-start (:instance/mesos-start-time instance)
                                end (:instance/end-time instance)
                                cancelled (:instance/cancelled instance)
                                reason (reason/instance-entity->reason-entity db instance)]
                            (cond-> {:backfilled false ;; Backfill has been deprecated
-                                    :executor_id (:instance/executor-id instance)
+                                    :executor_id executor-id
                                     :hostname hostname
                                     :ports (:instance/ports instance)
                                     :preempted (:instance/preempted? instance false)
