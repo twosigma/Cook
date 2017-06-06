@@ -55,7 +55,7 @@ minimesos {
         imageName = "containersol/mesos-agent"
         imageTag = "1.0.0-0.1.0"
         loggingLevel = "# INHERIT FROM CLUSTER"
-        portNumber = 5052
+        portNumber = 5051
 
         resources {
             cpu {
@@ -100,7 +100,7 @@ minimesos {
         imageName = "containersol/mesos-agent"
         imageTag = "1.0.0-0.1.0"
         loggingLevel = "# INHERIT FROM CLUSTER"
-        portNumber = 5053
+        portNumber = 5051
 
         resources {
             cpu {
@@ -145,7 +145,7 @@ minimesos {
         imageName = "containersol/mesos-agent"
         imageTag = "1.0.0-0.1.0"
         loggingLevel = "# INHERIT FROM CLUSTER"
-        portNumber = 5054
+        portNumber = 5051
 
         resources {
             cpu {
@@ -190,7 +190,7 @@ minimesos {
         imageName = "containersol/mesos-agent"
         imageTag = "1.0.0-0.1.0"
         loggingLevel = "# INHERIT FROM CLUSTER"
-        portNumber = 5055
+        portNumber = 5051
 
         resources {
             cpu {
@@ -235,7 +235,7 @@ minimesos {
         imageName = "containersol/mesos-agent"
         imageTag = "1.0.0-0.1.0"
         loggingLevel = "# INHERIT FROM CLUSTER"
-        portNumber = 5056
+        portNumber = 5051
 
         resources {
             cpu {

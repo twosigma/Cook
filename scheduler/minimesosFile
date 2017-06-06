@@ -39,7 +39,7 @@ minimesos {
         imageName = "containersol/mesos-agent"
         imageTag = "1.0.0-0.1.0"
         loggingLevel = "# INHERIT FROM CLUSTER"
-        portNumber = 5052
+        portNumber = 5051
 
         resources {
             cpu {
