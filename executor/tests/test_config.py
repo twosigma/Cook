@@ -55,7 +55,8 @@ class ConfigTest(unittest.TestCase):
         self.assertEqual(2000, config.shutdown_grace_period_ms)
 
     def test_initialize_config_custom(self):
-        environment = {'EXECUTOR_MAX_MESSAGE_LENGTH': '1024',
+        environment = {'EXECUTOR_MAX_BYTES_READ_PER_LINE': '1234',
+                       'EXECUTOR_MAX_MESSAGE_LENGTH': '1024',
                        'MESOS_EXECUTOR_SHUTDOWN_GRACE_PERIOD': '4secs',
                        'MESOS_SANDBOX': '/sandbox/location',
                        'PROGRESS_OUTPUT_FILE': 'progress_file',
@@ -63,7 +64,7 @@ class ConfigTest(unittest.TestCase):
                        'PROGRESS_SAMPLE_INTERVAL_MS': '2500'}
         config = cc.initialize_config(environment)
 
-        self.assertEqual(4 * 1024, config.max_bytes_read_per_line)
+        self.assertEqual(1234, config.max_bytes_read_per_line)
         self.assertEqual(1024, config.max_message_length)
         self.assertEqual('progress_file', config.progress_output_name)
         self.assertEqual('progress/regex', config.progress_regex_string)

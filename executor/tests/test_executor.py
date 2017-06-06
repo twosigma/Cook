@@ -176,7 +176,35 @@ class ExecutorTest(unittest.TestCase):
         finally:
             cleanup_output(stdout_name, stderr_name)
 
-    def test_await_process_completion(self):
+    def test_await_process_completion_normal(self):
+        task_id = get_random_task_id()
+
+        stdout_name = 'build/stdout.' + str(task_id)
+        stderr_name = 'build/stderr.' + str(task_id)
+
+        stdout = open(stdout_name, 'w+')
+        stderr = open(stderr_name, 'w+')
+
+        try:
+            command = 'sleep 2'
+            process = subprocess.Popen(command, shell=True, stdout=stdout, stderr=stderr)
+            process_info = process, stdout, stderr
+            shutdown_grace_period_ms = 1000
+
+            stop_signal = Event()
+
+            ce.await_process_completion(stop_signal, process_info, shutdown_grace_period_ms)
+
+            self.assertFalse(stop_signal.isSet())
+            self.assertEqual(0, process.returncode)
+
+            self.assertTrue(stdout.closed)
+            self.assertTrue(stderr.closed)
+
+        finally:
+            cleanup_output(stdout_name, stderr_name)
+
+    def test_await_process_completion_killed(self):
         task_id = get_random_task_id()
 
         stdout_name = 'build/stdout.' + str(task_id)

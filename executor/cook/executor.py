@@ -225,6 +225,9 @@ def await_process_completion(stop_signal, process_info, shutdown_grace_period_ms
 
         time.sleep(cook.RUNNING_POLL_INTERVAL_SECS)
 
+    if not stop_signal.isSet():
+        cleanup_process(process_info)
+
 
 def get_task_state(exit_code):
     """Interprets the exit_code and return the corresponding task status string
@@ -275,26 +278,29 @@ def manage_task(driver, task, stop_signal, completed_signal, config, stdout_name
             return
 
         process, _, _ = process_info
-        progress_watcher = cp.ProgressWatcher(config, completed_signal)
+        task_completed_signal = Event() # event to track task execution completion
+
+        progress_watcher = cp.ProgressWatcher(config, task_completed_signal)
         progress_updater = cp.ProgressUpdater(driver, task_id, config.max_message_length,
                                               config.progress_sample_interval_ms, send_message)
         progress_complete_event = cp.launch_progress_tracker(progress_watcher, progress_updater)
 
         await_process_completion(stop_signal, process_info, config.shutdown_grace_period_ms)
+        task_completed_signal.set()
+
+        # propagate the exit code
         exit_code = process.returncode
-
-        # set the completed signal to trigger progress updater termination and await progress
-        # updater termination if executor is terminating normally
-        completed_signal.set()
-        if not stop_signal.isSet():
-            logging.info('Awaiting progress updater completion with timeout of one second')
-            progress_complete_event.wait(1)
-
         logging.info('Process completed with exit code {}'.format(exit_code))
         exit_message = json.dumps({'exit-code': exit_code, 'task-id': task_id})
         send_message(driver, exit_message, config.max_message_length)
 
-        # send the latest progress state if available
+        # await progress updater termination if executor is terminating normally
+        if not stop_signal.isSet():
+            logging.info('Awaiting progress updater completion')
+            progress_complete_event.wait()
+            logging.info('Progress updater completed')
+
+        # force send the latest progress state if available
         cp.force_send_progress_update(progress_watcher, progress_updater)
 
         # task either completed successfully or aborted with an error
@@ -307,7 +313,7 @@ def manage_task(driver, task, stop_signal, completed_signal, config, stdout_name
         update_status(driver, task_id, cook.TASK_FAILED)
 
     finally:
-        # ensure completed_signal is set
+        # ensure completed_signal is set so driver can stop
         completed_signal.set()
 
 
@@ -318,7 +324,7 @@ def run_mesos_driver(stop_signal, config):
     driver.start()
 
     # check the status of the executor and bail if it has crashed
-    while not executor.has_stopped():
+    while not executor.has_task_completed():
         time.sleep(1)
     else:
         logging.info('Executor thread has completed')
@@ -359,5 +365,13 @@ class CookExecutor(Executor):
         logging.info('Mesos requested executor to shutdown!')
         self.stop_signal.set()
 
-    def has_stopped(self):
+    def has_task_completed(self):
+        """
+        Returns true when the executor has completed execution of the task specified in the call to launchTask.
+        The executor is intended to run a single task.
+        
+        Returns
+        -------
+        true when the task has completed execution. 
+        """
         return self.completed_signal.isSet()

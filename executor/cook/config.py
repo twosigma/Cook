@@ -49,7 +49,7 @@ def initialize_config(environment):
     """Initializes the config using the environment.
     Populates the default values for missing environment variables.
     """
-    max_bytes_read_per_line = 4 * 1024
+    max_bytes_read_per_line = int(environment.get('EXECUTOR_MAX_BYTES_READ_PER_LINE', 4 * 1024))
     max_message_length = int(environment.get('EXECUTOR_MAX_MESSAGE_LENGTH', 512))
     progress_output_name = environment.get('PROGRESS_OUTPUT_FILE', 'stdout')
     progress_regex_string = environment.get('PROGRESS_REGEX_STRING', 'progress: (\d*), (.*)')

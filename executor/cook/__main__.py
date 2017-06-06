@@ -34,9 +34,6 @@ def main(args=None):
     logging.info('Log level is {}'.format(log_level))
 
     config = cc.initialize_config(environment)
-    stop_signal = Event()
-    driver_thread = Thread(target=ce.run_mesos_driver, args=(stop_signal, config))
-    driver_thread.start()
 
     def handle_interrupt(interrupt_code, _):
         logging.info('Received interrupt code {}, preparing to terminate executor'.format(interrupt_code))
@@ -44,6 +41,10 @@ def main(args=None):
     signal.signal(signal.SIGINT, handle_interrupt)
     signal.signal(signal.SIGTERM, handle_interrupt)
 
+    stop_signal = Event()
+    driver_thread = Thread(target=ce.run_mesos_driver, args=(stop_signal, config))
+    driver_thread.start()
+    logging.info('Driver thread has started')
     driver_thread.join()
     logging.info('Driver thread has completed')
 

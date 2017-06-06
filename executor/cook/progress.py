@@ -111,11 +111,11 @@ class ProgressWatcher(object):
         matches = re.findall(progress_regex_str, input_string)
         return matches[0] if len(matches) >= 1 else None
 
-    def __init__(self, config, completed_signal):
+    def __init__(self, config, task_completed_signal):
         self.target_file = config.progress_output_name
         self.progress_regex_string = config.progress_regex_string
         self.progress = None
-        self.completed_signal = completed_signal
+        self.task_completed_signal = task_completed_signal
         self.max_bytes_read_per_line = config.max_bytes_read_per_line
 
     def current_progress(self):
@@ -139,17 +139,17 @@ class ProgressWatcher(object):
         try:
             sleep_param = sleep_time_ms / 1000
 
-            while not os.path.isfile(self.target_file) and not self.completed_signal.isSet():
+            while not os.path.isfile(self.target_file) and not self.task_completed_signal.isSet():
                 logging.debug('{} has not yet been created, sleeping {} ms'.format(self.target_file, sleep_time_ms))
                 time.sleep(sleep_param)
 
-            if self.completed_signal.isSet():
+            if self.task_completed_signal.isSet():
                 logging.info('No output has been read to parse progress messages')
                 return
 
             logging.info('{} has been created, reading contents'.format(self.target_file))
             target_file_obj = open(self.target_file, 'r')
-            while not self.completed_signal.isSet():
+            while not self.task_completed_signal.isSet():
                 line = target_file_obj.readline(self.max_bytes_read_per_line)
                 if not line:
                     # no new line available, sleep before trying again
