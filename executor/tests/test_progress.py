@@ -126,6 +126,7 @@ class ProgressTest(unittest.TestCase):
         file_name = 'build/tail_progress_test.' + get_random_task_id()
         config = cc.ExecutorConfig(progress_output_name=file_name)
         items_to_write = 12
+        stop_signal = Event()
         completed_signal = Event()
         write_sleep_ms = 50
         tail_sleep_ms = 25
@@ -143,7 +144,7 @@ class ProgressTest(unittest.TestCase):
 
             Thread(target=write_to_file, args=()).start()
 
-            progress_watcher = cp.ProgressWatcher(config, completed_signal)
+            progress_watcher = cp.ProgressWatcher(config, stop_signal, completed_signal)
             collected_data = []
             for line in progress_watcher.tail(tail_sleep_ms):
                 collected_data.append(line.strip())
@@ -158,6 +159,7 @@ class ProgressTest(unittest.TestCase):
         file_name = 'build/tail_progress_test.' + get_random_task_id()
         config = cc.ExecutorConfig(progress_output_name=file_name)
         items_to_write = 250000
+        stop_signal = Event()
         completed_signal = Event()
         tail_sleep_ms = 25
 
@@ -173,7 +175,7 @@ class ProgressTest(unittest.TestCase):
 
             Thread(target=write_to_file, args=()).start()
 
-            progress_watcher = cp.ProgressWatcher(config, completed_signal)
+            progress_watcher = cp.ProgressWatcher(config, stop_signal, completed_signal)
             collected_data = []
             for line in progress_watcher.tail(tail_sleep_ms):
                 collected_data.append(line.strip())
@@ -190,6 +192,7 @@ class ProgressTest(unittest.TestCase):
         file_name = 'build/tail_progress_test.' + get_random_task_id()
         config = cc.ExecutorConfig(max_bytes_read_per_line=10,
                                    progress_output_name=file_name)
+        stop_signal = Event()
         completed_signal = Event()
         tail_sleep_ms = 25
 
@@ -212,7 +215,7 @@ class ProgressTest(unittest.TestCase):
 
             Thread(target=write_to_file, args=()).start()
 
-            progress_watcher = cp.ProgressWatcher(config, completed_signal)
+            progress_watcher = cp.ProgressWatcher(config, stop_signal, completed_signal)
             collected_data = []
             for line in progress_watcher.tail(tail_sleep_ms):
                 collected_data.append(line.strip())
@@ -231,11 +234,12 @@ class ProgressTest(unittest.TestCase):
         progress_regex_string = '\^\^\^\^JOB-PROGRESS: (\d*)(?: )?(.*)'
         config = cc.ExecutorConfig(progress_output_name=file_name,
                                    progress_regex_string=progress_regex_string)
+        stop_signal = Event()
         completed_signal = Event()
 
         file = open(file_name, 'w+')
         file.flush()
-        progress_watcher = cp.ProgressWatcher(config, completed_signal)
+        progress_watcher = cp.ProgressWatcher(config, stop_signal, completed_signal)
 
         try:
             def read_progress_states():
@@ -293,6 +297,7 @@ class ProgressTest(unittest.TestCase):
                                    progress_regex_string=progress_regex_string)
 
         items_to_write = 250000
+        stop_signal = Event()
         completed_signal = Event()
 
         def write_to_file():
@@ -313,7 +318,7 @@ class ProgressTest(unittest.TestCase):
         write_thread = Thread(target=write_to_file, args=())
         write_thread.start()
 
-        progress_watcher = cp.ProgressWatcher(config, completed_signal)
+        progress_watcher = cp.ProgressWatcher(config, stop_signal, completed_signal)
 
         try:
             collected_data = []
@@ -343,11 +348,12 @@ class ProgressTest(unittest.TestCase):
         progress_regex_string = ''
         config = cc.ExecutorConfig(progress_output_name=file_name,
                                    progress_regex_string=progress_regex_string)
+        stop_signal = Event()
         completed_signal = Event()
 
         file = open(file_name, 'w+')
         file.flush()
-        progress_watcher = cp.ProgressWatcher(config, completed_signal)
+        progress_watcher = cp.ProgressWatcher(config, stop_signal, completed_signal)
 
         try:
             def read_progress_states():

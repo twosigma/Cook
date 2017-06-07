@@ -280,7 +280,7 @@ def manage_task(driver, task, stop_signal, completed_signal, config, stdout_name
         process, _, _ = process_info
         task_completed_signal = Event() # event to track task execution completion
 
-        progress_watcher = cp.ProgressWatcher(config, task_completed_signal)
+        progress_watcher = cp.ProgressWatcher(config, stop_signal, task_completed_signal)
         progress_updater = cp.ProgressUpdater(driver, task_id, config.max_message_length,
                                               config.progress_sample_interval_ms, send_message)
         progress_complete_event = cp.launch_progress_tracker(progress_watcher, progress_updater)
