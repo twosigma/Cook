@@ -218,7 +218,11 @@
                                           mesos-datomic-conn
                                           (fn set-or-create-framework-id [framework-id]
                                             (let [value (-> framework-id mesomatic.types/pb->data :value)]
-                                              (deliver framework-id-promise value)
+                                              (if (realized? framework-id-promise)
+                                                (when (not= value @framework-id-promise)
+                                                  (log/error "Framework id being set in ZooKeeper (" value "),"
+                                                             "but it's already set (" @framework-id-promise ")"))
+                                                (deliver framework-id-promise value))
                                               (curator/set-or-create
                                                 curator-framework
                                                 zk-framework-id
