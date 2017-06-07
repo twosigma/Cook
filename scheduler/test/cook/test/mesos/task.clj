@@ -169,27 +169,6 @@
         (is (= (->> msg :labels :labels (filter #(= (:key %) "foo")) first :value) "bar")))
 
 
-      (testing "container-task"
-        (let [container {:type "DOCKER"
-                         :volumes [{:container-path "/var/lib/sss"
-                                    :host-path "/var/lib/sss"
-                                    :mode "RW"}]
-                         :docker {:image "nvidia/cuda"
-                                  :network "HOST"
-                                  :force-pull-image false
-                                  :parameters [{:key "user" :value "100:5"}]
-                                  :port-mapping [{:host-port 0
-                                                  :container-port 1
-                                                  :protocol "tcp"}]}}
-              container-task (assoc task :container container)
-              ;; TODO: Check values of container-msg.
-              ;; mesomatic doesn't do conversion to map for containerinfo so holding off for now
-              container-msg (->> container-task
-                                 task/task-info->mesos-message
-                                 (mtypes/->pb :TaskInfo)
-                                 mtypes/pb->data)]
-          (do container-msg)))
-
       (testing "command-executor"
         (let [command-executor-task (assoc task :data (.getBytes (pr-str {:instance "5"}) "UTF-8")
                                                 :executor-key :command)
@@ -253,53 +232,57 @@
           (is (= (-> custom-executor-msg :executor :name) task/custom-executor-name))
           (is (= (-> custom-executor-msg :executor :source) task/custom-executor-source))))
 
-      (testing "container-command"
-        (let [container {:docker {:image "a-docker-image"
-                                  :network "HOST"}
-                         :hostname "test.docker.hostname"
-                         :type "DOCKER"}
-              container-executor-task (assoc task :container container
-                                                  :data (.getBytes (pr-str {:instance "5"}) "UTF-8")
-                                                  :executor-key :command)
-              container-executor-msg (->> container-executor-task
-                                          task/task-info->mesos-message
-                                          (mtypes/->pb :TaskInfo)
-                                          mtypes/pb->data)]
-          ;; Check container executor built correctly
-          (is (= (:instance (edn/read-string (String. (.toByteArray (:data container-executor-msg))))) "5"))
-          (is (= (-> container-executor-msg :command :value) (-> task :command :value)))
-          (is (str/blank? (-> container-executor-msg :executor :command :value)))
-          (is (str/blank? (-> container-executor-msg :executor :executor-id :value)))
-          (is (str/blank? (-> container-executor-msg :executor :framework-id :value)))
-          (is (= (-> container-executor-msg :executor :name) ""))
-          (is (str/blank? (-> container-executor-msg :executor :source)))
-          (let [expected-container (-> (update-in container [:docker] assoc :network :docker-network-host)
-                                       (assoc :type :container-type-docker :volumes []))]
-            (is (= expected-container (->> container-executor-task task/task-info->mesos-message :container)))
-            (is (nil? (->> container-executor-task task/task-info->mesos-message :executor :container))))))
+      (let [container {:docker {:image "a-docker-image"
+                                :force-pull-image false
+                                :network "HOST"
+                                :parameters [{:key "user" :value "100:5"}]
+                                :port-mapping [{:host-port 0
+                                                :container-port 1
+                                                :protocol "tcp"}]}
+                       :hostname "test.docker.hostname"
+                       :type "DOCKER"
+                       :volumes [{:container-path "/var/lib/sss"
+                                  :host-path "/var/lib/sss"
+                                  :mode "RW"}]}
+            expected-container (-> (update container :docker assoc :network :docker-network-host)
+                                   (assoc :type :container-type-docker)
+                                   (update-in [:volumes 0] assoc :mode :volume-rw))]
 
-      (testing "container-executor"
-        (let [container {:docker {:image "a-docker-image"
-                                  :network "HOST"}
-                         :hostname "test.docker.hostname"
-                         :type "DOCKER"}
-              container-executor-task (assoc task :container container
-                                                  :data (.getBytes (pr-str {:instance "5"}) "UTF-8")
-                                                  :executor-key :executor)
-              container-executor-msg (->> container-executor-task
-                                          task/task-info->mesos-message
-                                          (mtypes/->pb :TaskInfo)
-                                          mtypes/pb->data)]
-          ;; Check container executor built correctly
-          (is (= (:instance (edn/read-string (String. (.toByteArray (:data container-executor-msg))))) "5"))
-          (is (str/blank? (-> container-executor-msg :command :value)))
-          (is (= (-> container-executor-msg :executor :command :value) (-> task :command :value)))
-          (is (= (-> container-executor-msg :executor :executor-id :value) (:task-id task)))
-          (is (= (-> container-executor-msg :executor :framework-id :value) (-> task :framework-id :value)))
-          (is (= (-> container-executor-msg :executor :name) task/custom-executor-name))
-          (is (= (-> container-executor-msg :executor :source) task/custom-executor-source))
-          (let [expected-container (-> (update-in container [:docker] assoc :network :docker-network-host)
-                                       (assoc :type :container-type-docker :volumes []))]
+        (testing "container-command"
+          (let [container-executor-task (assoc task :container container
+                                                    :data (.getBytes (pr-str {:instance "5"}) "UTF-8")
+                                                    :executor-key :command)
+                container-executor-msg (->> container-executor-task
+                                            task/task-info->mesos-message
+                                            (mtypes/->pb :TaskInfo)
+                                            mtypes/pb->data)]
+            ;; Check container executor built correctly
+            (is (= (:instance (edn/read-string (String. (.toByteArray (:data container-executor-msg))))) "5"))
+            (is (= (-> container-executor-msg :command :value) (-> task :command :value)))
+            (is (str/blank? (-> container-executor-msg :executor :command :value)))
+            (is (str/blank? (-> container-executor-msg :executor :executor-id :value)))
+            (is (str/blank? (-> container-executor-msg :executor :framework-id :value)))
+            (is (= (-> container-executor-msg :executor :name) ""))
+            (is (str/blank? (-> container-executor-msg :executor :source)))
+            (is (= expected-container (->> container-executor-task task/task-info->mesos-message :container)))
+            (is (nil? (->> container-executor-task task/task-info->mesos-message :executor :container)))))
+
+        (testing "container-executor"
+          (let [container-executor-task (assoc task :container container
+                                                    :data (.getBytes (pr-str {:instance "5"}) "UTF-8")
+                                                    :executor-key :executor)
+                container-executor-msg (->> container-executor-task
+                                            task/task-info->mesos-message
+                                            (mtypes/->pb :TaskInfo)
+                                            mtypes/pb->data)]
+            ;; Check container executor built correctly
+            (is (= (:instance (edn/read-string (String. (.toByteArray (:data container-executor-msg))))) "5"))
+            (is (str/blank? (-> container-executor-msg :command :value)))
+            (is (= (-> container-executor-msg :executor :command :value) (-> task :command :value)))
+            (is (= (-> container-executor-msg :executor :executor-id :value) (:task-id task)))
+            (is (= (-> container-executor-msg :executor :framework-id :value) (-> task :framework-id :value)))
+            (is (= (-> container-executor-msg :executor :name) task/custom-executor-name))
+            (is (= (-> container-executor-msg :executor :source) task/custom-executor-source))
             (is (nil? (->> container-executor-task task/task-info->mesos-message :container)))
             (is (= expected-container (->> container-executor-task task/task-info->mesos-message :executor :container)))))))))
 
