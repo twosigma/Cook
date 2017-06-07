@@ -3,6 +3,8 @@ import time
 import unittest
 import uuid
 
+from retrying import retry
+
 from tests.cook import util
 
 
@@ -27,13 +29,30 @@ class CookTest(unittest.TestCase):
         """Loads a job by UUID using GET /rawscheduler"""
         return util.query_jobs(self.cook_url, job=[job_uuid]).json()[0]
 
+    @retry(stop_max_delay=120000, wait_fixed=5000)
+    def get_output_url(self, job_uuid):
+        """
+        Gets the output_url for the given job, retrying every 5 
+        seconds for a maximum of 2 minutes. The retries are 
+        necessary because currently the Mesos agent sandbox
+        directories are cached in Cook.
+        """
+        job = self.get_job(job_uuid)
+        instance = job['instances'][0]
+        if 'output_url' in instance:
+            return instance['output_url']
+        else:
+            error_msg = 'Job %s had no output_url' % job['uuid']
+            self.logger.info(error_msg)
+            raise RuntimeError(error_msg)
+
     def test_basic_submit(self):
         job_uuid, resp = util.submit_job(self.cook_url)
         self.assertEqual(resp.status_code, 201)
         job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
         self.assertEqual('success', job['instances'][0]['status'])
         self.assertEqual(False, job['disable_mea_culpa_retries'])
-        self.assertTrue(len(job['instances'][0]['output_url']) > 0)
+        self.assertTrue(len(self.get_output_url(job_uuid)) > 0)
 
     def test_disable_mea_culpa(self):
         job_uuid, resp = util.submit_job(self.cook_url, disable_mea_culpa_retries=True)
