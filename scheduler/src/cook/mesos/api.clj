@@ -674,14 +674,15 @@
   [framework-id agent-hostname]
   (let [timeout-millis (* 5 1000)
         ;; Throw SocketTimeoutException or ConnectionTimeoutException when timeout
-        slave-state (:body (http/get (str "http://" agent-hostname ":5051/state.json")
-                                     {:as :json-string-keys
-                                      :conn-timeout timeout-millis
-                                      :socket-timeout timeout-millis
-                                      :spnego-auth true}))
+        {:strs [completed_frameworks frameworks]} (-> (str "http://" agent-hostname ":5051/state.json")
+                                                      (http/get
+                                                        {:as :json-string-keys
+                                                         :conn-timeout timeout-millis
+                                                         :socket-timeout timeout-millis
+                                                         :spnego-auth true})
+                                                      :body)
         framework-filter (fn framework-filter [{:strs [id] :as framework}]
                            (when (= framework-id id) framework))
-        {:strs [completed_frameworks frameworks]} slave-state
         ;; there should be at most one framework entry for a given framework-id
         target-framework (or (some framework-filter frameworks)
                              (some framework-filter completed_frameworks))
