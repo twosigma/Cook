@@ -1178,7 +1178,7 @@
                       "reasons" [{"reason" "The job is now under investigation. Check back in a minute for more details!"
                                   "data" {}}]}]))))
 
-(deftest test-get-executor-id->directory-impl-and-retrieve-url-path
+(deftest test-get-executor-id->sandbox-directory-impl-and-retrieve-url-path
   (let [target-framework-id "framework-id-11"
         agent-hostname "www.mesos-agent-com"]
     (with-redefs [http/get (fn [url & [options]]
@@ -1201,8 +1201,8 @@
                                  "executors" [{"id" "executor-211", "directory" "/path/for/executor-211"}]
                                  "id" "framework-id-12"}]}})]
 
-      (testing "get-executor-id->directory-impl"
-        (let [actual-result (api/get-executor-id->directory-impl target-framework-id agent-hostname)
+      (testing "get-executor-id->sandbox-directory-impl"
+        (let [actual-result (api/get-executor-id->sandbox-directory-impl target-framework-id agent-hostname)
               expected-result {"executor-101" "/path/for/executor-101"
                                "executor-102" "/path/for/executor-102"
                                "executor-111" "/path/for/executor-111"}]

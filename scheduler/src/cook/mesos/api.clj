@@ -668,25 +668,27 @@
     group))
 
 
-(defn get-executor-id->directory-impl
-  "Builds an indexed version of all executor-id to directory on the specified agent. Has no cache; takes
+(defn get-executor-id->sandbox-directory-impl
+  "Builds an indexed version of all executor-id to sandbox directory on the specified agent. Has no cache; takes
    100-500ms to run."
-  [framework-id hostname]
+  [framework-id agent-hostname]
   (let [timeout-millis (* 5 1000)
         ;; Throw SocketTimeoutException or ConnectionTimeoutException when timeout
-        slave-state (:body (http/get (str "http://" hostname ":5051/state.json")
+        slave-state (:body (http/get (str "http://" agent-hostname ":5051/state.json")
                                      {:as :json-string-keys
                                       :conn-timeout timeout-millis
                                       :socket-timeout timeout-millis
                                       :spnego-auth true}))
-        framework-filter (fn framework-filter [{:strs [id] :as framework}] (when (= framework-id id) framework))
-        ;; we expect only one framework to match
-        target-framework (or (some framework-filter (get slave-state "frameworks"))
-                             (some framework-filter (get slave-state "completed_frameworks")))
+        framework-filter (fn framework-filter [{:strs [id] :as framework}]
+                           (when (= framework-id id) framework))
+        {:strs [completed_frameworks frameworks]} slave-state
+        ;; there should be at most one framework entry for a given framework-id
+        target-framework (or (some framework-filter frameworks)
+                             (some framework-filter completed_frameworks))
         {:strs [completed_executors executors]} target-framework
         framework-executors (reduce into [] [completed_executors executors])]
     (->> framework-executors
-         (map (fn executor-state->executor-id->directory [{:strs [id directory]}]
+         (map (fn executor-state->executor-id->sandbox-directory [{:strs [id directory]}]
                 [id directory]))
          (into {}))))
 
@@ -694,10 +696,10 @@
                 (cache/fifo-cache-factory :threshold 10000)
                 (cache/ttl-cache-factory :ttl (* 1000 60))
                 atom)]
-  (defn get-executor-id->directory
-    "Builds an indexed version of all executor-id to directory for the specified agent. Cached"
+  (defn get-executor-id->sandbox-directory
+    "Builds an indexed version of all executor-id to sandbox directory for the specified agent. Cached"
     [framework-id agent-hostname]
-    (let [run (delay (try (get-executor-id->directory-impl framework-id agent-hostname)
+    (let [run (delay (try (get-executor-id->sandbox-directory-impl framework-id agent-hostname)
                           (catch Exception e
                             (log/debug e "Failed to get executor state, purging from cache...")
                             (swap! cache cache/evict agent-hostname)
@@ -710,12 +712,13 @@
       (if val @val @run))))
 
 (defn retrieve-url-path
-  "Takes the executor-id->directory from the agent json and constructs a URL to query it. Hardcodes fun
-   stuff like the port we run the agent on. Users will need to add the file path & offset to their query"
+  "Takes the executor-id->sandbox-directory from the agent json and constructs a URL to query it. Hardcodes fun
+   stuff like the port we run the agent on. Users will need to add the file path & offset to their query. Refer to
+   the 'Using the output_url' section in docs/scheduler-rest-api.asc for further details."
   [fid agent-hostname executor-id]
   (try
-    (let [executor-id->directory (get-executor-id->directory fid agent-hostname)
-          directory (executor-id->directory executor-id)]
+    (let [executor-id->sandbox-directory (get-executor-id->sandbox-directory fid agent-hostname)
+          directory (executor-id->sandbox-directory executor-id)]
       (str "http://" agent-hostname ":5051" "/files/read.json?path="
            (URLEncoder/encode directory "UTF-8")))
     (catch Exception e
