@@ -904,24 +904,24 @@
                            (str/join \space (remove authorized? uuids)))}])))
 
 (defn render-jobs-for-response
-  [conn fid-promise ctx]
-  (mapv (partial fetch-job-map (db conn) @fid-promise) (::jobs ctx)))
+  [conn fid ctx]
+  (mapv (partial fetch-job-map (db conn) fid) (::jobs ctx)))
 
 
 ;;; On GET; use repeated job argument
 (defn read-jobs-handler
-  [conn fid-promise task-constraints gpu-enabled? is-authorized-fn]
+  [conn fid task-constraints gpu-enabled? is-authorized-fn]
   (base-cook-handler
     {:allowed-methods [:get]
      :malformed? check-job-params-present
      :allowed? (partial job-request-allowed? conn is-authorized-fn)
      :exists? (partial retrieve-jobs conn)
-     :handle-ok (partial render-jobs-for-response conn fid-promise)}))
+     :handle-ok (partial render-jobs-for-response conn fid)}))
 
 
 ;;; On DELETE; use repeated job argument
 (defn destroy-jobs-handler
-  [conn fid-promise task-constraints gpu-enabled? is-authorized-fn]
+  [conn fid task-constraints gpu-enabled? is-authorized-fn]
   (base-cook-handler
     {:allowed-methods [:delete]
      :malformed? check-job-params-present
@@ -930,7 +930,7 @@
      :delete! (fn [ctx]
                 (cook.mesos/kill-job conn (::jobs-requested ctx))
                 (cook.mesos/kill-instances conn (::instances-requested ctx)))
-     :handle-ok (partial render-jobs-for-response conn fid-promise)}))
+     :handle-ok (partial render-jobs-for-response conn fid)}))
 
 (defn vectorize
   "If x is not a vector (or nil), turns it into a vector"
@@ -1491,7 +1491,7 @@
 (timers/deftimer [cook-scheduler handler list-endpoint])
 
 (defn list-resource
-  [db fid-promise is-authorized-fn]
+  [db fid is-authorized-fn]
   (liberator/resource
    :available-media-types ["application/json"]
    :allowed-methods [:get]
@@ -1569,7 +1569,7 @@
                        job-uuids (if (nil? limit)
                                    job-uuids
                                    (take limit job-uuids))]
-                   (mapv (partial fetch-job-map db @fid-promise) job-uuids))))))
+                   (mapv (partial fetch-job-map db fid) job-uuids))))))
 
 ;;
 ;; /unscheduled_jobs
@@ -1628,7 +1628,7 @@
 ;; "main" - the entry point that routes to other handlers
 ;;
 (defn main-handler
-  [conn fid-promise mesos-pending-jobs-fn
+  [conn fid mesos-pending-jobs-fn
    {:keys [task-constraints is-authorized-fn] gpu-enabled? :mesos-gpu-enabled :as settings}]
   (->
    (routes
@@ -1650,7 +1650,7 @@
                                :description "The jobs and their instances were returned."}
                           400 {:description "Non-UUID values were passed as jobs."}
                           403 {:description "The supplied UUIDs don't correspond to valid jobs."}}
-              :handler (read-jobs-handler conn fid-promise task-constraints gpu-enabled? is-authorized-fn)}
+              :handler (read-jobs-handler conn fid task-constraints gpu-enabled? is-authorized-fn)}
         :post {:summary "Schedules one or more jobs."
                :parameters {:body-params RawSchedulerRequest}
                :responses {201 {:description "The jobs were successfully scheduled."}
@@ -1662,7 +1662,7 @@
                              400 {:description "Non-UUID values were passed as jobs."}
                              403 {:description "The supplied UUIDs don't correspond to valid jobs."}}
                  :parameters {:query-params JobOrInstanceIds}
-                 :handler (destroy-jobs-handler conn fid-promise task-constraints gpu-enabled? is-authorized-fn)}}))
+                 :handler (destroy-jobs-handler conn fid task-constraints gpu-enabled? is-authorized-fn)}}))
 
      (c-api/context
       "/share" []
@@ -1774,7 +1774,7 @@
     (ANY "/running" []
          (running-jobs conn is-authorized-fn))
     (ANY "/list" []
-         (list-resource (db conn) fid-promise is-authorized-fn)))
+         (list-resource (db conn) fid is-authorized-fn)))
    (format-params/wrap-restful-params {:formats [:json-kw]
                                        :handle-error c-mw/handle-req-error})
    (streaming-json-middleware)))

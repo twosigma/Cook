@@ -66,10 +66,10 @@
     (resolve var-sym)))
 
 (def raw-scheduler-routes
-  {:scheduler (fnk [mesos-datomic framework-id-promise mesos-pending-jobs-atom settings]
+  {:scheduler (fnk [mesos-datomic framework-id mesos-pending-jobs-atom settings]
                 ((lazy-load-var 'cook.mesos.api/main-handler)
                   mesos-datomic
-                  framework-id-promise
+                  framework-id
                   (fn [] @mesos-pending-jobs-atom)
                   settings))
    :view (fnk [scheduler]
@@ -238,7 +238,7 @@
                                    :max-threads 200
                                    :request-header-size 32768})]
                       (fn [] (.stop jetty))))
-
+     :framework-id (fnk [framework-id-promise] @framework-id-promise)
      :framework-id-promise (fnk [curator-framework [:settings mesos-leader-path]]
                              (let [fid-promise (promise)]
                                (when-let [bytes (curator/get-or-nil curator-framework
