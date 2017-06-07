@@ -82,14 +82,13 @@
                    (route/not-found "<h1>Not a valid route</h1>")))})
 
 (def mesos-scheduler
-  {:mesos-scheduler (fnk [[:settings mesos-master mesos-master-hosts mesos-leader-path mesos-failover-timeout
-                           mesos-principal mesos-role mesos-framework-name offer-incubate-time-ms
-                           mea-culpa-failure-limit fenzo-max-jobs-considered fenzo-scaleback
-                           fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset
-                           fenzo-fitness-calculator task-constraints riemann mesos-gpu-enabled rebalancer
-                           good-enough-fitness]
-                          mesos-datomic mesos-datomic-mult curator-framework mesos-pending-jobs-atom mesos-offer-cache
-                          framework-id-promise]
+  {:mesos-scheduler (fnk [[:settings fenzo-fitness-calculator fenzo-floor-iterations-before-reset
+                           fenzo-floor-iterations-before-warn fenzo-max-jobs-considered fenzo-scaleback
+                           good-enough-fitness mea-culpa-failure-limit mesos-failover-timeout mesos-framework-name
+                           mesos-gpu-enabled mesos-leader-path mesos-master mesos-master-hosts mesos-principal
+                           mesos-role offer-incubate-time-ms rebalancer riemann task-constraints]
+                          curator-framework framework-id-promise mesos-datomic mesos-datomic-mult mesos-offer-cache
+                          mesos-pending-jobs-atom]
                       (let [make-mesos-driver-fn (partial (lazy-load-var 'cook.mesos/make-mesos-driver)
                                                           {:mesos-master mesos-master
                                                            :mesos-failover-timeout mesos-failover-timeout
