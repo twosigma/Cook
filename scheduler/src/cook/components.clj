@@ -237,7 +237,10 @@
                                    :max-threads 200
                                    :request-header-size 32768})]
                       (fn [] (.stop jetty))))
-     :framework-id (fnk [framework-id-promise] @framework-id-promise)
+     :framework-id (fnk [framework-id-promise]
+                     (log/info "Waiting for framework-id to get delivered")
+                     @framework-id-promise
+                     (log/info "Framework-id delivered:" @framework-id-promise))
      :framework-id-promise (fnk [curator-framework [:settings mesos-leader-path]]
                              (let [fid-promise (promise)]
                                (when-let [bytes (curator/get-or-nil curator-framework
