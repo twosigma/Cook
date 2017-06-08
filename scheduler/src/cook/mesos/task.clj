@@ -14,8 +14,7 @@
 ;; limitations under the License.
 ;;
 (ns cook.mesos.task
-  (:require [clojure.tools.logging :as log]
-            [cook.mesos.util :as util]
+  (:require [cook.mesos.util :as util]
             [plumbing.core :refer (map-vals)])
   (:import com.netflix.fenzo.TaskAssignmentResult))
 
@@ -26,24 +25,23 @@
   "Takes a job entity, returns task metadata"
   [db fid job-ent task-id]
   (let [resources (util/job-ent->resources job-ent)
+        container (util/job-ent->container db job-ent)
         ;; If the custom-executor attr isn't set, we default to using a custom
         ;; executor in order to support jobs submitted before we added this field
-        container (util/job-ent->container db job-ent)
-        custom-executor (:job/custom-executor job-ent true)
+        custom-executor? (:job/custom-executor job-ent true)
         environment (util/job-ent->env job-ent)
         labels (util/job-ent->label job-ent)
-        command {:value (:job/command job-ent)
-                 :environment environment
+        command {:environment environment
+                 :uris (:uris resources [])
                  :user (:job/user job-ent)
-                 :uris (:uris resources [])}
+                 :value (:job/command job-ent)}
         ;; executor-key configure whether this is a command or custom executor
-        executor-key (if custom-executor :executor :command)
+        executor-key (if custom-executor? :executor :command)
         ;;TODO this data is a race-condition
         data (.getBytes
                (pr-str
                  {:instance (str (count (:job/instance job-ent)))})
                "UTF-8")]
-    ;; If the there is no value for key :job/name, the following name will contain a substring "null".
     {:command command
      :container container
      :data data

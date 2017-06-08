@@ -18,11 +18,12 @@
   (:use clojure.test)
   (:require [clojure.core.async :as async]
             [clojure.core.cache :as cache]
-            [cook.mesos.api :as api :refer (main-handler)]
+            [cook.mesos.api :refer (main-handler)]
             [cook.mesos.schema :as schema]
             [datomic.api :as d :refer (q db)]
             [qbits.jet.server :refer (run-jetty)]
-            [ring.middleware.params :refer (wrap-params)]))
+            [ring.middleware.params :refer (wrap-params)])
+  (:import (java.util UUID)))
 
 (defn run-test-server-in-thread
   "Runs a minimal cook scheduler server for testing inside a thread. Note that it is not properly kerberized."
@@ -69,8 +70,8 @@
 
 (defn create-dummy-job
   "Return the entity id for the created dummy job."
-  [conn & {:keys [command committed? custom-executor? disable-mea-culpa-retries env gpus group job-state max-runtime
-                  memory name ncpus priority retry-count submit-time user uuid]
+  [conn & {:keys [command committed? container custom-executor? disable-mea-culpa-retries env gpus group job-state
+                  max-runtime memory name ncpus priority retry-count submit-time user uuid]
            :or {command "dummy command"
                 committed? true
                 disable-mea-culpa-retries false
@@ -88,6 +89,10 @@
         commit-latch-id (d/tempid :db.part/user)
         commit-latch {:db/id commit-latch-id
                       :commit-latch/committed? committed?}
+        container (when container
+                    (let [container-var-id (d/tempid :db.part/user)]
+                      [[:db/add id :job/container container-var-id]
+                       (assoc container :db/id container-var-id)]))
         job-info (merge {:db/id id
                          :job/command command
                          :job/commit-latch commit-latch-id
@@ -118,8 +123,10 @@
                                     :environment/name k
                                     :environment/value v}]))
                               env))
-        val @(d/transact conn (cond-> [job-info commit-latch]
-                                      environment (into environment)))]
+        tx-data (cond-> [job-info commit-latch]
+                        environment (into environment)
+                        container (concat container))
+        val @(d/transact conn tx-data)]
     (d/resolve-tempid (db conn) (:tempids val) id)))
 
 (defn create-dummy-instance
@@ -132,11 +139,11 @@
                      start-time (java.util.Date.)
                      end-time nil
                      hostname "localhost"
-                     task-id (str (str (java.util.UUID/randomUUID)))
+                     task-id (str (str (UUID/randomUUID)))
                      progress 0
                      reason nil
-                     slave-id  (str (java.util.UUID/randomUUID))
-                     executor-id  (str (java.util.UUID/randomUUID))
+                     slave-id  (str (UUID/randomUUID))
+                     executor-id  (str (UUID/randomUUID))
                      preempted? false} :as cfg}]
   (let [id (d/tempid :db.part/user)
         val @(d/transact conn [(merge
@@ -158,7 +165,7 @@
 (defn create-dummy-group
   "Return the entity id for the created group"
   [conn & {:keys [group-uuid group-name host-placement straggler-handling]
-           :or  {group-uuid (java.util.UUID/randomUUID)
+           :or  {group-uuid (UUID/randomUUID)
                  group-name "my-cool-group"
                  host-placement {:host-placement/type :host-placement.type/all}
                  straggler-handling {:straggler-handling/type :straggler-handling.type/none}}}]
