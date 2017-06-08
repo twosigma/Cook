@@ -66,9 +66,10 @@
     (resolve var-sym)))
 
 (def raw-scheduler-routes
-  {:scheduler (fnk [mesos-datomic mesos-pending-jobs-atom settings]
+  {:scheduler (fnk [mesos-datomic framework-id mesos-pending-jobs-atom settings]
                 ((lazy-load-var 'cook.mesos.api/main-handler)
                   mesos-datomic
+                  framework-id
                   (fn [] @mesos-pending-jobs-atom)
                   settings))
    :view (fnk [scheduler]
@@ -83,10 +84,10 @@
 (def mesos-scheduler
   {:mesos-scheduler (fnk [[:settings fenzo-fitness-calculator fenzo-floor-iterations-before-reset
                            fenzo-floor-iterations-before-warn fenzo-max-jobs-considered fenzo-scaleback
-                           good-enough-fitness mea-culpa-failure-limit mesos-failover-timeout mesos-framework-id
-                           mesos-framework-name mesos-gpu-enabled mesos-leader-path mesos-master mesos-master-hosts
-                           mesos-principal mesos-role offer-incubate-time-ms rebalancer riemann task-constraints]
-                          curator-framework mesos-datomic mesos-datomic-mult mesos-offer-cache
+                           good-enough-fitness mea-culpa-failure-limit mesos-failover-timeout  mesos-framework-name
+                           mesos-gpu-enabled mesos-leader-path mesos-master mesos-master-hosts mesos-principal
+                           mesos-role offer-incubate-time-ms rebalancer riemann task-constraints]
+                          curator-framework framework-id mesos-datomic mesos-datomic-mult mesos-offer-cache
                           mesos-pending-jobs-atom]
                       (log/info "Initializing mesos scheduler")
                       (let [make-mesos-driver-fn (partial (lazy-load-var 'cook.mesos/make-mesos-driver)
@@ -116,7 +117,7 @@
                             mesos-offer-cache
                             mesos-gpu-enabled
                             rebalancer
-                            mesos-framework-id
+                            framework-id
                             {:fenzo-max-jobs-considered fenzo-max-jobs-considered
                              :fenzo-scaleback fenzo-scaleback
                              :fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-warn
@@ -212,6 +213,14 @@
   (get-ttl [self req]
     ttl))
 
+(defn framework-id-from-zk
+  "Returns the framework id from ZooKeeper, or nil if not present"
+  [curator-framework mesos-leader-path]
+  (when-let [bytes (curator/get-or-nil curator-framework (str mesos-leader-path "/framework-id"))]
+    (let [framework-id (String. bytes)]
+      (log/info "Found framework id in zookeeper:" framework-id)
+      framework-id)))
+
 (def scheduler-server
   (graph/eager-compile
     {:mesos-datomic mesos-datomic
@@ -237,6 +246,12 @@
                                    :max-threads 200
                                    :request-header-size 32768})]
                       (fn [] (.stop jetty))))
+     :framework-id (fnk [curator-framework [:settings mesos-leader-path mesos-framework-id]]
+                     (let [framework-id (or mesos-framework-id
+                                            (framework-id-from-zk curator-framework mesos-leader-path)
+                                            "cook-framework")]
+                       (log/info "Using framework id:" framework-id)
+                       framework-id))
      :mesos-datomic-mult (fnk [mesos-datomic]
                            (first ((lazy-load-var 'cook.datomic/create-tx-report-mult) mesos-datomic)))
      :local-zookeeper (fnk [[:settings zookeeper-server]]
@@ -401,7 +416,7 @@
                    role)
      :mesos-framework-name (fnk [[:config [:mesos {framework-name "Cook"}]]]
                              framework-name)
-     :mesos-framework-id (fnk [[:config [:mesos {framework-id "cook-framework"}]]]
+     :mesos-framework-id (fnk [[:config [:mesos {framework-id nil}]]]
                            framework-id)
      ;:riemann-metrics (fnk [[:config [:metrics {riemann nil}]]]
      ;                  (when riemann

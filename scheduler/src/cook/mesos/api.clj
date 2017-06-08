@@ -1628,8 +1628,8 @@
 ;; "main" - the entry point that routes to other handlers
 ;;
 (defn main-handler
-  [conn mesos-pending-jobs-fn
-   {:keys [task-constraints is-authorized-fn] gpu-enabled? :mesos-gpu-enabled fid :mesos-framework-id :as settings}]
+  [conn fid mesos-pending-jobs-fn
+   {:keys [task-constraints is-authorized-fn] gpu-enabled? :mesos-gpu-enabled :as settings}]
   (->
    (routes
     (c-api/api
