@@ -31,11 +31,11 @@
   (let [authorized-fn (fn [x y z] true)
         api-handler (wrap-params
                       (main-handler conn
-                                    "my-framework-id"
                                     (fn [] [])
                                     {:task-constraints {:cpus 12 :memory-gb 100 :retry-limit 200}
                                      :mesos-gpu-enabled false
-                                     :is-authorized-fn authorized-fn}))
+                                     :is-authorized-fn authorized-fn
+                                     :mesos-framework-id "my-framework-id"}))
         ; Mock kerberization, not testing that
         api-handler-kerb (fn [req]
                            (api-handler (assoc req :authorization/user (System/getProperty "user.name"))))

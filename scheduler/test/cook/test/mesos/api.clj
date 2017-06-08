@@ -73,10 +73,11 @@
 
 (defn basic-handler
   [conn & {:keys [cpus memory-gb gpus-enabled retry-limit] :or {cpus 12 memory-gb 100 gpus-enabled false retry-limit 200}}]
-  (main-handler conn "my-framework-id" (fn [] [])
+  (main-handler conn (fn [] [])
                 {:task-constraints {:cpus cpus :memory-gb memory-gb :retry-limit retry-limit}
                  :mesos-gpu-enabled gpus-enabled
-                 :is-authorized-fn authorized-fn}))
+                 :is-authorized-fn authorized-fn
+                 :mesos-framework-id "my-framework-id"}))
 
 (defn response->body-data [{:keys [body]}]
   (let [baos (ByteArrayOutputStream.)

@@ -66,10 +66,9 @@
     (resolve var-sym)))
 
 (def raw-scheduler-routes
-  {:scheduler (fnk [mesos-datomic framework-id mesos-pending-jobs-atom settings]
+  {:scheduler (fnk [mesos-datomic mesos-pending-jobs-atom settings]
                 ((lazy-load-var 'cook.mesos.api/main-handler)
                   mesos-datomic
-                  framework-id
                   (fn [] @mesos-pending-jobs-atom)
                   settings))
    :view (fnk [scheduler]
@@ -84,10 +83,10 @@
 (def mesos-scheduler
   {:mesos-scheduler (fnk [[:settings fenzo-fitness-calculator fenzo-floor-iterations-before-reset
                            fenzo-floor-iterations-before-warn fenzo-max-jobs-considered fenzo-scaleback
-                           good-enough-fitness mea-culpa-failure-limit mesos-failover-timeout mesos-framework-name
-                           mesos-gpu-enabled mesos-leader-path mesos-master mesos-master-hosts mesos-principal
-                           mesos-role offer-incubate-time-ms rebalancer riemann task-constraints]
-                          curator-framework framework-id-promise mesos-datomic mesos-datomic-mult mesos-offer-cache
+                           good-enough-fitness mea-culpa-failure-limit mesos-failover-timeout mesos-framework-id
+                           mesos-framework-name mesos-gpu-enabled mesos-leader-path mesos-master mesos-master-hosts
+                           mesos-principal mesos-role offer-incubate-time-ms rebalancer riemann task-constraints]
+                          curator-framework mesos-datomic mesos-datomic-mult mesos-offer-cache
                           mesos-pending-jobs-atom]
                       (log/info "Initializing mesos scheduler")
                       (let [make-mesos-driver-fn (partial (lazy-load-var 'cook.mesos/make-mesos-driver)
@@ -117,7 +116,7 @@
                             mesos-offer-cache
                             mesos-gpu-enabled
                             rebalancer
-                            framework-id-promise
+                            mesos-framework-id
                             {:fenzo-max-jobs-considered fenzo-max-jobs-considered
                              :fenzo-scaleback fenzo-scaleback
                              :fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-warn
@@ -238,17 +237,6 @@
                                    :max-threads 200
                                    :request-header-size 32768})]
                       (fn [] (.stop jetty))))
-     :framework-id (fnk [framework-id-promise]
-                     (log/info "Waiting for framework-id to get delivered")
-                     @framework-id-promise
-                     (log/info "Framework-id delivered:" @framework-id-promise)
-                     @framework-id-promise)
-     :framework-id-promise (fnk [curator-framework [:settings mesos-leader-path]]
-                             (let [fid-promise (promise)]
-                               (when-let [bytes (curator/get-or-nil curator-framework
-                                                                    (str mesos-leader-path "/framework-id"))]
-                                 (deliver fid-promise (String. bytes)))
-                               fid-promise))
      :mesos-datomic-mult (fnk [mesos-datomic]
                            (first ((lazy-load-var 'cook.datomic/create-tx-report-mult) mesos-datomic)))
      :local-zookeeper (fnk [[:settings zookeeper-server]]
@@ -413,6 +401,8 @@
                    role)
      :mesos-framework-name (fnk [[:config [:mesos {framework-name "Cook"}]]]
                              framework-name)
+     :mesos-framework-id (fnk [[:config [:mesos {framework-id "cook-framework"}]]]
+                           framework-id)
      ;:riemann-metrics (fnk [[:config [:metrics {riemann nil}]]]
      ;                  (when riemann
      ;                    (when-not (= 4 (count (select-keys riemann [:host :port])))
