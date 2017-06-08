@@ -28,7 +28,7 @@
             [compojure.core :refer (ANY GET POST routes)]
             [cook.mesos.quota :as quota]
             [cook.mesos.reason :as reason]
-            [cook.mesos.schema :refer (host-placement-types straggler-handling-types constraint-operators)]
+            [cook.mesos.schema :refer (constraint-operators host-placement-types straggler-handling-types)]
             [cook.mesos.share :as share]
             [cook.mesos.unscheduled :as unscheduled]
             [cook.mesos.util :as util]
@@ -198,10 +198,10 @@
   "Schema for user defined job host constraint"
   [(s/one NonEmptyString "attribute")
    (s/one (s/pred #(contains? (set (map (comp name util/without-ns) constraint-operators))
-                              (clojure.string/lower-case %))
+                              (str/lower-case %))
                   'constraint-operator-exists?)
           "operator")
-   (s/optional NonEmptyString "pattern")])
+   (s/one NonEmptyString "pattern")])
 
 (s/defschema JobName
   (s/both s/Str (s/both s/Str (s/pred max-128-characters-and-alphanum? 'max-128-characters-and-alphanum?))))
@@ -467,7 +467,7 @@
                                  (merge {:db/id constraint-var-id
                                          :constraint/attribute attribute
                                          :constraint/operator (keyword "constraint.operator"
-                                                                       (clojure.string/lower-case operator))}
+                                                                       (str/lower-case operator))}
                                         (when pattern
                                           {:constraint/pattern pattern}))]))
                                  constraints)
@@ -770,8 +770,7 @@
                          :job/constraint
                          (map util/remove-datomic-namespacing)
                          (map (fn [{:keys [attribute operator pattern]}]
-                                (->> [attribute (clojure.string/upper-case (name (util/without-ns operator))) pattern]
-                                     (remove nil?)
+                                (->> [attribute (str/upper-case (name (util/without-ns operator))) pattern]
                                      (map str)))))
         instances (map (fn [instance]
                          (let [hostname (:instance/hostname instance)

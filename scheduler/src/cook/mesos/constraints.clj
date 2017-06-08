@@ -133,8 +133,7 @@
                         (log/error (str "Unknown operator " operator
                                         " api.clj should have prevented this from happening."))
                         true))))
-          constraint->passes? (pc/map-from-keys vm-passes-constraint? constraints)
-          passes? (every? val constraint->passes?)]
+          passes? (every? vm-passes-constraint? constraints)]
       [passes? (when-not passes?
                  "Host doesn't pass at least one user supplied constraint.")]))
   (job-constraint-evaluate
