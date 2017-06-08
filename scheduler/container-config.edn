@@ -14,7 +14,8 @@
  :mesos {:master #config/env "MESOS_MASTER"
          :master-hosts [#config/env "MESOS_MASTER_HOST"]
          :failover-timeout-ms nil ; When we close the instance of Cook, all its tasks are killed by Mesos
-         :leader-path "/cook-scheduler"}
+         :leader-path "/cook-scheduler"
+         :framework-id #config/env "COOK_FRAMEWORK_ID"}
  :unhandled-exceptions {:log-level :error}
  :metrics {:jmx true}
  :nrepl {:enabled? true
