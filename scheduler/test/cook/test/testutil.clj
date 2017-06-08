@@ -31,14 +31,21 @@
 (defn run-test-server-in-thread
   "Runs a minimal cook scheduler server for testing inside a thread. Note that it is not properly kerberized."
   [conn port]
+  (cook.components/init-logger {:file "log/test-server.log"
+                                :levels {"datomic.db" :warn
+                                         "datomic.peer" :warn
+                                         "datomic.kv-cluster" :warn
+                                         :default :info}})
   (let [authorized-fn (fn [x y z] true)
+        retrieve-url-path-fn (fn [fid hostname executor-id] (str "http://" hostname "/" fid "/" executor-id))
         api-handler (wrap-params
                       (main-handler conn
                                     "my-framework-id"
                                     (fn [] [])
-                                    {:task-constraints {:cpus 12 :memory-gb 100 :retry-limit 200}
+                                    {:is-authorized-fn authorized-fn
                                      :mesos-gpu-enabled false
-                                     :is-authorized-fn authorized-fn}))
+                                     :retrieve-url-path-fn retrieve-url-path-fn
+                                     :task-constraints {:cpus 12 :memory-gb 100 :retry-limit 200}}))
         ; Mock kerberization, not testing that
         api-handler-kerb (fn [req]
                            (api-handler (assoc req :authorization/user (System/getProperty "user.name"))))
