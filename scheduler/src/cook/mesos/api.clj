@@ -197,7 +197,7 @@
 (def Constraint
   "Schema for user defined job host constraint"
   [(s/one NonEmptyString "attribute")
-   (s/one (s/pred #(contains? (set (map (comp name util/without-ns) constraint-operators))
+   (s/one (s/pred #(contains? (set (map name constraint-operators))
                               (str/lower-case %))
                   'constraint-operator-exists?)
           "operator")
@@ -464,13 +464,12 @@
         constraints (mapcat (fn [[attribute operator pattern]]
                               (let [constraint-var-id (d/tempid :db.part/user)]
                                 [[:db/add db-id :job/constraint constraint-var-id]
-                                 (merge {:db/id constraint-var-id
-                                         :constraint/attribute attribute
-                                         :constraint/operator (keyword "constraint.operator"
-                                                                       (str/lower-case operator))}
-                                        (when pattern
-                                          {:constraint/pattern pattern}))]))
-                                 constraints)
+                                 {:db/id constraint-var-id
+                                  :constraint/attribute attribute
+                                  :constraint/operator (keyword "constraint.operator"
+                                                                (str/lower-case operator))
+                                  :constraint/pattern pattern}]))
+                            constraints)
         container (if (nil? container) [] (build-container user db-id container))
         ;; These are optionally set datoms w/ default values
         maybe-datoms (reduce into
@@ -770,7 +769,7 @@
                          :job/constraint
                          (map util/remove-datomic-namespacing)
                          (map (fn [{:keys [attribute operator pattern]}]
-                                (->> [attribute (str/upper-case (name (util/without-ns operator))) pattern]
+                                (->> [attribute (str/upper-case (name operator)) pattern]
                                      (map str)))))
         instances (map (fn [instance]
                          (let [hostname (:instance/hostname instance)
