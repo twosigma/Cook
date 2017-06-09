@@ -295,13 +295,13 @@
             job (tu/create-dummy-job conn :user "test-user" :job-state :job.state/running :command "run-my-command")
             db (d/db conn)
             job-ent (d/entity db job)
-            fid {:value "framework-id"}
-            task-metadata (task/job->task-metadata db fid job-ent task-id)]
+            framework-id {:value "framework-id"}
+            task-metadata (task/job->task-metadata db framework-id job-ent task-id)]
         (is (= {:command {:value "run-my-command", :environment {}, :user "test-user", :uris []}
                 :container nil
                 :environment {}
                 :executor-key :executor
-                :framework-id fid
+                :framework-id framework-id
                 :labels {}
                 :name (format "dummy_job_%s_%s" (:job/user job-ent) task-id)
                 :num-ports 0
@@ -316,13 +316,13 @@
                                      :custom-executor? true)
             db (d/db conn)
             job-ent (d/entity db job)
-            fid {:value "framework-id"}
-            task-metadata (task/job->task-metadata db fid job-ent task-id)]
+            framework-id {:value "framework-id"}
+            task-metadata (task/job->task-metadata db framework-id job-ent task-id)]
         (is (= {:command {:value "run-my-command", :environment {}, :user "test-user", :uris []}
                 :container nil
                 :environment {}
                 :executor-key :executor
-                :framework-id fid
+                :framework-id framework-id
                 :labels {}
                 :name (format "dummy_job_%s_%s" (:job/user job-ent) task-id)
                 :num-ports 0
@@ -337,8 +337,8 @@
                                      :custom-executor? false)
             db (d/db conn)
             job-ent (d/entity db job)
-            fid {:value "framework-id"}
-            task-metadata (task/job->task-metadata db fid job-ent task-id)]
+            framework-id {:value "framework-id"}
+            task-metadata (task/job->task-metadata db framework-id job-ent task-id)]
         (is (= {:command {:environment {}
                           :uris []
                           :user "test-user"
@@ -346,7 +346,7 @@
                 :container nil
                 :environment {}
                 :executor-key :command
-                :framework-id fid
+                :framework-id framework-id
                 :labels {}
                 :name (format "dummy_job_%s_%s" (:job/user job-ent) task-id)
                 :num-ports 0
@@ -369,8 +369,8 @@
                                      :user "test-user")
             db (d/db conn)
             job-ent (d/entity db job)
-            fid {:value "framework-id"}
-            task-metadata (task/job->task-metadata db fid job-ent task-id)]
+            framework-id {:value "framework-id"}
+            task-metadata (task/job->task-metadata db framework-id job-ent task-id)]
         (is (= {:command {:environment {}
                           :uris []
                           :user "test-user"
@@ -380,7 +380,7 @@
                             :type "DOCKER"}
                 :environment {}
                 :executor-key :executor
-                :framework-id fid
+                :framework-id framework-id
                 :labels {}
                 :name (format "dummy_job_%s_%s" (:job/user job-ent) task-id)
                 :num-ports 0
@@ -403,8 +403,8 @@
                                      :user "test-user")
             db (d/db conn)
             job-ent (d/entity db job)
-            fid {:value "framework-id"}
-            task-metadata (task/job->task-metadata db fid job-ent task-id)]
+            framework-id {:value "framework-id"}
+            task-metadata (task/job->task-metadata db framework-id job-ent task-id)]
         (is (= {:command {:environment {}
                           :uris []
                           :user "test-user"
@@ -414,7 +414,7 @@
                             :type "DOCKER"}
                 :environment {}
                 :executor-key :command
-                :framework-id fid
+                :framework-id framework-id
                 :labels {}
                 :name (format "dummy_job_%s_%s" (:job/user job-ent) task-id)
                 :num-ports 0

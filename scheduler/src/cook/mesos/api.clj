@@ -742,9 +742,9 @@
   "Takes the executor-id->sandbox-directory from the agent json and constructs a URL to query it. Hardcodes fun
    stuff like the port we run the agent on. Users will need to add the file path & offset to their query. Refer to
    the 'Using the output_url' section in docs/scheduler-rest-api.asc for further details."
-  [fid agent-hostname executor-id]
+  [framework-id agent-hostname executor-id]
   (try
-    (let [executor-id->sandbox-directory (get-executor-id->sandbox-directory fid agent-hostname)
+    (let [executor-id->sandbox-directory (get-executor-id->sandbox-directory framework-id agent-hostname)
           directory (executor-id->sandbox-directory executor-id)]
       (str "http://" agent-hostname ":5051" "/files/read.json?path="
            (URLEncoder/encode directory "UTF-8")))
@@ -754,10 +754,10 @@
 
 (defn- instance->instance-map
   "Converts the instance to a map of relevant fields that will be returned to the caller"
-  [db fid instance]
+  [db framework-id instance]
   (let [hostname (:instance/hostname instance)
         executor-id (:instance/executor-id instance)
-        url-path (retrieve-url-path fid hostname executor-id)
+        url-path (retrieve-url-path framework-id hostname executor-id)
         start (:instance/start-time instance)
         mesos-start (:instance/mesos-start-time instance)
         end (:instance/end-time instance)
@@ -782,7 +782,7 @@
             progress (assoc :progress progress))))
 
 (defn fetch-job-map
-  [db fid job-uuid]
+  [db framework-id job-uuid]
   (let [job (d/entity db [:job/uuid job-uuid])
         resources (util/job-ent->resources job)
         groups (:group/_job job)
@@ -801,15 +801,15 @@
                          (map (fn [{:keys [attribute operator pattern]}]
                                 (->> [attribute (str/upper-case (name operator)) pattern]
                                      (map str)))))
-        instances (map #(instance->instance-map db fid %) (:job/instance job))
+        instances (map #(instance->instance-map db framework-id %) (:job/instance job))
         submit-time (when (:job/submit-time job) ; due to a bug, submit time may not exist for some jobs
                 (.getTime (:job/submit-time job)))
         job-map {:command (:job/command job)
-                 :constraints constraints 
+                 :constraints constraints
                  :cpus (:cpus resources)
                  :disable_mea_culpa_retries (:job/disable-mea-culpa-retries job false)
                  :env (util/job-ent->env job)
-                 :framework_id fid
+                 :framework_id framework-id
                  :gpus (int (:gpus resources 0))
                  :instances instances
                  :labels (util/job-ent->label job)
@@ -942,24 +942,24 @@
                            (str/join \space (remove authorized? uuids)))}])))
 
 (defn render-jobs-for-response
-  [conn fid ctx]
-  (mapv (partial fetch-job-map (db conn) fid) (::jobs ctx)))
+  [conn framework-id ctx]
+  (mapv (partial fetch-job-map (db conn) framework-id) (::jobs ctx)))
 
 
 ;;; On GET; use repeated job argument
 (defn read-jobs-handler
-  [conn fid task-constraints gpu-enabled? is-authorized-fn]
+  [conn framework-id task-constraints gpu-enabled? is-authorized-fn]
   (base-cook-handler
     {:allowed-methods [:get]
      :malformed? check-job-params-present
      :allowed? (partial job-request-allowed? conn is-authorized-fn)
      :exists? (partial retrieve-jobs conn)
-     :handle-ok (partial render-jobs-for-response conn fid)}))
+     :handle-ok (partial render-jobs-for-response conn framework-id)}))
 
 
 ;;; On DELETE; use repeated job argument
 (defn destroy-jobs-handler
-  [conn fid task-constraints gpu-enabled? is-authorized-fn]
+  [conn framework-id task-constraints gpu-enabled? is-authorized-fn]
   (base-cook-handler
     {:allowed-methods [:delete]
      :malformed? check-job-params-present
@@ -968,7 +968,7 @@
      :delete! (fn [ctx]
                 (cook.mesos/kill-job conn (::jobs-requested ctx))
                 (cook.mesos/kill-instances conn (::instances-requested ctx)))
-     :handle-ok (partial render-jobs-for-response conn fid)}))
+     :handle-ok (partial render-jobs-for-response conn framework-id)}))
 
 (defn vectorize
   "If x is not a vector (or nil), turns it into a vector"
@@ -1535,7 +1535,7 @@
 (timers/deftimer [cook-scheduler handler list-endpoint])
 
 (defn list-resource
-  [db fid is-authorized-fn]
+  [db framework-id is-authorized-fn]
   (liberator/resource
    :available-media-types ["application/json"]
    :allowed-methods [:get]
@@ -1612,7 +1612,7 @@
                        job-uuids (if (nil? limit)
                                    job-uuids
                                    (take limit job-uuids))]
-                   (mapv (partial fetch-job-map db fid) job-uuids))))))
+                   (mapv (partial fetch-job-map db framework-id) job-uuids))))))
 
 ;;
 ;; /unscheduled_jobs
@@ -1671,8 +1671,8 @@
 ;; "main" - the entry point that routes to other handlers
 ;;
 (defn main-handler
-  [conn fid mesos-pending-jobs-fn
-   {:keys [task-constraints is-authorized-fn] 
+  [conn framework-id mesos-pending-jobs-fn
+   {:keys [task-constraints is-authorized-fn]
     gpu-enabled? :mesos-gpu-enabled
     :as settings}]
   (->
@@ -1695,7 +1695,7 @@
                                :description "The jobs and their instances were returned."}
                           400 {:description "Non-UUID values were passed as jobs."}
                           403 {:description "The supplied UUIDs don't correspond to valid jobs."}}
-              :handler (read-jobs-handler conn fid task-constraints gpu-enabled? is-authorized-fn)}
+              :handler (read-jobs-handler conn framework-id task-constraints gpu-enabled? is-authorized-fn)}
         :post {:summary "Schedules one or more jobs."
                :parameters {:body-params RawSchedulerRequest}
                :responses {201 {:description "The jobs were successfully scheduled."}
@@ -1707,7 +1707,7 @@
                              400 {:description "Non-UUID values were passed as jobs."}
                              403 {:description "The supplied UUIDs don't correspond to valid jobs."}}
                  :parameters {:query-params JobOrInstanceIds}
-                 :handler (destroy-jobs-handler conn fid task-constraints gpu-enabled? is-authorized-fn)}}))
+                 :handler (destroy-jobs-handler conn framework-id task-constraints gpu-enabled? is-authorized-fn)}}))
 
      (c-api/context
       "/share" []
@@ -1819,7 +1819,7 @@
     (ANY "/running" []
          (running-jobs conn is-authorized-fn))
     (ANY "/list" []
-         (list-resource (db conn) fid is-authorized-fn)))
+         (list-resource (db conn) framework-id is-authorized-fn)))
    (format-params/wrap-restful-params {:formats [:json-kw]
                                        :handle-error c-mw/handle-req-error})
    (streaming-json-middleware)))

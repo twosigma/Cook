@@ -23,7 +23,7 @@
 
 (defn job->task-metadata
   "Takes a job entity, returns task metadata"
-  [db fid job-ent task-id]
+  [db framework-id job-ent task-id]
   (let [resources (util/job-ent->resources job-ent)
         container (util/job-ent->container db job-ent)
         ;; If the custom-executor attr isn't set, we default to using a custom
@@ -47,7 +47,7 @@
      :data data
      :environment environment
      :executor-key executor-key
-     :framework-id fid
+     :framework-id framework-id
      :labels labels
      :name (format "%s_%s_%s" (:job/name job-ent "cookjob") (:job/user job-ent) task-id)
      :num-ports (:ports resources)
@@ -56,9 +56,9 @@
 
 (defn TaskAssignmentResult->task-metadata
   "Organizes the info Fenzo has already told us about the task we need to run"
-  [db fid ^TaskAssignmentResult fenzo-result]
+  [db framework-id ^TaskAssignmentResult fenzo-result]
   (let [task-request (.getRequest fenzo-result)]
-    (merge (job->task-metadata db fid (:job task-request) (:task-id task-request))
+    (merge (job->task-metadata db framework-id (:job task-request) (:task-id task-request))
            {:ports-assigned (.getAssignedPorts fenzo-result)
             :task-request task-request})))
 

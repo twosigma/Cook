@@ -37,10 +37,8 @@
            java.net.ServerSocket
            java.util.UUID
            java.util.concurrent.ExecutionException
-           (javax.servlet ServletOutputStream
-                          ServletResponse)
-           org.apache.curator.test.TestingServer
-           org.joda.time.Minutes))
+           (javax.servlet ServletOutputStream ServletResponse)
+           org.apache.curator.test.TestingServer))
 
 (defn kw-keys
   [m]
@@ -77,7 +75,7 @@
    "mem" 2048.0})
 
 (defn basic-handler
-  [conn & {:keys [cpus memory-gb gpus-enabled retry-limit] 
+  [conn & {:keys [cpus memory-gb gpus-enabled retry-limit]
            :or {cpus 12 memory-gb 100 gpus-enabled false retry-limit 200}}]
   (main-handler conn "my-framework-id" (fn [] [])
                 {:task-constraints {:cpus cpus :memory-gb memory-gb :retry-limit retry-limit}
@@ -1035,18 +1033,18 @@
 (deftest test-create-jobs!
   (let [expected-job-map
         (fn
-          ; Converts the provided job and framework-id (fid) to the job-map we expect to get back from
+          ; Converts the provided job and framework-id (framework-id) to the job-map we expect to get back from
           ; api/fetch-job-map. Note that we don't include the submit_time field here, so assertions below
           ; will have to dissoc it.
           [{:keys [mem max-retries max-runtime expected-runtime name gpus
                    command ports priority uuid user cpus application
                    disable-mea-culpa-retries]
             :or {disable-mea-culpa-retries false}}
-           fid]
+           framework-id]
           (cond-> {;; Fields we will fill in from the provided args:
                    :command command
                    :cpus cpus
-                   :framework_id fid
+                   :framework_id framework-id
                    :gpus (or gpus 0)
                    :max_retries max-retries
                    :max_runtime max-runtime
@@ -1074,7 +1072,7 @@
       (testing "should work with a minimal job manually inserted"
         (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
               {:keys [uuid] :as job} (minimal-job)
-              fid #mesomatic.types.FrameworkID{:value "fid"}
+              framework-id #mesomatic.types.FrameworkID{:value "framework-id"}
               job-ent {:db/id (d/tempid :db.part/user)
                        :job/uuid uuid
                        :job/command (:command job)
@@ -1089,8 +1087,8 @@
                                       {:resource/type :resource.type/mem
                                        :resource/amount (:mem job)}]}
               _ @(d/transact conn [job-ent])
-              job-resp (api/fetch-job-map (db conn) fid uuid)]
-          (is (= (expected-job-map job fid)
+              job-resp (api/fetch-job-map (db conn) framework-id uuid)]
+          (is (= (expected-job-map job framework-id)
                  (dissoc job-resp :submit_time)))
           (s/validate api/JobResponse
                       ; fetch-job-map returns a FrameworkID object instead of a string
@@ -1099,11 +1097,11 @@
       (testing "should work with a minimal job"
         (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
               {:keys [uuid] :as job} (minimal-job)
-              fid #mesomatic.types.FrameworkID{:value "fid"}]
+              framework-id #mesomatic.types.FrameworkID{:value "framework-id"}]
           (is (= {::api/results (str "submitted jobs " uuid)}
                  (api/create-jobs! conn {::api/jobs [job]})))
-          (is (= (expected-job-map job fid)
-                 (dissoc (api/fetch-job-map (db conn) fid uuid) :submit_time)))))
+          (is (= (expected-job-map job framework-id)
+                 (dissoc (api/fetch-job-map (db conn) framework-id uuid) :submit_time)))))
 
       (testing "should fail on a duplicate uuid"
         (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
@@ -1118,29 +1116,29 @@
         (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
               application {:name "foo-app", :version "0.1.0"}
               {:keys [uuid] :as job} (assoc (minimal-job) :application application)
-              fid #mesomatic.types.FrameworkID{:value "fid"}]
+              framework-id #mesomatic.types.FrameworkID{:value "framework-id"}]
           (is (= {::api/results (str "submitted jobs " uuid)}
                  (api/create-jobs! conn {::api/jobs [job]})))
-          (is (= (expected-job-map job fid)
-                 (dissoc (api/fetch-job-map (db conn) fid uuid) :submit_time)))))
+          (is (= (expected-job-map job framework-id)
+                 (dissoc (api/fetch-job-map (db conn) framework-id uuid) :submit_time)))))
 
       (testing "should work when the job specifies the expected runtime"
         (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
               {:keys [uuid] :as job} (assoc (minimal-job) :expected-runtime 1)
-              fid #mesomatic.types.FrameworkID{:value "fid"}]
+              framework-id #mesomatic.types.FrameworkID{:value "framework-id"}]
           (is (= {::api/results (str "submitted jobs " uuid)}
                  (api/create-jobs! conn {::api/jobs [job]})))
-          (is (= (expected-job-map job fid)
-                 (dissoc (api/fetch-job-map (db conn) fid uuid) :submit_time)))))
+          (is (= (expected-job-map job framework-id)
+                 (dissoc (api/fetch-job-map (db conn) framework-id uuid) :submit_time)))))
 
       (testing "should work when the job specifies disable-mea-culpa-retries"
         (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
               {:keys [uuid] :as job} (assoc (minimal-job) :disable-mea-culpa-retries true)
-              fid #mesomatic.types.FrameworkID{:value "fid"}]
+              framework-id #mesomatic.types.FrameworkID{:value "framework-id"}]
           (is (= {::api/results (str "submitted jobs " uuid)}
                  (api/create-jobs! conn {::api/jobs [job]})))
-          (is (= (expected-job-map job fid)
-                 (dissoc (api/fetch-job-map (db conn) fid uuid) :submit_time))))))))
+          (is (= (expected-job-map job framework-id)
+                 (dissoc (api/fetch-job-map (db conn) framework-id uuid) :submit_time))))))))
 
 (defn- minimal-config
   "Returns a minimal configuration map"
