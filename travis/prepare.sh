@@ -7,4 +7,4 @@ lein uberjar
 
 cd  $PROJECT_DIR/../travis
 unzip datomic-free-0.9.5394.zip
-cp $PROJECT_DIR/../scheduler/target/cook-1.0.1-SNAPSHOT.jar datomic-free-0.9.5394/lib/
+cp $PROJECT_DIR/../scheduler/target/cook-1.3.4-SNAPSHOT.jar datomic-free-0.9.5394/lib/
