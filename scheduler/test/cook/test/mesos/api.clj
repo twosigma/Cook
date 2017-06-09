@@ -24,7 +24,7 @@
             [clojure.walk :refer (keywordize-keys)]
             [cook.authorization :as auth]
             [cook.components :as components]
-            [cook.mesos.api :as api :refer (main-handler)]
+            [cook.mesos.api :as api]
             [cook.mesos.reason :as reason]
             [cook.mesos.scheduler :as sched]
             [cook.mesos.util :as util]
@@ -78,11 +78,11 @@
 (defn basic-handler
   [conn & {:keys [cpus memory-gb gpus-enabled retry-limit]
            :or {cpus 12 memory-gb 100 gpus-enabled false retry-limit 200}}]
-  (main-handler conn "my-framework-id" (fn [] [])
-                {:is-authorized-fn authorized-fn
-                 :retrieve-url-path-fn (fn [framework-id hostname executor-id] (str "http://" hostname "/" framework-id "/" executor-id))
-                 :mesos-gpu-enabled gpus-enabled
-                 :task-constraints {:cpus cpus :memory-gb memory-gb :retry-limit retry-limit}}))
+  (let [retrieve-url-path-fn (fn [framework-id hostname executor-id] (str "http://" hostname "/" framework-id "/" executor-id))]
+    (api/main-handler conn "my-framework-id" (fn [] []) retrieve-url-path-fn
+                      {:is-authorized-fn authorized-fn
+                       :mesos-gpu-enabled gpus-enabled
+                       :task-constraints {:cpus cpus :memory-gb memory-gb :retry-limit retry-limit}})))
 
 (defn response->body-data [{:keys [body]}]
   (let [baos (ByteArrayOutputStream.)

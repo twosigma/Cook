@@ -20,7 +20,7 @@
             [clojure.core.async :as async]
             [clojure.core.cache :as cache]
             [clojure.tools.logging :as log]
-            [cook.mesos.api :refer (main-handler)]
+            [cook.mesos.api :as api]
             [cook.mesos.schema :as schema]
             [datomic.api :as d :refer (q db)]
             [qbits.jet.server :refer (run-jetty)]
@@ -31,21 +31,16 @@
 (defn run-test-server-in-thread
   "Runs a minimal cook scheduler server for testing inside a thread. Note that it is not properly kerberized."
   [conn port]
-  (cook.components/init-logger {:file "log/test-server.log"
-                                :levels {"datomic.db" :warn
-                                         "datomic.peer" :warn
-                                         "datomic.kv-cluster" :warn
-                                         :default :info}})
   (let [authorized-fn (fn [x y z] true)
         retrieve-url-path-fn (fn [fid hostname executor-id] (str "http://" hostname "/" fid "/" executor-id))
         api-handler (wrap-params
-                      (main-handler conn
-                                    "my-framework-id"
-                                    (fn [] [])
-                                    {:is-authorized-fn authorized-fn
-                                     :mesos-gpu-enabled false
-                                     :retrieve-url-path-fn retrieve-url-path-fn
-                                     :task-constraints {:cpus 12 :memory-gb 100 :retry-limit 200}}))
+                      (api/main-handler conn
+                                        "my-framework-id"
+                                        (fn [] [])
+                                        retrieve-url-path-fn
+                                        {:is-authorized-fn authorized-fn
+                                         :mesos-gpu-enabled false
+                                         :task-constraints {:cpus 12 :memory-gb 100 :retry-limit 200}}))
         ; Mock kerberization, not testing that
         api-handler-kerb (fn [req]
                            (api-handler (assoc req :authorization/user (System/getProperty "user.name"))))

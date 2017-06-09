@@ -64,11 +64,25 @@
     (resolve var-sym)))
 
 (def raw-scheduler-routes
-  {:scheduler (fnk [mesos-datomic framework-id mesos-pending-jobs-atom settings]
+  {:retrieve-url-path-fn (fnk [[:settings agent-query-cache]]
+                           (log/info "Agent query cache will be created using:" agent-query-cache)
+                           (let [{:keys [threshold ttl]} agent-query-cache
+                                 cache (-> {}
+                                           (cache/fifo-cache-factory :threshold threshold)
+                                           (cache/ttl-cache-factory :ttl ttl)
+                                           atom)]
+                             (letfn [(executor-id->sandbox-directory-fn [framework-id agent-hostname]
+                                       ((lazy-load-var 'cook.mesos.api/get-executor-id->sandbox-directory)
+                                         framework-id agent-hostname cache))]
+                               (fn retrieve-url-path-fn [framework-id agent-hostname executor-id]
+                                 ((lazy-load-var 'cook.mesos.api/retrieve-url-path)
+                                   framework-id agent-hostname executor-id executor-id->sandbox-directory-fn)))))
+   :scheduler (fnk [mesos-datomic mesos-pending-jobs-atom framework-id retrieve-url-path-fn settings]
                 ((lazy-load-var 'cook.mesos.api/main-handler)
                   mesos-datomic
                   framework-id
                   (fn [] @mesos-pending-jobs-atom)
+                  retrieve-url-path-fn
                   settings))
    :view (fnk [scheduler]
            scheduler)})
@@ -322,7 +336,9 @@
 (def config-settings
   "Parses the settings out of a config file"
   (graph/eager-compile
-    {:server-port (fnk [[:config port]]
+    {:agent-query-cache (fnk [[:config {agent-query-cache {:threshold 1000, :ttl (* 60 1000)}}]]
+                          agent-query-cache)
+     :server-port (fnk [[:config port]]
                     port)
      :is-authorized-fn (fnk [[:config {authorization-config default-authorization}]]
                          (partial (lazy-load-var 'cook.authorization/is-authorized?)
@@ -463,20 +479,7 @@
                      (when enabled?
                        (when (zero? port)
                          (throw (ex-info "You enabled nrepl but didn't configure a port. Please configure a port in your config file." {})))
-                       ((lazy-load-var 'clojure.tools.nrepl.server/start-server) :port port)))
-     :retrieve-url-path-fn (fnk [[:config {agent-query-cache {:threshold 1000, :ttl (* 60 1000)}}]]
-                             (let [{:keys [threshold ttl]} agent-query-cache
-                                   _ (log/info "Agent query cache will be created using:" {:threshold threshold, :ttl ttl})
-                                   cache (-> {}
-                                             (cache/fifo-cache-factory :threshold threshold)
-                                             (cache/ttl-cache-factory :ttl ttl)
-                                             atom)]
-                               (letfn [(executor-id->sandbox-directory-fn [framework-id agent-hostname]
-                                         ((lazy-load-var 'cook.mesos.api/get-executor-id->sandbox-directory)
-                                           framework-id agent-hostname cache))]
-                                 (fn retrieve-url-path-fn [framework-id agent-hostname executor-id]
-                                   ((lazy-load-var 'cook.mesos.api/retrieve-url-path)
-                                     framework-id agent-hostname executor-id executor-id->sandbox-directory-fn)))))}))
+                       ((lazy-load-var 'clojure.tools.nrepl.server/start-server) :port port)))}))
 
 (defn init-logger
   ([] (init-logger {:levels {"datomic.db" :warn
