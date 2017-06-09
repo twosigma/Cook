@@ -1,6 +1,17 @@
 #!/bin/bash
 set -v
 
+function wait_for_cook {
+    COOK_PORT=${1:-12321}
+    while ! curl -s localhost:${COOK_PORT} >/dev/null;
+    do
+        echo "$(date +%H:%M:%S) Cook is not listening on ${COOK_PORT} yet"
+        sleep 2.0
+    done
+    echo "$(date +%H:%M:%S) Connected to Cook on ${COOK_PORT}!"
+}
+export -f wait_for_cook
+
 export PROJECT_DIR=`pwd`
 
 # Start minimesos
@@ -15,13 +26,13 @@ LIBPROCESS_IP=172.17.0.1 COOK_PORT=12321 COOK_ZOOKEEPER_LOCAL_PORT=3291 COOK_FRA
 LIBPROCESS_IP=172.17.0.1 COOK_PORT=22321 COOK_ZOOKEEPER_LOCAL_PORT=4291 COOK_FRAMEWORK_ID=cook-framework-2 lein run ${PROJECT_DIR}/travis/scheduler_config.edn &
 
 # Wait for the cooks to be listening
-timeout 180s ${PROJECT_DIR}/travis/wait-for-cook.sh 12321
+timeout 180s bash -c wait_for_cook 12321
 if [ $? -ne 0 ]; then
   echo "$(date +%H:%M:%S) Timed out waiting for cook to start listening, displaying cook log"
   cat ${PROJECT_DIR}/../scheduler/log/cook.log
   exit 1
 fi
-timeout 180s ${PROJECT_DIR}/travis/wait-for-cook.sh 22321
+timeout 180s bash -c wait_for_cook 22321
 if [ $? -ne 0 ]; then
   echo "$(date +%H:%M:%S) Timed out waiting for cook to start listening, displaying cook log"
   cat ${PROJECT_DIR}/../scheduler/log/cook.log
