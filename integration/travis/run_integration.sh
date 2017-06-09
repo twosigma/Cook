@@ -26,13 +26,13 @@ LIBPROCESS_IP=172.17.0.1 COOK_PORT=12321 COOK_ZOOKEEPER_LOCAL_PORT=3291 COOK_FRA
 LIBPROCESS_IP=172.17.0.1 COOK_PORT=22321 COOK_ZOOKEEPER_LOCAL_PORT=4291 COOK_FRAMEWORK_ID=cook-framework-2 lein run ${PROJECT_DIR}/travis/scheduler_config.edn &
 
 # Wait for the cooks to be listening
-timeout 180s bash -c wait_for_cook 12321
+timeout 180s bash -c "wait_for_cook 12321"
 if [ $? -ne 0 ]; then
   echo "$(date +%H:%M:%S) Timed out waiting for cook to start listening, displaying cook log"
   cat ${PROJECT_DIR}/../scheduler/log/cook.log
   exit 1
 fi
-timeout 180s bash -c wait_for_cook 22321
+timeout 180s bash -c "wait_for_cook 22321"
 if [ $? -ne 0 ]; then
   echo "$(date +%H:%M:%S) Timed out waiting for cook to start listening, displaying cook log"
   cat ${PROJECT_DIR}/../scheduler/log/cook.log
