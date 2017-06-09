@@ -51,6 +51,12 @@ def retrieve_cook_url(varname='COOK_SCHEDULER_URL', value='http://localhost:1232
     return cook_url
 
 
+def retrieve_mesos_url(varname='MESOS_URL', value='http://localhost:5050'):
+    mesos_url = os.getenv(varname, value)
+    logger.info('Using mesos url %s' % mesos_url)
+    return mesos_url
+
+
 def is_connection_error(exception):
     return isinstance(exception, requests.exceptions.ConnectionError)
 
@@ -107,3 +113,9 @@ def query_jobs(cook_url, **kwargs):
     the request.
     """
     return session.get('%s/rawscheduler' % cook_url, params=kwargs)
+
+def get_mesos_state(mesos_url):
+    """
+    Queries the state.json from mesos
+    """
+    return session.get('%s/state.json' % mesos_url).json()
