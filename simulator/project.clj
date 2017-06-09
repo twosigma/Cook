@@ -1,4 +1,4 @@
-(defproject cook/sim "0.1.0-SNAPSHOT"
+(defproject cook/sim "1.3.3-SNAPSHOT"
   :description "Simulation tests for Cook"
   :dependencies   [[org.clojure/clojure "1.8.0"]
                    [clj-time "0.9.0"]

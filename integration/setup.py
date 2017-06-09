@@ -15,7 +15,7 @@ test_requirements = [
 
 setup(
     name='cook_integration',
-    version='0.1.0',
+    version='1.3.3.dev1',
     description="Integration tests for Cook scheduler",
     url='https://github.com/twosigma/Cook',
     include_package_data=True,
