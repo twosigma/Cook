@@ -17,7 +17,6 @@
   (:require [clojure.tools.logging :as log]
             [cook.mesos.group :as group]
             [cook.mesos.util :as util]
-            [plumbing.core :as pc]
             [swiss.arrows :refer :all])
   (:import com.netflix.fenzo.VirtualMachineLease))
 
