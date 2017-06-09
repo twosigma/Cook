@@ -158,6 +158,8 @@
     :resource-paths ["test-resources"]
     :source-paths []}}
 
+  :plugins [[lein-print "0.1.0"]]
+
   :test-selectors {:default (complement :integration)
                    :integration :integration
                    :all (constantly true)}
