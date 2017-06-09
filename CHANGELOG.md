@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [Unreleased]
+### Added
+- Added configuration for agent-query-cache, from @shamsimam
+
 ## [1.5.2] - 2017-06-23
 ### Fixed
 - Fixed a bug which was overwriting end-time on duplicate mesos messages, from @pschorf

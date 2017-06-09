@@ -464,7 +464,7 @@
                        (when (zero? port)
                          (throw (ex-info "You enabled nrepl but didn't configure a port. Please configure a port in your config file." {})))
                        ((lazy-load-var 'clojure.tools.nrepl.server/start-server) :port port)))
-     :retrieve-url-path-fn (fnk [[:config {agent-query-cache {:threshold 1000, :ttl 6000}}]]
+     :retrieve-url-path-fn (fnk [[:config {agent-query-cache {:threshold 1000, :ttl (* 60 1000)}}]]
                              (let [{:keys [threshold ttl]} agent-query-cache
                                    _ (log/info "Agent query cache will be created using:" {:threshold threshold, :ttl ttl})
                                    cache (-> {}
