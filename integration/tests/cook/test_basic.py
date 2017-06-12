@@ -17,6 +17,7 @@ class CookTest(unittest.TestCase):
 
     def setUp(self):
         self.cook_url = util.retrieve_cook_url()
+        self.mesos_url = util.retrieve_mesos_url()
         self.logger = logging.getLogger(__name__)
         util.wait_for_cook(self.cook_url)
 
@@ -306,6 +307,31 @@ class CookTest(unittest.TestCase):
         resp = util.session.post('%s/rawscheduler' % self.cook_url,
                                  json={'jobs':[job1, job2]})
         self.assertEqual(resp.status_code, 500)
+    
+    def test_constraints(self):
+        state = util.get_mesos_state(self.mesos_url)
+        hosts = [agent['hostname'] for agent in state['slaves']]
+
+        bad_job_uuid, resp = util.submit_job(self.cook_url, constraints=[["HOSTNAME", 
+                                                                          "EQUALS", 
+                                                                          "lol won't get scheduled"]])
+        self.assertEqual(resp.status_code, 201, resp.text)
+        
+        host_to_job_uuid = {}
+        for hostname in hosts:
+            constraints = [["HOSTNAME", "EQUALS", hostname]]
+            job_uuid, resp = util.submit_job(self.cook_url, constraints=constraints)
+            self.assertEqual(resp.status_code, 201, resp.text)
+            host_to_job_uuid[hostname] = job_uuid
+
+        for hostname, job_uuid in host_to_job_uuid.items():
+            job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
+            hostname_constrained = job['instances'][0]['hostname']
+            self.assertEqual(hostname, hostname_constrained)
+            self.assertEqual([["HOSTNAME", "EQUALS", hostname]], job['constraints'])
+        # This job should have been scheduled since the job submitted after it has completed
+        # however, its constraint means it won't get scheduled
+        job = util.wait_for_job(self.cook_url, bad_job_uuid, 'waiting', max_delay=3000)
 
     def test_allow_partial(self):
         def absent_uuids(response):
