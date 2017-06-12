@@ -136,7 +136,7 @@
 (defn create-dummy-instance
   "Return the entity id for the created instance."
   [conn job & {:keys [cancelled end-time executor-id exit-code hostname instance-status job-state preempted?
-                      progress progress-message reason sandbox slave-id start-time task-id ]
+                      progress progress-message reason sandbox-directory slave-id start-time task-id ]
                :or  {end-time nil
                      executor-id  (str (UUID/randomUUID))
                      hostname "localhost"
@@ -166,7 +166,7 @@
                                  exit-code (assoc :instance/exit-code exit-code)
                                  progress-message (assoc :instance/progress-message progress-message)
                                  reason (assoc :instance/reason [:reason/name reason])
-                                 sandbox (assoc :instance/sandbox sandbox))])]
+                                 sandbox-directory (assoc :instance/sandbox-directory sandbox-directory))])]
     (d/resolve-tempid (db conn) (:tempids val) id)))
 
 (defn create-dummy-group

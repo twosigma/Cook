@@ -1331,7 +1331,7 @@
         (testing "basic-instance-with-sandbox-url"
           (let [instance-entity-id (apply create-dummy-instance conn job-entity-id
                                           :instance-status :instance.status/success
-                                          :sandbox "/path/to/working/directory"
+                                          :sandbox-directory "/path/to/working/directory"
                                           (mapcat seq basic-instance-properties))
                 instance-entity (d/entity (db conn) instance-entity-id)
                 instance-map (api/fetch-instance-map (db conn) framework-id agent-query-cache instance-entity)
@@ -1342,7 +1342,7 @@
                                :ports []
                                :preempted false
                                :progress 0
-                               :sandbox "/path/to/working/directory"
+                               :sandbox_directory "/path/to/working/directory"
                                :status "success")]
             (is (= expected-map (dissoc instance-map :start_time)))))
 
@@ -1355,7 +1355,7 @@
                                           :progress 78
                                           :progress-message "seventy-eight percent done"
                                           :reason :preempted-by-rebalancer
-                                          :sandbox "/path/to/working/directory"
+                                          :sandbox-directory "/path/to/working/directory"
                                           (mapcat seq basic-instance-properties))
                 instance-entity (d/entity (db conn) instance-entity-id)
                 instance-map (api/fetch-instance-map (db conn) framework-id agent-query-cache instance-entity)
@@ -1370,6 +1370,6 @@
                                :progress_message "seventy-eight percent done"
                                :reason_code 1002
                                :reason_string "Preempted by rebalancer"
-                               :sandbox "/path/to/working/directory"
+                               :sandbox_directory "/path/to/working/directory"
                                :status "success")]
             (is (= expected-map (dissoc instance-map :start_time)))))))))

@@ -4,8 +4,8 @@ import uuid
 import importlib
 import os
 
+import json
 import requests
-from functools import reduce
 from retrying import retry
 
 logger = logging.getLogger(__name__)
@@ -19,28 +19,6 @@ def get_in(dct, *keys):
         except KeyError:
             return None
     return dct
-
-
-def dict_as_string(dct):
-    def value_to_string(value):
-        if not value:
-            return str(value)
-        elif isinstance(value, str):
-            return repr(value)
-        elif isinstance(value, dict):
-            return dict_as_string(value)
-        elif isinstance(value, list):
-            return reduce(lambda acc, item: acc + value_to_string(item) + ', ', value, '[')[:-2] + ']'
-        else:
-            return str(value)
-    if dct and isinstance(dct, dict):
-        return reduce(lambda acc, item: acc + value_to_string(item[0]) + ': ' + value_to_string(item[1]) + ', ',
-                      sorted(dct.items()),
-                      '{')[:-2] + '}'
-    elif not dct:
-        return str(dct)
-    else:
-        return str(dct) + ' [type=' + str(type(dct)) + ']'
 
 
 def is_valid_uuid(uuid_to_test, version=4):
@@ -136,7 +114,7 @@ def wait_for_job(cook_url, job_id, status, max_delay=120000):
         job = response.json()[0]
         if not job['status'] == status:
             error_msg = 'Job {} had status {} - expected {}. Details: {}'.format(
-                job_id, job['status'], status, dict_as_string(job))
+                job_id, job['status'], status, json.dumps(job, sort_keys=True))
             logger.info(error_msg)
             raise RuntimeError(error_msg)
         else:

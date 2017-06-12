@@ -264,7 +264,7 @@ def manage_task(driver, task, stop_signal, completed_signal, config, stdout_name
         # not yet started to run the task
         update_status(driver, task_id, cook.TASK_STARTING)
 
-        sandbox_message = json.dumps({'sandbox-location': config.sandbox_location, 'task-id': task_id})
+        sandbox_message = json.dumps({'sandbox-directory': config.sandbox_directory, 'task-id': task_id})
         send_message(driver, sandbox_message, config.max_message_length)
 
         process_info = launch_task(task, stdout_name, stderr_name)

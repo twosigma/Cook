@@ -554,8 +554,8 @@ for a job. E.g. {:resources {:cpus 4 :mem 3} :constraints {\"unique_host_constra
     :db/cardinality :db.cardinality/one
     :db.install/_attribute :db.part/db}
    {:db/id (d/tempid :db.part/db)
-    :db/ident :instance/sandbox
-    :db/doc "represents the sandbox location of the instance"
+    :db/ident :instance/sandbox-directory
+    :db/doc "represents the sandbox directory of the instance on the executor"
     :db/valueType :db.type/string
     :db/cardinality :db.cardinality/one
     :db.install/_attribute :db.part/db}

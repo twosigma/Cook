@@ -280,7 +280,7 @@
     handle-framework-message-duration
     (try
       (let [db (db conn)
-            {:strs [exit-code progress-message progress-percent sandbox-location task-id] :as message}
+            {:strs [exit-code progress-message progress-percent sandbox-directory task-id] :as message}
             (-> (String. ^bytes framework-message "UTF-8") (json/read-str))
             _ (log/info "Received framework message:" {:task-id task-id, :message message})
             _ (when (str/blank? task-id)
@@ -295,7 +295,7 @@
                               exit-code (conj [:db/add instance :instance/exit-code (int exit-code)])
                               progress-message (conj [:db/add instance :instance/progress-message (str progress-message)])
                               progress-percent (conj [:db/add instance :instance/progress (int progress-percent)])
-                              sandbox-location (conj [:db/add instance :instance/sandbox (str sandbox-location)]))]
+                              sandbox-directory (conj [:db/add instance :instance/sandbox-directory (str sandbox-directory)]))]
             (when (seq txns)
               (log/info "Updating instance" instance "to" txns)
               (transact-with-retries conn txns)))))
