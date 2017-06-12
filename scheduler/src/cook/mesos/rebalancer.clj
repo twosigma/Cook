@@ -232,7 +232,8 @@
                              :normal (dru/sorted-task-scored-task-pairs user->dru-divisors user->sorted-running-task-ents)
                              :gpu (dru/sorted-task-cumulative-gpu-score-pairs user->dru-divisors user->sorted-running-task-ents))
          task->scored-task (into (pm/priority-map-keyfn (case category
-                                                          :normal (comp - :dru)
+                                                          :normal (juxt (comp - :dru)
+                                                                        (comp util/task-ent->user :task))
                                                           :gpu (fnil - 0)))
                                  scored-task-pairs)]
      (->State task->scored-task

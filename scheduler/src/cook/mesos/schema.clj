@@ -73,6 +73,14 @@
     :db/cardinality :db.cardinality/many
     :db.install/_attribute :db.part/db}
    {:db/id (d/tempid :db.part/db)
+    :db/ident :job/constraint
+    :db/valueType :db.type/ref
+    :db/isComponent true
+    :db/cardinality :db.cardinality/many
+    :db/doc "A map of attribute to value patterns that constrain what hosts
+             a job may be placed on"
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
     :db/ident :job/state
     :db/valueType :db.type/ref
     :db/cardinality :db.cardinality/one
@@ -383,6 +391,29 @@ for a job. E.g. {:resources {:cpus 4 :mem 3} :constraints {\"unique_host_constra
     :db/valueType :db.type/string
     :db/cardinality :db.cardinality/one
     :db.install/_attribute :db.part/db}
+   ;; Host constraint attributes
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :constraint/attribute
+    :db/doc "Attribute of host to constrain on"
+    :db/valueType :db.type/string
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :constraint/operator
+    :db/doc "Operator to use to evaulate pattern"
+    :db/valueType :db.type/ref
+    :db/isComponent true
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :constraint/pattern
+    :db/doc "Pattern that must pass on value of attribute for host to be valid
+             to place task on"
+    :db/valueType :db.type/string
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/user)
+    :db/ident :constraint.operator/equals}
    ;; Application attributes
    {:db/id (d/tempid :db.part/db)
     :db/doc
@@ -700,6 +731,11 @@ for a job. E.g. {:resources {:cpus 4 :mem 3} :constraints {\"unique_host_constra
   (->> schema-attributes
        (map :db/ident)
        (filter #(= "host-placement.type" (namespace %)))))
+
+(def constraint-operators
+  (->> schema-attributes
+       (map :db/ident)
+       (filter #(= "constraint.operator" (namespace %)))))
 
 (def db-fns
   [{:db/id (d/tempid :db.part/user)

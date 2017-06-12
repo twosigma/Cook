@@ -1058,6 +1058,7 @@
                    :env {}
                    :instances ()
                    :labels {}
+                   :constraints []
                    :retries_remaining 1
                    :state "waiting"
                    :status "waiting"
