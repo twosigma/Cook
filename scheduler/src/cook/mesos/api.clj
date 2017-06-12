@@ -175,7 +175,8 @@
    (s/optional-key :reason_code) s/Int
    (s/optional-key :output_url) s/Str
    (s/optional-key :cancelled) s/Bool
-   (s/optional-key :reason_string) s/Str})
+   (s/optional-key :reason_string) s/Str
+   (s/optional-key :progress) s/Int})
 
 (defn max-128-characters-and-alphanum?
   "Returns true if s contains only '.', '_', '-' or
@@ -748,7 +749,8 @@
                                mesos-start (:instance/mesos-start-time instance)
                                end (:instance/end-time instance)
                                cancelled (:instance/cancelled instance)
-                               reason (reason/instance-entity->reason-entity db instance)]
+                               reason (reason/instance-entity->reason-entity db instance)
+                               progress (:instance/progress instance)]
                            (cond-> {:backfilled false ;; Backfill has been deprecated
                                     :executor_id executor-id
                                     :hostname hostname
@@ -763,7 +765,8 @@
                                    end (assoc :end_time (.getTime end))
                                    cancelled (assoc :cancelled cancelled)
                                    reason (assoc :reason_code (:reason/code reason)
-                                                 :reason_string (:reason/string reason)))))
+                                                 :reason_string (:reason/string reason))
+                                   progress (assoc :progress progress))))
                        (:job/instance job))
         submit-time (when (:job/submit-time job) ; due to a bug, submit time may not exist for some jobs
                 (.getTime (:job/submit-time job)))
