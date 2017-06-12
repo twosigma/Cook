@@ -727,6 +727,35 @@
       (log/error e "Unable to retrieve directory path for" executor-id "on agent" agent-hostname)
       nil)))
 
+(defn- instance->instance-map
+  "Converts the instance to a map of relevant fields that will be returned to the caller"
+  [db fid instance]
+  (let [hostname (:instance/hostname instance)
+        executor-id (:instance/executor-id instance)
+        url-path (retrieve-url-path fid hostname executor-id)
+        start (:instance/start-time instance)
+        mesos-start (:instance/mesos-start-time instance)
+        end (:instance/end-time instance)
+        cancelled (:instance/cancelled instance)
+        reason (reason/instance-entity->reason-entity db instance)
+        progress (:instance/progress instance)]
+    (cond-> {:backfilled false ;; Backfill has been deprecated
+             :executor_id executor-id
+             :hostname hostname
+             :ports (:instance/ports instance)
+             :preempted (:instance/preempted? instance false)
+             :slave_id (:instance/slave-id instance)
+             :status (name (:instance/status instance))
+             :task_id (:instance/task-id instance)}
+            url-path (assoc :output_url url-path)
+            start (assoc :start_time (.getTime start))
+            mesos-start (assoc :mesos_start_time (.getTime mesos-start))
+            end (assoc :end_time (.getTime end))
+            cancelled (assoc :cancelled cancelled)
+            reason (assoc :reason_code (:reason/code reason)
+                          :reason_string (:reason/string reason))
+            progress (assoc :progress progress))))
+
 (defn fetch-job-map
   [db fid job-uuid]
   (let [job (d/entity db [:job/uuid job-uuid])
@@ -741,33 +770,7 @@
                   "success" "failed")
                 :job.state/running "running"
                 :job.state/waiting "waiting")
-        instances (map (fn [instance]
-                         (let [hostname (:instance/hostname instance)
-                               executor-id (:instance/executor-id instance)
-                               url-path (retrieve-url-path fid hostname executor-id)
-                               start (:instance/start-time instance)
-                               mesos-start (:instance/mesos-start-time instance)
-                               end (:instance/end-time instance)
-                               cancelled (:instance/cancelled instance)
-                               reason (reason/instance-entity->reason-entity db instance)
-                               progress (:instance/progress instance)]
-                           (cond-> {:backfilled false ;; Backfill has been deprecated
-                                    :executor_id executor-id
-                                    :hostname hostname
-                                    :ports (:instance/ports instance)
-                                    :preempted (:instance/preempted? instance false)
-                                    :slave_id (:instance/slave-id instance)
-                                    :status (name (:instance/status instance))
-                                    :task_id (:instance/task-id instance)}
-                                   url-path (assoc :output_url url-path)
-                                   start (assoc :start_time (.getTime start))
-                                   mesos-start (assoc :mesos_start_time (.getTime mesos-start))
-                                   end (assoc :end_time (.getTime end))
-                                   cancelled (assoc :cancelled cancelled)
-                                   reason (assoc :reason_code (:reason/code reason)
-                                                 :reason_string (:reason/string reason))
-                                   progress (assoc :progress progress))))
-                       (:job/instance job))
+        instances (map #(instance->instance-map db fid %) (:job/instance job))
         submit-time (when (:job/submit-time job) ; due to a bug, submit time may not exist for some jobs
                 (.getTime (:job/submit-time job)))
         job-map {:command (:job/command job)
