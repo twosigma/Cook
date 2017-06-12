@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/) and this p
 ## [1.3.3] - 2017-06-09
 ### Added
 - Added simulator to test scheduler performance, from @wyegelwel
+- Added job constraints, from @wyegelwel
 ### Changed
 - Fixed bug where job submit errors would return 201, from @pschorf
 - Optimizations in ranking to improve schedule time, from @shams
