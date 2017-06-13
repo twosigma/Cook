@@ -71,10 +71,7 @@
     (let [job (:job this)
           target-hostname (get vm-attributes "HOSTNAME")]
       [(not-any? #(= target-hostname %) previous-hosts)
-       (str "Can't run on " target-hostname
-            " since we already ran on that. "
-            "This host has previously run on the following hosts (up to 5 shown)"
-            (take 5 previous-hosts))]))
+       "Already ran on host"]))
   (job-constraint-evaluate
     [this _ vm-attributes _]
     (job-constraint-evaluate this _ vm-attributes)))
@@ -160,10 +157,13 @@
       (let [vm-resources (.getCurrAvailableResources target-vm)
             vm-attributes (get-vm-lease-attr-map vm-resources)
             [passes? reason] (job-constraint-evaluate constraint vm-resources vm-attributes
-                                                      (into (vec (.getRunningTasks target-vm))
-                                                              (mapv (fn [^com.netflix.fenzo.TaskAssignmentResult result]
-                                                                      (.getRequest result))
-                                                                     (.getTasksCurrentlyAssigned target-vm))))]
+                                                      (loop [tasks-assigned (.getTasksCurrentlyAssigned target-vm)
+                                                             tasks (vec (.getRunningTasks target-vm))]
+                                                        (if (empty? tasks-assigned)
+                                                          tasks
+                                                          (let [^com.netflix.fenzo.TaskAssignmentResult result (first tasks-assigned)]
+                                                            (recur (rest tasks-assigned)
+                                                                   (conj tasks (.getRequest result)))))))]
         (com.netflix.fenzo.ConstraintEvaluator$Result. passes? reason)))))
 
 (defn make-fenzo-job-constraints
