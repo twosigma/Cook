@@ -13,7 +13,7 @@
 ;; See the License for the specific language governing permissions and
 ;; limitations under the License.
 ;;
-(defproject cook "1.0.1-SNAPSHOT"
+(defproject cook "1.4.1-SNAPSHOT"
   :description "This launches jobs on a Mesos cluster with fair sharing and preemption"
   :license {:name "Apache License, Version 2.0"}
   :dependencies [[org.clojure/clojure "1.8.0"]
@@ -157,6 +157,8 @@
                "-Dcom.sun.management.jmxremote.ssl=false"]
     :resource-paths ["test-resources"]
     :source-paths []}}
+
+  :plugins [[lein-print "0.1.0"]]
 
   :test-selectors {:default (complement :integration)
                    :integration :integration
