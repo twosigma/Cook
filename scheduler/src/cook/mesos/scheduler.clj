@@ -629,7 +629,7 @@
          conn
          (reduce into [] task-txns)))
     (log/info "Launching" (count task-txns) "tasks")
-    (log/info "Matched tasks" task-txns)
+    (log/debug "Matched tasks" task-txns)
     ;; This launch-tasks MUST happen after the above transaction in
     ;; order to allow a transaction failure (due to failed preconditions)
     ;; to block the launch
