@@ -249,8 +249,9 @@
     (is (= (count (util/read-chan ch 10)) 5))
     (is (= (count (util/read-chan ch 10)) 0))
     (async/<!! (async/onto-chan ch (range 10) false))
-    (async/onto-chan ch (range 10) false)
-    (is (= (count (util/read-chan ch 10)) 10))
-    (is (= (count (util/read-chan ch 10)) 10))))
+    (let [oc (async/onto-chan ch (range 10) false)]
+      (is (= (count (util/read-chan ch 10)) 10))
+      (async/<!! oc)
+      (is (= (count (util/read-chan ch 10)) 10)))))
 
 (comment (run-tests))
