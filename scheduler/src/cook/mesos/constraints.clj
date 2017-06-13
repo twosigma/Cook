@@ -157,12 +157,12 @@
       (let [vm-resources (.getCurrAvailableResources target-vm)
             vm-attributes (get-vm-lease-attr-map vm-resources)
             [passes? reason] (job-constraint-evaluate constraint vm-resources vm-attributes
-                                                      ;; This function is called for each job considered, for each host available.
-                                                      ;; It was optimized to reduce memory allocations because it accounted for ~10% of all allocs
-                                                      (persistent! (reduce (fn [tasks ^com.netflix.fenzo.TaskAssignmentResult result]
-                                                                             (conj! tasks (.getRequest result)))
-                                                                           (transient (vec (.getRunningTasks target-vm)))
-                                                                           (.getTasksCurrentlyAssigned target-vm))))]
+                                                      ;; Although concat can be dangerous, in this case it saves a significant
+                                                      ;; amount of memory compared to building a vec (around 10% of allocations)
+                                                      (concat (.getRunningTasks target-vm)
+                                                              (map (fn [^com.netflix.fenzo.TaskAssignmentResult result]
+                                                                     (.getRequest result))
+                                                                   (.getTasksCurrentlyAssigned target-vm))))]
         (com.netflix.fenzo.ConstraintEvaluator$Result. passes? reason)))))
 
 (defn make-fenzo-job-constraints
