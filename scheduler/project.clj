@@ -156,7 +156,10 @@
                "-Dcom.sun.management.jmxremote.authenticate=false"
                "-Dcom.sun.management.jmxremote.ssl=false"]
     :resource-paths ["test-resources"]
-    :source-paths []}}
+    :source-paths []}
+
+   :test-console
+   {:jvm-opts ["-Dcook.test.logging.console"]}}
 
   :plugins [[lein-print "0.1.0"]]
 

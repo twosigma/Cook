@@ -16,14 +16,17 @@
 
 (ns cook.test.testutil
   (:use clojure.test)
-  (:require [clojure.core.async :as async]
+  (:require [clj-logging-config.log4j :as log4j-conf]
+            [clojure.core.async :as async]
             [clojure.core.cache :as cache]
+            [clojure.tools.logging :as log]
             [cook.mesos.api :refer (main-handler)]
             [cook.mesos.schema :as schema]
             [datomic.api :as d :refer (q db)]
             [qbits.jet.server :refer (run-jetty)]
             [ring.middleware.params :refer (wrap-params)])
-  (:import (java.util UUID)))
+  (:import (java.util UUID)
+           (org.apache.log4j ConsoleAppender Logger PatternLayout)))
 
 (defn run-test-server-in-thread
   "Runs a minimal cook scheduler server for testing inside a thread. Note that it is not properly kerberized."
@@ -202,3 +205,11 @@
            (throw (ex-info (str "pred not true : " (on-exceed-str-fn))
                            {:interval-ms interval-ms
                             :max-wait-ms max-wait-ms}))))))))
+
+(defmethod report :begin-test-var
+  [m]
+  (when (System/getProperty "cook.test.logging.console")
+    (log4j-conf/set-loggers! (Logger/getRootLogger)
+                             {:level :info
+                              :out (ConsoleAppender. (PatternLayout. "%d{ISO8601} %-5p %c [%t] - %m%n"))}))
+  (log/info "Running" (:var m)))
