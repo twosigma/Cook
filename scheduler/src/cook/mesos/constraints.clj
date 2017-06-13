@@ -157,13 +157,11 @@
       (let [vm-resources (.getCurrAvailableResources target-vm)
             vm-attributes (get-vm-lease-attr-map vm-resources)
             [passes? reason] (job-constraint-evaluate constraint vm-resources vm-attributes
-                                                      (loop [tasks-assigned (.getTasksCurrentlyAssigned target-vm)
-                                                             tasks (vec (.getRunningTasks target-vm))]
-                                                        (if (empty? tasks-assigned)
-                                                          tasks
-                                                          (let [^com.netflix.fenzo.TaskAssignmentResult result (first tasks-assigned)]
-                                                            (recur (rest tasks-assigned)
-                                                                   (conj tasks (.getRequest result)))))))]
+                                                      ; Use transients to improve speed and reduce allocations
+                                                      (persistent! (reduce (fn [tasks ^com.netflix.fenzo.TaskAssignmentResult result]
+                                                                             (conj! tasks (.getRequest result)))
+                                                                           (transient (vec (.getRunningTasks target-vm)))
+                                                                           (.getTasksCurrentlyAssigned target-vm))))]
         (com.netflix.fenzo.ConstraintEvaluator$Result. passes? reason)))))
 
 (defn make-fenzo-job-constraints
