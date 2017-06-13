@@ -157,7 +157,8 @@
       (let [vm-resources (.getCurrAvailableResources target-vm)
             vm-attributes (get-vm-lease-attr-map vm-resources)
             [passes? reason] (job-constraint-evaluate constraint vm-resources vm-attributes
-                                                      ; Use transients to improve speed and reduce allocations
+                                                      ;; This function is called for each job considered, for each host available.
+                                                      ;; It was optimized to reduce memory allocations because it accounted for ~10% of all allocs
                                                       (persistent! (reduce (fn [tasks ^com.netflix.fenzo.TaskAssignmentResult result]
                                                                              (conj! tasks (.getRequest result)))
                                                                            (transient (vec (.getRunningTasks target-vm)))
