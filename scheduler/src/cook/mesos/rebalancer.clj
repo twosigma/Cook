@@ -383,8 +383,9 @@
    category is :normal or :gpu, depending on which type of job we're working with"
   [db offer-cache pending-job-ents host->spare-resources {:keys [max-preemption category] :as params}]
   (let [timer (timers/start rebalance-duration)
-        jobs-to-make-room-for (filter (partial util/job-allowed-to-start? db)
-                                      pending-job-ents)
+        jobs-to-make-room-for (->> pending-job-ents
+                                   (filter (partial util/job-allowed-to-start? db))
+                                   (take max-preemption))
         init-state (init-state db (util/get-running-task-ents db) jobs-to-make-room-for host->spare-resources category)]
     (log/debug "Jobs to make room for:" jobs-to-make-room-for)
     (loop [state init-state
