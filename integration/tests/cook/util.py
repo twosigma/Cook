@@ -55,8 +55,7 @@ def retrieve_mesos_url(varname='MESOS_PORT', value='5050'):
     mesos_port = os.getenv(varname, value)
     cook_url = retrieve_cook_url()
     wait_for_cook(cook_url)
-    settings = session.get('%s/settings' % cook_url).json()
-    mesos_master_hosts = settings.get('mesos-master-hosts', ['localhost'])
+    mesos_master_hosts = settings(cook_url).get('mesos-master-hosts', ['localhost'])
     resp = session.get('http://%s:%s/redirect' % (mesos_master_hosts[0], mesos_port), allow_redirects=False)
     if resp.status_code != 307:
         raise RuntimeError('Unable to find mesos leader, redirect endpoint returned %d' % resp.status_code)
@@ -75,6 +74,8 @@ def wait_for_cook(cook_url):
     # if connection is refused, an exception will be thrown
     session.get(cook_url)
 
+def settings(cook_url):
+    return session.get('%s/settings' % cook_url).json()
 
 def minimal_job(**kwargs):
     job = {
