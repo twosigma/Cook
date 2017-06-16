@@ -1020,7 +1020,7 @@
   (try
     (log/info "Submitting jobs through raw api:" jobs)
     (let [group-uuids (set (map :uuid groups))
-          group-asserts (map (fn [guuid] [:ensure-not-exists :group/uuid guuid])
+          group-asserts (map (fn [guuid] [:entity/ensure-not-exists [:group/uuid guuid]])
                              group-uuids)
           ;; Create new implicit groups (with all default settings)
           implicit-groups (->> jobs
@@ -1030,7 +1030,7 @@
                                (remove #(contains? group-uuids %))
                                (map make-default-group))
           groups (into (vec implicit-groups) groups)
-          job-asserts (map (fn [j] [:ensure-not-exists :job/uuid (:uuid j)]) jobs)
+          job-asserts (map (fn [j] [:entity/ensure-not-exists [:job/uuid (:uuid j)]]) jobs)
           job-txns (mapcat #(make-job-txn %) jobs)
           job-uuids->dbids (->> job-txns
                                 ;; Not all txns are for the top level job

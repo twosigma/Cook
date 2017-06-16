@@ -1110,7 +1110,7 @@
           (is (= {::api/results (str "submitted jobs " uuid)}
                  (api/create-jobs! conn {::api/jobs [job]})))
           (is (thrown-with-msg? ExecutionException
-               (re-pattern (str "Entity with id " uuid " already exists"))
+               (re-pattern (str ".*:job/uuid.*" uuid ".*already exists"))
                (api/create-jobs! conn {::api/jobs [job]})))))
 
       (testing "should work when the job specifies an application"
