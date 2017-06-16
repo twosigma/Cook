@@ -228,7 +228,7 @@
                                  end)]
               [interval-start interval-end]))
           ;; This filter is here because joda time t/days returns the floor of days if there is an
-          ;; a non integer number of days. This is problematic as we can't
+          ;; a non integer number of days. 
           (filter (fn [[s e]] (> (t/in-millis (t/interval s e)) 0)))))))
 
 (defn get-jobs-by-user-and-state
