@@ -198,6 +198,39 @@
      get-pending-jobs-duration
      (get-pending-job-ents* unfiltered-db true))))
 
+(defn generate-intervals
+  "Generates a list of intervals between start and end as pairs
+   [interval-start interval-end].
+
+   Parameters:
+   ----------
+   start : clj-time/datetime
+   end : clj-time/datetime
+   interval->steps : fn
+      function that takes a clj-time/interval and returns the number of steps
+      based on the step-fn between start and end
+   step-fn : fn
+      function that returns a clj-time/timedelta given n steps
+
+   Returns:
+   --------
+   list of pairs, [interval-start interval-end]"
+  ([start end]
+   (generate-intervals start end t/in-days t/days))
+  ([start end interval->steps step-fn]
+   (if (t/before? end start)
+     []
+     (->> (for [steps-from-start (range 0 (inc (interval->steps (t/interval start end))))]
+            (let [interval-start (t/plus start (step-fn steps-from-start))
+                  interval-end (t/plus start (step-fn (inc steps-from-start)))
+                  interval-end (if (t/before? interval-end end)
+                                 interval-end
+                                 end)]
+              [interval-start interval-end]))
+          ;; This filter is here because joda time t/days returns the floor of days if there is an
+          ;; a non integer number of days. This is problematic as we can't
+          (filter (fn [[s e]] (> (t/in-millis (t/interval s e)) 0)))))))
+
 (defn get-jobs-by-user-and-state
   "Returns all job entities for a particular user
    in a particular state, in the specified timeframe,
@@ -209,16 +242,21 @@
          ;; the total number of jobs for a user should be smaller than
          ;; all completed jobs by any user i.e.
          ;; (waiting_user + running_user < completed - completed_user)
-         (q '[:find [?j ...]
-              :in $ ?user ?state ?start ?end
-              :where
-              [?j :job/user ?user]
-              [?j :job/state ?state]
-              [?j :job/submit-time ?t]
-              [(< ?start ?t)]
-              [(< ?t ?end)]
-              [?j :job/custom-executor false]]
-            db user state start end)
+
+         (mapcat (fn query-in-chunks
+                   [interval]
+                   (let [[interval-start interval-end] (map tc/to-date interval)]
+                     (q '[:find [?j ...]
+                          :in $ ?user ?state ?start ?end
+                          :where
+                          [?j :job/submit-time ?t]
+                          [(< ?start ?t)]
+                          [(< ?t ?end)]
+                          [?j :job/user ?user]
+                          [?j :job/state ?state]
+                          [?j :job/custom-executor false]]
+                        db user state interval-start interval-end)))
+                 (generate-intervals (tc/from-date start) (tc/from-date end)))
          (q '[:find [?j ...]
               :in $ ?user ?state ?start ?end
               :where

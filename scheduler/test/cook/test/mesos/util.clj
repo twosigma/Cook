@@ -254,4 +254,57 @@
       (async/<!! oc)
       (is (= (count (util/read-chan ch 10)) 10)))))
 
+(deftest test-generate-intervals
+  (let [start (tc/from-date #inst "2017-06-01")
+        end (tc/from-date #inst "2017-06-02")
+        interval->7h-step (fn [interval]
+                            (int (/ (t/in-hours interval) 7)))
+        step-7h-fn (fn [step]
+                     (t/hours (* 7 step)))]
+    (is (= [[start end]] (util/generate-intervals start end)))
+    (is (= [[start (tc/from-date #inst "2017-06-01T07:00:00")]
+            [(tc/from-date #inst "2017-06-01T07:00:00")
+             (tc/from-date #inst "2017-06-01T14:00:00")]
+            [(tc/from-date #inst "2017-06-01T14:00:00")
+             (tc/from-date #inst "2017-06-01T21:00:00")]
+            [(tc/from-date #inst "2017-06-01T21:00:00")
+             end]]
+           (util/generate-intervals start end interval->7h-step step-7h-fn)))))
+
+(def test-get-jobs-by-user-and-state
+  (let [uri "datomic:mem://test-get-pending-job-ents"
+        conn (restore-fresh-database! uri)]
+    (doseq [state [:job.state/waiting :job.state/running :job.state/completed]]
+      (create-dummy-job conn
+                        :user "u1"
+                        :job-state state
+                        :submit-time #inst "2017-06-02T12:00:00"
+                        :custom-executor? false)
+      (create-dummy-job conn
+                        :user "u1"
+                        :job-state state
+                        :submit-time #inst "2017-06-02T12:00:00"
+                        :custom-executor? false)
+      (create-dummy-job conn
+                        :user "u2"
+                        :job-state state
+                        :submit-time #inst "2017-06-03T12:00:00"
+                        :custom-executor? false)
+      (create-dummy-job conn
+                        :user "u1"
+                        :job-state state
+                        :submit-time #inst "2017-06-03T12:00:00"
+                        :custom-executor? false)
+      (testing (str "get " state " jobs")
+        (is (= 2 (count (util/get-jobs-by-user-and-state (d/db conn) "u1" state
+                                                         #inst "2017-06-02" #inst "2017-06-03"))))
+        (is (= 3 (count (util/get-jobs-by-user-and-state (d/db conn) "u1" state
+                                                         #inst "2017-06-02" #inst "2017-06-04"))))
+        (is (= 1 (count (util/get-jobs-by-user-and-state (d/db conn) "u2" state
+                                                         #inst "2017-06-02" #inst "2017-06-04"))))
+        (is (= 0 (count (util/get-jobs-by-user-and-state (d/db conn) "u3" state
+                                                         #inst "2017-06-02" #inst "2017-06-04"))))
+        (is (= 0 (count (util/get-jobs-by-user-and-state (d/db conn) "u1" state
+                                                         #inst "2017-06-01" #inst "2017-06-02"))))))))
+
 (comment (run-tests))
