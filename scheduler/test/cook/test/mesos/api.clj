@@ -36,6 +36,7 @@
            java.io.ByteArrayOutputStream
            java.net.ServerSocket
            java.util.UUID
+           java.util.concurrent.ExecutionException
            (javax.servlet ServletOutputStream
                           ServletResponse)
            org.apache.curator.test.TestingServer
@@ -1102,6 +1103,15 @@
                  (api/create-jobs! conn {::api/jobs [job]})))
           (is (= (expected-job-map job fid)
                  (dissoc (api/fetch-job-map (db conn) fid uuid) :submit_time)))))
+
+      (testing "should fail on a duplicate uuid"
+        (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
+              {:keys [uuid] :as job} (minimal-job)]
+          (is (= {::api/results (str "submitted jobs " uuid)}
+                 (api/create-jobs! conn {::api/jobs [job]})))
+          (is (thrown-with-msg? ExecutionException
+               (re-pattern (str ".*:job/uuid.*" uuid ".*already exists"))
+               (api/create-jobs! conn {::api/jobs [job]})))))
 
       (testing "should work when the job specifies an application"
         (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")

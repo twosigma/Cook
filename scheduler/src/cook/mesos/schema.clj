@@ -945,7 +945,17 @@ for a job. E.g. {:resources {:cpus 4 :mem 3} :constraints {\"unique_host_constra
                          prior-state (:job/state job)]
                      (if (= prior-state :job.state/completed)
                        [[:db/add j :job/state :job.state/waiting]]
-                       []))}}])
+                       []))}}
+   {:db/id (d/tempid :db.part/user)
+    :db/ident :entity/ensure-not-exists
+    :db/doc "Ensure that the given entity does not exist"
+    :db/fn #db/fn {:lang "clojure"
+                   :params [db id-or-lookup]
+                   :code
+                   (let [j (d/entity db id-or-lookup)]
+                     (when j
+                       (throw (IllegalStateException.
+                               (str "Entity with id " id-or-lookup " already exists.")))))}}])
 
 (def reason-entities
   [{:db/id (d/tempid :db.part/user)
