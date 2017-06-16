@@ -21,9 +21,6 @@ class CookTest(unittest.TestCase):
         self.logger = logging.getLogger(__name__)
         util.wait_for_cook(self.cook_url)
 
-    def settings(self):
-        return util.session.get('%s/settings' % self.cook_url).json()
-
     def get_job(self, job_uuid):
         """Loads a job by UUID using GET /rawscheduler"""
         return util.query_jobs(self.cook_url, job=[job_uuid]).json()[0]
@@ -54,7 +51,7 @@ class CookTest(unittest.TestCase):
         self.assertEqual('failed', job['instances'][0]['status'])
 
     def test_max_runtime_exceeded(self):
-        settings_timeout_interval_minutes = util.get_in(self.settings(), 'task-constraints', 'timeout-interval-minutes')
+        settings_timeout_interval_minutes = util.get_in(util.settings(self.cook_url), 'task-constraints', 'timeout-interval-minutes')
         # the value needs to be a little more than 2 times settings_timeout_interval_minutes to allow
         # at least two runs of the lingering task killer
         job_timeout_interval_seconds = (2 * settings_timeout_interval_minutes * 60) + 15
