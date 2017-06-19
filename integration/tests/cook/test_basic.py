@@ -134,7 +134,7 @@ class CookTest(unittest.TestCase):
         resp = util.session.post('%s/rawscheduler' % self.cook_url, json=request_body)
         self.assertEqual(resp.status_code, 201)
 
-        time.sleep(1)
+        time.sleep(5)
 
         request_body = {'jobs': [job_specs[1]]}
         resp = util.session.post('%s/rawscheduler' % self.cook_url, json=request_body)
@@ -147,7 +147,7 @@ class CookTest(unittest.TestCase):
         # start-ms and end-ms are exclusive
 
         # query where start-ms and end-ms are the submit times of jobs 1 & 2 respectively
-        resp = util.session.get('%s/list?user=%s&state=waiting&start-ms=%s&end-ms=%s'
+        resp = util.session.get('%s/list?user=%s&state=waiting%%2Brunning%%2Bcompleted&start-ms=%s&end-ms=%s'
                                 % (self.cook_url, user, submit_times[0] - 1, submit_times[1] + 1))
         self.assertEqual(200, resp.status_code)
         jobs = resp.json()
@@ -155,7 +155,7 @@ class CookTest(unittest.TestCase):
         self.assertTrue(any(job for job in jobs if job['uuid'] == job_specs[1]['uuid']))
 
         # query just for job 1
-        resp = util.session.get('%s/list?user=%s&state=waiting&start-ms=%s&end-ms=%s'
+        resp = util.session.get('%s/list?user=%s&state=waiting%%2Brunning%%2Bcompleted&start-ms=%s&end-ms=%s'
                                 % (self.cook_url, user, submit_times[0] - 1, submit_times[1]))
         self.assertEqual(200, resp.status_code)
         jobs = resp.json()
@@ -163,16 +163,16 @@ class CookTest(unittest.TestCase):
         self.assertFalse(any(job for job in jobs if job['uuid'] == job_specs[1]['uuid']))
 
         # query just for job 2
-        resp = util.session.get('%s/list?user=%s&state=waiting&start-ms=%s&end-ms=%s'
-                                % (self.cook_url, user, submit_times[0], submit_times[1] + 1))
+        resp = util.session.get('%s/list?user=%s&state=waiting%%2Brunning%%2Bcompleted&start-ms=%s&end-ms=%s'
+                                % (self.cook_url, user, submit_times[0]+1, submit_times[1] + 1))
         self.assertEqual(200, resp.status_code)
         jobs = resp.json()
         self.assertFalse(any(job for job in jobs if job['uuid'] == job_specs[0]['uuid']))
         self.assertTrue(any(job for job in jobs if job['uuid'] == job_specs[1]['uuid']))
 
         # query for neither
-        resp = util.session.get('%s/list?user=%s&state=waiting&start-ms=%s&end-ms=%s'
-                                % (self.cook_url, user, submit_times[0], submit_times[1]))
+        resp = util.session.get('%s/list?user=%s&state=waiting%%2Brunning%%2Bcompleted&start-ms=%s&end-ms=%s'
+                                % (self.cook_url, user, submit_times[0]+1, submit_times[1]))
         self.assertEqual(200, resp.status_code)
         jobs = resp.json()
         self.assertFalse(any(job for job in jobs if job['uuid'] == job_specs[0]['uuid']))
