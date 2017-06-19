@@ -217,26 +217,12 @@
    (->> (conj (vec (periodic-seq start end period-like)) end)
         (partition 2 1))))
 
-(defn accumulate-n-from-batches
-  "Given a seq of collections, `batches`, take `n` elements from the collections,
-   starting with the first and realizing subsequent batches once previous batches
-   are consumed."
-  [n batches]
-  (loop [coll []
-         [batch & batches] batches]
-    (let [needed-elements (- n (count coll))
-          coll' (into coll (take needed-elements batch))]
-      (if (and (< (count coll') n)
-               (seq batches))
-        (recur coll' batches)
-        (take n coll')))))
-
 (defn get-jobs-by-user-and-state
   "Returns all job entities for a particular user
    in a particular state, in the specified timeframe,
    without a custom executor."
-  [db user state start end limit]
-  (let [intervals (generate-intervals (tc/from-date start) (tc/from-date end) (t/days 1))
+  [db user state start end period-like limit]
+  (let [intervals (generate-intervals (tc/from-date start) (tc/from-date end) period-like)
         job-batches (if (= state :job.state/completed)
                       (map (fn query-in-chunks
                              [interval]
@@ -264,7 +250,8 @@
                            db user state start end)])]
     (->> job-batches
          (map sort)
-         (accumulate-n-from-batches limit)
+         (apply concat)
+         (take limit)
          (map (partial d/entity db)))))
 
 (defn jobs-by-user-and-state

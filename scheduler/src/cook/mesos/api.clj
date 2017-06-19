@@ -1535,7 +1535,7 @@
 (timers/deftimer [cook-scheduler handler list-endpoint])
 
 (defn list-resource
-  [db framework-id is-authorized-fn]
+  [db framework-id is-authorized-fn batch-period]
   (liberator/resource
    :available-media-types ["application/json"]
    :allowed-methods [:get]
@@ -1606,6 +1606,7 @@
                                                                                   %
                                                                                   start
                                                                                   end
+                                                                                  batch-period
                                                                                   limit)
                                                 states)))
                                       (sort-by :job/submit-time)
@@ -1674,7 +1675,9 @@
 ;;
 (defn main-handler
   [conn fid mesos-pending-jobs-fn
-   {:keys [task-constraints is-authorized-fn] gpu-enabled? :mesos-gpu-enabled :as settings}]
+   {:keys [task-constraints is-authorized-fn list-batch-period] 
+    gpu-enabled? :mesos-gpu-enabled
+    :as settings}]
   (->
    (routes
     (c-api/api
@@ -1819,7 +1822,7 @@
     (ANY "/running" []
          (running-jobs conn is-authorized-fn))
     (ANY "/list" []
-         (list-resource (db conn) fid is-authorized-fn)))
+         (list-resource (db conn) fid is-authorized-fn list-batch-period)))
    (format-params/wrap-restful-params {:formats [:json-kw]
                                        :handle-error c-mw/handle-req-error})
    (streaming-json-middleware)))
