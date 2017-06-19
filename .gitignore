@@ -4,6 +4,7 @@
 *.swo
 *.swp
 *~
+.DS_Store
 .idea/
 .kill_lein
 .lein-cljsbuild-compiler*
