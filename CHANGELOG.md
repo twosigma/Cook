@@ -3,7 +3,12 @@
 All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
- 
+
+## [unreleased] 
+### Changed
+- Optimized the query in the list endpoint to avoid an expensive datomic join, from @pschorf and @wyegelwel
+- Change the list endpoint time range to be inclusive on start, from @wyegelwel
+
 ## [1.4.0] - 2017-06-09
 ### Added
 - Added simulator to test scheduler performance, from @wyegelwel
