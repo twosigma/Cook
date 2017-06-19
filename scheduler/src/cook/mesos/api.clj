@@ -1605,7 +1605,8 @@
                                                                                   user
                                                                                   %
                                                                                   start
-                                                                                  end)
+                                                                                  end
+                                                                                  limit)
                                                 states)))
                                       (sort-by :job/submit-time)
                                       reverse
