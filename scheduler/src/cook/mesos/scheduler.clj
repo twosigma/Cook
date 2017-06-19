@@ -282,7 +282,7 @@
       (let [db (db conn)
             {:strs [exit-code progress-message progress-percent sandbox-directory task-id] :as message}
             (-> (String. ^bytes framework-message "UTF-8") (json/read-str))
-            _ (log/info "Received framework message:" {:task-id task-id, :message message})
+            _ (log/debug "Received framework message:" {:task-id task-id, :message message})
             _ (when (str/blank? task-id)
                 (throw (ex-info "task-id is empty in framework message" {:message message})))
             instance (ffirst (q '[:find ?i
@@ -1400,8 +1400,10 @@
   (persist-mea-culpa-failure-limit! conn mea-culpa-failure-limit)
 
   (let [fenzo (make-fenzo-scheduler driver-atom offer-incubate-time-ms fenzo-fitness-calculator good-enough-fitness)
-        [offers-chan resources-atom] (make-offer-handler conn driver-atom fenzo framework-id executor pending-jobs-atom
-                                                         offer-cache fenzo-max-jobs-considered fenzo-scaleback
+        [offers-chan resources-atom]
+        (make-offer-handler conn driver-atom fenzo framework-id executor pending-jobs-atom
+                                                         offer-cache fenzo-max-jobs-considered
+                            fenzo-scaleback
                                                          fenzo-floor-iterations-before-warn
                                                          fenzo-floor-iterations-before-reset match-trigger-chan)]
     (start-jobs-prioritizer! conn pending-jobs-atom task-constraints rank-trigger-chan)

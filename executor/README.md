@@ -58,7 +58,7 @@ For example:
             :log-level "INFO"
             :max-message-length 512
             :progress-output-name "stdout"
-            :progress-regex-string "\^\^\^\^JOB-PROGRESS: (\d*)(?: )?(.*)"
+            :progress-regex-string "progress: (\d*)(?: )?(.*)"
             :progress-sample-interval-ms 1000
             :uri {:cache true
                   :executable true

@@ -377,8 +377,8 @@
                        (throw (ex-info "Executor uri value is missing!" {:executor executor})))
                      (let [default-executor-config {:log-level "INFO"
                                                     :max-message-length 512
-                                                    :progress-output-name "stdout"
-                                                    :progress-regex-string "\\^\\^\\^\\^JOB-PROGRESS: (\\d*)(?: )?(.*)"
+                                                    :progress-output-file "stdout"
+                                                    :progress-regex-string "progress: (\\d*)(?: )?(.*)"
                                                     :progress-sample-interval-ms 1000}
                            default-uri-config {:cache true
                                                :executable true

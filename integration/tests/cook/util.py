@@ -65,6 +65,10 @@ def retrieve_mesos_url(varname='MESOS_PORT', value='5050'):
     return mesos_url
 
 
+def is_using_cook_executor(cook_url):
+    return get_in(settings(cook_url), 'executor', 'command') is not None
+
+
 def is_connection_error(exception):
     return isinstance(exception, requests.exceptions.ConnectionError)
 
@@ -103,15 +107,14 @@ def submit_job(cook_url, **kwargs):
 
 def load_job(cook_url, job_id):
     response = session.get('%s/rawscheduler?job=%s' % (cook_url, job_id))
+    assert 200 == response.status_code
     return response.json()[0]
 
 
-def wait_for_job(cook_url, job_id, status, max_delay=120000):
+def wait_for_job(cook_url, job_id, status, max_delay=120000, wait_for_exit_code=False):
     @retry(stop_max_delay=max_delay, wait_fixed=2000)
     def wait_for_job_inner():
-        response = session.get('%s/rawscheduler?job=%s' % (cook_url, job_id))
-        assert 200 == response.status_code
-        job = response.json()[0]
+        job = load_job(cook_url, job_id)
         if not job['status'] == status:
             error_msg = 'Job {} had status {} - expected {}. Details: {}'.format(
                 job_id, job['status'], status, json.dumps(job, sort_keys=True))
@@ -121,8 +124,23 @@ def wait_for_job(cook_url, job_id, status, max_delay=120000):
             logger.info('Job {} has status {}'.format(job_id, status))
             return job
 
+    @retry(stop_max_delay=2000, wait_fixed=250)
+    def wait_for_exit_code_inner():
+        job = load_job(cook_url, job_id)
+        if not 'exit_code' in job['instances'][0]:
+            error_msg = 'Job {} missing exit_code set! Details: {}'.format(job_id, json.dumps(job, sort_keys=True))
+            logger.info(error_msg)
+            raise RuntimeError(error_msg)
+        else:
+            logger.info('Job {} has exit_code {}'.format(job_id, job['instances'][0]['exit_code']))
+            return job
+
     try:
-        return wait_for_job_inner()
+        if wait_for_exit_code:
+            wait_for_job_inner()
+            return wait_for_exit_code_inner()
+        else:
+            return wait_for_job_inner()
     except:
         job_final = get_job(cook_url, job_id)
         logger.info('Timeout exceeded waiting for job to reach %s. Job details: %s' % (status, job_final))

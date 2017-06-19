@@ -18,7 +18,8 @@
          :leader-path "/cook-scheduler"
          :role "cook"
          :framework-id #config/env "COOK_FRAMEWORK_ID"}
- :executor {:command "/home/travis/build/twosigma/Cook/travis/cook-executor"}
+ :executor {:command "/home/travis/build/twosigma/Cook/travis/cook-executor"
+            :progress-regex-string "\\^\\^\\^\\^JOB-PROGRESS: (\\d*)(?: )?(.*)"}
  :unhandled-exceptions {:log-level :error}
  :metrics {:jmx true}
  :nrepl {:enabled? false}

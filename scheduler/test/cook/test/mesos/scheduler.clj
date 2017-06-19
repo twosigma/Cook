@@ -1360,7 +1360,7 @@
         executor {:command "cook-executor"
                   :log-level "INFO"
                   :max-message-length 512
-                  :progress-output-name "stdout"
+                  :progress-output-file "stdout"
                   :progress-regex-string "regex-string"
                   :progress-sample-interval-ms 1000
                   :uri {:cache true

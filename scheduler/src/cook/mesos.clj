@@ -178,7 +178,7 @@
    mea-culpa-failure-limit  -- long, max failures of mea culpa reason before it is considered a 'real' failure
                                      see scheduler/docs/configuration.asc for more details
    task-constraints         -- map, constraints on task. See scheduler/docs/configuration.asc for more details
-   executor                 -- cook executor config includes command, log-level, message-length, progress-output-name,
+   executor                 -- cook executor config includes command, log-level, message-length, progress-output-file,
                                      progress-regex-string, progress-sample-interval-ms and uri.
    riemann-host             -- str, dns name of riemann
    riemann-port             -- int, port for riemann
