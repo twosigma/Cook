@@ -245,7 +245,7 @@
                                     :in $ ?user ?state ?start ?end
                                     :where
                                     [?j :job/submit-time ?t]
-                                    [(< ?start ?t)]
+                                    [(<= ?start ?t)]
                                     [(< ?t ?end)]
                                     [?j :job/user ?user]
                                     [?j :job/state ?state]
@@ -258,7 +258,7 @@
                              [?j :job/state ?state]
                              [?j :job/user ?user]
                              [?j :job/submit-time ?t]
-                             [(< ?start ?t)]
+                             [(<= ?start ?t)]
                              [(< ?t ?end)]
                              [?j :job/custom-executor false]]
                            db user state start end)])]
