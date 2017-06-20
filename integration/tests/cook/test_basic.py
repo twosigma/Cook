@@ -251,7 +251,7 @@ class CookTest(unittest.TestCase):
         }
         group_spec = self.minimal_group(straggler_handling=straggler_handling)
         job_fast = util.minimal_job(group=group_spec["uuid"])
-        job_slow = util.minimal_job(group=group_spec["uuid"], command='sleep 120')
+        job_slow = util.minimal_job(group=group_spec["uuid"], command='sleep 1200')
         data = {'jobs': [job_fast, job_slow], 'groups': [group_spec]}
         resp = util.session.post('%s/rawscheduler' % self.cook_url, json=data)
         self.assertEqual(resp.status_code, 201)
