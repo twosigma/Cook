@@ -228,7 +228,7 @@
 ;; This works because the submission time and job/user field
 ;; are set at the same time, in "real" time. This means that
 ;; jobs submitted after `start` will have been created after
-;; expanded starti
+;; expanded start
 (defn get-jobs-by-user-and-states
   "Returns all job entities for a particular user
    in a particular state, in the specified timeframe,
