@@ -20,7 +20,8 @@
            [clojure.core.async :as async]
            [cook.mesos.util :as util]
            [cook.test.testutil :as testutil :refer (create-dummy-instance create-dummy-job restore-fresh-database!)]
-           [datomic.api :as d :refer (q db)]))
+           [datomic.api :as d :refer (q db)])
+ (:import [java.util Date]))
 
 (deftest test-get-pending-job-ents
   (let [uri "datomic:mem://test-get-pending-job-ents"
@@ -267,62 +268,72 @@
              end]]
            (util/generate-intervals start end (t/hours 7))))))
 
-(def test-get-jobs-by-user-and-state
+(def test-get-jobs-by-user-and-states
   (let [uri "datomic:mem://test-get-pending-job-ents"
         conn (restore-fresh-database! uri)]
     (doseq [state [:job.state/waiting :job.state/running :job.state/completed]]
-      (create-dummy-job conn
-                        :user "u1"
-                        :job-state state
-                        :submit-time #inst "2017-06-02T12:00:00"
-                        :custom-executor? false)
-      (create-dummy-job conn
-                        :user "u1"
-                        :job-state state
-                        :submit-time #inst "2017-06-02T12:01:00"
-                        :custom-executor? false)
-      (create-dummy-job conn
-                        :user "u2"
-                        :job-state state
-                        :submit-time #inst "2017-06-03T12:00:00"
-                        :custom-executor? false)
-      (create-dummy-job conn
-                        :user "u1"
-                        :job-state state
-                        :submit-time #inst "2017-06-03T12:00:00"
-                        :custom-executor? false)
-      (testing (str "get " state " jobs")
-        (is (= 2 (count (util/get-jobs-by-user-and-state (d/db conn) "u1" state
-                                                         #inst "2017-06-02" #inst "2017-06-03"
-                                                         (t/days 1) 10))))
-        (is (= 1 (count (util/get-jobs-by-user-and-state (d/db conn) "u1" state
-                                                         #inst "2017-06-02" #inst "2017-06-03"
-                                                         (t/days 1) 1))))
-        (is (= (map :job/submit-time
-                    (util/get-jobs-by-user-and-state (d/db conn) "u1" state
-                                                     #inst "2017-06-02" #inst "2017-06-03"
-                                                     (t/days 1) 1))
-               [#inst "2017-06-02T12:00:00"]))
-        (is (= 3 (count (util/get-jobs-by-user-and-state (d/db conn) "u1" state
-                                                         #inst "2017-06-02" #inst "2017-06-04"
-                                                         (t/days 1) 10))))
-        (is (= 2 (count (util/get-jobs-by-user-and-state (d/db conn) "u1" state
-                                                         #inst "2017-06-02" #inst "2017-06-04"
-                                                         (t/days 1) 2))))
-        (is (= (map :job/submit-time
-                    (util/get-jobs-by-user-and-state (d/db conn) "u1" state
-                                                     #inst "2017-06-02" #inst "2017-06-03"
-                                                     (t/days 1) 2))
-               [#inst "2017-06-02T12:00:00" #inst "2017-06-02T12:01:00"]))
+      ;; This function depends on when the transaction occurred so
+      ;; submit time must be based on now and we add sleeps to make the
+      ;; test less flaky 
+      (let [start-time (Date.)
+            job1 (create-dummy-job conn
+                              :user "u1"
+                              :job-state state
+                              :submit-time (Date.)
+                              :custom-executor? false)
+            _ (Thread/sleep 5)
+            job2 (create-dummy-job conn
+                              :user "u1"
+                              :job-state state
+                              :submit-time (Date.)
+                              :custom-executor? false)
+            _ (Thread/sleep 5)
+            half-way-time (Date.) 
+            job3 (create-dummy-job conn
+                              :user "u2"
+                              :job-state state
+                              :submit-time (Date.)
+                              :custom-executor? false)
+            _ (Thread/sleep 5)
+            job4 (create-dummy-job conn
+                              :user "u1"
+                              :job-state state
+                              :submit-time (Date.)
+                              :custom-executor? false)
+            _ (Thread/sleep 5)
+            end-time (Date.)]
+        (testing (str "get " state " jobs")
+          (is (= 2 (count (util/get-jobs-by-user-and-states (d/db conn) "u1" [state]
+                                                            start-time half-way-time
+                                                            10))))
+          (is (= 1 (count (util/get-jobs-by-user-and-states (d/db conn) "u1" [state]
+                                                            start-time half-way-time
+                                                            1))))
+          (is (= (map :db/id
+                      (util/get-jobs-by-user-and-states (d/db conn) "u1" [state]
+                                                        start-time half-way-time 
+                                                        1))
+                 [job1]))
+          (is (= 3 (count (util/get-jobs-by-user-and-states (d/db conn) "u1" [state]
+                                                            start-time end-time
+                                                            10))))
+          (is (= 2 (count (util/get-jobs-by-user-and-states (d/db conn) "u1" [state]
+                                                            start-time end-time
+                                                            2))))
+          (is (= (map :db/id
+                      (util/get-jobs-by-user-and-states (d/db conn) "u1" [state]
+                                                        start-time end-time
+                                                        2))
+                 [job1 job2]))
 
-        (is (= 1 (count (util/get-jobs-by-user-and-state (d/db conn) "u2" state
-                                                         #inst "2017-06-02" #inst "2017-06-04"
-                                                         (t/days 1) 10))))
-        (is (= 0 (count (util/get-jobs-by-user-and-state (d/db conn) "u3" state
-                                                         #inst "2017-06-02" #inst "2017-06-04"
-                                                         (t/days 1) 10))))
-        (is (= 0 (count (util/get-jobs-by-user-and-state (d/db conn) "u1" state
-                                                         #inst "2017-06-01" #inst "2017-06-02"
-                                                         (t/days 1) 10))))))))
+          (is (= 1 (count (util/get-jobs-by-user-and-states (d/db conn) "u2" [state]
+                                                            start-time end-time
+                                                            10))))
+          (is (= 0 (count (util/get-jobs-by-user-and-states (d/db conn) "u3" [state]
+                                                            start-time end-time
+                                                            10))))
+          (is (= 0 (count (util/get-jobs-by-user-and-states (d/db conn) "u1" [state]
+                                                            #inst "2017-06-01" #inst "2017-06-02"
+                                                            10)))))))))
 
 (comment (run-tests))
