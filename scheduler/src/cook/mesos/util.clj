@@ -218,6 +218,17 @@
    (->> (conj (vec (periodic-seq start end period-like)) end)
         (partition 2 1))))
 
+;; get-jobs-by-user-and-states is a bit opaque because it is
+;; reaching into datomic internals. Here is a quick explanation.
+;; seek-datoms provides a pointer into the raw datomic indices 
+;; that we can then seek through. We set the pointer to look
+;; through the avet index, with attribute :job/user, seek to 
+;; user and then seek to the entity id that *would* have been
+;; created at expanded start. 
+;; This works because the submission time and job/user field
+;; are set at the same time, in "real" time. This means that
+;; jobs submitted after `start` will have been created after
+;; expanded starti
 (defn get-jobs-by-user-and-states
   "Returns all job entities for a particular user
    in a particular state, in the specified timeframe,
@@ -227,11 +238,11 @@
         ;; Expand the time range so that clock skew between cook
         ;; and datomic doesn't cause us to miss jobs
         ;; 1 hour was picked because a skew larger than that would be
-        ;; susipious
+        ;; suspicious
         expanded-start (Date. (- (.getTime start) 
                                  (-> 1 t/hours t/in-millis)))
         expanded-end (Date. (+ (.getTime end)
-                               (-> 1 t/hours t/in-millis)))] 
+                               (-> 1 t/hours t/in-millis)))]
     (->> (d/seek-datoms db :avet :job/user user (d/entid-at db :db.part/user expanded-start))
          (take-while #(and (< (.e %) (d/entid-at db :db.part/user expanded-end))
                            (= (.a %) (d/entid db :job/user))
