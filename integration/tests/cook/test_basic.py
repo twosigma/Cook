@@ -307,7 +307,7 @@ class CookTest(unittest.TestCase):
     
     def test_constraints(self):
         state = util.get_mesos_state(self.mesos_url)
-        hosts = [agent['hostname'] for agent in state['slaves']]
+        hosts = [agent['hostname'] for agent in state['slaves']][:10]
 
         bad_job_uuid, resp = util.submit_job(self.cook_url, constraints=[["HOSTNAME", 
                                                                           "EQUALS", 
