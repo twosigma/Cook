@@ -329,6 +329,9 @@ class CookTest(unittest.TestCase):
         # This job should have been scheduled since the job submitted after it has completed
         # however, its constraint means it won't get scheduled
         job = util.wait_for_job(self.cook_url, bad_job_uuid, 'waiting', max_delay=3000)
+        # Clean up after ourselves
+        util.session.delete('%s/rawscheduler?job=%s' % (self.cook_url, bad_job_uuid))
+
 
     def test_allow_partial(self):
         def absent_uuids(response):
