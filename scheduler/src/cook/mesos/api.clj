@@ -1535,7 +1535,7 @@
 (timers/deftimer [cook-scheduler handler list-endpoint])
 
 (defn list-resource
-  [db framework-id is-authorized-fn batch-period]
+  [db framework-id is-authorized-fn]
   (liberator/resource
    :available-media-types ["application/json"]
    :allowed-methods [:get]
@@ -1600,15 +1600,12 @@
                        job-uuids (->> (timers/time!
                                        fetch-jobs
                                        ;; Get valid timings
-                                       (doall
-                                        (mapcat #(util/get-jobs-by-user-and-state db
-                                                                                  user
-                                                                                  %
-                                                                                  start
-                                                                                  end
-                                                                                  batch-period
-                                                                                  limit)
-                                                states)))
+                                       (util/get-jobs-by-user-and-states db
+                                                                         user
+                                                                         states
+                                                                         start
+                                                                         end
+                                                                         limit))
                                       (sort-by :job/submit-time)
                                       reverse
                                       (map :job/uuid))
@@ -1675,7 +1672,7 @@
 ;;
 (defn main-handler
   [conn fid mesos-pending-jobs-fn
-   {:keys [task-constraints is-authorized-fn list-batch-period] 
+   {:keys [task-constraints is-authorized-fn] 
     gpu-enabled? :mesos-gpu-enabled
     :as settings}]
   (->
@@ -1822,7 +1819,7 @@
     (ANY "/running" []
          (running-jobs conn is-authorized-fn))
     (ANY "/list" []
-         (list-resource (db conn) fid is-authorized-fn list-batch-period)))
+         (list-resource (db conn) fid is-authorized-fn)))
    (format-params/wrap-restful-params {:formats [:json-kw]
                                        :handle-error c-mw/handle-req-error})
    (streaming-json-middleware)))

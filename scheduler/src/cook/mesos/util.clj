@@ -23,7 +23,8 @@
             [datomic.api :as d :refer (q)]
             [metatransaction.core :refer (db)]
             [metrics.timers :as timers]
-            [plumbing.core :as pc :refer (map-vals map-keys)]))
+            [plumbing.core :as pc :refer (map-vals map-keys)])
+  (:import [java.util Date]))
 
 (defn get-all-resource-types
   "Return a list of all supported resources types. Example, :cpus :mem :gpus ..."
@@ -217,42 +218,41 @@
    (->> (conj (vec (periodic-seq start end period-like)) end)
         (partition 2 1))))
 
-(defn get-jobs-by-user-and-state
+;; get-jobs-by-user-and-states is a bit opaque because it is
+;; reaching into datomic internals. Here is a quick explanation.
+;; seek-datoms provides a pointer into the raw datomic indices
+;; that we can then seek through. We set the pointer to look
+;; through the avet index, with attribute :job/user, seek to
+;; user and then seek to the entity id that *would* have been
+;; created at expanded start.
+;; This works because the submission time and job/user field
+;; are set at the same time, in "real" time. This means that
+;; jobs submitted after `start` will have been created after
+;; expanded start.
+(defn get-jobs-by-user-and-states
   "Returns all job entities for a particular user
    in a particular state, in the specified timeframe,
    without a custom executor."
-  [db user state start end period-like limit]
-  (let [intervals (generate-intervals (tc/from-date start) (tc/from-date end) period-like)
-        job-batches (if (= state :job.state/completed)
-                      (map (fn query-in-chunks
-                             [interval]
-                             (let [[interval-start interval-end] (map tc/to-date interval)]
-                               (q '[:find [?j ...]
-                                    :in $ ?user ?state ?start ?end
-                                    :where
-                                    [?j :job/submit-time ?t]
-                                    [(<= ?start ?t)]
-                                    [(< ?t ?end)]
-                                    [?j :job/user ?user]
-                                    [?j :job/state ?state]
-                                    [?j :job/custom-executor false]]
-                                  db user state interval-start interval-end)))
-                           intervals)
-                      [(q '[:find [?j ...]
-                             :in $ ?user ?state ?start ?end
-                             :where
-                             [?j :job/state ?state]
-                             [?j :job/user ?user]
-                             [?j :job/submit-time ?t]
-                             [(<= ?start ?t)]
-                             [(< ?t ?end)]
-                             [?j :job/custom-executor false]]
-                           db user state start end)])]
-    (->> job-batches
-         (map sort)
-         (apply concat)
-         (take limit)
-         (map (partial d/entity db)))))
+  [db user states start end limit]
+  (let [states (set states)
+        ;; Expand the time range so that clock skew between cook
+        ;; and datomic doesn't cause us to miss jobs
+        ;; 1 hour was picked because a skew larger than that would be
+        ;; suspicious
+        expanded-start (Date. (- (.getTime start) 
+                                 (-> 1 t/hours t/in-millis)))
+        expanded-end (Date. (+ (.getTime end)
+                               (-> 1 t/hours t/in-millis)))]
+    (->> (d/seek-datoms db :avet :job/user user (d/entid-at db :db.part/user expanded-start))
+         (take-while #(and (< (.e %) (d/entid-at db :db.part/user expanded-end))
+                           (= (.a %) (d/entid db :job/user))
+                           (= (.v %) user)))
+         (map #(.e %))
+         (map (partial d/entity db))
+         (filter #(<= (.getTime start) (.getTime (:job/submit-time %))))
+         (filter #(< (.getTime (:job/submit-time %)) (.getTime end)))
+         (filter #(contains? states (:job/state %)))
+         (take limit))))
 
 (defn jobs-by-user-and-state
   "Returns all job entities for a particular user

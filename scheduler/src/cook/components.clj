@@ -325,8 +325,6 @@
                                      (log/info "Using kerberos middleware")
                                      (lazy-load-var 'cook.spnego/require-gss))
                                    :else (throw (ex-info "Missing authorization configuration" {}))))
-     :list-batch-period (fnk [[:config {list-batch-period-minutes (* 60 24)}]]
-                             (t/minutes list-batch-period-minutes))
      :rate-limit (fnk [[:config {rate-limit nil}]]
                    (let [{:keys [user-limit-per-m]
                           :or {user-limit-per-m 600}} rate-limit]
