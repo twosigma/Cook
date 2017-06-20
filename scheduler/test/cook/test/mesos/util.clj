@@ -254,4 +254,75 @@
       (async/<!! oc)
       (is (= (count (util/read-chan ch 10)) 10)))))
 
+(deftest test-generate-intervals
+  (let [start (tc/from-date #inst "2017-06-01")
+        end (tc/from-date #inst "2017-06-02")]
+    (is (= [[start end]] (util/generate-intervals start end (t/days 1))))
+    (is (= [[start (tc/from-date #inst "2017-06-01T07:00:00")]
+            [(tc/from-date #inst "2017-06-01T07:00:00")
+             (tc/from-date #inst "2017-06-01T14:00:00")]
+            [(tc/from-date #inst "2017-06-01T14:00:00")
+             (tc/from-date #inst "2017-06-01T21:00:00")]
+            [(tc/from-date #inst "2017-06-01T21:00:00")
+             end]]
+           (util/generate-intervals start end (t/hours 7))))))
+
+(def test-get-jobs-by-user-and-state
+  (let [uri "datomic:mem://test-get-pending-job-ents"
+        conn (restore-fresh-database! uri)]
+    (doseq [state [:job.state/waiting :job.state/running :job.state/completed]]
+      (create-dummy-job conn
+                        :user "u1"
+                        :job-state state
+                        :submit-time #inst "2017-06-02T12:00:00"
+                        :custom-executor? false)
+      (create-dummy-job conn
+                        :user "u1"
+                        :job-state state
+                        :submit-time #inst "2017-06-02T12:01:00"
+                        :custom-executor? false)
+      (create-dummy-job conn
+                        :user "u2"
+                        :job-state state
+                        :submit-time #inst "2017-06-03T12:00:00"
+                        :custom-executor? false)
+      (create-dummy-job conn
+                        :user "u1"
+                        :job-state state
+                        :submit-time #inst "2017-06-03T12:00:00"
+                        :custom-executor? false)
+      (testing (str "get " state " jobs")
+        (is (= 2 (count (util/get-jobs-by-user-and-state (d/db conn) "u1" state
+                                                         #inst "2017-06-02" #inst "2017-06-03"
+                                                         (t/days 1) 10))))
+        (is (= 1 (count (util/get-jobs-by-user-and-state (d/db conn) "u1" state
+                                                         #inst "2017-06-02" #inst "2017-06-03"
+                                                         (t/days 1) 1))))
+        (is (= (map :job/submit-time
+                    (util/get-jobs-by-user-and-state (d/db conn) "u1" state
+                                                     #inst "2017-06-02" #inst "2017-06-03"
+                                                     (t/days 1) 1))
+               [#inst "2017-06-02T12:00:00"]))
+        (is (= 3 (count (util/get-jobs-by-user-and-state (d/db conn) "u1" state
+                                                         #inst "2017-06-02" #inst "2017-06-04"
+                                                         (t/days 1) 10))))
+        (is (= 2 (count (util/get-jobs-by-user-and-state (d/db conn) "u1" state
+                                                         #inst "2017-06-02" #inst "2017-06-04"
+                                                         (t/days 1) 2))))
+        (is (= (map :job/submit-time
+                    (util/get-jobs-by-user-and-state (d/db conn) "u1" state
+                                                     #inst "2017-06-02" #inst "2017-06-03"
+                                                     (t/days 1) 2))
+               [#inst "2017-06-02T12:00:00" #inst "2017-06-02T12:01:00"]))
+
+        (is (= 1 (count (util/get-jobs-by-user-and-state (d/db conn) "u2" state
+                                                         #inst "2017-06-02" #inst "2017-06-04"
+                                                         (t/days 1) 10))))
+        (is (= 0 (count (util/get-jobs-by-user-and-state (d/db conn) "u3" state
+                                                         #inst "2017-06-02" #inst "2017-06-04"
+                                                         (t/days 1) 10))))
+        (is (= 0 (count (util/get-jobs-by-user-and-state (d/db conn) "u1" state
+                                                         #inst "2017-06-01" #inst "2017-06-02"
+                                                         (t/days 1) 10))))))))
+
 (comment (run-tests))

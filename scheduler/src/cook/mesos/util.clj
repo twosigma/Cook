@@ -16,6 +16,7 @@
 (ns cook.mesos.util
   (:require [clj-time.coerce :as tc]
             [clj-time.core :as t]
+            [clj-time.periodic :refer [periodic-seq]]
             [clojure.core.async :as async]
             [clojure.core.cache :as cache]
             [clojure.walk :as walk]
@@ -198,38 +199,60 @@
      get-pending-jobs-duration
      (get-pending-job-ents* unfiltered-db true))))
 
+(defn generate-intervals
+  "Generates a list of intervals between start and end as pairs
+   [interval-start interval-end]. The union of the intervals is
+   inclusive of both start and end
+
+   Parameters:
+   ----------
+   start : clj-time/datetime
+   end : clj-time/datetime
+   period-like : clj-time/period
+
+   Returns:
+   --------
+   list of pairs, [interval-start interval-end]"
+  ([start end period-like]
+   (->> (conj (vec (periodic-seq start end period-like)) end)
+        (partition 2 1))))
+
 (defn get-jobs-by-user-and-state
   "Returns all job entities for a particular user
    in a particular state, in the specified timeframe,
    without a custom executor."
-  [db user state start end]
-  (->> (if (= state :job.state/completed)
-         ;; Datomic query performance is based entirely on the size of the set
-         ;; of the first where clause. In the case of :job.state/completed
-         ;; the total number of jobs for a user should be smaller than
-         ;; all completed jobs by any user i.e.
-         ;; (waiting_user + running_user < completed - completed_user)
-         (q '[:find [?j ...]
-              :in $ ?user ?state ?start ?end
-              :where
-              [?j :job/user ?user]
-              [?j :job/state ?state]
-              [?j :job/submit-time ?t]
-              [(< ?start ?t)]
-              [(< ?t ?end)]
-              [?j :job/custom-executor false]]
-            db user state start end)
-         (q '[:find [?j ...]
-              :in $ ?user ?state ?start ?end
-              :where
-              [?j :job/state ?state]
-              [?j :job/user ?user]
-              [?j :job/submit-time ?t]
-              [(< ?start ?t)]
-              [(< ?t ?end)]
-              [?j :job/custom-executor false]]
-            db user state start end))
-       (map (partial d/entity db))))
+  [db user state start end period-like limit]
+  (let [intervals (generate-intervals (tc/from-date start) (tc/from-date end) period-like)
+        job-batches (if (= state :job.state/completed)
+                      (map (fn query-in-chunks
+                             [interval]
+                             (let [[interval-start interval-end] (map tc/to-date interval)]
+                               (q '[:find [?j ...]
+                                    :in $ ?user ?state ?start ?end
+                                    :where
+                                    [?j :job/submit-time ?t]
+                                    [(<= ?start ?t)]
+                                    [(< ?t ?end)]
+                                    [?j :job/user ?user]
+                                    [?j :job/state ?state]
+                                    [?j :job/custom-executor false]]
+                                  db user state interval-start interval-end)))
+                           intervals)
+                      [(q '[:find [?j ...]
+                             :in $ ?user ?state ?start ?end
+                             :where
+                             [?j :job/state ?state]
+                             [?j :job/user ?user]
+                             [?j :job/submit-time ?t]
+                             [(<= ?start ?t)]
+                             [(< ?t ?end)]
+                             [?j :job/custom-executor false]]
+                           db user state start end)])]
+    (->> job-batches
+         (map sort)
+         (apply concat)
+         (take limit)
+         (map (partial d/entity db)))))
 
 (defn jobs-by-user-and-state
   "Returns all job entities for a particular user
