@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.4.2] - 2017-06-20
+### Changed
+- Lowered log level of sandbox directory fetch error to reduce noise, from @wyegelwel
+- Further optimize list endpoint query, from @pschorf and @wyegelwel
+
 ## [1.4.1] - 2017-06-20
 ### Changed
 - Optimized the query in the list endpoint to avoid an expensive datomic join, from @pschorf and @wyegelwel
