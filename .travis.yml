@@ -19,15 +19,16 @@ env:
     - MESOS_NATIVE_JAVA_LIBRARY=/usr/lib/libmesos.so
     - CLJ_HTTP_ASYNC_POOL_TEST_DURATION_MULTIPLIER=5
   matrix:
-    - TEST_DIR=executor DEPS_CMD='python3 setup.py install' TEST_CMD='python3 setup.py nosetests'
-    - TEST_DIR=scheduler DEPS_CMD='lein with-profiles +test deps' TEST_CMD='lein test :all'
-    - TEST_DIR=jobclient DEPS_CMD='mvn dependency:resolve' TEST_CMD='mvn test'
-    - TEST_DIR=simulator DEPS_CMD='travis/prepare_simulation.sh' TEST_CMD='travis/run_simulation.sh'
-    - TEST_DIR=integration DEPS_CMD='travis/prepare_integration.sh' TEST_CMD='travis/run_integration.sh'
-    - TEST_DIR=integration DEPS_CMD='travis/prepare_integration.sh' TEST_CMD='travis/run_integration.sh explicit'
+    - COOK_EXECUTOR='1' TEST_DIR=executor DEPS_CMD='python3 setup.py install' TEST_CMD='python3 setup.py nosetests'
+    - COOK_EXECUTOR='1' TEST_DIR=scheduler DEPS_CMD='lein with-profiles +test deps' TEST_CMD='lein test :all'
+    - COOK_EXECUTOR='1' TEST_DIR=jobclient DEPS_CMD='mvn dependency:resolve' TEST_CMD='mvn test'
+    - COOK_EXECUTOR='1' TEST_DIR=simulator DEPS_CMD='travis/prepare_simulation.sh' TEST_CMD='travis/run_simulation.sh'
+    - COOK_EXECUTOR='1' TEST_DIR=integration DEPS_CMD='travis/prepare_integration.sh' TEST_CMD='travis/run_integration.sh'
+    - COOK_EXECUTOR='0' TEST_DIR=integration DEPS_CMD='travis/prepare_integration.sh' TEST_CMD='travis/run_integration.sh'
+    - COOK_EXECUTOR='1' TEST_DIR=integration DEPS_CMD='travis/prepare_integration.sh' TEST_CMD='travis/run_integration.sh explicit'
 matrix:
     fast_finish: true
     allow_failures:
       - env: TEST_DIR=integration DEPS_CMD='travis/prepare_integration.sh' TEST_CMD='travis/run_integration.sh explicit'
 before_script: (cd $TEST_DIR && $DEPS_CMD)
-script: cd $TEST_DIR && $TEST_CMD
+script: cd $TEST_DIR && COOK_EXECUTOR=$COOK_EXECUTOR $TEST_CMD
