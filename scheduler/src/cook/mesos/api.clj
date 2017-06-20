@@ -749,7 +749,7 @@
       (str "http://" agent-hostname ":5051" "/files/read.json?path="
            (URLEncoder/encode directory "UTF-8")))
     (catch Exception e
-      (log/error e "Unable to retrieve directory path for" executor-id "on agent" agent-hostname)
+      (log/debug e "Unable to retrieve directory path for" executor-id "on agent" agent-hostname)
       nil)))
 
 (defn- instance->instance-map
