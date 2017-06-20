@@ -251,7 +251,7 @@ class CookTest(unittest.TestCase):
         }
         group_spec = self.minimal_group(straggler_handling=straggler_handling)
         job_fast = util.minimal_job(group=group_spec["uuid"])
-        job_slow = util.minimal_job(group=group_spec["uuid"], command='sleep 120')
+        job_slow = util.minimal_job(group=group_spec["uuid"], command='sleep 1200')
         data = {'jobs': [job_fast, job_slow], 'groups': [group_spec]}
         resp = util.session.post('%s/rawscheduler' % self.cook_url, json=data)
         self.assertEqual(resp.status_code, 201)
@@ -307,7 +307,7 @@ class CookTest(unittest.TestCase):
     
     def test_constraints(self):
         state = util.get_mesos_state(self.mesos_url)
-        hosts = [agent['hostname'] for agent in state['slaves']]
+        hosts = [agent['hostname'] for agent in state['slaves']][:10]
 
         bad_job_uuid, resp = util.submit_job(self.cook_url, constraints=[["HOSTNAME", 
                                                                           "EQUALS", 
@@ -329,6 +329,9 @@ class CookTest(unittest.TestCase):
         # This job should have been scheduled since the job submitted after it has completed
         # however, its constraint means it won't get scheduled
         job = util.wait_for_job(self.cook_url, bad_job_uuid, 'waiting', max_delay=3000)
+        # Clean up after ourselves
+        util.session.delete('%s/rawscheduler?job=%s' % (self.cook_url, bad_job_uuid))
+
 
     def test_allow_partial(self):
         def absent_uuids(response):
