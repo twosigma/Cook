@@ -259,6 +259,10 @@
 
 (timers/deftimer [cook-mesos scheduler get-active-jobs-by-user-duration])
 
+;; This is a separate query from completed jobs because most running/waiting jobs
+;; will be at the end of the time range, so the query is somewhat inefficent.
+;; The standard datomic query performs reasonably well on the smaller set of
+;; running and waiting jobs, so it's implemented that way to keep things simple.
 (defn get-active-jobs-by-user-and-state
   "Returns all jobs for a particular user in the specified state
    and timeframe, without a custom executor.
