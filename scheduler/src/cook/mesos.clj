@@ -207,7 +207,7 @@
                           (reify LeaderSelectorListener
                             (takeLeadership [_ client]
                               (log/warn "Taking mesos leadership")
-                              (swap! mesos-leadership-atom (constantly true))
+                              (reset! mesos-leadership-atom true)
                               ;; TODO: get the framework ID and try to reregister
                               (let [normal-exit (atom true)]
                                 (try
@@ -273,7 +273,7 @@
                               ;; We will give up our leadership whenever it seems that we lost
                               ;; ZK connection
                               (when (#{ConnectionState/LOST ConnectionState/SUSPENDED} newState)
-                                (swap! mesos-leadership-atom (constantly false))
+                                (reset! mesos-leadership-atom false)
                                 (when-let [driver @current-driver]
                                   (counters/dec! mesos-leader)
                                   ;; Better to fail over and rely on start up code we trust then rely on rarely run code
