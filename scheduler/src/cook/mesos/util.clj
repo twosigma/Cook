@@ -257,8 +257,6 @@
           (filter #(not (:job/custom-executor %)))
           (take limit)))))
 
-(timers/deftimer [cook-mesos scheduler get-active-jobs-by-user-duration])
-
 ;; This is a separate query from completed jobs because most running/waiting jobs
 ;; will be at the end of the time range, so the query is somewhat inefficent.
 ;; The standard datomic query performs reasonably well on the smaller set of
@@ -270,7 +268,7 @@
    get-completed-jobs-by-user instead."
   [db user start end state]
   (timers/time!
-   get-active-jobs-by-user-duration
+   (timers/timer ["cook-mesos" "scheduler" (str "get-" (name state) "-jobs-by-user-duration")])
    (->> (q '[:find [?j ...]
              :in $ ?user ?state ?start ?end
              :where
