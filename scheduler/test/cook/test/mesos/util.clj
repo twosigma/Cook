@@ -281,6 +281,12 @@
                               :job-state state
                               :submit-time (Date.)
                               :custom-executor? false)
+            ; this job should never be returned.
+            _ (create-dummy-job conn
+                                :user "u1"
+                                :job-state state
+                                :submit-time (Date.)
+                                :custom-executor? true)
             _ (Thread/sleep 5)
             job2 (create-dummy-job conn
                               :user "u1"
