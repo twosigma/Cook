@@ -278,8 +278,8 @@
                             (if (= state :job.state/completed)
                               (get-completed-jobs-by-user db user start end limit)
                               (get-active-jobs-by-user-and-state db user start end state)))
-        jobs-by-state (map get-jobs-by-state states)]
-    (->> (apply concat jobs-by-state)
+        jobs-by-state (mapcat get-jobs-by-state states)]
+    (->> jobs-by-state
          (sort-by :job/submit-time)
          (take limit))))
 
