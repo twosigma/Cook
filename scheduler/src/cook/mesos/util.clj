@@ -250,6 +250,7 @@
          (filter #(<= (.getTime start) (.getTime (:job/submit-time %))))
          (filter #(< (.getTime (:job/submit-time %)) (.getTime end)))
          (filter #(= :job.state/completed (:job/state %)))
+         (filter #(not (:job/custom-executor %)))
          (take limit))))
 
 (defn get-active-jobs-by-user-and-state
