@@ -6,6 +6,7 @@
   (let [handler (fn [_] "Called handler!")
         debug-request {:uri "/debug"
                        :request-method :get}]
+
     (testing "always returns 200 if leader-reports-unhealthy is false"
       (let [leadership-atom (atom false)
             middleware (components/health-check-middleware handler
@@ -14,6 +15,7 @@
         (is (= 200 (:status (middleware debug-request))))
         (swap! leadership-atom (constantly true))
         (is (= 200 (:status (middleware debug-request))))))
+
     (testing "returns 503 when leader"
       (let [leadership-atom (atom false)
             middleware (components/health-check-middleware handler
@@ -22,6 +24,7 @@
         (is (= 200 (:status (middleware debug-request))))
         (swap! leadership-atom (constantly true))
         (is (= 503 (:status (middleware debug-request))))))
+
     (testing "passes other requests to handler"
       (let [leadership-atom (atom false)
             middleware (components/health-check-middleware handler
