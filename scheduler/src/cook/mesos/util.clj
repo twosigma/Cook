@@ -218,7 +218,7 @@
    (->> (conj (vec (periodic-seq start end period-like)) end)
         (partition 2 1))))
 
-;; get-jobs-by-user-and-states is a bit opaque because it is
+;; get-completed-jobs-by-user is a bit opaque because it is
 ;; reaching into datomic internals. Here is a quick explanation.
 ;; seek-datoms provides a pointer into the raw datomic indices 
 ;; that we can then seek through. We set the pointer to look
@@ -229,13 +229,11 @@
 ;; are set at the same time, in "real" time. This means that
 ;; jobs submitted after `start` will have been created after
 ;; expanded start
-(defn get-jobs-by-user-and-states
-  "Returns all job entities for a particular user
-   in a particular state, in the specified timeframe,
-   without a custom executor."
-  [db user states start end limit]
-  (let [states (set states)
-        ;; Expand the time range so that clock skew between cook
+(defn get-completed-jobs-by-user
+  "Returns all completed job entities for a particular user
+   in the specified timeframe, without a custom executor."
+  [db user start end limit]
+  (let [;; Expand the time range so that clock skew between cook
         ;; and datomic doesn't cause us to miss jobs
         ;; 1 hour was picked because a skew larger than that would be
         ;; suspicious
@@ -251,8 +249,40 @@
          (map (partial d/entity db))
          (filter #(<= (.getTime start) (.getTime (:job/submit-time %))))
          (filter #(< (.getTime (:job/submit-time %)) (.getTime end)))
-         (filter #(contains? states (:job/state %)))
+         (filter #(= :job.state/completed (:job/state %)))
          (take limit))))
+
+(defn get-active-jobs-by-user-and-state
+  "Returns all jobs for a particular user in the specified state
+   and timeframe, without a custom executor.
+   Note that this query is not performant for completed jobs, use
+   get-completed-jobs-by-user instead."
+  [db user start end state]
+  (->> (q '[:find [?j ...]
+            :in $ ?user ?state ?start ?end
+            :where
+            [?j :job/state ?state]
+            [?j :job/user ?user]
+            [?j :job/submit-time ?t]
+            [(<= ?start ?t)]
+            [(< ?t ?end)]
+            [?j :job/custom-executor false]]
+          db user state start end)
+       (map (partial d/entity db))))
+
+(defn get-jobs-by-user-and-states
+  "Returns all jobs for a particular user in the specified states
+   and timeframe, without a custom executor."
+  [db user states start end limit]
+  (let [get-jobs-by-state (fn get-jobs-by-state [state]
+                            (if (= state :job.state/completed)
+                              (get-completed-jobs-by-user db user start end limit)
+                              (get-active-jobs-by-user-and-state db user start end state)))
+        jobs-by-state (map get-jobs-by-state states)]
+    (->> (apply concat jobs-by-state)
+         (sort-by :job/submit-time)
+         (take limit))))
+
 
 (defn jobs-by-user-and-state
   "Returns all job entities for a particular user
