@@ -187,7 +187,7 @@
    gpu-enabled?             -- boolean, whether cook will schedule gpus
    rebalancer-config        -- map, config for rebalancer. See scheduler/docs/rebalancer-config.asc for details
    fenzo-config             -- map, config for fenzo, See scheduler/docs/configuration.asc for more details"
-  [make-mesos-driver-fn get-mesos-utilization curator-framework mesos-datomic-conn mesos-datomic-mult zk-prefix offer-incubate-time-ms mea-culpa-failure-limit task-constraints riemann-host riemann-port mesos-pending-jobs-atom offer-cache gpu-enabled? rebalancer-config
+  [make-mesos-driver-fn get-mesos-utilization curator-framework mesos-datomic-conn mesos-datomic-mult zk-prefix offer-incubate-time-ms mea-culpa-failure-limit task-constraints riemann-host riemann-port mesos-pending-jobs-atom offer-cache gpu-enabled? rebalancer-config mesos-leadership-atom
    {:keys [fenzo-fitness-calculator fenzo-floor-iterations-before-reset fenzo-floor-iterations-before-warn
            fenzo-max-jobs-considered fenzo-scaleback good-enough-fitness]
     :as fenzo-config}
@@ -207,6 +207,7 @@
                           (reify LeaderSelectorListener
                             (takeLeadership [_ client]
                               (log/warn "Taking mesos leadership")
+                              (reset! mesos-leadership-atom true)
                               ;; TODO: get the framework ID and try to reregister
                               (let [normal-exit (atom true)]
                                 (try
@@ -272,6 +273,7 @@
                               ;; We will give up our leadership whenever it seems that we lost
                               ;; ZK connection
                               (when (#{ConnectionState/LOST ConnectionState/SUSPENDED} newState)
+                                (reset! mesos-leadership-atom false)
                                 (when-let [driver @current-driver]
                                   (counters/dec! mesos-leader)
                                   ;; Better to fail over and rely on start up code we trust then rely on rarely run code
