@@ -218,6 +218,8 @@
    (->> (conj (vec (periodic-seq start end period-like)) end)
         (partition 2 1))))
 
+(timers/deftimer [cook-mesos scheduler get-completed-jobs-by-user-duration])
+
 ;; get-completed-jobs-by-user is a bit opaque because it is
 ;; reaching into datomic internals. Here is a quick explanation.
 ;; seek-datoms provides a pointer into the raw datomic indices 
@@ -233,25 +235,29 @@
   "Returns all completed job entities for a particular user
    in the specified timeframe, without a custom executor."
   [db user start end limit]
-  (let [;; Expand the time range so that clock skew between cook
-        ;; and datomic doesn't cause us to miss jobs
-        ;; 1 hour was picked because a skew larger than that would be
-        ;; suspicious
-        expanded-start (Date. (- (.getTime start) 
-                                 (-> 1 t/hours t/in-millis)))
-        expanded-end (Date. (+ (.getTime end)
-                               (-> 1 t/hours t/in-millis)))]
-    (->> (d/seek-datoms db :avet :job/user user (d/entid-at db :db.part/user expanded-start))
-         (take-while #(and (< (.e %) (d/entid-at db :db.part/user expanded-end))
-                           (= (.a %) (d/entid db :job/user))
-                           (= (.v %) user)))
-         (map #(.e %))
-         (map (partial d/entity db))
-         (filter #(<= (.getTime start) (.getTime (:job/submit-time %))))
-         (filter #(< (.getTime (:job/submit-time %)) (.getTime end)))
-         (filter #(= :job.state/completed (:job/state %)))
-         (filter #(not (:job/custom-executor %)))
-         (take limit))))
+  (timers/time!
+   get-completed-jobs-by-user-duration
+   (let [;; Expand the time range so that clock skew between cook
+         ;; and datomic doesn't cause us to miss jobs
+         ;; 1 hour was picked because a skew larger than that would be
+         ;; suspicious
+         expanded-start (Date. (- (.getTime start) 
+                                  (-> 1 t/hours t/in-millis)))
+         expanded-end (Date. (+ (.getTime end)
+                                (-> 1 t/hours t/in-millis)))]
+     (->> (d/seek-datoms db :avet :job/user user (d/entid-at db :db.part/user expanded-start))
+          (take-while #(and (< (.e %) (d/entid-at db :db.part/user expanded-end))
+                            (= (.a %) (d/entid db :job/user))
+                            (= (.v %) user)))
+          (map #(.e %))
+          (map (partial d/entity db))
+          (filter #(<= (.getTime start) (.getTime (:job/submit-time %))))
+          (filter #(< (.getTime (:job/submit-time %)) (.getTime end)))
+          (filter #(= :job.state/completed (:job/state %)))
+          (filter #(not (:job/custom-executor %)))
+          (take limit)))))
+
+(timers/deftimer [cook-mesos scheduler get-active-jobs-by-user-duration])
 
 (defn get-active-jobs-by-user-and-state
   "Returns all jobs for a particular user in the specified state
@@ -259,17 +265,19 @@
    Note that this query is not performant for completed jobs, use
    get-completed-jobs-by-user instead."
   [db user start end state]
-  (->> (q '[:find [?j ...]
-            :in $ ?user ?state ?start ?end
-            :where
-            [?j :job/state ?state]
-            [?j :job/user ?user]
-            [?j :job/submit-time ?t]
-            [(<= ?start ?t)]
-            [(< ?t ?end)]
-            [?j :job/custom-executor false]]
-          db user state start end)
-       (map (partial d/entity db))))
+  (timers/time!
+   get-active-jobs-by-user-duration
+   (->> (q '[:find [?j ...]
+             :in $ ?user ?state ?start ?end
+             :where
+             [?j :job/state ?state]
+             [?j :job/user ?user]
+             [?j :job/submit-time ?t]
+             [(<= ?start ?t)]
+             [(< ?t ?end)]
+             [?j :job/custom-executor false]]
+           db user state start end)
+        (map (partial d/entity db)))))
 
 (defn get-jobs-by-user-and-states
   "Returns all jobs for a particular user in the specified states
