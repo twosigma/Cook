@@ -82,7 +82,8 @@
                    (route/not-found "<h1>Not a valid route</h1>")))})
 
 (def mesos-scheduler
-  {:mesos-scheduler (fnk [[:settings mesos-master mesos-master-hosts mesos-leader-path mesos-failover-timeout mesos-principal mesos-role mesos-framework-name offer-incubate-time-ms mea-culpa-failure-limit fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset fenzo-fitness-calculator task-constraints riemann mesos-gpu-enabled rebalancer good-enough-fitness] mesos-datomic mesos-datomic-mult curator-framework mesos-pending-jobs-atom mesos-offer-cache]
+  {:mesos-scheduler (fnk [[:settings mesos-master mesos-master-hosts mesos-leader-path mesos-failover-timeout mesos-principal mesos-role mesos-framework-name offer-incubate-time-ms mea-culpa-failure-limit fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset fenzo-fitness-calculator task-constraints riemann mesos-gpu-enabled rebalancer good-enough-fitness] mesos-datomic mesos-datomic-mult curator-framework mesos-pending-jobs-atom mesos-offer-cache mesos-leadership-atom]
+
                       (let [make-mesos-driver-fn (partial (lazy-load-var 'cook.mesos/make-mesos-driver)
                                                           {:mesos-master mesos-master
                                                            :mesos-failover-timeout mesos-failover-timeout
@@ -110,6 +111,7 @@
                             mesos-offer-cache
                             mesos-gpu-enabled
                             rebalancer
+                            mesos-leadership-atom
                             {:fenzo-max-jobs-considered fenzo-max-jobs-considered
                              :fenzo-scaleback fenzo-scaleback
                              :fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-warn
@@ -123,11 +125,13 @@
 
 (defn health-check-middleware
   "This adds /debug to return 200 OK"
-  [h]
+  [h mesos-leadership-atom leader-reports-unhealthy]
   (fn healthcheck [req]
     (if (and (= (:uri req) "/debug")
              (= (:request-method req) :get))
-      {:status 200
+      {:status (if (and leader-reports-unhealthy @mesos-leadership-atom)
+                 503
+                 200)
        :headers {}
        :body (str "Server is running: "
                   (try (slurp (io/resource "git-log"))
@@ -209,7 +213,8 @@
   (graph/eager-compile
     {:mesos-datomic mesos-datomic
      :route full-routes
-     :http-server (fnk [[:settings server-port authorization-middleware [:rate-limit user-limit]] [:route view]]
+     :http-server (fnk [[:settings server-port authorization-middleware leader-reports-unhealthy [:rate-limit user-limit]] [:route view]
+                        mesos-leadership-atom]
                     (log/info "Launching http server")
                     (let [rate-limit-storage (storage/local-storage)
                           jetty ((lazy-load-var 'qbits.jet.server/run-jetty)
@@ -223,7 +228,7 @@
                                                      wrap-no-cache
                                                      wrap-cookies
                                                      wrap-params
-                                                     health-check-middleware
+                                                     (health-check-middleware mesos-leadership-atom leader-reports-unhealthy)
                                                      instrument)
                                    :join? false
                                    :configurator configure-jet-logging
@@ -242,6 +247,7 @@
                           (log/info "Starting local ZK server")
                           (.start zookeeper-server)))
      :mesos mesos-scheduler
+     :mesos-leadership-atom (fnk [] (atom false))
      :mesos-pending-jobs-atom (fnk [] (atom {}))
      :mesos-offer-cache (fnk [[:settings [:offer-cache max-size ttl-ms]]]
                           (-> {}
@@ -336,6 +342,8 @@
                           datomic-uri)
      :dns-name simple-dns-name
      :hostname (fnk [] (.getCanonicalHostName (java.net.InetAddress/getLocalHost)))
+     :leader-reports-unhealthy (fnk [[:config [:mesos {leader-reports-unhealthy false}]]]
+                                    leader-reports-unhealthy)
      :local-zk-port (fnk [[:config [:zookeeper {local-port 3291}]]]
                       local-port)
      :zookeeper-server (fnk [[:config [:zookeeper {local? false}]] local-zk-port]

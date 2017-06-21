@@ -108,6 +108,7 @@
          riemann-port# (:riemann-port ~scheduler-config)
          gpu-enabled?# (or (:gpus-enabled? ~scheduler-config) false)
          rebalancer-config# (merge default-rebalancer-config (:rebalancer-config ~scheduler-config))
+         mesos-leadership-atom# (atom false)
          fenzo-config# (merge default-fenzo-config (:fenzo-config ~scheduler-config))
          trigger-chans# (or (:trigger-chans ~scheduler-config)
                             (c/make-trigger-chans rebalancer-config# task-constraints#))]
@@ -118,7 +119,8 @@
                                                  offer-incubate-time-ms# mea-culpa-failure-limit#
                                                  task-constraints# riemann-host# riemann-port#
                                                  pending-jobs-atom# offer-cache#
-                                                 gpu-enabled?# rebalancer-config# fenzo-config#
+                                                 gpu-enabled?# rebalancer-config#
+                                                 mesos-leadership-atom# fenzo-config#
                                                  trigger-chans#)]
          ~@body)
        (finally
