@@ -4,9 +4,10 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
-## [Unreleased]
+## [1.5.1]
 ### Changed
 - Parallelize in-order processing of status messages, from @shamsimam
+- Change reason string from "Mesos command executor failed" to "Command exited non-zero", from @wyegelwe
 
 # [1.5.0] - 2017-06-21
 ### Added
