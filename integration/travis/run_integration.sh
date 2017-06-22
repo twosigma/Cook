@@ -1,6 +1,8 @@
 #!/bin/bash
 set -ev
 
+NOSE_ATTRIBUTES=${1:-'!explicit'}
+
 export PROJECT_DIR=`pwd`
 
 # Start minimesos
@@ -17,7 +19,7 @@ LIBPROCESS_IP=172.17.0.1 COOK_PORT=22321 COOK_ZOOKEEPER_LOCAL_PORT=4291 lein run
 # Run the integration tests
 set +e
 cd ${PROJECT_DIR}
-COOK_MULTI_CLUSTER= python setup.py nosetests
+COOK_MULTI_CLUSTER= python setup.py nosetests --attr ${NOSE_ATTRIBUTES}
 TESTS_EXIT_CODE=$?
 
 # If there were failures, dump the executor logs

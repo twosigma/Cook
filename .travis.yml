@@ -24,5 +24,10 @@ env:
     - TEST_DIR=jobclient DEPS_CMD='mvn dependency:resolve' TEST_CMD='mvn test'
     - TEST_DIR=simulator DEPS_CMD='travis/prepare_simulation.sh' TEST_CMD='travis/run_simulation.sh'
     - TEST_DIR=integration DEPS_CMD='travis/prepare_integration.sh' TEST_CMD='travis/run_integration.sh'
+    - TEST_DIR=integration DEPS_CMD='travis/prepare_integration.sh' TEST_CMD='travis/run_integration.sh explicit'
+matrix:
+    fast_finish: true
+    allow_failures:
+      - env: TEST_DIR=integration DEPS_CMD='travis/prepare_integration.sh' TEST_CMD='travis/run_integration.sh explicit'
 before_script: (cd $TEST_DIR && $DEPS_CMD)
 script: cd $TEST_DIR && $TEST_CMD
