@@ -1282,7 +1282,10 @@
 
 (let [in-order-queue-counter (counters/counter ["cook-mesos" "scheduler" "in-order-queue-size"])
       in-order-queue-timer (timers/timer ["cook-mesos" "scheduler" "in-order-queue-delay-duration"])
-      processor-agent (agent nil)
+      parallelism 19 ; a prime number to improve distribution after hashing
+      processor-agents (->> #(agent nil)
+                            (repeatedly parallelism)
+                            vec)
       safe-call (fn agent-processor [_ body-fn]
                   (try
                     (body-fn)
@@ -1290,9 +1293,11 @@
                       (log/error e "Error processing mesos status/message."))))]
   (defn- async-in-order-processing
     "Asynchronously processes the body-fn by queueing the task in an agent to ensure in-order processing."
-    [body-fn]
+    [order-id body-fn]
     (counters/inc! in-order-queue-counter)
-    (let [timer-context (timers/start in-order-queue-timer)]
+    (let [timer-context (timers/start in-order-queue-timer)
+          processor-agent (->> (mod (hash order-id) parallelism)
+                               (nth processor-agents))]
       (send processor-agent safe-call
             #(do
                (timers/stop timer-context)
@@ -1346,7 +1351,8 @@
     (resource-offers [this driver offers]
                      (receive-offers offers-chan match-trigger-chan driver offers))
     (status-update [this driver status]
-                   (async-in-order-processing #(handle-status-update conn driver fenzo status)))))
+                   (let [task-id (-> status :task-id :value)]
+                     (async-in-order-processing task-id #(handle-status-update conn driver fenzo status))))))
 
 (defn create-datomic-scheduler
   [conn set-framework-id driver-atom pending-jobs-atom offer-cache heartbeat-ch offer-incubate-time-ms mea-culpa-failure-limit

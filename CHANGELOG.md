@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [Unreleased]
+### Changed
+- Parallelize in-order processing of status messages, from @shamsimam
+
 # [1.5.0] - 2017-06-21
 ### Added
 - Added configuration option for the leader to report unhealthy, from @pschorf
@@ -29,7 +33,7 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/) and this p
 - Added instance progress to query response, from @dposada
 ### Changed
 - Fixed bug where job submit errors would return 201, from @pschorf
-- Optimizations in ranking to improve schedule time, from @shams
+- Optimizations in ranking to improve schedule time, from @shamsimam
 - Refactor fenzo constraints to use less memory, from @pschorf
 ## [1.3.2] - 2017-05-24
 ### Added
