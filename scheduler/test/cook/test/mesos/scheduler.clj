@@ -1470,19 +1470,37 @@
                                            "System/out")))))
 
 (deftest test-in-order-status-update-processing
-  (let [status-store (atom [])
-        latch (CountDownLatch. 3)]
+  (let [status-store (atom {})
+        latch (CountDownLatch. 11)]
     (with-redefs [sched/handle-status-update
                   (fn [_ _ _ status]
-                    (swap! status-store conj (-> status mtypes/pb->data :state))
+                    (let [task-id (-> status :task-id :value str)]
+                      (swap! status-store update task-id
+                             (fn [statuses] (conj (or statuses [])
+                                                  (-> status mtypes/pb->data :state)))))
                     (Thread/sleep (rand-int 100))
                     (.countDown latch))]
       (let [s (sched/create-mesos-scheduler (atom nil) (constantly true) true nil nil nil nil nil)]
+
+        (.statusUpdate s nil (mtypes/->pb :TaskStatus {:task-id {} :state :task-starting}))
         (.statusUpdate s nil (mtypes/->pb :TaskStatus {:task-id {:value "T1"} :state :task-starting}))
+        (.statusUpdate s nil (mtypes/->pb :TaskStatus {:task-id {:value "T2"} :state :task-starting}))
         (.statusUpdate s nil (mtypes/->pb :TaskStatus {:task-id {:value "T1"} :state :task-running}))
+        (.statusUpdate s nil (mtypes/->pb :TaskStatus {:task-id {:value "T2"} :state :task-running}))
+        (.statusUpdate s nil (mtypes/->pb :TaskStatus {:task-id {:value "T3"} :state :task-starting}))
+        (.statusUpdate s nil (mtypes/->pb :TaskStatus {:task-id {:value "T3"} :state :task-running}))
         (.statusUpdate s nil (mtypes/->pb :TaskStatus {:task-id {:value "T1"} :state :task-finished}))
-        (.await latch 2 TimeUnit/SECONDS)
-        (is (= [:task-starting :task-running :task-finished] @status-store))))))
+        (.statusUpdate s nil (mtypes/->pb :TaskStatus {:task-id {:value "T3"} :state :task-failed}))
+        (.statusUpdate s nil (mtypes/->pb :TaskStatus {:task-id {:value "T4"} :state :task-starting}))
+        (.statusUpdate s nil (mtypes/->pb :TaskStatus {:task-id {} :state :task-failed}))
+
+        (.await latch 4 TimeUnit/SECONDS)
+
+        (is (= [:task-starting :task-failed] (->> "" (get @status-store) vec)))
+        (is (= [:task-starting :task-running :task-finished] (->> "T1" (get @status-store) vec)))
+        (is (= [:task-starting :task-running] (->> "T2" (get @status-store) vec)))
+        (is (= [:task-starting :task-running :task-failed] (->> "T3" (get @status-store) vec)))
+        (is (= [:task-starting] (->> "T4" (get @status-store) vec)))))))
 
 (comment
   (run-tests))
