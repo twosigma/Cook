@@ -74,8 +74,10 @@ def wait_for_cook(cook_url):
     # if connection is refused, an exception will be thrown
     session.get(cook_url)
 
+
 def settings(cook_url):
     return session.get('%s/settings' % cook_url).json()
+
 
 def minimal_job(**kwargs):
     job = {
@@ -122,6 +124,7 @@ def query_jobs(cook_url, **kwargs):
     the request.
     """
     return session.get('%s/rawscheduler' % cook_url, params=kwargs)
+
 
 def get_mesos_state(mesos_url):
     """

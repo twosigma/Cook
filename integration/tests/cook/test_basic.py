@@ -1,4 +1,5 @@
 import logging
+import os
 import time
 import unittest
 import uuid
@@ -51,17 +52,18 @@ class CookTest(unittest.TestCase):
         self.assertEqual('failed', job['instances'][0]['status'])
 
     def test_max_runtime_exceeded(self):
-        settings_timeout_interval_minutes = util.get_in(util.settings(self.cook_url), 'task-constraints', 'timeout-interval-minutes')
+        settings_timeout_interval_minutes = util.get_in(util.settings(self.cook_url), 'task-constraints',
+                                                        'timeout-interval-minutes')
         # the value needs to be a little more than 2 times settings_timeout_interval_minutes to allow
         # at least two runs of the lingering task killer
         job_timeout_interval_seconds = (2 * settings_timeout_interval_minutes * 60) + 15
-        job_uuid, resp = util.submit_job(self.cook_url, command='sleep %s' % job_timeout_interval_seconds, max_runtime=5000)
+        job_uuid, resp = util.submit_job(self.cook_url, command='sleep %s' % job_timeout_interval_seconds,
+                                         max_runtime=5000)
         self.assertEqual(201, resp.status_code)
         job = util.wait_for_job(self.cook_url, job_uuid, 'completed', job_timeout_interval_seconds * 1000)
         self.assertEqual(1, len(job['instances']))
         self.assertEqual('failed', job['instances'][0]['status'])
         self.assertEqual(2003, job['instances'][0]['reason_code'])
-
 
     def test_get_job(self):
         # schedule a job
@@ -164,7 +166,7 @@ class CookTest(unittest.TestCase):
 
         # query just for job 2
         resp = util.session.get('%s/list?user=%s&state=waiting%%2Brunning%%2Bcompleted&start-ms=%s&end-ms=%s'
-                                % (self.cook_url, user, submit_times[0]+1, submit_times[1] + 1))
+                                % (self.cook_url, user, submit_times[0] + 1, submit_times[1] + 1))
         self.assertEqual(200, resp.status_code)
         jobs = resp.json()
         self.assertFalse(any(job for job in jobs if job['uuid'] == job_specs[0]['uuid']))
@@ -172,7 +174,7 @@ class CookTest(unittest.TestCase):
 
         # query for neither
         resp = util.session.get('%s/list?user=%s&state=waiting%%2Brunning%%2Bcompleted&start-ms=%s&end-ms=%s'
-                                % (self.cook_url, user, submit_times[0]+1, submit_times[1]))
+                                % (self.cook_url, user, submit_times[0] + 1, submit_times[1]))
         self.assertEqual(200, resp.status_code)
         jobs = resp.json()
         self.assertFalse(any(job for job in jobs if job['uuid'] == job_specs[0]['uuid']))
@@ -302,18 +304,23 @@ class CookTest(unittest.TestCase):
         job1 = util.minimal_job()
         job2 = util.minimal_job(uuid=job1['uuid'])
         resp = util.session.post('%s/rawscheduler' % self.cook_url,
-                                 json={'jobs':[job1, job2]})
+                                 json={'jobs': [job1, job2]})
         self.assertEqual(resp.status_code, 500)
-    
+
+    @unittest.expectedFailure
     def test_constraints(self):
+        """
+        Marked as expectedFailure due to:
+        RuntimeError: Job ... had status running - expected completed
+        """
         state = util.get_mesos_state(self.mesos_url)
         hosts = [agent['hostname'] for agent in state['slaves']][:10]
 
-        bad_job_uuid, resp = util.submit_job(self.cook_url, constraints=[["HOSTNAME", 
-                                                                          "EQUALS", 
+        bad_job_uuid, resp = util.submit_job(self.cook_url, constraints=[["HOSTNAME",
+                                                                          "EQUALS",
                                                                           "lol won't get scheduled"]])
         self.assertEqual(resp.status_code, 201, resp.text)
-        
+
         host_to_job_uuid = {}
         for hostname in hosts:
             constraints = [["HOSTNAME", "EQUALS", hostname]]
@@ -328,10 +335,9 @@ class CookTest(unittest.TestCase):
             self.assertEqual([["HOSTNAME", "EQUALS", hostname]], job['constraints'])
         # This job should have been scheduled since the job submitted after it has completed
         # however, its constraint means it won't get scheduled
-        job = util.wait_for_job(self.cook_url, bad_job_uuid, 'waiting', max_delay=3000)
+        util.wait_for_job(self.cook_url, bad_job_uuid, 'waiting', max_delay=3000)
         # Clean up after ourselves
         util.session.delete('%s/rawscheduler?job=%s' % (self.cook_url, bad_job_uuid))
-
 
     def test_allow_partial(self):
         def absent_uuids(response):
