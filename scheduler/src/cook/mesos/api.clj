@@ -767,7 +767,7 @@
     (cond-> {:backfilled false ;; Backfill has been deprecated
              :executor_id executor-id
              :hostname hostname
-             :ports (:instance/ports instance)
+             :ports (vec (:instance/ports instance))
              :preempted (:instance/preempted? instance false)
              :slave_id (:instance/slave-id instance)
              :status (name (:instance/status instance))
