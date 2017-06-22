@@ -1140,7 +1140,7 @@ for a job. E.g. {:resources {:cpus 4 :mem 3} :constraints {\"unique_host_constra
     :reason/mesos-reason :reason-executor-terminated}
    {:db/id (d/tempid :db.part/user)
     :reason/code 99003
-    :reason/string "Mesos command executor failed"
+    :reason/string "Command exited non-zero"
     :reason/name :mesos-command-executor-failed
     :reason/mea-culpa? false
     :reason/mesos-reason :reason-command-executor-failed}])
