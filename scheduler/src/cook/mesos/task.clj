@@ -259,7 +259,7 @@
                                   (map #(update % :mode cook-volume-mode->mesomatic-volume-mode)
                                        volumes)))))
         executor {:command command
-                  :executor-id {:value (str task-id)}
+                  :executor-id {:value task-id} ;; we explicitly set the executor-id to be same as task-id
                   :framework-id framework-id
                   :source custom-executor-source}]
     (cond-> {:data (com.google.protobuf.ByteString/copyFrom data)
