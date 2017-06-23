@@ -899,7 +899,17 @@
                             :where
                             [?i :instance/reason ?r]
                             [?r :reason/name ?reason-name]]
-                          (db conn) instance-id))))))
+                          (db conn) instance-id))))
+        (let [get-end-time (fn [] (ffirst (q '[:find ?end-time
+                                               :in $ ?i
+                                               :where
+                                               [?i :instance/end-time ?end-time]]
+                                             (db conn) instance-id)))
+              original-end-time (get-end-time)]
+          (Thread/sleep 100)
+          (async/<!! (sched/handle-status-update conn driver fenzo
+                                                 (make-dummy-status-update task-id :reason-gc-error :task-killed)))
+          (is (= original-end-time (get-end-time))))))
     (testing "Pre-existing reason is not mea-culpa. New reason is. Job still out of retries because non-mea-culpa takes preference"
       (let [job-id (create-dummy-job conn
                                      :user "tsram"
