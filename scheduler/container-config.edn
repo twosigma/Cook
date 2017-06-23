@@ -11,7 +11,6 @@
                                 :retry-limit 15
                                 :cpus 6}}
  :executor {:command "./cook-executor"
-            :progress-regex-string "\\^\\^\\^\\^JOB-PROGRESS: (\\d*)(?: )?(.*)"
             :uri {:cache true
                   :executable true
                   :extract false

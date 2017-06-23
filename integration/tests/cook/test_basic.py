@@ -62,7 +62,7 @@ class CookTest(unittest.TestCase):
             self.assertTrue(bool(job['instances'][0]['sandbox_directory']), message)
 
     def test_progress_update_submit(self):
-        command = 'echo "^^^^JOB-PROGRESS: 25 Twenty-five percent"; sleep 1; exit 0'
+        command = 'echo "progress: 25 Twenty-five percent"; sleep 1; exit 0'
         job_uuid, resp = util.submit_job(self.cook_url, command=command, max_runtime=5000)
         self.assertEqual(201, resp.status_code)
         job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
@@ -76,10 +76,10 @@ class CookTest(unittest.TestCase):
             self.assertTrue(bool(job['instances'][0]['sandbox_directory']), message)
 
     def test_multiple_progress_updates_submit(self):
-        command = 'echo "^^^^JOB-PROGRESS: 25 Twenty-five percent" && sleep 2 && '\
-                  'echo "^^^^JOB-PROGRESS: 50 Fifty percent" && sleep 2 && ' \
-                  'echo "^^^^JOB-PROGRESS: 75 Seventy-five percent" && sleep 2 && ' \
-                  'echo "^^^^JOB-PROGRESS: Eighty percent invalid format" && sleep 2 && ' \
+        command = 'echo "progress: 25 Twenty-five percent" && sleep 2 && '\
+                  'echo "progress: 50 Fifty percent" && sleep 2 && ' \
+                  'echo "progress: 75 Seventy-five percent" && sleep 2 && ' \
+                  'echo "progress: Eighty percent invalid format" && sleep 2 && ' \
                   'echo "Done" && exit 0'
         job_uuid, resp = util.submit_job(self.cook_url, command=command, max_runtime=60000)
         self.assertEqual(201, resp.status_code)
@@ -95,9 +95,9 @@ class CookTest(unittest.TestCase):
             self.assertTrue(bool(job['instances'][0]['sandbox_directory']), message)
 
     def test_multiple_rapid_progress_updates_submit(self):
-        command = ''.join(['echo "^^^^JOB-PROGRESS: {0} {0}%" && '.format(a) for a in range(1, 100, 4)]) + \
-                  ''.join(['echo "^^^^JOB-PROGRESS: {0} {0}%" && '.format(a) for a in range(99, 40, -4)]) + \
-                  ''.join(['echo "^^^^JOB-PROGRESS: {0} {0}%" && '.format(a) for a in range(40, 81, 2)]) + \
+        command = ''.join(['echo "progress: {0} {0}%" && '.format(a) for a in range(1, 100, 4)]) + \
+                  ''.join(['echo "progress: {0} {0}%" && '.format(a) for a in range(99, 40, -4)]) + \
+                  ''.join(['echo "progress: {0} {0}%" && '.format(a) for a in range(40, 81, 2)]) + \
                   'echo "Done" && exit 0'
         job_uuid, resp = util.submit_job(self.cook_url, command=command, max_runtime=30000)
         self.assertEqual(201, resp.status_code)
