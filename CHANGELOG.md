@@ -4,12 +4,17 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
-## [1.5.1]
+## [1.5.2] - 2017-06-23
+### Fixed
+- Fixed a bug which was overwriting end-time on duplicate mesos messages, from @pschorf
+- Fixed a bug with querying for jobs with a non-zero number of ports, from @dposada
+
+## [1.5.1] - 2017-06-22
 ### Changed
 - Parallelize in-order processing of status messages, from @shamsimam
 - Change reason string from "Mesos command executor failed" to "Command exited non-zero", from @wyegelwe
 
-# [1.5.0] - 2017-06-21
+## [1.5.0] - 2017-06-21
 ### Added
 - Added configuration option for the leader to report unhealthy, from @pschorf
 ### Changed
