@@ -260,8 +260,9 @@
                                                                        [:reason.name :unknown])]] ; Warning: Default is not mea-culpa
                  [(when (and (#{:instance.status/failed} instance-status) (not previous-reason) reason)
                     [[:db/add instance :instance/reason (reason/mesos-reason->cook-reason-entity-id db reason)]])
-                  (when (#{:instance.status/success
-                           :instance.status/failed} instance-status)
+                  (when (and (#{:instance.status/success
+                                :instance.status/failed} instance-status)
+                             (nil? (:instance/end-time instance-ent)))
                     [[:db/add instance :instance/end-time (now)]])
                   (when (and (#{:task-starting :task-running} task-state)
                              (nil? (:instance/mesos-start-time instance-ent)))
