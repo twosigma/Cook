@@ -389,3 +389,11 @@ class CookTest(unittest.TestCase):
         self.assertEqual(200, resp.status_code)
         self.assertEqual(2, len(resp.json()))
         self.assertEqual([job_uuid_1, job_uuid_2].sort(), [job['uuid'] for job in resp.json()].sort())
+
+    def test_ports(self):
+        job_uuid, resp = util.submit_job(self.cook_url, ports=1)
+        job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
+        self.assertEqual(1, len(job['instances'][0]['ports']))
+        job_uuid, resp = util.submit_job(self.cook_url, ports=10)
+        job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
+        self.assertEqual(10, len(job['instances'][0]['ports']))
