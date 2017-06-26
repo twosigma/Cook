@@ -28,6 +28,7 @@
             [congestion.storage :as storage]
             [cook.curator :as curator]
             [cook.spnego :as spnego]
+            [cook.util :as util]
             [metrics.ring.instrument :refer (instrument)]
             [plumbing.core :refer (fnk)]
             [plumbing.graph :as graph]
@@ -133,10 +134,7 @@
                  503
                  200)
        :headers {}
-       :body (str "Server is running: "
-                  (try (slurp (io/resource "git-log"))
-                       (catch Exception e
-                         "dev")))}
+       :body (str "Server is running version: " util/version " (commit " util/commit ")")}
       (h req))))
 
 (def mesos-datomic
@@ -498,6 +496,7 @@
 
 (defn -main
   [config & args]
+  (println "Cook" util/version "( commit" util/commit ")")
   (when-not (.exists (java.io.File. config))
     (.println System/err (str "The config file doesn't appear to exist: " config)))
   (.println System/err (str "Reading config from file:" config))
@@ -520,6 +519,7 @@
       (pre-configuration literal-config)
       (.println System/err "Configured logging")
       (log/info "Configured logging")
+      (log/info "Cook" util/version "( commit" util/commit ")")
       (let [settings {:settings (config-settings literal-config)}
             _ (log/info "Interpreted settings")
             server (scheduler-server settings)]
