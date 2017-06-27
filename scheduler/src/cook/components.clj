@@ -250,10 +250,16 @@
                                    :max-threads 200
                                    :request-header-size 32768})]
                       (fn [] (.stop jetty))))
+     ; If the framework id was not found in the configuration settings, we attempt reading it from
+     ; ZooKeeper. The read from ZK is present for backwards compatibility (the framework id used to
+     ; get written to ZK as well). Without this, Cook would connect to mesos with a different
+     ; framework id and mark all jobs that were running failed because mesos wouldn't have tasks for
+     ; those jobs under the new framework id.
      :framework-id (fnk [curator-framework [:settings mesos-leader-path mesos-framework-id]]
                      (let [framework-id (or mesos-framework-id
-                                            (framework-id-from-zk curator-framework mesos-leader-path)
-                                            "cook-framework")]
+                                            (framework-id-from-zk curator-framework mesos-leader-path))]
+                       (when-not framework-id
+                         (throw (ex-info "Framework id not configured and not in ZooKeeper" {})))
                        (log/info "Using framework id:" framework-id)
                        framework-id))
      :mesos-datomic-mult (fnk [mesos-datomic]
