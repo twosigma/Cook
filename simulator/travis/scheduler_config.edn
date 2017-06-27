@@ -21,7 +21,8 @@
          :master-hosts ["172.17.0.4"] ; minimesos master
          :failover-timeout-ms nil
          :leader-path "/cook-scheduler"
-         :role "cook"}
+         :role "cook"
+         :framework-id "cook-framework"}
  :unhandled-exceptions {:log-level :error}
  :metrics {:jmx true}
  :nrepl {:enabled? true
