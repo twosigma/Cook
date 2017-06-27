@@ -25,8 +25,8 @@ class CookTest(unittest.TestCase):
         util.wait_for_cook(self.cook_url)
 
     def get_job(self, job_uuid):
-        """Loads a job by UUID using GET /rawscheduler"""
-        return util.query_jobs(self.cook_url, job=[job_uuid]).json()[0]
+        """Loads a job by UUID"""
+        return util.get_job(self.cook_url, job_uuid)
 
     @retry(stop_max_delay=120000, wait_fixed=5000)
     def get_output_url(self, job_uuid):
