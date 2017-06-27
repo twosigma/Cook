@@ -899,7 +899,17 @@
                             :where
                             [?i :instance/reason ?r]
                             [?r :reason/name ?reason-name]]
-                          (db conn) instance-id))))))
+                          (db conn) instance-id))))
+        (let [get-end-time (fn [] (ffirst (q '[:find ?end-time
+                                               :in $ ?i
+                                               :where
+                                               [?i :instance/end-time ?end-time]]
+                                             (db conn) instance-id)))
+              original-end-time (get-end-time)]
+          (Thread/sleep 100)
+          (async/<!! (sched/handle-status-update conn driver fenzo
+                                                 (make-dummy-status-update task-id :reason-gc-error :task-killed)))
+          (is (= original-end-time (get-end-time))))))
     (testing "Pre-existing reason is not mea-culpa. New reason is. Job still out of retries because non-mea-culpa takes preference"
       (let [job-id (create-dummy-job conn
                                      :user "tsram"
@@ -1470,19 +1480,37 @@
                                            "System/out")))))
 
 (deftest test-in-order-status-update-processing
-  (let [status-store (atom [])
-        latch (CountDownLatch. 3)]
+  (let [status-store (atom {})
+        latch (CountDownLatch. 11)]
     (with-redefs [sched/handle-status-update
                   (fn [_ _ _ status]
-                    (swap! status-store conj (-> status mtypes/pb->data :state))
+                    (let [task-id (-> status :task-id :value str)]
+                      (swap! status-store update task-id
+                             (fn [statuses] (conj (or statuses [])
+                                                  (-> status mtypes/pb->data :state)))))
                     (Thread/sleep (rand-int 100))
                     (.countDown latch))]
-      (let [s (sched/create-mesos-scheduler nil true nil nil nil nil nil)]
+      (let [s (sched/create-mesos-scheduler (atom nil) (constantly true) true nil nil nil nil nil)]
+
+        (.statusUpdate s nil (mtypes/->pb :TaskStatus {:task-id {} :state :task-starting}))
         (.statusUpdate s nil (mtypes/->pb :TaskStatus {:task-id {:value "T1"} :state :task-starting}))
+        (.statusUpdate s nil (mtypes/->pb :TaskStatus {:task-id {:value "T2"} :state :task-starting}))
         (.statusUpdate s nil (mtypes/->pb :TaskStatus {:task-id {:value "T1"} :state :task-running}))
+        (.statusUpdate s nil (mtypes/->pb :TaskStatus {:task-id {:value "T2"} :state :task-running}))
+        (.statusUpdate s nil (mtypes/->pb :TaskStatus {:task-id {:value "T3"} :state :task-starting}))
+        (.statusUpdate s nil (mtypes/->pb :TaskStatus {:task-id {:value "T3"} :state :task-running}))
         (.statusUpdate s nil (mtypes/->pb :TaskStatus {:task-id {:value "T1"} :state :task-finished}))
-        (.await latch 2 TimeUnit/SECONDS)
-        (is (= [:task-starting :task-running :task-finished] @status-store))))))
+        (.statusUpdate s nil (mtypes/->pb :TaskStatus {:task-id {:value "T3"} :state :task-failed}))
+        (.statusUpdate s nil (mtypes/->pb :TaskStatus {:task-id {:value "T4"} :state :task-starting}))
+        (.statusUpdate s nil (mtypes/->pb :TaskStatus {:task-id {} :state :task-failed}))
+
+        (.await latch 4 TimeUnit/SECONDS)
+
+        (is (= [:task-starting :task-failed] (->> "" (get @status-store) vec)))
+        (is (= [:task-starting :task-running :task-finished] (->> "T1" (get @status-store) vec)))
+        (is (= [:task-starting :task-running] (->> "T2" (get @status-store) vec)))
+        (is (= [:task-starting :task-running :task-failed] (->> "T3" (get @status-store) vec)))
+        (is (= [:task-starting] (->> "T4" (get @status-store) vec)))))))
 
 (comment
   (run-tests))

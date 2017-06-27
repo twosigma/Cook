@@ -28,7 +28,7 @@
             [compojure.core :refer (ANY GET POST routes)]
             [cook.mesos.quota :as quota]
             [cook.mesos.reason :as reason]
-            [cook.mesos.schema :refer (host-placement-types straggler-handling-types)]
+            [cook.mesos.schema :refer (constraint-operators host-placement-types straggler-handling-types)]
             [cook.mesos.share :as share]
             [cook.mesos.unscheduled :as unscheduled]
             [cook.mesos.util :as util]
@@ -175,7 +175,8 @@
    (s/optional-key :reason_code) s/Int
    (s/optional-key :output_url) s/Str
    (s/optional-key :cancelled) s/Bool
-   (s/optional-key :reason_string) s/Str})
+   (s/optional-key :reason_string) s/Str
+   (s/optional-key :progress) s/Int})
 
 (defn max-128-characters-and-alphanum?
   "Returns true if s contains only '.', '_', '-' or
@@ -193,6 +194,15 @@
   "Schema for the application a job corresponds to"
   {:name (s/constrained s/Str non-empty-max-128-characters-and-alphanum?)
    :version (s/constrained s/Str non-empty-max-128-characters-and-alphanum?)})
+
+(def Constraint
+  "Schema for user defined job host constraint"
+  [(s/one NonEmptyString "attribute")
+   (s/one (s/pred #(contains? (set (map name constraint-operators))
+                              (str/lower-case %))
+                  'constraint-operator-exists?)
+          "operator")
+   (s/one NonEmptyString "pattern")])
 
 (s/defschema JobName
   (s/both s/Str (s/both s/Str (s/pred max-128-characters-and-alphanum? 'max-128-characters-and-alphanum?))))
@@ -220,6 +230,7 @@
    (s/optional-key :ports) (s/pred #(not (neg? %)) 'nonnegative?)
    (s/optional-key :env) {NonEmptyString s/Str}
    (s/optional-key :labels) {NonEmptyString s/Str}
+   (s/optional-key :constraints) [Constraint]
    (s/optional-key :container) Container
    (s/optional-key :group) s/Uuid
    (s/optional-key :disable-mea-culpa-retries) s/Bool
@@ -413,7 +424,8 @@
   "Creates the necessary txn data to insert a job into the database"
   [job :- Job]
   (let [{:keys [uuid command max-retries max-runtime expected-runtime priority cpus mem gpus
-                user name ports uris env labels container group application disable-mea-culpa-retries]
+                user name ports uris env labels container group application disable-mea-culpa-retries
+                constraints]
          :or {group nil
               disable-mea-culpa-retries false}} job
         db-id (d/tempid :db.part/user)
@@ -450,6 +462,15 @@
                              :label/key k
                              :label/value v}]))
                        labels)
+        constraints (mapcat (fn [[attribute operator pattern]]
+                              (let [constraint-var-id (d/tempid :db.part/user)]
+                                [[:db/add db-id :job/constraint constraint-var-id]
+                                 {:db/id constraint-var-id
+                                  :constraint/attribute attribute
+                                  :constraint/operator (keyword "constraint.operator"
+                                                                (str/lower-case operator))
+                                  :constraint/pattern pattern}]))
+                            constraints)
         container (if (nil? container) [] (build-container user db-id container))
         ;; These are optionally set datoms w/ default values
         maybe-datoms (reduce into
@@ -492,6 +513,7 @@
     (-> ports
         (into uris)
         (into env)
+        (into constraints)
         (into labels)
         (into container)
         (into maybe-datoms)
@@ -576,7 +598,8 @@
    objects, or else throws an exception"
   [db user task-constraints gpu-enabled? new-group-uuids
    {:keys [cpus mem gpus uuid command priority max-retries max-runtime expected-runtime name
-           uris ports env labels container group application disable-mea-culpa-retries]
+           uris ports env labels container group application disable-mea-culpa-retries
+           constraints]
     :or {group nil
          disable-mea-culpa-retries false}
     :as job}
@@ -609,6 +632,9 @@
                                uris)})
                  (when labels
                    {:labels (walk/stringify-keys labels)})
+                 (when constraints
+                   ;; Rest framework keywordifies all keys, we want these to be strings!
+                   {:constraints constraints})
                  (when group-uuid
                    {:group group-uuid})
                  (when container
@@ -723,8 +749,37 @@
       (str "http://" agent-hostname ":5051" "/files/read.json?path="
            (URLEncoder/encode directory "UTF-8")))
     (catch Exception e
-      (log/error e "Unable to retrieve directory path for" executor-id "on agent" agent-hostname)
+      (log/debug e "Unable to retrieve directory path for" executor-id "on agent" agent-hostname)
       nil)))
+
+(defn- instance->instance-map
+  "Converts the instance to a map of relevant fields that will be returned to the caller"
+  [db fid instance]
+  (let [hostname (:instance/hostname instance)
+        executor-id (:instance/executor-id instance)
+        url-path (retrieve-url-path fid hostname executor-id)
+        start (:instance/start-time instance)
+        mesos-start (:instance/mesos-start-time instance)
+        end (:instance/end-time instance)
+        cancelled (:instance/cancelled instance)
+        reason (reason/instance-entity->reason-entity db instance)
+        progress (:instance/progress instance)]
+    (cond-> {:backfilled false ;; Backfill has been deprecated
+             :executor_id executor-id
+             :hostname hostname
+             :ports (vec (:instance/ports instance))
+             :preempted (:instance/preempted? instance false)
+             :slave_id (:instance/slave-id instance)
+             :status (name (:instance/status instance))
+             :task_id (:instance/task-id instance)}
+            url-path (assoc :output_url url-path)
+            start (assoc :start_time (.getTime start))
+            mesos-start (assoc :mesos_start_time (.getTime mesos-start))
+            end (assoc :end_time (.getTime end))
+            cancelled (assoc :cancelled cancelled)
+            reason (assoc :reason_code (:reason/code reason)
+                          :reason_string (:reason/string reason))
+            progress (assoc :progress progress))))
 
 (defn fetch-job-map
   [db fid job-uuid]
@@ -740,34 +795,17 @@
                   "success" "failed")
                 :job.state/running "running"
                 :job.state/waiting "waiting")
-        instances (map (fn [instance]
-                         (let [hostname (:instance/hostname instance)
-                               executor-id (:instance/executor-id instance)
-                               url-path (retrieve-url-path fid hostname executor-id)
-                               start (:instance/start-time instance)
-                               mesos-start (:instance/mesos-start-time instance)
-                               end (:instance/end-time instance)
-                               cancelled (:instance/cancelled instance)
-                               reason (reason/instance-entity->reason-entity db instance)]
-                           (cond-> {:backfilled false ;; Backfill has been deprecated
-                                    :executor_id executor-id
-                                    :hostname hostname
-                                    :ports (:instance/ports instance)
-                                    :preempted (:instance/preempted? instance false)
-                                    :slave_id (:instance/slave-id instance)
-                                    :status (name (:instance/status instance))
-                                    :task_id (:instance/task-id instance)}
-                                   url-path (assoc :output_url url-path)
-                                   start (assoc :start_time (.getTime start))
-                                   mesos-start (assoc :mesos_start_time (.getTime mesos-start))
-                                   end (assoc :end_time (.getTime end))
-                                   cancelled (assoc :cancelled cancelled)
-                                   reason (assoc :reason_code (:reason/code reason)
-                                                 :reason_string (:reason/string reason)))))
-                       (:job/instance job))
+        constraints (->> job
+                         :job/constraint
+                         (map util/remove-datomic-namespacing)
+                         (map (fn [{:keys [attribute operator pattern]}]
+                                (->> [attribute (str/upper-case (name operator)) pattern]
+                                     (map str)))))
+        instances (map #(instance->instance-map db fid %) (:job/instance job))
         submit-time (when (:job/submit-time job) ; due to a bug, submit time may not exist for some jobs
                 (.getTime (:job/submit-time job)))
         job-map {:command (:job/command job)
+                 :constraints constraints 
                  :cpus (:cpus resources)
                  :disable_mea_culpa_retries (:job/disable-mea-culpa-retries job false)
                  :env (util/job-ent->env job)
@@ -788,7 +826,7 @@
                  :uris (:uris resources)
                  :user (:job/user job)
                  :uuid (:job/uuid job)}]
-    (cond-> job-map
+     (cond-> job-map
             groups (assoc :groups (map #(str (:group/uuid %)) groups))
             application (assoc :application (util/remove-datomic-namespacing application))
             expected-runtime (assoc :expected-runtime expected-runtime))))
@@ -982,6 +1020,8 @@
   (try
     (log/info "Submitting jobs through raw api:" jobs)
     (let [group-uuids (set (map :uuid groups))
+          group-asserts (map (fn [guuid] [:entity/ensure-not-exists [:group/uuid guuid]])
+                             group-uuids)
           ;; Create new implicit groups (with all default settings)
           implicit-groups (->> jobs
                                (map :group)
@@ -990,6 +1030,7 @@
                                (remove #(contains? group-uuids %))
                                (map make-default-group))
           groups (into (vec implicit-groups) groups)
+          job-asserts (map (fn [j] [:entity/ensure-not-exists [:job/uuid (:uuid j)]]) jobs)
           job-txns (mapcat #(make-job-txn %) jobs)
           job-uuids->dbids (->> job-txns
                                 ;; Not all txns are for the top level job
@@ -1007,7 +1048,10 @@
                           groups)]
       @(d/transact
          conn
-         (into (vec job-txns) group-txns))
+         (-> (vec group-asserts)
+             (into job-asserts)
+             (into job-txns)
+             (into group-txns)))
 
       {::results (str/join
                    \space (concat ["submitted jobs"]
@@ -1556,13 +1600,12 @@
                        job-uuids (->> (timers/time!
                                        fetch-jobs
                                        ;; Get valid timings
-                                       (doall
-                                        (mapcat #(util/get-jobs-by-user-and-state db
-                                                                                  user
-                                                                                  %
-                                                                                  start
-                                                                                  end)
-                                                states)))
+                                       (util/get-jobs-by-user-and-states db
+                                                                         user
+                                                                         states
+                                                                         start
+                                                                         end
+                                                                         limit))
                                       (sort-by :job/submit-time)
                                       reverse
                                       (map :job/uuid))
@@ -1629,7 +1672,9 @@
 ;;
 (defn main-handler
   [conn fid mesos-pending-jobs-fn
-   {:keys [task-constraints is-authorized-fn] gpu-enabled? :mesos-gpu-enabled :as settings}]
+   {:keys [task-constraints is-authorized-fn] 
+    gpu-enabled? :mesos-gpu-enabled
+    :as settings}]
   (->
    (routes
     (c-api/api

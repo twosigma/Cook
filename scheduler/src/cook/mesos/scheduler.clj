@@ -260,8 +260,9 @@
                                                                        [:reason.name :unknown])]] ; Warning: Default is not mea-culpa
                  [(when (and (#{:instance.status/failed} instance-status) (not previous-reason) reason)
                     [[:db/add instance :instance/reason (reason/mesos-reason->cook-reason-entity-id db reason)]])
-                  (when (#{:instance.status/success
-                           :instance.status/failed} instance-status)
+                  (when (and (#{:instance.status/success
+                                :instance.status/failed} instance-status)
+                             (nil? (:instance/end-time instance-ent)))
                     [[:db/add instance :instance/end-time (now)]])
                   (when (and (#{:task-starting :task-running} task-state)
                              (nil? (:instance/mesos-start-time instance-ent)))
@@ -629,7 +630,7 @@
          conn
          (reduce into [] task-txns)))
     (log/info "Launching" (count task-txns) "tasks")
-    (log/info "Matched tasks" task-txns)
+    (log/debug "Matched tasks" task-txns)
     ;; This launch-tasks MUST happen after the above transaction in
     ;; order to allow a transaction failure (due to failed preconditions)
     ;; to block the launch
@@ -1282,7 +1283,10 @@
 
 (let [in-order-queue-counter (counters/counter ["cook-mesos" "scheduler" "in-order-queue-size"])
       in-order-queue-timer (timers/timer ["cook-mesos" "scheduler" "in-order-queue-delay-duration"])
-      processor-agent (agent nil)
+      parallelism 19 ; a prime number to improve distribution after hashing
+      processor-agents (->> #(agent nil)
+                            (repeatedly parallelism)
+                            vec)
       safe-call (fn agent-processor [_ body-fn]
                   (try
                     (body-fn)
@@ -1290,9 +1294,11 @@
                       (log/error e "Error processing mesos status/message."))))]
   (defn- async-in-order-processing
     "Asynchronously processes the body-fn by queueing the task in an agent to ensure in-order processing."
-    [body-fn]
+    [order-id body-fn]
     (counters/inc! in-order-queue-counter)
-    (let [timer-context (timers/start in-order-queue-timer)]
+    (let [timer-context (timers/start in-order-queue-timer)
+          processor-agent (->> (mod (hash order-id) parallelism)
+                               (nth processor-agents))]
       (send processor-agent safe-call
             #(do
                (timers/stop timer-context)
@@ -1350,7 +1356,8 @@
     (resource-offers [this driver offers]
                      (receive-offers offers-chan match-trigger-chan driver offers))
     (status-update [this driver status]
-                   (async-in-order-processing #(handle-status-update conn driver fenzo status)))))
+                   (let [task-id (-> status :task-id :value)]
+                     (async-in-order-processing task-id #(handle-status-update conn driver fenzo status))))))
 
 (defn create-datomic-scheduler
   [conn driver-atom pending-jobs-atom offer-cache heartbeat-ch offer-incubate-time-ms mea-culpa-failure-limit

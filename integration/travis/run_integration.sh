@@ -1,6 +1,8 @@
 #!/bin/bash
 set -ev
 
+NOSE_ATTRIBUTES=${1:-'!explicit'}
+
 function wait_for_cook {
     COOK_PORT=${1:-12321}
     while ! curl -s localhost:${COOK_PORT} >/dev/null;
@@ -41,7 +43,7 @@ fi
 
 # Run the integration tests
 cd ${PROJECT_DIR}
-COOK_MULTI_CLUSTER= python setup.py nosetests || test_failures=true
+COOK_MULTI_CLUSTER= python setup.py nosetests --attr ${NOSE_ATTRIBUTES} || test_failures=true
 
 # If there were failures, dump the executor logs
 if [ "$test_failures" = true ]; then

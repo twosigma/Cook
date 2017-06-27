@@ -51,6 +51,19 @@ def retrieve_cook_url(varname='COOK_SCHEDULER_URL', value='http://localhost:1232
     return cook_url
 
 
+def retrieve_mesos_url(varname='MESOS_PORT', value='5050'):
+    mesos_port = os.getenv(varname, value)
+    cook_url = retrieve_cook_url()
+    wait_for_cook(cook_url)
+    mesos_master_hosts = settings(cook_url).get('mesos-master-hosts', ['localhost'])
+    resp = session.get('http://%s:%s/redirect' % (mesos_master_hosts[0], mesos_port), allow_redirects=False)
+    if resp.status_code != 307:
+        raise RuntimeError('Unable to find mesos leader, redirect endpoint returned %d' % resp.status_code)
+    mesos_url = 'http:%s' % resp.headers['Location']
+    logger.info('Using mesos url %s' % mesos_url)
+    return mesos_url
+
+
 def is_connection_error(exception):
     return isinstance(exception, requests.exceptions.ConnectionError)
 
@@ -60,6 +73,10 @@ def wait_for_cook(cook_url):
     logger.debug('Waiting for connection to cook...')
     # if connection is refused, an exception will be thrown
     session.get(cook_url)
+
+
+def settings(cook_url):
+    return session.get('%s/settings' % cook_url).json()
 
 
 def minimal_job(**kwargs):
@@ -107,3 +124,10 @@ def query_jobs(cook_url, **kwargs):
     the request.
     """
     return session.get('%s/rawscheduler' % cook_url, params=kwargs)
+
+
+def get_mesos_state(mesos_url):
+    """
+    Queries the state.json from mesos
+    """
+    return session.get('%s/state.json' % mesos_url).json()

@@ -73,6 +73,14 @@
     :db/cardinality :db.cardinality/many
     :db.install/_attribute :db.part/db}
    {:db/id (d/tempid :db.part/db)
+    :db/ident :job/constraint
+    :db/valueType :db.type/ref
+    :db/isComponent true
+    :db/cardinality :db.cardinality/many
+    :db/doc "A map of attribute to value patterns that constrain what hosts
+             a job may be placed on"
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
     :db/ident :job/state
     :db/valueType :db.type/ref
     :db/cardinality :db.cardinality/one
@@ -383,6 +391,29 @@ for a job. E.g. {:resources {:cpus 4 :mem 3} :constraints {\"unique_host_constra
     :db/valueType :db.type/string
     :db/cardinality :db.cardinality/one
     :db.install/_attribute :db.part/db}
+   ;; Host constraint attributes
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :constraint/attribute
+    :db/doc "Attribute of host to constrain on"
+    :db/valueType :db.type/string
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :constraint/operator
+    :db/doc "Operator to use to evaulate pattern"
+    :db/valueType :db.type/ref
+    :db/isComponent true
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :constraint/pattern
+    :db/doc "Pattern that must pass on value of attribute for host to be valid
+             to place task on"
+    :db/valueType :db.type/string
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/user)
+    :db/ident :constraint.operator/equals}
    ;; Application attributes
    {:db/id (d/tempid :db.part/db)
     :db/doc
@@ -701,6 +732,11 @@ for a job. E.g. {:resources {:cpus 4 :mem 3} :constraints {\"unique_host_constra
        (map :db/ident)
        (filter #(= "host-placement.type" (namespace %)))))
 
+(def constraint-operators
+  (->> schema-attributes
+       (map :db/ident)
+       (filter #(= "constraint.operator" (namespace %)))))
+
 (def db-fns
   [{:db/id (d/tempid :db.part/user)
     :db/ident :generic/atomic-inc
@@ -909,7 +945,17 @@ for a job. E.g. {:resources {:cpus 4 :mem 3} :constraints {\"unique_host_constra
                          prior-state (:job/state job)]
                      (if (= prior-state :job.state/completed)
                        [[:db/add j :job/state :job.state/waiting]]
-                       []))}}])
+                       []))}}
+   {:db/id (d/tempid :db.part/user)
+    :db/ident :entity/ensure-not-exists
+    :db/doc "Ensure that the given entity does not exist"
+    :db/fn #db/fn {:lang "clojure"
+                   :params [db id-or-lookup]
+                   :code
+                   (let [j (d/entity db id-or-lookup)]
+                     (when j
+                       (throw (IllegalStateException.
+                               (str "Entity with id " id-or-lookup " already exists.")))))}}])
 
 (def reason-entities
   [{:db/id (d/tempid :db.part/user)
@@ -1094,7 +1140,7 @@ for a job. E.g. {:resources {:cpus 4 :mem 3} :constraints {\"unique_host_constra
     :reason/mesos-reason :reason-executor-terminated}
    {:db/id (d/tempid :db.part/user)
     :reason/code 99003
-    :reason/string "Mesos command executor failed"
+    :reason/string "Command exited non-zero"
     :reason/name :mesos-command-executor-failed
     :reason/mea-culpa? false
     :reason/mesos-reason :reason-command-executor-failed}])

@@ -18,20 +18,25 @@
   (:require [cheshire.core :as cheshire]
             [clj-http.client :as http]
             [clj-time.core :as t]
+            [clojure.core.async :as async]
             [clojure.data.json :as json]
             [clojure.walk :refer (keywordize-keys)]
             [cook.authorization :as auth]
             [cook.components :as components]
             [cook.mesos.api :as api :refer (main-handler)]
             [cook.mesos.reason :as reason]
+            [cook.mesos.scheduler :as sched]
             [cook.mesos.util :as util]
             [cook.test.testutil :refer (restore-fresh-database! create-dummy-job create-dummy-instance)]
             [datomic.api :as d :refer (q db)]
+            [mesomatic.scheduler :as msched]
             [schema.core :as s])
   (:import com.fasterxml.jackson.core.JsonGenerationException
+           com.google.protobuf.ByteString
            java.io.ByteArrayOutputStream
            java.net.ServerSocket
            java.util.UUID
+           java.util.concurrent.ExecutionException
            (javax.servlet ServletOutputStream
                           ServletResponse)
            org.apache.curator.test.TestingServer
@@ -72,7 +77,8 @@
    "mem" 2048.0})
 
 (defn basic-handler
-  [conn & {:keys [cpus memory-gb gpus-enabled retry-limit] :or {cpus 12 memory-gb 100 gpus-enabled false retry-limit 200}}]
+  [conn & {:keys [cpus memory-gb gpus-enabled retry-limit] 
+           :or {cpus 12 memory-gb 100 gpus-enabled false retry-limit 200}}]
   (main-handler conn "my-framework-id" (fn [] [])
                 {:task-constraints {:cpus cpus :memory-gb memory-gb :retry-limit retry-limit}
                  :mesos-gpu-enabled gpus-enabled
@@ -1054,6 +1060,7 @@
                    :env {}
                    :instances ()
                    :labels {}
+                   :constraints []
                    :retries_remaining 1
                    :state "waiting"
                    :status "waiting"
@@ -1097,6 +1104,15 @@
                  (api/create-jobs! conn {::api/jobs [job]})))
           (is (= (expected-job-map job fid)
                  (dissoc (api/fetch-job-map (db conn) fid uuid) :submit_time)))))
+
+      (testing "should fail on a duplicate uuid"
+        (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
+              {:keys [uuid] :as job} (minimal-job)]
+          (is (= {::api/results (str "submitted jobs " uuid)}
+                 (api/create-jobs! conn {::api/jobs [job]})))
+          (is (thrown-with-msg? ExecutionException
+               (re-pattern (str ".*:job/uuid.*" uuid ".*already exists"))
+               (api/create-jobs! conn {::api/jobs [job]})))))
 
       (testing "should work when the job specifies an application"
         (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
@@ -1217,3 +1233,42 @@
         (is (nil? (api/retrieve-url-path target-framework-id agent-hostname "executor-103")))
         (is (= (str "http://" agent-hostname ":5051/files/read.json?path=%2Fpath%2Ffor%2Fexecutor-111")
                (api/retrieve-url-path target-framework-id agent-hostname "executor-111")))))))
+
+(deftest test-instance-progress
+  (let [uri "datomic:mem://test-instance-progress"
+        conn (restore-fresh-database! uri)
+        driver (reify msched/SchedulerDriver)
+        driver-atom (atom nil)
+        fenzo (sched/make-fenzo-scheduler driver-atom 1500 nil 0.8)
+        make-status-update (fn [task-id reason state progress]
+                             (let [task {:task-id {:value task-id}
+                                         :reason reason
+                                         :state state
+                                         :data (ByteString/copyFrom (.getBytes (pr-str {:percent progress}) "UTF-8"))}]
+                               task))
+        job-id (create-dummy-job conn :user "user" :job-state :job.state/running)
+        send-status-update #(async/<!!
+                              (sched/handle-status-update conn driver fenzo
+                                                          (make-status-update "task1" :unknown :task-running %)))
+        instance-id (create-dummy-instance conn job-id
+                                           :instance-status :instance.status/running
+                                           :task-id "task1")
+        progress-from-db #(ffirst (q '[:find ?p
+                                       :in $ ?i
+                                       :where
+                                       [?i :instance/progress ?p]]
+                                     (db conn) instance-id))
+        job-uuid (:job/uuid (d/entity (db conn) job-id))
+        progress-from-api #(:progress (first (:instances (api/fetch-job-map (db conn) nil job-uuid))))]
+    (send-status-update 0)
+    (is (= 0 (progress-from-db)))
+    (is (= 0 (progress-from-api)))
+    (send-status-update 10)
+    (is (= 10 (progress-from-db)))
+    (is (= 10 (progress-from-api)))
+    (send-status-update 90)
+    (is (= 90 (progress-from-db)))
+    (is (= 90 (progress-from-api)))
+    (send-status-update 100)
+    (is (= 100 (progress-from-db)))
+    (is (= 100 (progress-from-api)))))
