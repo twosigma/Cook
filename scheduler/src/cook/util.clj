@@ -276,12 +276,12 @@
     (catch Exception e
       nil)))
 
-(def commit (or (resource "git-log")
-                "dev"))
+(def commit (delay (or (resource "git-log")
+                       "dev")))
 
-(def version (or (resource "version")
-                 (System/getProperty "cook.version")
-                 "version_unknown"))
+(def version (delay (or (resource "version")
+                        (System/getProperty "cook.version")
+                        "version_unknown")))
 
 (defn get-html-stacktrace
   "Returns a string representation of the exception. The 3 argument form fleshes
@@ -290,8 +290,8 @@
    (str "thread name: " (.getName thread)
         "\n\n user: " (System/getProperty "user.name")
         "\n\n host: " (.getHostName (java.net.InetAddress/getLocalHost))
-        "\n\n version: " version
-        "\n\n commit: " commit
+        "\n\n version: " @version
+        "\n\n commit: " @commit
         "\n\n" (get-html-stacktrace exception)))
   ([exception]
    (str exception "\n"

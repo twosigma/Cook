@@ -107,7 +107,7 @@
           scheduler
           (merge
             {:user ""
-             :name (str mesos-framework-name "-" cook.util/version "-" cook.util/commit)
+             :name (str mesos-framework-name "-" @cook.util/version "-" @cook.util/commit)
              :checkpoint true}
             (when mesos-role
               {:role mesos-role})
