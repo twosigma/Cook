@@ -196,7 +196,7 @@ class CookTest(unittest.TestCase):
         resp = util.session.put('%s/retry' % self.cook_url, json={'retries': 2, 'jobs': [job_uuid]})
         self.assertEqual(201, resp.status_code, resp.text)
         job = util.session.get('%s/rawscheduler?job=%s' % (self.cook_url, job_uuid)).json()[0]
-        self.assertEqual('waiting', job['status'])
+        self.assertIn(job['status'], ['waiting', 'running'])
         job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
         self.assertEqual('success', job['state'])
 
