@@ -31,4 +31,4 @@ matrix:
     allow_failures:
       - env: TEST_DIR=integration DEPS_CMD='travis/prepare_integration.sh' TEST_CMD='travis/run_integration.sh explicit'
 before_script: (cd $TEST_DIR && $DEPS_CMD)
-script: cd $TEST_DIR && COOK_EXECUTOR=$COOK_EXECUTOR $TEST_CMD
+script: cd $TEST_DIR && $TEST_CMD

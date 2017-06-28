@@ -111,7 +111,7 @@ def load_job(cook_url, job_id):
     return response.json()[0]
 
 
-def wait_for_job(cook_url, job_id, status, max_delay=120000, wait_for_exit_code=False):
+def wait_for_job(cook_url, job_id, status, max_delay=120000):
     @retry(stop_max_delay=max_delay, wait_fixed=2000)
     def wait_for_job_inner():
         job = load_job(cook_url, job_id)
@@ -123,7 +123,15 @@ def wait_for_job(cook_url, job_id, status, max_delay=120000, wait_for_exit_code=
         else:
             logger.info('Job {} has status {}'.format(job_id, status))
             return job
+    try:
+        return wait_for_job_inner()
+    except:
+        job_final = load_job(cook_url, job_id)
+        logger.info('Timeout exceeded waiting for job to reach %s. Job details: %s' % (status, job_final))
+        raise
 
+
+def wait_for_exit_code(cook_url, job_id):
     @retry(stop_max_delay=2000, wait_fixed=250)
     def wait_for_exit_code_inner():
         job = load_job(cook_url, job_id)
@@ -134,15 +142,10 @@ def wait_for_job(cook_url, job_id, status, max_delay=120000, wait_for_exit_code=
         else:
             logger.info('Job {} has exit_code {}'.format(job_id, job['instances'][0]['exit_code']))
             return job
-
     try:
-        if wait_for_exit_code:
-            wait_for_job_inner()
-            return wait_for_exit_code_inner()
-        else:
-            return wait_for_job_inner()
+        return wait_for_exit_code_inner()
     except:
-        job_final = get_job(cook_url, job_id)
+        job_final = load_job(cook_url, job_id)
         logger.info('Timeout exceeded waiting for job to reach %s. Job details: %s' % (status, job_final))
         raise
 
