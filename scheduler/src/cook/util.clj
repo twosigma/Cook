@@ -70,13 +70,13 @@
                          (catch Exception e#
                            (deliver except# e#)))))
          action-thread# (Thread. action-fn#)]
-    (.start action-thread#)
-    (.join action-thread# ~millis)
-    (cond (realized? except#) (throw @except#)
-          (realized? result#) @result#
-          :else
-          (do (.stop action-thread#)
-              ~failure))))
+     (.start action-thread#)
+     (.join action-thread# ~millis)
+     (cond (realized? except#) (throw @except#)
+           (realized? result#) @result#
+           :else
+           (do (.stop action-thread#)
+               ~failure))))
 
 (defonce thread-counter (java.util.concurrent.atomic.AtomicLong.))
 
@@ -95,9 +95,9 @@
     (if (zero? n)
       [0 0 0 0 0]
       [(first s-coll)
-       (nth s-coll (int  (/ n 4)))
-       (nth s-coll (int  (/ n 2)))
-       (nth s-coll (int  (* 3 (/ n 4))))
+       (nth s-coll (int (/ n 4)))
+       (nth s-coll (int (/ n 2)))
+       (nth s-coll (int (* 3 (/ n 4))))
        (last s-coll)])))
 
 (defn min-max
@@ -207,7 +207,7 @@
        ;; def the untraced symbol name, with most of the metadata we want.
        ~(when-let [untraced-symbol (:untraced (meta symb))]
           `(def ~(with-meta untraced-symbol
-                   (dissoc (meta symb) :untraced :custom-timing))
+                            (dissoc (meta symb) :untraced :custom-timing))
              ~untraced-gensym))
 
        ;; Create the actual symbol.  We map each arity to a body
@@ -215,43 +215,43 @@
        ;; miniprofiler block.
        (defn ~symb
          ~@(map
-            (fn [arity]
-              (let [arglist (first arity)
-                    trace-name (apply str
-                                      (concat
-                                       (list *ns* "/" symb)
-                                       (when-not single-arity?
-                                         (list "-arity_" (count arity)))))]
-                (if (some (partial = '&) arglist)
-                  ;; Binding forms with & must be passed through
-                  ;; with apply, no way around it.
-                  (let [fixed-args (vec (repeatedly max-fixed-arity gensym))
-                        rest-sym (gensym "rest")
-                        variadic-arglist (conj fixed-args '& rest-sym)]
-                    `(~variadic-arglist
-                      ~(if call-type
-                         `(miniprofiler/custom-timing
-                           ~call-type ~execute-type (apply ~command-string-fn ~@fixed-args ~rest-sym)
-                           (apply ~untraced-gensym ~@fixed-args ~rest-sym))
-                         `(miniprofiler/trace
-                           ~trace-name
-                           (apply ~untraced-gensym ~@fixed-args ~rest-sym)))))
-                  (let [arglist' (repeatedly (count arglist) gensym)]
-                    ;; Because a form in arglist may destructure,
-                    ;; we shouldn't use it directly.  Instead,
-                    ;; gensym a name for it here, and let the
-                    ;; inner function do the destructuring.
-                    ;; arglist' is simply enough gensyms for this
-                    ;; arity.
-                    `(~(vec arglist')
-                      ~(if call-type
-                         `(miniprofiler/custom-timing
-                           ~call-type ~execute-type (~command-string-fn ~@arglist')
-                           (~untraced-gensym ~@arglist'))
-                         `(miniprofiler/trace
-                           ~trace-name
-                           (~untraced-gensym ~@arglist'))))))))
-            arity-forms)))))
+             (fn [arity]
+               (let [arglist (first arity)
+                     trace-name (apply str
+                                       (concat
+                                         (list *ns* "/" symb)
+                                         (when-not single-arity?
+                                           (list "-arity_" (count arity)))))]
+                 (if (some (partial = '&) arglist)
+                   ;; Binding forms with & must be passed through
+                   ;; with apply, no way around it.
+                   (let [fixed-args (vec (repeatedly max-fixed-arity gensym))
+                         rest-sym (gensym "rest")
+                         variadic-arglist (conj fixed-args '& rest-sym)]
+                     `(~variadic-arglist
+                        ~(if call-type
+                           `(miniprofiler/custom-timing
+                              ~call-type ~execute-type (apply ~command-string-fn ~@fixed-args ~rest-sym)
+                              (apply ~untraced-gensym ~@fixed-args ~rest-sym))
+                           `(miniprofiler/trace
+                              ~trace-name
+                              (apply ~untraced-gensym ~@fixed-args ~rest-sym)))))
+                   (let [arglist' (repeatedly (count arglist) gensym)]
+                     ;; Because a form in arglist may destructure,
+                     ;; we shouldn't use it directly.  Instead,
+                     ;; gensym a name for it here, and let the
+                     ;; inner function do the destructuring.
+                     ;; arglist' is simply enough gensyms for this
+                     ;; arity.
+                     `(~(vec arglist')
+                        ~(if call-type
+                           `(miniprofiler/custom-timing
+                              ~call-type ~execute-type (~command-string-fn ~@arglist')
+                              (~untraced-gensym ~@arglist'))
+                           `(miniprofiler/trace
+                              ~trace-name
+                              (~untraced-gensym ~@arglist'))))))))
+             arity-forms)))))
 
 (defn exponential-seq
   "Return a lazy-seq sequence of
@@ -268,15 +268,20 @@
   ([n scalar base]
    (mapv rand-int (take n (exponential-seq scalar base)))))
 
-(comment
-  (println (rand-exponential-seq 10 1000))
-  (println (rand-exponential-seq 5 60))
- )
+(defn- resource
+  "Returns the slurped contents of the given resource, or nil"
+  [resource-name]
+  (try
+    (slurp (io/resource resource-name))
+    (catch Exception e
+      nil)))
 
-(def version
-  (try (slurp (io/resource "git-log"))
-       (catch Exception e
-         "dev")))
+(def commit (delay (or (resource "git-log")
+                       "dev")))
+
+(def version (delay (or (resource "version")
+                        (System/getProperty "cook.version")
+                        "version_unknown")))
 
 (defn get-html-stacktrace
   "Returns a string representation of the exception. The 3 argument form fleshes
@@ -285,7 +290,8 @@
    (str "thread name: " (.getName thread)
         "\n\n user: " (System/getProperty "user.name")
         "\n\n host: " (.getHostName (java.net.InetAddress/getLocalHost))
-        "\n\n commit: " version
+        "\n\n version: " @version
+        "\n\n commit: " @commit
         "\n\n" (get-html-stacktrace exception)))
   ([exception]
    (str exception "\n"

@@ -118,20 +118,22 @@
                                org.slf4j/log4j
                                log4j
                                ]]
-                 [org.apache.curator/curator-test "2.7.1"]
-
-                 ;; incanter
-                 ;[incanter "1.5.4"]
-  ]
+                 [org.apache.curator/curator-test "2.7.1"]]
 
   :repositories {"maven2" {:url "http://files.couchbase.com/maven2/"}
                  "sonatype-oss-public" "https://oss.sonatype.org/content/groups/public/"}
 
   :filespecs [{:type :fn
-               :fn (fn [p]
-                     {:type :bytes :path "git-log"
+               :fn (fn [_]
+                     {:type :bytes
+                      :path "git-log"
                       :bytes (.trim (:out (clojure.java.shell/sh
-                                            "git" "rev-parse" "HEAD")))})}]
+                                            "git" "rev-parse" "HEAD")))})}
+              {:type :fn
+               :fn (fn [{:keys [version]}]
+                     {:type :bytes
+                      :path "version"
+                      :bytes version})}]
 
   :java-source-paths ["java"]
 
@@ -144,15 +146,14 @@
                    [org.mockito/mockito-core "1.10.19"]
                    [twosigma/cook-jobclient "0.1.2-SNAPSHOT"]
                    [org.clojure/test.check "0.6.1"]
-                   [log4j/log4j "1.2.17" :exclusions  [javax.mail/mail
-                                                       javax.jms/jms
-                                                       com.sun.jdmk/jmxtools
-                                                       com.sun.jmx/jmxri]]
+                   [log4j/log4j "1.2.17" :exclusions [javax.mail/mail
+                                                      javax.jms/jms
+                                                      com.sun.jdmk/jmxtools
+                                                      com.sun.jmx/jmxri]]
                    [ring/ring-jetty-adapter "1.5.0"]]
     :jvm-opts ["-Xms2G"
                "-XX:-OmitStackTraceInFastThrow"
                "-Xmx2G"
-;               "-Dcom.sun.management.jmxremote.port=5555"
                "-Dcom.sun.management.jmxremote.authenticate=false"
                "-Dcom.sun.management.jmxremote.ssl=false"]
     :resource-paths ["test-resources"]
