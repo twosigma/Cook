@@ -273,6 +273,12 @@
          (catch Exception e
            (log/error e "Mesos scheduler status update error")))))
 
+(defn- task-id->instance-id
+  "Retrieves the instance-id given a task-id"
+  [db task-id]
+  (-> (d/entity db [:instance/task-id task-id])
+      :db/id))
+
 (defn handle-framework-message
   "Processes a framework message from Mesos."
   [conn framework-message]
@@ -285,19 +291,16 @@
             _ (log/debug "Received framework message:" {:task-id task-id, :message message})
             _ (when (str/blank? task-id)
                 (throw (ex-info "task-id is empty in framework message" {:message message})))
-            instance (ffirst (q '[:find ?i
-                                  :in $ ?task-id
-                                  :where [?i :instance/task-id ?task-id]]
-                                db task-id))]
-        (if (nil? instance)
+            instance-id (task-id->instance-id db task-id)]
+        (if (nil? instance-id)
           (throw (ex-info "No instance found!" {:task-id task-id}))
           (let [txns (cond-> []
-                              exit-code (conj [:db/add instance :instance/exit-code (int exit-code)])
-                              progress-message (conj [:db/add instance :instance/progress-message (str progress-message)])
-                              progress-percent (conj [:db/add instance :instance/progress (int progress-percent)])
-                              sandbox-directory (conj [:db/add instance :instance/sandbox-directory (str sandbox-directory)]))]
+                             exit-code (conj [:db/add instance-id :instance/exit-code (int exit-code)])
+                             progress-message (conj [:db/add instance-id :instance/progress-message (str progress-message)])
+                             progress-percent (conj [:db/add instance-id :instance/progress (int progress-percent)])
+                             sandbox-directory (conj [:db/add instance-id :instance/sandbox-directory (str sandbox-directory)]))]
             (when (seq txns)
-              (log/info "Updating instance" instance "to" txns)
+              (log/info "Updating instance" instance-id "to" txns)
               (transact-with-retries conn txns)))))
       (catch Exception e
         (log/error e "Mesos scheduler framework message error")))))
