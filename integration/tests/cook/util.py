@@ -141,3 +141,21 @@ def get_mesos_state(mesos_url):
     Queries the state.json from mesos
     """
     return session.get('%s/state.json' % mesos_url).json()
+
+
+@retry(stop_max_delay=120000, wait_fixed=5000)
+def get_output_url(cook_url, job_uuid):
+    """
+    Gets the output_url for the given job, retrying every 5 
+    seconds for a maximum of 2 minutes. The retries are 
+    necessary because currently the Mesos agent sandbox
+    directories are cached in Cook.
+    """
+    job = get_job(cook_url, job_uuid)
+    instance = job['instances'][0]
+    if 'output_url' in instance:
+        return instance['output_url']
+    else:
+        error_msg = 'Job %s had no output_url' % job['uuid']
+        logger.info(error_msg)
+        raise RuntimeError(error_msg)
