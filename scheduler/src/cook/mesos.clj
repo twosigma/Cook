@@ -184,19 +184,19 @@
    offer-cache              -- atom, map from host to most recent offer. Used to get attributes
    gpu-enabled?             -- boolean, whether cook will schedule gpus
    rebalancer-config        -- map, config for rebalancer. See scheduler/docs/rebalancer-config.asc for details
+   framework-id             -- str, the Mesos framework id from the cook settings
    fenzo-config             -- map, config for fenzo, See scheduler/docs/configuration.asc for more details"
-  [make-mesos-driver-fn get-mesos-utilization curator-framework mesos-datomic-conn mesos-datomic-mult zk-prefix offer-incubate-time-ms mea-culpa-failure-limit task-constraints riemann-host riemann-port mesos-pending-jobs-atom offer-cache gpu-enabled? rebalancer-config mesos-leadership-atom
+  [make-mesos-driver-fn get-mesos-utilization curator-framework mesos-datomic-conn mesos-datomic-mult zk-prefix
+   offer-incubate-time-ms mea-culpa-failure-limit task-constraints riemann-host riemann-port mesos-pending-jobs-atom
+   offer-cache gpu-enabled? rebalancer-config framework-id mesos-leadership-atom
    {:keys [fenzo-fitness-calculator fenzo-floor-iterations-before-reset fenzo-floor-iterations-before-warn
            fenzo-max-jobs-considered fenzo-scaleback good-enough-fitness]
     :as fenzo-config}
    {:keys [cancelled-task-trigger-chan lingering-task-trigger-chan rebalancer-trigger-chan straggler-trigger-chan]
     :as trigger-chans}]
-  (let [zk-framework-id (str zk-prefix "/framework-id")
-        datomic-report-chan (async/chan (async/sliding-buffer 4096))
+  (let [datomic-report-chan (async/chan (async/sliding-buffer 4096))
         mesos-heartbeat-chan (async/chan (async/buffer 4096))
         current-driver (atom nil)
-        framework-id (when-let [bytes (curator/get-or-nil curator-framework zk-framework-id)]
-                       (String. bytes))
         leader-selector (LeaderSelector.
                           curator-framework
                           zk-prefix
@@ -212,11 +212,6 @@
                                   (let [{:keys [scheduler view-incubating-offers]}
                                         (sched/create-datomic-scheduler
                                           mesos-datomic-conn
-                                          (fn set-or-create-framework-id [framework-id]
-                                            (curator/set-or-create
-                                              curator-framework
-                                              zk-framework-id
-                                              (.getBytes (-> framework-id mesomatic.types/pb->data :value) "UTF-8")))
                                           current-driver
                                           mesos-pending-jobs-atom
                                           offer-cache
@@ -231,6 +226,7 @@
                                           task-constraints
                                           gpu-enabled?
                                           good-enough-fitness
+                                          framework-id
                                           trigger-chans)
                                         driver (make-mesos-driver-fn scheduler framework-id)]
                                     (mesomatic.scheduler/start! driver)

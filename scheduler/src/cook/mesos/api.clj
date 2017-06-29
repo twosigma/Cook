@@ -1071,7 +1071,7 @@
 ;;;            "mem": 1000}]}
 ;;;
 (defn create-jobs-handler
-  [conn fid task-constraints gpu-enabled? is-authorized-fn]
+  [conn task-constraints gpu-enabled? is-authorized-fn]
   (base-cook-handler
     {:allowed-methods [:post]
      :malformed? (fn [ctx]
@@ -1130,7 +1130,7 @@
 
 
 (defn read-groups-handler
-  [conn fid task-constraints is-authorized-fn]
+  [conn task-constraints is-authorized-fn]
   (base-cook-handler
     {:allowed-methods [:get]
      :malformed? (fn [ctx]
@@ -1535,7 +1535,7 @@
 (timers/deftimer [cook-scheduler handler list-endpoint])
 
 (defn list-resource
-  [db framework-id is-authorized-fn]
+  [db fid is-authorized-fn]
   (liberator/resource
    :available-media-types ["application/json"]
    :allowed-methods [:get]
@@ -1612,7 +1612,7 @@
                        job-uuids (if (nil? limit)
                                    job-uuids
                                    (take limit job-uuids))]
-                   (mapv (partial fetch-job-map db framework-id) job-uuids))))))
+                   (mapv (partial fetch-job-map db fid) job-uuids))))))
 
 ;;
 ;; /unscheduled_jobs
@@ -1701,7 +1701,7 @@
                :responses {201 {:description "The jobs were successfully scheduled."}
                            400 {:description "One or more of the jobs were incorrectly specified."}
                            409 {:description "One or more of the jobs UUIDs are already in use."}}
-               :handler (create-jobs-handler conn fid task-constraints gpu-enabled? is-authorized-fn)}
+               :handler (create-jobs-handler conn task-constraints gpu-enabled? is-authorized-fn)}
         :delete {:summary "Cancels jobs, halting execution when possible."
                  :responses {204 {:description "The jobs have been marked for termination."}
                              400 {:description "Non-UUID values were passed as jobs."}
@@ -1786,7 +1786,7 @@
                                :description "The groups were returned."}
                           400 {:description "Non-UUID values were passed."}
                           403 {:description "The supplied UUIDs don't correspond to valid groups."}}
-              :handler (read-groups-handler conn fid task-constraints is-authorized-fn)}}))
+              :handler (read-groups-handler conn task-constraints is-authorized-fn)}}))
 
      (c-api/context
       "/failure_reasons" []

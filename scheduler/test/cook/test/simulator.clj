@@ -108,6 +108,7 @@
          riemann-port# (:riemann-port ~scheduler-config)
          gpu-enabled?# (or (:gpus-enabled? ~scheduler-config) false)
          rebalancer-config# (merge default-rebalancer-config (:rebalancer-config ~scheduler-config))
+         framework-id# "cool-framework-id"
          mesos-leadership-atom# (atom false)
          fenzo-config# (merge default-fenzo-config (:fenzo-config ~scheduler-config))
          trigger-chans# (or (:trigger-chans ~scheduler-config)
@@ -119,7 +120,7 @@
                                                  offer-incubate-time-ms# mea-culpa-failure-limit#
                                                  task-constraints# riemann-host# riemann-port#
                                                  pending-jobs-atom# offer-cache#
-                                                 gpu-enabled?# rebalancer-config#
+                                                 gpu-enabled?# rebalancer-config# framework-id# 
                                                  mesos-leadership-atom# fenzo-config#
                                                  trigger-chans#)]
          ~@body)

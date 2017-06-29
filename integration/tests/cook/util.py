@@ -101,7 +101,7 @@ def submit_job(cook_url, **kwargs):
 
 
 def wait_for_job(cook_url, job_id, status, max_delay=120000):
-    @retry(stop_max_delay=max_delay, wait_fixed=1000)
+    @retry(stop_max_delay=max_delay, wait_fixed=2000)
     def wait_for_job_inner():
         job = session.get('%s/rawscheduler?job=%s' % (cook_url, job_id))
         assert 200 == job.status_code
@@ -114,7 +114,12 @@ def wait_for_job(cook_url, job_id, status, max_delay=120000):
             logger.info('Job %s has status %s - %s', job_id, status, job)
             return job
 
-    return wait_for_job_inner()
+    try:
+        return wait_for_job_inner()
+    except:
+        job_final = get_job(cook_url, job_id)
+        logger.info('Timeout exceeded waiting for job to reach %s. Job details: %s' % (status, job_final))
+        raise
 
 
 def query_jobs(cook_url, **kwargs):
@@ -126,8 +131,31 @@ def query_jobs(cook_url, **kwargs):
     return session.get('%s/rawscheduler' % cook_url, params=kwargs)
 
 
+def get_job(cook_url, job_uuid):
+    """Loads a job by UUID using GET /rawscheduler"""
+    return query_jobs(cook_url, job=[job_uuid]).json()[0]
+
+
 def get_mesos_state(mesos_url):
     """
     Queries the state.json from mesos
     """
     return session.get('%s/state.json' % mesos_url).json()
+
+
+@retry(stop_max_delay=120000, wait_fixed=5000)
+def get_output_url(cook_url, job_uuid):
+    """
+    Gets the output_url for the given job, retrying every 5 
+    seconds for a maximum of 2 minutes. The retries are 
+    necessary because currently the Mesos agent sandbox
+    directories are cached in Cook.
+    """
+    job = get_job(cook_url, job_uuid)
+    instance = job['instances'][0]
+    if 'output_url' in instance:
+        return instance['output_url']
+    else:
+        error_msg = 'Job %s had no output_url' % job['uuid']
+        logger.info(error_msg)
+        raise RuntimeError(error_msg)

@@ -23,26 +23,23 @@ class CookTest(unittest.TestCase):
         self.logger = logging.getLogger(__name__)
         util.wait_for_cook(self.cook_url)
 
-    def get_job(self, job_uuid):
-        """Loads a job by UUID using GET /rawscheduler"""
-        return util.query_jobs(self.cook_url, job=[job_uuid]).json()[0]
-
     def test_basic_submit(self):
         job_uuid, resp = util.submit_job(self.cook_url)
         self.assertEqual(resp.status_code, 201)
         job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
         self.assertEqual('success', job['instances'][0]['status'])
         self.assertEqual(False, job['disable_mea_culpa_retries'])
+        self.assertTrue(len(util.get_output_url(self.cook_url, job_uuid)) > 0)
 
     def test_disable_mea_culpa(self):
         job_uuid, resp = util.submit_job(self.cook_url, disable_mea_culpa_retries=True)
         self.assertEqual(201, resp.status_code)
-        job = self.get_job(job_uuid)
+        job = util.get_job(self.cook_url, job_uuid)
         self.assertEqual(True, job['disable_mea_culpa_retries'])
 
         job_uuid, resp = util.submit_job(self.cook_url, disable_mea_culpa_retries=False)
         self.assertEqual(201, resp.status_code)
-        job = self.get_job(job_uuid)
+        job = util.get_job(self.cook_url, job_uuid)
         self.assertEqual(False, job['disable_mea_culpa_retries'])
 
     def test_failing_submit(self):
@@ -109,7 +106,7 @@ class CookTest(unittest.TestCase):
         request_body = {'jobs': [job_spec]}
         resp = util.session.post('%s/rawscheduler' % self.cook_url, json=request_body)
         self.assertEqual(resp.status_code, 201)
-        return self.get_job(job_spec['uuid'])['user']
+        return util.get_job(self.cook_url, job_spec['uuid'])['user']
 
     def test_list_jobs_by_state(self):
         # schedule a bunch of jobs in hopes of getting jobs into different statuses
@@ -143,7 +140,7 @@ class CookTest(unittest.TestCase):
         resp = util.session.post('%s/rawscheduler' % self.cook_url, json=request_body)
         self.assertEqual(resp.status_code, 201)
 
-        submit_times = [self.get_job(job_spec['uuid'])['submit_time'] for job_spec in job_specs]
+        submit_times = [util.get_job(self.cook_url, job_spec['uuid'])['submit_time'] for job_spec in job_specs]
 
         user = self.determine_user()
 
@@ -199,7 +196,7 @@ class CookTest(unittest.TestCase):
         resp = util.session.put('%s/retry' % self.cook_url, json={'retries': 2, 'jobs': [job_uuid]})
         self.assertEqual(201, resp.status_code, resp.text)
         job = util.session.get('%s/rawscheduler?job=%s' % (self.cook_url, job_uuid)).json()[0]
-        self.assertEqual('waiting', job['status'])
+        self.assertIn(job['status'], ['waiting', 'running'])
         job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
         self.assertEqual('success', job['state'])
 

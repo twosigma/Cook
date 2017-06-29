@@ -1490,7 +1490,7 @@
                                                   (-> status mtypes/pb->data :state)))))
                     (Thread/sleep (rand-int 100))
                     (.countDown latch))]
-      (let [s (sched/create-mesos-scheduler (atom nil) (constantly true) true nil nil nil nil nil)]
+      (let [s (sched/create-mesos-scheduler nil true nil nil nil nil nil)]
 
         (.statusUpdate s nil (mtypes/->pb :TaskStatus {:task-id {} :state :task-starting}))
         (.statusUpdate s nil (mtypes/->pb :TaskStatus {:task-id {:value "T1"} :state :task-starting}))

@@ -731,7 +731,7 @@
 (counters/defcounter [cook-mesos scheduler offer-chan-depth])
 
 (defn make-offer-handler
-  [conn driver-atom fenzo fid-atom pending-jobs-atom offer-cache
+  [conn driver-atom fenzo framework-id pending-jobs-atom offer-cache
    max-considerable scaleback
    floor-iterations-before-warn floor-iterations-before-reset
    trigger-chan]
@@ -780,7 +780,7 @@
                                                  (cache/miss c slave-id attrs)))))
                       _ (log/debug "Passing following offers to handle-resource-offers!" offers)
                       user->quota (quota/create-user->quota-fn (d/db conn))
-                      matched-head? (handle-resource-offers! conn @driver-atom fenzo @fid-atom pending-jobs-atom offer-cache @user->usage-future user->quota num-considerable offers-chan offers)]
+                      matched-head? (handle-resource-offers! conn @driver-atom fenzo framework-id pending-jobs-atom offer-cache @user->usage-future user->quota num-considerable offers-chan offers)]
                   (when (seq offers)
                     (reset! resources-atom (view-incubating-offers fenzo)))
                   ;; This check ensures that, although we value Fenzo's optimizations,
@@ -1307,12 +1307,16 @@
 
 (defn create-mesos-scheduler
   "Creates the mesos scheduler which processes status updates asynchronously but in order of receipt."
-  [fid set-framework-id gpu-enabled? conn heartbeat-ch fenzo offers-chan match-trigger-chan]
+  [fid gpu-enabled? conn heartbeat-ch fenzo offers-chan match-trigger-chan]
   (mesos/scheduler
     (registered [this driver framework-id master-info]
                 (log/info "Registered with mesos with framework-id " framework-id)
-                (reset! fid framework-id)
-                (set-framework-id framework-id)
+                (let [value (-> framework-id mesomatic.types/pb->data :value)]
+                  (when (not= fid value)
+                    (let [message (str "The framework-id provided by Mesos (" value ") "
+                                       "does not match the one Cook is configured with (" fid ")")]
+                      (log/error message)
+                      (throw (ex-info message {:framework-id-mesos value :framework-id-cook fid})))))
                 (when (and gpu-enabled? (not (re-matches #"1\.\d+\.\d+" (:version master-info))))
                   (binding [*out* *err*]
                     (println "Cannot enable GPU support on pre-mesos 1.0. The version we found was " (:version master-info)))
@@ -1324,7 +1328,7 @@
                 (future
                   (try
                     (reconcile-jobs conn)
-                    (reconcile-tasks (db conn) driver @fid fenzo)
+                    (reconcile-tasks (db conn) driver fid fenzo)
                     (catch Exception e
                       (log/error e "Reconciliation error")))))
     (reregistered [this driver master-info]
@@ -1332,7 +1336,7 @@
                   (future
                     (try
                       (reconcile-jobs conn)
-                      (reconcile-tasks (db conn) driver @fid fenzo)
+                      (reconcile-tasks (db conn) driver fid fenzo)
                       (catch Exception e
                         (log/error e "Reconciliation error")))))
     ;; Ignore this--we can just wait for new offers
@@ -1356,15 +1360,19 @@
                      (async-in-order-processing task-id #(handle-status-update conn driver fenzo status))))))
 
 (defn create-datomic-scheduler
-  [conn set-framework-id driver-atom pending-jobs-atom offer-cache heartbeat-ch offer-incubate-time-ms mea-culpa-failure-limit
-   fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset fenzo-fitness-calculator
-   task-constraints gpu-enabled? good-enough-fitness {:keys [match-trigger-chan rank-trigger-chan] :as trigger-chans}]
+  [conn driver-atom pending-jobs-atom offer-cache heartbeat-ch offer-incubate-time-ms mea-culpa-failure-limit
+   fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset
+   fenzo-fitness-calculator task-constraints gpu-enabled? good-enough-fitness framework-id
+   {:keys [match-trigger-chan rank-trigger-chan] :as trigger-chans}]
 
   (persist-mea-culpa-failure-limit! conn mea-culpa-failure-limit)
 
-  (let [fid (atom nil)
-        fenzo (make-fenzo-scheduler driver-atom offer-incubate-time-ms fenzo-fitness-calculator good-enough-fitness)
-        [offers-chan resources-atom] (make-offer-handler conn driver-atom fenzo fid pending-jobs-atom offer-cache fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset match-trigger-chan)]
+  (let [fenzo (make-fenzo-scheduler driver-atom offer-incubate-time-ms fenzo-fitness-calculator good-enough-fitness)
+        [offers-chan resources-atom] (make-offer-handler conn driver-atom fenzo framework-id pending-jobs-atom
+                                                         offer-cache fenzo-max-jobs-considered fenzo-scaleback
+                                                         fenzo-floor-iterations-before-warn
+                                                         fenzo-floor-iterations-before-reset match-trigger-chan)]
     (start-jobs-prioritizer! conn pending-jobs-atom task-constraints rank-trigger-chan)
-    {:scheduler (create-mesos-scheduler fid set-framework-id gpu-enabled? conn heartbeat-ch fenzo offers-chan match-trigger-chan)
+    {:scheduler (create-mesos-scheduler framework-id gpu-enabled? conn heartbeat-ch
+                                        fenzo offers-chan match-trigger-chan)
      :view-incubating-offers (fn get-resources-atom [] @resources-atom)}))

@@ -83,8 +83,14 @@
                    (route/not-found "<h1>Not a valid route</h1>")))})
 
 (def mesos-scheduler
-  {:mesos-scheduler (fnk [[:settings mesos-master mesos-master-hosts mesos-leader-path mesos-failover-timeout mesos-principal mesos-role mesos-framework-name offer-incubate-time-ms mea-culpa-failure-limit fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset fenzo-fitness-calculator task-constraints riemann mesos-gpu-enabled rebalancer good-enough-fitness] mesos-datomic mesos-datomic-mult curator-framework mesos-pending-jobs-atom mesos-offer-cache mesos-leadership-atom]
-
+  {:mesos-scheduler (fnk [[:settings fenzo-fitness-calculator fenzo-floor-iterations-before-reset
+                           fenzo-floor-iterations-before-warn fenzo-max-jobs-considered fenzo-scaleback
+                           good-enough-fitness mea-culpa-failure-limit mesos-failover-timeout mesos-framework-name
+                           mesos-gpu-enabled mesos-leader-path mesos-master mesos-master-hosts mesos-principal
+                           mesos-role offer-incubate-time-ms rebalancer riemann task-constraints]
+                          curator-framework framework-id mesos-datomic mesos-datomic-mult mesos-leadership-atom 
+                          mesos-offer-cache mesos-pending-jobs-atom]
+                      (log/info "Initializing mesos scheduler")
                       (let [make-mesos-driver-fn (partial (lazy-load-var 'cook.mesos/make-mesos-driver)
                                                           {:mesos-master mesos-master
                                                            :mesos-failover-timeout mesos-failover-timeout
@@ -112,6 +118,7 @@
                             mesos-offer-cache
                             mesos-gpu-enabled
                             rebalancer
+                            framework-id
                             mesos-leadership-atom
                             {:fenzo-max-jobs-considered fenzo-max-jobs-considered
                              :fenzo-scaleback fenzo-scaleback
@@ -207,6 +214,14 @@
   (get-ttl [self req]
     ttl))
 
+(defn framework-id-from-zk
+  "Returns the framework id from ZooKeeper, or nil if not present"
+  [curator-framework mesos-leader-path]
+  (when-let [bytes (curator/get-or-nil curator-framework (str mesos-leader-path "/framework-id"))]
+    (let [framework-id (String. bytes)]
+      (log/info "Found framework id in zookeeper:" framework-id)
+      framework-id)))
+
 (def scheduler-server
   (graph/eager-compile
     {:mesos-datomic mesos-datomic
@@ -233,11 +248,18 @@
                                    :max-threads 200
                                    :request-header-size 32768})]
                       (fn [] (.stop jetty))))
-
-     :framework-id (fnk [curator-framework [:settings mesos-leader-path]]
-                     (when-let [bytes (curator/get-or-nil curator-framework
-                                                          (str mesos-leader-path "/framework-id"))]
-                       (String. bytes)))
+     ; If the framework id was not found in the configuration settings, we attempt reading it from
+     ; ZooKeeper. The read from ZK is present for backwards compatibility (the framework id used to
+     ; get written to ZK as well). Without this, Cook would connect to mesos with a different
+     ; framework id and mark all jobs that were running failed because mesos wouldn't have tasks for
+     ; those jobs under the new framework id.
+     :framework-id (fnk [curator-framework [:settings mesos-leader-path mesos-framework-id]]
+                     (let [framework-id (or mesos-framework-id
+                                            (framework-id-from-zk curator-framework mesos-leader-path))]
+                       (when-not framework-id
+                         (throw (ex-info "Framework id not configured and not in ZooKeeper" {})))
+                       (log/info "Using framework id:" framework-id)
+                       framework-id))
      :mesos-datomic-mult (fnk [mesos-datomic]
                            (first ((lazy-load-var 'cook.datomic/create-tx-report-mult) mesos-datomic)))
      :local-zookeeper (fnk [[:settings zookeeper-server]]
@@ -380,7 +402,7 @@
      :fenzo-floor-iterations-before-reset (fnk [[:config [:scheduler {fenzo-floor-iterations-before-reset 1000}]]]
                                             fenzo-floor-iterations-before-reset)
      :fenzo-fitness-calculator (fnk [[:config [:scheduler {fenzo-fitness-calculator default-fitness-calculator}]]]
-                                    fenzo-fitness-calculator)
+                                 fenzo-fitness-calculator)
      :mesos-gpu-enabled (fnk [[:config [:mesos {enable-gpu-support false}]]]
                           (boolean enable-gpu-support))
      :good-enough-fitness (fnk [[:config [:scheduler {good-enough-fitness 0.8}]]]
@@ -405,6 +427,8 @@
                    role)
      :mesos-framework-name (fnk [[:config [:mesos {framework-name "Cook"}]]]
                              framework-name)
+     :mesos-framework-id (fnk [[:config [:mesos {framework-id nil}]]]
+                           framework-id)
      ;:riemann-metrics (fnk [[:config [:metrics {riemann nil}]]]
      ;                  (when riemann
      ;                    (when-not (= 4 (count (select-keys riemann [:host :port])))
