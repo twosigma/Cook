@@ -242,7 +242,7 @@ def submit(clusters, args):
         if minimal:
             return uuids
         elif len(uuids) == 1:
-            return "Job submitted successfully. Your job's UUID is %s." % uuids[0]
+            return "Job submitted successfully. Your job's UUID is %s ." % uuids[0]
         else:
             return "Jobs submitted successfully. Your jobs' UUIDs are: %s." % ', '.join(uuids)
 
@@ -402,3 +402,43 @@ def show(clusters, args):
 
 
 actions.update({'show': show})
+
+###################################################################################################
+
+show_output_parser = subparsers.add_parser('show-output', help='TODO(DPO)')
+show_output_parser.add_argument('uuid', nargs='+')
+show_output_parser.add_argument('--path', '-p', default='stdout', help='TODO(DPO)')
+
+
+def show_output(clusters, args):
+    """TODO(DPO)"""
+    path = args.get('path')
+    jobs = query_jobs(clusters, args)
+    job_output = None
+    job_outputs = {}
+    for job in jobs:
+        if 'instances' in job:
+            output = None
+            instance_outputs = {}
+            for instance in job['instances']:
+                if 'output_url' in instance:
+                    url = '%s/%s&offset=0' % (instance['output_url'], path)
+                    output = session.get(url).json()['data'].strip()
+                else:
+                    output = 'Output not available.'
+                instance_outputs[instance['task_id']] = output
+            if len(instance_outputs) == 1:
+                job_output = output
+            else:
+                job_output = '\n\n'.join('===== Instance %s =====\n%s' % (k, v) for k, v in instance_outputs.items())
+        else:
+            job_output = 'Job has no instances.'
+        job_outputs[job['uuid']] = job_output
+    if len(job_outputs) == 1:
+        final_output = job_output
+    else:
+        final_output = '\n\n'.join('========== Job %s ==========\n%s' % (k, v) for k, v in sorted(job_outputs.items()))
+    return final_output
+
+
+actions.update({'show-output': show_output})
