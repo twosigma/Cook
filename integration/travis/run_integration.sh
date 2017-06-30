@@ -48,7 +48,7 @@ cs --help
 
 # Run the integration tests
 cd ${PROJECT_DIR}
-COOK_MULTI_CLUSTER= python setup.py nosetests --attr ${NOSE_ATTRIBUTES} --verbosity=3 || test_failures=true
+COOK_MULTI_CLUSTER= python3 setup.py nosetests --attr ${NOSE_ATTRIBUTES} --verbosity=3 || test_failures=true
 
 # If there were failures, dump the executor logs
 if [ "$test_failures" = true ]; then
