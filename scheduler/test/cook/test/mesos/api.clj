@@ -78,8 +78,10 @@
 (defn basic-handler
   [conn & {:keys [cpus memory-gb gpus-enabled retry-limit]
            :or {cpus 12 memory-gb 100 gpus-enabled false retry-limit 200}}]
-  (let [retrieve-url-path-fn (fn [framework-id hostname executor-id] (str "http://" hostname "/" framework-id "/" executor-id))]
-    (api/main-handler conn "my-framework-id" (fn [] []) retrieve-url-path-fn
+  (with-redefs [api/retrieve-url-path
+                (fn [framework-id hostname executor-id _]
+                  (str "http://" hostname "/" framework-id "/" executor-id))]
+    (api/main-handler conn "my-framework-id" (fn [] []) (atom (cache/lru-cache-factory {}))
                       {:is-authorized-fn authorized-fn
                        :mesos-gpu-enabled gpus-enabled
                        :task-constraints {:cpus cpus :memory-gb memory-gb :retry-limit retry-limit}})))
@@ -1226,10 +1228,8 @@
           (is (= expected-result actual-result))))
 
       (let [cache (-> {} (cache/basic-cache-factory) atom)]
-        (letfn [(get-executor-id->sandbox-directory [framework-id agent-hostname]
-                  (api/get-executor-id->sandbox-directory framework-id agent-hostname cache))
-                (retrieve-url-path [framework-id agent-hostname executor-id]
-                  (api/retrieve-url-path framework-id agent-hostname executor-id get-executor-id->sandbox-directory))]
+        (letfn [(retrieve-url-path [framework-id agent-hostname executor-id]
+                  (api/retrieve-url-path framework-id agent-hostname executor-id cache))]
 
           (testing "retrieve-url-path"
             (is (nil? (retrieve-url-path target-framework-id agent-hostname "executor-100")))

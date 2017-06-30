@@ -37,7 +37,7 @@
                       (api/main-handler conn
                                         "my-framework-id"
                                         (fn [] [])
-                                        retrieve-url-path-fn
+                                        (atom (cache/lru-cache-factory {}))
                                         {:is-authorized-fn authorized-fn
                                          :mesos-gpu-enabled false
                                          :task-constraints {:cpus 12 :memory-gb 100 :retry-limit 200}}))
