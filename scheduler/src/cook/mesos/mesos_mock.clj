@@ -224,7 +224,6 @@
                                                            :state task-state}))
          (-> state
              (update :task-id->task #(dissoc % task-id))
-             (update :task-id->completed-task #(assoc % task-id (assoc task :complete-time (t/now))))
              (update-in [:slave-id->host (:value (:slave-id task)) :available-resources]
                         #(combine-resources (:resources task) %)))))
      state)))
@@ -418,7 +417,6 @@
                        :slave-id->host (map-from-vals :slave-id hosts)
                        :offer-id->offer {}
                        :task-id->task {}
-                       :task-id->completed-task {}
                        :time-task-id-pairs []
                        :now (t/now)}]
            (log/debug "State before " state)

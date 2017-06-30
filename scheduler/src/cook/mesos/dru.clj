@@ -14,10 +14,7 @@
 ;; limitations under the License.
 ;;
 (ns cook.mesos.dru
-  (:require [clojure.core.async :as async]
-            [clojure.core.reducers :as r]
-            [clojure.tools.logging :as log]
-            [cook.mesos.share :as share]
+  (:require [cook.mesos.share :as share]
             [cook.mesos.util :as util]
             [metrics.timers :as timers]
             [swiss.arrows :refer :all]))
@@ -31,18 +28,11 @@
   [db running-task-ents pending-job-ents]
   (timers/time!
     init-user->dru-divisors-duration
-    (let [all-running-users (->> running-task-ents
-                               (map util/task-ent->user)
-                               (into #{}))
-        all-pending-users (->> pending-job-ents
-                               (map :job/user)
-                               (into #{}))
-        all-users (clojure.set/union all-running-users all-pending-users)
-        user->dru-divisors (->> all-users
-                                (map (fn [user]
-                                       [user (share/get-share db user)]))
-                                (into {}))]
-    user->dru-divisors)))
+    (let [all-running-users (map util/task-ent->user running-task-ents)
+          all-pending-users (map :job/user pending-job-ents)
+          all-users-set (-> #{} (into all-running-users) (into all-pending-users))
+          user->dru-divisors (share/get-shares db all-users-set)]
+      user->dru-divisors)))
 
 (defn accumulate-resources
   "Takes a seq of task resources, returns a seq of accumulated resource usage the nth element is the sum of 0..n"

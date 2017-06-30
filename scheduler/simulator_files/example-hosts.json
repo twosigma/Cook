@@ -1,0 +1,91 @@
+[ {
+  "hostname" : "0",
+  "attributes" : { },
+  "resources" : {
+    "cpus" : {
+      "*" : 10
+    },
+    "mem" : {
+      "*" : 10000
+    },
+    "ports" : {
+      "*" : [ {
+        "begin" : 1,
+        "end" : 100
+      } ]
+    }
+  },
+  "slave-id" : "a05a4ac2-7eb2-40a1-8259-111b961874c1"
+}, {
+  "hostname" : "1",
+  "attributes" : { },
+  "resources" : {
+    "cpus" : {
+      "*" : 10
+    },
+    "mem" : {
+      "*" : 10000
+    },
+    "ports" : {
+      "*" : [ {
+        "begin" : 1,
+        "end" : 100
+      } ]
+    }
+  },
+  "slave-id" : "eba83456-8596-44c2-9de5-fb29cfaf1647"
+}, {
+  "hostname" : "2",
+  "attributes" : { },
+  "resources" : {
+    "cpus" : {
+      "*" : 10
+    },
+    "mem" : {
+      "*" : 10000
+    },
+    "ports" : {
+      "*" : [ {
+        "begin" : 1,
+        "end" : 100
+      } ]
+    }
+  },
+  "slave-id" : "4696a9c8-fc9f-46b4-8a83-23b384f3f616"
+}, {
+  "hostname" : "3",
+  "attributes" : { },
+  "resources" : {
+    "cpus" : {
+      "*" : 10
+    },
+    "mem" : {
+      "*" : 10000
+    },
+    "ports" : {
+      "*" : [ {
+        "begin" : 1,
+        "end" : 100
+      } ]
+    }
+  },
+  "slave-id" : "a45be252-35f7-434a-8ec3-1e85265213ac"
+}, {
+  "hostname" : "4",
+  "attributes" : { },
+  "resources" : {
+    "cpus" : {
+      "*" : 10
+    },
+    "mem" : {
+      "*" : 10000
+    },
+    "ports" : {
+      "*" : [ {
+        "begin" : 1,
+        "end" : 100
+      } ]
+    }
+  },
+  "slave-id" : "67194c23-61d6-4901-87a8-38d84af57f95"
+} ]

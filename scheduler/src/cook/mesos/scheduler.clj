@@ -46,9 +46,9 @@
             [metrics.timers :as timers]
             [plumbing.core :as pc])
   (import [com.netflix.fenzo ConstraintEvaluator ConstraintEvaluator$Result
-           TaskAssignmentResult TaskRequest TaskScheduler TaskScheduler$Builder
-           VMTaskFitnessCalculator VirtualMachineLease VirtualMachineLease$Range
-           VirtualMachineCurrentState]
+                             TaskAssignmentResult TaskRequest TaskScheduler TaskScheduler$Builder
+                             VMTaskFitnessCalculator VirtualMachineLease VirtualMachineLease$Range
+                             VirtualMachineCurrentState]
           [com.netflix.fenzo.functions Action1 Func1]
           java.util.Date
           java.util.concurrent.TimeUnit))
@@ -260,8 +260,9 @@
                                                                        [:reason.name :unknown])]] ; Warning: Default is not mea-culpa
                  [(when (and (#{:instance.status/failed} instance-status) (not previous-reason) reason)
                     [[:db/add instance :instance/reason (reason/mesos-reason->cook-reason-entity-id db reason)]])
-                  (when (#{:instance.status/success
-                           :instance.status/failed} instance-status)
+                  (when (and (#{:instance.status/success
+                                :instance.status/failed} instance-status)
+                             (nil? (:instance/end-time instance-ent)))
                     [[:db/add instance :instance/end-time (now)]])
                   (when (and (#{:task-starting :task-running} task-state)
                              (nil? (:instance/mesos-start-time instance-ent)))
@@ -382,7 +383,7 @@
                                      (some (fn gpu-task? [req]
                                              @(job-needs-gpus? (:job req)))
                                            (into (vec (.getRunningTasks target-vm))
-                                                   (mapv #(.getRequest %) (.getTasksCurrentlyAssigned target-vm))))))]
+                                                 (mapv #(.getRequest %) (.getTasksCurrentlyAssigned target-vm))))))]
           (ConstraintEvaluator$Result.
             (if @needs-gpus?
               has-gpus?
@@ -416,9 +417,9 @@
                assigned-resources (atom nil)
                guuid->considerable-cotask-ids (constantly #{})}}]
   (let [constraints (into (constraints/make-fenzo-job-constraints job)
-                            (remove nil?
-                              (mapv #(constraints/make-fenzo-group-constraint
-                                       % (guuid->considerable-cotask-ids (:group/uuid %))) (:group/_job job))))
+                          (remove nil?
+                                  (mapv #(constraints/make-fenzo-group-constraint
+                                           % (guuid->considerable-cotask-ids (:group/uuid %))) (:group/_job job))))
         needs-gpus? (constraints/job-needs-gpus? job)
         scalar-requests (reduce (fn [result resource]
                                   (if-let [value (:resource/amount resource)]
@@ -590,7 +591,9 @@
   (for [{:keys [tasks leases]} matches
         :let [offers (mapv :offer leases)
               slave-id (-> offers first :slave-id :value)]
-        ^TaskAssignmentResult task tasks
+        ^TaskAssignmentResult task (->> tasks
+                                        ;; sort-by makes match transaction deterministic
+                                        (sort-by (comp :db/id :job #(.getRequest %))))
         :let [request (.getRequest task)
               task-id (:task-id request)
               job-id (get-in request [:job :db/id])]]
@@ -627,7 +630,7 @@
          conn
          (reduce into [] task-txns)))
     (log/info "Launching" (count task-txns) "tasks")
-    (log/info "Matched tasks" task-txns)
+    (log/debug "Matched tasks" task-txns)
     ;; This launch-tasks MUST happen after the above transaction in
     ;; order to allow a transaction failure (due to failed preconditions)
     ;; to block the launch
@@ -728,7 +731,7 @@
 (counters/defcounter [cook-mesos scheduler offer-chan-depth])
 
 (defn make-offer-handler
-  [conn driver-atom fenzo fid-atom pending-jobs-atom offer-cache
+  [conn driver-atom fenzo framework-id pending-jobs-atom offer-cache
    max-considerable scaleback
    floor-iterations-before-warn floor-iterations-before-reset
    trigger-chan]
@@ -761,16 +764,12 @@
                       ;;     reflect *Cook*'s understanding of the state of the world at this point.
                       ;;     When this happens, users should never exceed their quota
                       user->usage-future (future (generate-user-usage-map (d/db conn)))
-                      offers (async/alt!!
-                               offers-chan ([offers]
-                                            (counters/dec! offer-chan-depth)
-                                            offers)
-                               trigger-chan ([_] [])
-                               :priority true)
                       ;; Try to clear the channel
-                      offers (->> (repeatedly chan-length #(async/poll! offers-chan))
-                                  (filter nil?)
-                                  (reduce into offers))
+                      offers (->> (util/read-chan offers-chan chan-length)
+                                  ((fn decrement-offer-chan-depth [offer-lists]
+                                     (counters/dec! offer-chan-depth (count offer-lists))
+                                     offer-lists))
+                                  (reduce into []))
                       _ (doseq [offer offers
                                 :let [slave-id (-> offer :slave-id :value)
                                       attrs (get-offer-attr-map offer)]]
@@ -781,7 +780,7 @@
                                                  (cache/miss c slave-id attrs)))))
                       _ (log/debug "Passing following offers to handle-resource-offers!" offers)
                       user->quota (quota/create-user->quota-fn (d/db conn))
-                      matched-head? (handle-resource-offers! conn @driver-atom fenzo @fid-atom pending-jobs-atom offer-cache @user->usage-future user->quota num-considerable offers-chan offers)]
+                      matched-head? (handle-resource-offers! conn @driver-atom fenzo framework-id pending-jobs-atom offer-cache @user->usage-future user->quota num-considerable offers-chan offers)]
                   (when (seq offers)
                     (reset! resources-atom (view-incubating-offers fenzo)))
                   ;; This check ensures that, although we value Fenzo's optimizations,
@@ -813,7 +812,8 @@
                                  "now give Fenzo " max-considerable " jobs to look at.")
                       (meters/mark! fenzo-abandon-and-reset-meter)
                       max-considerable)
-                    next-considerable)))))
+                    next-considerable))))
+      {:error-handler (fn [ex] (log/error ex "Error occurred in match"))})
     [offers-chan resources-atom]))
 
 (defn reconcile-jobs
@@ -1046,66 +1046,57 @@
              ;; Return all 0's for a user who does NOT have any running job.
              (zipmap (util/get-all-resource-types db) (repeat 0.0)))})))
 
-(timers/deftimer [cook-mesos scheduler sort-jobs-hierarchy-duration])
-
-(defn sort-normal-jobs-by-dru
-  "Return a list of normal job entities ordered by dru"
-  [pending-task-ents running-task-ents user->dru-divisors]
-  (let [tasks (into running-task-ents pending-task-ents)
+(defn- sort-jobs-by-dru-helper
+  "Return a list of job entities ordered by the provided sort function"
+  [pending-task-ents running-task-ents user->dru-divisors sort-task-scored-task-pairs sort-jobs-duration]
+  (let [tasks (into (vec running-task-ents) pending-task-ents)
         task-comparator (util/same-user-task-comparator tasks)
+        pending-task-ents-set (into #{} pending-task-ents)
         jobs (timers/time!
-               sort-jobs-hierarchy-duration
+               sort-jobs-duration
                (->> tasks
                     (group-by util/task-ent->user)
-                    (pc/map-vals (fn [task-ents]
-                                   (into (sorted-set-by task-comparator) task-ents)))
-                    (dru/sorted-task-scored-task-pairs user->dru-divisors)
-                    (filter (fn [[task scored-task]]
-                              (contains? pending-task-ents task)))
-                    (map (fn [[task scored-task]]
-                           (:job/_instance task)))))]
-    jobs))
-
-(timers/deftimer [cook-mesos scheduler sort-gpu-jobs-hierarchy-duration])
-
-(defn sort-gpu-jobs-by-dru
-  "Return a list of gpu job entities ordered by dru"
-  [pending-task-ents running-task-ents user->dru-divisors]
-  (let [jobs (timers/time!
-               sort-gpu-jobs-hierarchy-duration
-               (->> (into (vec running-task-ents) pending-task-ents)
-                    (group-by util/task-ent->user)
-                    (pc/map-vals (fn [task-ents] (into (sorted-set-by (util/same-user-task-comparator)) task-ents)))
-                    (dru/sorted-task-cumulative-gpu-score-pairs user->dru-divisors)
-                    (filter (fn [[task _]] (contains? pending-task-ents task)))
+                    (pc/map-vals (fn [task-ents] (into (sorted-set-by task-comparator) task-ents)))
+                    (sort-task-scored-task-pairs user->dru-divisors)
+                    (filter (fn [[task _]] (contains? pending-task-ents-set task)))
                     (map (fn [[task _]] (:job/_instance task)))))]
     jobs))
 
-(defn sort-jobs-by-dru
+(timers/deftimer [cook-mesos scheduler sort-jobs-hierarchy-duration])
+
+(defn- sort-normal-jobs-by-dru
+  "Return a list of normal job entities ordered by dru"
+  [pending-task-ents running-task-ents user->dru-divisors]
+  (sort-jobs-by-dru-helper pending-task-ents running-task-ents user->dru-divisors
+                           dru/sorted-task-scored-task-pairs sort-jobs-hierarchy-duration))
+
+(timers/deftimer [cook-mesos scheduler sort-gpu-jobs-hierarchy-duration])
+
+(defn- sort-gpu-jobs-by-dru
+  "Return a list of gpu job entities ordered by dru"
+  [pending-task-ents running-task-ents user->dru-divisors]
+  (sort-jobs-by-dru-helper pending-task-ents running-task-ents user->dru-divisors
+                           dru/sorted-task-cumulative-gpu-score-pairs sort-gpu-jobs-hierarchy-duration))
+
+(defn sort-jobs-by-dru-category
   "Returns a map from job category to a list of job entities, ordered by dru"
-  [filtered-db unfiltered-db]
+  [unfiltered-db]
   ;; This function does not use the filtered db when it is not necessary in order to get better performance
   ;; The filtered db is not necessary when an entity could only arrive at a given state if it was already committed
   ;; e.g. running jobs or when it is always considered committed e.g. shares
   ;; The unfiltered db can also be used on pending job entities once the filtered db is used to limit
   ;; to only those jobs that have been committed.
-  (let [pending-job-ents-by (group-by util/categorize-job (util/get-pending-job-ents unfiltered-db))
-        pending-task-ents-by (reduce-kv (fn [m category pending-job-ents]
-                                          (assoc m category
-                                                   (into #{}
-                                                         (map util/create-task-ent)
-                                                         pending-job-ents)))
-                                        {}
-                                        pending-job-ents-by)
-        running-task-ents-by (group-by (comp util/categorize-job :job/_instance)
-                                       (util/get-running-task-ents unfiltered-db))
-        user->dru-divisors (share/create-user->share-fn unfiltered-db)]
-    {:normal (sort-normal-jobs-by-dru (:normal pending-task-ents-by)
-                                      (:normal running-task-ents-by)
-                                      user->dru-divisors)
-     :gpu (sort-gpu-jobs-by-dru (:gpu pending-task-ents-by)
-                                (:gpu running-task-ents-by)
-                                user->dru-divisors)}))
+  (let [category->pending-job-ents (group-by util/categorize-job (util/get-pending-job-ents unfiltered-db))
+        category->pending-task-ents (pc/map-vals #(map util/create-task-ent %1) category->pending-job-ents)
+        category->running-task-ents (group-by (comp util/categorize-job :job/_instance)
+                                              (util/get-running-task-ents unfiltered-db))
+        user->dru-divisors (share/create-user->share-fn unfiltered-db)
+        category->sort-jobs-by-dru-fn {:normal sort-normal-jobs-by-dru, :gpu sort-gpu-jobs-by-dru}]
+    (letfn [(sort-jobs-by-dru-category-helper [[category sort-jobs-by-dru]]
+             (let [pending-tasks (category->pending-task-ents category)
+                   running-tasks (category->running-task-ents category)]
+               [category (sort-jobs-by-dru pending-tasks running-tasks user->dru-divisors)]))]
+      (into {} (map sort-jobs-by-dru-category-helper) category->sort-jobs-by-dru-fn))))
 
 (timers/deftimer [cook-mesos scheduler filter-offensive-jobs-duration])
 
@@ -1175,16 +1166,13 @@
   "Return a map of lists of job entities ordered by dru, keyed by category.
 
    It ranks the jobs by dru first and then apply several filters if provided."
-  [filtered-db unfiltered-db offensive-job-filter]
+  [unfiltered-db offensive-job-filter]
   (timers/time!
     rank-jobs-duration
     (try
-      (let [jobs (->> (sort-jobs-by-dru filtered-db unfiltered-db)
+      (let [jobs (->> (sort-jobs-by-dru-category unfiltered-db)
                       ;; Apply the offensive job filter first before taking.
-                      (map (fn [[category jobs]]
-                             (log/debug "filtering category" category jobs)
-                             [category (offensive-job-filter jobs)]))
-                      (into {}))]
+                      (pc/map-vals offensive-job-filter))]
         (log/debug "Total number of pending jobs is:" (apply + (map count (vals jobs)))
                    "The first 20 pending normal jobs:" (take 20 (:normal jobs))
                    "The first 5 pending gpu jobs:" (take 5 (:gpu jobs)))
@@ -1201,7 +1189,7 @@
     (util/chime-at-ch trigger-chan
                       (fn rank-jobs-event []
                         (reset! pending-jobs-atom
-                                (rank-jobs (db conn) (d/db conn) offensive-job-filter))))))
+                                (rank-jobs (d/db conn) offensive-job-filter))))))
 
 (meters/defmeter [cook-mesos scheduler mesos-error])
 (meters/defmeter [cook-mesos scheduler offer-chan-full-error])
@@ -1295,7 +1283,10 @@
 
 (let [in-order-queue-counter (counters/counter ["cook-mesos" "scheduler" "in-order-queue-size"])
       in-order-queue-timer (timers/timer ["cook-mesos" "scheduler" "in-order-queue-delay-duration"])
-      processor-agent (agent nil)
+      parallelism 19 ; a prime number to improve distribution after hashing
+      processor-agents (->> #(agent nil)
+                            (repeatedly parallelism)
+                            vec)
       safe-call (fn agent-processor [_ body-fn]
                   (try
                     (body-fn)
@@ -1303,9 +1294,11 @@
                       (log/error e "Error processing mesos status/message."))))]
   (defn- async-in-order-processing
     "Asynchronously processes the body-fn by queueing the task in an agent to ensure in-order processing."
-    [body-fn]
+    [order-id body-fn]
     (counters/inc! in-order-queue-counter)
-    (let [timer-context (timers/start in-order-queue-timer)]
+    (let [timer-context (timers/start in-order-queue-timer)
+          processor-agent (->> (mod (hash order-id) parallelism)
+                               (nth processor-agents))]
       (send processor-agent safe-call
             #(do
                (timers/stop timer-context)
@@ -1314,12 +1307,16 @@
 
 (defn create-mesos-scheduler
   "Creates the mesos scheduler which processes status updates asynchronously but in order of receipt."
-  [fid set-framework-id gpu-enabled? conn heartbeat-ch fenzo offers-chan match-trigger-chan]
+  [fid gpu-enabled? conn heartbeat-ch fenzo offers-chan match-trigger-chan]
   (mesos/scheduler
     (registered [this driver framework-id master-info]
                 (log/info "Registered with mesos with framework-id " framework-id)
-                (reset! fid framework-id)
-                (set-framework-id framework-id)
+                (let [value (-> framework-id mesomatic.types/pb->data :value)]
+                  (when (not= fid value)
+                    (let [message (str "The framework-id provided by Mesos (" value ") "
+                                       "does not match the one Cook is configured with (" fid ")")]
+                      (log/error message)
+                      (throw (ex-info message {:framework-id-mesos value :framework-id-cook fid})))))
                 (when (and gpu-enabled? (not (re-matches #"1\.\d+\.\d+" (:version master-info))))
                   (binding [*out* *err*]
                     (println "Cannot enable GPU support on pre-mesos 1.0. The version we found was " (:version master-info)))
@@ -1331,7 +1328,7 @@
                 (future
                   (try
                     (reconcile-jobs conn)
-                    (reconcile-tasks (db conn) driver @fid fenzo)
+                    (reconcile-tasks (db conn) driver fid fenzo)
                     (catch Exception e
                       (log/error e "Reconciliation error")))))
     (reregistered [this driver master-info]
@@ -1339,7 +1336,7 @@
                   (future
                     (try
                       (reconcile-jobs conn)
-                      (reconcile-tasks (db conn) driver @fid fenzo)
+                      (reconcile-tasks (db conn) driver fid fenzo)
                       (catch Exception e
                         (log/error e "Reconciliation error")))))
     ;; Ignore this--we can just wait for new offers
@@ -1359,18 +1356,23 @@
     (resource-offers [this driver offers]
                      (receive-offers offers-chan match-trigger-chan driver offers))
     (status-update [this driver status]
-                   (async-in-order-processing #(handle-status-update conn driver fenzo status)))))
+                   (let [task-id (-> status :task-id :value)]
+                     (async-in-order-processing task-id #(handle-status-update conn driver fenzo status))))))
 
 (defn create-datomic-scheduler
-  [conn set-framework-id driver-atom pending-jobs-atom offer-cache heartbeat-ch offer-incubate-time-ms mea-culpa-failure-limit
-   fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset fenzo-fitness-calculator
-   task-constraints gpu-enabled? good-enough-fitness {:keys [match-trigger-chan rank-trigger-chan] :as trigger-chans}]
+  [conn driver-atom pending-jobs-atom offer-cache heartbeat-ch offer-incubate-time-ms mea-culpa-failure-limit
+   fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset
+   fenzo-fitness-calculator task-constraints gpu-enabled? good-enough-fitness framework-id
+   {:keys [match-trigger-chan rank-trigger-chan] :as trigger-chans}]
 
   (persist-mea-culpa-failure-limit! conn mea-culpa-failure-limit)
 
-  (let [fid (atom nil)
-        fenzo (make-fenzo-scheduler driver-atom offer-incubate-time-ms fenzo-fitness-calculator good-enough-fitness)
-        [offers-chan resources-atom] (make-offer-handler conn driver-atom fenzo fid pending-jobs-atom offer-cache fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset match-trigger-chan)]
+  (let [fenzo (make-fenzo-scheduler driver-atom offer-incubate-time-ms fenzo-fitness-calculator good-enough-fitness)
+        [offers-chan resources-atom] (make-offer-handler conn driver-atom fenzo framework-id pending-jobs-atom
+                                                         offer-cache fenzo-max-jobs-considered fenzo-scaleback
+                                                         fenzo-floor-iterations-before-warn
+                                                         fenzo-floor-iterations-before-reset match-trigger-chan)]
     (start-jobs-prioritizer! conn pending-jobs-atom task-constraints rank-trigger-chan)
-    {:scheduler (create-mesos-scheduler fid set-framework-id gpu-enabled? conn heartbeat-ch fenzo offers-chan match-trigger-chan)
+    {:scheduler (create-mesos-scheduler framework-id gpu-enabled? conn heartbeat-ch
+                                        fenzo offers-chan match-trigger-chan)
      :view-incubating-offers (fn get-resources-atom [] @resources-atom)}))

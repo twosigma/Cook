@@ -15,10 +15,7 @@
 ;;
 (ns cook.mesos.rebalancer
   (:require [chime :refer [chime-at]]
-            [clj-time.core :as time]
-            [clj-time.periodic :as periodic]
             [clojure.core.async :as async]
-            [clojure.core.reducers :as r]
             [clojure.data.priority-map :as pm]
             [clojure.tools.logging :as log]
             [clojure.walk :refer (keywordize-keys)]
@@ -235,7 +232,8 @@
                              :normal (dru/sorted-task-scored-task-pairs user->dru-divisors user->sorted-running-task-ents)
                              :gpu (dru/sorted-task-cumulative-gpu-score-pairs user->dru-divisors user->sorted-running-task-ents))
          task->scored-task (into (pm/priority-map-keyfn (case category
-                                                          :normal (comp - :dru)
+                                                          :normal (juxt (comp - :dru)
+                                                                        (comp util/task-ent->user :task))
                                                           :gpu (fnil - 0)))
                                  scored-task-pairs)]
      (->State task->scored-task
@@ -345,6 +343,7 @@
          preemption-decision (->> (merge-with into host->formatted-spare-resources host->scored-tasks)
                                   ; Only evaluate tasks in unconstrained slaves
                                   (filter (comp passes-constraints? key))
+                                  (sort-by first)
                                   (mapcat (fn compute-aggregations [[host scored-tasks]]
                                             (rest
                                              (reductions
@@ -384,8 +383,9 @@
    category is :normal or :gpu, depending on which type of job we're working with"
   [db offer-cache pending-job-ents host->spare-resources {:keys [max-preemption category] :as params}]
   (let [timer (timers/start rebalance-duration)
-        jobs-to-make-room-for (filter (partial util/job-allowed-to-start? db)
-                                      pending-job-ents)
+        jobs-to-make-room-for (->> pending-job-ents
+                                   (filter (partial util/job-allowed-to-start? db))
+                                   (take max-preemption))
         init-state (init-state db (util/get-running-task-ents db) jobs-to-make-room-for host->spare-resources category)]
     (log/debug "Jobs to make room for:" jobs-to-make-room-for)
     (loop [state init-state
@@ -452,10 +452,10 @@
 
 
 
-(def datomic-params [:min-utilization-threshold
-                     :safe-dru-threshold
+(def datomic-params [:max-preemption
                      :min-dru-diff
-                     :max-preemption])
+                     :min-utilization-threshold
+                     :safe-dru-threshold])
 
 (defn read-datomic-params
   [conn]
@@ -539,7 +539,7 @@
   (let [conn (d/connect "datomic:mem://mesos-jobs")
         db (d/db conn)]
     @(d/transact conn [{:db/id :rebalancer/config
-                        :rebalancer.config/min-utilization-threshold 0.0
-                        :rebalancer.config/safe-dru-threshold 0.0
+                        :rebalancer.config/max-preemption 64.0
                         :rebalancer.config/min-dru-diff 0.0000000001
-                        :rebalancer.config/max-preemption 64.0}])))
+                        :rebalancer.config/min-utilization-threshold 0.0
+                        :rebalancer.config/safe-dru-threshold 0.0}])))

@@ -256,7 +256,7 @@ public class JobClient implements Closeable {
         /**
          * Set the Cook scheduler endpoint where the job client expected to build will send the requests to.
          *
-         * @param endpoint {@link String} specifies the Cook scheduler endpoint.
+         * @param jobEndpoint {@link String} specifies the Cook scheduler endpoint.
          * @return this builder.
          */
         public Builder setJobEndpoint(String jobEndpoint) {
@@ -271,7 +271,7 @@ public class JobClient implements Closeable {
         /**
          * Set the Cook scheduler endpoint where the job client will send requests about groups.
          *
-         * @param endpoint {@link String} specifies the Cook scheduler group endpoint.
+         * @param groupEndpoint {@link String} specifies the Cook scheduler group endpoint.
          * @return this builder.
          */
         public Builder setGroupEndpoint(String groupEndpoint) {
@@ -476,7 +476,7 @@ public class JobClient implements Closeable {
                 // Simply return if there is no listener.
                 if (!_jobUUIDToListener.isEmpty()) {
                     // Query active jobs
-                    ImmutableMap<UUID, Job> currentUUIDToJob;
+                    Map<UUID, Job> currentUUIDToJob;
                     try {
                         currentUUIDToJob = queryJobs(_activeUUIDToJob.keySet());
                     } catch (JobClientException e) {
@@ -520,7 +520,7 @@ public class JobClient implements Closeable {
                 if (!_groupUUIDToListener.isEmpty()) {
                     // Now process Groups and GroupListeners
                     // Query active groups
-                    ImmutableMap<UUID, Group> currentUUIDToGroup;
+                    Map<UUID, Group> currentUUIDToGroup;
                     try {
                         currentUUIDToGroup = queryGroups(_activeUUIDToGroup.keySet());
                     } catch (JobClientException e) {
@@ -819,7 +819,7 @@ public class JobClient implements Closeable {
      * @return a {@link ImmutableMap} from job {@link UUID} to {@link Job}.
      * @throws JobClientException
      */
-    public ImmutableMap<UUID, Job> queryJobs(Collection<UUID> uuids)
+    public Map<UUID, Job> queryJobs(Collection<UUID> uuids)
         throws JobClientException {
         final List<NameValuePair> allParams = new ArrayList<NameValuePair>(uuids.size());
         for (UUID uuid : uuids) {
@@ -875,7 +875,7 @@ public class JobClient implements Closeable {
      * @return a {@link ImmutableMap} from job {@link UUID} to {@link Job}.
      * @throws JobClientException
      */
-    public ImmutableMap<UUID, Job> query(Collection<UUID> uuids)
+    public Map<UUID, Job> query(Collection<UUID> uuids)
         throws JobClientException {
         return queryJobs(uuids);
     }
@@ -886,7 +886,7 @@ public class JobClient implements Closeable {
      * @return a {@link ImmutableList} of {@link Job}s.
      * @throws JobClientException
      */
-    public ImmutableMap<UUID, Job> queryGroupJobs(Group group)
+    public Map<UUID, Job> queryGroupJobs(Group group)
         throws JobClientException {
         ArrayList<UUID> uuids = new ArrayList<UUID>();
         for (UUID juuid : group.getJobs()) {
@@ -897,7 +897,7 @@ public class JobClient implements Closeable {
 
     /**
      * Query a group for its status.
-     * @param group specifies the group to be queried.
+     * @param guuid specifies the group to be queried.
      * @return a {@link Group} status.
      * @throws JobClientException
      */
@@ -955,7 +955,7 @@ public class JobClient implements Closeable {
      * @return a map of {@link UUID}s to {@link Group}s.
      * @throws JobClientException
      */
-    public ImmutableMap<UUID, Group> queryGroups(Collection<UUID> guuids)
+    public Map<UUID, Group> queryGroups(Collection<UUID> guuids)
         throws JobClientException {
         if (_groupURI == null) {
             throw groupEndpointMissingException("Cannot query groups if the jobclient's group endpoint is null");

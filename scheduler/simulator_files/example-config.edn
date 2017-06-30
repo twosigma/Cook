@@ -1,0 +1,4 @@
+{:shares [{:user "default" :mem 60000.0 :cpus 600.0 :gpus 1.0}]
+ :cycle-step-ms 30000
+ :scheduler-config {:rebalancer-config {:max-preemption 10.0}
+                    :fenzo-config {:fenzo-max-jobs-considered 200}}}

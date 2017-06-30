@@ -13,7 +13,7 @@
 ;; See the License for the specific language governing permissions and
 ;; limitations under the License.
 ;;
-(defproject cook "1.0.1-SNAPSHOT"
+(defproject cook "1.5.3-SNAPSHOT"
   :description "This launches jobs on a Mesos cluster with fair sharing and preemption"
   :license {:name "Apache License, Version 2.0"}
   :dependencies [[org.clojure/clojure "1.8.0"]
@@ -27,6 +27,7 @@
                   :exclusions [org.clojure/tools.reader]]
                  [circleci/clj-yaml "0.5.5"]
                  [camel-snake-kebab "0.4.0"]
+                 [com.rpl/specter "1.0.1"]
 
                  ;;Utility
                  [amalloy/ring-buffer "1.1"]
@@ -37,6 +38,7 @@
                  [org.clojure/core.memoize "0.5.8"]
                  [clj-time "0.9.0"]
                  [org.clojure/core.async "0.3.442" :exclusions [org.clojure/tools.reader]]
+                 [org.clojure/tools.cli "0.3.5"]
                  [prismatic/schema "1.1.3"]
                  [clojure-miniprofiler "0.4.0"]
                  [jarohen/chime "0.1.6"]
@@ -116,20 +118,22 @@
                                org.slf4j/log4j
                                log4j
                                ]]
-                 [org.apache.curator/curator-test "2.7.1"]
-
-                 ;; incanter
-                 ;[incanter "1.5.4"]
-  ]
+                 [org.apache.curator/curator-test "2.7.1"]]
 
   :repositories {"maven2" {:url "http://files.couchbase.com/maven2/"}
                  "sonatype-oss-public" "https://oss.sonatype.org/content/groups/public/"}
 
   :filespecs [{:type :fn
-               :fn (fn [p]
-                     {:type :bytes :path "git-log"
+               :fn (fn [_]
+                     {:type :bytes
+                      :path "git-log"
                       :bytes (.trim (:out (clojure.java.shell/sh
-                                            "git" "rev-parse" "HEAD")))})}]
+                                            "git" "rev-parse" "HEAD")))})}
+              {:type :fn
+               :fn (fn [{:keys [version]}]
+                     {:type :bytes
+                      :path "version"
+                      :bytes version})}]
 
   :java-source-paths ["java"]
 
@@ -142,19 +146,23 @@
                    [org.mockito/mockito-core "1.10.19"]
                    [twosigma/cook-jobclient "0.1.2-SNAPSHOT"]
                    [org.clojure/test.check "0.6.1"]
-                   [log4j/log4j "1.2.17" :exclusions  [javax.mail/mail
-                                                       javax.jms/jms
-                                                       com.sun.jdmk/jmxtools
-                                                       com.sun.jmx/jmxri]]
+                   [log4j/log4j "1.2.17" :exclusions [javax.mail/mail
+                                                      javax.jms/jms
+                                                      com.sun.jdmk/jmxtools
+                                                      com.sun.jmx/jmxri]]
                    [ring/ring-jetty-adapter "1.5.0"]]
     :jvm-opts ["-Xms2G"
                "-XX:-OmitStackTraceInFastThrow"
                "-Xmx2G"
-;               "-Dcom.sun.management.jmxremote.port=5555"
                "-Dcom.sun.management.jmxremote.authenticate=false"
                "-Dcom.sun.management.jmxremote.ssl=false"]
     :resource-paths ["test-resources"]
-    :source-paths []}}
+    :source-paths []}
+
+   :test-console
+   {:jvm-opts ["-Dcook.test.logging.console"]}}
+
+  :plugins [[lein-print "0.1.0"]]
 
   :test-selectors {:default (complement :integration)
                    :integration :integration

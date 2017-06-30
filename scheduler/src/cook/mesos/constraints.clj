@@ -71,16 +71,13 @@
     (let [job (:job this)
           target-hostname (get vm-attributes "HOSTNAME")]
       [(not-any? #(= target-hostname %) previous-hosts)
-       (str "Can't run on " target-hostname
-            " since we already ran on that. "
-            "This host has previously run on the following hosts (up to 5 shown)"
-            (take 5 previous-hosts))]))
+       "Already ran on host"]))
   (job-constraint-evaluate
     [this _ vm-attributes _]
     (job-constraint-evaluate this _ vm-attributes)))
 
 (defn build-novel-host-constraint
-  "Constructs a novel-host-constraint. 
+  "Constructs a novel-host-constraint.
   The constraint prevents the job from running on hosts it has already run on"
   [job]
   (let [previous-hosts (->> (:job/instance job)
@@ -116,7 +113,36 @@
   (let [needs-gpus? (job-needs-gpus? job)]
     (->gpu-host-constraint job needs-gpus?)))
 
-(def job-constraint-constructors [build-novel-host-constraint build-gpu-host-constraint])
+(defrecord user-defined-constraint [constraints]
+  JobConstraint
+  (job-constraint-name [this] (get-class-name this))
+  (job-constraint-evaluate
+    [this _ vm-attributes]
+    (let [vm-passes-constraint?
+          (fn vm-passes-constraint? [{attribute :constraint/attribute
+                                      pattern :constraint/pattern
+                                      operator :constraint/operator}]
+            (let [vm-attribute-value (get vm-attributes attribute)]
+              (condp = operator
+                :constraint.operator/equals (= pattern vm-attribute-value)
+                :else (do
+                        (log/error (str "Unknown operator " operator
+                                        " api.clj should have prevented this from happening."))
+                        true))))
+          passes? (every? vm-passes-constraint? constraints)]
+      [passes? (when-not passes?
+                 "Host doesn't pass at least one user supplied constraint.")]))
+  (job-constraint-evaluate
+    [this _ vm-attributes _]
+    (job-constraint-evaluate this _ vm-attributes)))
+
+(defn build-user-defined-constraint
+  "Constructs a user-defined-constraint.
+   The constraint asserts that the vm passes the constraints the user supplied as host constraints"
+  [job]
+  (->user-defined-constraint (:job/constraint job)))
+
+(def job-constraint-constructors [build-novel-host-constraint build-gpu-host-constraint build-user-defined-constraint])
 
 (defn fenzoize-job-constraint
   "Makes the JobConstraint 'constraint' Fenzo-compatible."
@@ -131,10 +157,12 @@
       (let [vm-resources (.getCurrAvailableResources target-vm)
             vm-attributes (get-vm-lease-attr-map vm-resources)
             [passes? reason] (job-constraint-evaluate constraint vm-resources vm-attributes
-                                                      (into (vec (.getRunningTasks target-vm))
-                                                              (mapv (fn [^com.netflix.fenzo.TaskAssignmentResult result]
-                                                                      (.getRequest result))
-                                                                     (.getTasksCurrentlyAssigned target-vm))))]
+                                                      ;; Although concat can be dangerous, in this case it saves a significant
+                                                      ;; amount of memory compared to building a vec (around 10% of allocations)
+                                                      (concat (.getRunningTasks target-vm)
+                                                              (map (fn [^com.netflix.fenzo.TaskAssignmentResult result]
+                                                                     (.getRequest result))
+                                                                   (.getTasksCurrentlyAssigned target-vm))))]
         (com.netflix.fenzo.ConstraintEvaluator$Result. passes? reason)))))
 
 (defn make-fenzo-job-constraints

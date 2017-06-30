@@ -19,7 +19,7 @@ setup(
     description="Integration tests for Cook scheduler",
     url='https://github.com/twosigma/Cook',
     include_package_data=True,
-    install_requires=requirements,
+    install_requires=test_requirements,
     license="Apache Software License 2.0",
     zip_safe=False,
     keywords='cook_integration',

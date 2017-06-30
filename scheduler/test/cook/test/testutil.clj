@@ -16,13 +16,17 @@
 
 (ns cook.test.testutil
   (:use clojure.test)
-  (:require [clojure.core.async :as async]
+  (:require [clj-logging-config.log4j :as log4j-conf]
+            [clojure.core.async :as async]
             [clojure.core.cache :as cache]
-            [cook.mesos.api :as api :refer (main-handler)]
+            [clojure.tools.logging :as log]
+            [cook.mesos.api :refer (main-handler)]
             [cook.mesos.schema :as schema]
             [datomic.api :as d :refer (q db)]
             [qbits.jet.server :refer (run-jetty)]
-            [ring.middleware.params :refer (wrap-params)]))
+            [ring.middleware.params :refer (wrap-params)])
+  (:import (java.util UUID)
+           (org.apache.log4j ConsoleAppender Logger PatternLayout)))
 
 (defn run-test-server-in-thread
   "Runs a minimal cook scheduler server for testing inside a thread. Note that it is not properly kerberized."
@@ -69,41 +73,45 @@
 
 (defn create-dummy-job
   "Return the entity id for the created dummy job."
-  [conn & {:keys [user uuid command ncpus memory name retry-count max-runtime priority job-state submit-time custom-executor? gpus group committed?
-                  disable-mea-culpa-retries env]
-           :or {user (System/getProperty "user.name")
-                uuid (d/squuid)
+  [conn & {:keys [command committed? container custom-executor? disable-mea-culpa-retries env gpus group job-state
+                  max-runtime memory name ncpus priority retry-count submit-time user uuid]
+           :or {command "dummy command"
                 committed? true
-                command "dummy command"
-                ncpus 1.0
-                memory 10.0
-                name "dummy_job"
-                submit-time (java.util.Date.)
-                retry-count 5
-                max-runtime Long/MAX_VALUE
-                priority 50
+                disable-mea-culpa-retries false
                 job-state :job.state/waiting
-                disable-mea-culpa-retries false}}]
+                max-runtime Long/MAX_VALUE
+                memory 10.0
+                ncpus 1.0
+                name "dummy_job"
+                priority 50
+                retry-count 5
+                submit-time (java.util.Date.)
+                user (System/getProperty "user.name")
+                uuid (d/squuid)}}]
   (let [id (d/tempid :db.part/user)
         commit-latch-id (d/tempid :db.part/user)
         commit-latch {:db/id commit-latch-id
                       :commit-latch/committed? committed?}
+        container (when container
+                    (let [container-var-id (d/tempid :db.part/user)]
+                      [[:db/add id :job/container container-var-id]
+                       (assoc container :db/id container-var-id)]))
         job-info (merge {:db/id id
-                         :job/uuid uuid
                          :job/command command
                          :job/commit-latch commit-latch-id
-                         :job/user user
-                         :job/name name
+                         :job/disable-mea-culpa-retries disable-mea-culpa-retries
                          :job/max-retries retry-count
                          :job/max-runtime max-runtime
+                         :job/name name
                          :job/priority priority
-                         :job/state job-state
-                         :job/submit-time submit-time
-                         :job/disable-mea-culpa-retries disable-mea-culpa-retries
                          :job/resource [{:resource/type :resource.type/cpus
                                          :resource/amount (double ncpus)}
                                         {:resource/type :resource.type/mem
-                                         :resource/amount (double memory)}]}
+                                         :resource/amount (double memory)}]
+                         :job/state job-state
+                         :job/submit-time submit-time
+                         :job/user user
+                         :job/uuid uuid}
                         (when (not (nil? custom-executor?)) {:job/custom-executor custom-executor?})
                         (when group {:group/_job group}))
         job-info (if gpus
@@ -118,8 +126,10 @@
                                     :environment/name k
                                     :environment/value v}]))
                               env))
-        val @(d/transact conn (cond-> [job-info commit-latch]
-                                      environment (into environment)))]
+        tx-data (cond-> [job-info commit-latch]
+                        environment (into environment)
+                        container (concat container))
+        val @(d/transact conn tx-data)]
     (d/resolve-tempid (db conn) (:tempids val) id)))
 
 (defn create-dummy-instance
@@ -132,11 +142,11 @@
                      start-time (java.util.Date.)
                      end-time nil
                      hostname "localhost"
-                     task-id (str (str (java.util.UUID/randomUUID)))
+                     task-id (str (str (UUID/randomUUID)))
                      progress 0
                      reason nil
-                     slave-id  (str (java.util.UUID/randomUUID))
-                     executor-id  (str (java.util.UUID/randomUUID))
+                     slave-id  (str (UUID/randomUUID))
+                     executor-id  (str (UUID/randomUUID))
                      preempted? false} :as cfg}]
   (let [id (d/tempid :db.part/user)
         val @(d/transact conn [(merge
@@ -158,7 +168,7 @@
 (defn create-dummy-group
   "Return the entity id for the created group"
   [conn & {:keys [group-uuid group-name host-placement straggler-handling]
-           :or  {group-uuid (java.util.UUID/randomUUID)
+           :or  {group-uuid (UUID/randomUUID)
                  group-name "my-cool-group"
                  host-placement {:host-placement/type :host-placement.type/all}
                  straggler-handling {:straggler-handling/type :straggler-handling.type/none}}}]
@@ -195,3 +205,11 @@
            (throw (ex-info (str "pred not true : " (on-exceed-str-fn))
                            {:interval-ms interval-ms
                             :max-wait-ms max-wait-ms}))))))))
+
+(defmethod report :begin-test-var
+  [m]
+  (when (System/getProperty "cook.test.logging.console")
+    (log4j-conf/set-loggers! (Logger/getRootLogger)
+                             {:level :info
+                              :out (ConsoleAppender. (PatternLayout. "%d{ISO8601} %-5p %c [%t] - %m%n"))}))
+  (log/info "Running" (:var m)))

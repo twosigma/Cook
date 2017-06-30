@@ -16,13 +16,15 @@
 (ns cook.mesos.util
   (:require [clj-time.coerce :as tc]
             [clj-time.core :as t]
+            [clj-time.periodic :refer [periodic-seq]]
             [clojure.core.async :as async]
             [clojure.core.cache :as cache]
             [clojure.walk :as walk]
             [datomic.api :as d :refer (q)]
             [metatransaction.core :refer (db)]
             [metrics.timers :as timers]
-            [plumbing.core :as pc :refer (map-vals map-keys)]))
+            [plumbing.core :as pc :refer (map-vals map-keys)])
+  (:import [java.util Date]))
 
 (defn get-all-resource-types
   "Return a list of all supported resources types. Example, :cpus :mem :gpus ..."
@@ -198,38 +200,100 @@
      get-pending-jobs-duration
      (get-pending-job-ents* unfiltered-db true))))
 
-(defn get-jobs-by-user-and-state
-  "Returns all job entities for a particular user
-   in a particular state, in the specified timeframe,
-   without a custom executor."
-  [db user state start end]
-  (->> (if (= state :job.state/completed)
-         ;; Datomic query performance is based entirely on the size of the set
-         ;; of the first where clause. In the case of :job.state/completed
-         ;; the total number of jobs for a user should be smaller than
-         ;; all completed jobs by any user i.e.
-         ;; (waiting_user + running_user < completed - completed_user)
-         (q '[:find [?j ...]
-              :in $ ?user ?state ?start ?end
-              :where
-              [?j :job/user ?user]
-              [?j :job/state ?state]
-              [?j :job/submit-time ?t]
-              [(< ?start ?t)]
-              [(< ?t ?end)]
-              [?j :job/custom-executor false]]
-            db user state start end)
-         (q '[:find [?j ...]
-              :in $ ?user ?state ?start ?end
-              :where
-              [?j :job/state ?state]
-              [?j :job/user ?user]
-              [?j :job/submit-time ?t]
-              [(< ?start ?t)]
-              [(< ?t ?end)]
-              [?j :job/custom-executor false]]
-            db user state start end))
-       (map (partial d/entity db))))
+(defn generate-intervals
+  "Generates a list of intervals between start and end as pairs
+   [interval-start interval-end]. The union of the intervals is
+   inclusive of both start and end
+
+   Parameters:
+   ----------
+   start : clj-time/datetime
+   end : clj-time/datetime
+   period-like : clj-time/period
+
+   Returns:
+   --------
+   list of pairs, [interval-start interval-end]"
+  ([start end period-like]
+   (->> (conj (vec (periodic-seq start end period-like)) end)
+        (partition 2 1))))
+
+(timers/deftimer [cook-mesos scheduler get-completed-jobs-by-user-duration])
+
+;; get-completed-jobs-by-user is a bit opaque because it is
+;; reaching into datomic internals. Here is a quick explanation.
+;; seek-datoms provides a pointer into the raw datomic indices 
+;; that we can then seek through. We set the pointer to look
+;; through the avet index, with attribute :job/user, seek to 
+;; user and then seek to the entity id that *would* have been
+;; created at expanded start. 
+;; This works because the submission time and job/user field
+;; are set at the same time, in "real" time. This means that
+;; jobs submitted after `start` will have been created after
+;; expanded start
+(defn get-completed-jobs-by-user
+  "Returns all completed job entities for a particular user
+   in the specified timeframe, without a custom executor."
+  [db user start end limit]
+  (timers/time!
+   get-completed-jobs-by-user-duration
+   (let [;; Expand the time range so that clock skew between cook
+         ;; and datomic doesn't cause us to miss jobs
+         ;; 1 hour was picked because a skew larger than that would be
+         ;; suspicious
+         expanded-start (Date. (- (.getTime start) 
+                                  (-> 1 t/hours t/in-millis)))
+         expanded-end (Date. (+ (.getTime end)
+                                (-> 1 t/hours t/in-millis)))]
+     (->> (d/seek-datoms db :avet :job/user user (d/entid-at db :db.part/user expanded-start))
+          (take-while #(and (< (.e %) (d/entid-at db :db.part/user expanded-end))
+                            (= (.a %) (d/entid db :job/user))
+                            (= (.v %) user)))
+          (map #(.e %))
+          (map (partial d/entity db))
+          (filter #(<= (.getTime start) (.getTime (:job/submit-time %))))
+          (filter #(< (.getTime (:job/submit-time %)) (.getTime end)))
+          (filter #(= :job.state/completed (:job/state %)))
+          (filter #(not (:job/custom-executor %)))
+          (take limit)))))
+
+;; This is a separate query from completed jobs because most running/waiting jobs
+;; will be at the end of the time range, so the query is somewhat inefficent.
+;; The standard datomic query performs reasonably well on the smaller set of
+;; running and waiting jobs, so it's implemented that way to keep things simple.
+(defn get-active-jobs-by-user-and-state
+  "Returns all jobs for a particular user in the specified state
+   and timeframe, without a custom executor.
+   Note that this query is not performant for completed jobs, use
+   get-completed-jobs-by-user instead."
+  [db user start end state]
+  (timers/time!
+   (timers/timer ["cook-mesos" "scheduler" (str "get-" (name state) "-jobs-by-user-duration")])
+   (->> (q '[:find [?j ...]
+             :in $ ?user ?state ?start ?end
+             :where
+             [?j :job/state ?state]
+             [?j :job/user ?user]
+             [?j :job/submit-time ?t]
+             [(<= ?start ?t)]
+             [(< ?t ?end)]
+             [?j :job/custom-executor false]]
+           db user state start end)
+        (map (partial d/entity db)))))
+
+(defn get-jobs-by-user-and-states
+  "Returns all jobs for a particular user in the specified states
+   and timeframe, without a custom executor."
+  [db user states start end limit]
+  (let [get-jobs-by-state (fn get-jobs-by-state [state]
+                            (if (= state :job.state/completed)
+                              (get-completed-jobs-by-user db user start end limit)
+                              (get-active-jobs-by-user-and-state db user start end state)))
+        jobs-by-state (mapcat get-jobs-by-state states)]
+    (->> jobs-by-state
+         (sort-by :job/submit-time)
+         (take limit))))
+
 
 (defn jobs-by-user-and-state
   "Returns all job entities for a particular user
@@ -469,3 +533,13 @@
                    (on-finished)))
   (fn cancel! []
     (async/close! ch)))
+
+(defn read-chan
+  "Tries to read `ch-size` elements immediately from the channel and
+   returns the values on the channel.
+
+   This function does not block and may return an empty list if the channel
+   is currently empty."
+  [ch ch-size]
+  (->> (repeatedly ch-size #(async/poll! ch))
+       (remove nil?)))

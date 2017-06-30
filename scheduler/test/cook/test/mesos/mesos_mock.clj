@@ -11,6 +11,7 @@
             [cook.mesos :as c]
             [cook.mesos.mesos-mock :as mm]
             [cook.mesos.share :as share]
+            [cook.test.simulator :refer (with-cook-scheduler pull-all-task-ents dump-jobs-to-csv)]
             [cook.test.testutil :refer (restore-fresh-database! create-dummy-job poll-until)]
             [datomic.api :as d]
             [mesomatic.scheduler :as mesos]
@@ -653,115 +654,6 @@
         (catch Throwable t
           (throw (ex-info "Error while testing launch" atom-map t)))))))
 
-(defn setup-test-curator-framework
-  ([]
-   (setup-test-curator-framework 2282))
-  ([zk-port]
-   ;; Copied from src/cook/components
-   ;; TODO: don't copy from components
-   (let [retry-policy (BoundedExponentialBackoffRetry. 100 120000 10)
-         ;; The 180s session and 30s connection timeouts were pulled from a google group
-         ;; recommendation
-         zookeeper-server (org.apache.curator.test.TestingServer. zk-port false)
-         zk-str (str "localhost:" zk-port)
-         curator-framework (CuratorFrameworkFactory/newClient zk-str 180000 30000 retry-policy)]
-     (.start zookeeper-server)
-     (.. curator-framework
-         getConnectionStateListenable
-         (addListener (reify ConnectionStateListener
-                        (stateChanged [_ client newState]
-                          (log/info "Curator state changed:"
-                                    (str newState))))))
-     (.start curator-framework)
-     [zookeeper-server curator-framework])))
-
-(defmacro with-cook-scheduler
-  [conn make-mesos-driver-fn
-   {:keys [get-mesos-utilization mesos-datomic-mult zk-prefix offer-incubate-time-ms
-           mea-culpa-failure-limit task-constraints riemann-host riemann-port
-           mesos-pending-jobs-atom offer-cache gpu-enabled? rebalancer-config fenzo-config]
-    :or {get-mesos-utilization (fn [] 0.9) ; can get this from mesos mock later
-         zk-prefix "/cook"
-         offer-incubate-time-ms 1000
-         mea-culpa-failure-limit 5
-         task-constraints {:timeout-hours 1
-                           :timeout-interval-minutes 1
-                           :memory-gb 48
-                           :cpus 6
-                           :retry-limit 5}
-         riemann-host nil
-         riemann-port nil
-         gpu-enabled? false
-         rebalancer-config {:interval-seconds 5
-                            :dru-scale 1.0
-                            :min-utilization-threshold 0.0
-                            :safe-dru-threshold 1.0
-                            :min-dru-diff 0.5
-                            :max-preemption 100.0}
-         fenzo-config {:fenzo-max-jobs-considered 200
-                       :fenzo-scaleback 0.95
-                       :fenzo-floor-iterations-before-warn 10
-                       :fenzo-floor-iterations-before-reset 1000
-                       :good-enough-fitness 0.8}}
-    :as config}
-   & body]
-  `(let [[zookeeper-server# curator-framework#] (setup-test-curator-framework)
-         mesos-mult# (or ~mesos-datomic-mult (async/mult (async/chan)))
-         pending-jobs-atom# (or ~mesos-pending-jobs-atom (atom []))
-         offer-cache# (or ~offer-cache
-                          (-> {}
-                              (cache/fifo-cache-factory :threshold 100)
-                              (cache/ttl-cache-factory :ttl 10000)
-                              atom))
-         trigger-chans# (c/make-trigger-chans ~rebalancer-config ~task-constraints)]
-     (try
-       (let [scheduler# (c/start-mesos-scheduler ~make-mesos-driver-fn ~get-mesos-utilization
-                                                 curator-framework# ~conn
-                                                 mesos-mult# ~zk-prefix
-                                                 ~offer-incubate-time-ms ~mea-culpa-failure-limit
-                                                 ~task-constraints ~riemann-host ~riemann-port
-                                                 pending-jobs-atom# offer-cache#
-                                                 ~gpu-enabled? ~rebalancer-config ~fenzo-config
-                                                 trigger-chans#)]
-         ~@body)
-       (finally
-         (.close curator-framework#)
-         (.stop zookeeper-server#)
-         ;; TODO: Ensure cook scheduler shuts down fully
-         ))))
-
-(defn dump-jobs-to-csv
-  "Given a mesos db, dump a csv with a row per task
-
-   Rows:
-    * job_id
-    * instance_id
-    * start_time
-    * end_time
-    * hostname
-    * slave_id
-    * status"
-  [db file]
-  (let [tasks (d/q '[:find ?i ?task-id
-                     :where
-                     [?i :instance/task-id ?task-id]]
-                   db)
-        headers ["job_id" "instance_id" "start_time_ms"
-                 "end_time_ms" "hostname" "slave_id" "status"]
-        tasks (for [[task-ent-id task-id] tasks
-                    :let [task (d/entity db task-ent-id)]]
-                {"job_id" (:job/uuid (:job/_instance task))
-                 "instance_id" task-id
-                 "start_time_ms" (.getTime (:instance/start-time task))
-                 "end_time_ms" (.getTime (or (:instance/end-time task) (java.util.Date.)))
-                 "status" (:instance/status task)
-                 "hostname" (:instance/hostname task)
-                 "slave_id" (:instance/slave-id task)})]
-    (with-open [out-file (io/writer file)]
-      (csv/write-csv out-file
-                     (concat [headers]
-                             (map #(vals (select-keys % headers)) tasks))))))
-
 (deftest cook-scheduler-integration
   ;; This tests the case where one user has all the resources in the cluster
   ;; and then another user shows up which causes the scheduler to preempt jobs
@@ -853,4 +745,4 @@
                      update-status-error-ms)
                   (str "Invalid execution time of" job-ent))))
           (when (log/enabled? :debug)
-            (dump-jobs-to-csv (d/db mesos-datomic-conn) "trace-basic-scheduling-rebalancing-test.csv")))))))
+            (dump-jobs-to-csv (pull-all-task-ents (d/db mesos-datomic-conn)) "trace-basic-scheduling-rebalancing-test.csv")))))))

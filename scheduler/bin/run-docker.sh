@@ -33,6 +33,7 @@ docker run \
     --publish=${COOK_PORT}:${COOK_PORT} \
     -e "COOK_PORT=${COOK_PORT}" \
     -e "COOK_NREPL_PORT=${COOK_NREPL_PORT}" \
+    -e "COOK_FRAMEWORK_ID=cook-framework-${COOK_PORT}" \
     -e "MESOS_MASTER=${ZK}" \
     -e "MESOS_MASTER_HOST=${MINIMESOS_MASTER_IP}" \
     -v ${DIR}/../log:/opt/cook/log \

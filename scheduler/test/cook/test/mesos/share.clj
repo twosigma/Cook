@@ -15,10 +15,9 @@
 ;;
 (ns cook.test.mesos.share
   (:use clojure.test)
-  (:require [cook.mesos.scheduler :as sched]
-            [cook.mesos.share :as share]
+  (:require [cook.mesos.share :as share]
             [cook.test.testutil :refer (restore-fresh-database!)]
-            [metatransaction.core :as mt :refer (db)]
+            [metatransaction.core :as mt]
             [datomic.api :as d]))
 
 (deftest test'
@@ -28,11 +27,12 @@
     (share/set-share! conn "u1" "not enough mem" :cpus 20.0 :mem 10.0)
     (share/set-share! conn "u1" "too many CPUs" :cpus 5.0)
     (share/set-share! conn "u2" "custom limits" :cpus 5.0  :mem 10.0)
+    (share/set-share! conn "u3" "needs cpus, mem, and gpus" :cpus 10.0 :mem 20.0 :gpus 4.0)
     (share/set-share! conn "default" "lock most users down" :cpus 1.0 :mem 2.0 :gpus 1.0)
-    (let [db (db conn)]
+    (let [db (mt/db conn)]
       (testing "set and query."
         (is (= {:cpus 5.0 :mem 10.0 :gpus 1.0} (share/get-share db "u2"))))
-      (testing "set and overide."
+      (testing "set and override."
         (is (= {:cpus 5.0 :mem 10.0 :gpus 1.0} (share/get-share db "u1"))))
       (testing "query default."
         (is (= {:cpus 1.0 :mem 2.0 :gpus 1.0} (share/get-share db "default"))))
@@ -42,6 +42,29 @@
         (share/retract-share! conn "u2" "not special anymore")
         (let [db (mt/db conn)]
           (is (= {:cpus 1.0 :mem 2.0 :gpus 1.0} (share/get-share db "u2")))))
+
+      (testing "get-shares:all-defaults-available"
+        (is (= {"u1" {:cpus 5.0 :mem 10.0 :gpus 1.0}
+                "u2" {:cpus 5.0 :mem 10.0 :gpus 1.0}
+                "u3" {:cpus 10.0 :mem 20.0 :gpus 4.0}
+                "u4" {:cpus 1.0 :mem 2.0 :gpus 1.0}}
+               (share/get-shares db ["u1" "u2" "u3" "u4"]))))
+      (testing "get-shares:some-defaults-available"
+        (share/retract-share! conn "default" "clear defaults")
+        (share/set-share! conn "default" "cpu and gpu defaults available" :cpus 3.0 :gpus 1.0)
+        (let [db (mt/db conn)]
+          (is (= {"u1" {:cpus 5.0 :mem 10.0 :gpus 1.0}
+                  "u2" {:cpus 3.0 :mem Double/MAX_VALUE :gpus 1.0}
+                  "u3" {:cpus 10.0 :mem 20.0 :gpus 4.0}
+                  "u4" {:cpus 3.0 :mem Double/MAX_VALUE :gpus 1.0}}
+                 (share/get-shares db ["u1" "u2" "u3" "u4"])))))
+
+      (testing "create-user->share-fn"
+        (let [user->share-fn (share/create-user->share-fn db)]
+          (is (={:cpus 5.0 :mem 10.0 :gpus 1.0} (user->share-fn "u1")))
+          (is (= {:cpus 5.0 :mem 10.0 :gpus 1.0} (user->share-fn "u2")))
+          (is (= {:cpus 10.0 :mem 20.0 :gpus 4.0} (user->share-fn "u3")))
+          (is (= {:cpus 1.0 :mem 2.0 :gpus 1.0} (user->share-fn "u4")))))
 
       (testing "share history"
         (let [db-after (d/db conn)

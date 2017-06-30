@@ -52,18 +52,18 @@
      (let [submit-time (java.util.Date.)]
        (doseq [{:keys [uuid command ncpus memory name retry-count priority]} jobs
                :let [txn {:db/id (d/tempid :db.part/user)
-                          :job/uuid uuid
                           :job/command command
                           :job/name "cooksim"
-                          :job/user user
                           :job/max-retries retry-count
                           :job/priority priority
-                          :job/submit-time submit-time
-                          :job/state :job.state/waiting
                           :job/resource [{:resource/type :resource.type/cpus
                                           :resource/amount (double ncpus)}
                                          {:resource/type :resource.type/mem
-                                          :resource/amount (double memory)}]}
+                                          :resource/amount (double memory)}]
+                          :job/state :job.state/waiting
+                          :job/submit-time submit-time
+                          :job/user user
+                          :job/uuid uuid}
                      retries 5
                      base-wait 500 ; millis
                      opts {:retry-schedule (cook.util/rand-exponential-seq retries base-wait)}]]
@@ -107,9 +107,7 @@
           scheduler
           (merge
             {:user ""
-             :name (str mesos-framework-name
-                        "-"
-                        cook.util/version)
+             :name (str mesos-framework-name "-" @cook.util/version "-" @cook.util/commit)
              :checkpoint true}
             (when mesos-role
               {:role mesos-role})
@@ -186,20 +184,19 @@
    offer-cache              -- atom, map from host to most recent offer. Used to get attributes
    gpu-enabled?             -- boolean, whether cook will schedule gpus
    rebalancer-config        -- map, config for rebalancer. See scheduler/docs/rebalancer-config.asc for details
+   framework-id             -- str, the Mesos framework id from the cook settings
    fenzo-config             -- map, config for fenzo, See scheduler/docs/configuration.asc for more details"
-  [make-mesos-driver-fn get-mesos-utilization curator-framework mesos-datomic-conn mesos-datomic-mult zk-prefix offer-incubate-time-ms mea-culpa-failure-limit task-constraints riemann-host riemann-port mesos-pending-jobs-atom offer-cache gpu-enabled? rebalancer-config
-   {:keys [fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn
-           fenzo-floor-iterations-before-reset fenzo-fitness-calculator good-enough-fitness]
+  [make-mesos-driver-fn get-mesos-utilization curator-framework mesos-datomic-conn mesos-datomic-mult zk-prefix
+   offer-incubate-time-ms mea-culpa-failure-limit task-constraints riemann-host riemann-port mesos-pending-jobs-atom
+   offer-cache gpu-enabled? rebalancer-config framework-id mesos-leadership-atom
+   {:keys [fenzo-fitness-calculator fenzo-floor-iterations-before-reset fenzo-floor-iterations-before-warn
+           fenzo-max-jobs-considered fenzo-scaleback good-enough-fitness]
     :as fenzo-config}
-   {:keys [rebalancer-trigger-chan match-trigger-chan rank-trigger-chan
-           lingering-task-trigger-chan straggler-trigger-chan cancelled-task-trigger-chan]
+   {:keys [cancelled-task-trigger-chan lingering-task-trigger-chan rebalancer-trigger-chan straggler-trigger-chan]
     :as trigger-chans}]
-  (let [zk-framework-id (str zk-prefix "/framework-id")
-        datomic-report-chan (async/chan (async/sliding-buffer 4096))
+  (let [datomic-report-chan (async/chan (async/sliding-buffer 4096))
         mesos-heartbeat-chan (async/chan (async/buffer 4096))
         current-driver (atom nil)
-        framework-id (when-let [bytes (curator/get-or-nil curator-framework zk-framework-id)]
-                       (String. bytes))
         leader-selector (LeaderSelector.
                           curator-framework
                           zk-prefix
@@ -208,17 +205,13 @@
                           (reify LeaderSelectorListener
                             (takeLeadership [_ client]
                               (log/warn "Taking mesos leadership")
+                              (reset! mesos-leadership-atom true)
                               ;; TODO: get the framework ID and try to reregister
                               (let [normal-exit (atom true)]
                                 (try
                                   (let [{:keys [scheduler view-incubating-offers]}
                                         (sched/create-datomic-scheduler
                                           mesos-datomic-conn
-                                          (fn set-or-create-framework-id [framework-id]
-                                            (curator/set-or-create
-                                              curator-framework
-                                              zk-framework-id
-                                              (.getBytes (-> framework-id mesomatic.types/pb->data :value) "UTF-8")))
                                           current-driver
                                           mesos-pending-jobs-atom
                                           offer-cache
@@ -233,6 +226,7 @@
                                           task-constraints
                                           gpu-enabled?
                                           good-enough-fitness
+                                          framework-id
                                           trigger-chans)
                                         driver (make-mesos-driver-fn scheduler framework-id)]
                                     (mesomatic.scheduler/start! driver)
@@ -245,14 +239,14 @@
                                     (cook.mesos.scheduler/straggler-handler mesos-datomic-conn driver straggler-trigger-chan)
                                     (cook.mesos.scheduler/cancelled-task-killer mesos-datomic-conn driver cancelled-task-trigger-chan)
                                     (cook.mesos.heartbeat/start-heartbeat-watcher! mesos-datomic-conn mesos-heartbeat-chan)
-                                    (cook.mesos.rebalancer/start-rebalancer! {:conn  mesos-datomic-conn
+                                    (cook.mesos.rebalancer/start-rebalancer! {:config rebalancer-config
+                                                                              :conn  mesos-datomic-conn
                                                                               :driver driver
                                                                               :get-mesos-utilization get-mesos-utilization
-                                                                              :pending-jobs-atom mesos-pending-jobs-atom
                                                                               :offer-cache offer-cache
-                                                                              :config rebalancer-config
-                                                                              :view-incubating-offers view-incubating-offers
-                                                                              :trigger-chan rebalancer-trigger-chan})
+                                                                              :pending-jobs-atom mesos-pending-jobs-atom
+                                                                              :trigger-chan rebalancer-trigger-chan
+                                                                              :view-incubating-offers view-incubating-offers})
                                     (counters/inc! mesos-leader)
                                     (async/tap mesos-datomic-mult datomic-report-chan)
                                     (cook.mesos.scheduler/monitor-tx-report-queue datomic-report-chan mesos-datomic-conn current-driver)
@@ -273,6 +267,7 @@
                               ;; We will give up our leadership whenever it seems that we lost
                               ;; ZK connection
                               (when (#{ConnectionState/LOST ConnectionState/SUSPENDED} newState)
+                                (reset! mesos-leadership-atom false)
                                 (when-let [driver @current-driver]
                                   (counters/dec! mesos-leader)
                                   ;; Better to fail over and rely on start up code we trust then rely on rarely run code

@@ -28,7 +28,7 @@
             [compojure.core :refer (ANY GET POST routes)]
             [cook.mesos.quota :as quota]
             [cook.mesos.reason :as reason]
-            [cook.mesos.schema :refer (host-placement-types straggler-handling-types)]
+            [cook.mesos.schema :refer (constraint-operators host-placement-types straggler-handling-types)]
             [cook.mesos.share :as share]
             [cook.mesos.unscheduled :as unscheduled]
             [cook.mesos.util :as util]
@@ -175,7 +175,8 @@
    (s/optional-key :reason_code) s/Int
    (s/optional-key :output_url) s/Str
    (s/optional-key :cancelled) s/Bool
-   (s/optional-key :reason_string) s/Str})
+   (s/optional-key :reason_string) s/Str
+   (s/optional-key :progress) s/Int})
 
 (defn max-128-characters-and-alphanum?
   "Returns true if s contains only '.', '_', '-' or
@@ -193,6 +194,15 @@
   "Schema for the application a job corresponds to"
   {:name (s/constrained s/Str non-empty-max-128-characters-and-alphanum?)
    :version (s/constrained s/Str non-empty-max-128-characters-and-alphanum?)})
+
+(def Constraint
+  "Schema for user defined job host constraint"
+  [(s/one NonEmptyString "attribute")
+   (s/one (s/pred #(contains? (set (map name constraint-operators))
+                              (str/lower-case %))
+                  'constraint-operator-exists?)
+          "operator")
+   (s/one NonEmptyString "pattern")])
 
 (s/defschema JobName
   (s/both s/Str (s/both s/Str (s/pred max-128-characters-and-alphanum? 'max-128-characters-and-alphanum?))))
@@ -220,6 +230,7 @@
    (s/optional-key :ports) (s/pred #(not (neg? %)) 'nonnegative?)
    (s/optional-key :env) {NonEmptyString s/Str}
    (s/optional-key :labels) {NonEmptyString s/Str}
+   (s/optional-key :constraints) [Constraint]
    (s/optional-key :container) Container
    (s/optional-key :group) s/Uuid
    (s/optional-key :disable-mea-culpa-retries) s/Bool
@@ -239,18 +250,15 @@
 (def JobRequestMap
   "Schema for the fields of a job request"
   (-> JobMap
-      (dissoc :name)
-      (dissoc :priority)
-      (dissoc :max-runtime)
-      (dissoc :user)
-      (merge {(s/optional-key :name) JobName
-              (s/optional-key :priority) JobPriority
-              (s/optional-key :uris) [UriRequest]
-              (s/optional-key :env) {s/Keyword s/Str}
-              (s/optional-key :labels) {s/Keyword s/Str}
-              (s/optional-key :max-runtime) PosInt
-              :cpus PosNum
-              :mem PosNum})))
+      (dissoc :max-runtime :name :priority :user)
+      (assoc :cpus PosNum
+             :mem PosNum
+             (s/optional-key :env) {s/Keyword s/Str}
+             (s/optional-key :labels) {s/Keyword s/Str}
+             (s/optional-key :max-runtime) PosInt
+             (s/optional-key :name) JobName
+             (s/optional-key :priority) JobPriority
+             (s/optional-key :uris) [UriRequest])))
 
 (def JobRequest
   "Schema for the part of a request that launches a single job."
@@ -263,13 +271,13 @@
   (-> JobRequestMap
       (dissoc (s/optional-key :group))
       (merge {:framework-id (s/maybe s/Str)
+              :retries-remaining NonNegInt
               :status s/Str
               :state s/Str
-              :submit-time PosInt
-              :retries-remaining NonNegInt
+              :submit-time (s/maybe PosInt)
               :user UserName
-              (s/optional-key :groups) [s/Uuid]
               (s/optional-key :gpus) s/Int
+              (s/optional-key :groups) [s/Uuid]
               (s/optional-key :instances) [Instance]})
       prepare-schema-response))
 
@@ -416,7 +424,8 @@
   "Creates the necessary txn data to insert a job into the database"
   [job :- Job]
   (let [{:keys [uuid command max-retries max-runtime expected-runtime priority cpus mem gpus
-                user name ports uris env labels container group application disable-mea-culpa-retries]
+                user name ports uris env labels container group application disable-mea-culpa-retries
+                constraints]
          :or {group nil
               disable-mea-culpa-retries false}} job
         db-id (d/tempid :db.part/user)
@@ -453,6 +462,15 @@
                              :label/key k
                              :label/value v}]))
                        labels)
+        constraints (mapcat (fn [[attribute operator pattern]]
+                              (let [constraint-var-id (d/tempid :db.part/user)]
+                                [[:db/add db-id :job/constraint constraint-var-id]
+                                 {:db/id constraint-var-id
+                                  :constraint/attribute attribute
+                                  :constraint/operator (keyword "constraint.operator"
+                                                                (str/lower-case operator))
+                                  :constraint/pattern pattern}]))
+                            constraints)
         container (if (nil? container) [] (build-container user db-id container))
         ;; These are optionally set datoms w/ default values
         maybe-datoms (reduce into
@@ -469,23 +487,23 @@
                                     :resource/amount (double gpus)}]))])
         commit-latch-id (d/tempid :db.part/user)
         commit-latch {:db/id commit-latch-id
-                      :commit-latch/uuid (UUID/randomUUID)
-                      :commit-latch/committed? true}
+                      :commit-latch/committed? true
+                      :commit-latch/uuid (UUID/randomUUID)}
         txn (cond-> {:db/id db-id
-                     :job/commit-latch commit-latch-id
-                     :job/uuid uuid
-                     :job/submit-time (Date.)
-                     :job/name (or name "cookjob") ; set the default job name if not provided.
                      :job/command command
+                     :job/commit-latch commit-latch-id
                      :job/custom-executor false
-                     :job/user user
-                     :job/max-retries max-retries
-                     :job/state :job.state/waiting
                      :job/disable-mea-culpa-retries disable-mea-culpa-retries
+                     :job/max-retries max-retries
+                     :job/name (or name "cookjob") ; set the default job name if not provided.
                      :job/resource [{:resource/type :resource.type/cpus
                                      :resource/amount cpus}
                                     {:resource/type :resource.type/mem
-                                     :resource/amount mem}]}
+                                     :resource/amount mem}]
+                     :job/state :job.state/waiting
+                     :job/submit-time (Date.)
+                     :job/user user
+                     :job/uuid uuid}
                     application (assoc :job/application
                                        {:application/name (:name application)
                                         :application/version (:version application)})
@@ -495,6 +513,7 @@
     (-> ports
         (into uris)
         (into env)
+        (into constraints)
         (into labels)
         (into container)
         (into maybe-datoms)
@@ -579,8 +598,10 @@
    objects, or else throws an exception"
   [db user task-constraints gpu-enabled? new-group-uuids
    {:keys [cpus mem gpus uuid command priority max-retries max-runtime expected-runtime name
-           uris ports env labels container group application]
-    :or {group nil}
+           uris ports env labels container group application disable-mea-culpa-retries
+           constraints]
+    :or {group nil
+         disable-mea-culpa-retries false}
     :as job}
    & {:keys [commit-latch-id override-group-immutability?]
       :or {commit-latch-id nil
@@ -596,7 +617,8 @@
                   :max-runtime (or max-runtime Long/MAX_VALUE)
                   :ports (or ports 0)
                   :cpus (double cpus)
-                  :mem (double mem)}
+                  :mem (double mem)
+                  :disable-mea-culpa-retries disable-mea-culpa-retries}
                  (when gpus
                    {:gpus (int gpus)})
                  (when env
@@ -610,6 +632,9 @@
                                uris)})
                  (when labels
                    {:labels (walk/stringify-keys labels)})
+                 (when constraints
+                   ;; Rest framework keywordifies all keys, we want these to be strings!
+                   {:constraints constraints})
                  (when group-uuid
                    {:group group-uuid})
                  (when container
@@ -669,55 +694,92 @@
     group))
 
 
-(defn get-executor-states-impl
-  "Builds an indexed version of all executor states on the specified slave. Has no cache; takes
+(defn get-executor-id->sandbox-directory-impl
+  "Builds an indexed version of all executor-id to sandbox directory on the specified agent. Has no cache; takes
    100-500ms to run."
-  [framework-id hostname]
+  [framework-id agent-hostname]
   (let [timeout-millis (* 5 1000)
         ;; Throw SocketTimeoutException or ConnectionTimeoutException when timeout
-        slave-state (:body (http/get (str "http://" hostname ":5051/state.json")
-                                     {:socket-timeout timeout-millis
-                                      :conn-timeout timeout-millis
-                                      :as :json-string-keys
-                                      :spnego-auth true}))
-        framework-executors (for [framework (reduce into
-                                                    []
-                                                    [(get slave-state "frameworks")
-                                                     (get slave-state "completed_frameworks")])
-                                  :when (= framework-id (get framework "id"))
-                                  e (reduce into
-                                            []
-                                            [(get framework "executors")
-                                             (get framework "completed_executors")])]
-                              e)]
-    (map-from-vals #(get % "id") framework-executors)))
+        {:strs [completed_frameworks frameworks]} (-> (str "http://" agent-hostname ":5051/state.json")
+                                                      (http/get
+                                                        {:as :json-string-keys
+                                                         :conn-timeout timeout-millis
+                                                         :socket-timeout timeout-millis
+                                                         :spnego-auth true})
+                                                      :body)
+        framework-filter (fn framework-filter [{:strs [id] :as framework}]
+                           (when (= framework-id id) framework))
+        ;; there should be at most one framework entry for a given framework-id
+        target-framework (or (some framework-filter frameworks)
+                             (some framework-filter completed_frameworks))
+        {:strs [completed_executors executors]} target-framework
+        framework-executors (reduce into [] [completed_executors executors])]
+    (->> framework-executors
+         (map (fn executor-state->executor-id->sandbox-directory [{:strs [id directory]}]
+                [id directory]))
+         (into {}))))
 
 (let [cache (-> {}
                 (cache/fifo-cache-factory :threshold 10000)
                 (cache/ttl-cache-factory :ttl (* 1000 60))
                 atom)]
-  (defn get-executor-states
-    "Builds an indexed version of all executor states on the specified slave. Cached"
-    [framework-id hostname]
-    (let [run (delay (try (get-executor-states-impl framework-id hostname)
+  (defn get-executor-id->sandbox-directory
+    "Builds an indexed version of all executor-id to sandbox directory for the specified agent. Cached"
+    [framework-id agent-hostname]
+    (let [run (delay (try (get-executor-id->sandbox-directory-impl framework-id agent-hostname)
                           (catch Exception e
                             (log/debug e "Failed to get executor state, purging from cache...")
-                            (swap! cache cache/evict hostname)
+                            (swap! cache cache/evict agent-hostname)
                             nil)))
           cs (swap! cache (fn [c]
-                            (if (cache/has? c hostname)
-                              (cache/hit c hostname)
-                              (cache/miss c hostname run))))
-          val (cache/lookup cs hostname)]
+                            (if (cache/has? c agent-hostname)
+                              (cache/hit c agent-hostname)
+                              (cache/miss c agent-hostname run))))
+          val (cache/lookup cs agent-hostname)]
       (if val @val @run))))
 
-(defn executor-state->url-path
-  "Takes the executor state from the slave json and constructs a URL to query it. Hardcodes fun
-   stuff like the port we run the slave on. Users will need to add the file path & offset to their query"
-  [host executor-state]
-  (str "http://" host ":5051"
-       "/files/read.json?path="
-       (URLEncoder/encode (get executor-state "directory") "UTF-8")))
+(defn retrieve-url-path
+  "Takes the executor-id->sandbox-directory from the agent json and constructs a URL to query it. Hardcodes fun
+   stuff like the port we run the agent on. Users will need to add the file path & offset to their query. Refer to
+   the 'Using the output_url' section in docs/scheduler-rest-api.asc for further details."
+  [fid agent-hostname executor-id]
+  (try
+    (let [executor-id->sandbox-directory (get-executor-id->sandbox-directory fid agent-hostname)
+          directory (executor-id->sandbox-directory executor-id)]
+      (str "http://" agent-hostname ":5051" "/files/read.json?path="
+           (URLEncoder/encode directory "UTF-8")))
+    (catch Exception e
+      (log/debug e "Unable to retrieve directory path for" executor-id "on agent" agent-hostname)
+      nil)))
+
+(defn- instance->instance-map
+  "Converts the instance to a map of relevant fields that will be returned to the caller"
+  [db fid instance]
+  (let [hostname (:instance/hostname instance)
+        executor-id (:instance/executor-id instance)
+        url-path (retrieve-url-path fid hostname executor-id)
+        start (:instance/start-time instance)
+        mesos-start (:instance/mesos-start-time instance)
+        end (:instance/end-time instance)
+        cancelled (:instance/cancelled instance)
+        reason (reason/instance-entity->reason-entity db instance)
+        progress (:instance/progress instance)]
+    (cond-> {:backfilled false ;; Backfill has been deprecated
+             :executor_id executor-id
+             :hostname hostname
+             :ports (vec (:instance/ports instance))
+             :preempted (:instance/preempted? instance false)
+             :slave_id (:instance/slave-id instance)
+             :status (name (:instance/status instance))
+             :task_id (:instance/task-id instance)}
+            url-path (assoc :output_url url-path)
+            start (assoc :start_time (.getTime start))
+            mesos-start (assoc :mesos_start_time (.getTime mesos-start))
+            end (assoc :end_time (.getTime end))
+            cancelled (assoc :cancelled cancelled)
+            reason (assoc :reason_code (:reason/code reason)
+                          :reason_string (:reason/string reason))
+            progress (assoc :progress progress))))
 
 (defn fetch-job-map
   [db fid job-uuid]
@@ -726,62 +788,45 @@
         groups (:group/_job job)
         application (:job/application job)
         expected-runtime (:job/expected-runtime job)
+        state (case (:job/state job)
+                :job.state/completed
+                (if (some #{:instance.status/success}
+                          (map :instance/status (:job/instance job)))
+                  "success" "failed")
+                :job.state/running "running"
+                :job.state/waiting "waiting")
+        constraints (->> job
+                         :job/constraint
+                         (map util/remove-datomic-namespacing)
+                         (map (fn [{:keys [attribute operator pattern]}]
+                                (->> [attribute (str/upper-case (name operator)) pattern]
+                                     (map str)))))
+        instances (map #(instance->instance-map db fid %) (:job/instance job))
+        submit-time (when (:job/submit-time job) ; due to a bug, submit time may not exist for some jobs
+                (.getTime (:job/submit-time job)))
         job-map {:command (:job/command job)
-                 :uuid (str (:job/uuid job))
-                 :name (:job/name job "cookjob")
-                 :priority (:job/priority job util/default-job-priority)
-                 :submit_time (when (:job/submit-time job) ; due to a bug, submit time may not exist for some jobs
-                                (.getTime (:job/submit-time job)))
-                 :user (:job/user job)
+                 :constraints constraints 
                  :cpus (:cpus resources)
-                 :mem (:mem resources)
-                 :gpus (int (:gpus resources 0))
-                 :max_retries (:job/max-retries job) ; consistent with input
-                 :retries_remaining (- (:job/max-retries job) (util/job-ent->attempts-consumed db job))
-                 :max_runtime (:job/max-runtime job Long/MAX_VALUE) ; consistent with input
-                 :framework_id fid
-                 :status (name (:job/state job))
-                 :state (case (:job/state job)
-                          :job.state/waiting "waiting"
-                          :job.state/running "running"
-                          :job.state/completed
-                          (if (some #{:instance.status/success}
-                                    (map :instance/status (:job/instance job)))
-                            "success" "failed"))
-                 :uris (:uris resources)
+                 :disable_mea_culpa_retries (:job/disable-mea-culpa-retries job false)
                  :env (util/job-ent->env job)
+                 :framework_id fid
+                 :gpus (int (:gpus resources 0))
+                 :instances instances
                  :labels (util/job-ent->label job)
+                 :max_retries (:job/max-retries job) ; consistent with input
+                 :max_runtime (:job/max-runtime job Long/MAX_VALUE) ; consistent with input
+                 :mem (:mem resources)
+                 :name (:job/name job "cookjob")
                  :ports (:job/ports job 0)
-                 :instances
-                 (map (fn [instance]
-                        (let [hostname (:instance/hostname instance)
-                              executor-states (get-executor-states fid hostname)
-                              url-path (try
-                                         (executor-state->url-path hostname (get executor-states (:instance/executor-id instance)))
-                                         (catch Exception e
-                                           nil))
-                              start (:instance/start-time instance)
-                              mesos-start (:instance/mesos-start-time instance)
-                              end (:instance/end-time instance)
-                              cancelled (:instance/cancelled instance)
-                              reason (reason/instance-entity->reason-entity db instance)]
-                          (cond-> {:task_id (:instance/task-id instance)
-                                   :hostname hostname
-                                   :ports (:instance/ports instance)
-                                   :backfilled false ;; Backfill has been deprecated
-                                   :preempted (:instance/preempted? instance false)
-                                   :slave_id (:instance/slave-id instance)
-                                   :executor_id (:instance/executor-id instance)
-                                   :status (name (:instance/status instance))}
-                                  url-path (assoc :output_url url-path)
-                                  start (assoc :start_time (.getTime start))
-                                  mesos-start (assoc :mesos_start_time (.getTime mesos-start))
-                                  end (assoc :end_time (.getTime end))
-                                  cancelled (assoc :cancelled cancelled)
-                                  reason (assoc :reason_code (:reason/code reason)
-                                                :reason_string (:reason/string reason)))))
-                      (:job/instance job))}]
-    (cond-> job-map
+                 :priority (:job/priority job util/default-job-priority)
+                 :retries_remaining (- (:job/max-retries job) (util/job-ent->attempts-consumed db job))
+                 :state state
+                 :status (name (:job/state job))
+                 :submit_time submit-time
+                 :uris (:uris resources)
+                 :user (:job/user job)
+                 :uuid (:job/uuid job)}]
+     (cond-> job-map
             groups (assoc :groups (map #(str (:group/uuid %)) groups))
             application (assoc :application (util/remove-datomic-namespacing application))
             expected-runtime (assoc :expected-runtime expected-runtime))))
@@ -791,9 +836,9 @@
   (let [group (d/entity db [:group/uuid guuid])
         jobs (:group/job group)
         jobs-by-state (group-by :job/state jobs)]
-    {:waiting (count (:job.state/waiting jobs-by-state))
+    {:completed (count (:job.state/completed jobs-by-state))
      :running (count (:job.state/running jobs-by-state))
-     :completed (count (:job.state/completed jobs-by-state))}))
+     :waiting (count (:job.state/waiting jobs-by-state))}))
 
 (defn fetch-group-map
   [db guuid]
@@ -975,6 +1020,8 @@
   (try
     (log/info "Submitting jobs through raw api:" jobs)
     (let [group-uuids (set (map :uuid groups))
+          group-asserts (map (fn [guuid] [:entity/ensure-not-exists [:group/uuid guuid]])
+                             group-uuids)
           ;; Create new implicit groups (with all default settings)
           implicit-groups (->> jobs
                                (map :group)
@@ -983,6 +1030,7 @@
                                (remove #(contains? group-uuids %))
                                (map make-default-group))
           groups (into (vec implicit-groups) groups)
+          job-asserts (map (fn [j] [:entity/ensure-not-exists [:job/uuid (:uuid j)]]) jobs)
           job-txns (mapcat #(make-job-txn %) jobs)
           job-uuids->dbids (->> job-txns
                                 ;; Not all txns are for the top level job
@@ -1000,7 +1048,10 @@
                           groups)]
       @(d/transact
          conn
-         (into (vec job-txns) group-txns))
+         (-> (vec group-asserts)
+             (into job-asserts)
+             (into job-txns)
+             (into group-txns)))
 
       {::results (str/join
                    \space (concat ["submitted jobs"]
@@ -1010,7 +1061,7 @@
                                             (map (comp str :uuid) groups)))))})
     (catch Exception e
       (log/error e "Error submitting jobs through raw api")
-      [false {::error (str e)}])))
+      (throw e))))
 
 ;;; On POST; JSON blob that looks like:
 ;;; {"jobs": [{"command": "echo hello world",
@@ -1020,7 +1071,7 @@
 ;;;            "mem": 1000}]}
 ;;;
 (defn create-jobs-handler
-  [conn fid task-constraints gpu-enabled? is-authorized-fn]
+  [conn task-constraints gpu-enabled? is-authorized-fn]
   (base-cook-handler
     {:allowed-methods [:post]
      :malformed? (fn [ctx]
@@ -1073,11 +1124,13 @@
      :put! (partial create-jobs! conn)
 
      :post! (partial create-jobs! conn)
+     :handle-exception (fn [{:keys [exception]}]
+                         {:error (str "Exception occurred while creating job - " (.getMessage exception))})
      :handle-created (fn [ctx] (::results ctx))}))
 
 
 (defn read-groups-handler
-  [conn fid task-constraints is-authorized-fn]
+  [conn task-constraints is-authorized-fn]
   (base-cook-handler
     {:allowed-methods [:get]
      :malformed? (fn [ctx]
@@ -1482,7 +1535,7 @@
 (timers/deftimer [cook-scheduler handler list-endpoint])
 
 (defn list-resource
-  [db framework-id is-authorized-fn]
+  [db fid is-authorized-fn]
   (liberator/resource
    :available-media-types ["application/json"]
    :allowed-methods [:get]
@@ -1547,20 +1600,19 @@
                        job-uuids (->> (timers/time!
                                        fetch-jobs
                                        ;; Get valid timings
-                                       (doall
-                                        (mapcat #(util/get-jobs-by-user-and-state db
-                                                                                  user
-                                                                                  %
-                                                                                  start
-                                                                                  end)
-                                                states)))
+                                       (util/get-jobs-by-user-and-states db
+                                                                         user
+                                                                         states
+                                                                         start
+                                                                         end
+                                                                         limit))
                                       (sort-by :job/submit-time)
                                       reverse
                                       (map :job/uuid))
                        job-uuids (if (nil? limit)
                                    job-uuids
                                    (take limit job-uuids))]
-                   (mapv (partial fetch-job-map db framework-id) job-uuids))))))
+                   (mapv (partial fetch-job-map db fid) job-uuids))))))
 
 ;;
 ;; /unscheduled_jobs
@@ -1620,7 +1672,9 @@
 ;;
 (defn main-handler
   [conn fid mesos-pending-jobs-fn
-   {:keys [task-constraints is-authorized-fn] gpu-enabled? :mesos-gpu-enabled :as settings}]
+   {:keys [task-constraints is-authorized-fn] 
+    gpu-enabled? :mesos-gpu-enabled
+    :as settings}]
   (->
    (routes
     (c-api/api
@@ -1647,7 +1701,7 @@
                :responses {201 {:description "The jobs were successfully scheduled."}
                            400 {:description "One or more of the jobs were incorrectly specified."}
                            409 {:description "One or more of the jobs UUIDs are already in use."}}
-               :handler (create-jobs-handler conn fid task-constraints gpu-enabled? is-authorized-fn)}
+               :handler (create-jobs-handler conn task-constraints gpu-enabled? is-authorized-fn)}
         :delete {:summary "Cancels jobs, halting execution when possible."
                  :responses {204 {:description "The jobs have been marked for termination."}
                              400 {:description "Non-UUID values were passed as jobs."}
@@ -1732,7 +1786,7 @@
                                :description "The groups were returned."}
                           400 {:description "Non-UUID values were passed."}
                           403 {:description "The supplied UUIDs don't correspond to valid groups."}}
-              :handler (read-groups-handler conn fid task-constraints is-authorized-fn)}}))
+              :handler (read-groups-handler conn task-constraints is-authorized-fn)}}))
 
      (c-api/context
       "/failure_reasons" []
