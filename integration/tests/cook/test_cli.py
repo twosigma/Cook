@@ -259,7 +259,7 @@ class CookCliTest(unittest.TestCase):
         elapsed_time = time.time() - start_time
         self.assertEqual(1, cp.returncode, cp.stderr)
         self.assertIn('Timeout waiting for jobs', cli.decode(cp.stderr))
-        self.assertLess(elapsed_time, 10)
+        self.assertLess(elapsed_time, 15)
         self.assertGreater(elapsed_time, 3)
         start_time = time.time()
         cp = cli.wait(uuids, self.cook_url, wait_flags='--timeout 1 --interval 1')
