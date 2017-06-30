@@ -109,10 +109,10 @@
   (mapv #(make-attribute (key %) :value-text (val %)) attrs))
 
 (defn make-mesos-offer
-  [id fid slave-id hostname & {:keys [cpus mem disk ports gpus attrs]
+  [id framework-id slave-id hostname & {:keys [cpus mem disk ports gpus attrs]
                                :or {cpus 40.0 mem 5000.0 disk 6000.0 ports {:begin 31000 :end 32000} gpus 0.0 attrs {}}}]
   (mesomatic.types/map->Offer {:id (mesomatic.types/map->OfferID {:value id})
-                               :framework-id fid
+                               :framework-id framework-id
                                :slave-id (mesomatic.types/map->SlaveID {:value slave-id})
                                :hostname hostname
                                :resources (make-offer-resources cpus mem disk ports gpus)
@@ -120,15 +120,15 @@
                                :executor-ids []}))
 
 (defn make-vm-offer
-  [fid host offid & {:keys [attrs cpus mem disk] :or {attrs {} cpus 100.0 mem 100000.0 disk 100000.0}}]
+  [framework-id host offer-id & {:keys [attrs cpus mem disk] :or {attrs {} cpus 100.0 mem 100000.0 disk 100000.0}}]
   (sched/->VirtualMachineLeaseAdapter
-    (make-mesos-offer offid fid "test-slave" host
+    (make-mesos-offer offer-id framework-id "test-slave" host
                       :cpus cpus :mem mem :disk disk :attrs attrs) 0))
 
 ;(.getOffer (make-vm-offer (make-uuid) "lol" (make-uuid)))
 
 (defn schedule-and-run-jobs
-  [conn fid scheduler offers job-ids]
+  [conn framework-id scheduler offers job-ids]
     (let [jobs (map #(d/entity (d/db conn) %) job-ids)
           task-ids (take (count jobs) (repeatedly #(str (java.util.UUID/randomUUID))))
           guuid->considerable-cotask-ids (util/make-guuid->considerable-cotask-ids (zipmap jobs task-ids))
@@ -324,7 +324,7 @@
                         :id {:value (str "id-" (UUID/randomUUID))}
                         :slave-id {:value (str "slave-" (UUID/randomUUID))}
                         :hostname (str "host-" (UUID/randomUUID))}])
-        fid (str "framework-id-" (UUID/randomUUID))
+        framework-id (str "framework-id-" (UUID/randomUUID))
         fenzo-maker #(sched/make-fenzo-scheduler nil 100000 nil 1)] ; The params are for offer declining, which should never happen
     (testing "Consume no schedule cases"
       (are [schedule offers] (= [] (:matches (sched/match-offer-to-schedule (fenzo-maker) schedule offers)))
@@ -375,10 +375,10 @@
                                                                      :name "high-priority"
                                                                      :priority 100
                                                                      :job-state :job.state/waiting)))
-        fid (str "framework-id-" (java.util.UUID/randomUUID))
+        framework-id (str "framework-id-" (java.util.UUID/randomUUID))
         fenzo (make-dummy-scheduler)
         ; Schedule conflicting
-        _ (schedule-and-run-jobs conn fid fenzo [(make-vm-offer (make-uuid)
+        _ (schedule-and-run-jobs conn framework-id fenzo [(make-vm-offer (make-uuid)
                                                                 conflict-host
                                                                 (make-uuid))] [conflicting-job-id])
         low-priority (map #(d/entity (d/db conn) %) low-priority-ids)
@@ -654,7 +654,7 @@
 (deftest test-unique-host-placement-constraint
   (let  [uri "datomic:mem://test-unique-host-placement-constraint"
          conn (restore-fresh-database! uri)
-         fid #mesomatic.types.FrameworkID{:value "my-original-framework-id"}]
+         framework-id #mesomatic.types.FrameworkID{:value "my-original-framework-id"}]
     (testing "conflicting jobs, different scheduling cycles"
       (let [scheduler (make-dummy-scheduler)
             shared-host "test-host"
@@ -662,14 +662,14 @@
             group-id (create-dummy-group conn :host-placement {:host-placement/type :host-placement.type/unique})
             conflicted-job-id (create-dummy-job conn :group group-id)
             conflicting-job-id (create-dummy-job conn :group group-id)
-            make-offers #(vector (make-vm-offer fid shared-host (make-uuid)))
+            make-offers #(vector (make-vm-offer framework-id shared-host (make-uuid)))
             group (d/entity (d/db conn) group-id)
             ; Schedule first job
-            scheduled-tasks (schedule-and-run-jobs conn fid scheduler (make-offers) [conflicting-job-id])
+            scheduled-tasks (schedule-and-run-jobs conn framework-id scheduler (make-offers) [conflicting-job-id])
             _ (is  (= 1 (count (:scheduled scheduled-tasks))))
             conflicting-task-id (first (:scheduled scheduled-tasks))
             ; Try to schedule conflicted job, but fail
-            failures (-> (schedule-and-run-jobs conn fid scheduler (make-offers) [conflicted-job-id])
+            failures (-> (schedule-and-run-jobs conn framework-id scheduler (make-offers) [conflicted-job-id])
                          :result
                          .getFailures)
             task-results (-> failures
@@ -690,10 +690,10 @@
             group-id (create-dummy-group conn :host-placement {:host-placement/type :host-placement.type/unique})
             conflicted-job-id (create-dummy-job conn :group group-id)
             conflicting-job-id (create-dummy-job conn :group group-id)
-            make-offers #(vector (make-vm-offer fid shared-host (make-uuid)))
+            make-offers #(vector (make-vm-offer framework-id shared-host (make-uuid)))
             group (d/entity (d/db conn) group-id)
             ; Schedule first job
-            result (schedule-and-run-jobs conn fid scheduler (make-offers) [conflicting-job-id
+            result (schedule-and-run-jobs conn framework-id scheduler (make-offers) [conflicting-job-id
                                                                             conflicted-job-id])
             _ (is  (= 1 (count (:scheduled result))))
             conflicting-task-id (-> result :scheduled first)
@@ -713,21 +713,21 @@
     (testing "non conflicting jobs"
       (let [scheduler (make-dummy-scheduler)
             shared-host "test-host"
-            make-offers #(vector (make-vm-offer fid shared-host (make-uuid)))
+            make-offers #(vector (make-vm-offer framework-id shared-host (make-uuid)))
             isolated-job-id1 (create-dummy-job conn)
             isolated-job-id2 (create-dummy-job conn)]
-        (is  (= 1 (count (:scheduled (schedule-and-run-jobs conn fid scheduler (make-offers) [isolated-job-id1])))))
-        (is  (= 1 (count (:scheduled (schedule-and-run-jobs conn fid scheduler (make-offers) [isolated-job-id2])))))))))
+        (is  (= 1 (count (:scheduled (schedule-and-run-jobs conn framework-id scheduler (make-offers) [isolated-job-id1])))))
+        (is  (= 1 (count (:scheduled (schedule-and-run-jobs conn framework-id scheduler (make-offers) [isolated-job-id2])))))))))
 
 
 (deftest test-balanced-host-placement-constraint
   (let  [uri "datomic:mem://test-balanced-host-placement-constraint"
          conn (restore-fresh-database! uri)
-         fid #mesomatic.types.FrameworkID{:value "my-original-framework-id"}]
+         framework-id #mesomatic.types.FrameworkID{:value "my-original-framework-id"}]
     (testing "schedule 9 jobs with hp-type balanced on 3 hosts, each host should get 3 jobs"
       (let [scheduler (make-dummy-scheduler)
             hostnames ["straw" "sticks" "bricks"]
-            make-offers (fn [] (mapv #(make-vm-offer fid % (make-uuid)) hostnames))
+            make-offers (fn [] (mapv #(make-vm-offer framework-id % (make-uuid)) hostnames))
             ; Group jobs, setting balanced host-placement constraint
             group-id (create-dummy-group conn
                        :host-placement {:host-placement/type :host-placement.type/balanced
@@ -736,17 +736,17 @@
             job-ids (doall (repeatedly 9 #(create-dummy-job conn :group group-id)))]
         (is (= {"straw" 3 "sticks" 3 "bricks" 3}
                (->> job-ids
-                    (schedule-and-run-jobs conn fid scheduler (make-offers))
+                    (schedule-and-run-jobs conn framework-id scheduler (make-offers))
                     :result
                     .getResultMap
                     (pc/map-vals #(count (.getTasksAssigned %))))))))
     (testing "schedule 9 jobs with no placement constraints on 3 hosts, assignment not balanced"
       (let [scheduler (make-dummy-scheduler)
             hostnames ["straw" "sticks" "bricks"]
-            make-offers (fn [] (mapv #(make-vm-offer fid % (make-uuid)) hostnames))
+            make-offers (fn [] (mapv #(make-vm-offer framework-id % (make-uuid)) hostnames))
             job-ids (doall (repeatedly 9 #(create-dummy-job conn)))]
         (is (not (= (list 3) (->> job-ids
-                                  (schedule-and-run-jobs conn fid scheduler (make-offers))
+                                  (schedule-and-run-jobs conn framework-id scheduler (make-offers))
                                   :result
                                   .getResultMap
                                   vals
@@ -756,16 +756,16 @@
 (deftest test-attr-equals-host-placement-constraint
   (let  [uri "datomic:mem://test-attr-equals-host-placement-constraint"
          conn (restore-fresh-database! uri)
-         fid #mesomatic.types.FrameworkID{:value "my-original-framework-id"}
+         framework-id #mesomatic.types.FrameworkID{:value "my-original-framework-id"}
          make-hostname #(str (java.util.UUID/randomUUID))
          attr-name "az"
          attr-val "east"
          make-attr-offer (fn [cpus]
-                           (make-vm-offer fid (make-hostname) (make-uuid)
+                           (make-vm-offer framework-id (make-hostname) (make-uuid)
                                           :cpus cpus :attrs {attr-name attr-val}))
          ; Each non-attr offer can take only one job
          make-non-attr-offers (fn [n]
-                                (into [] (repeatedly n #(make-vm-offer fid (make-hostname) (make-uuid)
+                                (into [] (repeatedly n #(make-vm-offer framework-id (make-hostname) (make-uuid)
                                                                        :cpus 1.0 :attrs {attr-name "west"}))))]
     (testing "Create group, schedule one job unto VM, then all subsequent jobs must have same attr as the VM."
       (let [scheduler (make-dummy-scheduler)
@@ -776,10 +776,10 @@
             other-jobs (doall (repeatedly 20 #(create-dummy-job conn :ncpus 1.0 :group group-id)))
             ; Group jobs, setting balanced host-placement constraint
             ; Schedule the first job
-            _ (is (= 1 (->> (schedule-and-run-jobs conn fid scheduler [(make-attr-offer 1.0)] [first-job])
+            _ (is (= 1 (->> (schedule-and-run-jobs conn framework-id scheduler [(make-attr-offer 1.0)] [first-job])
                             :scheduled
                             count)))
-            batch-result (->> (schedule-and-run-jobs conn fid scheduler
+            batch-result (->> (schedule-and-run-jobs conn framework-id scheduler
                                                      (conj (make-non-attr-offers 20) (make-attr-offer 5.0)) other-jobs)
                               :result)]
         (testing "Other jobs all pile up on attr-offer."
@@ -805,11 +805,11 @@
       (let [scheduler (make-dummy-scheduler)
             first-job (create-dummy-job conn)
             other-jobs (doall (repeatedly 20 #(create-dummy-job conn)))
-            _ (is (= 1 (->> (schedule-and-run-jobs conn fid scheduler [(make-attr-offer 2.0)] [first-job])
+            _ (is (= 1 (->> (schedule-and-run-jobs conn framework-id scheduler [(make-attr-offer 2.0)] [first-job])
                             :scheduled
                             count)))]
         ; Need to use all offers to fit all 20 other-jobs
-        (is  (= 20 (->> (schedule-and-run-jobs conn fid scheduler
+        (is  (= 20 (->> (schedule-and-run-jobs conn framework-id scheduler
                           (conj (make-non-attr-offers 15) (make-attr-offer 5.0)) other-jobs)
                         :result
                         .getResultMap
@@ -1296,7 +1296,7 @@
                        :id {:value (str "id-" (UUID/randomUUID))}
                        :slave-id {:value (str "slave-" (UUID/randomUUID))}
                        :hostname (str "host-" (UUID/randomUUID))})
-        fid #mesomatic.types.FrameworkID{:value "my-framework-id"}
+        framework-id #mesomatic.types.FrameworkID{:value "my-framework-id"}
         offers-chan (async/chan (async/buffer 10))
         offer-1 (offer-maker 10 2048 0)
         offer-2 (offer-maker 20 16384 0)
@@ -1324,7 +1324,7 @@
                                                                                :gpu [job-5 job-6]})
                                             user->usage (or user->usage {test-user {:count 1, :cpus 2, :mem 1024, :gpus 0}})
                                             user->quota (or user-quota {test-user {:count 10, :cpus 50, :mem 32768, :gpus 10}})
-                                            result (sched/handle-resource-offers! conn driver fenzo fid category->pending-jobs-atom (init-offer-cache) user->usage user->quota
+                                            result (sched/handle-resource-offers! conn driver fenzo framework-id category->pending-jobs-atom (init-offer-cache) user->usage user->quota
                                                                                   num-considerable offers-chan offers)]
                                         (async/>!! offers-chan :end-marker)
                                         result))]
