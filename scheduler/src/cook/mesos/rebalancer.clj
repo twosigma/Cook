@@ -391,64 +391,62 @@
     (loop [state init-state
            remaining-preemption max-preemption
            [pending-job-ent & jobs-to-make-room-for] jobs-to-make-room-for
-           pending-job-ents-to-run []
-           task-ents-to-preempt []]
+           preemption-decisions []]
       (if (and pending-job-ent (pos? remaining-preemption))
         (let [[state' preemption-decision] (compute-next-state-and-preemption-decision offer-cache state params pending-job-ent)]
           (if preemption-decision
             (recur state'
                    (dec remaining-preemption)
                    jobs-to-make-room-for
-                   (conj pending-job-ents-to-run pending-job-ent)
-                   (into task-ents-to-preempt
-                         ;; If a task has no id, it must be a synthetic task.
-                         ;; This means that on one iteration of (compute-next-state-and-preemption-decision),
-                         ;; the rebalancer decided to make room for a certain hypothetical task,
-                         ;; but on a subsequent iteration, it became clear that OTHER hypothetical tasks would be an even better outcome.
-                         ;; We shouldn't try to actually preempt tasks that were never scheduled.
-                         (filter :db/id (:task preemption-decision))))
+                   (conj preemption-decisions (assoc preemption-decision
+                                                     :to-make-room-for pending-job-ent)))
             (recur state'
                    remaining-preemption
                    jobs-to-make-room-for
-                   pending-job-ents-to-run
-                   task-ents-to-preempt)))
-
+                   preemption-decisions)))
         (do
           (timers/stop timer)
-          (histograms/update! task-counts-to-preempt (count task-ents-to-preempt))
-          (histograms/update! job-counts-to-run (count pending-job-ents-to-run))
-          ;; pending-job-ents-to-run is only for debugging purpose
-          [pending-job-ents-to-run task-ents-to-preempt]
-          )))))
+          (histograms/update! task-counts-to-preempt (count (mapcat :task preemption-decisions)))
+          (histograms/update! job-counts-to-run (count preemption-decisions))
+
+          preemption-decisions)))))
 
 (defn rebalance!
   [conn driver offer-cache pending-job-ents host->spare-resources params]
   (try
     (log/info "Rebalancing...Params:" params)
     (let [db (mt/db conn)
-          [pending-job-ents-to-run task-ents-to-preempt] (rebalance db offer-cache pending-job-ents host->spare-resources params)]
-      (log/info "Jobs to run:" pending-job-ents-to-run)
-      (log/info "Tasks to preempt:" task-ents-to-preempt)
-      (doseq [task-ent task-ents-to-preempt]
-        (try
-          @(d/transact
-            conn
-            ;; Make :instance/status and :instance/preempted? consistent to simplify the state machine.
-            ;; We don't want to deal with {:instance/status :instance.status/running, :instance/preempted? true}
-            ;; all over the place.
-            (let [job-eid (:db/id (:job/_instance task-ent))
-                  task-eid (:db/id task-ent)]
-              [[:generic/ensure task-eid :instance/status (d/entid db :instance.status/running)]
-               [:generic/atomic-inc job-eid :job/preemptions 1]
-               ;; The database can become inconsistent if we make multiple calls to :instance/update-state in a single
-               ;; transaction; see the comment in the definition of :instance/update-state for more details
-               [:instance/update-state task-eid :instance.status/failed [:reason/name :preempted-by-rebalancer]]
-               [:db/add task-eid :instance/reason [:reason/name :preempted-by-rebalancer]]
-               [:db/add task-eid :instance/preempted? true]]))
-          (catch Throwable e
-            (log/warn e "Failed to transact preemption")))
-        (when-let [task-id (:instance/task-id task-ent)]
-          (mesos/kill-task! driver {:value task-id}))))))
+          preemption-decisons (rebalance db offer-cache pending-job-ents host->spare-resources params)]
+      (doseq [{job-ent-to-make-room-for :to-make-room-for
+               task-ents-to-preempt :task} preemption-decisons]
+        (log/info "Preempting tasks to make room for waiting job"
+                  {:to-make-room-for job-ent-to-make-room-for
+                   :to-preempt task-ents-to-preempt})
+        ;; If a task has no id, it must be a synthetic task.
+        ;; This means that on one iteration of (compute-next-state-and-preemption-decision),
+        ;; the rebalancer decided to make room for a certain hypothetical task,
+        ;; but on a subsequent iteration, it became clear that OTHER hypothetical tasks would be an even better outcome.
+        ;; We shouldn't try to actually preempt tasks that were never scheduled.
+        (doseq [task-ent (filter :db/id task-ents-to-preempt)]
+          (try
+            @(d/transact
+               conn
+               ;; Make :instance/status and :instance/preempted? consistent to simplify the state machine.
+               ;; We don't want to deal with {:instance/status :instance.status/running, :instance/preempted? true}
+               ;; all over the place.
+               (let [job-eid (:db/id (:job/_instance task-ent))
+                     task-eid (:db/id task-ent)]
+                 [[:generic/ensure task-eid :instance/status (d/entid db :instance.status/running)]
+                  [:generic/atomic-inc job-eid :job/preemptions 1]
+                  ;; The database can become inconsistent if we make multiple calls to :instance/update-state in a single
+                  ;; transaction; see the comment in the definition of :instance/update-state for more details
+                  [:instance/update-state task-eid :instance.status/failed [:reason/name :preempted-by-rebalancer]]
+                  [:db/add task-eid :instance/reason [:reason/name :preempted-by-rebalancer]]
+                  [:db/add task-eid :instance/preempted? true]]))
+            (catch Throwable e
+              (log/warn e "Failed to transact preemption")))
+          (when-let [task-id (:instance/task-id task-ent)]
+            (mesos/kill-task! driver {:value task-id})))))))
 
 
 
