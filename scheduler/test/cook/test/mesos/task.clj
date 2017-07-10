@@ -137,7 +137,7 @@
                                   :extract true}]}
                 :labels {"foo" "bar", "doo" "dar"},
                 :data (.getBytes "string-data" "UTF-8")
-                :framework-id {:value "4425e656-2278-4f91-b1e4-9a2e942e6e81"}
+                :framework-id "4425e656-2278-4f91-b1e4-9a2e942e6e81"
                 :role "4425e656-2278-4f91-b1e4-9a2e942e6e82",
                 :num-ports 0,
                 :resources {:mem 623.0
@@ -229,7 +229,7 @@
           (is (= command (String. (.toByteArray (:data cook-executor-msg)))))
           (is (= (-> cook-executor-msg :executor :command :value) (-> task :command :value)))
           (is (= (-> cook-executor-msg :executor :executor-id :value) (:task-id task)))
-          (is (= (-> cook-executor-msg :executor :framework-id :value) (-> task :framework-id :value)))
+          (is (= (-> cook-executor-msg :executor :framework-id :value) (-> task :framework-id)))
           (is (= (-> cook-executor-msg :executor :name) task/cook-executor-name))
           (is (= (-> cook-executor-msg :executor :source) task/cook-executor-source))))
 
@@ -244,7 +244,7 @@
           (is (= (:instance (edn/read-string (String. (.toByteArray (:data custom-executor-msg))))) "5"))
           (is (= (-> custom-executor-msg :executor :command :value) (-> task :command :value)))
           (is (= (-> custom-executor-msg :executor :executor-id :value) (:task-id task)))
-          (is (= (-> custom-executor-msg :executor :framework-id :value) (-> task :framework-id :value)))
+          (is (= (-> custom-executor-msg :executor :framework-id :value) (-> task :framework-id)))
           (is (= (-> custom-executor-msg :executor :name) task/custom-executor-name))
           (is (= (-> custom-executor-msg :executor :source) task/custom-executor-source))))
 
@@ -296,7 +296,7 @@
             (is (str/blank? (-> container-executor-msg :command :value)))
             (is (= (-> container-executor-msg :executor :command :value) (-> task :command :value)))
             (is (= (-> container-executor-msg :executor :executor-id :value) (:task-id task)))
-            (is (= (-> container-executor-msg :executor :framework-id :value) (-> task :framework-id :value)))
+            (is (= (-> container-executor-msg :executor :framework-id :value) (-> task :framework-id)))
             (is (= (-> container-executor-msg :executor :name) task/custom-executor-name))
             (is (= (-> container-executor-msg :executor :source) task/custom-executor-source))
             (is (nil? (->> container-executor-task task/task-info->mesos-message :container)))
@@ -363,8 +363,8 @@
                                      :custom-executor? false)
             db (d/db conn)
             job-ent (d/entity db job)
-            fid {:value "framework-id"}
-            task-metadata (task/job->task-metadata db fid executor job-ent task-id)]
+            framework-id {:value "framework-id"}
+            task-metadata (task/job->task-metadata db framework-id executor job-ent task-id)]
         (is (= {:command {:environment {"EXECUTOR_LOG_LEVEL" (:log-level executor)
                                         "EXECUTOR_MAX_MESSAGE_LENGTH" (:max-message-length executor)
                                         "PROGRESS_OUTPUT_FILE" "stdout"
@@ -380,7 +380,7 @@
                               "PROGRESS_REGEX_STRING" "regex-string"
                               "PROGRESS_SAMPLE_INTERVAL_MS" (:progress-sample-interval-ms executor)}
                 :executor-key :cook-executor
-                :framework-id fid
+                :framework-id framework-id
                 :labels {}
                 :name (format "dummy_job_%s_%s" (:job/user job-ent) task-id)
                 :num-ports 0

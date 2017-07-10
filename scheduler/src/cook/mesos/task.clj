@@ -16,6 +16,7 @@
 (ns cook.mesos.task
   (:require [clojure.data.json :as json]
             [cook.mesos.util :as util]
+            [mesomatic.types :as mtypes]
             [plumbing.core :refer (map-vals)])
   (:import com.netflix.fenzo.TaskAssignmentResult))
 
@@ -259,8 +260,8 @@
                                   (map #(update % :mode cook-volume-mode->mesomatic-volume-mode)
                                        volumes)))))
         executor {:command command
-                  :executor-id {:value task-id} ;; we explicitly set the executor-id to be same as task-id
-                  :framework-id framework-id
+                  :executor-id (mtypes/->ExecutorID (str task-id))
+                  :framework-id (mtypes/->FrameworkID framework-id)
                   :source custom-executor-source}]
     (cond-> {:data (com.google.protobuf.ByteString/copyFrom data)
              :labels {:labels (map->mesos-kv labels :key)}
@@ -268,7 +269,7 @@
              :resources (into scalar-resource-messages ports-resource-messages)
              ;; executor-id matches txn code in handle-resource-offer!
              :slave-id slave-id
-             :task-id {:value task-id}}
+             :task-id (mtypes/->TaskID (str task-id))}
 
             (= executor-key :command-executor)
             (assoc :command command)
@@ -301,4 +302,3 @@
          (add-ports-to-task-info combined-resource-pool)
          (map #(assoc % :slave-id slave-id))
          (map task-info->mesos-message))))
-

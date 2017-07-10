@@ -146,7 +146,7 @@ def wait_for_exit_code(cook_url, job_id):
         return wait_for_exit_code_inner()
     except:
         job_final = load_job(cook_url, job_id)
-        logger.info('Timeout exceeded waiting for job to reach %s. Job details: %s' % (status, job_final))
+        logger.info('Timeout exceeded waiting for job to receive exit code. Job details: %s' % (job_final))
         raise
 
 
