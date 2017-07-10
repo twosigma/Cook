@@ -419,6 +419,10 @@
           preemption-decisons (rebalance db offer-cache pending-job-ents host->spare-resources params)]
       (doseq [{job-ent-to-make-room-for :to-make-room-for
                task-ents-to-preempt :task} preemption-decisons]
+        ;; Ensure that uuids are loaded in entity
+        (:job/uuid job-ent-to-make-room-for)
+        (doall (map :instance/task-id task-ents-to-preempt))
+
         (log/info "Preempting tasks to make room for waiting job"
                   {:to-make-room-for job-ent-to-make-room-for
                    :to-preempt task-ents-to-preempt})
