@@ -20,7 +20,7 @@
             [clojure.core.async :as async]
             [clojure.core.cache :as cache]
             [clojure.tools.logging :as log]
-            [cook.mesos.api :refer (main-handler)]
+            [cook.mesos.api :as api]
             [cook.mesos.schema :as schema]
             [datomic.api :as d :refer (q db)]
             [qbits.jet.server :refer (run-jetty)]
@@ -33,12 +33,13 @@
   [conn port]
   (let [authorized-fn (fn [x y z] true)
         api-handler (wrap-params
-                      (main-handler conn
-                                    "my-framework-id"
-                                    (fn [] [])
-                                    {:task-constraints {:cpus 12 :memory-gb 100 :retry-limit 200}
-                                     :mesos-gpu-enabled false
-                                     :is-authorized-fn authorized-fn}))
+                      (api/main-handler conn
+                                        "my-framework-id"
+                                        (fn [] [])
+                                        (atom (cache/lru-cache-factory {}))
+                                        {:is-authorized-fn authorized-fn
+                                         :mesos-gpu-enabled false
+                                         :task-constraints {:cpus 12 :memory-gb 100 :retry-limit 200}}))
         ; Mock kerberization, not testing that
         api-handler-kerb (fn [req]
                            (api-handler (assoc req :authorization/user (System/getProperty "user.name"))))

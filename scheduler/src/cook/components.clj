@@ -14,11 +14,9 @@
 ;;
 (ns cook.components
   (:require [clj-logging-config.log4j :as log4j-conf]
-            [clj-pid.core :as pid]
             [clj-time.core :as t]
             [clojure.core.cache :as cache]
             [clojure.edn :as edn]
-            [clojure.java.io :as io]
             [clojure.pprint :refer (pprint)]
             [clojure.tools.logging :as log]
             [compojure.core :refer (GET POST routes context)]
@@ -27,7 +25,6 @@
             [congestion.middleware :refer (wrap-rate-limit ip-rate-limit)]
             [congestion.storage :as storage]
             [cook.curator :as curator]
-            [cook.spnego :as spnego]
             [cook.util :as util]
             [metrics.ring.instrument :refer (instrument)]
             [plumbing.core :refer (fnk)]
@@ -67,11 +64,12 @@
     (resolve var-sym)))
 
 (def raw-scheduler-routes
-  {:scheduler (fnk [mesos-datomic framework-id mesos-pending-jobs-atom settings]
+  {:scheduler (fnk [mesos-agent-query-cache mesos-datomic mesos-pending-jobs-atom framework-id settings]
                 ((lazy-load-var 'cook.mesos.api/main-handler)
                   mesos-datomic
                   framework-id
                   (fn [] @mesos-pending-jobs-atom)
+                  mesos-agent-query-cache
                   settings))
    :view (fnk [scheduler]
            scheduler)})
@@ -267,6 +265,11 @@
                           (log/info "Starting local ZK server")
                           (.start zookeeper-server)))
      :mesos mesos-scheduler
+     :mesos-agent-query-cache (fnk [[:settings [:agent-query-cache max-size ttl-ms]]]
+                                (-> {}
+                                    (cache/lru-cache-factory :threshold max-size)
+                                    (cache/ttl-cache-factory :ttl ttl-ms)
+                                    atom))
      :mesos-leadership-atom (fnk [] (atom false))
      :mesos-pending-jobs-atom (fnk [] (atom {}))
      :mesos-offer-cache (fnk [[:settings [:offer-cache max-size ttl-ms]]]
@@ -325,7 +328,12 @@
 (def config-settings
   "Parses the settings out of a config file"
   (graph/eager-compile
-    {:server-port (fnk [[:config port]]
+    {:agent-query-cache (fnk [[:config {agent-query-cache nil}]]
+                          (merge
+                            {:max-size 5000
+                             :ttl-ms (* 60 1000)}
+                            agent-query-cache))
+     :server-port (fnk [[:config port]]
                     port)
      :is-authorized-fn (fnk [[:config {authorization-config default-authorization}]]
                          (partial (lazy-load-var 'cook.authorization/is-authorized?)
@@ -363,7 +371,7 @@
      :dns-name simple-dns-name
      :hostname (fnk [] (.getCanonicalHostName (java.net.InetAddress/getLocalHost)))
      :leader-reports-unhealthy (fnk [[:config [:mesos {leader-reports-unhealthy false}]]]
-                                    leader-reports-unhealthy)
+                                 leader-reports-unhealthy)
      :local-zk-port (fnk [[:config [:zookeeper {local-port 3291}]]]
                       local-port)
      :zookeeper-server (fnk [[:config [:zookeeper {local? false}]] local-zk-port]
