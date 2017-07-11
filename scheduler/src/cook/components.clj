@@ -369,10 +369,12 @@
                      {:user-limit (->UserRateLimit :user-limit user-limit-per-m (t/minutes 1))}))
      :sim-agent-path (fnk [] "/usr/bin/sim-agent")
      :executor (fnk [[:config {executor {}}]]
-                 (if (seq executor)
+                 (if (str/blank? (:command executor))
                    (do
-                     (when (str/blank? (:command executor))
-                       (throw (ex-info "Executor command is missing!" {:executor executor})))
+                     (log/info "Executor config is missing command, will use the command executor by default"
+                               {:executor-config executor})
+                     {})
+                   (do
                      (when (and (:uri executor) (nil? (get-in executor [:uri :value])))
                        (throw (ex-info "Executor uri value is missing!" {:executor executor})))
                      (let [default-executor-config {:log-level "INFO"
@@ -385,10 +387,7 @@
                                                :extract false}]
                        (cond-> (merge default-executor-config executor)
                                (:uri executor)
-                               (update :uri #(merge default-uri-config %1)))))
-                   (do
-                     (log/info "Executor config is missing, will use the command executor for jobs when custom-executor is false")
-                     {})))
+                               (update :uri #(merge default-uri-config %1)))))))
      :mesos-datomic-uri (fnk [[:config [:database datomic-uri]]]
                           (when-not datomic-uri
                             (throw (ex-info "Must set a the :database's :datomic-uri!" {})))

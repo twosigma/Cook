@@ -65,8 +65,13 @@ def retrieve_mesos_url(varname='MESOS_PORT', value='5050'):
     return mesos_url
 
 
+def is_not_blank(in_string):
+    """Test if a string is not None NOR empty NOR blank."""
+    return bool(in_string and in_string.strip())
+
+
 def is_using_cook_executor(cook_url):
-    return get_in(settings(cook_url), 'executor', 'command') is not None
+    return is_not_blank(get_in(settings(cook_url), 'executor', 'command'))
 
 
 def is_connection_error(exception):
@@ -105,10 +110,26 @@ def submit_job(cook_url, **kwargs):
     return job_spec['uuid'], resp
 
 
-def load_job(cook_url, job_id):
-    response = session.get('%s/rawscheduler?job=%s' % (cook_url, job_id))
-    assert 200 == response.status_code
+def query_jobs(cook_url, **kwargs):
+    """
+    Queries cook for a set of jobs, by job and/or instance uuid. The kwargs
+    passed to this function are sent straight through as query parameters on
+    the request.
+    """
+    return session.get('%s/rawscheduler' % cook_url, params=kwargs)
+
+
+def load_job(cook_url, job_uuid, assert_response=True):
+    """Loads a job by UUID using GET /rawscheduler"""
+    response = query_jobs(cook_url, job=[job_uuid])
+    if assert_response:
+        assert 200 == response.status_code
     return response.json()[0]
+
+
+def get_job(cook_url, job_uuid):
+    """Loads a job by UUID using GET /rawscheduler"""
+    return query_jobs(cook_url, job=[job_uuid]).json()[0]
 
 
 def wait_for_job(cook_url, job_id, status, max_delay=120000):
@@ -150,20 +171,6 @@ def wait_for_exit_code(cook_url, job_id):
         raise
 
 
-def query_jobs(cook_url, **kwargs):
-    """
-    Queries cook for a set of jobs, by job and/or instance uuid. The kwargs
-    passed to this function are sent straight through as query parameters on
-    the request.
-    """
-    return session.get('%s/rawscheduler' % cook_url, params=kwargs)
-
-
-def get_job(cook_url, job_uuid):
-    """Loads a job by UUID using GET /rawscheduler"""
-    return query_jobs(cook_url, job=[job_uuid]).json()[0]
-
-
 def get_mesos_state(mesos_url):
     """
     Queries the state.json from mesos
@@ -179,7 +186,7 @@ def get_output_url(cook_url, job_uuid):
     necessary because currently the Mesos agent sandbox
     directories are cached in Cook.
     """
-    job = get_job(cook_url, job_uuid)
+    job = load_job(cook_url, job_uuid, assert_response=False)
     instance = job['instances'][0]
     if 'output_url' in instance:
         return instance['output_url']

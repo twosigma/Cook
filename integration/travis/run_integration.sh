@@ -21,10 +21,12 @@ export -f wait_for_cook
 
 export PROJECT_DIR=`pwd`
 
-CONFIG_FILE="scheduler_config_command_executor.edn"
+CONFIG_FILE="scheduler_config.edn"
+COOK_EXECUTOR_COMMAND=""
 if [ "${COOK_EXECUTOR}" = "1" ]
 then
-  CONFIG_FILE="scheduler_config_cook_executor.edn"
+  echo "$(date +%H:%M:%S) Cook executor has been enabled"
+  COOK_EXECUTOR_COMMAND="/home/travis/build/twosigma/Cook/travis/cook-executor"
 fi
 
 # Build cook-executor
@@ -38,6 +40,7 @@ cd ${PROJECT_DIR}/../travis
 cd ${PROJECT_DIR}/../scheduler
 ## on travis, ports on 172.17.0.1 are bindable from the host OS, and are also
 ## available for processes inside minimesos containers to connect to
+export COOK_EXECUTOR_COMMAND=${COOK_EXECUTOR_COMMAND}
 LIBPROCESS_IP=172.17.0.1 COOK_PORT=12321 COOK_ZOOKEEPER_LOCAL_PORT=3291 COOK_FRAMEWORK_ID=cook-framework-1 lein run ${PROJECT_DIR}/travis/${CONFIG_FILE} &
 LIBPROCESS_IP=172.17.0.1 COOK_PORT=22321 COOK_ZOOKEEPER_LOCAL_PORT=4291 COOK_FRAMEWORK_ID=cook-framework-2 lein run ${PROJECT_DIR}/travis/${CONFIG_FILE} &
 
