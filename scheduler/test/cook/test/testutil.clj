@@ -32,7 +32,6 @@
   "Runs a minimal cook scheduler server for testing inside a thread. Note that it is not properly kerberized."
   [conn port]
   (let [authorized-fn (fn [x y z] true)
-        retrieve-url-path-fn (fn [fid hostname executor-id] (str "http://" hostname "/" fid "/" executor-id))
         api-handler (wrap-params
                       (api/main-handler conn
                                         "my-framework-id"

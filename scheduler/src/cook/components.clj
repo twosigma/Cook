@@ -330,7 +330,7 @@
   (graph/eager-compile
     {:agent-query-cache (fnk [[:config {agent-query-cache nil}]]
                           (merge
-                            {:max-size 1000
+                            {:max-size 5000
                              :ttl-ms (* 60 1000)}
                             agent-query-cache))
      :server-port (fnk [[:config port]]

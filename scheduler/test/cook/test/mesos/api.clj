@@ -1249,41 +1249,43 @@
               (is (= expected-result actual-result)))))))))
 
 (deftest test-instance-progress
-  (let [uri "datomic:mem://test-instance-progress"
-        conn (restore-fresh-database! uri)
-        driver (reify msched/SchedulerDriver)
-        driver-atom (atom nil)
-        fenzo (sched/make-fenzo-scheduler driver-atom 1500 nil 0.8)
-        make-status-update (fn [task-id reason state progress]
-                             (let [task {:task-id {:value task-id}
-                                         :reason reason
-                                         :state state
-                                         :data (ByteString/copyFrom (.getBytes (pr-str {:percent progress}) "UTF-8"))}]
-                               task))
-        job-id (create-dummy-job conn :user "user" :job-state :job.state/running)
-        send-status-update #(async/<!!
-                              (sched/handle-status-update conn driver fenzo
-                                                          (make-status-update "task1" :unknown :task-running %)))
-        instance-id (create-dummy-instance conn job-id
-                                           :instance-status :instance.status/running
-                                           :task-id "task1")
-        progress-from-db #(ffirst (q '[:find ?p
-                                       :in $ ?i
-                                       :where
-                                       [?i :instance/progress ?p]]
-                                     (db conn) instance-id))
-        job-uuid (:job/uuid (d/entity (db conn) job-id))
-        retrieve-url-path-fn (fn [framework-id hostname executor-id] (str "http://" hostname "/" framework-id "/" executor-id))
-        progress-from-api #(:progress (first (:instances (api/fetch-job-map (db conn) nil retrieve-url-path-fn job-uuid))))]
-    (send-status-update 0)
-    (is (= 0 (progress-from-db)))
-    (is (= 0 (progress-from-api)))
-    (send-status-update 10)
-    (is (= 10 (progress-from-db)))
-    (is (= 10 (progress-from-api)))
-    (send-status-update 90)
-    (is (= 90 (progress-from-db)))
-    (is (= 90 (progress-from-api)))
-    (send-status-update 100)
-    (is (= 100 (progress-from-db)))
-    (is (= 100 (progress-from-api)))))
+  (with-redefs [api/retrieve-url-path
+                (fn retrieve-url-path [framework-id hostname executor-id _]
+                  (str "http://" hostname "/" framework-id "/" executor-id))]
+    (let [uri "datomic:mem://test-instance-progress"
+          conn (restore-fresh-database! uri)
+          driver (reify msched/SchedulerDriver)
+          driver-atom (atom nil)
+          fenzo (sched/make-fenzo-scheduler driver-atom 1500 nil 0.8)
+          make-status-update (fn [task-id reason state progress]
+                               (let [task {:task-id {:value task-id}
+                                           :reason reason
+                                           :state state
+                                           :data (ByteString/copyFrom (.getBytes (pr-str {:percent progress}) "UTF-8"))}]
+                                 task))
+          job-id (create-dummy-job conn :user "user" :job-state :job.state/running)
+          send-status-update #(async/<!!
+                                (sched/handle-status-update conn driver fenzo
+                                                            (make-status-update "task1" :unknown :task-running %)))
+          instance-id (create-dummy-instance conn job-id
+                                             :instance-status :instance.status/running
+                                             :task-id "task1")
+          progress-from-db #(ffirst (q '[:find ?p
+                                         :in $ ?i
+                                         :where
+                                         [?i :instance/progress ?p]]
+                                       (db conn) instance-id))
+          job-uuid (:job/uuid (d/entity (db conn) job-id))
+          progress-from-api #(:progress (first (:instances (api/fetch-job-map (db conn) nil nil job-uuid))))]
+      (send-status-update 0)
+      (is (= 0 (progress-from-db)))
+      (is (= 0 (progress-from-api)))
+      (send-status-update 10)
+      (is (= 10 (progress-from-db)))
+      (is (= 10 (progress-from-api)))
+      (send-status-update 90)
+      (is (= 90 (progress-from-db)))
+      (is (= 90 (progress-from-api)))
+      (send-status-update 100)
+      (is (= 100 (progress-from-db)))
+      (is (= 100 (progress-from-api))))))
