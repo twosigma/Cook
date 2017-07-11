@@ -1358,10 +1358,10 @@
   (let [test-user (System/getProperty "user.name")
         uri "datomic:mem://test-handle-resource-offers"
         executor {:command "cook-executor"
+                  :default-progress-output-file "stdout"
+                  :default-progress-regex-string "regex-string"
                   :log-level "INFO"
                   :max-message-length 512
-                  :progress-output-file "stdout"
-                  :progress-regex-string "regex-string"
                   :progress-sample-interval-ms 1000
                   :uri {:cache true
                         :executable true

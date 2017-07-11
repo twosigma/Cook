@@ -308,8 +308,8 @@
         executor {:command "./cook-executor"
                   :log-level "INFO"
                   :max-message-length 512
-                  :progress-output-file "stdout"
-                  :progress-regex-string "regex-string"
+                  :default-progress-output-file "stdout"
+                  :default-progress-regex-string "regex-string"
                   :progress-sample-interval-ms 1000
                   :uri {:cache true
                         :executable true
@@ -367,8 +367,8 @@
             task-metadata (task/job->task-metadata db framework-id executor job-ent task-id)]
         (is (= {:command {:environment {"EXECUTOR_LOG_LEVEL" (:log-level executor)
                                         "EXECUTOR_MAX_MESSAGE_LENGTH" (:max-message-length executor)
-                                        "PROGRESS_OUTPUT_FILE" "stdout"
-                                        "PROGRESS_REGEX_STRING" "regex-string"
+                                        "PROGRESS_OUTPUT_FILE" (:default-progress-output-file executor)
+                                        "PROGRESS_REGEX_STRING" (:default-progress-regex-string executor)
                                         "PROGRESS_SAMPLE_INTERVAL_MS" (:progress-sample-interval-ms executor)}
                           :uris [(:uri executor)]
                           :user "test-user"
@@ -376,8 +376,8 @@
                 :container nil
                 :environment {"EXECUTOR_LOG_LEVEL" (:log-level executor)
                               "EXECUTOR_MAX_MESSAGE_LENGTH" (:max-message-length executor)
-                              "PROGRESS_OUTPUT_FILE" "stdout"
-                              "PROGRESS_REGEX_STRING" "regex-string"
+                              "PROGRESS_OUTPUT_FILE" (:default-progress-output-file executor)
+                              "PROGRESS_REGEX_STRING" (:default-progress-regex-string executor)
                               "PROGRESS_SAMPLE_INTERVAL_MS" (:progress-sample-interval-ms executor)}
                 :executor-key :cook-executor
                 :framework-id framework-id

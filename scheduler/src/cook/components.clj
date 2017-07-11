@@ -377,11 +377,11 @@
                    (do
                      (when (and (:uri executor) (nil? (get-in executor [:uri :value])))
                        (throw (ex-info "Executor uri value is missing!" {:executor executor})))
-                     (let [default-executor-config {:log-level "INFO"
+                     (let [default-executor-config {:default-progress-output-file "stdout"
+                                                    :default-progress-regex-string "progress: (\\d*)(?: )?(.*)"
+                                                    :log-level "INFO"
                                                     :max-message-length 512
-                                                    :progress-output-file "stdout"
-                                                    :progress-regex-string "progress: (\\d*)(?: )?(.*)"
-                                                    :progress-sample-interval-ms 1000}
+                                                    :progress-sample-interval-ms (* 1000 60 5)}
                            default-uri-config {:cache true
                                                :executable true
                                                :extract false}]

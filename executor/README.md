@@ -55,10 +55,10 @@ For example:
 ```clojure
 {...
  :executor {:command "cook-executor"
+            :default-progress-output-file "stdout"
+            :default-progress-regex-string "progress: (\d*)(?: )?(.*)"
             :log-level "INFO"
             :max-message-length 512
-            :progress-output-name "stdout"
-            :progress-regex-string "progress: (\d*)(?: )?(.*)"
             :progress-sample-interval-ms 1000
             :uri {:cache true
                   :executable true
@@ -67,25 +67,16 @@ For example:
  ...}
 ```
 
-Supported configuration options:
+For more detailed information about the executor configuration, see the Cook Executor section in [configuration documentation](../scheduler/docs/configuration.asc).
+Some of the executor configurations are sent to the Cook executor as the following environment variables:
 
-| option | type | description |
-|--------|------|-------------|
-| `:command` | string | A string containing the command executed on the mesos agent to launch the cook executor. If the executor is installed using the instructions above, the default value of `cook-executor` should not need to be changed.|
-| `:log-level` | string | The log level for the executor process. Defaults to "INFO".|
-| `:max-message-length` | long | The maximum length for the unencoded string messages sent from a task via the Mesos executor HTTP API. The default is 512.|
-| `:progress-output-name` | string | The file to track for progress updates. The default is stdout.|
-| `:progress-regex-string` | string | The regex used to identify progress update messages. The regex should have two capture groups, the first being an integer representing the progress percent. The second being a message about the progress. Defaults to "progress: (\d*), (.*)".|
-| `:progress-sample-interval-ms` | long | The interval in ms after which to send progress updates. The default is 1000.|
-| `:uri` | map | A description of the `uri` used to download the executor executable. The `uri` structure is defined below.|
-
-`uri`s have the following structure:
-| key | type | description |
-|-----|------|-------------|
-| `:cache` | boolean | Mesos 0.23 and later only: should the URI be cached in the fetcher cache? |
-| `:executable` | boolean | Should the URI have the executable bit set after download? |
-| `:extract` | boolean | Should the URI be extracted (must be a tar.gz, zipfile, or similar).
-| `:value` | string | The URI to fetch. Supports everything the Mesos fetcher supports, i.e. http://, https://, ftp://, file://, hdfs:// |
+| environment variable name | executor config key |
+|---------------------------|---------------------|
+| `EXECUTOR_LOG_LEVEL` | `:log-level` |
+| `EXECUTOR_MAX_MESSAGE_LENGTH` | `:max-message-length` |
+| `PROGRESS_OUTPUT_FILE` | `:default-progress-output-file` |
+| `PROGRESS_REGEX_STRING` | `:default-progress-regex-string` |
+| `PROGRESS_SAMPLE_INTERVAL_MS` | `:progress-sample-interval-ms` |
 
 ### Tests
 

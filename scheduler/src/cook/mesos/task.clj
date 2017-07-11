@@ -27,11 +27,11 @@
 
 (defn build-executor-environment
   "Build the environment for the cook executor."
-  [{:keys [log-level max-message-length progress-output-file progress-regex-string progress-sample-interval-ms]}]
+  [{:keys [default-progress-output-file default-progress-regex-string log-level max-message-length progress-sample-interval-ms]}]
   {"EXECUTOR_LOG_LEVEL" log-level
    "EXECUTOR_MAX_MESSAGE_LENGTH" max-message-length
-   "PROGRESS_OUTPUT_FILE" progress-output-file
-   "PROGRESS_REGEX_STRING" progress-regex-string
+   "PROGRESS_OUTPUT_FILE" default-progress-output-file
+   "PROGRESS_REGEX_STRING" default-progress-regex-string
    "PROGRESS_SAMPLE_INTERVAL_MS" progress-sample-interval-ms})
 
 (defn job->task-metadata
