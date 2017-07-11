@@ -373,7 +373,9 @@
   [offer-cache state params pending-job]
   (log/debug "Trying to find space for: " pending-job)
   (if-let [preemption-decision (compute-preemption-decision offer-cache state params pending-job)]
-    [(next-state state pending-job preemption-decision) preemption-decision]
+    [(next-state state pending-job preemption-decision)
+     (assoc preemption-decision
+            :to-make-room-for pending-job)]
     [state nil]))
 
 (defn rebalance
@@ -398,8 +400,7 @@
             (recur state'
                    (dec remaining-preemption)
                    jobs-to-make-room-for
-                   (conj preemption-decisions (assoc preemption-decision
-                                                     :to-make-room-for pending-job-ent)))
+                   (conj preemption-decisions preemption-decision))
             (recur state'
                    remaining-preemption
                    jobs-to-make-room-for
@@ -416,9 +417,9 @@
   (try
     (log/info "Rebalancing...Params:" params)
     (let [db (mt/db conn)
-          preemption-decisons (rebalance db offer-cache pending-job-ents host->spare-resources params)]
+          preemption-decisions (rebalance db offer-cache pending-job-ents host->spare-resources params)]
       (doseq [{job-ent-to-make-room-for :to-make-room-for
-               task-ents-to-preempt :task} preemption-decisons]
+               task-ents-to-preempt :task} preemption-decisions]
         ;; Ensure that uuids are loaded in entity
         (:job/uuid job-ent-to-make-room-for)
         (doall (map :instance/task-id task-ents-to-preempt))
