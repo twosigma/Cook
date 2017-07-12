@@ -412,6 +412,19 @@
 
           preemption-decisions)))))
 
+(defn- prep-job-ent-for-printing
+  [job-ent]
+  (merge (select-keys job-ent 
+                      [:db/id :job/uuid :job/user])
+         (util/job-ent->resources job-ent)))
+
+(defn- prep-task-ent-for-printing
+  [task-ent]
+  (let [job-ent (:job/_instance task-ent)]
+    (-> task-ent
+        (select-keys [:db/id :instance/task-id])
+        (assoc :job (prep-job-ent-for-printing job-ent)))))
+
 (defn rebalance!
   [conn driver offer-cache pending-job-ents host->spare-resources params]
   (try
@@ -425,13 +438,16 @@
         (doall (map :instance/task-id task-ents-to-preempt))
 
         (log/info "Preempting tasks to make room for waiting job"
-                  {:to-make-room-for job-ent-to-make-room-for
-                   :to-preempt task-ents-to-preempt})
+                  {:to-make-room-for (prep-job-ent-for-printing job-ent-to-make-room-for)
+                   :to-preempt (map prep-task-ent-for-printing task-ents-to-preempt)})
         ;; If a task has no id, it must be a synthetic task.
         ;; This means that on one iteration of (compute-next-state-and-preemption-decision),
         ;; the rebalancer decided to make room for a certain hypothetical task,
         ;; but on a subsequent iteration, it became clear that OTHER hypothetical tasks would be an even better outcome.
         ;; We shouldn't try to actually preempt tasks that were never scheduled.
+        ;; TODO : We should probably move this filter into rebalance in the future
+        ;;        however it is here now to allow us to audit how frequently a synthetic
+        ;;        task is "preempted"
         (doseq [task-ent (filter :db/id task-ents-to-preempt)]
           (try
             @(d/transact
