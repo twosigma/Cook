@@ -579,7 +579,7 @@
         jobs [job-entity-1 job-entity-2]
         offensive-jobs-ch (sched/make-offensive-job-stifler conn)
         offensive-job-filter (partial sched/filter-offensive-jobs constraints offensive-jobs-ch)]
-    (is (= {:normal (list job-entity-2)
+    (is (= {:normal (list (util/entity->map job-entity-2))
             :gpu ()}
            (sched/rank-jobs test-db offensive-job-filter)))))
 
@@ -1136,12 +1136,14 @@
         test-db (d/db conn)
         test-user (System/getProperty "user.name")
         group-ent-id (create-dummy-group conn)
-        job-1 (d/entity test-db (create-dummy-job conn :group group-ent-id :ncpus 3 :memory 2048))
-        job-2 (d/entity test-db (create-dummy-job conn :group group-ent-id :ncpus 13 :memory 1024))
-        job-3 (d/entity test-db (create-dummy-job conn :group group-ent-id :ncpus 7 :memory 4096))
-        job-4 (d/entity test-db (create-dummy-job conn :group group-ent-id :ncpus 11 :memory 1024))
-        job-5 (d/entity test-db (create-dummy-job conn :group group-ent-id :ncpus 5 :memory 2048 :gpus 2))
-        job-6 (d/entity test-db (create-dummy-job conn :group group-ent-id :ncpus 19 :memory 1024 :gpus 4))
+        entity->map (fn [entity]
+                      (util/entity->map entity (d/db conn)))
+        job-1 (entity->map (d/entity test-db (create-dummy-job conn :group group-ent-id :ncpus 3 :memory 2048)))
+        job-2 (entity->map (d/entity test-db (create-dummy-job conn :group group-ent-id :ncpus 13 :memory 1024)))
+        job-3 (entity->map (d/entity test-db (create-dummy-job conn :group group-ent-id :ncpus 7 :memory 4096)))
+        job-4 (entity->map (d/entity test-db (create-dummy-job conn :group group-ent-id :ncpus 11 :memory 1024)))
+        job-5 (entity->map (d/entity test-db (create-dummy-job conn :group group-ent-id :ncpus 5 :memory 2048 :gpus 2)))
+        job-6 (entity->map (d/entity test-db (create-dummy-job conn :group group-ent-id :ncpus 19 :memory 1024 :gpus 4)))
         category->pending-jobs {:normal [job-1 job-2 job-3 job-4], :gpu [job-5 job-6]}]
 
     (testing "jobs inside usage quota"
@@ -1320,8 +1322,11 @@
                                             job-4 (d/entity test-db (create-dummy-job conn :group group-ent-id :name "job-4" :ncpus 11 :memory 1024))
                                             job-5 (d/entity test-db (create-dummy-job conn :group group-ent-id :name "job-5" :ncpus 5 :memory 2048 :gpus 2))
                                             job-6 (d/entity test-db (create-dummy-job conn :group group-ent-id :name "job-6" :ncpus 19 :memory 1024 :gpus 4))
-                                            category->pending-jobs-atom (atom {:normal [job-1 job-2 job-3 job-4]
-                                                                               :gpu [job-5 job-6]})
+                                            entity->map (fn [entity]
+                                                          (util/entity->map entity (d/db conn)))
+                                            category->pending-jobs (->> {:normal [job-1 job-2 job-3 job-4] :gpu [job-5 job-6]}
+                                                                        (pc/map-vals (partial map entity->map)))
+                                            category->pending-jobs-atom (atom category->pending-jobs)
                                             user->usage (or user->usage {test-user {:count 1, :cpus 2, :mem 1024, :gpus 0}})
                                             user->quota (or user-quota {test-user {:count 10, :cpus 50, :mem 32768, :gpus 10}})
                                             result (sched/handle-resource-offers! conn driver fenzo framework-id category->pending-jobs-atom (init-offer-cache) user->usage user->quota
