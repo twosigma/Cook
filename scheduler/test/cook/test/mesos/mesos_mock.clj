@@ -314,11 +314,14 @@
   (let [tasks [{:task-id {:value "45cb7812-1233-4546-888d-67cc13eac398"}
                 :slave-id {:value "a5cb3212-3023-4546-888d-67cc13eac3dd"}
                 :name "to-launch"
-                :command {:value "10000"
-                          :environment {:variables [{:name "EXECUTION_TIME"
-                                                     :value "10000"}]}
-                          :user "user-A"
-                          :uris []}
+                :executor {:executor-id {:value "executor-id"}
+                           :framework-id {:value "framework-id"}
+                           :name "dummy-executor"
+                           :command {:value "10000"
+                                     :environment {:variables [{:name "EXECUTION_TIME"
+                                                                :value "10000"}]}
+                                     :user "user-A"
+                                     :uris []}}
                 :resources [{:name "cpus" :role "*" :scalar 8 :type :value-scalar}
                             {:name "mem" :role "*" :scalar 80000 :type :value-scalar}
                             {:name "ports" :role "*" :ranges [{:begin 12001 :end 25000}] :type :value-ranges}]
@@ -491,10 +494,13 @@
     {:task-id {:value task-id}
      :slave-id {:value slave-id}
      :name name
-     :command {:value command-str
-               :environment env
-               :user user
-               :uris uris}
+     :executor {:executor-id {:value "executor-id"}
+                :framework-id {:value "framework-id"}
+                :name "dummy-executor"
+                :command {:value command-str
+                          :environment env
+                          :user user
+                          :uris uris}}
      :resources resources
      :labels labels
      :data data}))

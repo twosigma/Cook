@@ -20,6 +20,7 @@
             [clj-time.periodic :as periodic]
             [clojure.core.async :as async]
             [clojure.core.cache :as cache]
+            [clojure.data.json :as json]
             [clojure.edn :as edn]
             [clojure.string :as str]
             [clojure.tools.logging :as log]
@@ -90,6 +91,7 @@
     (merge mesos-attributes cook-attributes)))
 
 (timers/deftimer [cook-mesos scheduler handle-status-update-duration])
+(timers/deftimer [cook-mesos scheduler handle-framework-message-duration])
 (meters/defmeter [cook-mesos scheduler tasks-killed-in-status-update])
 
 (meters/defmeter [cook-mesos scheduler tasks-completed])
@@ -270,6 +272,38 @@
                     [[:db/add instance :instance/progress progress]])]))))
          (catch Exception e
            (log/error e "Mesos scheduler status update error")))))
+
+(defn- task-id->instance-id
+  "Retrieves the instance-id given a task-id"
+  [db task-id]
+  (-> (d/entity db [:instance/task-id task-id])
+      :db/id))
+
+(defn handle-framework-message
+  "Processes a framework message from Mesos."
+  [conn framework-message]
+  (timers/time!
+    handle-framework-message-duration
+    (try
+      (let [db (db conn)
+            {:strs [exit-code progress-message progress-percent sandbox-directory task-id] :as message}
+            (-> (String. ^bytes framework-message "UTF-8") (json/read-str))
+            _ (log/debug "Received framework message:" {:task-id task-id, :message message})
+            _ (when (str/blank? task-id)
+                (throw (ex-info "task-id is empty in framework message" {:message message})))
+            instance-id (task-id->instance-id db task-id)]
+        (if (nil? instance-id)
+          (throw (ex-info "No instance found!" {:task-id task-id}))
+          (let [txns (cond-> []
+                             exit-code (conj [:db/add instance-id :instance/exit-code (int exit-code)])
+                             progress-message (conj [:db/add instance-id :instance/progress-message (str progress-message)])
+                             progress-percent (conj [:db/add instance-id :instance/progress (int progress-percent)])
+                             sandbox-directory (conj [:db/add instance-id :instance/sandbox-directory (str sandbox-directory)]))]
+            (when (seq txns)
+              (log/info "Updating instance" instance-id "to" txns)
+              (transact-with-retries conn txns)))))
+      (catch Exception e
+        (log/error e "Mesos scheduler framework message error")))))
 
 (timers/deftimer [cook-mesos scheduler tx-report-queue-processing-duration])
 (meters/defmeter [cook-mesos scheduler tx-report-queue-datoms])
@@ -617,7 +651,7 @@
 
 (defn- launch-matched-tasks!
   "Updates the state of matched tasks in the database and then launches them."
-  [matches conn db driver fenzo framework-id]
+  [matches conn db driver fenzo framework-id executor]
   (let [task-txns (matches->task-txns matches)]
     ;; Note that this transaction can fail if a job was scheduled
     ;; during a race. If that happens, then other jobs that should
@@ -644,7 +678,7 @@
       handle-resource-offer!-mesos-submit-duration
       (doseq [{:keys [tasks leases]} matches
               :let [offers (mapv :offer leases)
-                    task-data-maps (map #(task/TaskAssignmentResult->task-metadata db framework-id %) tasks)
+                    task-data-maps (map #(task/TaskAssignmentResult->task-metadata db framework-id executor %) tasks)
                     task-infos (task/compile-mesos-messages offers task-data-maps)]]
         (log/debug "Matched task-infos" task-infos)
         (mesos/launch-tasks! driver (mapv :id offers) task-infos)
@@ -657,7 +691,7 @@
 (defn handle-resource-offers!
   "Gets a list of offers from mesos. Decides what to do with them all--they should all
    be accepted or rejected at the end of the function."
-  [conn driver ^TaskScheduler fenzo framework-id category->pending-jobs-atom offer-cache user->usage user->quota num-considerable offers-chan offers]
+  [conn driver ^TaskScheduler fenzo framework-id executor category->pending-jobs-atom offer-cache user->usage user->quota num-considerable offers-chan offers]
   (log/debug "invoked handle-resource-offers!")
   (let [offer-stash (atom nil)] ;; This is a way to ensure we never lose offers fenzo assigned if an error occurs in the middle of processing
     ;; TODO: It is possible to have an offer expire by mesos because we recycle it a bunch of times.
@@ -701,7 +735,7 @@
             (do
               (swap! category->pending-jobs-atom remove-matched-jobs-from-pending-jobs category->job-uuids)
               (log/debug "updated category->pending-jobs:" @category->pending-jobs-atom)
-              (launch-matched-tasks! matches conn db driver fenzo framework-id)
+              (launch-matched-tasks! matches conn db driver fenzo framework-id executor)
               matched-normal-considerable-jobs-head?)))
         (catch Throwable t
           (meters/mark! handle-resource-offer!-errors)
@@ -730,7 +764,7 @@
 (counters/defcounter [cook-mesos scheduler offer-chan-depth])
 
 (defn make-offer-handler
-  [conn driver-atom fenzo framework-id pending-jobs-atom offer-cache
+  [conn driver-atom fenzo framework-id executor pending-jobs-atom offer-cache
    max-considerable scaleback
    floor-iterations-before-warn floor-iterations-before-reset
    trigger-chan]
@@ -779,7 +813,7 @@
                                                  (cache/miss c slave-id attrs)))))
                       _ (log/debug "Passing following offers to handle-resource-offers!" offers)
                       user->quota (quota/create-user->quota-fn (d/db conn))
-                      matched-head? (handle-resource-offers! conn @driver-atom fenzo framework-id pending-jobs-atom offer-cache @user->usage-future user->quota num-considerable offers-chan offers)]
+                      matched-head? (handle-resource-offers! conn @driver-atom fenzo framework-id executor pending-jobs-atom offer-cache @user->usage-future user->quota num-considerable offers-chan offers)]
                   (when (seq offers)
                     (reset! resources-atom (view-incubating-offers fenzo)))
                   ;; This check ensures that, although we value Fenzo's optimizations,
@@ -1343,6 +1377,8 @@
                      ;; TODO: Rescind the offer in fenzo
                      )
     (framework-message [this driver executor-id slave-id message]
+                       ;; the executor-id is the same as the task-id (see cook.mesos.task/task-info->mesos-message)
+                       (async-in-order-processing (:value executor-id) #(handle-framework-message conn message))
                        (heartbeat/notify-heartbeat heartbeat-ch executor-id slave-id message))
     (disconnected [this driver]
                   (log/error "Disconnected from the previous master"))
@@ -1361,16 +1397,15 @@
 (defn create-datomic-scheduler
   [conn driver-atom pending-jobs-atom offer-cache heartbeat-ch offer-incubate-time-ms mea-culpa-failure-limit
    fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset
-   fenzo-fitness-calculator task-constraints gpu-enabled? good-enough-fitness framework-id
+   fenzo-fitness-calculator task-constraints executor gpu-enabled? good-enough-fitness framework-id
    {:keys [match-trigger-chan rank-trigger-chan] :as trigger-chans}]
 
   (persist-mea-culpa-failure-limit! conn mea-culpa-failure-limit)
 
   (let [fenzo (make-fenzo-scheduler driver-atom offer-incubate-time-ms fenzo-fitness-calculator good-enough-fitness)
-        [offers-chan resources-atom] (make-offer-handler conn driver-atom fenzo framework-id pending-jobs-atom
-                                                         offer-cache fenzo-max-jobs-considered fenzo-scaleback
-                                                         fenzo-floor-iterations-before-warn
-                                                         fenzo-floor-iterations-before-reset match-trigger-chan)]
+        [offers-chan resources-atom]
+        (make-offer-handler conn driver-atom fenzo framework-id executor pending-jobs-atom offer-cache fenzo-max-jobs-considered
+                            fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset match-trigger-chan)]
     (start-jobs-prioritizer! conn pending-jobs-atom task-constraints rank-trigger-chan)
     {:scheduler (create-mesos-scheduler framework-id gpu-enabled? conn heartbeat-ch
                                         fenzo offers-chan match-trigger-chan)

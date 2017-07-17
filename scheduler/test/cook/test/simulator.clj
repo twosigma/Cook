@@ -104,6 +104,16 @@
          mea-culpa-failure-limit# (or (:mea-culpa-failure-limit ~scheduler-config)
                                       5)
          task-constraints# (merge default-task-constraints (:task-constraints ~scheduler-config))
+         executor# {:command "cook-executor"
+                    :default-progress-output-file "stdout"
+                    :default-progress-regex-string "regex-string"
+                    :log-level "INFO"
+                    :max-message-length 512
+                    :progress-sample-interval-ms 1000
+                    :uri {:cache true
+                          :executable true
+                          :extract false
+                          :value "file:///path/to/cook/executor"}}
          riemann-host# (:riemann-host ~scheduler-config)
          riemann-port# (:riemann-port ~scheduler-config)
          gpu-enabled?# (or (:gpus-enabled? ~scheduler-config) false)
@@ -118,7 +128,7 @@
                                                  curator-framework# ~conn
                                                  mesos-mult# zk-prefix#
                                                  offer-incubate-time-ms# mea-culpa-failure-limit#
-                                                 task-constraints# riemann-host# riemann-port#
+                                                 task-constraints# executor# riemann-host# riemann-port#
                                                  pending-jobs-atom# offer-cache#
                                                  gpu-enabled?# rebalancer-config# framework-id# 
                                                  mesos-leadership-atom# fenzo-config#

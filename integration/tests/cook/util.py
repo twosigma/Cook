@@ -1,9 +1,10 @@
-import importlib
-import os
+import logging
 import uuid
 
-import logging
+import importlib
+import os
 
+import json
 import requests
 from retrying import retry
 
@@ -64,6 +65,15 @@ def retrieve_mesos_url(varname='MESOS_PORT', value='5050'):
     return mesos_url
 
 
+def is_not_blank(in_string):
+    """Test if a string is not None NOR empty NOR blank."""
+    return bool(in_string and in_string.strip())
+
+
+def is_using_cook_executor(cook_url):
+    return is_not_blank(get_in(settings(cook_url), 'executor', 'command'))
+
+
 def is_connection_error(exception):
     return isinstance(exception, requests.exceptions.ConnectionError)
 
@@ -81,13 +91,13 @@ def settings(cook_url):
 
 def minimal_job(**kwargs):
     job = {
-        'max_retries': 1,
-        'mem': 10,
-        'cpus': 1,
-        'uuid': str(uuid.uuid4()),
         'command': 'echo hello',
+        'cpus': 1,
+        'max_retries': 1,
+        'mem': 256,
         'name': 'echo',
-        'priority': 1
+        'priority': 1,
+        'uuid': str(uuid.uuid4())
     }
     job.update(kwargs)
     return job
@@ -100,28 +110,6 @@ def submit_job(cook_url, **kwargs):
     return job_spec['uuid'], resp
 
 
-def wait_for_job(cook_url, job_id, status, max_delay=120000):
-    @retry(stop_max_delay=max_delay, wait_fixed=2000)
-    def wait_for_job_inner():
-        job = session.get('%s/rawscheduler?job=%s' % (cook_url, job_id))
-        assert 200 == job.status_code
-        job = job.json()[0]
-        if not job['status'] == status:
-            error_msg = 'Job %s had status %s - expected %s' % (job_id, job['status'], status)
-            logger.info(error_msg)
-            raise RuntimeError(error_msg)
-        else:
-            logger.info('Job %s has status %s - %s', job_id, status, job)
-            return job
-
-    try:
-        return wait_for_job_inner()
-    except:
-        job_final = get_job(cook_url, job_id)
-        logger.info('Timeout exceeded waiting for job to reach %s. Job details: %s' % (status, job_final))
-        raise
-
-
 def query_jobs(cook_url, **kwargs):
     """
     Queries cook for a set of jobs, by job and/or instance uuid. The kwargs
@@ -131,9 +119,56 @@ def query_jobs(cook_url, **kwargs):
     return session.get('%s/rawscheduler' % cook_url, params=kwargs)
 
 
+def load_job(cook_url, job_uuid, assert_response=True):
+    """Loads a job by UUID using GET /rawscheduler"""
+    response = query_jobs(cook_url, job=[job_uuid])
+    if assert_response:
+        assert 200 == response.status_code
+    return response.json()[0]
+
+
 def get_job(cook_url, job_uuid):
     """Loads a job by UUID using GET /rawscheduler"""
     return query_jobs(cook_url, job=[job_uuid]).json()[0]
+
+
+def wait_for_job(cook_url, job_id, status, max_delay=120000):
+    @retry(stop_max_delay=max_delay, wait_fixed=2000)
+    def wait_for_job_inner():
+        job = load_job(cook_url, job_id)
+        if not job['status'] == status:
+            error_msg = 'Job {} had status {} - expected {}. Details: {}'.format(
+                job_id, job['status'], status, json.dumps(job, sort_keys=True))
+            logger.info(error_msg)
+            raise RuntimeError(error_msg)
+        else:
+            logger.info('Job {} has status {}'.format(job_id, status))
+            return job
+    try:
+        return wait_for_job_inner()
+    except:
+        job_final = load_job(cook_url, job_id)
+        logger.info('Timeout exceeded waiting for job to reach %s. Job details: %s' % (status, job_final))
+        raise
+
+
+def wait_for_exit_code(cook_url, job_id):
+    @retry(stop_max_delay=2000, wait_fixed=250)
+    def wait_for_exit_code_inner():
+        job = load_job(cook_url, job_id)
+        if not 'exit_code' in job['instances'][0]:
+            error_msg = 'Job {} missing exit_code set! Details: {}'.format(job_id, json.dumps(job, sort_keys=True))
+            logger.info(error_msg)
+            raise RuntimeError(error_msg)
+        else:
+            logger.info('Job {} has exit_code {}'.format(job_id, job['instances'][0]['exit_code']))
+            return job
+    try:
+        return wait_for_exit_code_inner()
+    except:
+        job_final = load_job(cook_url, job_id)
+        logger.info('Timeout exceeded waiting for job to receive exit code. Job details: %s' % (job_final))
+        raise
 
 
 def get_mesos_state(mesos_url):
@@ -151,7 +186,7 @@ def get_output_url(cook_url, job_uuid):
     necessary because currently the Mesos agent sandbox
     directories are cached in Cook.
     """
-    job = get_job(cook_url, job_uuid)
+    job = load_job(cook_url, job_uuid, assert_response=False)
     instance = job['instances'][0]
     if 'output_url' in instance:
         return instance['output_url']

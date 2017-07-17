@@ -10,6 +10,11 @@
                                 :memory-gb 48
                                 :retry-limit 15
                                 :cpus 6}}
+ :executor {:command "./cook-executor"
+            :uri {:cache true
+                  :executable true
+                  :extract false
+                  :value #config/env "COOK_EXECUTOR"}}
  :rebalancer {:dru-scale 1}
  :mesos {:master #config/env "MESOS_MASTER"
          :master-hosts [#config/env "MESOS_MASTER_HOST"]
