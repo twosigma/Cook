@@ -279,6 +279,118 @@
   (-> (d/entity db [:instance/task-id task-id])
       :db/id))
 
+(histograms/defhistogram [cook-mesos scheduler progress-aggregator-pending-states])
+(meters/defmeter [cook-mesos scheduler progress-aggregator-message-rate])
+(meters/defmeter [cook-mesos scheduler progress-aggregator-drop-rate])
+(counters/defcounter [cook-mesos scheduler progress-aggregator-drop-count])
+
+(defn progress-update-aggregator
+  "Launches a long running go block that triggers publishing the latest aggregated instance-id->progress-state
+   whenever there is a message on the publish-progress-trigger-chan.
+   It drops messages if the progress-aggregator-chan queue is larger than pending-progress-threshold or the aggregated
+   state has more than pending-progress-threshold different entries.
+   It returns a map containing progress-aggregator-chan and query-state-chan.
+   progress-aggregator-chan can be used to send progress-state messages to the aggregator.
+   query-state-chan can be used to query the state of the aggregator."
+  [pending-progress-threshold publish-progress-trigger-chan progress-state-chan]
+  (log/info "Starting progress update aggregator")
+  (let [progress-aggregator-chan (async/chan (async/sliding-buffer pending-progress-threshold))
+        query-state-chan (async/chan (async/sliding-buffer 1))]
+    (async/go
+      (loop [instance-id->progress-state {}]
+        (let [[data chan] (async/alts! [publish-progress-trigger-chan progress-aggregator-chan query-state-chan]
+                                       :priority true)]
+          (condp = chan
+            publish-progress-trigger-chan
+            (do
+              (when (seq instance-id->progress-state)
+                (log/debug "Forwarding" (count instance-id->progress-state) "progress states to the transactor")
+                (histograms/update! progress-aggregator-pending-states (count instance-id->progress-state))
+                (async/>! progress-state-chan instance-id->progress-state))
+              (recur {}))
+
+            progress-aggregator-chan
+            (let [{:keys [instance-id]} data]
+              (meters/mark! progress-aggregator-message-rate)
+              (if (or (< (count instance-id->progress-state) pending-progress-threshold)
+                      (contains? instance-id->progress-state instance-id))
+                (let [progress-state (select-keys data [:progress-message :progress-percent])
+                      instance-id->progress-state' (assoc instance-id->progress-state instance-id progress-state)]
+                  (recur instance-id->progress-state'))
+                (do
+                  (meters/mark! progress-aggregator-drop-rate)
+                  (counters/inc! progress-aggregator-drop-count)
+                  (log/debug "Dropping" data "as threshold has been reached")
+                  (recur instance-id->progress-state))))
+
+            query-state-chan
+            (let [{:keys [mode response-chan]} data]
+              (condp = mode
+                :query
+                (do
+                  (async/>! response-chan instance-id->progress-state)
+                  (recur instance-id->progress-state))
+
+                :exit
+                (do
+                  (when response-chan
+                    (async/>! response-chan :exited))
+                  (log/info "Exiting progress update aggregator"))))))))
+    {:progress-aggregator-chan progress-aggregator-chan
+     :query-state-chan query-state-chan}))
+
+(histograms/defhistogram [cook-mesos scheduler progress-updater-pending-states])
+(meters/defmeter [cook-mesos scheduler progress-updater-publish-rate])
+(timers/deftimer [cook-mesos scheduler progress-updater-publish-duration])
+(meters/defmeter [cook-mesos scheduler progress-updater-tx-rate])
+(timers/deftimer [cook-mesos scheduler progress-updater-tx-duration])
+
+(defn progress-update-transactor
+  "Launches a long running go block that triggers transacting the latest aggregated instance-id->progress-state to
+   datomic whenever there is a message on the publish-progress-trigger-chan.
+   No more than batch-size facts are updated in individual datomic transactions.
+   It returns a progress-state-chan which can be used to send messages about the latest instance-id->progress-state.
+   If no such message is on the progress-state-chan, then no datomic interactions occur."
+  [publish-progress-trigger-chan batch-size conn]
+  (log/info "Starting progress update transactor")
+  (let [progress-state-chan (async/chan (async/sliding-buffer 1))]
+    (async/go
+      (loop []
+        (let [{:keys [response-chan]} (async/<! publish-progress-trigger-chan)
+              instance-id->progress-state (async/<! progress-state-chan)]
+          ;; TODO metrics for map size, datomic queries, etc.
+          (log/info "Received" (count instance-id->progress-state) "in progress-update-transactor")
+          (if instance-id->progress-state
+            (do
+              (histograms/update! progress-updater-pending-states (count instance-id->progress-state))
+              (meters/mark! progress-updater-publish-rate)
+              (timers/time!
+                progress-updater-publish-duration
+                (doseq [instance-id->progress-state-partition
+                        (partition batch-size batch-size [] instance-id->progress-state)]
+                  (try
+                    (let [transactions
+                          (reduce (fn progress-update-transactor-reducer
+                                    [acc-txns [instance-id {:keys [progress-percent progress-message]}]]
+                                    (cond-> acc-txns
+                                            progress-percent (conj [:db/add instance-id :instance/progress (int progress-percent)])
+                                            progress-message (conj [:db/add instance-id :instance/progress-message progress-message])))
+                                  []
+                                  instance-id->progress-state-partition)]
+                      (when (seq transactions)
+                        (log/info "Performing" (count transactions) "in progress state update")
+                        (meters/mark! progress-updater-tx-rate)
+                        (timers/time!
+                          progress-updater-tx-duration
+                          @(d/transact conn transactions))))
+                    (catch Exception e
+                      (log/error e "Progress batch update error")))))
+              (when response-chan
+                (async/>! response-chan {:publish-attempted instance-id->progress-state}))
+              (recur))
+            (log/info "Exiting progress update transactor")))))
+    progress-state-chan))
+
 (defn handle-framework-message
   "Processes a framework message from Mesos."
   [conn framework-message]
@@ -1316,7 +1428,7 @@
 
 (let [in-order-queue-counter (counters/counter ["cook-mesos" "scheduler" "in-order-queue-size"])
       in-order-queue-timer (timers/timer ["cook-mesos" "scheduler" "in-order-queue-delay-duration"])
-      parallelism 19 ; a prime number to improve distribution after hashing
+      parallelism 19 ; a prime number to potentially help make the distribution uniform
       processor-agents (->> #(agent nil)
                             (repeatedly parallelism)
                             vec)

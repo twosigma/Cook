@@ -108,7 +108,7 @@
 
 (defn make-mesos-offer
   [id framework-id slave-id hostname & {:keys [cpus mem disk ports gpus attrs]
-                               :or {cpus 40.0 mem 5000.0 disk 6000.0 ports {:begin 31000 :end 32000} gpus 0.0 attrs {}}}]
+                                        :or {cpus 40.0 mem 5000.0 disk 6000.0 ports {:begin 31000 :end 32000} gpus 0.0 attrs {}}}]
   (mtypes/map->Offer {:id (mtypes/map->OfferID {:value id})
                       :framework-id framework-id
                       :slave-id (mtypes/map->SlaveID {:value slave-id})
@@ -183,12 +183,12 @@
 
   (testing "test-sort-jobs-by-dru:normal-jobs"
     (let [uri "datomic:mem://test-sort-jobs-by-dru-normal-jobs"
-        conn (restore-fresh-database! uri)
-        j1n (create-dummy-job conn :user "u1" :job-state :job.state/waiting :memory 1000 :ncpus 1.0)
-        j2n (create-dummy-job conn :user "u1" :job-state :job.state/waiting :memory 1000 :ncpus 1.0 :priority 90)
-        j3n (create-dummy-job conn :user "u2" :job-state :job.state/waiting :memory 1500 :ncpus 1.0)
-        j4n (create-dummy-job conn :user "u2" :job-state :job.state/waiting :memory 1500 :ncpus 1.0 :priority 30)
-        test-db (d/db conn)]
+          conn (restore-fresh-database! uri)
+          j1n (create-dummy-job conn :user "u1" :job-state :job.state/waiting :memory 1000 :ncpus 1.0)
+          j2n (create-dummy-job conn :user "u1" :job-state :job.state/waiting :memory 1000 :ncpus 1.0 :priority 90)
+          j3n (create-dummy-job conn :user "u2" :job-state :job.state/waiting :memory 1500 :ncpus 1.0)
+          j4n (create-dummy-job conn :user "u2" :job-state :job.state/waiting :memory 1500 :ncpus 1.0 :priority 30)
+          test-db (d/db conn)]
       (is (= [j2n j3n j1n j4n] (map :db/id (:normal (sched/sort-jobs-by-dru-category test-db)))))
       (is (empty? (:gpu (sched/sort-jobs-by-dru-category test-db))))))
 
@@ -377,8 +377,8 @@
         fenzo (make-dummy-scheduler)
         ; Schedule conflicting
         _ (schedule-and-run-jobs conn framework-id fenzo [(make-vm-offer (make-uuid)
-                                                                conflict-host
-                                                                (make-uuid))] [conflicting-job-id])
+                                                                         conflict-host
+                                                                         (make-uuid))] [conflicting-job-id])
         low-priority (map #(d/entity (d/db conn) %) low-priority-ids)
         high-priority (map #(d/entity (d/db conn) %) high-priority-ids)
         considerable (concat high-priority low-priority)]
@@ -650,9 +650,9 @@
     (is (= (:reason interpreted-status) :reason-invalid-offers))))
 
 (deftest test-unique-host-placement-constraint
-  (let  [uri "datomic:mem://test-unique-host-placement-constraint"
-         conn (restore-fresh-database! uri)
-         framework-id #mesomatic.types.FrameworkID{:value "my-original-framework-id"}]
+  (let [uri "datomic:mem://test-unique-host-placement-constraint"
+        conn (restore-fresh-database! uri)
+        framework-id #mesomatic.types.FrameworkID{:value "my-original-framework-id"}]
     (testing "conflicting jobs, different scheduling cycles"
       (let [scheduler (make-dummy-scheduler)
             shared-host "test-host"
@@ -692,7 +692,7 @@
             group (d/entity (d/db conn) group-id)
             ; Schedule first job
             result (schedule-and-run-jobs conn framework-id scheduler (make-offers) [conflicting-job-id
-                                                                            conflicted-job-id])
+                                                                                     conflicted-job-id])
             _ (is (= 1 (count (:scheduled result))))
             conflicting-task-id (-> result :scheduled first)
             ; Try to schedule conflicted job, but fail
@@ -719,9 +719,9 @@
 
 
 (deftest test-balanced-host-placement-constraint
-  (let  [uri "datomic:mem://test-balanced-host-placement-constraint"
-         conn (restore-fresh-database! uri)
-         framework-id #mesomatic.types.FrameworkID{:value "my-original-framework-id"}]
+  (let [uri "datomic:mem://test-balanced-host-placement-constraint"
+        conn (restore-fresh-database! uri)
+        framework-id #mesomatic.types.FrameworkID{:value "my-original-framework-id"}]
     (testing "schedule 9 jobs with hp-type balanced on 3 hosts, each host should get 3 jobs"
       (let [scheduler (make-dummy-scheduler)
             hostnames ["straw" "sticks" "bricks"]
@@ -752,19 +752,19 @@
                                   distinct))))))))
 
 (deftest test-attr-equals-host-placement-constraint
-  (let  [uri "datomic:mem://test-attr-equals-host-placement-constraint"
-         conn (restore-fresh-database! uri)
-         framework-id #mesomatic.types.FrameworkID{:value "my-original-framework-id"}
-         make-hostname #(str (java.util.UUID/randomUUID))
-         attr-name "az"
-         attr-val "east"
-         make-attr-offer (fn [cpus]
-                           (make-vm-offer framework-id (make-hostname) (make-uuid)
-                                          :cpus cpus :attrs {attr-name attr-val}))
-         ; Each non-attr offer can take only one job
-         make-non-attr-offers (fn [n]
-                                (into [] (repeatedly n #(make-vm-offer framework-id (make-hostname) (make-uuid)
-                                                                       :cpus 1.0 :attrs {attr-name "west"}))))]
+  (let [uri "datomic:mem://test-attr-equals-host-placement-constraint"
+        conn (restore-fresh-database! uri)
+        framework-id #mesomatic.types.FrameworkID{:value "my-original-framework-id"}
+        make-hostname #(str (java.util.UUID/randomUUID))
+        attr-name "az"
+        attr-val "east"
+        make-attr-offer (fn [cpus]
+                          (make-vm-offer framework-id (make-hostname) (make-uuid)
+                                         :cpus cpus :attrs {attr-name attr-val}))
+        ; Each non-attr offer can take only one job
+        make-non-attr-offers (fn [n]
+                               (into [] (repeatedly n #(make-vm-offer framework-id (make-hostname) (make-uuid)
+                                                                      :cpus 1.0 :attrs {attr-name "west"}))))]
     (testing "Create group, schedule one job unto VM, then all subsequent jobs must have same attr as the VM."
       (let [scheduler (make-dummy-scheduler)
             group-id (create-dummy-group conn :host-placement
@@ -1641,6 +1641,180 @@
         (is (= [foo bar] (->> "T2" (get @messages-store) vec)))
         (is (= [foo bar fie] (->> "T3" (get @messages-store) vec)))
         (is (= [foo] (->> "T4" (get @messages-store) vec)))))))
+
+(deftest test-progress-update-aggregator
+  (let [query (fn [query-state-chan]
+                (let [response-chan (async/promise-chan)]
+                  (async/>!! query-state-chan {:mode :query :response-chan response-chan})
+                  (async/<!! response-chan)))
+        exit (fn [query-state-chan]
+               (let [response-chan (async/promise-chan)]
+                 (async/>!! query-state-chan {:mode :exit :response-chan response-chan})
+                 (async/<!! response-chan)))]
+
+    (testing "no progress to publish"
+      (let [pending-progress-threshold 10
+            publish-progress-trigger-chan (async/chan)
+            progress-state-chan (async/chan 1)
+            {:keys [query-state-chan]}
+            (sched/progress-update-aggregator pending-progress-threshold publish-progress-trigger-chan progress-state-chan)]
+        (query query-state-chan)
+        (async/>!! publish-progress-trigger-chan :publish)
+        (query query-state-chan) ;; ensures previous message to publish-progress-trigger-chan has been received
+        (async/>!! progress-state-chan :nothing-published)
+        (is (= :nothing-published (async/<!! progress-state-chan)))
+        (exit query-state-chan)))
+
+    (testing "basic progress publishing"
+      (let [pending-progress-threshold 10
+            publish-progress-trigger-chan (async/chan)
+            progress-state-chan (async/chan)
+            {:keys [progress-aggregator-chan query-state-chan]}
+            (sched/progress-update-aggregator pending-progress-threshold publish-progress-trigger-chan progress-state-chan)]
+        (async/>!! progress-aggregator-chan {:instance-id "i1" :progress-message "i1.m1" :progress-percent 10})
+        (async/>!! progress-aggregator-chan {:instance-id "i2" :progress-message "i2.m1" :progress-percent 10})
+        (async/>!! progress-aggregator-chan {:instance-id "i3" :progress-message "i3.m1" :progress-percent 10})
+        (async/>!! progress-aggregator-chan {:instance-id "i2" :progress-message "i2.m2" :progress-percent 25})
+        (async/>!! progress-aggregator-chan {:instance-id "i1" :progress-message "i1.m2" :progress-percent 45})
+        (query query-state-chan) ;; ensures previous message to progress-aggregator-chan has been received
+        (async/>!! publish-progress-trigger-chan :publish)
+        (is (= {"i1" {:progress-message "i1.m2" :progress-percent 45}
+                "i2" {:progress-message "i2.m2", :progress-percent 25}
+                "i3" {:progress-message "i3.m1", :progress-percent 10}}
+               (async/<!! progress-state-chan)))
+        (exit query-state-chan)))
+
+    (testing "basic progress overflow internal state"
+      (let [pending-progress-threshold 2
+            publish-progress-trigger-chan (async/chan)
+            progress-state-chan (async/chan)
+            {:keys [progress-aggregator-chan query-state-chan]}
+            (sched/progress-update-aggregator pending-progress-threshold publish-progress-trigger-chan progress-state-chan)]
+        (async/>!! progress-aggregator-chan {:instance-id "i1" :progress-message "i1.m1" :progress-percent 10})
+        (async/>!! progress-aggregator-chan {:instance-id "i2" :progress-message "i2.m1" :progress-percent 15})
+        (query query-state-chan) ;; ensures previous message to progress-aggregator-chan has been received
+        (async/>!! progress-aggregator-chan {:instance-id "i3" :progress-message "i3.m2" :progress-percent 25})
+        (async/>!! progress-aggregator-chan {:instance-id "i4" :progress-message "i4.m2" :progress-percent 35})
+        (async/>!! progress-aggregator-chan {:instance-id "i5" :progress-message "i5.m2" :progress-percent 45})
+        (query query-state-chan) ;; ensures previous message to progress-aggregator-chan has been received
+        (async/>!! publish-progress-trigger-chan :publish)
+        (is (= {"i1" {:progress-message "i1.m1" :progress-percent 10}
+                "i2" {:progress-message "i2.m1", :progress-percent 15}}
+               (async/<!! progress-state-chan)))
+        (exit query-state-chan)))
+
+    (testing "basic progress overflow on channel"
+      (let [pending-progress-threshold 10
+            publish-progress-trigger-chan (async/chan)
+            progress-state-chan (async/chan)
+            {:keys [progress-aggregator-chan query-state-chan]}
+            (sched/progress-update-aggregator pending-progress-threshold publish-progress-trigger-chan progress-state-chan)]
+        (dotimes [n 100]
+          (async/>!! progress-aggregator-chan {:instance-id "i1" :progress-message (str "i1.m" n) :progress-percent n}))
+        (query query-state-chan) ;; ensures previous message to progress-aggregator-chan has been received
+        (async/>!! publish-progress-trigger-chan :publish)
+        (is (= {"i1" {:progress-message "i1.m99", :progress-percent 99}}
+               (async/<!! progress-state-chan)))
+        (exit query-state-chan)))))
+
+(deftest test-progress-update-transactor
+  (let [uri "datomic:mem://test-progress-update-transactor"
+        conn (restore-fresh-database! uri)]
+    (testing "update-progress single instance"
+      (let [j1 (create-dummy-job conn :user "user1" :ncpus 1.0 :memory 3.0 :job-state :job.state/running)
+            i1 (create-dummy-instance conn j1)
+            publish-progress-trigger-chan (async/chan)
+            batch-size 2
+            progress-state-chan (sched/progress-update-transactor publish-progress-trigger-chan batch-size conn)]
+        ;; publish the data
+        (async/>!! progress-state-chan {i1 {:progress-message "i1.m1" :progress-percent 10}})
+        ;; force db transactions
+        (let [response-chan (async/promise-chan)]
+          (async/>!! publish-progress-trigger-chan {:response-chan response-chan})
+          (async/<!! response-chan))
+        ;; assert the state of the db
+        (let [test-db (d/db conn)
+              {:keys [:instance/progress :instance/progress-message] :as instance}
+              (->> i1 (d/entity test-db) d/touch)]
+          (is instance)
+          (is (= 10 progress))
+          (is (= "i1.m1" progress-message)))
+        (async/close! progress-state-chan)))
+
+    (testing "update-progress multiple instances"
+      (let [num-jobs-or-instances 1500
+            all-jobs (map (fn [index] (create-dummy-job conn :user (str "user" index) :ncpus 1.0 :memory 3.0 :job-state :job.state/running))
+                          (range num-jobs-or-instances))
+            all-instance-ids (map (fn [job] (create-dummy-instance conn job))
+                                  all-jobs)
+            publish-progress-trigger-chan (async/chan)
+            batch-size 100
+            progress-state-chan (sched/progress-update-transactor publish-progress-trigger-chan batch-size conn)
+            instance-id->progress-state (pc/map-from-keys (fn [instance-id]
+                                                            (let [progress (rand-int 100)]
+                                                              {:progress-message (str instance-id ".m" progress)
+                                                               :progress-percent progress}))
+                                                          all-instance-ids)]
+        ;; publish the data
+        (async/>!! progress-state-chan instance-id->progress-state)
+        ;; force db transactions
+        (let [response-chan (async/promise-chan)]
+          (async/>!! publish-progress-trigger-chan {:response-chan response-chan})
+          (async/<!! response-chan))
+        ;; assert the state of the db
+        (let [test-db (d/db conn)
+              actual-instance-id->progress-state (pc/map-from-keys (fn [instance-id]
+                                                                     (let [{:keys [:instance/progress :instance/progress-message] :as instance}
+                                                                           (->> instance-id (d/entity test-db) d/touch)]
+                                                                       {:progress-message progress-message
+                                                                        :progress-percent progress}))
+                                                                   all-instance-ids)]
+          (is (= instance-id->progress-state actual-instance-id->progress-state)))
+        (async/close! progress-state-chan)))
+
+    (testing "update-progress publish latest data"
+      (let [num-jobs-or-instances 100
+            all-jobs (map (fn [index] (create-dummy-job conn :user (str "user" index) :ncpus 1.0 :memory 3.0 :job-state :job.state/running))
+                          (range num-jobs-or-instances))
+            all-instance-ids (map (fn [job] (create-dummy-instance conn job))
+                                  all-jobs)
+            publish-progress-trigger-chan (async/chan)
+            batch-size 10
+            progress-state-chan (sched/progress-update-transactor publish-progress-trigger-chan batch-size conn)
+            instance-id->progress-state (pc/map-from-keys (fn [instance-id]
+                                                            (let [progress (rand-int 100)]
+                                                              {:progress-message (str instance-id ".m" progress)
+                                                               :progress-percent progress}))
+                                                          all-instance-ids)]
+        ;; incrementally generate half the data
+        (dotimes [n (int (/ num-jobs-or-instances 2))]
+          (let [instance-id->progress-state' (into {} (take n instance-id->progress-state))]
+            (async/>!! progress-state-chan instance-id->progress-state')))
+        ;; force a publish
+        (let [response-chan (async/promise-chan)]
+          (async/>!! publish-progress-trigger-chan {:response-chan response-chan})
+          (async/<!! response-chan))
+        ;; generate rest of the data
+        (dotimes [n num-jobs-or-instances]
+          (let [index (+ (int (/ num-jobs-or-instances 2)) n)
+                instance-id->progress-state' (into {} (take index instance-id->progress-state))]
+            (async/>!! progress-state-chan instance-id->progress-state')))
+        ;; full data
+        (async/>!! progress-state-chan instance-id->progress-state)
+        ;; force a publish
+        (let [response-chan (async/promise-chan)]
+          (async/>!! publish-progress-trigger-chan {:response-chan response-chan})
+          (async/<!! response-chan))
+        ;; assert the state of the db
+        (let [test-db (d/db conn)
+              actual-instance-id->progress-state (pc/map-from-keys (fn [instance-id]
+                                                                     (let [{:keys [:instance/progress :instance/progress-message] :as instance}
+                                                                           (->> instance-id (d/entity test-db) d/touch)]
+                                                                       {:progress-message progress-message
+                                                                        :progress-percent progress}))
+                                                                   all-instance-ids)]
+          (is (= instance-id->progress-state actual-instance-id->progress-state)))
+        (async/close! progress-state-chan)))))
 
 (comment
   (run-tests))

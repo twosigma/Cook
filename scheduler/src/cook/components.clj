@@ -475,6 +475,12 @@
                              (throw (ex-info "You must specify the graphite host!" {:graphite graphite})))
                            (let [config (merge {:port 2003 :pickled? true} graphite)]
                              ((lazy-load-var 'cook.reporter/graphite-reporter) config))))
+     :progress (fnk [[:config {progress nil}]]
+                   (merge {:batch-size 100
+                           :pending-threshold 1000
+                           :publish-interval-ms 2000}
+                          progress))
+
      :riemann (fnk [[:config [:metrics {riemann nil}]]]
                 riemann)
      :riemann-metrics (fnk [[:config [:metrics {riemann nil}]]]
