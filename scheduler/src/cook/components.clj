@@ -86,7 +86,7 @@
                            fenzo-floor-iterations-before-warn fenzo-max-jobs-considered fenzo-scaleback
                            good-enough-fitness mea-culpa-failure-limit mesos-failover-timeout mesos-framework-name
                            mesos-gpu-enabled mesos-leader-path mesos-master mesos-master-hosts mesos-principal
-                           mesos-role offer-incubate-time-ms rebalancer riemann task-constraints]
+                           mesos-role offer-incubate-time-ms progress rebalancer riemann task-constraints]
                           curator-framework framework-id mesos-datomic mesos-datomic-mult mesos-leadership-atom
                           mesos-offer-cache mesos-pending-jobs-atom]
                       (log/info "Initializing mesos scheduler")
@@ -98,7 +98,7 @@
                                                            :mesos-framework-name mesos-framework-name
                                                            :gpus-enabled? mesos-gpu-enabled})
                             get-mesos-utilization-fn (partial (lazy-load-var 'cook.mesos/get-mesos-utilization) mesos-master-hosts)
-                            trigger-chans ((lazy-load-var 'cook.mesos/make-trigger-chans) rebalancer task-constraints)]
+                            trigger-chans ((lazy-load-var 'cook.mesos/make-trigger-chans) rebalancer progress task-constraints)]
                         (try
                           (Class/forName "org.apache.mesos.Scheduler")
                           ((lazy-load-var 'cook.mesos/start-mesos-scheduler)
@@ -111,15 +111,16 @@
                             offer-incubate-time-ms
                             mea-culpa-failure-limit
                             task-constraints
-                            executor
                             (:host riemann)
                             (:port riemann)
                             mesos-pending-jobs-atom
                             mesos-offer-cache
                             mesos-gpu-enabled
-                            rebalancer
                             framework-id
                             mesos-leadership-atom
+                            {:executor-config executor
+                             :rebalancer-config rebalancer
+                             :progress-config progress}
                             {:fenzo-max-jobs-considered fenzo-max-jobs-considered
                              :fenzo-scaleback fenzo-scaleback
                              :fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-warn
@@ -480,7 +481,6 @@
                            :pending-threshold 1000
                            :publish-interval-ms 2000}
                           progress))
-
      :riemann (fnk [[:config [:metrics {riemann nil}]]]
                 riemann)
      :riemann-metrics (fnk [[:config [:metrics {riemann nil}]]]

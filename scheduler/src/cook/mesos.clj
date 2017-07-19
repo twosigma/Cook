@@ -145,7 +145,7 @@
   "Creates a map of of the trigger channels expected by `start-mesos-scheduler`
    Each channel receives chime triggers at particular intervals and it is
    possible to send additional events as desired"
-  [rebalancer-config
+  [rebalancer-config progress-config
    {:keys [timeout-interval-minutes]
     :or {timeout-interval-minutes 1}
     :as task-constraints}]
@@ -157,6 +157,8 @@
     {:cancelled-task-trigger-chan (prepare-trigger-chan (time/seconds 3))
      :lingering-task-trigger-chan (prepare-trigger-chan (time/minutes timeout-interval-minutes))
      :match-trigger-chan (prepare-trigger-chan (time/seconds 1))
+     :progress-aggregator-trigger-chan (prepare-trigger-chan (time/millis (:publish-interval-ms progress-config)))
+     :progress-updater-trigger-chan (prepare-trigger-chan (time/millis (:publish-interval-ms progress-config)))
      :rank-trigger-chan (prepare-trigger-chan (time/seconds 5))
      :rebalancer-trigger-chan (prepare-trigger-chan (time/seconds (:interval-seconds rebalancer-config)))
      :straggler-trigger-chan (prepare-trigger-chan (time/minutes timeout-interval-minutes))}))
@@ -187,12 +189,14 @@
    offer-cache              -- atom, map from host to most recent offer. Used to get attributes
    gpu-enabled?             -- boolean, whether cook will schedule gpus
    rebalancer-config        -- map, config for rebalancer. See scheduler/docs/rebalancer-config.asc for details
+   progress-config          -- map, config for progress publishing. See scheduler/docs/configuration.asc for more details
    framework-id             -- str, the Mesos framework id from the cook settings
    fenzo-config             -- map, config for fenzo, See scheduler/docs/configuration.asc for more details"
   [make-mesos-driver-fn get-mesos-utilization curator-framework mesos-datomic-conn mesos-datomic-mult zk-prefix
    offer-incubate-time-ms
-   mea-culpa-failure-limit task-constraints executor riemann-host riemann-port mesos-pending-jobs-atom
-   offer-cache gpu-enabled? rebalancer-config framework-id mesos-leadership-atom
+   mea-culpa-failure-limit task-constraints riemann-host riemann-port mesos-pending-jobs-atom
+   offer-cache gpu-enabled? framework-id mesos-leadership-atom
+   {:keys [executor-config rebalancer-config progress-config] :as additional-config}
    {:keys [fenzo-fitness-calculator fenzo-floor-iterations-before-reset fenzo-floor-iterations-before-warn
            fenzo-max-jobs-considered fenzo-scaleback good-enough-fitness]
     :as fenzo-config}
@@ -228,10 +232,10 @@
                                           fenzo-floor-iterations-before-reset
                                           fenzo-fitness-calculator
                                           task-constraints
-                                          executor
                                           gpu-enabled?
                                           good-enough-fitness
                                           framework-id
+                                          additional-config
                                           trigger-chans)
                                         driver (make-mesos-driver-fn scheduler framework-id)]
                                     (mesomatic.scheduler/start! driver)
