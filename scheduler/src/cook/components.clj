@@ -478,8 +478,8 @@
                              ((lazy-load-var 'cook.reporter/graphite-reporter) config))))
      :progress (fnk [[:config {progress nil}]]
                    (merge {:batch-size 100
-                           :pending-threshold 1000
-                           :publish-interval-ms 2000}
+                           :pending-threshold 4000
+                           :publish-interval-ms 2500}
                           progress))
      :riemann (fnk [[:config [:metrics {riemann nil}]]]
                 riemann)
