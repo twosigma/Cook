@@ -1071,6 +1071,14 @@
       (log/error e "Error submitting jobs through raw api")
       (throw e))))
 
+(defn job-create-allowed?
+  "Returns true if the user is authorized to :create jobs."
+  [conn is-authorized-fn {:keys [request]}]
+  (let [request-user (:authorization/user request)]
+    (if (is-authorized-fn request-user :create {:owner request-user :item :job})
+      true
+      [false {::error "You are not authorized to create jobs"}])))
+
 ;;; On POST; JSON blob that looks like:
 ;;; {"jobs": [{"command": "echo hello world",
 ;;;            "uuid": "123898485298459823985",
@@ -1108,7 +1116,7 @@
                        (catch Exception e
                          (log/warn e "Malformed raw api request")
                          [true {::error (.getMessage e)}]))))
-
+     :allowed? (partial job-create-allowed? conn is-authorized-fn)
      :exists? (fn [ctx]
                 (let [db (d/db conn)
                       existing (filter (partial job-exists? db) (map :uuid (::jobs ctx)))]
