@@ -367,7 +367,7 @@
               (timers/time!
                 progress-updater-publish-duration
                 (doseq [instance-id->progress-state-partition
-                        (partition batch-size batch-size [] instance-id->progress-state)]
+                        (partition-all batch-size instance-id->progress-state)]
                   (try
                     (let [transactions
                           (reduce (fn progress-update-transactor-reducer
