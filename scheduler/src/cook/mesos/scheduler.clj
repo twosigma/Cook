@@ -594,14 +594,14 @@
                                         (sort-by (comp :db/id :job #(.getRequest %))))
         :let [request (.getRequest task)
               task-id (:task-id request)
-              job-id [:job/uuid (get-in request [:job :job/uuid])]]]
-    [[:job/allowed-to-start? job-id]
+              job-ref [:job/uuid (get-in request [:job :job/uuid])]]]
+    [[:job/allowed-to-start? job-ref]
      ;; NB we set any job with an instance in a non-terminal
      ;; state to running to prevent scheduling the same job
      ;; twice; see schema definition for state machine
-     [:db/add job-id :job/state :job.state/running]
+     [:db/add job-ref :job/state :job.state/running]
      {:db/id (d/tempid :db.part/user)
-      :job/_instance job-id
+      :job/_instance job-ref
       :instance/task-id task-id
       :instance/hostname (.getHostname task)
       :instance/start-time (now)
