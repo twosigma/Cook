@@ -238,6 +238,7 @@
    (s/optional-key :labels) {NonEmptyString s/Str}
    (s/optional-key :constraints) [Constraint]
    (s/optional-key :container) Container
+   (s/optional-key :cook-executor) s/Bool
    (s/optional-key :group) s/Uuid
    (s/optional-key :disable-mea-culpa-retries) s/Bool
    :cpus PosDouble
@@ -438,9 +439,10 @@
   [job :- Job]
   (let [{:keys [uuid command max-retries max-runtime expected-runtime priority cpus mem gpus
                 user name ports uris env labels container group application disable-mea-culpa-retries
-                constraints]
+                constraints cook-executor]
          :or {group nil
-              disable-mea-culpa-retries false}} job
+              disable-mea-culpa-retries false
+              cook-executor false}} job
         db-id (d/tempid :db.part/user)
         ports (when (and ports (not (zero? ports)))
                 [[:db/add db-id :job/ports ports]])
@@ -505,6 +507,7 @@
         txn (cond-> {:db/id db-id
                      :job/command command
                      :job/commit-latch commit-latch-id
+                     :job/cook-executor cook-executor
                      :job/custom-executor false
                      :job/disable-mea-culpa-retries disable-mea-culpa-retries
                      :job/max-retries max-retries
@@ -612,9 +615,10 @@
   [db user task-constraints gpu-enabled? new-group-uuids
    {:keys [cpus mem gpus uuid command priority max-retries max-runtime expected-runtime name
            uris ports env labels container group application disable-mea-culpa-retries
-           constraints]
+           constraints cook-executor]
     :or {group nil
-         disable-mea-culpa-retries false}
+         disable-mea-culpa-retries false
+         cook-executor false}
     :as job}
    & {:keys [commit-latch-id override-group-immutability?]
       :or {commit-latch-id nil
@@ -624,6 +628,7 @@
                  {:user user
                   :uuid uuid
                   :command command
+                  :cook-executor  cook-executor
                   :name (or name "cookjob") ; Add default job name if user does not provide a name.
                   :priority (or priority util/default-job-priority)
                   :max-retries max-retries
@@ -819,6 +824,7 @@
                 (.getTime (:job/submit-time job)))
         job-map {:command (:job/command job)
                  :constraints constraints
+                 :cook_executor (:job/cook-executor job false)
                  :cpus (:cpus resources)
                  :disable_mea_culpa_retries (:job/disable-mea-culpa-retries job false)
                  :env (util/job-ent->env job)

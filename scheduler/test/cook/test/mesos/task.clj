@@ -360,7 +360,7 @@
     (testing "cook-executor with simple job"
       (let [task-id (str (UUID/randomUUID))
             job (tu/create-dummy-job conn :user "test-user" :job-state :job.state/running :command "run-my-command"
-                                     :custom-executor? false)
+                                     :cook-executor? true :custom-executor? false)
             db (d/db conn)
             job-ent (d/entity db job)
             framework-id {:value "framework-id"}

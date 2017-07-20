@@ -25,7 +25,7 @@ class CookTest(unittest.TestCase):
         util.wait_for_cook(self.cook_url)
 
     def test_basic_submit(self):
-        job_uuid, resp = util.submit_job(self.cook_url)
+        job_uuid, resp = util.submit_job(self.cook_url, cook_executor=True)
         self.assertEqual(resp.status_code, 201)
         job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
         self.assertEqual('success', job['instances'][0]['status'])
@@ -46,8 +46,19 @@ class CookTest(unittest.TestCase):
         job = util.load_job(self.cook_url, job_uuid)
         self.assertEqual(False, job['disable_mea_culpa_retries'])
 
+    def test_cook_executor_flag(self):
+        job_uuid, resp = util.submit_job(self.cook_url, cook_executor=True)
+        self.assertEqual(201, resp.status_code)
+        job = util.load_job(self.cook_url, job_uuid)
+        self.assertEqual(True, job['cook_executor'])
+
+        job_uuid, resp = util.submit_job(self.cook_url, cook_executor=False)
+        self.assertEqual(201, resp.status_code)
+        job = util.load_job(self.cook_url, job_uuid)
+        self.assertEqual(False, job['cook_executor'])
+
     def test_failing_submit(self):
-        job_uuid, resp = util.submit_job(self.cook_url, command='exit 1')
+        job_uuid, resp = util.submit_job(self.cook_url, command='exit 1', cook_executor=True)
         self.assertEqual(201, resp.status_code)
         job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
         self.assertEqual(1, len(job['instances']))
@@ -59,7 +70,7 @@ class CookTest(unittest.TestCase):
 
     def test_progress_update_submit(self):
         command = 'echo "progress: 25 Twenty-five percent"; sleep 1; exit 0'
-        job_uuid, resp = util.submit_job(self.cook_url, command=command, max_runtime=60000)
+        job_uuid, resp = util.submit_job(self.cook_url, command=command, cook_executor=True, max_runtime=60000)
         self.assertEqual(201, resp.status_code)
         job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
         self.assertEqual(1, len(job['instances']))
@@ -85,7 +96,7 @@ class CookTest(unittest.TestCase):
                   'echo "progress: 75 Seventy-five percent" && sleep 2 && ' \
                   'echo "progress: Eighty percent invalid format" && sleep 2 && ' \
                   'echo "Done" && exit 0'
-        job_uuid, resp = util.submit_job(self.cook_url, command=command, max_runtime=60000)
+        job_uuid, resp = util.submit_job(self.cook_url, command=command, cook_executor=True, max_runtime=60000)
         self.assertEqual(201, resp.status_code)
         job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
         self.assertEqual(1, len(job['instances']))
@@ -110,7 +121,7 @@ class CookTest(unittest.TestCase):
                   ''.join(['echo "progress: {0} {0}%" && '.format(a) for a in range(99, 40, -4)]) + \
                   ''.join(['echo "progress: {0} {0}%" && '.format(a) for a in range(40, 81, 2)]) + \
                   'echo "Done" && exit 0'
-        job_uuid, resp = util.submit_job(self.cook_url, command=command, max_runtime=60000)
+        job_uuid, resp = util.submit_job(self.cook_url, command=command, cook_executor=True, max_runtime=60000)
         self.assertEqual(201, resp.status_code)
         job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
         self.assertEqual(1, len(job['instances']))
@@ -137,7 +148,7 @@ class CookTest(unittest.TestCase):
         # at least two runs of the lingering task killer
         job_timeout_interval_seconds = (2 * settings_timeout_interval_minutes * 60) + 15
         job_uuid, resp = util.submit_job(self.cook_url, command='sleep %s' % job_timeout_interval_seconds,
-                                         max_runtime=5000)
+                                         cook_executor=True, max_runtime=5000)
         self.assertEqual(201, resp.status_code)
         util.wait_for_job(self.cook_url, job_uuid, 'completed', job_timeout_interval_seconds * 1000)
         job = util.load_job(self.cook_url, job_uuid)

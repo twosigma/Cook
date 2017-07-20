@@ -104,7 +104,15 @@
     :db/cardinality :db.cardinality/one
     :db.install/_attribute :db.part/db}
    {:db/id (d/tempid :db.part/db)
-    :db/doc "Determines if this job uses a custom executor (true) or the cook executor (false).
+    :db/doc "Determines if this job will only use the cook executor (true).
+             When false, any of the executors, including the cook executor may be used.
+             If :job/custom-executor is true, then uses a custom executor (for legacy compatibility)."
+    :db/ident :job/cook-executor
+    :db/valueType :db.type/boolean
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/doc "Determines if this job uses a custom executor (true) or one of the other executors (cook/command) (false).
              If unset, then uses a custom executor (for legacy compatibility)."
     :db/ident :job/custom-executor
     :db/valueType :db.type/boolean

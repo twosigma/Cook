@@ -687,6 +687,7 @@
                                    (create-dummy-job mesos-datomic-conn
                                                      :user "a"
                                                      :command "dummy command"
+                                                     :cook-executor? true
                                                      :custom-executor? false
                                                      :memory mem
                                                      :ncpus cpus
@@ -697,6 +698,7 @@
                                    (create-dummy-job mesos-datomic-conn
                                                      :user "b"
                                                      :command "dummy command"
+                                                     :cook-executor? true
                                                      :custom-executor? false
                                                      :memory mem
                                                      :ncpus cpus

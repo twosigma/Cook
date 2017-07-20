@@ -44,7 +44,8 @@
         custom-executor? (:job/custom-executor job-ent true)
         cook-executor? (and (not custom-executor?)
                             (not container) ;;TODO support cook-executor in containers
-                            (seq executor-config))
+                            (:command executor-config)
+                            (:job/cook-executor job-ent false))
         environment (cond-> (util/job-ent->env job-ent)
                             cook-executor? (merge (build-executor-environment executor-config)))
         labels (util/job-ent->label job-ent)
