@@ -95,9 +95,7 @@
   ([entity db]
    (entity->map (d/entity db (:db/id entity))))
   ([entity]
-   (->> entity
-        d/touch
-        (deep-transduce-kv (map identity)))))
+   (deep-transduce-kv (map identity) entity)))
 
 (defn remove-datomic-namespacing
   "Takes a map from datomic (pull) and removes the namespace
