@@ -1373,3 +1373,8 @@
                                :sandbox_directory "/path/to/working/directory"
                                :status "success")]
             (is (= expected-map (dissoc instance-map :start_time)))))))))
+
+(deftest test-job-create-allowed?
+  (is (true? (api/job-create-allowed? (constantly true) nil)))
+  (is (= [false {::api/error "You are not authorized to create jobs"}]
+         (api/job-create-allowed? (constantly false) nil))))

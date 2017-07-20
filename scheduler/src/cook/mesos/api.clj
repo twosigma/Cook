@@ -1073,7 +1073,7 @@
 
 (defn job-create-allowed?
   "Returns true if the user is authorized to :create jobs."
-  [conn is-authorized-fn {:keys [request]}]
+  [is-authorized-fn {:keys [request]}]
   (let [request-user (:authorization/user request)]
     (if (is-authorized-fn request-user :create {:owner request-user :item :job})
       true
@@ -1116,7 +1116,7 @@
                        (catch Exception e
                          (log/warn e "Malformed raw api request")
                          [true {::error (.getMessage e)}]))))
-     :allowed? (partial job-create-allowed? conn is-authorized-fn)
+     :allowed? (partial job-create-allowed? is-authorized-fn)
      :exists? (fn [ctx]
                 (let [db (d/db conn)
                       existing (filter (partial job-exists? db) (map :uuid (::jobs ctx)))]
