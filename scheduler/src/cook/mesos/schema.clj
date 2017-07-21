@@ -104,11 +104,14 @@
     :db/cardinality :db.cardinality/one
     :db.install/_attribute :db.part/db}
    {:db/id (d/tempid :db.part/db)
-    :db/doc "Determines if this job will only use the cook executor (true) [and custom-executor is false/missing].
-             When false, any of the executors, including the cook executor may be used.
-             If :job/custom-executor is true, then uses a custom executor (for legacy compatibility)."
-    :db/ident :job/cook-executor
-    :db/valueType :db.type/boolean
+    :db/doc "Determines if this job will only use the
+             1. cook executor (cook),
+             2. mesos command executor (mesos), or
+             3. custom (custom executor).
+             When missing and :job/custom-executor is true, then uses a custom executor (for legacy compatibility).
+             Else, it may default to any of the Cook executor or Mesos command executor"
+    :db/ident :job/executor
+    :db/valueType :db.type/ref
     :db/cardinality :db.cardinality/one
     :db.install/_attribute :db.part/db}
    {:db/id (d/tempid :db.part/db)
@@ -745,7 +748,17 @@ for a job. E.g. {:resources {:cpus 4 :mem 3} :constraints {\"unique_host_constra
    ;; Functions for database manipulation
    {:db/id (d/tempid :db.part/user)
     :db/ident :instance/create
-    :db/doc "Creates an instance for a job"}])
+    :db/doc "Creates an instance for a job"}
+   ;; Enum of executor options
+   {:db/id (d/tempid :db.part/user)
+    :db/ident :job.executor/cook
+    :db/doc "Signals intent to use the Cook executor"}
+   {:db/id (d/tempid :db.part/user)
+    :db/ident :job.executor/custom
+    :db/doc "Signals intent to use the custom executor"}
+   {:db/id (d/tempid :db.part/user)
+    :db/ident :job.executor/mesos
+    :db/doc "Signals intent to use the Mesos command executor"}])
 
 (def straggler-handling-types
   (->> schema-attributes

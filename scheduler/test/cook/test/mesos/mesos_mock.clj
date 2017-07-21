@@ -687,7 +687,7 @@
                                    (create-dummy-job mesos-datomic-conn
                                                      :user "a"
                                                      :command "dummy command"
-                                                     :cook-executor? true
+                                                     :executor :job.executor/cook
                                                      :custom-executor? false
                                                      :memory mem
                                                      :ncpus cpus
@@ -698,8 +698,8 @@
                                    (create-dummy-job mesos-datomic-conn
                                                      :user "b"
                                                      :command "dummy command"
-                                                     :cook-executor? true
                                                      :custom-executor? false
+                                                     :executor :job.executor/cook
                                                      :memory mem
                                                      :ncpus cpus
                                                      :env {"EXECUTION_TIME" (str user-b-job-exec-time-ms)}))

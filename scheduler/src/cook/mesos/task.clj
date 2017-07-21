@@ -25,22 +25,28 @@
 (defonce custom-executor-name "cook_agent_executor")
 (defonce custom-executor-source "cook_scheduler")
 
+(defn- use-custom-executor?
+  "Returns true if the job should be scheduled to use the custom executor."
+  [job-ent]
+  (or (:job/custom-executor job-ent true)
+      (= :job.executor/custom (:job/executor job-ent))))
+
 (defn use-cook-executor?
   "Returns true if the job should be scheduled to use the Cook executor.
    Cook executor is used when the following conditions are true:
    1. The job is not configured to use the custom executor (including backwards compatibility),
    2. The Cook executor command has been configured
-   3. Either :job/cook-executor is explicitly enabled
+   3. Either :job/executor is explicitly enabled
       Or: a. Cook executor has not been explicitly disabled,
           b. This is going to be the first instance of the job, and
           c. Our random toss yields less than portion percent."
   [job-ent executor-config]
-  (and (not (:job/custom-executor job-ent true))
+  (and (not (use-custom-executor? job-ent))
        (:command executor-config)
-       (or (:job/cook-executor job-ent false)
-           (and (nil? (:job/cook-executor job-ent))
+       (or (= :job.executor/cook (:job/executor job-ent))
+           (and (nil? (:job/executor job-ent))
                 (zero? (count (:job/instance job-ent)))
-                (when-let [{:keys [portion]} executor-config]
+                (when-let [portion (:portion executor-config)]
                   (> (* portion 100) (rand-int 100)))))))
 
 (defn build-executor-environment
@@ -59,7 +65,7 @@
         container (util/job-ent->container db job-ent)
         ;; If the custom-executor attr isn't set, we default to using a custom
         ;; executor in order to support jobs submitted before we added this field
-        custom-executor? (:job/custom-executor job-ent true)
+        custom-executor? (use-custom-executor? job-ent)
         cook-executor? (and (not container) ;;TODO support cook-executor in containers
                             (use-cook-executor? job-ent executor-config))
         environment (cond-> (util/job-ent->env job-ent)

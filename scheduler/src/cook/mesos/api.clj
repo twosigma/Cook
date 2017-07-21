@@ -238,7 +238,7 @@
    (s/optional-key :labels) {NonEmptyString s/Str}
    (s/optional-key :constraints) [Constraint]
    (s/optional-key :container) Container
-   (s/optional-key :cook-executor) s/Bool
+   (s/optional-key :executor) (s/enum "cook" "mesos")
    (s/optional-key :group) s/Uuid
    (s/optional-key :disable-mea-culpa-retries) s/Bool
    :cpus PosDouble
@@ -439,10 +439,9 @@
   [job :- Job]
   (let [{:keys [uuid command max-retries max-runtime expected-runtime priority cpus mem gpus
                 user name ports uris env labels container group application disable-mea-culpa-retries
-                constraints cook-executor]
+                constraints executor]
          :or {group nil
-              disable-mea-culpa-retries false
-              cook-executor false}} job
+              disable-mea-culpa-retries false}} job
         db-id (d/tempid :db.part/user)
         ports (when (and ports (not (zero? ports)))
                 [[:db/add db-id :job/ports ports]])
@@ -487,6 +486,10 @@
                                   :constraint/pattern pattern}]))
                             constraints)
         container (if (nil? container) [] (build-container user db-id container))
+        executor (when executor
+                   (case executor ;; will throw an exception if invalid value is provided
+                     "cook" :job.executor/cook
+                     "mesos" :job.executor/mesos))
         ;; These are optionally set datoms w/ default values
         maybe-datoms (reduce into
                              []
@@ -507,7 +510,6 @@
         txn (cond-> {:db/id db-id
                      :job/command command
                      :job/commit-latch commit-latch-id
-                     :job/cook-executor cook-executor
                      :job/custom-executor false
                      :job/disable-mea-culpa-retries disable-mea-culpa-retries
                      :job/max-retries max-retries
@@ -523,7 +525,8 @@
                     application (assoc :job/application
                                        {:application/name (:name application)
                                         :application/version (:version application)})
-                    expected-runtime (assoc :job/expected-runtime expected-runtime))]
+                    expected-runtime (assoc :job/expected-runtime expected-runtime)
+                    executor (assoc :job/executor executor))]
 
     ;; TODO batch these transactions to improve performance
     (-> ports
@@ -615,10 +618,9 @@
   [db user task-constraints gpu-enabled? new-group-uuids
    {:keys [cpus mem gpus uuid command priority max-retries max-runtime expected-runtime name
            uris ports env labels container group application disable-mea-culpa-retries
-           constraints cook-executor]
+           constraints executor]
     :or {group nil
-         disable-mea-culpa-retries false
-         cook-executor false}
+         disable-mea-culpa-retries false}
     :as job}
    & {:keys [commit-latch-id override-group-immutability?]
       :or {commit-latch-id nil
@@ -628,7 +630,6 @@
                  {:user user
                   :uuid uuid
                   :command command
-                  :cook-executor  cook-executor
                   :name (or name "cookjob") ; Add default job name if user does not provide a name.
                   :priority (or priority util/default-job-priority)
                   :max-retries max-retries
@@ -659,6 +660,8 @@
                    {:container container})
                  (when expected-runtime
                    {:expected-runtime expected-runtime})
+                 (when executor
+                   {:executor  executor})
                  (when application
                    {:application application}))]
     (s/validate Job munged)
@@ -812,6 +815,7 @@
         groups (:group/_job job)
         application (:job/application job)
         expected-runtime (:job/expected-runtime job)
+        executor (:job/executor job)
         state (util/job-ent->state job)
         constraints (->> job
                          :job/constraint
@@ -824,7 +828,6 @@
                 (.getTime (:job/submit-time job)))
         job-map {:command (:job/command job)
                  :constraints constraints
-                 :cook_executor (:job/cook-executor job false)
                  :cpus (:cpus resources)
                  :disable_mea_culpa_retries (:job/disable-mea-culpa-retries job false)
                  :env (util/job-ent->env job)
@@ -845,10 +848,11 @@
                  :uris (:uris resources)
                  :user (:job/user job)
                  :uuid (:job/uuid job)}]
-     (cond-> job-map
+    (cond-> job-map
             groups (assoc :groups (map #(str (:group/uuid %)) groups))
             application (assoc :application (util/remove-datomic-namespacing application))
-            expected-runtime (assoc :expected-runtime expected-runtime))))
+            expected-runtime (assoc :expected-runtime expected-runtime)
+            executor (assoc :executor (name executor)))))
 
 (defn fetch-group-job-details
   [db guuid]

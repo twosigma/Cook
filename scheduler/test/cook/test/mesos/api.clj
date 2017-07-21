@@ -1045,13 +1045,11 @@
           ; will have to dissoc it.
           [{:keys [mem max-retries max-runtime expected-runtime name gpus
                    command ports priority uuid user cpus application
-                   disable-mea-culpa-retries cook-executor]
-            :or {disable-mea-culpa-retries false
-                 cook-executor false}}
+                   disable-mea-culpa-retries executor]
+            :or {disable-mea-culpa-retries false}}
            framework-id]
           (cond-> {;; Fields we will fill in from the provided args:
                    :command command
-                   :cook_executor cook-executor
                    :cpus cpus
                    :disable_mea_culpa_retries disable-mea-culpa-retries
                    :framework_id framework-id
@@ -1075,7 +1073,8 @@
                    :uris nil}
                   ;; Only assoc these fields if the job specifies one
                   application (assoc :application application)
-                  expected-runtime (assoc :expected-runtime expected-runtime)))]
+                  expected-runtime (assoc :expected-runtime expected-runtime)
+                  executor (assoc :executor executor)))]
 
     (testing "Job creation"
       (testing "should work with a minimal job manually inserted"
@@ -1151,12 +1150,25 @@
 
       (testing "should work when the job specifies cook-executor"
         (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
-              {:keys [uuid] :as job} (assoc (minimal-job) :cook-executor true)
+              {:keys [uuid] :as job} (assoc (minimal-job) :executor "cook")
               framework-id #mesomatic.types.FrameworkID{:value "framework-id"}]
           (is (= {::api/results (str "submitted jobs " uuid)}
                  (api/create-jobs! conn {::api/jobs [job]})))
           (is (= (expected-job-map job framework-id)
-                 (dissoc (api/fetch-job-map (db conn) framework-id retrieve-url-path uuid) :submit_time))))))))
+                 (-> (api/fetch-job-map (db conn) framework-id retrieve-url-path uuid)
+                     (dissoc :submit_time)
+                     (update :executor name))))))
+
+      (testing "should work when the job specifies mesos-executor"
+        (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
+              {:keys [uuid] :as job} (assoc (minimal-job) :executor "mesos")
+              framework-id #mesomatic.types.FrameworkID{:value "framework-id"}]
+          (is (= {::api/results (str "submitted jobs " uuid)}
+                 (api/create-jobs! conn {::api/jobs [job]})))
+          (is (= (expected-job-map job framework-id)
+                 (-> (api/fetch-job-map (db conn) framework-id retrieve-url-path uuid)
+                     (dissoc :submit_time)
+                     (update :executor name)))))))))
 
 (deftest test-destroy-jobs
   (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")

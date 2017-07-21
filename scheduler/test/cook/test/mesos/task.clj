@@ -360,7 +360,7 @@
     (testing "cook-executor with simple job"
       (let [task-id (str (UUID/randomUUID))
             job (tu/create-dummy-job conn :user "test-user" :job-state :job.state/running :command "run-my-command"
-                                     :cook-executor? true :custom-executor? false)
+                                     :custom-executor? false :executor :job.executor/cook)
             db (d/db conn)
             job-ent (d/entity db job)
             framework-id {:value "framework-id"}
@@ -502,21 +502,21 @@
 
   (testing "custom-executor enabled and cook-executor enabled [faulty state]"
     (let [job-ent {:job/custom-executor true
-                   :job/cook-executor true}
+                   :job/executor :job.executor/cook}
           executor-config {:command "cook-executor"
                            :portion 0.25}]
       (is (not (task/use-cook-executor? job-ent executor-config)))))
 
   (testing "custom-executor disabled and cook-executor enabled"
     (let [job-ent {:job/custom-executor false
-                   :job/cook-executor true}
+                   :job/executor :job.executor/cook}
           executor-config {:command "cook-executor"
                            :portion 0.25}]
       (is (task/use-cook-executor? job-ent executor-config))))
 
   (testing "custom-executor disabled and cook-executor disabled"
     (let [job-ent {:job/custom-executor false
-                   :job/cook-executor false}
+                   :job/executor :job.executor/mesos}
           executor-config {:command "cook-executor"
                            :portion 0.25}]
       (is (not (task/use-cook-executor? job-ent executor-config)))))
