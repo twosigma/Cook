@@ -110,7 +110,8 @@
                            :log-level "INFO"
                            :max-message-length 512
                            :progress-sample-interval-ms 1000
-                           :uri {:cache true
+                           :transition-percent 5
+                    :uri {:cache true
                                  :executable true
                                  :extract false
                                  :value "file:///path/to/cook/executor"}}

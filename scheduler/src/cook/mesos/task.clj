@@ -25,6 +25,24 @@
 (defonce custom-executor-name "cook_agent_executor")
 (defonce custom-executor-source "cook_scheduler")
 
+(defn use-cook-executor?
+  "Returns true if the job should be scheduled to use the Cook executor.
+   Cook executor is used when the following conditions are true:
+   1. The job is not configured to use the custom executor (including backwards compatibility),
+   2. The Cook executor command has been configured
+   3. Either :job/cook-executor is explicitly enabled
+      Or: a. Cook executor has not been explicitly disabled,
+          b. This is going to be the first instance of the job, and
+          c. Our random toss yields less than transition-percent percent."
+  [job-ent executor-config]
+  (and (not (:job/custom-executor job-ent true))
+       (:command executor-config)
+       (or (:job/cook-executor job-ent false)
+           (and (nil? (:job/cook-executor job-ent))
+                (zero? (count (:job/instance job-ent)))
+                (when-let [{:keys [transition-percent]} executor-config]
+                  (> transition-percent (rand-int 100)))))))
+
 (defn build-executor-environment
   "Build the environment for the cook executor."
   [{:keys [default-progress-output-file default-progress-regex-string log-level max-message-length progress-sample-interval-ms]}]
@@ -42,10 +60,8 @@
         ;; If the custom-executor attr isn't set, we default to using a custom
         ;; executor in order to support jobs submitted before we added this field
         custom-executor? (:job/custom-executor job-ent true)
-        cook-executor? (and (not custom-executor?)
-                            (not container) ;;TODO support cook-executor in containers
-                            (:command executor-config)
-                            (:job/cook-executor job-ent false))
+        cook-executor? (and (not container) ;;TODO support cook-executor in containers
+                            (use-cook-executor? job-ent executor-config))
         environment (cond-> (util/job-ent->env job-ent)
                             cook-executor? (merge (build-executor-environment executor-config)))
         labels (util/job-ent->label job-ent)

@@ -381,7 +381,8 @@
                                                     :default-progress-regex-string "progress: (\\d*)(?: )?(.*)"
                                                     :log-level "INFO"
                                                     :max-message-length 512
-                                                    :progress-sample-interval-ms (* 1000 60 5)}
+                                                    :progress-sample-interval-ms (* 1000 60 5)
+                                                    :transition-percent 2}
                            default-uri-config {:cache true
                                                :executable true
                                                :extract false}]
