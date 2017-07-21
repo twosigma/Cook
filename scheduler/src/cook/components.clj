@@ -377,12 +377,14 @@
                    (do
                      (when (and (:uri executor) (nil? (get-in executor [:uri :value])))
                        (throw (ex-info "Executor uri value is missing!" {:executor executor})))
+                     (when (and (:portion executor) (not (<= 0 (:portion executor) 1)))
+                       (throw (ex-info "Executor portion must be in the range [0, 1]!" {:executor executor})))
                      (let [default-executor-config {:default-progress-output-file "stdout"
                                                     :default-progress-regex-string "progress: (\\d*)(?: )?(.*)"
                                                     :log-level "INFO"
                                                     :max-message-length 512
-                                                    :progress-sample-interval-ms (* 1000 60 5)
-                                                    :transition-percent 2}
+                                                    :portion 0.0
+                                                    :progress-sample-interval-ms (* 1000 60 5)}
                            default-uri-config {:cache true
                                                :executable true
                                                :extract false}]

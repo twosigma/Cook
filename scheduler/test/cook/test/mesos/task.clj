@@ -491,46 +491,46 @@
   (testing "custom-executor not configured"
     (let [job-ent {}
           executor-config {:command "cook-executor"
-                           :transition-percent 5}]
+                           :portion 0.25}]
       (is (not (task/use-cook-executor? job-ent executor-config)))))
 
   (testing "custom-executor enabled"
     (let [job-ent {:job/custom-executor true}
           executor-config {:command "cook-executor"
-                           :transition-percent 5}]
+                           :portion 0.25}]
       (is (not (task/use-cook-executor? job-ent executor-config)))))
 
   (testing "custom-executor enabled and cook-executor enabled [faulty state]"
     (let [job-ent {:job/custom-executor true
                    :job/cook-executor true}
           executor-config {:command "cook-executor"
-                           :transition-percent 5}]
+                           :portion 0.25}]
       (is (not (task/use-cook-executor? job-ent executor-config)))))
 
   (testing "custom-executor disabled and cook-executor enabled"
     (let [job-ent {:job/custom-executor false
                    :job/cook-executor true}
           executor-config {:command "cook-executor"
-                           :transition-percent 5}]
+                           :portion 0.25}]
       (is (task/use-cook-executor? job-ent executor-config))))
 
   (testing "custom-executor disabled and cook-executor disabled"
     (let [job-ent {:job/custom-executor false
                    :job/cook-executor false}
           executor-config {:command "cook-executor"
-                           :transition-percent 5}]
+                           :portion 0.25}]
       (is (not (task/use-cook-executor? job-ent executor-config)))))
 
   (testing "custom-executor disabled and coin toss favorable"
     (let [job-ent {:job/custom-executor false}
           executor-config {:command "cook-executor"
-                           :transition-percent 5}]
-      (with-redefs [rand-int (fn [x] (is (= 100 x)) 1)]
+                           :portion 0.25}]
+      (with-redefs [rand-int (fn [x] (is (= 100 x)) 10)]
         (is (task/use-cook-executor? job-ent executor-config)))))
 
   (testing "custom-executor disabled and coin toss unfavorable"
     (let [job-ent {:job/custom-executor false}
           executor-config {:command "cook-executor"
-                           :transition-percent 5}]
+                           :portion 0.25}]
       (with-redefs [rand-int (fn [x] (is (= 100 x)) 90)]
         (is (not (task/use-cook-executor? job-ent executor-config)))))))

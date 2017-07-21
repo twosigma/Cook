@@ -19,7 +19,8 @@
          :leader-path "/cook-scheduler"
          :role "cook"
          :framework-id #config/env "COOK_FRAMEWORK_ID"}
- :executor {:command #config/env "COOK_EXECUTOR_COMMAND"}
+ :executor {:command #config/env "COOK_EXECUTOR_COMMAND"
+            :portion 0.25}
  :unhandled-exceptions {:log-level :error}
  :metrics {:jmx true}
  :nrepl {:enabled? false}

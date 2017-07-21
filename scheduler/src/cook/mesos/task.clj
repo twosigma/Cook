@@ -33,15 +33,15 @@
    3. Either :job/cook-executor is explicitly enabled
       Or: a. Cook executor has not been explicitly disabled,
           b. This is going to be the first instance of the job, and
-          c. Our random toss yields less than transition-percent percent."
+          c. Our random toss yields less than portion percent."
   [job-ent executor-config]
   (and (not (:job/custom-executor job-ent true))
        (:command executor-config)
        (or (:job/cook-executor job-ent false)
            (and (nil? (:job/cook-executor job-ent))
                 (zero? (count (:job/instance job-ent)))
-                (when-let [{:keys [transition-percent]} executor-config]
-                  (> transition-percent (rand-int 100)))))))
+                (when-let [{:keys [portion]} executor-config]
+                  (> (* portion 100) (rand-int 100)))))))
 
 (defn build-executor-environment
   "Build the environment for the cook executor."
