@@ -89,6 +89,14 @@
                 x))
             m))
 
+(defn entity->map
+  "Takes a datomic entity and converts it along with any nested entities
+  into clojure maps"
+  ([entity db]
+   (entity->map (d/entity db (:db/id entity))))
+  ([entity]
+   (deep-transduce-kv (map identity) entity)))
+
 (defn remove-datomic-namespacing
   "Takes a map from datomic (pull) and removes the namespace
    as well as :db/id keys"
@@ -327,7 +335,8 @@
   "Converts the DB function :job/allowed-to-start? into a predicate"
   [db job]
   (try
-    (d/invoke db :job/allowed-to-start? db (:db/id job))
+    (d/invoke db :job/allowed-to-start? db (or (:db/id job)
+                                               [:job/uuid (:job/uuid job)]))
     true
     (catch clojure.lang.ExceptionInfo e
       false)))

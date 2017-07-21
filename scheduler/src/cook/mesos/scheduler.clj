@@ -583,7 +583,6 @@
   (log/debug "pending-jobs:" category->pending-jobs)
   (let [filter-considerable-jobs (fn filter-considerable-jobs [jobs]
                                    (->> jobs
-                                        (map #(d/entity db (:db/id %)))
                                         (filter-based-on-quota user->quota user->usage)
                                         (filter (fn [job]
                                                   (util/job-allowed-to-start? db job)))
@@ -629,14 +628,14 @@
                                         (sort-by (comp :db/id :job #(.getRequest %))))
         :let [request (.getRequest task)
               task-id (:task-id request)
-              job-id (get-in request [:job :db/id])]]
-    [[:job/allowed-to-start? job-id]
+              job-ref [:job/uuid (get-in request [:job :job/uuid])]]]
+    [[:job/allowed-to-start? job-ref]
      ;; NB we set any job with an instance in a non-terminal
      ;; state to running to prevent scheduling the same job
      ;; twice; see schema definition for state machine
-     [:db/add job-id :job/state :job.state/running]
+     [:db/add job-ref :job/state :job.state/running]
      {:db/id (d/tempid :db.part/user)
-      :job/_instance job-id
+      :job/_instance job-ref
       :instance/task-id task-id
       :instance/hostname (.getHostname task)
       :instance/start-time (now)
@@ -1205,7 +1204,8 @@
     (try
       (let [jobs (->> (sort-jobs-by-dru-category unfiltered-db)
                       ;; Apply the offensive job filter first before taking.
-                      (pc/map-vals offensive-job-filter))]
+                      (pc/map-vals offensive-job-filter)
+                      (pc/map-vals #(map util/entity->map %)))]
         (log/debug "Total number of pending jobs is:" (apply + (map count (vals jobs)))
                    "The first 20 pending normal jobs:" (take 20 (:normal jobs))
                    "The first 5 pending gpu jobs:" (take 5 (:gpu jobs)))
