@@ -39,7 +39,7 @@
    3. Either :job/executor is explicitly enabled
       Or: a. Cook executor has not been explicitly disabled,
           b. This is going to be the first instance of the job, and
-          c. Our random toss yields less than portion percent."
+          c. The job UUID hash mod 100 yields less than portion percent."
   [job-ent executor-config]
   (and (not (use-custom-executor? job-ent))
        (:command executor-config)
@@ -47,7 +47,8 @@
            (and (nil? (:job/executor job-ent))
                 (zero? (count (:job/instance job-ent)))
                 (when-let [portion (:portion executor-config)]
-                  (> (* portion 100) (rand-int 100)))))))
+                  (> (* portion 100)
+                     (-> job-ent :job/uuid hash (mod 100))))))))
 
 (defn build-executor-environment
   "Build the environment for the cook executor."
