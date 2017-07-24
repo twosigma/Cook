@@ -76,13 +76,13 @@
    "mem" 2048.0})
 
 (defn basic-handler
-  [conn & {:keys [cpus memory-gb gpus-enabled retry-limit]
-           :or {cpus 12 memory-gb 100 gpus-enabled false retry-limit 200}}]
+  [conn & {:keys [cpus memory-gb gpus-enabled retry-limit is-authorized-fn]
+           :or {cpus 12, memory-gb 100, gpus-enabled false, retry-limit 200, is-authorized-fn authorized-fn}}]
   (with-redefs [api/retrieve-url-path
                 (fn [framework-id hostname executor-id _]
                   (str "http://" hostname "/" framework-id "/" executor-id))]
     (api/main-handler conn "my-framework-id" (fn [] []) (atom (cache/lru-cache-factory {}))
-                      {:is-authorized-fn authorized-fn
+                      {:is-authorized-fn is-authorized-fn
                        :mesos-gpu-enabled gpus-enabled
                        :task-constraints {:cpus cpus :memory-gb memory-gb :retry-limit retry-limit}})))
 
@@ -1373,3 +1373,30 @@
                                :sandbox_directory "/path/to/working/directory"
                                :status "success")]
             (is (= expected-map (dissoc instance-map :start_time)))))))))
+
+(deftest test-job-create-allowed?
+  (is (true? (api/job-create-allowed? (constantly true) nil)))
+  (is (= [false {::api/error "You are not authorized to create jobs"}]
+         (api/job-create-allowed? (constantly false) nil))))
+
+(defn dummy-auth-factory
+  "Returns an authorization function that allows special-user to do anything to any
+  object, and nobody else to do anything. It is intended for unit testing only."
+  [special-user]
+  (fn dummy-auth
+    ([user verb object]
+     (dummy-auth {} user verb object))
+    ([settings user verb object]
+     (= user special-user))))
+
+(deftest test-job-create-authorization
+  (let [conn (restore-fresh-database! "datomic:mem://test-job-create-authorization")
+        handler (basic-handler conn :is-authorized-fn (dummy-auth-factory "alice"))
+        make-request-fn #(handler {:request-method :post
+                                   :scheme :http
+                                   :uri "/rawscheduler"
+                                   :headers {"Content-Type" "application/json"}
+                                   :authorization/user %
+                                   :body-params {"jobs" [(basic-job)]}})]
+    (is (= 201 (:status (make-request-fn "alice"))))
+    (is (= 403 (:status (make-request-fn "bob"))))))
