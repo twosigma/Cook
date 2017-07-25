@@ -995,117 +995,124 @@
 
 (deftest test-handle-framework-message
   (let [uri "datomic:mem://test-handle-framework-message"
-        conn (restore-fresh-database! uri)
-        make-message (fn [message] (-> message json/write-str str (.getBytes "UTF-8")))
-        query-instance-field (fn [instance-id field]
-                               (ffirst (q '[:find ?value
-                                            :in $ ?i ?field
-                                            :where
-                                            [?i ?field ?value]
-                                            [?i :instance/task-id ?task-id]]
-                                          (db conn) instance-id field)))]
-    (testing "missing task-id in message"
-      (let [task-id (str (UUID/randomUUID))]
-        (let [progress-aggregator-chan (async/chan 10)
-              message (make-message {:dummy-data task-id})]
-          (is (nil? (sched/handle-framework-message conn progress-aggregator-chan message)))
-          (async/close! progress-aggregator-chan)
-          (is (nil? (async/<!! progress-aggregator-chan))))))
+        conn (restore-fresh-database! uri)]
 
-    (testing "no transactions"
-      (let [task-id (str (UUID/randomUUID))]
-        (let [progress-aggregator-chan (async/chan 10)
-              message (make-message {:task-id task-id})]
-          (is (nil? (sched/handle-framework-message conn progress-aggregator-chan message)))
-          (async/close! progress-aggregator-chan)
-          (is (nil? (async/<!! progress-aggregator-chan))))))
+    (letfn [(make-message [message]
+              (-> message json/write-str str (.getBytes "UTF-8")))
+            (query-instance-field [instance-id field]
+              (ffirst (q '[:find ?value
+                           :in $ ?i ?field
+                           :where
+                           [?i ?field ?value]
+                           [?i :instance/task-id ?task-id]]
+                         (db conn) instance-id field)))
+            (handle-progress-message-factory [progress-aggregator-promise]
+              (fn handle-progress-message [progress-message-map]
+                (deliver progress-aggregator-promise progress-message-map)))]
 
-    (testing "sandbox-directory update"
-      (let [job-id (create-dummy-job conn :user "test-user" :job-state :job.state/running)
-            task-id (str (UUID/randomUUID))
-            instance-id (create-dummy-instance conn job-id :instance-status :instance.status/running :task-id task-id)]
-        (let [progress-aggregator-chan (async/chan 10)
-              sandbox-directory "/sandbox/location/for/task"
-              message (make-message {:task-id task-id :sandbox-directory sandbox-directory})]
-          (async/<!! (sched/handle-framework-message conn progress-aggregator-chan message))
-          (is (= sandbox-directory (query-instance-field instance-id :instance/sandbox-directory)))
-          (async/close! progress-aggregator-chan)
-          (is (nil? (async/<!! progress-aggregator-chan))))))
+      (testing "missing task-id in message"
+        (let [task-id (str (UUID/randomUUID))]
+          (let [progress-aggregator-promise (promise)
+                handle-progress-message (handle-progress-message-factory progress-aggregator-promise)
+                message (make-message {:dummy-data task-id})]
+            (is (nil? (sched/handle-framework-message conn handle-progress-message message)))
+            (is (nil? (deref progress-aggregator-promise 1000 nil))))))
 
-    (testing "progress-message update"
-      (let [job-id (create-dummy-job conn :user "test-user" :job-state :job.state/running)
-            task-id (str (UUID/randomUUID))
-            instance-id (create-dummy-instance conn job-id :instance-status :instance.status/running :task-id task-id)]
-        (let [progress-aggregator-chan (async/chan 10)
-              progress-message "Almost complete..."
-              message (make-message {:task-id task-id :progress-message progress-message})]
-          ;; no asynchronous transaction should be created
-          (is (nil? (sched/handle-framework-message conn progress-aggregator-chan message)))
-          (async/close! progress-aggregator-chan)
-          (is (nil? (query-instance-field instance-id :instance/progress-message)))
-          (is (= {:instance-id instance-id :progress-message progress-message :progress-percent nil}
-                 (async/<!! progress-aggregator-chan))))))
+      (testing "no transactions"
+        (let [task-id (str (UUID/randomUUID))]
+          (let [progress-aggregator-promise (promise)
+                handle-progress-message (handle-progress-message-factory progress-aggregator-promise)
+                message (make-message {:task-id task-id})]
+            (is (nil? (sched/handle-framework-message conn handle-progress-message message)))
+            (is (nil? (deref progress-aggregator-promise 1000 nil))))))
 
-    (testing "progress update"
-      (let [job-id (create-dummy-job conn :user "test-user" :job-state :job.state/running)
-            task-id (str (UUID/randomUUID))
-            instance-id (create-dummy-instance conn job-id :instance-status :instance.status/running :task-id task-id)]
-        (let [progress-aggregator-chan (async/chan 10)
-              progress-percent 20
-              message (make-message {:task-id task-id :progress-percent progress-percent})]
-          ;; no asynchronous transaction should be created
-          (is (nil? (sched/handle-framework-message conn progress-aggregator-chan message)))
-          (async/close! progress-aggregator-chan)
-          (is (= 0 (query-instance-field instance-id :instance/progress)))
-          (is (nil? (query-instance-field instance-id :instance/progress-message)))
-          (is (= {:instance-id instance-id :progress-message nil :progress-percent progress-percent}
-                 (async/<!! progress-aggregator-chan))))
-        (let [progress-aggregator-chan (async/chan 10)
-              progress-percent 50
-              message (make-message {:task-id task-id :progress-percent progress-percent})]
-          ;; no asynchronous transaction should be created
-          (is (nil? (sched/handle-framework-message conn progress-aggregator-chan message)))
-          (async/close! progress-aggregator-chan)
-          (async/close! progress-aggregator-chan)
-          (is (= 0 (query-instance-field instance-id :instance/progress)))
-          (is (nil? (query-instance-field instance-id :instance/progress-message)))
-          (is (= {:instance-id instance-id :progress-message nil :progress-percent progress-percent}
-                 (async/<!! progress-aggregator-chan))))))
+      (testing "sandbox-directory update"
+        (let [job-id (create-dummy-job conn :user "test-user" :job-state :job.state/running)
+              task-id (str (UUID/randomUUID))
+              instance-id (create-dummy-instance conn job-id :instance-status :instance.status/running :task-id task-id)]
+          (let [progress-aggregator-promise (promise)
+                handle-progress-message (handle-progress-message-factory progress-aggregator-promise)
+                sandbox-directory "/sandbox/location/for/task"
+                message (make-message {:task-id task-id :sandbox-directory sandbox-directory})]
+            (async/<!! (sched/handle-framework-message conn handle-progress-message message))
+            (is (= sandbox-directory (query-instance-field instance-id :instance/sandbox-directory)))
+            (is (nil? (deref progress-aggregator-promise 1000 nil))))))
 
-    (testing "exit-code update"
-      (let [job-id (create-dummy-job conn :user "test-user" :job-state :job.state/running)
-            task-id (str (UUID/randomUUID))
-            instance-id (create-dummy-instance conn job-id :instance-status :instance.status/running :task-id task-id)]
-        (let [progress-aggregator-chan (async/chan 10)
-              exit-code 0
-              message (make-message {:task-id task-id :exit-code exit-code})]
-          (async/<!! (sched/handle-framework-message conn progress-aggregator-chan message))
-          (async/close! progress-aggregator-chan)
-          (is (= exit-code (query-instance-field instance-id :instance/exit-code)))
-          (is (nil? (async/<!! progress-aggregator-chan))))))
+      (testing "progress-message update"
+        (let [job-id (create-dummy-job conn :user "test-user" :job-state :job.state/running)
+              task-id (str (UUID/randomUUID))
+              instance-id (create-dummy-instance conn job-id :instance-status :instance.status/running :task-id task-id)]
+          (let [progress-aggregator-promise (promise)
+                handle-progress-message (handle-progress-message-factory progress-aggregator-promise)
+                progress-message "Almost complete..."
+                message (make-message {:task-id task-id :progress-message progress-message})]
+            ;; no asynchronous transaction should be created
+            (is (nil? (sched/handle-framework-message conn handle-progress-message message)))
+            (is (nil? (query-instance-field instance-id :instance/progress-message)))
+            (is (= {:instance-id instance-id :progress-message progress-message :progress-percent nil}
+                   (deref progress-aggregator-promise 1000 nil))))))
 
-    (testing "all fields update"
-      (let [job-id (create-dummy-job conn :user "test-user" :job-state :job.state/running)
-            task-id (str (UUID/randomUUID))
-            instance-id (create-dummy-instance conn job-id :instance-status :instance.status/running :task-id task-id)]
-        (let [progress-aggregator-chan (async/chan 10)
-              exit-code 0
-              progress-percent 90
-              progress-message "Almost complete..."
-              sandbox-directory "/sandbox/location/for/task"
-              message (make-message {:task-id task-id
-                                     :exit-code exit-code
-                                     :progress-message progress-message
-                                     :progress-percent progress-percent
-                                     :sandbox-directory sandbox-directory})]
-          (async/<!! (sched/handle-framework-message conn progress-aggregator-chan message))
-          (async/close! progress-aggregator-chan)
-          (is (= exit-code (query-instance-field instance-id :instance/exit-code)))
-          (is (= sandbox-directory (query-instance-field instance-id :instance/sandbox-directory)))
-          (is (= 0 (query-instance-field instance-id :instance/progress)))
-          (is (nil? (query-instance-field instance-id :instance/progress-message)))
-          (is (= {:instance-id instance-id :progress-message progress-message :progress-percent progress-percent}
-                 (async/<!! progress-aggregator-chan))))))))
+      (testing "progress update"
+        (let [job-id (create-dummy-job conn :user "test-user" :job-state :job.state/running)
+              task-id (str (UUID/randomUUID))
+              instance-id (create-dummy-instance conn job-id :instance-status :instance.status/running :task-id task-id)]
+
+          (let [progress-aggregator-promise (promise)
+                handle-progress-message (handle-progress-message-factory progress-aggregator-promise)
+                progress-percent 20
+                message (make-message {:task-id task-id :progress-percent progress-percent})]
+            ;; no asynchronous transaction should be created
+            (is (nil? (sched/handle-framework-message conn handle-progress-message message)))
+            (is (= 0 (query-instance-field instance-id :instance/progress)))
+            (is (nil? (query-instance-field instance-id :instance/progress-message)))
+            (is (= {:instance-id instance-id :progress-message nil :progress-percent progress-percent}
+                   (deref progress-aggregator-promise 1000 nil))))
+
+          (let [progress-aggregator-promise (promise)
+                handle-progress-message (handle-progress-message-factory progress-aggregator-promise)
+                progress-percent 50
+                message (make-message {:task-id task-id :progress-percent progress-percent})]
+            ;; no asynchronous transaction should be created
+            (is (nil? (sched/handle-framework-message conn handle-progress-message message)))
+            (is (= 0 (query-instance-field instance-id :instance/progress)))
+            (is (nil? (query-instance-field instance-id :instance/progress-message)))
+            (is (= {:instance-id instance-id :progress-message nil :progress-percent progress-percent}
+                   (deref progress-aggregator-promise 1000 nil))))))
+
+      (testing "exit-code update"
+        (let [job-id (create-dummy-job conn :user "test-user" :job-state :job.state/running)
+              task-id (str (UUID/randomUUID))
+              instance-id (create-dummy-instance conn job-id :instance-status :instance.status/running :task-id task-id)]
+          (let [progress-aggregator-promise (promise)
+                handle-progress-message (handle-progress-message-factory progress-aggregator-promise)
+                exit-code 0
+                message (make-message {:task-id task-id :exit-code exit-code})]
+            (async/<!! (sched/handle-framework-message conn handle-progress-message message))
+            (is (= exit-code (query-instance-field instance-id :instance/exit-code)))
+            (is (nil? (deref progress-aggregator-promise 1000 nil))))))
+
+      (testing "all fields update"
+        (let [job-id (create-dummy-job conn :user "test-user" :job-state :job.state/running)
+              task-id (str (UUID/randomUUID))
+              instance-id (create-dummy-instance conn job-id :instance-status :instance.status/running :task-id task-id)]
+          (let [progress-aggregator-promise (promise)
+                handle-progress-message (handle-progress-message-factory progress-aggregator-promise)
+                exit-code 0
+                progress-percent 90
+                progress-message "Almost complete..."
+                sandbox-directory "/sandbox/location/for/task"
+                message (make-message {:task-id task-id
+                                       :exit-code exit-code
+                                       :progress-message progress-message
+                                       :progress-percent progress-percent
+                                       :sandbox-directory sandbox-directory})]
+            (async/<!! (sched/handle-framework-message conn handle-progress-message message))
+            (is (= exit-code (query-instance-field instance-id :instance/exit-code)))
+            (is (= sandbox-directory (query-instance-field instance-id :instance/sandbox-directory)))
+            (is (= 0 (query-instance-field instance-id :instance/progress)))
+            (is (nil? (query-instance-field instance-id :instance/progress-message)))
+            (is (= {:instance-id instance-id :progress-message progress-message :progress-percent progress-percent}
+                   (deref progress-aggregator-promise 1000 nil)))))))))
 
 (deftest test-handle-stragglers
   (let [uri "datomic:mem://test-handle-stragglers"

@@ -345,6 +345,31 @@
 (meters/defmeter [cook-mesos scheduler progress-updater-tx-rate])
 (timers/deftimer [cook-mesos scheduler progress-updater-tx-duration])
 
+(defn- publish-progress-to-datomic!
+  "Transacts the latest aggregated instance-id->progress-state to datomic.
+   No more than batch-size facts are updated in individual datomic transactions."
+  [conn instance-id->progress-state batch-size]
+  (histograms/update! progress-updater-pending-states (count instance-id->progress-state))
+  (meters/mark! progress-updater-publish-rate)
+  (timers/time!
+    progress-updater-publish-duration
+    (doseq [instance-id->progress-state-partition
+            (partition-all batch-size instance-id->progress-state)]
+      (try
+        (letfn [(build-progress-txns [[instance-id {:keys [progress-percent progress-message]}]]
+                  (cond-> []
+                          progress-percent (conj [:db/add instance-id :instance/progress (int progress-percent)])
+                          progress-message (conj [:db/add instance-id :instance/progress-message progress-message])))]
+          (let [txns (mapcat build-progress-txns instance-id->progress-state-partition)]
+            (when (seq txns)
+              (log/info "Performing" (count txns) "in progress state update")
+              (meters/mark! progress-updater-tx-rate)
+              (timers/time!
+                progress-updater-tx-duration
+                @(d/transact conn txns)))))
+        (catch Exception e
+          (log/error e "Progress batch update error"))))))
+
 (defn progress-update-transactor
   "Launches a long running go block that triggers transacting the latest aggregated instance-id->progress-state to
    datomic whenever there is a message on the progress-updater-trigger-chan.
@@ -358,42 +383,24 @@
       (loop []
         (let [{:keys [response-chan]} (async/<! progress-updater-trigger-chan)
               instance-id->progress-state (async/<! progress-state-chan)]
-          ;; TODO metrics for map size, datomic queries, etc.
           (log/info "Received" (count instance-id->progress-state) "in progress-update-transactor")
           (if instance-id->progress-state
             (do
-              (histograms/update! progress-updater-pending-states (count instance-id->progress-state))
-              (meters/mark! progress-updater-publish-rate)
-              (timers/time!
-                progress-updater-publish-duration
-                (doseq [instance-id->progress-state-partition
-                        (partition-all batch-size instance-id->progress-state)]
-                  (try
-                    (let [transactions
-                          (reduce (fn progress-update-transactor-reducer
-                                    [acc-txns [instance-id {:keys [progress-percent progress-message]}]]
-                                    (cond-> acc-txns
-                                            progress-percent (conj [:db/add instance-id :instance/progress (int progress-percent)])
-                                            progress-message (conj [:db/add instance-id :instance/progress-message progress-message])))
-                                  []
-                                  instance-id->progress-state-partition)]
-                      (when (seq transactions)
-                        (log/info "Performing" (count transactions) "in progress state update")
-                        (meters/mark! progress-updater-tx-rate)
-                        (timers/time!
-                          progress-updater-tx-duration
-                          @(d/transact conn transactions))))
-                    (catch Exception e
-                      (log/error e "Progress batch update error")))))
+              (publish-progress-to-datomic! conn instance-id->progress-state batch-size)
               (when response-chan
                 (async/>! response-chan {:publish-attempted instance-id->progress-state}))
               (recur))
             (log/info "Exiting progress update transactor")))))
     progress-state-chan))
 
+(defn- handle-progress-message!
+  "Processes a progress message by sending it along the progress-aggregator-chan channel."
+  [progress-aggregator-chan progress-message-map]
+  (async/put! progress-aggregator-chan progress-message-map))
+
 (defn handle-framework-message
   "Processes a framework message from Mesos."
-  [conn progress-aggregator-chan framework-message]
+  [conn handle-progress-message framework-message]
   (timers/time!
     handle-framework-message-duration
     (try
@@ -409,9 +416,9 @@
           (do
             (when (or progress-message progress-percent)
               (log/debug "Updating instance" instance-id "progress to" progress-percent progress-message)
-              (async/put! progress-aggregator-chan {:instance-id instance-id
-                                                    :progress-message progress-message
-                                                    :progress-percent progress-percent}))
+              (handle-progress-message {:instance-id instance-id
+                                        :progress-message progress-message
+                                        :progress-percent progress-percent}))
             (when (or exit-code sandbox-directory)
               (let [txns (cond-> []
                                  exit-code (conj [:db/add instance-id :instance/exit-code (int exit-code)])
@@ -1456,7 +1463,7 @@
 
 (defn create-mesos-scheduler
   "Creates the mesos scheduler which processes status updates asynchronously but in order of receipt."
-  [configured-framework-id gpu-enabled? conn heartbeat-ch fenzo offers-chan match-trigger-chan progress-aggregator-chan]
+  [configured-framework-id gpu-enabled? conn heartbeat-ch fenzo offers-chan match-trigger-chan handle-progress-message]
   (mesos/scheduler
     (registered [this driver framework-id master-info]
                 (log/info "Registered with mesos with framework-id " framework-id)
@@ -1495,7 +1502,7 @@
     (framework-message [this driver executor-id slave-id message]
                        ;; the executor-id is the same as the task-id (see cook.mesos.task/task-info->mesos-message)
                        (async-in-order-processing (:value executor-id)
-                                                  #(handle-framework-message conn progress-aggregator-chan message))
+                                                  #(handle-framework-message conn handle-progress-message message))
                        (heartbeat/notify-heartbeat heartbeat-ch executor-id slave-id message))
     (disconnected [this driver]
                   (log/error "Disconnected from the previous master"))
@@ -1526,8 +1533,10 @@
                             fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset match-trigger-chan)
         {:keys [batch-size pending-threshold]} progress-config
         progress-state-chan (progress-update-transactor progress-updater-trigger-chan batch-size conn)
-        {:keys [progress-aggregator-chan]} (progress-update-aggregator pending-threshold progress-aggregator-trigger-chan progress-state-chan)]
+        {:keys [progress-aggregator-chan]} (progress-update-aggregator pending-threshold progress-aggregator-trigger-chan progress-state-chan)
+        handle-progress-message (fn handle-progress-message-curried [progress-message-map]
+                                 (handle-progress-message! progress-aggregator-chan progress-message-map))]
     (start-jobs-prioritizer! conn pending-jobs-atom task-constraints rank-trigger-chan)
     {:scheduler (create-mesos-scheduler framework-id gpu-enabled? conn heartbeat-ch
-                                        fenzo offers-chan match-trigger-chan progress-aggregator-chan)
+                                        fenzo offers-chan match-trigger-chan handle-progress-message)
      :view-incubating-offers (fn get-resources-atom [] @resources-atom)}))
