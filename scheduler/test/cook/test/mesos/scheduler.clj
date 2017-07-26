@@ -25,7 +25,7 @@
             [cook.mesos.scheduler :as sched]
             [cook.mesos.share :as share]
             [cook.mesos.util :as util]
-            [cook.test.testutil :refer (restore-fresh-database! create-dummy-group create-dummy-job create-dummy-instance init-offer-cache)]
+            [cook.test.testutil :refer (restore-fresh-database! create-dummy-group create-dummy-job create-dummy-instance init-offer-cache poll-until)]
             [datomic.api :as d :refer (q db)]
             [mesomatic.scheduler :as msched]
             [mesomatic.types :as mtypes]
@@ -1684,79 +1684,84 @@
         (is (= [foo] (->> "T4" (get @messages-store) vec)))))))
 
 (deftest test-progress-update-aggregator
-  (let [query (fn [query-state-chan]
-                (let [response-chan (async/promise-chan)]
-                  (async/>!! query-state-chan {:mode :query :response-chan response-chan})
-                  (async/<!! response-chan)))
-        exit (fn [query-state-chan]
-               (let [response-chan (async/promise-chan)]
-                 (async/>!! query-state-chan {:mode :exit :response-chan response-chan})
-                 (async/<!! response-chan)))]
+  (letfn [(send [progress-aggregator-chan message & {:keys [sync] :or {sync false}}]
+            (let [message (cond-> message
+                                  sync (assoc :response-chan (async/promise-chan)))
+                  put-result (async/>!! progress-aggregator-chan message)]
+              (when sync
+                (or (not put-result)
+                    (-> message :response-chan async/<!!)))))]
 
     (testing "no progress to publish"
       (let [pending-progress-threshold 10
-            publish-progress-trigger-chan (async/chan)
             progress-state-chan (async/chan 1)
-            {:keys [query-state-chan]}
-            (sched/progress-update-aggregator pending-progress-threshold publish-progress-trigger-chan progress-state-chan)]
-        (query query-state-chan)
-        (async/>!! publish-progress-trigger-chan :publish)
-        (query query-state-chan) ;; ensures previous message to publish-progress-trigger-chan has been received
-        (async/>!! progress-state-chan :nothing-published)
-        (is (= :nothing-published (async/<!! progress-state-chan)))
-        (exit query-state-chan)))
+            progress-aggregator-chan (sched/progress-update-aggregator pending-progress-threshold progress-state-chan)]
+        (is (= {} (async/<!! progress-state-chan)))
+        (is (= {} (async/<!! progress-state-chan)))
+
+        (async/close! progress-state-chan)
+        (async/close! progress-aggregator-chan)
+        (poll-until #(nil? (async/<!! progress-state-chan)) 100 1000)))
 
     (testing "basic progress publishing"
       (let [pending-progress-threshold 10
-            publish-progress-trigger-chan (async/chan)
             progress-state-chan (async/chan)
-            {:keys [progress-aggregator-chan query-state-chan]}
-            (sched/progress-update-aggregator pending-progress-threshold publish-progress-trigger-chan progress-state-chan)]
-        (async/>!! progress-aggregator-chan {:instance-id "i1" :progress-message "i1.m1" :progress-percent 10})
-        (async/>!! progress-aggregator-chan {:instance-id "i2" :progress-message "i2.m1" :progress-percent 10})
-        (async/>!! progress-aggregator-chan {:instance-id "i3" :progress-message "i3.m1" :progress-percent 10})
-        (async/>!! progress-aggregator-chan {:instance-id "i2" :progress-message "i2.m2" :progress-percent 25})
-        (async/>!! progress-aggregator-chan {:instance-id "i1" :progress-message "i1.m2" :progress-percent 45})
-        (query query-state-chan) ;; ensures previous message to progress-aggregator-chan has been received
-        (async/>!! publish-progress-trigger-chan :publish)
+            progress-aggregator-chan (sched/progress-update-aggregator pending-progress-threshold progress-state-chan)]
+        (send progress-aggregator-chan {:instance-id "i1" :progress-message "i1.m1" :progress-percent 10})
+        (send progress-aggregator-chan {:instance-id "i2" :progress-message "i2.m1" :progress-percent 10})
+        (send progress-aggregator-chan {:instance-id "i3" :progress-message "i3.m1" :progress-percent 10})
+        (send progress-aggregator-chan {:instance-id "i2" :progress-message "i2.m2" :progress-percent 25})
+        (send progress-aggregator-chan {:instance-id "i1" :progress-message "i1.m2" :progress-percent 45 } :sync true)
         (is (= {"i1" {:progress-message "i1.m2" :progress-percent 45}
                 "i2" {:progress-message "i2.m2", :progress-percent 25}
                 "i3" {:progress-message "i3.m1", :progress-percent 10}}
                (async/<!! progress-state-chan)))
-        (exit query-state-chan)))
+        (is (= {} (async/<!! progress-state-chan)))
+
+        (async/close! progress-state-chan)
+        (async/close! progress-aggregator-chan)
+        (poll-until #(nil? (async/<!! progress-state-chan)) 100 1000)))
 
     (testing "basic progress overflow internal state"
       (let [pending-progress-threshold 2
-            publish-progress-trigger-chan (async/chan)
             progress-state-chan (async/chan)
-            {:keys [progress-aggregator-chan query-state-chan]}
-            (sched/progress-update-aggregator pending-progress-threshold publish-progress-trigger-chan progress-state-chan)]
-        (async/>!! progress-aggregator-chan {:instance-id "i1" :progress-message "i1.m1" :progress-percent 10})
-        (async/>!! progress-aggregator-chan {:instance-id "i2" :progress-message "i2.m1" :progress-percent 15})
-        (query query-state-chan) ;; ensures previous message to progress-aggregator-chan has been received
-        (async/>!! progress-aggregator-chan {:instance-id "i3" :progress-message "i3.m2" :progress-percent 25})
-        (async/>!! progress-aggregator-chan {:instance-id "i4" :progress-message "i4.m2" :progress-percent 35})
-        (async/>!! progress-aggregator-chan {:instance-id "i5" :progress-message "i5.m2" :progress-percent 45})
-        (query query-state-chan) ;; ensures previous message to progress-aggregator-chan has been received
-        (async/>!! publish-progress-trigger-chan :publish)
+            progress-aggregator-chan (sched/progress-update-aggregator pending-progress-threshold progress-state-chan)]
+        (send progress-aggregator-chan {:instance-id "i1" :progress-message "i1.m1" :progress-percent 10})
+        (send progress-aggregator-chan {:instance-id "i2" :progress-message "i2.m1" :progress-percent 15 } :sync true)
+        (send progress-aggregator-chan {:instance-id "i3" :progress-message "i3.m2" :progress-percent 25})
+        (send progress-aggregator-chan {:instance-id "i4" :progress-message "i4.m2" :progress-percent 35})
+        (send progress-aggregator-chan {:instance-id "i5" :progress-message "i5.m2" :progress-percent 45 } :sync true)
         (is (= {"i1" {:progress-message "i1.m1" :progress-percent 10}
                 "i2" {:progress-message "i2.m1", :progress-percent 15}}
                (async/<!! progress-state-chan)))
-        (exit query-state-chan)))
+        (is (= {} (async/<!! progress-state-chan)))
+
+        (send progress-aggregator-chan {:instance-id "i3" :progress-message "i3.m3" :progress-percent 55})
+        (send progress-aggregator-chan {:instance-id "i4" :progress-message "i4.m3" :progress-percent 65 } :sync true)
+        (send progress-aggregator-chan {:instance-id "i5" :progress-message "i5.m3" :progress-percent 75 } :sync true)
+        (is (= {"i3" {:progress-message "i3.m3" :progress-percent 55}
+                "i4" {:progress-message "i4.m3", :progress-percent 65}}
+               (async/<!! progress-state-chan)))
+        (is (= {} (async/<!! progress-state-chan)))
+
+        (async/close! progress-state-chan)
+        (async/close! progress-aggregator-chan)
+        (poll-until #(nil? (async/<!! progress-state-chan)) 100 1000)))
 
     (testing "basic progress overflow on channel"
       (let [pending-progress-threshold 10
-            publish-progress-trigger-chan (async/chan)
             progress-state-chan (async/chan)
-            {:keys [progress-aggregator-chan query-state-chan]}
-            (sched/progress-update-aggregator pending-progress-threshold publish-progress-trigger-chan progress-state-chan)]
+            progress-aggregator-chan (sched/progress-update-aggregator pending-progress-threshold progress-state-chan)]
         (dotimes [n 100]
-          (async/>!! progress-aggregator-chan {:instance-id "i1" :progress-message (str "i1.m" n) :progress-percent n}))
-        (query query-state-chan) ;; ensures previous message to progress-aggregator-chan has been received
-        (async/>!! publish-progress-trigger-chan :publish)
-        (is (= {"i1" {:progress-message "i1.m99", :progress-percent 99}}
+          (send progress-aggregator-chan {:instance-id "i1" :progress-message (str "i1.m" n) :progress-percent n}))
+        (send progress-aggregator-chan {:instance-id "i1" :progress-message "i1.m100" :progress-percent 100 } :sync true)
+        (is (= {"i1" {:progress-message "i1.m100", :progress-percent 100}}
                (async/<!! progress-state-chan)))
-        (exit query-state-chan)))))
+        (is (= {} (async/<!! progress-state-chan)))
+
+        (async/close! progress-state-chan)
+        (async/close! progress-aggregator-chan)
+        (poll-until #(nil? (async/<!! progress-state-chan)) 100 1000)))))
 
 (deftest test-progress-update-transactor
   (let [uri "datomic:mem://test-progress-update-transactor"
@@ -1766,13 +1771,13 @@
             i1 (create-dummy-instance conn j1)
             publish-progress-trigger-chan (async/chan)
             batch-size 2
-            progress-state-chan (sched/progress-update-transactor publish-progress-trigger-chan batch-size conn)]
+            progress-state-chan (sched/progress-update-transactor publish-progress-trigger-chan batch-size conn)
+            response-chan (async/promise-chan)]
         ;; publish the data
+        (async/>!! publish-progress-trigger-chan {:response-chan response-chan})
         (async/>!! progress-state-chan {i1 {:progress-message "i1.m1" :progress-percent 10}})
         ;; force db transactions
-        (let [response-chan (async/promise-chan)]
-          (async/>!! publish-progress-trigger-chan {:response-chan response-chan})
-          (async/<!! response-chan))
+        (async/<!! response-chan)
         ;; assert the state of the db
         (let [test-db (d/db conn)
               {:keys [:instance/progress :instance/progress-message] :as instance}
@@ -1795,13 +1800,13 @@
                                                             (let [progress (rand-int 100)]
                                                               {:progress-message (str instance-id ".m" progress)
                                                                :progress-percent progress}))
-                                                          all-instance-ids)]
+                                                          all-instance-ids)
+            response-chan (async/promise-chan)]
         ;; publish the data
+        (async/>!! publish-progress-trigger-chan {:response-chan response-chan})
         (async/>!! progress-state-chan instance-id->progress-state)
         ;; force db transactions
-        (let [response-chan (async/promise-chan)]
-          (async/>!! publish-progress-trigger-chan {:response-chan response-chan})
-          (async/<!! response-chan))
+        (async/<!! response-chan)
         ;; assert the state of the db
         (let [test-db (d/db conn)
               actual-instance-id->progress-state (pc/map-from-keys (fn [instance-id]
@@ -1826,26 +1831,23 @@
                                                             (let [progress (rand-int 100)]
                                                               {:progress-message (str instance-id ".m" progress)
                                                                :progress-percent progress}))
-                                                          all-instance-ids)]
-        ;; incrementally generate half the data
-        (dotimes [n (int (/ num-jobs-or-instances 2))]
-          (let [instance-id->progress-state' (into {} (take n instance-id->progress-state))]
-            (async/>!! progress-state-chan instance-id->progress-state')))
+                                                          all-instance-ids)
+            response-chan-1 (async/promise-chan)
+            response-chan-2 (async/promise-chan)]
+        ;; generate half the data
+        (async/>!! publish-progress-trigger-chan {:response-chan response-chan-1})
+        (let [n (int (/ num-jobs-or-instances 2))
+              instance-id->progress-state' (into {} (take n instance-id->progress-state))]
+          (async/>!! progress-state-chan instance-id->progress-state'))
         ;; force a publish
-        (let [response-chan (async/promise-chan)]
-          (async/>!! publish-progress-trigger-chan {:response-chan response-chan})
-          (async/<!! response-chan))
+        (async/<!! response-chan-1)
         ;; generate rest of the data
-        (dotimes [n num-jobs-or-instances]
-          (let [index (+ (int (/ num-jobs-or-instances 2)) n)
-                instance-id->progress-state' (into {} (take index instance-id->progress-state))]
-            (async/>!! progress-state-chan instance-id->progress-state')))
-        ;; full data
-        (async/>!! progress-state-chan instance-id->progress-state)
+        (async/>!! publish-progress-trigger-chan {:response-chan response-chan-2})
+        (let [n num-jobs-or-instances
+              instance-id->progress-state' (into {} (take n instance-id->progress-state))]
+          (async/>!! progress-state-chan instance-id->progress-state'))
         ;; force a publish
-        (let [response-chan (async/promise-chan)]
-          (async/>!! publish-progress-trigger-chan {:response-chan response-chan})
-          (async/<!! response-chan))
+        (async/<!! response-chan-2)
         ;; assert the state of the db
         (let [test-db (d/db conn)
               actual-instance-id->progress-state (pc/map-from-keys (fn [instance-id]

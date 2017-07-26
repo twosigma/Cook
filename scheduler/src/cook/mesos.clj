@@ -157,7 +157,6 @@
     {:cancelled-task-trigger-chan (prepare-trigger-chan (time/seconds 3))
      :lingering-task-trigger-chan (prepare-trigger-chan (time/minutes timeout-interval-minutes))
      :match-trigger-chan (prepare-trigger-chan (time/seconds 1))
-     :progress-aggregator-trigger-chan (prepare-trigger-chan (time/millis (:publish-interval-ms progress-config)))
      :progress-updater-trigger-chan (prepare-trigger-chan (time/millis (:publish-interval-ms progress-config)))
      :rank-trigger-chan (prepare-trigger-chan (time/seconds 5))
      :rebalancer-trigger-chan (prepare-trigger-chan (time/seconds (:interval-seconds rebalancer-config)))

@@ -286,58 +286,42 @@
 
 (defn progress-update-aggregator
   "Launches a long running go block that triggers publishing the latest aggregated instance-id->progress-state
-   whenever there is a message on the progress-aggregator-trigger-chan.
+   whenever there is a read on the progress-state-chan.
    It drops messages if the progress-aggregator-chan queue is larger than pending-progress-threshold or the aggregated
    state has more than pending-progress-threshold different entries.
-   It returns a map containing progress-aggregator-chan and query-state-chan.
-   progress-aggregator-chan can be used to send progress-state messages to the aggregator.
-   query-state-chan can be used to query the state of the aggregator."
-  [pending-progress-threshold progress-aggregator-trigger-chan progress-state-chan]
+   It returns the progress-aggregator-chan which can be used to send progress-state messages to the aggregator."
+  [pending-progress-threshold progress-state-chan]
   (log/info "Starting progress update aggregator")
-  (let [progress-aggregator-chan (async/chan (async/sliding-buffer pending-progress-threshold))
-        query-state-chan (async/chan (async/sliding-buffer 1))]
+  (let [progress-aggregator-chan (async/chan (async/sliding-buffer pending-progress-threshold))]
     (async/go
       (loop [instance-id->progress-state {}]
-        (let [[data chan] (async/alts! [progress-aggregator-trigger-chan progress-aggregator-chan query-state-chan]
-                                       :priority true)]
+        (let [[data chan]
+              (async/alts! [[progress-state-chan instance-id->progress-state] progress-aggregator-chan] :priority true)]
           (condp = chan
-            progress-aggregator-trigger-chan
+            progress-state-chan
             (do
-              (when (seq instance-id->progress-state)
-                (log/debug "Forwarding" (count instance-id->progress-state) "progress states to the transactor")
-                (histograms/update! progress-aggregator-pending-states (count instance-id->progress-state))
-                (async/>! progress-state-chan instance-id->progress-state))
+              (log/debug "Forwarded" (count instance-id->progress-state) "progress states to the transactor")
+              (histograms/update! progress-aggregator-pending-states (count instance-id->progress-state))
               (recur {}))
 
             progress-aggregator-chan
-            (let [{:keys [instance-id]} data]
-              (meters/mark! progress-aggregator-message-rate)
-              (if (or (< (count instance-id->progress-state) pending-progress-threshold)
-                      (contains? instance-id->progress-state instance-id))
-                (let [progress-state (select-keys data [:progress-message :progress-percent])
-                      instance-id->progress-state' (assoc instance-id->progress-state instance-id progress-state)]
-                  (recur instance-id->progress-state'))
-                (do
-                  (meters/mark! progress-aggregator-drop-rate)
-                  (counters/inc! progress-aggregator-drop-count)
-                  (log/debug "Dropping" data "as threshold has been reached")
-                  (recur instance-id->progress-state))))
-
-            query-state-chan
-            (let [{:keys [mode response-chan]} data]
-              (condp = mode
-                :query
-                (do
-                  (async/>! response-chan instance-id->progress-state)
-                  (recur instance-id->progress-state))
-
-                :exit
-                (do
-                  (when response-chan
-                    (async/>! response-chan :exited))
-                  (log/info "Exiting progress update aggregator"))))))))
-    {:progress-aggregator-chan progress-aggregator-chan
-     :query-state-chan query-state-chan}))
+            (if data
+              (let [{:keys [instance-id response-chan]} data]
+                (meters/mark! progress-aggregator-message-rate)
+                (if (or (< (count instance-id->progress-state) pending-progress-threshold)
+                        (contains? instance-id->progress-state instance-id))
+                  (let [progress-state (select-keys data [:progress-message :progress-percent])
+                        instance-id->progress-state' (assoc instance-id->progress-state instance-id progress-state)]
+                    (when response-chan (async/>! response-chan :accepted))
+                    (recur instance-id->progress-state'))
+                  (do
+                    (meters/mark! progress-aggregator-drop-rate)
+                    (counters/inc! progress-aggregator-drop-count)
+                    (log/debug "Dropping" data "as threshold has been reached")
+                    (when response-chan (async/>! response-chan :dropped))
+                    (recur instance-id->progress-state))))
+              (log/info "Exiting progress update aggregator"))))))
+    progress-aggregator-chan))
 
 (histograms/defhistogram [cook-mesos scheduler progress-updater-pending-states])
 (meters/defmeter [cook-mesos scheduler progress-updater-publish-rate])
@@ -378,7 +362,7 @@
    If no such message is on the progress-state-chan, then no datomic interactions occur."
   [progress-updater-trigger-chan batch-size conn]
   (log/info "Starting progress update transactor")
-  (let [progress-state-chan (async/chan (async/sliding-buffer 1))]
+  (let [progress-state-chan (async/chan)]
     (async/go
       (loop []
         (let [{:keys [response-chan]} (async/<! progress-updater-trigger-chan)
@@ -1523,7 +1507,7 @@
    fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset
    fenzo-fitness-calculator task-constraints gpu-enabled? good-enough-fitness framework-id
    {:keys [executor-config progress-config]}
-   {:keys [match-trigger-chan progress-aggregator-trigger-chan progress-updater-trigger-chan rank-trigger-chan] :as trigger-chans}]
+   {:keys [match-trigger-chan progress-updater-trigger-chan rank-trigger-chan] :as trigger-chans}]
 
   (persist-mea-culpa-failure-limit! conn mea-culpa-failure-limit)
 
@@ -1533,7 +1517,7 @@
                             fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset match-trigger-chan)
         {:keys [batch-size pending-threshold]} progress-config
         progress-state-chan (progress-update-transactor progress-updater-trigger-chan batch-size conn)
-        {:keys [progress-aggregator-chan]} (progress-update-aggregator pending-threshold progress-aggregator-trigger-chan progress-state-chan)
+        progress-aggregator-chan (progress-update-aggregator pending-threshold progress-state-chan)
         handle-progress-message (fn handle-progress-message-curried [progress-message-map]
                                  (handle-progress-message! progress-aggregator-chan progress-message-map))]
     (start-jobs-prioritizer! conn pending-jobs-atom task-constraints rank-trigger-chan)
