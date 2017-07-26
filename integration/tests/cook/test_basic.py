@@ -25,13 +25,15 @@ class CookTest(unittest.TestCase):
         util.wait_for_cook(self.cook_url)
 
     def test_basic_submit(self):
-        job_uuid, resp = util.submit_job(self.cook_url, executor='cook')
+        is_using_cook_executor = util.is_using_cook_executor(self.cook_url)
+        job_executor = 'cook' if is_using_cook_executor else 'mesos'
+        job_uuid, resp = util.submit_job(self.cook_url, executor=job_executor)
         self.assertEqual(resp.status_code, 201, msg=resp.content)
         job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
         self.assertEqual('success', job['instances'][0]['status'])
         self.assertEqual(False, job['disable_mea_culpa_retries'])
         self.assertTrue(len(util.get_output_url(self.cook_url, job_uuid)) > 0)
-        if util.is_using_cook_executor(self.cook_url):
+        if is_using_cook_executor:
             self.assertEqual(0, job['instances'][0]['exit_code'])
             self.assertTrue(bool(job['instances'][0]['sandbox_directory']))
 
@@ -58,19 +60,23 @@ class CookTest(unittest.TestCase):
         self.assertEqual('mesos', job['executor'])
 
     def test_failing_submit(self):
-        job_uuid, resp = util.submit_job(self.cook_url, command='exit 1', executor='cook')
+        is_using_cook_executor = util.is_using_cook_executor(self.cook_url)
+        job_executor = 'cook' if is_using_cook_executor else 'mesos'
+        job_uuid, resp = util.submit_job(self.cook_url, command='exit 1', executor=job_executor)
         self.assertEqual(201, resp.status_code, msg=resp.content)
         job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
         self.assertEqual(1, len(job['instances']))
         message = json.dumps(job['instances'][0], sort_keys=True)
         self.assertEqual('failed', job['instances'][0]['status'], message)
-        if util.is_using_cook_executor(self.cook_url):
+        if is_using_cook_executor:
             self.assertEqual(1, job['instances'][0]['exit_code'], message)
             self.assertIsNotNone(job['instances'][0]['sandbox_directory'], message)
 
     def test_progress_update_submit(self):
+        is_using_cook_executor = util.is_using_cook_executor(self.cook_url)
+        job_executor = 'cook' if is_using_cook_executor else 'mesos'
         command = 'echo "progress: 25 Twenty-five percent"; sleep 1; exit 0'
-        job_uuid, resp = util.submit_job(self.cook_url, command=command, executor='cook', max_runtime=60000)
+        job_uuid, resp = util.submit_job(self.cook_url, command=command, executor=job_executor, max_runtime=60000)
         self.assertEqual(201, resp.status_code, msg=resp.content)
         job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
         self.assertEqual(1, len(job['instances']))
@@ -83,7 +89,7 @@ class CookTest(unittest.TestCase):
         time.sleep(wait_publish_interval_secs)
         job = util.load_job(self.cook_url, job_uuid)
 
-        if util.is_using_cook_executor(self.cook_url):
+        if is_using_cook_executor:
             message = json.dumps(job['instances'][0], sort_keys=True)
             self.assertEqual(0, job['instances'][0]['exit_code'], message)
             self.assertEqual(25, job['instances'][0]['progress'], message)
@@ -91,12 +97,14 @@ class CookTest(unittest.TestCase):
             self.assertIsNotNone(job['instances'][0]['sandbox_directory'], message)
 
     def test_multiple_progress_updates_submit(self):
+        is_using_cook_executor = util.is_using_cook_executor(self.cook_url)
+        job_executor = 'cook' if is_using_cook_executor else 'mesos'
         command = 'echo "progress: 25 Twenty-five percent" && sleep 2 && ' \
                   'echo "progress: 50 Fifty percent" && sleep 2 && ' \
                   'echo "progress: 75 Seventy-five percent" && sleep 2 && ' \
                   'echo "progress: Eighty percent invalid format" && sleep 2 && ' \
                   'echo "Done" && exit 0'
-        job_uuid, resp = util.submit_job(self.cook_url, command=command, executor='cook', max_runtime=60000)
+        job_uuid, resp = util.submit_job(self.cook_url, command=command, executor=job_executor, max_runtime=60000)
         self.assertEqual(201, resp.status_code, msg=resp.content)
         job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
         self.assertEqual(1, len(job['instances']))
@@ -110,18 +118,20 @@ class CookTest(unittest.TestCase):
         job = util.load_job(self.cook_url, job_uuid)
         message = json.dumps(job['instances'][0], sort_keys=True)
 
-        if util.is_using_cook_executor(self.cook_url):
+        if is_using_cook_executor:
             self.assertEqual(0, job['instances'][0]['exit_code'], message)
             self.assertEqual(75, job['instances'][0]['progress'], message)
             self.assertEqual('Seventy-five percent', job['instances'][0]['progress_message'], message)
             self.assertIsNotNone(job['instances'][0]['sandbox_directory'], message)
 
     def test_multiple_rapid_progress_updates_submit(self):
+        is_using_cook_executor = util.is_using_cook_executor(self.cook_url)
+        job_executor = 'cook' if is_using_cook_executor else 'mesos'
         command = ''.join(['echo "progress: {0} {0}%" && '.format(a) for a in range(1, 100, 4)]) + \
                   ''.join(['echo "progress: {0} {0}%" && '.format(a) for a in range(99, 40, -4)]) + \
                   ''.join(['echo "progress: {0} {0}%" && '.format(a) for a in range(40, 81, 2)]) + \
                   'echo "Done" && exit 0'
-        job_uuid, resp = util.submit_job(self.cook_url, command=command, executor='cook', max_runtime=60000)
+        job_uuid, resp = util.submit_job(self.cook_url, command=command, executor=job_executor, max_runtime=60000)
         self.assertEqual(201, resp.status_code, msg=resp.content)
         job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
         self.assertEqual(1, len(job['instances']))
@@ -134,7 +144,7 @@ class CookTest(unittest.TestCase):
         time.sleep(wait_publish_interval_secs)
         job = util.load_job(self.cook_url, job_uuid)
 
-        if util.is_using_cook_executor(self.cook_url):
+        if is_using_cook_executor:
             message = json.dumps(job['instances'][0], sort_keys=True)
             self.assertEqual(0, job['instances'][0]['exit_code'], message)
             self.assertEqual(80, job['instances'][0]['progress'], message)
@@ -142,13 +152,15 @@ class CookTest(unittest.TestCase):
             self.assertIsNotNone(job['instances'][0]['sandbox_directory'], message)
 
     def test_max_runtime_exceeded(self):
+        is_using_cook_executor = util.is_using_cook_executor(self.cook_url)
+        job_executor = 'cook' if is_using_cook_executor else 'mesos'
         settings_timeout_interval_minutes = util.get_in(util.settings(self.cook_url), 'task-constraints',
                                                         'timeout-interval-minutes')
         # the value needs to be a little more than 2 times settings_timeout_interval_minutes to allow
         # at least two runs of the lingering task killer
         job_timeout_interval_seconds = (2 * settings_timeout_interval_minutes * 60) + 15
         job_uuid, resp = util.submit_job(self.cook_url, command='sleep %s' % job_timeout_interval_seconds,
-                                         executor='cook', max_runtime=5000)
+                                         executor=job_executor, max_runtime=5000)
         self.assertEqual(201, resp.status_code, msg=resp.content)
         util.wait_for_job(self.cook_url, job_uuid, 'completed', job_timeout_interval_seconds * 1000)
         job = util.load_job(self.cook_url, job_uuid)
@@ -156,7 +168,7 @@ class CookTest(unittest.TestCase):
         self.assertEqual('failed', job['instances'][0]['status'])
         self.assertEqual(2003, job['instances'][0]['reason_code'])
         self.assertEqual('Task max runtime exceeded', job['instances'][0]['reason_string'])
-        if util.is_using_cook_executor(self.cook_url):
+        if is_using_cook_executor:
             job = util.wait_for_exit_code(self.cook_url, job_uuid)
             self.assertEqual(-15, job['instances'][0]['exit_code'])
             self.assertTrue(bool(job['instances'][0]['sandbox_directory']))

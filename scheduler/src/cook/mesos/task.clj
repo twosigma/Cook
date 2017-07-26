@@ -15,6 +15,7 @@
 ;;
 (ns cook.mesos.task
   (:require [clojure.data.json :as json]
+            [clojure.tools.logging :as log]
             [cook.mesos.util :as util]
             [mesomatic.types :as mtypes]
             [plumbing.core :refer (map-vals)])
@@ -93,6 +94,9 @@
                    ;;TODO this data is a race-condition
                    {:instance (str (count (:job/instance job-ent)))}))
                "UTF-8")]
+    (when (and (= :job.executor/cook (:job/executor job-ent))
+               (not= executor-key :cook-executor))
+      (log/warn "Task" task-id "requested to use cook executor, but will be executed using" (name executor-key)))
     {:command command
      :container container
      :data data
