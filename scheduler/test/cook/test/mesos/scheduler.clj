@@ -1771,10 +1771,10 @@
             i1 (create-dummy-instance conn j1)
             publish-progress-trigger-chan (async/chan)
             batch-size 2
-            progress-state-chan (sched/progress-update-transactor publish-progress-trigger-chan batch-size conn)
+            {:keys [cancel-handle progress-state-chan]} (sched/progress-update-transactor publish-progress-trigger-chan batch-size conn)
             response-chan (async/promise-chan)]
         ;; publish the data
-        (async/>!! publish-progress-trigger-chan {:response-chan response-chan})
+        (async/>!! publish-progress-trigger-chan response-chan)
         (async/>!! progress-state-chan {i1 {:progress-message "i1.m1" :progress-percent 10}})
         ;; force db transactions
         (async/<!! response-chan)
@@ -1785,6 +1785,8 @@
           (is instance)
           (is (= 10 progress))
           (is (= "i1.m1" progress-message)))
+
+        (cancel-handle)
         (async/close! progress-state-chan)))
 
     (testing "update-progress multiple instances"
@@ -1795,7 +1797,7 @@
                                   all-jobs)
             publish-progress-trigger-chan (async/chan)
             batch-size 100
-            progress-state-chan (sched/progress-update-transactor publish-progress-trigger-chan batch-size conn)
+            {:keys [cancel-handle progress-state-chan]} (sched/progress-update-transactor publish-progress-trigger-chan batch-size conn)
             instance-id->progress-state (pc/map-from-keys (fn [instance-id]
                                                             (let [progress (rand-int 100)]
                                                               {:progress-message (str instance-id ".m" progress)
@@ -1803,7 +1805,7 @@
                                                           all-instance-ids)
             response-chan (async/promise-chan)]
         ;; publish the data
-        (async/>!! publish-progress-trigger-chan {:response-chan response-chan})
+        (async/>!! publish-progress-trigger-chan response-chan)
         (async/>!! progress-state-chan instance-id->progress-state)
         ;; force db transactions
         (async/<!! response-chan)
@@ -1816,6 +1818,8 @@
                                                                         :progress-percent progress}))
                                                                    all-instance-ids)]
           (is (= instance-id->progress-state actual-instance-id->progress-state)))
+
+        (cancel-handle)
         (async/close! progress-state-chan)))
 
     (testing "update-progress publish latest data"
@@ -1826,7 +1830,7 @@
                                   all-jobs)
             publish-progress-trigger-chan (async/chan)
             batch-size 10
-            progress-state-chan (sched/progress-update-transactor publish-progress-trigger-chan batch-size conn)
+            {:keys [cancel-handle progress-state-chan]} (sched/progress-update-transactor publish-progress-trigger-chan batch-size conn)
             instance-id->progress-state (pc/map-from-keys (fn [instance-id]
                                                             (let [progress (rand-int 100)]
                                                               {:progress-message (str instance-id ".m" progress)
@@ -1835,14 +1839,14 @@
             response-chan-1 (async/promise-chan)
             response-chan-2 (async/promise-chan)]
         ;; generate half the data
-        (async/>!! publish-progress-trigger-chan {:response-chan response-chan-1})
+        (async/>!! publish-progress-trigger-chan response-chan-1)
         (let [n (int (/ num-jobs-or-instances 2))
               instance-id->progress-state' (into {} (take n instance-id->progress-state))]
           (async/>!! progress-state-chan instance-id->progress-state'))
         ;; force a publish
         (async/<!! response-chan-1)
         ;; generate rest of the data
-        (async/>!! publish-progress-trigger-chan {:response-chan response-chan-2})
+        (async/>!! publish-progress-trigger-chan response-chan-2)
         (let [n num-jobs-or-instances
               instance-id->progress-state' (into {} (take n instance-id->progress-state))]
           (async/>!! progress-state-chan instance-id->progress-state'))
@@ -1857,6 +1861,8 @@
                                                                         :progress-percent progress}))
                                                                    all-instance-ids)]
           (is (= instance-id->progress-state actual-instance-id->progress-state)))
+
+        (cancel-handle)
         (async/close! progress-state-chan)))))
 
 (comment

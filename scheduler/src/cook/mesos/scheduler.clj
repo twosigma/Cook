@@ -358,24 +358,24 @@
   "Launches a long running go block that triggers transacting the latest aggregated instance-id->progress-state to
    datomic whenever there is a message on the progress-updater-trigger-chan.
    No more than batch-size facts are updated in individual datomic transactions.
-   It returns a progress-state-chan which can be used to send messages about the latest instance-id->progress-state.
+   It returns a map containing the progress-state-chan which can be used to send messages about the latest instance-id->progress-state.
    If no such message is on the progress-state-chan, then no datomic interactions occur."
   [progress-updater-trigger-chan batch-size conn]
   (log/info "Starting progress update transactor")
   (let [progress-state-chan (async/chan)]
-    (async/go
-      (loop []
-        (let [{:keys [response-chan]} (async/<! progress-updater-trigger-chan)
-              instance-id->progress-state (async/<! progress-state-chan)]
-          (log/info "Received" (count instance-id->progress-state) "in progress-update-transactor")
-          (if instance-id->progress-state
-            (do
-              (publish-progress-to-datomic! conn instance-id->progress-state batch-size)
-              (when response-chan
-                (async/>! response-chan {:publish-attempted instance-id->progress-state}))
-              (recur))
-            (log/info "Exiting progress update transactor")))))
-    progress-state-chan))
+    (letfn [(progress-update-transactor-error-handler [e]
+              (log/error e "Failed to update progress message on tasks!"))
+            (progress-update-transactor-on-finished []
+              (log/info "Exiting progress update transactor"))
+            (process-progress-update-transactor-event []
+              (let [[data _] (async/alts!! [progress-state-chan (async/timeout 100)] :priority true)]
+                (when-let [instance-id->progress-state data]
+                  (log/info "Received" (count instance-id->progress-state) "in progress-update-transactor")
+                  (publish-progress-to-datomic! conn instance-id->progress-state batch-size))))]
+      {:cancel-handle (util/chime-at-ch progress-updater-trigger-chan process-progress-update-transactor-event
+                                        {:error-handler progress-update-transactor-error-handler
+                                         :on-finished progress-update-transactor-on-finished})
+       :progress-state-chan progress-state-chan})))
 
 (defn- handle-progress-message!
   "Processes a progress message by sending it along the progress-aggregator-chan channel."
@@ -1516,7 +1516,7 @@
         (make-offer-handler conn driver-atom fenzo framework-id executor-config pending-jobs-atom offer-cache fenzo-max-jobs-considered
                             fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset match-trigger-chan)
         {:keys [batch-size pending-threshold]} progress-config
-        progress-state-chan (progress-update-transactor progress-updater-trigger-chan batch-size conn)
+        {:keys [progress-state-chan]} (progress-update-transactor progress-updater-trigger-chan batch-size conn)
         progress-aggregator-chan (progress-update-aggregator pending-threshold progress-state-chan)
         handle-progress-message (fn handle-progress-message-curried [progress-message-map]
                                  (handle-progress-message! progress-aggregator-chan progress-message-map))]
