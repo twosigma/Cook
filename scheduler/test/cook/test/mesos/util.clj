@@ -14,14 +14,14 @@
 ;; limitations under the License.
 ;;
 (ns cook.test.mesos.util
- (:use clojure.test)
- (:require [clj-time.coerce :as tc]
-           [clj-time.core :as t]
-           [clojure.core.async :as async]
-           [cook.mesos.util :as util]
-           [cook.test.testutil :as testutil :refer (create-dummy-instance create-dummy-job restore-fresh-database!)]
-           [datomic.api :as d :refer (q db)])
- (:import [java.util Date]))
+  (:use clojure.test)
+  (:require [clj-time.coerce :as tc]
+            [clj-time.core :as t]
+            [clojure.core.async :as async]
+            [cook.mesos.util :as util]
+            [cook.test.testutil :as testutil :refer (create-dummy-instance create-dummy-job restore-fresh-database!)]
+            [datomic.api :as d :refer (q db)])
+  (:import [java.util Date]))
 
 (deftest test-get-pending-job-ents
   (let [uri "datomic:mem://test-get-pending-job-ents"
@@ -35,15 +35,15 @@
 (deftest test-filter-sequential
   ; Same as filter
   (is (util/filter-sequential (fn [state x]
-                            [state (even? x)])
-                          {}
-                          (range 10))
+                                [state (even? x)])
+                              {}
+                              (range 10))
       (filter even? (range 10)))
   ;; Check lazy
   (is (take 100 (util/filter-sequential (fn [state x]
-                            [state (even? x)])
-                          {}
-                          (range)))
+                                          [state (even? x)])
+                                        {}
+                                        (range)))
       (take 100 (filter even? (range)))
       )
   ;; Check with state
@@ -56,9 +56,9 @@
                                                   })]
                   [state' (or (and (even? x) (> (:even state) 100))
                               (and (not (even? x)) (< (:odd state) 100)))]))
-                                    {:even 0
-                                     :odd 0}
-                                    (range)))
+              {:even 0
+               :odd 0}
+              (range)))
       (take 200
             (concat (take 100 (filter odd? (range)))
                     (drop 100 (filter even? (range)))))))
@@ -96,72 +96,72 @@
         conn (restore-fresh-database! uri)]
     (testing "No mea-culpa reasons"
       (let [job (create-dummy-job conn :user "tsram" :job-state :job.state/completed :retry-count 3)
-           _ (create-dummy-instance conn job :instance-status :instance.status/failed
-                                    :reason :unknown) ; Counted
-           _ (create-dummy-instance conn job :instance-status :instance.status/failed
-                                    :reason :unknown) ; Counted
-           _ (create-dummy-instance conn job :instance-status :instance.status/running) ; Not counted
-           db (d/db conn)
-           job-ent (d/entity @(d/sync conn) job)]
+            _ (create-dummy-instance conn job :instance-status :instance.status/failed
+                                     :reason :unknown) ; Counted
+            _ (create-dummy-instance conn job :instance-status :instance.status/failed
+                                     :reason :unknown) ; Counted
+            _ (create-dummy-instance conn job :instance-status :instance.status/running) ; Not counted
+            db (d/db conn)
+            job-ent (d/entity @(d/sync conn) job)]
         (is (= (util/job-ent->attempts-consumed db job-ent) 2))
-       ))
+        ))
     (testing "Some mea-culpa reasons"
       (let [job (create-dummy-job conn :user "tsram" :job-state :job.state/completed :retry-count 3)
-           _ (create-dummy-instance conn job :instance-status :instance.status/failed
-                                    :reason :unknown) ; Counted
-           _ (create-dummy-instance conn job :instance-status :instance.status/failed
-                                    :reason :preempted-by-rebalancer) ; Not counted
-           _ (create-dummy-instance conn job :instance-status :instance.status/failed
-                                    :reason :preempted-by-rebalancer) ; Not counted
-           _ (create-dummy-instance conn job :instance-status :instance.status/running) ; Not counted
-           db (d/db conn)
-           job-ent (d/entity @(d/sync conn) job)]
+            _ (create-dummy-instance conn job :instance-status :instance.status/failed
+                                     :reason :unknown) ; Counted
+            _ (create-dummy-instance conn job :instance-status :instance.status/failed
+                                     :reason :preempted-by-rebalancer) ; Not counted
+            _ (create-dummy-instance conn job :instance-status :instance.status/failed
+                                     :reason :preempted-by-rebalancer) ; Not counted
+            _ (create-dummy-instance conn job :instance-status :instance.status/running) ; Not counted
+            db (d/db conn)
+            job-ent (d/entity @(d/sync conn) job)]
         (is (= (util/job-ent->attempts-consumed db job-ent) 1))
-       ))
+        ))
     (testing "All mea-culpa reasons"
       (let [job (create-dummy-job conn :user "tsram" :job-state :job.state/completed :retry-count 3)
-           _ (create-dummy-instance conn job :instance-status :instance.status/failed
-                                    :reason :preempted-by-rebalancer) ; Not counted
-           _ (create-dummy-instance conn job :instance-status :instance.status/failed
-                                    :reason :preempted-by-rebalancer) ; Not counted
-           _ (create-dummy-instance conn job :instance-status :instance.status/running) ; Not counted
-           db (d/db conn)
-           job-ent (d/entity @(d/sync conn) job)]
+            _ (create-dummy-instance conn job :instance-status :instance.status/failed
+                                     :reason :preempted-by-rebalancer) ; Not counted
+            _ (create-dummy-instance conn job :instance-status :instance.status/failed
+                                     :reason :preempted-by-rebalancer) ; Not counted
+            _ (create-dummy-instance conn job :instance-status :instance.status/running) ; Not counted
+            db (d/db conn)
+            job-ent (d/entity @(d/sync conn) job)]
         (is (= (util/job-ent->attempts-consumed db job-ent) 0))
-       ))
+        ))
     (testing "Some nil reasons"
       (let [job (create-dummy-job conn :user "tsram" :job-state :job.state/completed :retry-count 3)
-           _ (create-dummy-instance conn job :instance-status :instance.status/failed
-                                    :reason :unknown) ; Counted
-           _ (create-dummy-instance conn job :instance-status :instance.status/failed) ; Counted
-           _ (create-dummy-instance conn job :instance-status :instance.status/failed
-                                    :reason :preempted-by-rebalancer) ; Not counted
-           _ (create-dummy-instance conn job :instance-status :instance.status/running) ; Not counted
-           db (d/db conn)
-           job-ent (d/entity @(d/sync conn) job)]
+            _ (create-dummy-instance conn job :instance-status :instance.status/failed
+                                     :reason :unknown) ; Counted
+            _ (create-dummy-instance conn job :instance-status :instance.status/failed) ; Counted
+            _ (create-dummy-instance conn job :instance-status :instance.status/failed
+                                     :reason :preempted-by-rebalancer) ; Not counted
+            _ (create-dummy-instance conn job :instance-status :instance.status/running) ; Not counted
+            db (d/db conn)
+            job-ent (d/entity @(d/sync conn) job)]
         (is (= (util/job-ent->attempts-consumed db job-ent) 2))
-       ))
+        ))
     (testing "Finished running job"
       (let [job (create-dummy-job conn :user "tsram" :job-state :job.state/completed :retry-count 3)
-           _ (create-dummy-instance conn job :instance-status :instance.status/success) ; Counted
-           _ (create-dummy-instance conn job :instance-status :instance.status/failed) ; Counted
-           _ (create-dummy-instance conn job :instance-status :instance.status/failed
-                                    :reason :preempted-by-rebalancer) ; Not counted
-           _ (create-dummy-instance conn job :instance-status :instance.status/running) ; Not counted
-           db (d/db conn)
-           job-ent (d/entity @(d/sync conn) job)]
+            _ (create-dummy-instance conn job :instance-status :instance.status/success) ; Counted
+            _ (create-dummy-instance conn job :instance-status :instance.status/failed) ; Counted
+            _ (create-dummy-instance conn job :instance-status :instance.status/failed
+                                     :reason :preempted-by-rebalancer) ; Not counted
+            _ (create-dummy-instance conn job :instance-status :instance.status/running) ; Not counted
+            db (d/db conn)
+            job-ent (d/entity @(d/sync conn) job)]
         (is (= (util/job-ent->attempts-consumed db job-ent) 2))
-       ))
+        ))
     (testing "Finished job"
       (let [job (create-dummy-job conn :user "tsram" :job-state :job.state/completed :retry-count 3)
-           _ (create-dummy-instance conn job :instance-status :instance.status/success) ; Counted
-           _ (create-dummy-instance conn job :instance-status :instance.status/failed) ; Counted
-           _ (create-dummy-instance conn job :instance-status :instance.status/failed
-                                    :reason :preempted-by-rebalancer) ; Not counted
-           db (d/db conn)
-           job-ent (d/entity @(d/sync conn) job)]
+            _ (create-dummy-instance conn job :instance-status :instance.status/success) ; Counted
+            _ (create-dummy-instance conn job :instance-status :instance.status/failed) ; Counted
+            _ (create-dummy-instance conn job :instance-status :instance.status/failed
+                                     :reason :preempted-by-rebalancer) ; Not counted
+            db (d/db conn)
+            job-ent (d/entity @(d/sync conn) job)]
         (is (= (util/job-ent->attempts-consumed db job-ent) 2))
-       ))
+        ))
 
     ))
 
@@ -288,10 +288,10 @@
       ;; test less flaky 
       (let [start-time (Date.)
             job1 (create-dummy-job conn
-                              :user "u1"
-                              :job-state state
-                              :submit-time (Date.)
-                              :custom-executor? false)
+                                   :user "u1"
+                                   :job-state state
+                                   :submit-time (Date.)
+                                   :custom-executor? false)
             ; this job should never be returned.
             _ (create-dummy-job conn
                                 :user "u1"
@@ -300,23 +300,23 @@
                                 :custom-executor? true)
             _ (Thread/sleep 5)
             job2 (create-dummy-job conn
-                              :user "u1"
-                              :job-state state
-                              :submit-time (Date.)
-                              :custom-executor? false)
+                                   :user "u1"
+                                   :job-state state
+                                   :submit-time (Date.)
+                                   :custom-executor? false)
             _ (Thread/sleep 5)
-            half-way-time (Date.) 
+            half-way-time (Date.)
             job3 (create-dummy-job conn
-                              :user "u2"
-                              :job-state state
-                              :submit-time (Date.)
-                              :custom-executor? false)
+                                   :user "u2"
+                                   :job-state state
+                                   :submit-time (Date.)
+                                   :custom-executor? false)
             _ (Thread/sleep 5)
             job4 (create-dummy-job conn
-                              :user "u1"
-                              :job-state state
-                              :submit-time (Date.)
-                              :custom-executor? false)
+                                   :user "u1"
+                                   :job-state state
+                                   :submit-time (Date.)
+                                   :custom-executor? false)
             _ (Thread/sleep 5)
             end-time (Date.)]
         (testing (str "get " state " jobs")
@@ -328,7 +328,7 @@
                                                             1))))
           (is (= (map :db/id
                       (util/get-jobs-by-user-and-states (d/db conn) "u1" [state]
-                                                        start-time half-way-time 
+                                                        start-time half-way-time
                                                         1))
                  [job1]))
           (is (= 3 (count (util/get-jobs-by-user-and-states (d/db conn) "u1" [state]
@@ -352,5 +352,74 @@
           (is (= 0 (count (util/get-jobs-by-user-and-states (d/db conn) "u1" [state]
                                                             #inst "2017-06-01" #inst "2017-06-02"
                                                             10)))))))))
+
+(deftest test-xform-pipe
+  (let [initial-state []
+        in-xform conj
+        out-finalizer-counter (atom 0)
+        out-finalizer (fn [state] (reset! out-finalizer-counter (count state)) [[] state])]
+
+    (testing "basic piping"
+      (let [in-chan (async/chan 10)
+            out-chan (async/chan)]
+
+        (reset! out-finalizer-counter 0)
+        (util/xform-pipe in-chan initial-state in-xform out-chan out-finalizer)
+
+        (testing "consume initial batch"
+          (async/>!! in-chan 1)
+          (async/>!! in-chan 2)
+          (async/>!! in-chan 3)
+          (testutil/poll-until #(= @out-finalizer-counter 3) 10 500)
+          (is (= [1 2 3] (async/<!! out-chan))))
+
+        (testing "keep consuming empty data when no new input"
+          (is (= [] (async/<!! out-chan)))
+          (is (= [] (async/<!! out-chan))))
+
+        (testing "consume subsequent batch"
+          (async/>!! in-chan 4)
+          (async/>!! in-chan 5)
+          (testutil/poll-until #(= @out-finalizer-counter 2) 10 500)
+          (is (= [4 5] (async/<!! out-chan))))
+
+        (testing "keep consuming empty data when no new input"
+          (is (= [] (async/<!! out-chan)))
+          (is (= [] (async/<!! out-chan))))
+
+        (async/close! in-chan)))
+
+    (testing "callback invocations"
+      (let [in-chan (async/chan 10)
+            out-chan (async/chan)
+            on-consumed-promise (promise)
+            on-consumed (fn [consumed] (deliver on-consumed-promise consumed))
+            on-finished-promise (promise)
+            on-finished (fn [] (deliver on-finished-promise :finished))]
+
+        (reset! out-finalizer-counter 0)
+        (util/xform-pipe in-chan initial-state in-xform out-chan out-finalizer
+                         :on-consumed on-consumed
+                         :on-finished on-finished)
+
+        (async/>!! in-chan 1)
+        (async/>!! in-chan 2)
+        (async/>!! in-chan 3)
+        (testutil/poll-until #(>= @out-finalizer-counter 3) 10 500)
+        (is (= [1 2 3] (async/<!! out-chan)))
+
+        (testing "on-consumed callback"
+          (deliver on-consumed-promise :unfulfilled)
+          (is (= [1 2 3] @on-consumed-promise)))
+
+        (async/close! in-chan)
+
+        (testing "on-finished callback"
+          (testutil/poll-until #(= :finished @on-finished-promise) 10 500)
+          (is (= :finished @on-finished-promise)))
+
+        (testing "no more data on out-chan"
+          (let [[_ chan] (async/alts!! [out-chan (async/timeout 100)] :priority true)]
+            (is (not= chan out-chan))))))))
 
 (comment (run-tests))

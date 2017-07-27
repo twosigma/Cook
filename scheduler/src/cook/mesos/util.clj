@@ -61,15 +61,15 @@
   {:added "1.1"}
   [inner outer form]
   (cond
-   (list? form) (outer (apply list (map inner form)))
-   (instance? clojure.lang.IMapEntry form) (outer (vec (map inner form)))
-   (seq? form) (outer (doall (map inner form)))
-   (instance? clojure.lang.IRecord form)
-     (outer (reduce (fn [r x] (conj r (inner x))) form form))
-   ;; Added the line below to work with datomic entities..
-   (instance? datomic.query.EntityMap form) (outer (into {} (map inner) form))
-   (coll? form) (outer (into (empty form) (map inner) form))
-   :else (outer form)))
+    (list? form) (outer (apply list (map inner form)))
+    (instance? clojure.lang.IMapEntry form) (outer (vec (map inner form)))
+    (seq? form) (outer (doall (map inner form)))
+    (instance? clojure.lang.IRecord form)
+    (outer (reduce (fn [r x] (conj r (inner x))) form form))
+    ;; Added the line below to work with datomic entities..
+    (instance? datomic.query.EntityMap form) (outer (into {} (map inner) form))
+    (coll? form) (outer (into (empty form) (map inner) form))
+    :else (outer form)))
 
 (defn postwalk
   "Performs a depth-first, post-order traversal of form.  Calls f on
@@ -244,26 +244,26 @@
    in the specified timeframe, without a custom executor."
   [db user start end limit]
   (timers/time!
-   get-completed-jobs-by-user-duration
-   (let [;; Expand the time range so that clock skew between cook
-         ;; and datomic doesn't cause us to miss jobs
-         ;; 1 hour was picked because a skew larger than that would be
-         ;; suspicious
-         expanded-start (Date. (- (.getTime start) 
-                                  (-> 1 t/hours t/in-millis)))
-         expanded-end (Date. (+ (.getTime end)
-                                (-> 1 t/hours t/in-millis)))]
-     (->> (d/seek-datoms db :avet :job/user user (d/entid-at db :db.part/user expanded-start))
-          (take-while #(and (< (.e %) (d/entid-at db :db.part/user expanded-end))
-                            (= (.a %) (d/entid db :job/user))
-                            (= (.v %) user)))
-          (map #(.e %))
-          (map (partial d/entity db))
-          (filter #(<= (.getTime start) (.getTime (:job/submit-time %))))
-          (filter #(< (.getTime (:job/submit-time %)) (.getTime end)))
-          (filter #(= :job.state/completed (:job/state %)))
-          (filter #(not (:job/custom-executor %)))
-          (take limit)))))
+    get-completed-jobs-by-user-duration
+    (let [;; Expand the time range so that clock skew between cook
+          ;; and datomic doesn't cause us to miss jobs
+          ;; 1 hour was picked because a skew larger than that would be
+          ;; suspicious
+          expanded-start (Date. (- (.getTime start)
+                                   (-> 1 t/hours t/in-millis)))
+          expanded-end (Date. (+ (.getTime end)
+                                 (-> 1 t/hours t/in-millis)))]
+      (->> (d/seek-datoms db :avet :job/user user (d/entid-at db :db.part/user expanded-start))
+           (take-while #(and (< (.e %) (d/entid-at db :db.part/user expanded-end))
+                             (= (.a %) (d/entid db :job/user))
+                             (= (.v %) user)))
+           (map #(.e %))
+           (map (partial d/entity db))
+           (filter #(<= (.getTime start) (.getTime (:job/submit-time %))))
+           (filter #(< (.getTime (:job/submit-time %)) (.getTime end)))
+           (filter #(= :job.state/completed (:job/state %)))
+           (filter #(not (:job/custom-executor %)))
+           (take limit)))))
 
 ;; This is a separate query from completed jobs because most running/waiting jobs
 ;; will be at the end of the time range, so the query is somewhat inefficent.
@@ -276,18 +276,18 @@
    get-completed-jobs-by-user instead."
   [db user start end state]
   (timers/time!
-   (timers/timer ["cook-mesos" "scheduler" (str "get-" (name state) "-jobs-by-user-duration")])
-   (->> (q '[:find [?j ...]
-             :in $ ?user ?state ?start ?end
-             :where
-             [?j :job/state ?state]
-             [?j :job/user ?user]
-             [?j :job/submit-time ?t]
-             [(<= ?start ?t)]
-             [(< ?t ?end)]
-             [?j :job/custom-executor false]]
-           db user state start end)
-        (map (partial d/entity db)))))
+    (timers/timer ["cook-mesos" "scheduler" (str "get-" (name state) "-jobs-by-user-duration")])
+    (->> (q '[:find [?j ...]
+              :in $ ?user ?state ?start ?end
+              :where
+              [?j :job/state ?state]
+              [?j :job/user ?user]
+              [?j :job/submit-time ?t]
+              [(<= ?start ?t)]
+              [(< ?t ?end)]
+              [?j :job/custom-executor false]]
+            db user state start end)
+         (map (partial d/entity db)))))
 
 (defn get-jobs-by-user-and-states
   "Returns all jobs for a particular user in the specified states
@@ -373,10 +373,10 @@
   ([]
    (same-user-task-comparator []))
   ([tasks]
-   ;; Pre-compute the feature-vector for tasks we expect to see to improve performance
-   ;; This is done because accessing fields in datomic entities is much slower than
-   ;; a map access, even when accessing multiple times.
-   ;; Don't want to complicate the function by caching new values in the event we see them
+    ;; Pre-compute the feature-vector for tasks we expect to see to improve performance
+    ;; This is done because accessing fields in datomic entities is much slower than
+    ;; a map access, even when accessing multiple times.
+    ;; Don't want to complicate the function by caching new values in the event we see them
    (let [task-ent->feature-vector (pc/map-from-keys task->feature-vector tasks)]
      (fn [task1 task2]
        (compare (or (task-ent->feature-vector task1)
@@ -421,9 +421,9 @@
               {:state state'
                :x (when should-keep? x)}))]
     (->> coll
-      (reductions fr {:state init-state :x nil})
-      (filter :x)
-      (map :x))))
+         (reductions fr {:state init-state :x nil})
+         (filter :x)
+         (map :x))))
 
 (defn task-run-time
   "Returns the run time of the task as a joda interval"
@@ -451,10 +451,10 @@
    goes from guuid to a list of juuids."
   [jobs]
   (->> jobs
-     (map (fn [job]
-            (mapv #(vector (:group/uuid %) #{(:job/uuid job)}) (:group/_job job))))
-     (map (partial into {}))
-     (reduce (partial merge-with clojure.set/union))))
+       (map (fn [job]
+              (mapv #(vector (:group/uuid %) #{(:job/uuid job)}) (:group/_job job))))
+       (map (partial into {}))
+       (reduce (partial merge-with clojure.set/union))))
 
 (defn make-guuid->considerable-cotask-ids
   "Takes a list of jobs and their corresponding task-ids. Returns a function that, given a group uuid, returns the
@@ -531,15 +531,15 @@
             :or {error-handler identity
                  on-finished #()}}]]
   (async/go-loop []
-                 (if-let [x (async/<! ch)]
-                   (do (async/<! (async/thread
-                                   (try
-                                     (f)
-                                     (catch Exception e
-                                       (error-handler e)))))
-                       (close-when-ch! x)
-                       (recur))
-                   (on-finished)))
+    (if-let [x (async/<! ch)]
+      (do (async/<! (async/thread
+                      (try
+                        (f)
+                        (catch Exception e
+                          (error-handler e)))))
+          (close-when-ch! x)
+          (recur))
+      (on-finished)))
   (fn cancel! []
     (async/close! ch)))
 
@@ -552,3 +552,26 @@
   [ch ch-size]
   (->> (repeatedly ch-size #(async/poll! ch))
        (remove nil?)))
+
+(defn xform-pipe
+  "Reads elements from the `in-chan` channel and supplies elements to the `out-chan` channel.
+   Maintains a state (initialized to `initial-state`) that is updated by applying the reducing function
+   `in-xform` to the current state and the incoming element `(in-xform state element)`.
+   `out-finalizer` accepts the current state and produces `[reset-state out-value]`.
+   When the out channel can receive an element, the `value` is put on the channel
+   and the state is set to the `reset-state` returned from the `out-finalizer`.
+
+   Note: This function does not perform error handling, exceptions must be explicitly handled in the
+   provided functions (i.e. in-xform, out-finalizer, on-consumed and on-finished)."
+  [in-chan initial-state in-xform out-chan out-finalizer &
+   {:keys [on-consumed on-finished] :or {on-consumed identity, on-finished #()}}]
+  (async/go-loop [state initial-state]
+    (let [[reset-state out-value] (out-finalizer state)
+          [data chan] (async/alts! [[out-chan out-value] in-chan] :priority true)]
+      (condp = chan
+        out-chan (do
+                   (on-consumed out-value)
+                   (recur reset-state))
+        in-chan (if (nil? data)
+                  (on-finished)
+                  (recur (in-xform state data)))))))

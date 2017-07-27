@@ -292,35 +292,30 @@
    It returns the progress-aggregator-chan which can be used to send progress-state messages to the aggregator."
   [pending-progress-threshold progress-state-chan]
   (log/info "Starting progress update aggregator")
-  (let [progress-aggregator-chan (async/chan (async/sliding-buffer pending-progress-threshold))]
-    (async/go
-      (loop [instance-id->progress-state {}]
-        (let [[data chan]
-              (async/alts! [[progress-state-chan instance-id->progress-state] progress-aggregator-chan] :priority true)]
-          (condp = chan
-            progress-state-chan
-            (do
-              (log/debug "Forwarded" (count instance-id->progress-state) "progress states to the transactor")
-              (histograms/update! progress-aggregator-pending-states (count instance-id->progress-state))
-              (recur {}))
-
-            progress-aggregator-chan
-            (if data
-              (let [{:keys [instance-id response-chan]} data]
-                (meters/mark! progress-aggregator-message-rate)
-                (if (or (< (count instance-id->progress-state) pending-progress-threshold)
-                        (contains? instance-id->progress-state instance-id))
-                  (let [progress-state (select-keys data [:progress-message :progress-percent])
-                        instance-id->progress-state' (assoc instance-id->progress-state instance-id progress-state)]
-                    (when response-chan (async/>! response-chan :accepted))
-                    (recur instance-id->progress-state'))
-                  (do
-                    (meters/mark! progress-aggregator-drop-rate)
-                    (counters/inc! progress-aggregator-drop-count)
-                    (log/debug "Dropping" data "as threshold has been reached")
-                    (when response-chan (async/>! response-chan :dropped))
-                    (recur instance-id->progress-state))))
-              (log/info "Exiting progress update aggregator"))))))
+  (let [progress-aggregator-chan (async/chan (async/sliding-buffer pending-progress-threshold))
+        progress-aggregator-fn (fn progress-aggregator-fn [instance-id->progress-state data]
+                                 (let [{:keys [instance-id response-chan]} data]
+                                   (meters/mark! progress-aggregator-message-rate)
+                                   (if (or (< (count instance-id->progress-state) pending-progress-threshold)
+                                           (contains? instance-id->progress-state instance-id))
+                                     (let [progress-state (select-keys data [:progress-message :progress-percent])
+                                           instance-id->progress-state' (assoc instance-id->progress-state instance-id progress-state)]
+                                       (when response-chan (async/put! response-chan :accepted))
+                                       instance-id->progress-state')
+                                     (do
+                                       (meters/mark! progress-aggregator-drop-rate)
+                                       (counters/inc! progress-aggregator-drop-count)
+                                       (log/debug "Dropping" data "as threshold has been reached")
+                                       (when response-chan (async/put! response-chan :dropped))
+                                       instance-id->progress-state))))
+        progress-consumer-fn (fn progress-consumer-fn [instance-id->progress-state]
+                               [{} instance-id->progress-state])]
+    (util/xform-pipe progress-aggregator-chan {} progress-aggregator-fn progress-state-chan progress-consumer-fn
+                     :on-consumed (fn [instance-id->progress-state]
+                                    (log/debug "Forwarded" (count instance-id->progress-state) "progress states to the transactor")
+                                    (histograms/update! progress-aggregator-pending-states (count instance-id->progress-state)))
+                     :on-finished (fn []
+                                    (log/info "Exiting progress update aggregator")))
     progress-aggregator-chan))
 
 (histograms/defhistogram [cook-mesos scheduler progress-updater-pending-states])
