@@ -284,6 +284,23 @@
 (meters/defmeter [cook-mesos scheduler progress-aggregator-drop-rate])
 (counters/defcounter [cook-mesos scheduler progress-aggregator-drop-count])
 
+(defn progress-aggregator
+  "Aggregates the progress state specified in `data` into the current progress state `instance-id->progress-state`.
+   It drops messages if the aggregated state has more than `pending-progress-threshold` different entries.
+   It returns the new progress state."
+  [pending-progress-threshold instance-id->progress-state {:keys [instance-id] :as data}]
+  (meters/mark! progress-aggregator-message-rate)
+  (if (or (< (count instance-id->progress-state) pending-progress-threshold)
+          (contains? instance-id->progress-state instance-id))
+    (let [progress-state (select-keys data [:progress-message :progress-percent])
+          instance-id->progress-state' (assoc instance-id->progress-state instance-id progress-state)]
+      instance-id->progress-state')
+    (do
+      (meters/mark! progress-aggregator-drop-rate)
+      (counters/inc! progress-aggregator-drop-count)
+      (log/debug "Dropping" data "as threshold has been reached")
+      instance-id->progress-state)))
+
 (defn progress-update-aggregator
   "Launches a long running go block that triggers publishing the latest aggregated instance-id->progress-state
    whenever there is a read on the progress-state-chan.
@@ -294,20 +311,7 @@
   (log/info "Starting progress update aggregator")
   (let [progress-aggregator-chan (async/chan (async/sliding-buffer pending-progress-threshold))
         progress-aggregator-fn (fn progress-aggregator-fn [instance-id->progress-state data]
-                                 (let [{:keys [instance-id response-chan]} data]
-                                   (meters/mark! progress-aggregator-message-rate)
-                                   (if (or (< (count instance-id->progress-state) pending-progress-threshold)
-                                           (contains? instance-id->progress-state instance-id))
-                                     (let [progress-state (select-keys data [:progress-message :progress-percent])
-                                           instance-id->progress-state' (assoc instance-id->progress-state instance-id progress-state)]
-                                       (when response-chan (async/put! response-chan :accepted))
-                                       instance-id->progress-state')
-                                     (do
-                                       (meters/mark! progress-aggregator-drop-rate)
-                                       (counters/inc! progress-aggregator-drop-count)
-                                       (log/debug "Dropping" data "as threshold has been reached")
-                                       (when response-chan (async/put! response-chan :dropped))
-                                       instance-id->progress-state))))
+                                 (progress-aggregator pending-progress-threshold instance-id->progress-state data))
         progress-consumer-fn (fn progress-consumer-fn [instance-id->progress-state]
                                [{} instance-id->progress-state])]
     (util/xform-pipe progress-aggregator-chan {} progress-aggregator-fn progress-state-chan progress-consumer-fn

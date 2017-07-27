@@ -356,21 +356,21 @@
 (deftest test-xform-pipe
   (let [initial-state []
         in-xform conj
-        out-finalizer-counter (atom 0)
-        out-finalizer (fn [state] (reset! out-finalizer-counter (count state)) [[] state])]
+        out-xform-counter (atom 0)
+        out-xform (fn [state] (reset! out-xform-counter (count state)) [[] state])]
 
     (testing "basic piping"
       (let [in-chan (async/chan 10)
             out-chan (async/chan)]
 
-        (reset! out-finalizer-counter 0)
-        (util/xform-pipe in-chan initial-state in-xform out-chan out-finalizer)
+        (reset! out-xform-counter 0)
+        (util/xform-pipe in-chan initial-state in-xform out-chan out-xform)
 
         (testing "consume initial batch"
           (async/>!! in-chan 1)
           (async/>!! in-chan 2)
           (async/>!! in-chan 3)
-          (testutil/poll-until #(= @out-finalizer-counter 3) 10 500)
+          (testutil/poll-until #(= @out-xform-counter 3) 10 500)
           (is (= [1 2 3] (async/<!! out-chan))))
 
         (testing "keep consuming empty data when no new input"
@@ -380,7 +380,7 @@
         (testing "consume subsequent batch"
           (async/>!! in-chan 4)
           (async/>!! in-chan 5)
-          (testutil/poll-until #(= @out-finalizer-counter 2) 10 500)
+          (testutil/poll-until #(= @out-xform-counter 2) 10 500)
           (is (= [4 5] (async/<!! out-chan))))
 
         (testing "keep consuming empty data when no new input"
@@ -397,15 +397,15 @@
             on-finished-promise (promise)
             on-finished (fn [] (deliver on-finished-promise :finished))]
 
-        (reset! out-finalizer-counter 0)
-        (util/xform-pipe in-chan initial-state in-xform out-chan out-finalizer
+        (reset! out-xform-counter 0)
+        (util/xform-pipe in-chan initial-state in-xform out-chan out-xform
                          :on-consumed on-consumed
                          :on-finished on-finished)
 
         (async/>!! in-chan 1)
         (async/>!! in-chan 2)
         (async/>!! in-chan 3)
-        (testutil/poll-until #(>= @out-finalizer-counter 3) 10 500)
+        (testutil/poll-until #(>= @out-xform-counter 3) 10 500)
         (is (= [1 2 3] (async/<!! out-chan)))
 
         (testing "on-consumed callback"
