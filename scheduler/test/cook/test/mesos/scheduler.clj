@@ -1705,14 +1705,14 @@
                                       {:instance-id "i2" :progress-message "i2.m1" :progress-percent 20})))))
 
 (deftest test-progress-update-aggregator
-  (let [actual-progress-aggregator sched/progress-aggregator]
-    (with-redefs [sched/progress-aggregator
-                  (fn progress-aggregator
-                    [pending-progress-threshold instance-id->progress-state {:keys [instance-id response-chan] :as data}]
-                    (let [result (actual-progress-aggregator pending-progress-threshold instance-id->progress-state data)]
-                      (when response-chan
-                        (async/close! response-chan))
-                      result))]
+  (let [actual-progress-aggregator sched/progress-aggregator
+        redef-progress-aggregator (fn redef-progress-aggregator
+                                    [pending-progress-threshold instance-id->progress-state {:keys [response-chan] :as data}]
+                                    (let [result (actual-progress-aggregator pending-progress-threshold instance-id->progress-state data)]
+                                      (when response-chan
+                                        (async/close! response-chan))
+                                      result))]
+    (with-redefs [sched/progress-aggregator redef-progress-aggregator]
       (letfn [(send [progress-aggregator-chan message & {:keys [sync] :or {sync false}}]
                 (let [message (cond-> message
                                       sync (assoc :response-chan (async/promise-chan)))
@@ -1725,6 +1725,7 @@
           (let [pending-progress-threshold 10
                 progress-state-chan (async/chan 1)
                 progress-aggregator-chan (sched/progress-update-aggregator pending-progress-threshold progress-state-chan)]
+
             (is (= {} (async/<!! progress-state-chan)))
             (is (= {} (async/<!! progress-state-chan)))
 
@@ -1741,6 +1742,7 @@
             (send progress-aggregator-chan {:instance-id "i3" :progress-message "i3.m1" :progress-percent 10})
             (send progress-aggregator-chan {:instance-id "i2" :progress-message "i2.m2" :progress-percent 25})
             (send progress-aggregator-chan {:instance-id "i1" :progress-message "i1.m2" :progress-percent 45} :sync true)
+
             (is (= {"i1" {:progress-message "i1.m2" :progress-percent 45}
                     "i2" {:progress-message "i2.m2", :progress-percent 25}
                     "i3" {:progress-message "i3.m1", :progress-percent 10}}
@@ -1752,19 +1754,29 @@
             (poll-until #(nil? (async/<!! progress-state-chan)) 100 1000)))
 
         (testing "basic progress overflow on channel"
-          (let [pending-progress-threshold 10
-                progress-state-chan (async/chan)
-                progress-aggregator-chan (sched/progress-update-aggregator pending-progress-threshold progress-state-chan)]
-            (dotimes [n 100]
-              (send progress-aggregator-chan {:instance-id "i1" :progress-message (str "i1.m" n) :progress-percent n}))
-            (send progress-aggregator-chan {:instance-id "i1" :progress-message "i1.m100" :progress-percent 100} :sync true)
-            (is (= {"i1" {:progress-message "i1.m100", :progress-percent 100}}
-                   (async/<!! progress-state-chan)))
-            (is (= {} (async/<!! progress-state-chan)))
+          (let [progress-aggregator-counter (atom 0)]
+            (with-redefs [sched/progress-aggregator
+                          (fn progress-aggregator
+                            [pending-progress-threshold instance-id->progress-state {:keys [response-chan] :as data}]
+                            (swap! progress-aggregator-counter inc)
+                            (Thread/sleep 100) ;; delay processing of message to cause queue to build up
+                            (redef-progress-aggregator pending-progress-threshold instance-id->progress-state data))]
 
-            (async/close! progress-state-chan)
-            (async/close! progress-aggregator-chan)
-            (poll-until #(nil? (async/<!! progress-state-chan)) 100 1000)))))))
+              (let [pending-progress-threshold 10
+                    progress-state-chan (async/chan)
+                    progress-aggregator-chan (sched/progress-update-aggregator pending-progress-threshold progress-state-chan)]
+                (dotimes [n 100]
+                  (send progress-aggregator-chan {:instance-id "i1" :progress-message (str "i1.m" n) :progress-percent n}))
+                (send progress-aggregator-chan {:instance-id "i1" :progress-message "i1.m100" :progress-percent 100} :sync true)
+
+                (is (< @progress-aggregator-counter 100))
+                (is (= {"i1" {:progress-message "i1.m100", :progress-percent 100}}
+                       (async/<!! progress-state-chan)))
+                (is (= {} (async/<!! progress-state-chan)))
+
+                (async/close! progress-state-chan)
+                (async/close! progress-aggregator-chan)
+                (poll-until #(nil? (async/<!! progress-state-chan)) 100 1000)))))))))
 
 (deftest test-progress-update-transactor
   (let [uri "datomic:mem://test-progress-update-transactor"
