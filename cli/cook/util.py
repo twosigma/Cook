@@ -7,6 +7,8 @@ import time
 import uuid
 from datetime import datetime, timedelta
 
+import logging
+
 
 def merge_dicts(*ds):
     """Merge a variable number of dicts, from right to left."""
@@ -30,6 +32,7 @@ def load_json_file(path):
     if os.path.isfile(path):
         with open(path) as json_file:
             try:
+                logging.debug('attempting to load json configuration from %s' % path)
                 content = json.load(json_file)
             except Exception:
                 pass

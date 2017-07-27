@@ -355,12 +355,14 @@ class CookCliTest(unittest.TestCase):
         self.assertRegex(cli.stdout(cp), 'max_runtime\s+none')
 
     def test_submit_output_should_explain_what_happened(self):
-        cp = cli.submit_non_minimal('ls', self.cook_url)
+        cp, _ = cli.submit('ls', self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
-        self.assertIn("Job submitted successfully. Your job's UUID is", cli.stdout(cp))
-        cp = cli.submit_stdin_non_minimal(['ls', 'ls', 'ls'], self.cook_url)
+        self.assertIn("Job submitted successfully", cli.stdout(cp))
+        self.assertIn("Your job's UUID is", cli.stdout(cp))
+        cp, _ = cli.submit_stdin(['ls', 'ls', 'ls'], self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
-        self.assertIn("Jobs submitted successfully. Your jobs' UUIDs are", cli.stdout(cp))
+        self.assertIn("Jobs submitted successfully", cli.stdout(cp))
+        self.assertIn("Your jobs' UUIDs are", cli.stdout(cp))
 
     def test_submit_raw_should_error_if_command_is_given(self):
         cp, _ = cli.submit('ls', self.cook_url, submit_flags='--raw')

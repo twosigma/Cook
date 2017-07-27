@@ -5,6 +5,8 @@ import shlex
 import subprocess
 import tempfile
 
+from tests.cook import util
+
 logger = logging.getLogger(__name__)
 
 
@@ -38,32 +40,18 @@ def cli(args, cook_url=None, flags=None, stdin=None):
     return cp
 
 
-def submit_non_minimal(command=None, cook_url=None, flags=None, submit_flags=None, stdin=None):
-    """Submits one job via the CLI, with the standard explanatory output"""
+def submit(command=None, cook_url=None, flags=None, submit_flags=None, stdin=None):
+    """Submits one job via the CLI"""
     args = 'submit %s%s' % (submit_flags + ' ' if submit_flags else '', command if command else '')
     cp = cli(args, cook_url, flags, stdin)
-    return cp
-
-
-def submit(command=None, cook_url=None, flags=None, submit_flags=None, stdin=None):
-    """Submits one job via the CLI, with "minimal" output"""
-    submit_flags = '%s--minimal' % ((submit_flags + ' ') if submit_flags else '')
-    cp = submit_non_minimal(command, cook_url, flags, submit_flags, stdin)
-    uuids = stdout(cp).splitlines()
+    uuids = [s for s in stdout(cp).split() if len(s) == 36 and util.is_valid_uuid(s)]
     return cp, uuids
 
 
 def submit_stdin(commands, cook_url, flags=None, submit_flags=None):
-    """Submits one or more jobs via the CLI using stdin, with "minimal" output"""
+    """Submits one or more jobs via the CLI using stdin"""
     cp, uuids = submit(cook_url=cook_url, flags=flags, submit_flags=submit_flags, stdin=encode('\n'.join(commands)))
     return cp, uuids
-
-
-def submit_stdin_non_minimal(commands, cook_url, flags=None, submit_flags=None):
-    """Submits one or more jobs via the CLI using stdin, with the standard explanatory output"""
-    cp = submit_non_minimal(cook_url=cook_url, flags=flags, submit_flags=submit_flags,
-                            stdin=encode('\n'.join(commands)))
-    return cp
 
 
 def jobs(cp):

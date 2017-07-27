@@ -33,6 +33,7 @@ parser.add_argument('--cluster', '-c', help='the name of the Cook scheduler clus
 parser.add_argument('--url', '-u', help='the url of the Cook scheduler cluster to use')
 parser.add_argument('--config', '-C', help='the configuration file to use')
 parser.add_argument('--retries', '-r', help='the number of retries to use for HTTP connections', type=int, default=2)
+parser.add_argument('--silent', '-s', help='silent mode', dest='silent', action='store_true')
 parser.add_argument('--verbose', '-v', help='be more verbose/talkative (useful for debugging)',
                     dest='verbose', action='store_true')
 
@@ -41,6 +42,8 @@ subparsers = parser.add_subparsers(dest='action')
 actions = {}
 
 session = requests.Session()
+
+silent = False
 
 
 def default_config():
@@ -56,7 +59,9 @@ def cli(args):
     sub-commands (actions) if necessary.
     """
     args = vars(parser.parse_args(args))
-    verbose = args.pop('verbose')
+    global silent
+    silent = args.pop('silent')
+    verbose = args.pop('verbose') and not silent
 
     log_format = '%(asctime)s [%(levelname)s] %(message)s'
     if verbose:
@@ -126,8 +131,6 @@ submit_parser.add_argument('--max-runtime', help='maximum runtime for job', dest
 submit_parser.add_argument('--cpus', help='cpus to reserve for job', type=float)
 submit_parser.add_argument('--mem', help='memory to reserve for job', type=int)
 submit_parser.add_argument('--raw', '-r', help='raw job spec in json format', dest='raw', action='store_true')
-submit_parser.add_argument('--minimal', '-m', help='only output job uuid(s), without explanatory text', dest='minimal',
-                           action='store_true')
 submit_parser.add_argument('command', nargs='?')
 submit_parser.add_argument('args', nargs=argparse.REMAINDER)
 
@@ -158,8 +161,13 @@ def make_url(cluster, endpoint):
     return urljoin(cluster['url'], endpoint)
 
 
-def make_federated_request(clusters, make_request_fn, success_status, parse_response_fn,
-                           description, endpoint='rawscheduler'):
+def print_info(s):
+    if not silent:
+        print(s)
+
+
+def submit_federated(clusters, make_request_fn, success_status, parse_response_fn,
+                     description, endpoint='rawscheduler'):
     """
     Attempts to make a request (via make_request_fn) to each cluster in clusters, until a cluster
     returns a status code equal to success_status. If no cluster returns success status, throws.
@@ -167,6 +175,7 @@ def make_federated_request(clusters, make_request_fn, success_status, parse_resp
     for cluster in clusters:
         try:
             url = make_url(cluster, endpoint)
+            print_info('Attempting to submit on %s cluster...' % cluster['name'])
             resp = make_request_fn(url)
             logging.info('response from cook: %s' % resp.text)
             if resp.status_code == success_status:
@@ -209,7 +218,6 @@ def submit(clusters, args):
     raw = safe_pop(job, 'raw')
     command_from_command_line = safe_pop(job, 'command')
     command_args = safe_pop(job, 'args')
-    minimal = safe_pop(job, 'minimal')
 
     if raw:
         if command_from_command_line:
@@ -237,18 +245,18 @@ def submit(clusters, args):
         if not j.get('name'):
             j['name'] = "{0}_{1}".format(os.environ['USER'], uuid.uuid4())
 
-    def parse_submit_response(response, _):
+    def parse_submit_response(response, cluster):
         uuids = [p for p in response.text.strip('"').split() if is_valid_uuid(p)]
-        if minimal:
+        if silent:
             return uuids
         elif len(uuids) == 1:
-            return "Job submitted successfully. Your job's UUID is %s ." % uuids[0]
+            return "Job submitted successfully on %s. Your job's UUID is:\n%s" % (cluster['name'], uuids[0])
         else:
-            return "Jobs submitted successfully. Your jobs' UUIDs are: %s." % ', '.join(uuids)
+            return "Jobs submitted successfully on %s. Your jobs' UUIDs are:\n%s" % (cluster['name'], '\n'.join(uuids))
 
     request_body = {'jobs': jobs}
-    return make_federated_request(clusters, lambda u: session.post(u, json=request_body),
-                                  201, parse_submit_response, 'create job(s)')
+    return submit_federated(clusters, lambda u: session.post(u, json=request_body),
+                            201, parse_submit_response, 'create job(s)')
 
 
 actions.update({'submit': submit})

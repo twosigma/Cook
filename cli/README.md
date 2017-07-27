@@ -46,31 +46,6 @@ The `defaults` map contains default values that are passed each time a command i
 
 The fastest way to learn more about `cs` is with the `-h` (or `—help`) option.
 
-```
-usage: cs [-h] [--cluster CLUSTER] [--url URL] [--config CONFIG]
-          [--retries RETRIES] [--verbose]
-          {submit,wait,show} ...
-
-cs is the Cook Scheduler CLI
-
-positional arguments:
-  {submit,wait,show}
-    submit              create job for command
-    wait                wait for job(s) to complete by uuid
-    show                show job(s) by uuid
-
-optional arguments:
-  -h, --help            show this help message and exit
-  --cluster CLUSTER, -c CLUSTER
-                        the name of the Cook scheduler cluster to use
-  --url URL, -u URL     the url of the Cook scheduler cluster to use
-  --config CONFIG, -C CONFIG
-                        the configuration file to use
-  --retries RETRIES, -r RETRIES
-                        the number of retries to use for HTTP connections
-  --verbose, -v         be more verbose/talkative (useful for debugging)
-```
-
 All global options (`--cluster`, `--config`, etc) can be provided when using subcommands.
 
 #### `submit`
@@ -78,10 +53,10 @@ All global options (`--cluster`, `--config`, etc) can be provided when using sub
 You can submit one or more jobs with `submit`. A single command can be provided as a positional argument, or multiple commands can be provided, one per line, via `stdin`. Jobs can also be passed as "raw" JSON data by setting the `--raw` flag. The `submit` command returns UUIDs, one per line, for each created job.
 
 ```
-$ cs submit --help                                                                                                                                                                                                     [1/1895]
+$ cs submit --help
 usage: cs submit [-h] [--uuid UUID] [--name NAME] [--priority]
                  [--max-retries MAX-RETRIES] [--max-runtime MAX-RUNTIME]
-                 [--cpus CPUS] [--mem MEM] [--raw] [--minimal]
+                 [--cpus CPUS] [--mem MEM] [--raw]
                  [command] ...
 
 positional arguments:
@@ -100,7 +75,6 @@ optional arguments:
   --cpus CPUS           cpus to reserve for job
   --mem MEM             memory to reserve for job
   --raw, -r             raw job spec in json format
-  --minimal, -m         only output job uuid(s), without explanatory text
 ```
 
 #### `wait`
@@ -164,34 +138,63 @@ Job submitted successfully. Your job's UUID is 0bc0f481-fabb-43eb-aa44-b87e8d3ec
 
 Simple job creation, and wait for job to complete:
 ```shell
-$ cs wait $(cs submit --minimal echo 1)
+$ cs submit echo 1
+Attempting to submit on dev cluster...
+Job submitted successfully on dev. Your job's UUID is:
+543ed1b9-db42-445f-a731-d6761b66e4a8
+
+$ cs wait 543ed1b9-db42-445f-a731-d6761b66e4a8
 ```
 
 Submit a job with a custom name, and immediately query it:
 ```
-$ cs show --json $(cs submit --name ls-job --minimal ls) | jq
+$ cs submit --name ls-job ls                                                                                                                                                                                          [24/1842]
+Attempting to submit on dev cluster...
+Job submitted successfully on dev. Your job's UUID is:
+32324e7c-79e6-41f9-b055-eb43ba9625b6
+
+$ cs show --json 32324e7c-79e6-41f9-b055-eb43ba9625b6 | jq
 [
   {
-    "gpus": 0,
-    "command": "ls",
-    "mem": 128,
-    "labels": {},
-    "ports": 0,
-    "state": "waiting",
-    "submit_time": 1496244143759,
+    "retries_remaining": 0,
+    "max_runtime": 9223372036854776000,
     "max_retries": 1,
-    "uris": [],
-    "cpus": 1,
-    "user": "root",
-    "env": {},
-    "status": "waiting",
-    "instances": [],
-    "framework_id": null,
-    "retries_remaining": 1,
-    "uuid": "b5b23f4a-2bb6-4873-a4c6-7271d26b14fd",
+    "framework_id": "cook-framework-12321",
+    "labels": {},
+    "mem": 128,
+    "status": "completed",
+    "gpus": 0,
+    "instances": [
+      {
+        "executor_id": "3ca61bbb-b6f6-4beb-b68a-043f74f43cd3",
+        "task_id": "3ca61bbb-b6f6-4beb-b68a-043f74f43cd3",
+        "slave_id": "e6d1cd35-730a-4b8d-9b89-027a0c9153f0-S1",
+        "preempted": false,
+        "ports": [],
+        "mesos_start_time": 1501171182930,
+        "status": "success",
+        "output_url": "http://172.17.0.7:5051/files/read.json?path=%2Fvar%2Flib%2Fmesos%2Fagent-1910404513%2Fslaves%2Fe6d1cd35-730a-4b8d-9b89-027a0c9153f0-S1%2Fframeworks%2Fcook-framework-12321%2Fexecutors%2F3ca61bbb-b6f6-4beb-b68a-043f74f43cd3%2Fruns%2F95032
+ac6-6b18-41ba-814d-036bc94865c9",
+        "hostname": "172.17.0.7",
+        "start_time": 1501171182802,
+        "backfilled": false,
+        "end_time": 1501171183048,
+        "progress": 0
+      }
+    ],
+    "ports": 0,
+    "command": "ls",
+    "constraints": [],
     "priority": 50,
+    "disable_mea_culpa_retries": false,
+    "submit_time": 1501171181616,
     "name": "ls-job",
-    "max_runtime": 9223372036854776000
+    "env": {},
+    "uuid": "32324e7c-79e6-41f9-b055-eb43ba9625b6",
+    "user": "root",
+    "cpus": 1,
+    "uris": [],
+    "state": "success"
   }
 ]
 ```
