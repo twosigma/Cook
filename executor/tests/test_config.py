@@ -24,14 +24,14 @@ class ConfigTest(unittest.TestCase):
         progress_output_name = 'stdout_name'
         progress_regex_string = 'some-regex-string'
         progress_sample_interval_ms = 100
-        sandbox_location = '/location/to/task/sandbox/task_id'
+        sandbox_directory = '/location/to/task/sandbox/task_id'
         shutdown_grace_period_secs = '5secs'
         config = cc.ExecutorConfig(max_bytes_read_per_line=max_bytes_read_per_line,
                                    max_message_length=max_message_length,
                                    progress_output_name=progress_output_name,
                                    progress_regex_string=progress_regex_string,
                                    progress_sample_interval_ms=progress_sample_interval_ms,
-                                   sandbox_location=sandbox_location,
+                                   sandbox_directory=sandbox_directory,
                                    shutdown_grace_period=shutdown_grace_period_secs)
 
         self.assertEqual(max_bytes_read_per_line, config.max_bytes_read_per_line)
@@ -39,7 +39,7 @@ class ConfigTest(unittest.TestCase):
         self.assertEqual(progress_output_name, config.progress_output_name)
         self.assertEqual(progress_regex_string, config.progress_regex_string)
         self.assertEqual(progress_sample_interval_ms, config.progress_sample_interval_ms)
-        self.assertEqual(sandbox_location, config.sandbox_location)
+        self.assertEqual(sandbox_directory, config.sandbox_directory)
         self.assertEqual(5000, config.shutdown_grace_period_ms)
 
     def test_initialize_config_defaults(self):
@@ -51,7 +51,7 @@ class ConfigTest(unittest.TestCase):
         self.assertEqual('stdout', config.progress_output_name)
         self.assertEqual('progress: (\\d*), (.*)', config.progress_regex_string)
         self.assertEqual(1000, config.progress_sample_interval_ms)
-        self.assertEqual('', config.sandbox_location)
+        self.assertEqual('', config.sandbox_directory)
         self.assertEqual(2000, config.shutdown_grace_period_ms)
 
     def test_initialize_config_custom(self):
@@ -69,5 +69,5 @@ class ConfigTest(unittest.TestCase):
         self.assertEqual('progress_file', config.progress_output_name)
         self.assertEqual('progress/regex', config.progress_regex_string)
         self.assertEqual(2500, config.progress_sample_interval_ms)
-        self.assertEqual('/sandbox/location', config.sandbox_location)
+        self.assertEqual('/sandbox/location', config.sandbox_directory)
         self.assertEqual(4000, config.shutdown_grace_period_ms)

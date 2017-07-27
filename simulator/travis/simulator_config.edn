@@ -23,7 +23,7 @@
                               :ceiling 120}
                :job-memory {:mean 512
                             :std-dev 200
-                            :floor 1
+                            :floor 256
                             :ceiling 2048}
                :job-cpu {:mean 3.0
                          :std-dev 1.0
@@ -47,7 +47,7 @@
                               :ceiling 120}
                :job-memory {:mean 1024
                             :std-dev 1000
-                            :floor 1
+                            :floor 256
                             :ceiling 4000}
                :job-cpu {:mean 4.0
                          :std-dev 2.0

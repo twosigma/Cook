@@ -1,3 +1,4 @@
+import json
 import logging
 import time
 import unittest
@@ -30,16 +31,19 @@ class CookTest(unittest.TestCase):
         self.assertEqual('success', job['instances'][0]['status'])
         self.assertEqual(False, job['disable_mea_culpa_retries'])
         self.assertTrue(len(util.get_output_url(self.cook_url, job_uuid)) > 0)
+        if util.is_using_cook_executor(self.cook_url):
+            self.assertEqual(0, job['instances'][0]['exit_code'])
+            self.assertTrue(bool(job['instances'][0]['sandbox_directory']))
 
     def test_disable_mea_culpa(self):
         job_uuid, resp = util.submit_job(self.cook_url, disable_mea_culpa_retries=True)
         self.assertEqual(201, resp.status_code)
-        job = util.get_job(self.cook_url, job_uuid)
+        job = util.load_job(self.cook_url, job_uuid)
         self.assertEqual(True, job['disable_mea_culpa_retries'])
 
         job_uuid, resp = util.submit_job(self.cook_url, disable_mea_culpa_retries=False)
         self.assertEqual(201, resp.status_code)
-        job = util.get_job(self.cook_url, job_uuid)
+        job = util.load_job(self.cook_url, job_uuid)
         self.assertEqual(False, job['disable_mea_culpa_retries'])
 
     def test_failing_submit(self):
@@ -47,7 +51,60 @@ class CookTest(unittest.TestCase):
         self.assertEqual(201, resp.status_code)
         job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
         self.assertEqual(1, len(job['instances']))
-        self.assertEqual('failed', job['instances'][0]['status'])
+        message = json.dumps(job['instances'][0], sort_keys=True)
+        self.assertEqual('failed', job['instances'][0]['status'], message)
+        if util.is_using_cook_executor(self.cook_url):
+            self.assertEqual(1, job['instances'][0]['exit_code'], message)
+            self.assertIsNotNone(job['instances'][0]['sandbox_directory'], message)
+
+    def test_progress_update_submit(self):
+        command = 'echo "progress: 25 Twenty-five percent"; sleep 1; exit 0'
+        job_uuid, resp = util.submit_job(self.cook_url, command=command, max_runtime=5000)
+        self.assertEqual(201, resp.status_code)
+        job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
+        self.assertEqual(1, len(job['instances']))
+        message = json.dumps(job['instances'][0], sort_keys=True)
+        self.assertEqual('success', job['instances'][0]['status'], message)
+        if util.is_using_cook_executor(self.cook_url):
+            self.assertEqual(0, job['instances'][0]['exit_code'], message)
+            self.assertEqual(25, job['instances'][0]['progress'], message)
+            self.assertEqual('Twenty-five percent', job['instances'][0]['progress_message'], message)
+            self.assertIsNotNone(job['instances'][0]['sandbox_directory'], message)
+
+    def test_multiple_progress_updates_submit(self):
+        command = 'echo "progress: 25 Twenty-five percent" && sleep 2 && '\
+                  'echo "progress: 50 Fifty percent" && sleep 2 && ' \
+                  'echo "progress: 75 Seventy-five percent" && sleep 2 && ' \
+                  'echo "progress: Eighty percent invalid format" && sleep 2 && ' \
+                  'echo "Done" && exit 0'
+        job_uuid, resp = util.submit_job(self.cook_url, command=command, max_runtime=60000)
+        self.assertEqual(201, resp.status_code)
+        job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
+        self.assertEqual(1, len(job['instances']))
+        message = json.dumps(job['instances'][0], sort_keys=True)
+        self.assertEqual('success', job['instances'][0]['status'], message)
+        if util.is_using_cook_executor(self.cook_url):
+            self.assertEqual(0, job['instances'][0]['exit_code'], message)
+            self.assertEqual(75, job['instances'][0]['progress'], message)
+            self.assertEqual('Seventy-five percent', job['instances'][0]['progress_message'], message)
+            self.assertIsNotNone(job['instances'][0]['sandbox_directory'], message)
+
+    def test_multiple_rapid_progress_updates_submit(self):
+        command = ''.join(['echo "progress: {0} {0}%" && '.format(a) for a in range(1, 100, 4)]) + \
+                  ''.join(['echo "progress: {0} {0}%" && '.format(a) for a in range(99, 40, -4)]) + \
+                  ''.join(['echo "progress: {0} {0}%" && '.format(a) for a in range(40, 81, 2)]) + \
+                  'echo "Done" && exit 0'
+        job_uuid, resp = util.submit_job(self.cook_url, command=command, max_runtime=30000)
+        self.assertEqual(201, resp.status_code)
+        job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
+        self.assertEqual(1, len(job['instances']))
+        self.assertEqual('success', job['instances'][0]['status'])
+        if util.is_using_cook_executor(self.cook_url):
+            message = json.dumps(job['instances'][0], sort_keys=True)
+            self.assertEqual(0, job['instances'][0]['exit_code'], message)
+            self.assertEqual(80, job['instances'][0]['progress'], message)
+            self.assertEqual('80%', job['instances'][0]['progress_message'], message)
+            self.assertIsNotNone(job['instances'][0]['sandbox_directory'], message)
 
     def test_max_runtime_exceeded(self):
         settings_timeout_interval_minutes = util.get_in(util.settings(self.cook_url), 'task-constraints',
@@ -58,10 +115,16 @@ class CookTest(unittest.TestCase):
         job_uuid, resp = util.submit_job(self.cook_url, command='sleep %s' % job_timeout_interval_seconds,
                                          max_runtime=5000)
         self.assertEqual(201, resp.status_code)
-        job = util.wait_for_job(self.cook_url, job_uuid, 'completed', job_timeout_interval_seconds * 1000)
+        util.wait_for_job(self.cook_url, job_uuid, 'completed', job_timeout_interval_seconds * 1000)
+        job = util.load_job(self.cook_url, job_uuid)
         self.assertEqual(1, len(job['instances']))
         self.assertEqual('failed', job['instances'][0]['status'])
         self.assertEqual(2003, job['instances'][0]['reason_code'])
+        self.assertEqual('Task max runtime exceeded', job['instances'][0]['reason_string'])
+        if util.is_using_cook_executor(self.cook_url):
+            job = util.wait_for_exit_code(self.cook_url, job_uuid)
+            self.assertEqual(-15, job['instances'][0]['exit_code'])
+            self.assertTrue(bool(job['instances'][0]['sandbox_directory']))
 
     def test_get_job(self):
         # schedule a job
@@ -106,7 +169,7 @@ class CookTest(unittest.TestCase):
         request_body = {'jobs': [job_spec]}
         resp = util.session.post('%s/rawscheduler' % self.cook_url, json=request_body)
         self.assertEqual(resp.status_code, 201)
-        return util.get_job(self.cook_url, job_spec['uuid'])['user']
+        return util.load_job(self.cook_url, job_spec['uuid'])['user']
 
     def test_list_jobs_by_state(self):
         # schedule a bunch of jobs in hopes of getting jobs into different statuses
@@ -140,7 +203,7 @@ class CookTest(unittest.TestCase):
         resp = util.session.post('%s/rawscheduler' % self.cook_url, json=request_body)
         self.assertEqual(resp.status_code, 201)
 
-        submit_times = [util.get_job(self.cook_url, job_spec['uuid'])['submit_time'] for job_spec in job_specs]
+        submit_times = [util.load_job(self.cook_url, job_spec['uuid'])['submit_time'] for job_spec in job_specs]
 
         user = self.determine_user()
 
@@ -198,7 +261,7 @@ class CookTest(unittest.TestCase):
         job = util.session.get('%s/rawscheduler?job=%s' % (self.cook_url, job_uuid)).json()[0]
         self.assertIn(job['status'], ['waiting', 'running'])
         job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
-        self.assertEqual('success', job['state'])
+        self.assertEqual('success', job['state'], 'Job details: %s' % (json.dumps(job, sort_keys=True)))
 
     def test_cancel_instance(self):
         job_uuid, _ = util.submit_job(self.cook_url, command='sleep 10', max_retries=2)
@@ -207,7 +270,7 @@ class CookTest(unittest.TestCase):
         resp = util.session.delete('%s/rawscheduler?instance=%s' % (self.cook_url, task_id))
         self.assertEqual(204, resp.status_code)
         job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
-        self.assertEqual('success', job['state'])
+        self.assertEqual('success', job['state'], 'Job details: %s' % (json.dumps(job, sort_keys=True)))
 
     def test_implicit_group(self):
         group_uuid = str(uuid.uuid4())
@@ -265,7 +328,7 @@ class CookTest(unittest.TestCase):
         self.assertEqual(200, jobs.status_code)
         jobs = jobs.json()
         self.logger.debug('Loaded jobs %s', jobs)
-        self.assertEqual('success', jobs[0]['state'])
+        self.assertEqual('success', jobs[0]['state'], 'Job details: %s' % (json.dumps(jobs[0], sort_keys=True)))
         self.assertEqual('failed', jobs[1]['state'])
         self.assertEqual(2004, jobs[1]['instances'][0]['reason_code'])
 
@@ -275,7 +338,8 @@ class CookTest(unittest.TestCase):
         job_uuid, resp = util.submit_job(self.cook_url, expected_runtime=expected_runtime)
         self.assertEqual(resp.status_code, 201)
         job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
-        self.assertEqual('success', job['instances'][0]['status'])
+        instance = job['instances'][0]
+        self.assertEqual('success', instance['status'], 'Instance details: %s' % (json.dumps(instance, sort_keys=True)))
         self.assertEqual(expected_runtime, job['expected_runtime'])
 
         # Should disallow expected_runtime > max_runtime
@@ -290,7 +354,8 @@ class CookTest(unittest.TestCase):
         job_uuid, resp = util.submit_job(self.cook_url, application=application)
         self.assertEqual(resp.status_code, 201)
         job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
-        self.assertEqual('success', job['instances'][0]['status'])
+        instance = job['instances'][0]
+        self.assertEqual('success', instance['status'], 'Instance details: %s' % (json.dumps(instance, sort_keys=True)))
         self.assertEqual(application, job['application'])
 
         # Should require application name

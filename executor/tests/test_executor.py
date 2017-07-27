@@ -254,27 +254,27 @@ class ExecutorTest(unittest.TestCase):
         completed_signal = Event()
         max_message_length = 300
         progress_sample_interval_ms = 100
-        sandbox_location = '/location/to/task/sandbox/{}'.format(task_id)
+        sandbox_directory = '/location/to/task/sandbox/{}'.format(task_id)
         progress_output_name = stdout_name
         progress_regex_string = '\^\^\^\^JOB-PROGRESS: (\d*)(?: )?(.*)'
         config = cc.ExecutorConfig(max_message_length=max_message_length,
                                    progress_output_name=progress_output_name,
                                    progress_regex_string=progress_regex_string,
                                    progress_sample_interval_ms=progress_sample_interval_ms,
-                                   sandbox_location=sandbox_location)
+                                   sandbox_directory=sandbox_directory)
 
         try:
 
             ce.manage_task(driver, task, stop_signal, completed_signal, config, stdout_name, stderr_name)
 
             self.assertTrue(completed_signal.isSet())
-            assertions_fn(driver, task_id, sandbox_location)
+            assertions_fn(driver, task_id, sandbox_directory)
 
         finally:
             cleanup_output(stdout_name, stderr_name)
 
     def test_manage_task_successful_exit(self):
-        def assertions(driver, task_id, sandbox_location):
+        def assertions(driver, task_id, sandbox_directory):
             
             logging.info('Statuses: {}'.format(driver.statuses))
             self.assertEqual(3, len(driver.statuses))
@@ -295,7 +295,7 @@ class ExecutorTest(unittest.TestCase):
             self.assertEqual(2, len(driver.messages))
 
             actual_encoded_message_0 = driver.messages[0]
-            expected_message_0 = {'sandbox-location': sandbox_location, 'task-id': task_id}
+            expected_message_0 = {'sandbox-directory': sandbox_directory, 'task-id': task_id}
             assert_message(self, expected_message_0, actual_encoded_message_0)
 
             actual_encoded_message_1 = driver.messages[1]
@@ -306,7 +306,7 @@ class ExecutorTest(unittest.TestCase):
         self.manage_task_runner(command, assertions)
 
     def test_manage_task_empty_command(self):
-        def assertions(driver, task_id, sandbox_location):
+        def assertions(driver, task_id, sandbox_directory):
 
             logging.info('Statuses: {}'.format(driver.statuses))
             self.assertEqual(2, len(driver.statuses))
@@ -323,14 +323,14 @@ class ExecutorTest(unittest.TestCase):
             self.assertEqual(1, len(driver.messages))
 
             actual_encoded_message_0 = driver.messages[0]
-            expected_message_0 = {'sandbox-location': sandbox_location, 'task-id': task_id}
+            expected_message_0 = {'sandbox-directory': sandbox_directory, 'task-id': task_id}
             assert_message(self, expected_message_0, actual_encoded_message_0)
 
         command = ''
         self.manage_task_runner(command, assertions)
 
     def test_manage_task_involved_command_successful_exit(self):
-        def assertions(driver, task_id, sandbox_location):
+        def assertions(driver, task_id, sandbox_directory):
             
             logging.info('Statuses: {}'.format(driver.statuses))
             self.assertEqual(3, len(driver.statuses))
@@ -351,7 +351,7 @@ class ExecutorTest(unittest.TestCase):
             self.assertEqual(3, len(driver.messages))
 
             actual_encoded_message_0 = driver.messages[0]
-            expected_message_0 = {'sandbox-location': sandbox_location, 'task-id': task_id}
+            expected_message_0 = {'sandbox-directory': sandbox_directory, 'task-id': task_id}
             assert_message(self, expected_message_0, actual_encoded_message_0)
 
             actual_encoded_message_1 = driver.messages[1]
@@ -369,7 +369,7 @@ class ExecutorTest(unittest.TestCase):
         self.manage_task_runner(command, assertions)
 
     def test_manage_task_successful_exit_with_progress_message(self):
-        def assertions(driver, task_id, sandbox_location):
+        def assertions(driver, task_id, sandbox_directory):
             
             logging.info('Statuses: {}'.format(driver.statuses))
             self.assertEqual(3, len(driver.statuses))
@@ -390,7 +390,7 @@ class ExecutorTest(unittest.TestCase):
             self.assertEqual(4, len(driver.messages))
 
             actual_encoded_message_0 = driver.messages[0]
-            expected_message_0 = {'sandbox-location': sandbox_location, 'task-id': task_id}
+            expected_message_0 = {'sandbox-directory': sandbox_directory, 'task-id': task_id}
             assert_message(self, expected_message_0, actual_encoded_message_0)
 
             actual_encoded_message_1 = driver.messages[1]
@@ -415,7 +415,7 @@ class ExecutorTest(unittest.TestCase):
         self.manage_task_runner(command, assertions)
 
     def test_manage_task_erroneous_exit(self):
-        def assertions(driver, task_id, sandbox_location):
+        def assertions(driver, task_id, sandbox_directory):
 
             logging.info('Statuses: {}'.format(driver.statuses))
             self.assertEqual(3, len(driver.statuses))
@@ -436,7 +436,7 @@ class ExecutorTest(unittest.TestCase):
             self.assertEqual(2, len(driver.messages))
 
             actual_encoded_message_0 = driver.messages[0]
-            expected_message_0 = {'sandbox-location': sandbox_location, 'task-id': task_id}
+            expected_message_0 = {'sandbox-directory': sandbox_directory, 'task-id': task_id}
             assert_message(self, expected_message_0, actual_encoded_message_0)
 
             actual_encoded_message_1 = driver.messages[1]
@@ -447,7 +447,7 @@ class ExecutorTest(unittest.TestCase):
         self.manage_task_runner(command, assertions)
 
     def test_manage_task_terminated(self):
-        def assertions(driver, task_id, sandbox_location):
+        def assertions(driver, task_id, sandbox_directory):
 
             logging.info('Statuses: {}'.format(driver.statuses))
             self.assertEqual(3, len(driver.statuses))
@@ -468,7 +468,7 @@ class ExecutorTest(unittest.TestCase):
             self.assertEqual(2, len(driver.messages))
 
             actual_encoded_message_0 = driver.messages[0]
-            expected_message_0 = {'sandbox-location': sandbox_location, 'task-id': task_id}
+            expected_message_0 = {'sandbox-directory': sandbox_directory, 'task-id': task_id}
             assert_message(self, expected_message_0, actual_encoded_message_0)
 
             actual_encoded_message_1 = driver.messages[1]

@@ -899,95 +899,155 @@
               (is (= scored expected))))))))))
 
 (deftest test-rebalance
-  (testing "test1"
-    (let [datomic-uri "datomic:mem://test-rebalance"
-          conn (restore-fresh-database! datomic-uri)
-          job1 (create-dummy-job conn :user "ljin" :memory 10.0 :ncpus 10.0)
-          job2 (create-dummy-job conn :user "ljin" :memory 5.0  :ncpus 5.0)
-          job3 (create-dummy-job conn :user "ljin" :memory 15.0 :ncpus 25.0)
-          job4 (create-dummy-job conn :user "ljin" :memory 25.0 :ncpus 15.0)
-          job5 (create-dummy-job conn :user "wzhao" :memory 8.0 :ncpus 8.0)
-          job6 (create-dummy-job conn :user "wzhao" :memory 10.0 :ncpus 10.0)
-          job7 (create-dummy-job conn :user "wzhao" :memory 10.0 :ncpus 10.0)
-          job8 (create-dummy-job conn :user "wzhao" :memory 10.0 :ncpus 10.0)
+  (let [datomic-uri "datomic:mem://test-rebalance"
+        conn (restore-fresh-database! datomic-uri)
+        job1 (create-dummy-job conn :user "ljin" :memory 10.0 :ncpus 10.0)
+        job2 (create-dummy-job conn :user "ljin" :memory 5.0  :ncpus 5.0)
+        job3 (create-dummy-job conn :user "ljin" :memory 15.0 :ncpus 25.0)
+        job4 (create-dummy-job conn :user "ljin" :memory 25.0 :ncpus 15.0)
+        job5 (create-dummy-job conn :user "wzhao" :memory 8.0 :ncpus 8.0)
+        job6 (create-dummy-job conn :user "wzhao" :memory 10.0 :ncpus 10.0)
+        job7 (create-dummy-job conn :user "wzhao" :memory 10.0 :ncpus 10.0)
+        job8 (create-dummy-job conn :user "wzhao" :memory 10.0 :ncpus 10.0)
 
-          job9 (create-dummy-job conn :user "wzhao" :memory 15.0 :ncpus 15.0)
-          job10 (create-dummy-job conn :user "sunil" :memory 15.0 :ncpus 15.0)
-          job11 (create-dummy-job conn :user "ljin" :memory 15.0 :ncpus 15.0)
-          job12 (create-dummy-job conn :user "sunil" :memory 15.0 :ncpus 15.0)
-          job13 (create-dummy-job conn :user "sunil" :memory 15.0 :ncpus 15.0)
-          job14 (create-dummy-job conn :user "sunil" :memory 15.0 :ncpus 15.0)
+        job9 (create-dummy-job conn :user "wzhao" :memory 15.0 :ncpus 15.0)
+        job10 (create-dummy-job conn :user "sunil" :memory 15.0 :ncpus 15.0)
+        job11 (create-dummy-job conn :user "ljin" :memory 15.0 :ncpus 15.0)
+        job12 (create-dummy-job conn :user "sunil" :memory 15.0 :ncpus 15.0)
+        job13 (create-dummy-job conn :user "sunil" :memory 15.0 :ncpus 15.0)
+        job14 (create-dummy-job conn :user "sunil" :memory 15.0 :ncpus 15.0)
 
-          task1 (create-dummy-instance conn
-                                       job1
-                                       :instance-status :instance.status/running
-                                       :hostname "hostA")
-          task2 (create-dummy-instance conn
-                                       job2
-                                       :instance-status :instance.status/running
-                                       :hostname "hostA")
-          task3 (create-dummy-instance conn
-                                      job3
-                                      :instance-status :instance.status/running
-                                      :hostname "hostB")
-          task4 (create-dummy-instance conn
-                                      job4
-                                      :instance-status :instance.status/running
-                                      :hostname "hostB")
-          task5 (create-dummy-instance conn
-                                      job5
-                                      :instance-status :instance.status/running
-                                      :hostname "hostA")
-          task6 (create-dummy-instance conn
-                                      job6
-                                      :instance-status :instance.status/running
-                                      :hostname "hostB")
-          task7 (create-dummy-instance conn
-                                      job7
-                                      :instance-status :instance.status/running
-                                      :hostname "hostA")
-          task8 (create-dummy-instance conn
-                                      job8
-                                      :instance-status :instance.status/running
-                                      :hostname "hostB")
-          _ (share/set-share! conn "default"
-                              "limits for new cluster"
-                              :mem 25.0 :cpus 25.0)
+        task1 (create-dummy-instance conn
+                                     job1
+                                     :instance-status :instance.status/running
+                                     :hostname "hostA")
+        task2 (create-dummy-instance conn
+                                     job2
+                                     :instance-status :instance.status/running
+                                     :hostname "hostA")
+        task3 (create-dummy-instance conn
+                                     job3
+                                     :instance-status :instance.status/running
+                                     :hostname "hostB")
+        task4 (create-dummy-instance conn
+                                     job4
+                                     :instance-status :instance.status/running
+                                     :hostname "hostB")
+        task5 (create-dummy-instance conn
+                                     job5
+                                     :instance-status :instance.status/running
+                                     :hostname "hostA")
+        task6 (create-dummy-instance conn
+                                     job6
+                                     :instance-status :instance.status/running
+                                     :hostname "hostB")
+        task7 (create-dummy-instance conn
+                                     job7
+                                     :instance-status :instance.status/running
+                                     :hostname "hostA")
+        task8 (create-dummy-instance conn
+                                     job8
+                                     :instance-status :instance.status/running
+                                     :hostname "hostB")
+        _ (share/set-share! conn "default"
+                            "limits for new cluster"
+                            :mem 25.0 :cpus 25.0)
 
-          db (d/db conn)
+        db (d/db conn)
 
-          task-ent1 (d/entity db task1)
-          task-ent2 (d/entity db task2)
-          task-ent3 (d/entity db task3)
-          task-ent4 (d/entity db task4)
-          task-ent5 (d/entity db task5)
-          task-ent6 (d/entity db task6)
-          task-ent7 (d/entity db task7)
-          task-ent8 (d/entity db task8)
+        task-ent1 (d/entity db task1)
+        task-ent2 (d/entity db task2)
+        task-ent3 (d/entity db task3)
+        task-ent4 (d/entity db task4)
+        task-ent5 (d/entity db task5)
+        task-ent6 (d/entity db task6)
+        task-ent7 (d/entity db task7)
+        task-ent8 (d/entity db task8)
 
-          job9 (create-dummy-job conn :user "wzhao" :memory 5.0 :ncpus 5.0)
-          job10 (create-dummy-job conn :user "wzhao" :memory 5.0 :ncpus 5.0)
-          job11 (create-dummy-job conn :user "wzhao" :memory 5.0 :ncpus 5.0)
-          job12 (create-dummy-job conn :user "wzhao" :memory 5.0 :ncpus 5.0)
-          job13 (create-dummy-job conn :user "wzhao" :memory 5.0 :ncpus 5.0)
-          job14 (create-dummy-job conn :user "wzhao" :memory 5.0 :ncpus 5.0)
-          job15 (create-dummy-job conn :user "wzhao" :memory 5.0 :ncpus 5.0)
-          job16 (create-dummy-job conn :user "wzhao" :memory 5.0 :ncpus 5.0)
-          job17 (create-dummy-job conn :user "wzhao" :memory 5.0 :ncpus 5.0)
-          job18 (create-dummy-job conn :user "wzhao" :memory 5.0 :ncpus 5.0)
+        job9 (create-dummy-job conn :user "wzhao" :memory 5.0 :ncpus 5.0)
+        job10 (create-dummy-job conn :user "wzhao" :memory 5.0 :ncpus 5.0)
+        job11 (create-dummy-job conn :user "wzhao" :memory 5.0 :ncpus 5.0)
+        job12 (create-dummy-job conn :user "wzhao" :memory 5.0 :ncpus 5.0)
+        job13 (create-dummy-job conn :user "wzhao" :memory 5.0 :ncpus 5.0)
+        job14 (create-dummy-job conn :user "wzhao" :memory 5.0 :ncpus 5.0)
+        job15 (create-dummy-job conn :user "wzhao" :memory 5.0 :ncpus 5.0)
+        job16 (create-dummy-job conn :user "wzhao" :memory 5.0 :ncpus 5.0)
+        job17 (create-dummy-job conn :user "wzhao" :memory 5.0 :ncpus 5.0)
+        job18 (create-dummy-job conn :user "wzhao" :memory 5.0 :ncpus 5.0)
 
-          job19 (create-dummy-job conn :user "sunil" :memory 5.0 :ncpus 5.0)
-          job20 (create-dummy-job conn :user "sunil" :memory 5.0 :ncpus 5.0)
-          job21 (create-dummy-job conn :user "sunil" :memory 5.0 :ncpus 5.0)
-          job22 (create-dummy-job conn :user "sunil" :memory 5.0 :ncpus 5.0)
-          job23 (create-dummy-job conn :user "sunil" :memory 5.0 :ncpus 5.0)
-          job24 (create-dummy-job conn :user "sunil" :memory 5.0 :ncpus 5.0)
-          job25 (create-dummy-job conn :user "sunil" :memory 5.0 :ncpus 5.0)
-          job26 (create-dummy-job conn :user "sunil" :memory 5.0 :ncpus 5.0)
-          job27 (create-dummy-job conn :user "sunil" :memory 5.0 :ncpus 5.0)
-          job28 (create-dummy-job conn :user "sunil" :memory 5.0 :ncpus 5.0)]
+        job19 (create-dummy-job conn :user "sunil" :memory 5.0 :ncpus 5.0)
+        job20 (create-dummy-job conn :user "sunil" :memory 5.0 :ncpus 5.0)
+        job21 (create-dummy-job conn :user "sunil" :memory 5.0 :ncpus 5.0)
+        job22 (create-dummy-job conn :user "sunil" :memory 5.0 :ncpus 5.0)
+        job23 (create-dummy-job conn :user "sunil" :memory 5.0 :ncpus 5.0)
+        job24 (create-dummy-job conn :user "sunil" :memory 5.0 :ncpus 5.0)
+        job25 (create-dummy-job conn :user "sunil" :memory 5.0 :ncpus 5.0)
+        job26 (create-dummy-job conn :user "sunil" :memory 5.0 :ncpus 5.0)
+        job27 (create-dummy-job conn :user "sunil" :memory 5.0 :ncpus 5.0)
+        job28 (create-dummy-job conn :user "sunil" :memory 5.0 :ncpus 5.0)
 
-      (comment
+        test-cases [{:jobs [job9 job10 job11 job12 job13
+                            job14 job15 job16 job17 job18]
+                     :params {:max-preemption 128 :safe-dru-threshold 1.0 :min-dru-diff 0.0 :category :normal}
+                     :expected-jobs-to-run [job9 job10 job11]
+                     :expected-tasks-to-preempt [task-ent4]
+                     :available-resources {}
+                     :test-name "simple test"}
+                    {:jobs [job9 job10 job11 job12 job13
+                            job14 job15 job16 job17 job18]
+                     :params {:max-preemption 128 :safe-dru-threshold 1.0 :min-dru-diff 0.0 :category :normal}
+                     :expected-jobs-to-run [job9 job10 job11 job12 job13]
+                     :expected-tasks-to-preempt [task-ent4]
+                     :available-resources {"hostB" {:mem 0.0 :cpus 10.0}}
+                     :test-name "simple test with available resources"}
+                    {:jobs [job19 job20 job21 job22 job23
+                            job24 job25 job26 job27 job28]
+                     :params {:max-preemption 128 :safe-dru-threshold 1.0 :min-dru-diff 0.0 :category :normal}
+                     :expected-jobs-to-run [job19 job20 job21 job22 job23
+                                            job24 job25 job26]
+                     :expected-tasks-to-preempt [task-ent4 task-ent3]
+                     :available-resources {}
+                     :test-name "simple test 2"}
+                    {:jobs [job19 job20 job21 job22 job23
+                            job24 job25 job26 job27 job28]
+                     :params {:max-preemption 128 :safe-dru-threshold 1.0 :min-dru-diff 0.0 :category :normal}
+                     :expected-jobs-to-run [job19 job20 job21 job22 job23
+                                            job24 job25 job26]
+                     :expected-tasks-to-preempt [task-ent4]
+                     :available-resources {"hostB" {:cpus 25.0 :mem 25.0}}
+                     :test-name "simple test 2 with available resources"}
+                    {:jobs [job19 job20 job21 job22 job23
+                            job24 job25 job26 job27 job28]
+                     :params {:max-preemption 128 :safe-dru-threshold 1.0 :min-dru-diff 0.0 :category :normal}
+                     :expected-jobs-to-run [job19 job20 job21 job22 job23
+                                            job24 job25 job26 job27 job28]
+                     :expected-tasks-to-preempt [task-ent4 task-ent3 task-ent8]
+                     :available-resources {}
+                     :share-updates [{:user "sunil" :mem 50.0 :cpus 50.0}]
+                     :test-name "test with share change"}]]
+
+(doseq  [{:keys [jobs params expected-jobs-to-run expected-tasks-to-preempt available-resources share-updates test-name]}
+         test-cases]
+  (testing test-name
+    (doseq [{:keys [user mem cpus]} share-updates]
+      (share/set-share! conn user
+                        "test update"
+                        :mem mem :cpus cpus))
+    (let [db (d/db conn)
+          offer-cache (init-offer-cache)
+          pending-job-ents (map #(d/entity db %) jobs)
+          preemption-decisions (rebalancer/rebalance db offer-cache
+                                                     pending-job-ents 
+                                                     available-resources 
+                                                     params)
+          pending-job-ents-to-run (map :to-make-room-for preemption-decisions)
+          task-ents-to-preempt (mapcat :task preemption-decisions)]
+      (is (= (map #(d/entity db %) expected-jobs-to-run)
+             pending-job-ents-to-run))
+      (is (= expected-tasks-to-preempt
+             task-ents-to-preempt)))))))
+
+(comment
         {task-ent1 0.4
          task-ent2 0.6
          task-ent3 1.6
@@ -996,68 +1056,6 @@
          task-ent6 0.72
          task-ent7 1.12
          task-ent8 1.52})
-
-      (let [db (d/db conn)
-            offer-cache (init-offer-cache)
-            pending-job-ents (map #(d/entity db %) [job9 job10 job11 job12 job13
-                                                    job14 job15 job16 job17 job18])
-            params {:max-preemption 128 :safe-dru-threshold 1.0 :min-dru-diff 0.0 :category :normal}]
-        (let [[pending-job-ents-to-run task-ents-to-preempt] (rebalancer/rebalance db offer-cache
-                                                                                   pending-job-ents {} params)]
-          (is (= (map #(d/entity db %) [job9 job10 job11])
-                 pending-job-ents-to-run))
-          (is (= [task-ent4]
-                 task-ents-to-preempt)))
-        (let [[pending-job-ents-to-run task-ents-to-preempt]
-              (rebalancer/rebalance db offer-cache pending-job-ents {"hostB" {:mem 0.0 :cpus 10.0}} params)]
-          (is (= (map #(d/entity db %) [job9 job10 job11 job12 job13])
-                 pending-job-ents-to-run))
-          (is (= [task-ent4]
-                 task-ents-to-preempt))))
-
-      (let [db (d/db conn)
-            offer-cache (init-offer-cache)
-            pending-job-ents (map #(d/entity db %) [job19 job20 job21 job22 job23
-                                                    job24 job25 job26 job27 job28])
-            params {:max-preemption 128 :safe-dru-threshold 1.0 :min-dru-diff 0.0 :category :normal}]
-        (let [[pending-job-ents-to-run task-ents-to-preempt] (rebalancer/rebalance db offer-cache
-                                                                                   pending-job-ents {} params)]
-          (is (= (map #(d/entity db %) [job19 job20 job21 job22 job23
-                                        job24 job25 job26])
-                 pending-job-ents-to-run))
-          (is (= [task-ent4 task-ent3]
-                 task-ents-to-preempt))))
-
-      (let [db (d/db conn)
-            offer-cache (init-offer-cache)
-            pending-job-ents (map #(d/entity db %) [job19 job20 job21 job22 job23
-                                                    job24 job25 job26 job27 job28])
-            params {:max-preemption 128 :safe-dru-threshold 1.0 :min-dru-diff 0.0 :category :normal}]
-        (let [[pending-job-ents-to-run task-ents-to-preempt] (rebalancer/rebalance db offer-cache
-                                                                                   pending-job-ents
-                                                                                   {"hostB" {:cpus 25.0 :mem 25.0}}
-                                                                                   params)]
-          (is (= (map #(d/entity db %) [job19 job20 job21 job22 job23
-                                        job24 job25 job26])
-                 pending-job-ents-to-run))
-          (is (= [task-ent4]
-                 task-ents-to-preempt))))
-
-      (let [_ (share/set-share! conn "sunil"
-                                "needs more resources"
-                                :mem 50.0 :cpus 50.0)
-            db (d/db conn)
-            offer-cache (init-offer-cache)
-            pending-job-ents (map #(d/entity db %) [job19 job20 job21 job22 job23
-                                                    job24 job25 job26 job27 job28])
-            params {:max-preemption 128 :safe-dru-threshold 1.0 :min-dru-diff 0.0 :category :normal}]
-        (let [[pending-job-ents-to-run task-ents-to-preempt] (rebalancer/rebalance db offer-cache
-                                                                                   pending-job-ents {} params)]
-          (is (= (map #(d/entity db %) [job19 job20 job21 job22 job23
-                                        job24 job25 job26 job27 job28])
-                 pending-job-ents-to-run))
-          (is (= [task-ent4 task-ent3 task-ent8]
-                 task-ents-to-preempt)))))))
 
 (deftest ^:integration test-rebalance2
   (testing "rebalance prop test"

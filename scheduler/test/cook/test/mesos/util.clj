@@ -165,6 +165,17 @@
 
     ))
 
+(deftest test-entity->map
+  (let [uri "datomic:mem://test-entity-map"
+        conn (restore-fresh-database! uri)
+        job (create-dummy-job conn :user "tsram")
+        job-ent (d/entity @(d/sync conn) job)
+        job-map (util/entity->map job-ent)]
+    (is (instance? datomic.Entity job-ent))
+    (is (instance? datomic.Entity (first (:job/resource job-ent))))
+    (is (not (instance? datomic.Entity job-map)))
+    (is (not (instance? datomic.Entity (first (:job/resource job-map)))))))
+
 (deftest test-namespace-datomic
   (testing "Example tests"
     (is (= (util/namespace-datomic :straggler-handling :type)

@@ -16,14 +16,11 @@
 
 (ns cook.test.mesos.constraints
   (:use [clojure.test])
-  (:require [cook.mesos :as mesos]
-            [cook.mesos.scheduler :as sched]
+  (:require [cook.mesos.scheduler :as sched]
             [cook.mesos.constraints :as constraints]
             [cook.test.testutil :refer (restore-fresh-database! create-dummy-group create-dummy-job create-dummy-instance)]
-            [datomic.api :as d :refer (db)]
-            [mesomatic.types :as mtypes])
-  (:import org.mockito.Mockito
-          com.netflix.fenzo.plugins.BinPackingFitnessCalculators))
+            [datomic.api :as d :refer (db)])
+  (:import org.mockito.Mockito))
 
 (deftest test-get-group-constraint-name
   (is (= "unique-host-placement-group-constraint"
@@ -50,9 +47,9 @@
 
 
 (deftest test-gpu-constraint
-  (let [fid #mesomatic.types.FrameworkID{:value "my-framework-id"}
+  (let [framework-id #mesomatic.types.FrameworkID{:value "my-framework-id"}
         gpu-offer #mesomatic.types.Offer{:id #mesomatic.types.OfferID {:value "my-offer-id"}
-                                         :framework-id fid
+                                         :framework-id framework-id
                                          :slave-id #mesomatic.types.SlaveID{:value "my-slave-id"},
                                          :hostname "slave3",
                                          :resources [#mesomatic.types.Resource{:name "cpus", :type :value-scalar, :scalar 40.0, :ranges [], :set #{}, :role "*"}
@@ -63,7 +60,7 @@
                                          :attributes [],
                                          :executor-ids []}
         non-gpu-offer #mesomatic.types.Offer{:id #mesomatic.types.OfferID {:value "my-offer-id"}
-                                             :framework-id fid
+                                             :framework-id framework-id
                                              :slave-id #mesomatic.types.SlaveID{:value "my-slave-id"},
                                              :hostname "slave3",
                                              :resources [#mesomatic.types.Resource{:name "cpus", :type :value-scalar, :scalar 40.0, :ranges [], :set #{}, :role "*"}

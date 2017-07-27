@@ -14,12 +14,11 @@
 ;;
 (ns cook.components
   (:require [clj-logging-config.log4j :as log4j-conf]
-            [clj-pid.core :as pid]
             [clj-time.core :as t]
             [clojure.core.cache :as cache]
             [clojure.edn :as edn]
-            [clojure.java.io :as io]
             [clojure.pprint :refer (pprint)]
+            [clojure.string :as str]
             [clojure.tools.logging :as log]
             [compojure.core :refer (GET POST routes context)]
             [compojure.route :as route]
@@ -27,7 +26,6 @@
             [congestion.middleware :refer (wrap-rate-limit ip-rate-limit)]
             [congestion.storage :as storage]
             [cook.curator :as curator]
-            [cook.spnego :as spnego]
             [cook.util :as util]
             [metrics.ring.instrument :refer (instrument)]
             [plumbing.core :refer (fnk)]
@@ -67,11 +65,12 @@
     (resolve var-sym)))
 
 (def raw-scheduler-routes
-  {:scheduler (fnk [mesos-datomic framework-id mesos-pending-jobs-atom settings]
+  {:scheduler (fnk [mesos-agent-query-cache mesos-datomic mesos-pending-jobs-atom framework-id settings]
                 ((lazy-load-var 'cook.mesos.api/main-handler)
                   mesos-datomic
                   framework-id
                   (fn [] @mesos-pending-jobs-atom)
+                  mesos-agent-query-cache
                   settings))
    :view (fnk [scheduler]
            scheduler)})
@@ -83,12 +82,12 @@
                    (route/not-found "<h1>Not a valid route</h1>")))})
 
 (def mesos-scheduler
-  {:mesos-scheduler (fnk [[:settings fenzo-fitness-calculator fenzo-floor-iterations-before-reset
+  {:mesos-scheduler (fnk [[:settings executor fenzo-fitness-calculator fenzo-floor-iterations-before-reset
                            fenzo-floor-iterations-before-warn fenzo-max-jobs-considered fenzo-scaleback
                            good-enough-fitness mea-culpa-failure-limit mesos-failover-timeout mesos-framework-name
                            mesos-gpu-enabled mesos-leader-path mesos-master mesos-master-hosts mesos-principal
                            mesos-role offer-incubate-time-ms rebalancer riemann task-constraints]
-                          curator-framework framework-id mesos-datomic mesos-datomic-mult mesos-leadership-atom 
+                          curator-framework framework-id mesos-datomic mesos-datomic-mult mesos-leadership-atom
                           mesos-offer-cache mesos-pending-jobs-atom]
                       (log/info "Initializing mesos scheduler")
                       (let [make-mesos-driver-fn (partial (lazy-load-var 'cook.mesos/make-mesos-driver)
@@ -112,6 +111,7 @@
                             offer-incubate-time-ms
                             mea-culpa-failure-limit
                             task-constraints
+                            executor
                             (:host riemann)
                             (:port riemann)
                             mesos-pending-jobs-atom
@@ -232,17 +232,19 @@
                     (let [rate-limit-storage (storage/local-storage)
                           jetty ((lazy-load-var 'qbits.jet.server/run-jetty)
                                   {:port server-port
-                                   :ring-handler (-> view
-                                                     tell-jetty-about-usename
-                                                     (wrap-rate-limit {:storage rate-limit-storage
-                                                                       :limit user-limit})
-                                                     authorization-middleware
-                                                     wrap-stacktrace
-                                                     wrap-no-cache
-                                                     wrap-cookies
-                                                     wrap-params
-                                                     (health-check-middleware mesos-leadership-atom leader-reports-unhealthy)
-                                                     instrument)
+                                   :ring-handler (routes
+                                                   (route/resources "/resource")
+                                                   (-> view
+                                                       tell-jetty-about-usename
+                                                       (wrap-rate-limit {:storage rate-limit-storage
+                                                                         :limit user-limit})
+                                                       authorization-middleware
+                                                       wrap-stacktrace
+                                                       wrap-no-cache
+                                                       wrap-cookies
+                                                       wrap-params
+                                                       (health-check-middleware mesos-leadership-atom leader-reports-unhealthy)
+                                                       instrument))
                                    :join? false
                                    :configurator configure-jet-logging
                                    :max-threads 200
@@ -267,6 +269,11 @@
                           (log/info "Starting local ZK server")
                           (.start zookeeper-server)))
      :mesos mesos-scheduler
+     :mesos-agent-query-cache (fnk [[:settings [:agent-query-cache max-size ttl-ms]]]
+                                (-> {}
+                                    (cache/lru-cache-factory :threshold max-size)
+                                    (cache/ttl-cache-factory :ttl ttl-ms)
+                                    atom))
      :mesos-leadership-atom (fnk [] (atom false))
      :mesos-pending-jobs-atom (fnk [] (atom {}))
      :mesos-offer-cache (fnk [[:settings [:offer-cache max-size ttl-ms]]]
@@ -325,7 +332,12 @@
 (def config-settings
   "Parses the settings out of a config file"
   (graph/eager-compile
-    {:server-port (fnk [[:config port]]
+    {:agent-query-cache (fnk [[:config {agent-query-cache nil}]]
+                          (merge
+                            {:max-size 5000
+                             :ttl-ms (* 60 1000)}
+                            agent-query-cache))
+     :server-port (fnk [[:config port]]
                     port)
      :is-authorized-fn (fnk [[:config {authorization-config default-authorization}]]
                          (partial (lazy-load-var 'cook.authorization/is-authorized?)
@@ -356,6 +368,26 @@
                           :or {user-limit-per-m 600}} rate-limit]
                      {:user-limit (->UserRateLimit :user-limit user-limit-per-m (t/minutes 1))}))
      :sim-agent-path (fnk [] "/usr/bin/sim-agent")
+     :executor (fnk [[:config {executor {}}]]
+                 (if (str/blank? (:command executor))
+                   (do
+                     (log/info "Executor config is missing command, will use the command executor by default"
+                               {:executor-config executor})
+                     {})
+                   (do
+                     (when (and (:uri executor) (nil? (get-in executor [:uri :value])))
+                       (throw (ex-info "Executor uri value is missing!" {:executor executor})))
+                     (let [default-executor-config {:default-progress-output-file "stdout"
+                                                    :default-progress-regex-string "progress: (\\d*)(?: )?(.*)"
+                                                    :log-level "INFO"
+                                                    :max-message-length 512
+                                                    :progress-sample-interval-ms (* 1000 60 5)}
+                           default-uri-config {:cache true
+                                               :executable true
+                                               :extract false}]
+                       (cond-> (merge default-executor-config executor)
+                               (:uri executor)
+                               (update :uri #(merge default-uri-config %1)))))))
      :mesos-datomic-uri (fnk [[:config [:database datomic-uri]]]
                           (when-not datomic-uri
                             (throw (ex-info "Must set a the :database's :datomic-uri!" {})))
@@ -363,7 +395,7 @@
      :dns-name simple-dns-name
      :hostname (fnk [] (.getCanonicalHostName (java.net.InetAddress/getLocalHost)))
      :leader-reports-unhealthy (fnk [[:config [:mesos {leader-reports-unhealthy false}]]]
-                                    leader-reports-unhealthy)
+                                 leader-reports-unhealthy)
      :local-zk-port (fnk [[:config [:zookeeper {local-port 3291}]]]
                       local-port)
      :zookeeper-server (fnk [[:config [:zookeeper {local? false}]] local-zk-port]
