@@ -315,12 +315,13 @@
         progress-aggregator-fn (fn progress-aggregator-fn [instance-id->progress-state data]
                                  (progress-aggregator pending-progress-threshold instance-id->progress-state data))
         progress-consumer-fn (fn progress-consumer-fn [instance-id->progress-state]
-                               (log/debug "Forwarded" (count instance-id->progress-state) "progress states to the transactor")
-                               (histograms/update! progress-aggregator-pending-states (count instance-id->progress-state))
                                [{} instance-id->progress-state])]
-    (util/reduce-pipe progress-aggregator-chan progress-aggregator-fn progress-state-chan progress-consumer-fn
-                      :initial-state {}
-                      :on-finished (fn on-finished-fn [] (log/info "Exiting progress update aggregator")))
+    (util/reducing-pipe progress-aggregator-chan progress-aggregator-fn progress-state-chan progress-consumer-fn
+                        :initial-state {}
+                        :on-consumed (fn on-consumed-fn [instance-id->progress-state]
+                                       (log/debug "Forwarded" (count instance-id->progress-state) "progress states to the transactor")
+                                       (histograms/update! progress-aggregator-pending-states (count instance-id->progress-state)))
+                        :on-finished (fn on-finished-fn [] (log/info "Exiting progress update aggregator")))
     progress-aggregator-chan))
 
 (histograms/defhistogram [cook-mesos scheduler progress-updater-pending-states])

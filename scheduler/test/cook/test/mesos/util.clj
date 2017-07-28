@@ -353,7 +353,7 @@
                                                             #inst "2017-06-01" #inst "2017-06-02"
                                                             10)))))))))
 
-(deftest test-xform-pipe
+(deftest test-reducing-pipe
   (let [initial-state []
         data-counter (atom 0)
         in-xform (fn [state data]
@@ -366,7 +366,7 @@
             out-chan (async/chan)]
 
         (reset! data-counter 0)
-        (util/reduce-pipe in-chan in-xform out-chan out-xform :initial-state initial-state)
+        (util/reducing-pipe in-chan in-xform out-chan out-xform :initial-state initial-state)
 
         (testing "consume initial batch"
           (async/>!! in-chan 1)
@@ -394,19 +394,26 @@
     (testing "callback invocations"
       (let [in-chan (async/chan 10)
             out-chan (async/chan)
+            on-consumed-promise (promise)
+            on-consumed (fn [consumed] (deliver on-consumed-promise consumed))
             on-finished-promise (promise)
             on-finished (fn [] (deliver on-finished-promise :finished))]
 
         (reset! data-counter 0)
-        (util/reduce-pipe in-chan in-xform out-chan out-xform
-                          :initial-state initial-state
-                          :on-finished on-finished)
+        (util/reducing-pipe in-chan in-xform out-chan out-xform
+                            :initial-state initial-state
+                            :on-consumed on-consumed
+                            :on-finished on-finished)
 
         (async/>!! in-chan 1)
         (async/>!! in-chan 2)
         (async/>!! in-chan 3)
         (testutil/poll-until #(= @data-counter 3) 10 1000)
         (is (= [1 2 3] (-> out-chan async/<!! async/<!!)))
+
+        (testing "on-consumed callback"
+          (deliver on-consumed-promise :unfulfilled)
+          (is (= [1 2 3] @on-consumed-promise)))
 
         (async/close! in-chan)
 
