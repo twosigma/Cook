@@ -25,7 +25,7 @@
             [cook.mesos.scheduler :as sched]
             [cook.mesos.share :as share]
             [cook.mesos.util :as util]
-            [cook.test.testutil :refer (restore-fresh-database! create-dummy-group create-dummy-job create-dummy-instance init-offer-cache)]
+            [cook.test.testutil :refer (restore-fresh-database! create-dummy-group create-dummy-job create-dummy-instance init-offer-cache poll-until)]
             [datomic.api :as d :refer (q db)]
             [mesomatic.scheduler :as msched]
             [mesomatic.types :as mtypes]
@@ -108,7 +108,7 @@
 
 (defn make-mesos-offer
   [id framework-id slave-id hostname & {:keys [cpus mem disk ports gpus attrs]
-                               :or {cpus 40.0 mem 5000.0 disk 6000.0 ports {:begin 31000 :end 32000} gpus 0.0 attrs {}}}]
+                                        :or {cpus 40.0 mem 5000.0 disk 6000.0 ports {:begin 31000 :end 32000} gpus 0.0 attrs {}}}]
   (mtypes/map->Offer {:id (mtypes/map->OfferID {:value id})
                       :framework-id framework-id
                       :slave-id (mtypes/map->SlaveID {:value slave-id})
@@ -183,12 +183,12 @@
 
   (testing "test-sort-jobs-by-dru:normal-jobs"
     (let [uri "datomic:mem://test-sort-jobs-by-dru-normal-jobs"
-        conn (restore-fresh-database! uri)
-        j1n (create-dummy-job conn :user "u1" :job-state :job.state/waiting :memory 1000 :ncpus 1.0)
-        j2n (create-dummy-job conn :user "u1" :job-state :job.state/waiting :memory 1000 :ncpus 1.0 :priority 90)
-        j3n (create-dummy-job conn :user "u2" :job-state :job.state/waiting :memory 1500 :ncpus 1.0)
-        j4n (create-dummy-job conn :user "u2" :job-state :job.state/waiting :memory 1500 :ncpus 1.0 :priority 30)
-        test-db (d/db conn)]
+          conn (restore-fresh-database! uri)
+          j1n (create-dummy-job conn :user "u1" :job-state :job.state/waiting :memory 1000 :ncpus 1.0)
+          j2n (create-dummy-job conn :user "u1" :job-state :job.state/waiting :memory 1000 :ncpus 1.0 :priority 90)
+          j3n (create-dummy-job conn :user "u2" :job-state :job.state/waiting :memory 1500 :ncpus 1.0)
+          j4n (create-dummy-job conn :user "u2" :job-state :job.state/waiting :memory 1500 :ncpus 1.0 :priority 30)
+          test-db (d/db conn)]
       (is (= [j2n j3n j1n j4n] (map :db/id (:normal (sched/sort-jobs-by-dru-category test-db)))))
       (is (empty? (:gpu (sched/sort-jobs-by-dru-category test-db))))))
 
@@ -377,8 +377,8 @@
         fenzo (make-dummy-scheduler)
         ; Schedule conflicting
         _ (schedule-and-run-jobs conn framework-id fenzo [(make-vm-offer (make-uuid)
-                                                                conflict-host
-                                                                (make-uuid))] [conflicting-job-id])
+                                                                         conflict-host
+                                                                         (make-uuid))] [conflicting-job-id])
         low-priority (map #(d/entity (d/db conn) %) low-priority-ids)
         high-priority (map #(d/entity (d/db conn) %) high-priority-ids)
         considerable (concat high-priority low-priority)]
@@ -650,9 +650,9 @@
     (is (= (:reason interpreted-status) :reason-invalid-offers))))
 
 (deftest test-unique-host-placement-constraint
-  (let  [uri "datomic:mem://test-unique-host-placement-constraint"
-         conn (restore-fresh-database! uri)
-         framework-id #mesomatic.types.FrameworkID{:value "my-original-framework-id"}]
+  (let [uri "datomic:mem://test-unique-host-placement-constraint"
+        conn (restore-fresh-database! uri)
+        framework-id #mesomatic.types.FrameworkID{:value "my-original-framework-id"}]
     (testing "conflicting jobs, different scheduling cycles"
       (let [scheduler (make-dummy-scheduler)
             shared-host "test-host"
@@ -692,7 +692,7 @@
             group (d/entity (d/db conn) group-id)
             ; Schedule first job
             result (schedule-and-run-jobs conn framework-id scheduler (make-offers) [conflicting-job-id
-                                                                            conflicted-job-id])
+                                                                                     conflicted-job-id])
             _ (is (= 1 (count (:scheduled result))))
             conflicting-task-id (-> result :scheduled first)
             ; Try to schedule conflicted job, but fail
@@ -719,9 +719,9 @@
 
 
 (deftest test-balanced-host-placement-constraint
-  (let  [uri "datomic:mem://test-balanced-host-placement-constraint"
-         conn (restore-fresh-database! uri)
-         framework-id #mesomatic.types.FrameworkID{:value "my-original-framework-id"}]
+  (let [uri "datomic:mem://test-balanced-host-placement-constraint"
+        conn (restore-fresh-database! uri)
+        framework-id #mesomatic.types.FrameworkID{:value "my-original-framework-id"}]
     (testing "schedule 9 jobs with hp-type balanced on 3 hosts, each host should get 3 jobs"
       (let [scheduler (make-dummy-scheduler)
             hostnames ["straw" "sticks" "bricks"]
@@ -752,19 +752,19 @@
                                   distinct))))))))
 
 (deftest test-attr-equals-host-placement-constraint
-  (let  [uri "datomic:mem://test-attr-equals-host-placement-constraint"
-         conn (restore-fresh-database! uri)
-         framework-id #mesomatic.types.FrameworkID{:value "my-original-framework-id"}
-         make-hostname #(str (java.util.UUID/randomUUID))
-         attr-name "az"
-         attr-val "east"
-         make-attr-offer (fn [cpus]
-                           (make-vm-offer framework-id (make-hostname) (make-uuid)
-                                          :cpus cpus :attrs {attr-name attr-val}))
-         ; Each non-attr offer can take only one job
-         make-non-attr-offers (fn [n]
-                                (into [] (repeatedly n #(make-vm-offer framework-id (make-hostname) (make-uuid)
-                                                                       :cpus 1.0 :attrs {attr-name "west"}))))]
+  (let [uri "datomic:mem://test-attr-equals-host-placement-constraint"
+        conn (restore-fresh-database! uri)
+        framework-id #mesomatic.types.FrameworkID{:value "my-original-framework-id"}
+        make-hostname #(str (java.util.UUID/randomUUID))
+        attr-name "az"
+        attr-val "east"
+        make-attr-offer (fn [cpus]
+                          (make-vm-offer framework-id (make-hostname) (make-uuid)
+                                         :cpus cpus :attrs {attr-name attr-val}))
+        ; Each non-attr offer can take only one job
+        make-non-attr-offers (fn [n]
+                               (into [] (repeatedly n #(make-vm-offer framework-id (make-hostname) (make-uuid)
+                                                                      :cpus 1.0 :attrs {attr-name "west"}))))]
     (testing "Create group, schedule one job unto VM, then all subsequent jobs must have same attr as the VM."
       (let [scheduler (make-dummy-scheduler)
             group-id (create-dummy-group conn :host-placement
@@ -995,83 +995,124 @@
 
 (deftest test-handle-framework-message
   (let [uri "datomic:mem://test-handle-framework-message"
-        conn (restore-fresh-database! uri)
-        make-message (fn [message] (-> message json/write-str str (.getBytes "UTF-8")))
-        query-instance-field (fn [instance-id field]
-                               (ffirst (q '[:find ?value
-                                            :in $ ?i ?field
-                                            :where
-                                            [?i ?field ?value]
-                                            [?i :instance/task-id ?task-id]]
-                                          (db conn) instance-id field)))]
-    (testing "missing task-id in message"
-      (let [task-id (str (UUID/randomUUID))]
-        (let [message (make-message {:dummy-data task-id})]
-          (is (nil? (sched/handle-framework-message conn message))))))
+        conn (restore-fresh-database! uri)]
 
-    (testing "no transactions"
-      (let [task-id (str (UUID/randomUUID))]
-        (let [message (make-message {:task-id task-id})]
-          (is (nil? (sched/handle-framework-message conn message))))))
+    (letfn [(make-message [message]
+              (-> message json/write-str str (.getBytes "UTF-8")))
+            (query-instance-field [instance-id field]
+              (ffirst (q '[:find ?value
+                           :in $ ?i ?field
+                           :where
+                           [?i ?field ?value]
+                           [?i :instance/task-id ?task-id]]
+                         (db conn) instance-id field)))
+            (handle-progress-message-factory [progress-aggregator-promise]
+              (fn handle-progress-message [progress-message-map]
+                (deliver progress-aggregator-promise progress-message-map)))]
 
-    (testing "sandbox-directory update"
-      (let [job-id (create-dummy-job conn :user "test-user" :job-state :job.state/running)
-            task-id (str (UUID/randomUUID))
-            instance-id (create-dummy-instance conn job-id :instance-status :instance.status/running :task-id task-id)]
-        (let [sandbox-directory "/sandbox/location/for/task"
-              message (make-message {:task-id task-id :sandbox-directory sandbox-directory})]
-          (async/<!! (sched/handle-framework-message conn message))
-          (is (= sandbox-directory (query-instance-field instance-id :instance/sandbox-directory))))))
+      (testing "missing task-id in message"
+        (let [task-id (str (UUID/randomUUID))]
+          (let [progress-aggregator-promise (promise)
+                handle-progress-message (handle-progress-message-factory progress-aggregator-promise)
+                message (make-message {:dummy-data task-id})]
+            (is (nil? (sched/handle-framework-message conn handle-progress-message message)))
+            (is (nil? (deref progress-aggregator-promise 1000 nil))))))
 
-    (testing "progress-message update"
-      (let [job-id (create-dummy-job conn :user "test-user" :job-state :job.state/running)
-            task-id (str (UUID/randomUUID))
-            instance-id (create-dummy-instance conn job-id :instance-status :instance.status/running :task-id task-id)]
-        (let [progress-message "Almost complete..."
-              message (make-message {:task-id task-id :progress-message progress-message})]
-          (async/<!! (sched/handle-framework-message conn message))
-          (is (= progress-message (query-instance-field instance-id :instance/progress-message))))))
+      (testing "no transactions"
+        (let [task-id (str (UUID/randomUUID))]
+          (let [progress-aggregator-promise (promise)
+                handle-progress-message (handle-progress-message-factory progress-aggregator-promise)
+                message (make-message {:task-id task-id})]
+            (is (nil? (sched/handle-framework-message conn handle-progress-message message)))
+            (is (nil? (deref progress-aggregator-promise 1000 nil))))))
 
-    (testing "progress update"
-      (let [job-id (create-dummy-job conn :user "test-user" :job-state :job.state/running)
-            task-id (str (UUID/randomUUID))
-            instance-id (create-dummy-instance conn job-id :instance-status :instance.status/running :task-id task-id)]
-        (let [progress 20
-              message (make-message {:task-id task-id :progress-percent progress})]
-          (async/<!! (sched/handle-framework-message conn message))
-          (is (= progress (query-instance-field instance-id :instance/progress))))
-        (let [progress 50
-              message (make-message {:task-id task-id :progress-percent progress})]
-          (async/<!! (sched/handle-framework-message conn message))
-          (is (= progress (query-instance-field instance-id :instance/progress))))))
+      (testing "sandbox-directory update"
+        (let [job-id (create-dummy-job conn :user "test-user" :job-state :job.state/running)
+              task-id (str (UUID/randomUUID))
+              instance-id (create-dummy-instance conn job-id :instance-status :instance.status/running :task-id task-id)]
+          (let [progress-aggregator-promise (promise)
+                handle-progress-message (handle-progress-message-factory progress-aggregator-promise)
+                sandbox-directory "/sandbox/location/for/task"
+                message (make-message {:task-id task-id :sandbox-directory sandbox-directory})]
+            (async/<!! (sched/handle-framework-message conn handle-progress-message message))
+            (is (= sandbox-directory (query-instance-field instance-id :instance/sandbox-directory)))
+            (is (nil? (deref progress-aggregator-promise 1000 nil))))))
 
-    (testing "exit-code update"
-      (let [job-id (create-dummy-job conn :user "test-user" :job-state :job.state/running)
-            task-id (str (UUID/randomUUID))
-            instance-id (create-dummy-instance conn job-id :instance-status :instance.status/running :task-id task-id)]
-        (let [exit-code 0
-              message (make-message {:task-id task-id :exit-code exit-code})]
-          (async/<!! (sched/handle-framework-message conn message))
-          (is (= exit-code (query-instance-field instance-id :instance/exit-code))))))
+      (testing "progress-message update"
+        (let [job-id (create-dummy-job conn :user "test-user" :job-state :job.state/running)
+              task-id (str (UUID/randomUUID))
+              instance-id (create-dummy-instance conn job-id :instance-status :instance.status/running :task-id task-id)]
+          (let [progress-aggregator-promise (promise)
+                handle-progress-message (handle-progress-message-factory progress-aggregator-promise)
+                progress-message "Almost complete..."
+                message (make-message {:task-id task-id :progress-message progress-message})]
+            ;; no asynchronous transaction should be created
+            (is (nil? (sched/handle-framework-message conn handle-progress-message message)))
+            (is (nil? (query-instance-field instance-id :instance/progress-message)))
+            (is (= {:instance-id instance-id :progress-message progress-message :progress-percent nil}
+                   (deref progress-aggregator-promise 1000 nil))))))
 
-    (testing "all fields update"
-      (let [job-id (create-dummy-job conn :user "test-user" :job-state :job.state/running)
-            task-id (str (UUID/randomUUID))
-            instance-id (create-dummy-instance conn job-id :instance-status :instance.status/running :task-id task-id)]
-        (let [exit-code 0
-              progress 90
-              progress-message "Almost complete..."
-              sandbox-directory "/sandbox/location/for/task"
-              message (make-message {:task-id task-id
-                                     :exit-code exit-code
-                                     :progress-message progress-message
-                                     :progress-percent progress
-                                     :sandbox-directory sandbox-directory})]
-          (async/<!! (sched/handle-framework-message conn message))
-          (is (= exit-code (query-instance-field instance-id :instance/exit-code)))
-          (is (= progress (query-instance-field instance-id :instance/progress)))
-          (is (= progress-message (query-instance-field instance-id :instance/progress-message)))
-          (is (= sandbox-directory (query-instance-field instance-id :instance/sandbox-directory))))))))
+      (testing "progress update"
+        (let [job-id (create-dummy-job conn :user "test-user" :job-state :job.state/running)
+              task-id (str (UUID/randomUUID))
+              instance-id (create-dummy-instance conn job-id :instance-status :instance.status/running :task-id task-id)]
+
+          (let [progress-aggregator-promise (promise)
+                handle-progress-message (handle-progress-message-factory progress-aggregator-promise)
+                progress-percent 20
+                message (make-message {:task-id task-id :progress-percent progress-percent})]
+            ;; no asynchronous transaction should be created
+            (is (nil? (sched/handle-framework-message conn handle-progress-message message)))
+            (is (= 0 (query-instance-field instance-id :instance/progress)))
+            (is (nil? (query-instance-field instance-id :instance/progress-message)))
+            (is (= {:instance-id instance-id :progress-message nil :progress-percent progress-percent}
+                   (deref progress-aggregator-promise 1000 nil))))
+
+          (let [progress-aggregator-promise (promise)
+                handle-progress-message (handle-progress-message-factory progress-aggregator-promise)
+                progress-percent 50
+                message (make-message {:task-id task-id :progress-percent progress-percent})]
+            ;; no asynchronous transaction should be created
+            (is (nil? (sched/handle-framework-message conn handle-progress-message message)))
+            (is (= 0 (query-instance-field instance-id :instance/progress)))
+            (is (nil? (query-instance-field instance-id :instance/progress-message)))
+            (is (= {:instance-id instance-id :progress-message nil :progress-percent progress-percent}
+                   (deref progress-aggregator-promise 1000 nil))))))
+
+      (testing "exit-code update"
+        (let [job-id (create-dummy-job conn :user "test-user" :job-state :job.state/running)
+              task-id (str (UUID/randomUUID))
+              instance-id (create-dummy-instance conn job-id :instance-status :instance.status/running :task-id task-id)]
+          (let [progress-aggregator-promise (promise)
+                handle-progress-message (handle-progress-message-factory progress-aggregator-promise)
+                exit-code 0
+                message (make-message {:task-id task-id :exit-code exit-code})]
+            (async/<!! (sched/handle-framework-message conn handle-progress-message message))
+            (is (= exit-code (query-instance-field instance-id :instance/exit-code)))
+            (is (nil? (deref progress-aggregator-promise 1000 nil))))))
+
+      (testing "all fields update"
+        (let [job-id (create-dummy-job conn :user "test-user" :job-state :job.state/running)
+              task-id (str (UUID/randomUUID))
+              instance-id (create-dummy-instance conn job-id :instance-status :instance.status/running :task-id task-id)]
+          (let [progress-aggregator-promise (promise)
+                handle-progress-message (handle-progress-message-factory progress-aggregator-promise)
+                exit-code 0
+                progress-percent 90
+                progress-message "Almost complete..."
+                sandbox-directory "/sandbox/location/for/task"
+                message (make-message {:task-id task-id
+                                       :exit-code exit-code
+                                       :progress-message progress-message
+                                       :progress-percent progress-percent
+                                       :sandbox-directory sandbox-directory})]
+            (async/<!! (sched/handle-framework-message conn handle-progress-message message))
+            (is (= exit-code (query-instance-field instance-id :instance/exit-code)))
+            (is (= sandbox-directory (query-instance-field instance-id :instance/sandbox-directory)))
+            (is (= 0 (query-instance-field instance-id :instance/progress)))
+            (is (nil? (query-instance-field instance-id :instance/progress-message)))
+            (is (= {:instance-id instance-id :progress-message progress-message :progress-percent progress-percent}
+                   (deref progress-aggregator-promise 1000 nil)))))))))
 
 (deftest test-handle-stragglers
   (let [uri "datomic:mem://test-handle-stragglers"
@@ -1583,7 +1624,7 @@
                                                   (-> status mtypes/pb->data :state)))))
                     (Thread/sleep (rand-int 100))
                     (.countDown latch))]
-      (let [s (sched/create-mesos-scheduler nil true nil nil nil nil nil)]
+      (let [s (sched/create-mesos-scheduler nil true nil nil nil nil nil nil)]
 
         (.statusUpdate s nil (mtypes/->pb :TaskStatus {:task-id {} :state :task-starting}))
         (.statusUpdate s nil (mtypes/->pb :TaskStatus {:task-id {:value "T1"} :state :task-starting}))
@@ -1610,13 +1651,13 @@
         latch (CountDownLatch. 11)]
     (with-redefs [heartbeat/notify-heartbeat (constantly true)
                   sched/handle-framework-message
-                  (fn [_ message-bytes]
+                  (fn [_ _ message-bytes]
                     (let [[task-index message] (vec message-bytes)
                           task-id (str "T" task-index)]
                       (swap! messages-store update (str task-id) (fn [messages] (conj (or messages []) message))))
                     (Thread/sleep (rand-int 100))
                     (.countDown latch))]
-      (let [s (sched/create-mesos-scheduler nil true nil nil nil nil nil)
+      (let [s (sched/create-mesos-scheduler nil true nil nil nil nil nil nil)
             foo 11
             bar 21
             fee 31
@@ -1641,6 +1682,203 @@
         (is (= [foo bar] (->> "T2" (get @messages-store) vec)))
         (is (= [foo bar fie] (->> "T3" (get @messages-store) vec)))
         (is (= [foo] (->> "T4" (get @messages-store) vec)))))))
+
+(deftest test-progress-aggregator
+  (testing "basic update from inital state"
+    (is (= {"i1" {:progress-message "i1.m1" :progress-percent 10}}
+           (sched/progress-aggregator 10 {} {:instance-id "i1" :progress-message "i1.m1" :progress-percent 10}))))
+
+  (testing "update state for known instance"
+    (is (= {"i1" {:progress-message "i1.m2" :progress-percent 20}}
+           (sched/progress-aggregator 10 {"i1" {:progress-message "i1.m1" :progress-percent 10}}
+                                      {:instance-id "i1" :progress-message "i1.m2" :progress-percent 20}))))
+
+  (testing "handle threshold exceeded"
+    (is (= {"i1" {:progress-message "i1.m1" :progress-percent 10}}
+           (sched/progress-aggregator 1 {"i1" {:progress-message "i1.m1" :progress-percent 10}}
+                                      {:instance-id "i2" :progress-message "i2.m1" :progress-percent 20}))))
+
+  (testing "handle threshold limit reached"
+    (is (= {"i1" {:progress-message "i1.m1" :progress-percent 10}
+            "i2" {:progress-message "i2.m1" :progress-percent 20}}
+           (sched/progress-aggregator 2 {"i1" {:progress-message "i1.m1" :progress-percent 10}}
+                                      {:instance-id "i2" :progress-message "i2.m1" :progress-percent 20})))))
+
+(deftest test-progress-update-aggregator
+  (let [actual-progress-aggregator sched/progress-aggregator
+        redef-progress-aggregator (fn redef-progress-aggregator
+                                    [pending-progress-threshold instance-id->progress-state {:keys [response-chan] :as data}]
+                                    (let [result (actual-progress-aggregator pending-progress-threshold instance-id->progress-state data)]
+                                      (when response-chan
+                                        (async/close! response-chan))
+                                      result))]
+    (with-redefs [sched/progress-aggregator redef-progress-aggregator]
+      (letfn [(send [progress-aggregator-chan message & {:keys [sync] :or {sync false}}]
+                (let [message (cond-> message
+                                      sync (assoc :response-chan (async/promise-chan)))
+                      put-result (async/>!! progress-aggregator-chan message)]
+                  (when sync
+                    (or (not put-result)
+                        (-> message :response-chan async/<!!)))))]
+
+        (testing "no progress to publish"
+          (let [pending-progress-threshold 10
+                progress-state-chan (async/chan 1)
+                progress-aggregator-chan (sched/progress-update-aggregator pending-progress-threshold progress-state-chan)]
+
+            (is (= {} (async/<!! progress-state-chan)))
+            (is (= {} (async/<!! progress-state-chan)))
+
+            (async/close! progress-state-chan)
+            (async/close! progress-aggregator-chan)
+            (poll-until #(nil? (async/<!! progress-state-chan)) 100 1000)))
+
+        (testing "basic progress publishing"
+          (let [pending-progress-threshold 10
+                progress-state-chan (async/chan)
+                progress-aggregator-chan (sched/progress-update-aggregator pending-progress-threshold progress-state-chan)]
+            (send progress-aggregator-chan {:instance-id "i1" :progress-message "i1.m1" :progress-percent 10})
+            (send progress-aggregator-chan {:instance-id "i2" :progress-message "i2.m1" :progress-percent 10})
+            (send progress-aggregator-chan {:instance-id "i3" :progress-message "i3.m1" :progress-percent 10})
+            (send progress-aggregator-chan {:instance-id "i2" :progress-message "i2.m2" :progress-percent 25})
+            (send progress-aggregator-chan {:instance-id "i1" :progress-message "i1.m2" :progress-percent 45} :sync true)
+
+            (is (= {"i1" {:progress-message "i1.m2" :progress-percent 45}
+                    "i2" {:progress-message "i2.m2", :progress-percent 25}
+                    "i3" {:progress-message "i3.m1", :progress-percent 10}}
+                   (async/<!! progress-state-chan)))
+            (is (= {} (async/<!! progress-state-chan)))
+
+            (async/close! progress-state-chan)
+            (async/close! progress-aggregator-chan)
+            (poll-until #(nil? (async/<!! progress-state-chan)) 100 1000)))
+
+        (testing "basic progress overflow on channel"
+          (let [progress-aggregator-counter (atom 0)]
+            (with-redefs [sched/progress-aggregator
+                          (fn progress-aggregator
+                            [pending-progress-threshold instance-id->progress-state {:keys [response-chan] :as data}]
+                            (swap! progress-aggregator-counter inc)
+                            (Thread/sleep 100) ;; delay processing of message to cause queue to build up
+                            (redef-progress-aggregator pending-progress-threshold instance-id->progress-state data))]
+
+              (let [pending-progress-threshold 10
+                    progress-state-chan (async/chan)
+                    progress-aggregator-chan (sched/progress-update-aggregator pending-progress-threshold progress-state-chan)]
+                (dotimes [n 100]
+                  (send progress-aggregator-chan {:instance-id "i1" :progress-message (str "i1.m" n) :progress-percent n}))
+                (send progress-aggregator-chan {:instance-id "i1" :progress-message "i1.m100" :progress-percent 100} :sync true)
+
+                (is (< @progress-aggregator-counter 100))
+                (is (= {"i1" {:progress-message "i1.m100", :progress-percent 100}}
+                       (async/<!! progress-state-chan)))
+                (is (= {} (async/<!! progress-state-chan)))
+
+                (async/close! progress-state-chan)
+                (async/close! progress-aggregator-chan)
+                (poll-until #(nil? (async/<!! progress-state-chan)) 100 1000)))))))))
+
+(deftest test-progress-update-transactor
+  (let [uri "datomic:mem://test-progress-update-transactor"
+        conn (restore-fresh-database! uri)]
+    (testing "update-progress single instance"
+      (let [j1 (create-dummy-job conn :user "user1" :ncpus 1.0 :memory 3.0 :job-state :job.state/running)
+            i1 (create-dummy-instance conn j1)
+            publish-progress-trigger-chan (async/chan)
+            batch-size 2
+            {:keys [cancel-handle progress-state-chan]} (sched/progress-update-transactor publish-progress-trigger-chan batch-size conn)
+            response-chan (async/promise-chan)]
+        ;; publish the data
+        (async/>!! publish-progress-trigger-chan response-chan)
+        (async/>!! progress-state-chan {i1 {:progress-message "i1.m1" :progress-percent 10}})
+        ;; force db transactions
+        (async/<!! response-chan)
+        ;; assert the state of the db
+        (let [test-db (d/db conn)
+              {:keys [:instance/progress :instance/progress-message] :as instance}
+              (->> i1 (d/entity test-db) d/touch)]
+          (is instance)
+          (is (= 10 progress))
+          (is (= "i1.m1" progress-message)))
+
+        (cancel-handle)
+        (async/close! progress-state-chan)))
+
+    (testing "update-progress multiple instances"
+      (let [num-jobs-or-instances 1500
+            all-jobs (map (fn [index] (create-dummy-job conn :user (str "user" index) :ncpus 1.0 :memory 3.0 :job-state :job.state/running))
+                          (range num-jobs-or-instances))
+            all-instance-ids (map (fn [job] (create-dummy-instance conn job))
+                                  all-jobs)
+            publish-progress-trigger-chan (async/chan)
+            batch-size 100
+            {:keys [cancel-handle progress-state-chan]} (sched/progress-update-transactor publish-progress-trigger-chan batch-size conn)
+            instance-id->progress-state (pc/map-from-keys (fn [instance-id]
+                                                            (let [progress (rand-int 100)]
+                                                              {:progress-message (str instance-id ".m" progress)
+                                                               :progress-percent progress}))
+                                                          all-instance-ids)
+            response-chan (async/promise-chan)]
+        ;; publish the data
+        (async/>!! publish-progress-trigger-chan response-chan)
+        (async/>!! progress-state-chan instance-id->progress-state)
+        ;; force db transactions
+        (async/<!! response-chan)
+        ;; assert the state of the db
+        (let [test-db (d/db conn)
+              actual-instance-id->progress-state (pc/map-from-keys (fn [instance-id]
+                                                                     (let [{:keys [:instance/progress :instance/progress-message] :as instance}
+                                                                           (->> instance-id (d/entity test-db) d/touch)]
+                                                                       {:progress-message progress-message
+                                                                        :progress-percent progress}))
+                                                                   all-instance-ids)]
+          (is (= instance-id->progress-state actual-instance-id->progress-state)))
+
+        (cancel-handle)
+        (async/close! progress-state-chan)))
+
+    (testing "update-progress publish latest data"
+      (let [num-jobs-or-instances 100
+            all-jobs (map (fn [index] (create-dummy-job conn :user (str "user" index) :ncpus 1.0 :memory 3.0 :job-state :job.state/running))
+                          (range num-jobs-or-instances))
+            all-instance-ids (map (fn [job] (create-dummy-instance conn job))
+                                  all-jobs)
+            publish-progress-trigger-chan (async/chan)
+            batch-size 10
+            {:keys [cancel-handle progress-state-chan]} (sched/progress-update-transactor publish-progress-trigger-chan batch-size conn)
+            instance-id->progress-state (pc/map-from-keys (fn [instance-id]
+                                                            (let [progress (rand-int 100)]
+                                                              {:progress-message (str instance-id ".m" progress)
+                                                               :progress-percent progress}))
+                                                          all-instance-ids)
+            response-chan-1 (async/promise-chan)
+            response-chan-2 (async/promise-chan)]
+        ;; generate half the data
+        (async/>!! publish-progress-trigger-chan response-chan-1)
+        (let [n (int (/ num-jobs-or-instances 2))
+              instance-id->progress-state' (into {} (take n instance-id->progress-state))]
+          (async/>!! progress-state-chan instance-id->progress-state'))
+        ;; force a publish
+        (async/<!! response-chan-1)
+        ;; generate rest of the data
+        (async/>!! publish-progress-trigger-chan response-chan-2)
+        (let [n num-jobs-or-instances
+              instance-id->progress-state' (into {} (take n instance-id->progress-state))]
+          (async/>!! progress-state-chan instance-id->progress-state'))
+        ;; force a publish
+        (async/<!! response-chan-2)
+        ;; assert the state of the db
+        (let [test-db (d/db conn)
+              actual-instance-id->progress-state (pc/map-from-keys (fn [instance-id]
+                                                                     (let [{:keys [:instance/progress :instance/progress-message] :as instance}
+                                                                           (->> instance-id (d/entity test-db) d/touch)]
+                                                                       {:progress-message progress-message
+                                                                        :progress-percent progress}))
+                                                                   all-instance-ids)]
+          (is (= instance-id->progress-state actual-instance-id->progress-state)))
+
+        (cancel-handle)
+        (async/close! progress-state-chan)))))
 
 (comment
   (run-tests))

@@ -36,22 +36,22 @@
 
 (defn job->task-metadata
   "Takes a job entity, returns task metadata"
-  [db framework-id executor job-ent task-id]
+  [db framework-id executor-config job-ent task-id]
   (let [resources (util/job-ent->resources job-ent)
         container (util/job-ent->container db job-ent)
         ;; If the custom-executor attr isn't set, we default to using a custom
         ;; executor in order to support jobs submitted before we added this field
         custom-executor? (:job/custom-executor job-ent true)
-        cook-executor? (and (not custom-executor?) (seq executor))
+        cook-executor? (and (not custom-executor?) (seq executor-config))
         environment (cond-> (util/job-ent->env job-ent)
-                            cook-executor? (merge (build-executor-environment executor)))
+                            cook-executor? (merge (build-executor-environment executor-config)))
         labels (util/job-ent->label job-ent)
         command {:environment environment
                  :uris (cond-> (:uris resources [])
-                               (and cook-executor? (get-in executor [:uri :value]))
-                               (conj (:uri executor)))
+                               (and cook-executor? (get-in executor-config [:uri :value]))
+                               (conj (:uri executor-config)))
                  :user (:job/user job-ent)
-                 :value (if cook-executor? (:command executor) (:job/command job-ent))}
+                 :value (if cook-executor? (:command executor-config) (:job/command job-ent))}
         ;; executor-key configure whether this is a command or custom executor
         executor-key (cond
                        (and container (not custom-executor?)) :container-command-executor
@@ -81,9 +81,9 @@
 
 (defn TaskAssignmentResult->task-metadata
   "Organizes the info Fenzo has already told us about the task we need to run"
-  [db framework-id executor ^TaskAssignmentResult fenzo-result]
+  [db framework-id executor-config ^TaskAssignmentResult fenzo-result]
   (let [task-request (.getRequest fenzo-result)]
-    (merge (job->task-metadata db framework-id executor (:job task-request) (:task-id task-request))
+    (merge (job->task-metadata db framework-id executor-config (:job task-request) (:task-id task-request))
            {:ports-assigned (.getAssignedPorts fenzo-result)
             :task-request task-request})))
 

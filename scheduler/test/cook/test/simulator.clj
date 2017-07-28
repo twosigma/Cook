@@ -104,34 +104,41 @@
          mea-culpa-failure-limit# (or (:mea-culpa-failure-limit ~scheduler-config)
                                       5)
          task-constraints# (merge default-task-constraints (:task-constraints ~scheduler-config))
-         executor# {:command "cook-executor"
-                    :default-progress-output-file "stdout"
-                    :default-progress-regex-string "regex-string"
-                    :log-level "INFO"
-                    :max-message-length 512
-                    :progress-sample-interval-ms 1000
-                    :uri {:cache true
-                          :executable true
-                          :extract false
-                          :value "file:///path/to/cook/executor"}}
+         executor-config# {:command "cook-executor"
+                           :default-progress-output-file "stdout"
+                           :default-progress-regex-string "regex-string"
+                           :log-level "INFO"
+                           :max-message-length 512
+                           :progress-sample-interval-ms 1000
+                           :uri {:cache true
+                                 :executable true
+                                 :extract false
+                                 :value "file:///path/to/cook/executor"}}
          riemann-host# (:riemann-host ~scheduler-config)
          riemann-port# (:riemann-port ~scheduler-config)
          gpu-enabled?# (or (:gpus-enabled? ~scheduler-config) false)
+         progress-config# {:batch-size 100
+                           :pending-threshold 1000
+                           :publish-interval-ms 2000}
          rebalancer-config# (merge default-rebalancer-config (:rebalancer-config ~scheduler-config))
          framework-id# "cool-framework-id"
          mesos-leadership-atom# (atom false)
          fenzo-config# (merge default-fenzo-config (:fenzo-config ~scheduler-config))
          trigger-chans# (or (:trigger-chans ~scheduler-config)
-                            (c/make-trigger-chans rebalancer-config# task-constraints#))]
+                            (c/make-trigger-chans rebalancer-config# progress-config# task-constraints#))]
      (try
-       (let [scheduler# (c/start-mesos-scheduler ~make-mesos-driver-fn get-mesos-utilization#
+       (let [additional-config# {:executor-config executor-config#
+                                :rebalancer-config rebalancer-config#
+                                :progress-config progress-config#}
+             scheduler# (c/start-mesos-scheduler ~make-mesos-driver-fn get-mesos-utilization#
                                                  curator-framework# ~conn
                                                  mesos-mult# zk-prefix#
                                                  offer-incubate-time-ms# mea-culpa-failure-limit#
-                                                 task-constraints# executor# riemann-host# riemann-port#
+                                                 task-constraints# riemann-host# riemann-port#
                                                  pending-jobs-atom# offer-cache#
-                                                 gpu-enabled?# rebalancer-config# framework-id# 
-                                                 mesos-leadership-atom# fenzo-config#
+                                                 gpu-enabled?# framework-id# mesos-leadership-atom#
+                                                 additional-config#
+                                                 fenzo-config#
                                                  trigger-chans#)]
          ~@body)
        (finally

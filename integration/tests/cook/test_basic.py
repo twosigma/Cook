@@ -65,6 +65,14 @@ class CookTest(unittest.TestCase):
         self.assertEqual(1, len(job['instances']))
         message = json.dumps(job['instances'][0], sort_keys=True)
         self.assertEqual('success', job['instances'][0]['status'], message)
+
+        # allow enough time for progress updates to be submitted
+        publish_interval_ms = util.get_in(util.settings(self.cook_url), 'progress', 'publish-interval-ms')
+        wait_publish_interval_secs = min(2 * publish_interval_ms / 1000, 20)
+        time.sleep(wait_publish_interval_secs)
+        job = util.load_job(self.cook_url, job_uuid)
+        message = json.dumps(job['instances'][0], sort_keys=True)
+
         if util.is_using_cook_executor(self.cook_url):
             self.assertEqual(0, job['instances'][0]['exit_code'], message)
             self.assertEqual(25, job['instances'][0]['progress'], message)
@@ -83,6 +91,14 @@ class CookTest(unittest.TestCase):
         self.assertEqual(1, len(job['instances']))
         message = json.dumps(job['instances'][0], sort_keys=True)
         self.assertEqual('success', job['instances'][0]['status'], message)
+
+        # allow enough time for progress updates to be submitted
+        publish_interval_ms = util.get_in(util.settings(self.cook_url), 'progress', 'publish-interval-ms')
+        wait_publish_interval_secs = min(2 * publish_interval_ms / 1000, 20)
+        time.sleep(wait_publish_interval_secs)
+        job = util.load_job(self.cook_url, job_uuid)
+        message = json.dumps(job['instances'][0], sort_keys=True)
+
         if util.is_using_cook_executor(self.cook_url):
             self.assertEqual(0, job['instances'][0]['exit_code'], message)
             self.assertEqual(75, job['instances'][0]['progress'], message)
@@ -98,9 +114,17 @@ class CookTest(unittest.TestCase):
         self.assertEqual(201, resp.status_code)
         job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
         self.assertEqual(1, len(job['instances']))
-        self.assertEqual('success', job['instances'][0]['status'])
+        message = json.dumps(job['instances'][0], sort_keys=True)
+        self.assertEqual('success', job['instances'][0]['status'], message)
+
+        # allow enough time for progress updates to be submitted
+        publish_interval_ms = util.get_in(util.settings(self.cook_url), 'progress', 'publish-interval-ms')
+        wait_publish_interval_secs = min(2 * publish_interval_ms / 1000, 20)
+        time.sleep(wait_publish_interval_secs)
+        job = util.load_job(self.cook_url, job_uuid)
+        message = json.dumps(job['instances'][0], sort_keys=True)
+
         if util.is_using_cook_executor(self.cook_url):
-            message = json.dumps(job['instances'][0], sort_keys=True)
             self.assertEqual(0, job['instances'][0]['exit_code'], message)
             self.assertEqual(80, job['instances'][0]['progress'], message)
             self.assertEqual('80%', job['instances'][0]['progress_message'], message)
