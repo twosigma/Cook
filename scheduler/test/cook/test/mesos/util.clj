@@ -354,75 +354,42 @@
                                                             10)))))))))
 
 (deftest test-reducing-pipe
-  (let [initial-state []
-        data-counter (atom 0)
-        in-xform (fn [state data]
-                   (swap! data-counter inc)
-                   (conj state data))
-        out-preparer (fn [state] [[] state])]
+  (testing "basic piping"
+    (let [initial-state []
+          data-counter (atom 0)
+          in-xform (fn [state data]
+                     (swap! data-counter inc)
+                     (conj state data))
+          in-chan (async/chan 10)
+          out-chan (async/chan)
+          reducing-go-chan (util/reducing-pipe in-chan in-xform out-chan :initial-state initial-state)]
 
-    (testing "basic piping"
-      (let [in-chan (async/chan 10)
-            out-chan (async/chan)]
-
-        (reset! data-counter 0)
-        (util/reducing-pipe in-chan in-xform out-chan out-preparer :initial-state initial-state)
-
-        (testing "consume initial batch"
-          (async/>!! in-chan 1)
-          (async/>!! in-chan 2)
-          (async/>!! in-chan 3)
-          (testutil/poll-until #(= @data-counter 3) 10 1000)
-          (is (= [1 2 3] (-> out-chan async/<!! async/<!!))))
-
-        (testing "keep consuming empty data when no new input"
-          (is (= [] (-> out-chan async/<!! async/<!!)))
-          (is (= [] (-> out-chan async/<!! async/<!!))))
-
-        (testing "consume subsequent batch"
-          (async/>!! in-chan 4)
-          (async/>!! in-chan 5)
-          (testutil/poll-until #(= @data-counter 5) 10 1000)
-          (is (= [4 5] (-> out-chan async/<!! async/<!!))))
-
-        (testing "keep consuming empty data when no new input"
-          (is (= [] (-> out-chan async/<!! async/<!!)))
-          (is (= [] (-> out-chan async/<!! async/<!!))))
-
-        (async/close! in-chan)))
-
-    (testing "callback invocations"
-      (let [in-chan (async/chan 10)
-            out-chan (async/chan)
-            on-consumed-promise (promise)
-            on-consumed (fn [consumed] (deliver on-consumed-promise consumed))
-            on-finished-promise (promise)
-            on-finished (fn [] (deliver on-finished-promise :finished))]
-
-        (reset! data-counter 0)
-        (util/reducing-pipe in-chan in-xform out-chan out-preparer
-                            :initial-state initial-state
-                            :on-consumed on-consumed
-                            :on-finished on-finished)
-
+      (testing "consume initial batch"
         (async/>!! in-chan 1)
         (async/>!! in-chan 2)
         (async/>!! in-chan 3)
         (testutil/poll-until #(= @data-counter 3) 10 1000)
-        (is (= [1 2 3] (-> out-chan async/<!! async/<!!)))
+        (is (= [1 2 3] (async/<!! out-chan))))
 
-        (testing "on-consumed callback"
-          (deliver on-consumed-promise :unfulfilled)
-          (is (= [1 2 3] @on-consumed-promise)))
+      (testing "keep consuming empty data when no new input"
+        (is (= [] (async/<!! out-chan)))
+        (is (= [] (async/<!! out-chan))))
 
-        (async/close! in-chan)
+      (testing "consume subsequent batch"
+        (async/>!! in-chan 4)
+        (async/>!! in-chan 5)
+        (testutil/poll-until #(= @data-counter 5) 10 1000)
+        (is (= [4 5] (async/<!! out-chan))))
 
-        (testing "on-finished callback"
-          (Thread/sleep 1000)
-          (is (= :finished @on-finished-promise)))
+      (testing "keep consuming empty data when no new input"
+        (is (= [] (async/<!! out-chan)))
+        (is (= [] (async/<!! out-chan))))
 
-        (testing "no more data on out-chan"
-          (let [[_ chan] (async/alts!! [out-chan (async/timeout 100)] :priority true)]
-            (is (not= chan out-chan))))))))
+      (async/close! in-chan)
+
+      (async/<!! reducing-go-chan) ;; wait for go-block to terminate
+      (testing "no more data on out-chan"
+        (let [[_ chan] (async/alts!! [out-chan (async/timeout 100)] :priority true)]
+          (is (not= chan out-chan)))))))
 
 (comment (run-tests))

@@ -1726,8 +1726,8 @@
                 progress-state-chan (async/chan 1)
                 progress-aggregator-chan (sched/progress-update-aggregator pending-progress-threshold progress-state-chan)]
 
-            (is (= {} (-> progress-state-chan async/<!! async/<!!)))
-            (is (= {} (-> progress-state-chan async/<!! async/<!!)))
+            (is (= {} (async/<!! progress-state-chan)))
+            (is (= {} (async/<!! progress-state-chan)))
 
             (async/close! progress-state-chan)
             (async/close! progress-aggregator-chan)
@@ -1746,8 +1746,8 @@
             (is (= {"i1" {:progress-message "i1.m2" :progress-percent 45}
                     "i2" {:progress-message "i2.m2", :progress-percent 25}
                     "i3" {:progress-message "i3.m1", :progress-percent 10}}
-                   (-> progress-state-chan async/<!! async/<!!)))
-            (is (= {} (-> progress-state-chan async/<!! async/<!!)))
+                   (async/<!! progress-state-chan)))
+            (is (= {} (async/<!! progress-state-chan)))
 
             (async/close! progress-state-chan)
             (async/close! progress-aggregator-chan)
@@ -1771,8 +1771,8 @@
 
                 (is (< @progress-aggregator-counter 100))
                 (is (= {"i1" {:progress-message "i1.m100", :progress-percent 100}}
-                       (-> progress-state-chan async/<!! async/<!!)))
-                (is (= {} (-> progress-state-chan async/<!! async/<!!)))
+                       (async/<!! progress-state-chan)))
+                (is (= {} (async/<!! progress-state-chan)))
 
                 (async/close! progress-state-chan)
                 (async/close! progress-aggregator-chan)
@@ -1780,11 +1780,7 @@
 
 (deftest test-progress-update-transactor
   (let [uri "datomic:mem://test-progress-update-transactor"
-        conn (restore-fresh-database! uri)
-        send (fn [progress-state-chan data]
-               (let [data-chan (async/promise-chan)]
-                 (async/>!! data-chan data)
-                 (async/>!! progress-state-chan data-chan)))]
+        conn (restore-fresh-database! uri)]
     (testing "update-progress single instance"
       (let [j1 (create-dummy-job conn :user "user1" :ncpus 1.0 :memory 3.0 :job-state :job.state/running)
             i1 (create-dummy-instance conn j1)
@@ -1794,7 +1790,7 @@
             response-chan (async/promise-chan)]
         ;; publish the data
         (async/>!! publish-progress-trigger-chan response-chan)
-        (send progress-state-chan {i1 {:progress-message "i1.m1" :progress-percent 10}})
+        (async/>!! progress-state-chan {i1 {:progress-message "i1.m1" :progress-percent 10}})
         ;; force db transactions
         (async/<!! response-chan)
         ;; assert the state of the db
@@ -1825,7 +1821,7 @@
             response-chan (async/promise-chan)]
         ;; publish the data
         (async/>!! publish-progress-trigger-chan response-chan)
-        (send progress-state-chan instance-id->progress-state)
+        (async/>!! progress-state-chan instance-id->progress-state)
         ;; force db transactions
         (async/<!! response-chan)
         ;; assert the state of the db
@@ -1861,14 +1857,14 @@
         (async/>!! publish-progress-trigger-chan response-chan-1)
         (let [n (int (/ num-jobs-or-instances 2))
               instance-id->progress-state' (into {} (take n instance-id->progress-state))]
-          (send progress-state-chan instance-id->progress-state'))
+          (async/>!! progress-state-chan instance-id->progress-state'))
         ;; force a publish
         (async/<!! response-chan-1)
         ;; generate rest of the data
         (async/>!! publish-progress-trigger-chan response-chan-2)
         (let [n num-jobs-or-instances
               instance-id->progress-state' (into {} (take n instance-id->progress-state))]
-          (send progress-state-chan instance-id->progress-state'))
+          (async/>!! progress-state-chan instance-id->progress-state'))
         ;; force a publish
         (async/<!! response-chan-2)
         ;; assert the state of the db

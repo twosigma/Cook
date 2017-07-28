@@ -19,7 +19,6 @@
             [clj-time.periodic :refer [periodic-seq]]
             [clojure.core.async :as async]
             [clojure.core.cache :as cache]
-            [clojure.walk :as walk]
             [datomic.api :as d :refer (q)]
             [metatransaction.core :refer (db)]
             [metrics.timers :as timers]
@@ -518,7 +517,7 @@
   [maybe-ch]
   (try
     (async/close! maybe-ch)
-    (catch Exception e)))
+    (catch Exception _)))
 
 (defn chime-at-ch
   "Like chime-at (from chime[https://github.com/jarohen/chime])
@@ -555,35 +554,19 @@
 
 (defn reducing-pipe
   "Reads elements from the `in-chan` channel and supplies elements to the `out-chan` channel.
-   Maintains a state (initialized to `initial-state`) that is updated by applying the reducing function
-   `in-xform` to the current state and the incoming element `(in-xform state element)`.
-   `out-preparer` accepts the current state (i.e. `(out-preparer state)`) and produces `[reset-state out-value]`.
-   When the `out-chan` channel can receive an element, a `out-data-chan` channel is put on the `out-chan`
-   channel. Then the `out-value` is put on this `out-data-chan` and the state is set to the `reset-state`.
-   The optional parameter `on-consumed` can be used to register notifications of when a value has been
-   supplied to the `out-chan` channel.
+   Maintains a state (initialized to `initial-state`) that is updated by applying the reducing
+   function `reducer` to the current state and the incoming element `(reducer state element)`.
+   When the `out-chan` channel can receive an element, the current state is put on the `out-chan`
+   and the state is reset to `initial-state`.
 
-   Note: This function does not perform error handling, exceptions must be explicitly handled in the
-   provided functions (i.e. in-xform, out-preparer and on-finished). In particular, `out-preparer` must
-   not throw an exception as it will prevent the promise-chan from being fulfilled.
-
-   Note: The roundabout approach of putting a promise-chan on the out-chan before actually placing the
-   value on the promise-chan is necessary as we want to limit calls to `out-preparer` to only when the
-   data is ready to be consumed by `out-chan`."
-  [in-chan in-xform out-chan out-preparer &
-   {:keys [initial-state on-consumed on-finished]
-    :or {initial-state nil, on-consumed identity, on-finished #()}}]
-  (async/go-loop [state initial-state
-                  out-data-chan (async/promise-chan)]
-    (let [[data chan] (async/alts! [[out-chan out-data-chan] in-chan] :priority true)]
+   Note: This function does not perform error handling, exceptions must be explicitly handled in
+   the provided functions (i.e. reducer)."
+  [in-chan reducer out-chan & {:keys [initial-state]}]
+  (async/go-loop [state initial-state]
+    (let [[data chan] (async/alts! [[out-chan state] in-chan] :priority true)]
       (condp = chan
         out-chan (if data
-                   (let [[reset-state out-value] (out-preparer state)]
-                     (async/put! out-data-chan out-value)
-                     (async/close! out-data-chan)
-                     (on-consumed out-value)
-                     (recur reset-state (async/promise-chan)))
-                   (recur state out-data-chan))
-        in-chan (if (nil? data)
-                  (on-finished)
-                  (recur (in-xform state data) out-data-chan))))))
+                   (recur initial-state)
+                   (recur state))
+        in-chan (when (not (nil? data))
+                  (recur (reducer state data)))))))

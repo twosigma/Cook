@@ -279,10 +279,10 @@
   (-> (d/entity db [:instance/task-id task-id])
       :db/id))
 
-(histograms/defhistogram [cook-mesos scheduler progress-aggregator-pending-states])
 (meters/defmeter [cook-mesos scheduler progress-aggregator-message-rate])
 (meters/defmeter [cook-mesos scheduler progress-aggregator-drop-rate])
 (counters/defcounter [cook-mesos scheduler progress-aggregator-drop-count])
+(counters/defcounter [cook-mesos scheduler progress-aggregator-pending-states-count])
 
 (defn progress-aggregator
   "Aggregates the progress state specified in `data` into the current progress state `instance-id->progress-state`.
@@ -294,6 +294,11 @@
           (contains? instance-id->progress-state instance-id))
     (let [progress-state (select-keys data [:progress-message :progress-percent])
           instance-id->progress-state' (assoc instance-id->progress-state instance-id progress-state)]
+      (let [old-count (count instance-id->progress-state)
+            new-count (count instance-id->progress-state')]
+        (when (zero? old-count)
+          (counters/clear! progress-aggregator-pending-states-count))
+        (counters/inc! progress-aggregator-pending-states-count (- new-count old-count)))
       instance-id->progress-state')
     (do
       (meters/mark! progress-aggregator-drop-rate)
@@ -314,14 +319,11 @@
   (let [progress-aggregator-chan (async/chan (async/sliding-buffer pending-progress-threshold))
         progress-aggregator-fn (fn progress-aggregator-fn [instance-id->progress-state data]
                                  (progress-aggregator pending-progress-threshold instance-id->progress-state data))
-        progress-consumer-fn (fn progress-consumer-fn [instance-id->progress-state]
-                               [{} instance-id->progress-state])]
-    (util/reducing-pipe progress-aggregator-chan progress-aggregator-fn progress-state-chan progress-consumer-fn
-                        :initial-state {}
-                        :on-consumed (fn on-consumed-fn [instance-id->progress-state]
-                                       (log/debug "Forwarded" (count instance-id->progress-state) "progress states to the transactor")
-                                       (histograms/update! progress-aggregator-pending-states (count instance-id->progress-state)))
-                        :on-finished (fn on-finished-fn [] (log/info "Exiting progress update aggregator")))
+        aggregator-go-chan (util/reducing-pipe progress-aggregator-chan progress-aggregator-fn progress-state-chan
+                                               :initial-state {})]
+    (async/go
+      (async/<! aggregator-go-chan)
+      (log/info "Progress update aggregator exited"))
     progress-aggregator-chan))
 
 (histograms/defhistogram [cook-mesos scheduler progress-updater-pending-states])
@@ -372,8 +374,8 @@
               (log/info "Exiting progress update transactor"))
             (process-progress-update-transactor-event []
               ;; progress-state-chan is expected to receive a promise-chan that contains the instance-id->progress-state
-              (let [[data-chan _] (async/alts!! [progress-state-chan (async/timeout 100)] :priority true)]
-                (when-let [instance-id->progress-state (when data-chan (async/<!! data-chan))]
+              (let [[instance-id->progress-state _] (async/alts!! [progress-state-chan (async/timeout 100)] :priority true)]
+                (when instance-id->progress-state
                   (log/info "Received" (count instance-id->progress-state) "in progress-update-transactor")
                   (publish-progress-to-datomic! conn instance-id->progress-state batch-size))))]
       {:cancel-handle (util/chime-at-ch progress-updater-trigger-chan process-progress-update-transactor-event
