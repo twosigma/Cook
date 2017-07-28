@@ -553,20 +553,24 @@
        (remove nil?)))
 
 (defn reducing-pipe
-  "Reads elements from the `in-chan` channel and supplies elements to the `out-chan` channel.
+  "Reads elements from the `from` channel and supplies elements to the `to` channel.
    Maintains a state (initialized to `initial-state`) that is updated by applying the reducing
    function `reducer` to the current state and the incoming element `(reducer state element)`.
-   When the `out-chan` channel can receive an element, the current state is put on the `out-chan`
+   When the `to` channel can receive an element, the current state is put on the `to` channel
    and the state is reset to `initial-state`.
+   By default, the `to` channel will be closed when the `from` channel closes, but can be
+   determined by the optional close? parameter.
 
    Note: This function does not perform error handling, exceptions must be explicitly handled in
    the provided functions (i.e. reducer)."
-  [in-chan reducer out-chan & {:keys [initial-state]}]
+  [from reducer to & {:keys [close? initial-state] :or {close? true}}]
   (async/go-loop [state initial-state]
-    (let [[data chan] (async/alts! [[out-chan state] in-chan] :priority true)]
+    (let [[data chan] (async/alts! [[to state] from] :priority true)]
       (condp = chan
-        out-chan (if data
-                   (recur initial-state)
-                   (recur state))
-        in-chan (when (not (nil? data))
-                  (recur (reducer state data)))))))
+        to (if data
+             (recur initial-state)
+             (recur state))
+        from (if (nil? data)
+               (when close?
+                 (async/close! to))
+               (recur (reducer state data)))))))

@@ -388,8 +388,7 @@
       (async/close! in-chan)
 
       (async/<!! reducing-go-chan) ;; wait for go-block to terminate
-      (testing "no more data on out-chan"
-        (let [[_ chan] (async/alts!! [out-chan (async/timeout 100)] :priority true)]
-          (is (not= chan out-chan)))))))
+      (testing "out-chan should be closed"
+        (is (nil? (async/<!! out-chan)))))))
 
 (comment (run-tests))
