@@ -54,11 +54,6 @@ def submit_stdin(commands, cook_url, flags=None, submit_flags=None):
     return cp, uuids
 
 
-def jobs(cp):
-    """Parses the stdout of the given CompletedProcess as jobs JSON"""
-    return json.loads(stdout(cp))
-
-
 def show_or_wait(action, uuids=None, cook_url=None, flags=None, action_flags=None):
     """Helper function used to either show or wait via the CLI"""
     action_flags = (action_flags + ' ') if action_flags else ''
@@ -75,8 +70,9 @@ def show(uuids=None, cook_url=None, flags=None, show_flags=None):
 
 def show_json(uuids, cook_url=None, flags=None):
     """Shows the job JSON corresponding to the given UUID(s)"""
-    cp = show(uuids, cook_url, flags, '--json')
-    return cp, jobs(cp)
+    flags = (flags + ' ') if flags else ''
+    cp = show(uuids, cook_url, '%s--silent' % flags, '--json')
+    return cp, json.loads(stdout(cp))
 
 
 def wait(uuids=None, cook_url=None, flags=None, wait_flags=None):

@@ -126,19 +126,6 @@ class CookCliTest(unittest.TestCase):
         self.assertEqual(1, cp.returncode, cp.stderr)
         self.assertIn('cannot specify both a cluster name and a cluster url', cli.decode(cp.stderr))
 
-    def test_default_cluster(self):
-        config = {'clusters': [{'name': 'foo', 'url': self.cook_url}],
-                  'defaults': {'submit': {'mem': 256, 'cpus': 2, 'max-retries': 2},
-                               'cluster': 'foo'}}
-        with cli.temp_config_file(config) as path:
-            flags = '--config %s' % path
-            cp, uuids = cli.submit('ls', flags=flags)
-            self.assertEqual(0, cp.returncode, cp.stderr)
-            cp, jobs = cli.show_json(uuids, flags=flags)
-            self.assertEqual(0, cp.returncode, cp.stderr)
-            cp = cli.wait(uuids, flags=flags)
-            self.assertEqual(0, cp.returncode, cp.stderr)
-
     def test_no_cluster(self):
         config = {'clusters': []}
         with cli.temp_config_file(config) as path:

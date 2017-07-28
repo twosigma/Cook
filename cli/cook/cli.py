@@ -1,4 +1,5 @@
 import argparse
+import concurrent
 import datetime
 import json
 import logging
@@ -8,6 +9,7 @@ import time
 import uuid
 from collections import OrderedDict
 from urllib.parse import urljoin, urlparse
+from concurrent import futures
 
 import requests
 from tabulate import tabulate
@@ -100,10 +102,8 @@ def cli(args):
             if urlparse(url).scheme == '':
                 url = 'http://%s' % url
             clusters = [{'name': url, 'url': url}]
-        else:
-            cluster = cluster or (defaults.get('cluster') if defaults else None)
-            if cluster:
-                clusters = [c for c in clusters if c.get('name') == cluster]
+        elif cluster:
+            clusters = [c for c in clusters if c.get('name') == cluster]
 
         if clusters:
             http_adapter = requests.adapters.HTTPAdapter(max_retries=retries)
@@ -130,6 +130,7 @@ submit_parser.add_argument('--max-retries', help='maximum retries for job', dest
 submit_parser.add_argument('--max-runtime', help='maximum runtime for job', dest='max-runtime', type=int)
 submit_parser.add_argument('--cpus', help='cpus to reserve for job', type=float)
 submit_parser.add_argument('--mem', help='memory to reserve for job', type=int)
+submit_parser.add_argument('--group', help='group uuid for job', type=str)
 submit_parser.add_argument('--raw', '-r', help='raw job spec in json format', dest='raw', action='store_true')
 submit_parser.add_argument('command', nargs='?')
 submit_parser.add_argument('args', nargs=argparse.REMAINDER)
@@ -246,7 +247,11 @@ def submit(clusters, args):
             j['name'] = "{0}_{1}".format(os.environ['USER'], uuid.uuid4())
 
     def parse_submit_response(response, cluster):
-        uuids = [p for p in response.text.strip('"').split() if is_valid_uuid(p)]
+        text = response.text.strip('"')
+        if ' submitted groups' in text:
+            group_index = text.index(' submitted groups')
+            text = text[:group_index]
+        uuids = [p for p in text.split() if is_valid_uuid(p)]
         if silent:
             return uuids
         elif len(uuids) == 1:
@@ -269,43 +274,81 @@ wait_parser.add_argument('--timeout', '-t', default=30, help='maximum time (in s
 wait_parser.add_argument('--interval', '-i', default=5, help='time (in seconds) to wait between polling', type=int)
 
 
-def query_jobs_on_cluster(cluster, uuids):
-    """Attempts to query jobs corresponding to the given uuids from cluster."""
-    url = make_url(cluster, 'rawscheduler')
-    resp = session.get(url, params={'job': uuids, 'partial': 'true'})
+def make_entity_request(cluster, endpoint, params):
+    """Attempts to query entities corresponding to the given params from cluster."""
+    url = make_url(cluster, endpoint)
+    resp = session.get(url, params=params)
     logging.info('response from cook: %s' % resp.text)
     return resp
 
 
-def query_jobs(clusters, args, pred=None, timeout=None, interval=None):
+def make_job_request(cluster, uuids):
+    """Attempts to query jobs corresponding to the given uuids from cluster."""
+    return make_entity_request(cluster, 'rawscheduler', params={'job': uuids, 'partial': 'true'})
+
+
+def make_instance_request(cluster, uuids):
+    """Attempts to query instances corresponding to the given uuids from cluster."""
+    return make_entity_request(cluster, 'rawscheduler', params={'instance': uuids, 'partial': 'true'})
+
+
+def make_group_request(cluster, uuids):
+    """Attempts to query groups corresponding to the given uuids from cluster."""
+    return make_entity_request(cluster, 'group', params={'uuid': uuids, 'detailed': 'true'})
+
+
+def query_cluster(cluster, uuids, pred, timeout, interval, make_request_fn):
+    """TODO(DPO)"""
+
+    def satisfy_pred(cluster_, uuids_):
+        resp_ = make_request_fn(cluster_, uuids_)
+        return pred(resp_.json())
+
+    try:
+        resp = make_request_fn(cluster, uuids)
+        if resp.status_code == 200:
+            entities = resp.json()
+            if pred and not pred(entities):
+                entities = wait_until(lambda: satisfy_pred(cluster, uuids), timeout, interval)
+                if not entities:
+                    raise Exception('Timeout waiting for response')
+            return entities
+        else:
+            return 'No data found'
+    except requests.exceptions.ConnectionError as ce:
+        logging.info(ce)
+        return 'Unable to connect'
+
+
+def query_entities(cluster, uuids, pred_jobs, pred_instances, pred_groups, timeout, interval,
+                   include_jobs=True, include_instances=True, include_groups=True):
+    """TODO(DPO)"""
+    entities = {}
+    if include_jobs:
+        entities['jobs'] = query_cluster(cluster, uuids, pred_jobs, timeout, interval, make_job_request)
+    if include_instances:
+        entities['instances'] = query_cluster(cluster, uuids, pred_instances, timeout, interval, make_instance_request)
+    if include_groups:
+        entities['groups'] = query_cluster(cluster, uuids, pred_groups, timeout, interval, make_group_request)
+    return entities
+
+
+def query_parallel(clusters, args, pred_jobs=None, pred_instances=None, pred_groups=None, timeout=None, interval=None):
     """
-    Attempts to query jobs from the given clusters. The job uuids are provided in args. Optionally
+    Attempts to query entities from the given clusters. The uuids are provided in args. Optionally
     accepts a predicate, pred, which must be satisfied within the timeout.
     """
     uuids = process_uuids(args.get('uuid'))
-
-    def jobs_satisfy_pred(cluster_, uuids_):
-        resp_ = query_jobs_on_cluster(cluster_, uuids_)
-        return pred(resp_.json())
-
-    all_jobs = []
-    for cluster in clusters:
-        try:
-            resp = query_jobs_on_cluster(cluster, uuids)
-            if resp.status_code == 200:
-                jobs = resp.json()
-                if pred and not pred(jobs):
-                    jobs = wait_until(lambda: jobs_satisfy_pred(cluster, uuids), timeout, interval)
-                    if not jobs:
-                        raise Exception('Timeout waiting for jobs')
-                all_jobs.extend(jobs)
-                for job in jobs:
-                    uuids.remove(uuid.UUID(job['uuid']))
-                if len(uuids) == 0:
-                    return all_jobs
-        except requests.exceptions.ConnectionError as ce:
-            logging.info(ce)
-    raise Exception('Unable to query job(s) on the following cluster(s): %s' % clusters)
+    all_entities = {}
+    print_info('Gathering data from %s cluster%s...' % (len(clusters), 's' if len(clusters) > 1 else ''))
+    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+        future_to_cluster =\
+            {executor.submit(query_entities, c, uuids, pred_jobs, pred_instances, pred_groups, timeout, interval): c for c in clusters}
+        for future in concurrent.futures.as_completed(future_to_cluster):
+            cluster = future_to_cluster[future]
+            entities = future.result()
+            all_entities[cluster['name']] = entities
+    return all_entities
 
 
 def all_jobs_completed(jobs):
@@ -316,11 +359,27 @@ def all_jobs_completed(jobs):
         return False
 
 
+def all_instances_completed(instances):
+    """Returns instances if they are all completed, otherwise False."""
+    if not [job for job in instances if job.get('status') != 'completed']:
+        return instances
+    else:
+        return False
+
+
+def all_groups_completed(groups):
+    """Returns groups if they are all completed, otherwise False."""
+    if not [job for job in groups if job.get('status') != 'completed']:
+        return groups
+    else:
+        return False
+
+
 def wait(clusters, args):
     """Waits for job(s) with the given UUID(s) to complete."""
     timeout = args.get('timeout')
     interval = args.get('interval')
-    query_jobs(clusters, args, all_jobs_completed, timeout, interval)
+    query_parallel(clusters, args, all_jobs_completed, all_instances_completed, all_groups_completed, timeout, interval)
 
 
 actions.update({'wait': wait})
@@ -402,11 +461,17 @@ def show(clusters, args):
     """Prints info for the job(s) with the given UUID(s)."""
     as_json = args.get('json')
     detailed_instances = args.get('instances')
-    jobs = query_jobs(clusters, args)
+    jobs = query_parallel(clusters, args)
     if as_json:
         return json.dumps(jobs)
     else:
-        return '\n\n==========\n'.join([tabulate_job(job, detailed_instances) for job in jobs])
+        for cluster_name, response in jobs.items():
+            print_info('\n+++ Cluster: %s' % cluster_name)
+            if isinstance(response, str):
+                print_info(response)
+            else:
+                output = '\n\n==========\n'.join([tabulate_job(job, detailed_instances) for job in response])
+                print(output)
 
 
 actions.update({'show': show})
@@ -421,7 +486,7 @@ show_output_parser.add_argument('--path', '-p', default='stdout', help='TODO(DPO
 def show_output(clusters, args):
     """TODO(DPO)"""
     path = args.get('path')
-    jobs = query_jobs(clusters, args)
+    jobs = query_parallel(clusters, args)
     job_output = None
     job_outputs = {}
     for job in jobs:
