@@ -359,14 +359,14 @@
         in-xform (fn [state data]
                    (swap! data-counter inc)
                    (conj state data))
-        out-xform (fn [state] [[] state])]
+        out-preparer (fn [state] [[] state])]
 
     (testing "basic piping"
       (let [in-chan (async/chan 10)
             out-chan (async/chan)]
 
         (reset! data-counter 0)
-        (util/reducing-pipe in-chan in-xform out-chan out-xform :initial-state initial-state)
+        (util/reducing-pipe in-chan in-xform out-chan out-preparer :initial-state initial-state)
 
         (testing "consume initial batch"
           (async/>!! in-chan 1)
@@ -400,7 +400,7 @@
             on-finished (fn [] (deliver on-finished-promise :finished))]
 
         (reset! data-counter 0)
-        (util/reducing-pipe in-chan in-xform out-chan out-xform
+        (util/reducing-pipe in-chan in-xform out-chan out-preparer
                             :initial-state initial-state
                             :on-consumed on-consumed
                             :on-finished on-finished)
