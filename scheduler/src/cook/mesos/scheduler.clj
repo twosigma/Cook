@@ -303,23 +303,24 @@
 
 (defn progress-update-aggregator
   "Launches a long running go block that triggers publishing the latest aggregated instance-id->progress-state
-   whenever there is a read on the progress-state-chan.
+   wrapped inside a chan whenever there is a read on the progress-state-chan.
    It drops messages if the progress-aggregator-chan queue is larger than pending-progress-threshold or the aggregated
    state has more than pending-progress-threshold different entries.
-   It returns the progress-aggregator-chan which can be used to send progress-state messages to the aggregator."
+   It returns the progress-aggregator-chan which can be used to send progress-state messages to the aggregator.
+
+   Note: the wrapper chan is used due to our use of `util/xform-pipe`"
   [pending-progress-threshold progress-state-chan]
   (log/info "Starting progress update aggregator")
   (let [progress-aggregator-chan (async/chan (async/sliding-buffer pending-progress-threshold))
         progress-aggregator-fn (fn progress-aggregator-fn [instance-id->progress-state data]
                                  (progress-aggregator pending-progress-threshold instance-id->progress-state data))
         progress-consumer-fn (fn progress-consumer-fn [instance-id->progress-state]
+                               (log/debug "Forwarded" (count instance-id->progress-state) "progress states to the transactor")
+                               (histograms/update! progress-aggregator-pending-states (count instance-id->progress-state))
                                [{} instance-id->progress-state])]
-    (util/xform-pipe progress-aggregator-chan {} progress-aggregator-fn progress-state-chan progress-consumer-fn
-                     :on-consumed (fn [instance-id->progress-state]
-                                    (log/debug "Forwarded" (count instance-id->progress-state) "progress states to the transactor")
-                                    (histograms/update! progress-aggregator-pending-states (count instance-id->progress-state)))
-                     :on-finished (fn []
-                                    (log/info "Exiting progress update aggregator")))
+    (util/reduce-pipe progress-aggregator-chan progress-aggregator-fn progress-state-chan progress-consumer-fn
+                      :initial-state {}
+                      :on-finished (fn on-finished-fn [] (log/info "Exiting progress update aggregator")))
     progress-aggregator-chan))
 
 (histograms/defhistogram [cook-mesos scheduler progress-updater-pending-states])
@@ -354,10 +355,12 @@
           (log/error e "Progress batch update error"))))))
 
 (defn progress-update-transactor
-  "Launches a long running go block that triggers transacting the latest aggregated instance-id->progress-state to
-   datomic whenever there is a message on the progress-updater-trigger-chan.
+  "Launches a long running go block that triggers transacting the latest aggregated instance-id->progress-state
+   to datomic whenever there is a message on the progress-updater-trigger-chan.
    No more than batch-size facts are updated in individual datomic transactions.
-   It returns a map containing the progress-state-chan which can be used to send messages about the latest instance-id->progress-state.
+   It returns a map containing the progress-state-chan which can be used to send messages about the latest
+   instance-id->progress-state which must be wrapped inside a channel. The producer must guarantee that this
+   channel is promptly fulfilled if it is successfully put in the progress-state-chan.
    If no such message is on the progress-state-chan, then no datomic interactions occur."
   [progress-updater-trigger-chan batch-size conn]
   (log/info "Starting progress update transactor")
@@ -367,8 +370,9 @@
             (progress-update-transactor-on-finished []
               (log/info "Exiting progress update transactor"))
             (process-progress-update-transactor-event []
-              (let [[data _] (async/alts!! [progress-state-chan (async/timeout 100)] :priority true)]
-                (when-let [instance-id->progress-state data]
+              ;; progress-state-chan is expected to receive a promise-chan that contains the instance-id->progress-state
+              (let [[data-chan _] (async/alts!! [progress-state-chan (async/timeout 100)] :priority true)]
+                (when-let [instance-id->progress-state (when data-chan (async/<!! data-chan))]
                   (log/info "Received" (count instance-id->progress-state) "in progress-update-transactor")
                   (publish-progress-to-datomic! conn instance-id->progress-state batch-size))))]
       {:cancel-handle (util/chime-at-ch progress-updater-trigger-chan process-progress-update-transactor-event

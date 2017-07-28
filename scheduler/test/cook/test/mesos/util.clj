@@ -355,67 +355,63 @@
 
 (deftest test-xform-pipe
   (let [initial-state []
-        in-xform conj
-        out-xform-counter (atom 0)
-        out-xform (fn [state] (reset! out-xform-counter (count state)) [[] state])]
+        data-counter (atom 0)
+        in-xform (fn [state data]
+                   (swap! data-counter inc)
+                   (conj state data))
+        out-xform (fn [state] [[] state])]
 
     (testing "basic piping"
       (let [in-chan (async/chan 10)
             out-chan (async/chan)]
 
-        (reset! out-xform-counter 0)
-        (util/xform-pipe in-chan initial-state in-xform out-chan out-xform)
+        (reset! data-counter 0)
+        (util/reduce-pipe in-chan in-xform out-chan out-xform :initial-state initial-state)
 
         (testing "consume initial batch"
           (async/>!! in-chan 1)
           (async/>!! in-chan 2)
           (async/>!! in-chan 3)
-          (testutil/poll-until #(= @out-xform-counter 3) 10 500)
-          (is (= [1 2 3] (async/<!! out-chan))))
+          (testutil/poll-until #(= @data-counter 3) 10 1000)
+          (is (= [1 2 3] (-> out-chan async/<!! async/<!!))))
 
         (testing "keep consuming empty data when no new input"
-          (is (= [] (async/<!! out-chan)))
-          (is (= [] (async/<!! out-chan))))
+          (is (= [] (-> out-chan async/<!! async/<!!)))
+          (is (= [] (-> out-chan async/<!! async/<!!))))
 
         (testing "consume subsequent batch"
           (async/>!! in-chan 4)
           (async/>!! in-chan 5)
-          (testutil/poll-until #(= @out-xform-counter 2) 10 500)
-          (is (= [4 5] (async/<!! out-chan))))
+          (testutil/poll-until #(= @data-counter 5) 10 1000)
+          (is (= [4 5] (-> out-chan async/<!! async/<!!))))
 
         (testing "keep consuming empty data when no new input"
-          (is (= [] (async/<!! out-chan)))
-          (is (= [] (async/<!! out-chan))))
+          (is (= [] (-> out-chan async/<!! async/<!!)))
+          (is (= [] (-> out-chan async/<!! async/<!!))))
 
         (async/close! in-chan)))
 
     (testing "callback invocations"
       (let [in-chan (async/chan 10)
             out-chan (async/chan)
-            on-consumed-promise (promise)
-            on-consumed (fn [consumed] (deliver on-consumed-promise consumed))
             on-finished-promise (promise)
             on-finished (fn [] (deliver on-finished-promise :finished))]
 
-        (reset! out-xform-counter 0)
-        (util/xform-pipe in-chan initial-state in-xform out-chan out-xform
-                         :on-consumed on-consumed
-                         :on-finished on-finished)
+        (reset! data-counter 0)
+        (util/reduce-pipe in-chan in-xform out-chan out-xform
+                          :initial-state initial-state
+                          :on-finished on-finished)
 
         (async/>!! in-chan 1)
         (async/>!! in-chan 2)
         (async/>!! in-chan 3)
-        (testutil/poll-until #(>= @out-xform-counter 3) 10 500)
-        (is (= [1 2 3] (async/<!! out-chan)))
-
-        (testing "on-consumed callback"
-          (deliver on-consumed-promise :unfulfilled)
-          (is (= [1 2 3] @on-consumed-promise)))
+        (testutil/poll-until #(= @data-counter 3) 10 1000)
+        (is (= [1 2 3] (-> out-chan async/<!! async/<!!)))
 
         (async/close! in-chan)
 
         (testing "on-finished callback"
-          (testutil/poll-until #(= :finished @on-finished-promise) 10 500)
+          (Thread/sleep 1000)
           (is (= :finished @on-finished-promise)))
 
         (testing "no more data on out-chan"

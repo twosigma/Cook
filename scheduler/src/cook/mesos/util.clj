@@ -553,27 +553,35 @@
   (->> (repeatedly ch-size #(async/poll! ch))
        (remove nil?)))
 
-(defn xform-pipe
+(defn reduce-pipe
   "Reads elements from the `in-chan` channel and supplies elements to the `out-chan` channel.
    Maintains a state (initialized to `initial-state`) that is updated by applying the reducing function
    `in-xform` to the current state and the incoming element `(in-xform state element)`.
    `out-xform` accepts the current state (i.e. `(out-xform state)`) and produces `[reset-state out-value]`.
-   When the `out-chan` channel can receive an element, the `value` is put on the channel and the state is
-   set to the `reset-state` returned from the `out-xform`. Invocation of `out-xform` does not guarantee that
-   `out-value` will be consumed, hence it should not have side-effects. The optional parameter `on-consumed`
-   can be used to register notifications of when a value has been supplied to the `out-chan` channel.
+   When the `out-chan` channel can receive an element, a `out-data-chan` channel is put on the `out-chan`
+   channel. Then the `out-value` is put on this `out-data-chan` and the state is set to the `reset-state`.
+   Invocation of `out-xform` guarantees that `out-value` has been provided, hence it can be used
+   to register notifications of when a value has been supplied to the `out-chan` channel.
 
    Note: This function does not perform error handling, exceptions must be explicitly handled in the
-   provided functions (i.e. in-xform, out-xform, on-consumed and on-finished)."
-  [in-chan initial-state in-xform out-chan out-xform &
-   {:keys [on-consumed on-finished] :or {on-consumed identity, on-finished #()}}]
-  (async/go-loop [state initial-state]
-    (let [[reset-state out-value] (out-xform state)
-          [data chan] (async/alts! [[out-chan out-value] in-chan] :priority true)]
+   provided functions (i.e. in-xform, out-xform and on-finished). In particular, `out-xform` must not
+   throw an exception as it will prevent the promise-chan from being fulfilled.
+
+   Note: The roundabout approach of putting a promise-chan on the out-chan before actually placing the
+   value on the promise-chan is necessary as we want to limit calls to `out-xform` to only when the
+   data is ready to be consumed by `out-chan`."
+  [in-chan in-xform out-chan out-xform &
+   {:keys [initial-state on-finished] :or {initial-state nil, on-finished #()}}]
+  (async/go-loop [state initial-state
+                  out-data-chan (async/chan 1)]
+    (let [[data chan] (async/alts! [[out-chan out-data-chan] in-chan] :priority true)]
       (condp = chan
-        out-chan (do
-                   (on-consumed out-value)
-                   (recur reset-state))
+        out-chan (if data
+                   (let [[reset-state out-value] (out-xform state)]
+                     (async/put! out-data-chan out-value)
+                     (async/close! out-data-chan)
+                     (recur reset-state (async/chan)))
+                   (recur state out-data-chan))
         in-chan (if (nil? data)
                   (on-finished)
-                  (recur (in-xform state data)))))))
+                  (recur (in-xform state data) out-data-chan))))))
