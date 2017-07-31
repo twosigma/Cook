@@ -4,9 +4,10 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
-## [Unreleased]
+## [1.5.4] - 2017-07-31
 ### Added
 - Added support for throttling rate of publishing instance progress updates, from @shamsimam
+- Added authorization check for job creation, from @dposada
 
 ## [1.5.3] - 2017-07-17
 ### Added
