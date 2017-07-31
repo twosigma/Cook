@@ -997,7 +997,7 @@
       (doseq [[task-id] running-tasks
               :let [task-ent (d/entity db [:instance/task-id task-id])
                     hostname (:instance/hostname task-ent)
-                    job (:job/_instance task-ent)
+                    job (util/entity->map (:job/_instance task-ent))
                     task-request (make-task-request job :task-id task-id)]]
         ;; Need to lock on fenzo when accessing taskAssigner because taskAssigner and
         ;; scheduleOnce can not be called at the same time.
