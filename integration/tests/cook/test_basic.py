@@ -462,3 +462,33 @@ class CookTest(unittest.TestCase):
         job_uuid, resp = util.submit_job(self.cook_url, ports=10)
         job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
         self.assertEqual(10, len(job['instances'][0]['ports']))
+
+    def test_allow_partial_for_groups(self):
+        def absent_uuids(response):
+            return [part for part in response.json()['error'].split() if util.is_valid_uuid(part)]
+
+        group_uuid_1 = str(uuid.uuid4())
+        group_uuid_2 = str(uuid.uuid4())
+        _, resp = util.submit_job(self.cook_url, group=group_uuid_1)
+        self.assertEqual(201, resp.status_code)
+        _, resp = util.submit_job(self.cook_url, group=group_uuid_2)
+        self.assertEqual(201, resp.status_code)
+
+        # Only valid group uuids
+        resp = util.query_groups(self.cook_url, uuid=[group_uuid_1, group_uuid_2])
+        self.assertEqual(200, resp.status_code)
+
+        # Mixed valid, invalid group uuids
+        bogus_uuid = str(uuid.uuid4())
+        resp = util.query_groups(self.cook_url, uuid=[group_uuid_1, group_uuid_2, bogus_uuid])
+        self.assertEqual(400, resp.status_code)
+        self.assertEqual([bogus_uuid], absent_uuids(resp))
+        resp = util.query_groups(self.cook_url, uuid=[group_uuid_1, group_uuid_2, bogus_uuid], partial='false')
+        self.assertEqual(400, resp.status_code, resp.json())
+        self.assertEqual([bogus_uuid], absent_uuids(resp))
+
+        # Partial results with mixed valid, invalid job uuids
+        resp = util.query_groups(self.cook_url, uuid=[group_uuid_1, group_uuid_2, bogus_uuid], partial='true')
+        self.assertEqual(200, resp.status_code, resp.json())
+        self.assertEqual(2, len(resp.json()))
+        self.assertEqual([group_uuid_1, group_uuid_2].sort(), [group['uuid'] for group in resp.json()].sort())
