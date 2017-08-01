@@ -119,6 +119,15 @@ def query_jobs(cook_url, **kwargs):
     return session.get('%s/rawscheduler' % cook_url, params=kwargs)
 
 
+def query_groups(cook_url, **kwargs):
+    """
+    Queries cook for a set of groups, by groups uuid. The kwargs
+    passed to this function are sent straight through as query 
+    parameters on the request.
+    """
+    return session.get('%s/group' % cook_url, params=kwargs)
+
+
 def load_job(cook_url, job_uuid, assert_response=True):
     """Loads a job by UUID using GET /rawscheduler"""
     response = query_jobs(cook_url, job=[job_uuid])
