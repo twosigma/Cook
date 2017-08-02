@@ -82,6 +82,7 @@
                   :exclusions [io.netty/netty org.clojure/clojure]]
                  [metrics-clojure-ring "2.3.0" :exclusions [com.codahale.metrics/metrics-core
                                                             org.clojure/clojure io.netty/netty]]
+                 [metrics-clojure-jvm "2.6.1"]
                  [io.dropwizard.metrics/metrics-graphite "3.1.2"]
                  [com.aphyr/metrics3-riemann-reporter "0.4.0"]
                  [riemann-clojure-client "0.4.1"]
