@@ -27,6 +27,7 @@
             [congestion.storage :as storage]
             [cook.curator :as curator]
             [cook.util :as util]
+            [metrics.jvm.core :as metrics-jvm]
             [metrics.ring.instrument :refer (instrument)]
             [plumbing.core :refer (fnk)]
             [plumbing.graph :as graph]
@@ -582,6 +583,7 @@
       (.println System/err "Configured logging")
       (log/info "Configured logging")
       (log/info "Cook" @util/version "( commit" @util/commit ")")
+      (metrics-jvm/instrument-jvm)
       (let [settings {:settings (config-settings literal-config)}
             _ (log/info "Interpreted settings")
             server (scheduler-server settings)]
