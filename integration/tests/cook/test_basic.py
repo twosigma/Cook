@@ -505,10 +505,10 @@ class CookTest(unittest.TestCase):
         # Mixed valid, invalid group uuids
         bogus_uuid = str(uuid.uuid4())
         resp = util.query_groups(self.cook_url, uuid=[group_uuid_1, group_uuid_2, bogus_uuid])
-        self.assertEqual(400, resp.status_code)
+        self.assertEqual(404, resp.status_code)
         self.assertEqual([bogus_uuid], absent_uuids(resp))
         resp = util.query_groups(self.cook_url, uuid=[group_uuid_1, group_uuid_2, bogus_uuid], partial='false')
-        self.assertEqual(400, resp.status_code, resp.json())
+        self.assertEqual(404, resp.status_code, resp.json())
         self.assertEqual([bogus_uuid], absent_uuids(resp))
 
         # Partial results with mixed valid, invalid job uuids
