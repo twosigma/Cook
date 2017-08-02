@@ -24,7 +24,6 @@ class CookCliTest(unittest.TestCase):
         self.assertEqual(0, cp.returncode, cp.stderr)
         cp = cli.wait(uuids, self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
-        self.assertEqual('', cli.stdout(cp))
         cp, jobs = cli.show_json(uuids, self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual('completed', jobs[0]['status'])
@@ -245,23 +244,25 @@ class CookCliTest(unittest.TestCase):
         cp = cli.wait(uuids, self.cook_url, wait_flags='--timeout 1')
         elapsed_time = time.time() - start_time
         self.assertEqual(1, cp.returncode, cp.stderr)
-        self.assertIn('Timeout waiting for jobs', cli.decode(cp.stderr))
+        self.assertIn('Timeout waiting', cli.decode(cp.stderr))
         self.assertLess(elapsed_time, 15)
         self.assertGreater(elapsed_time, 3)
         start_time = time.time()
         cp = cli.wait(uuids, self.cook_url, wait_flags='--timeout 1 --interval 1')
         elapsed_time_2 = time.time() - start_time
         self.assertEqual(1, cp.returncode, cp.stderr)
-        self.assertIn('Timeout waiting for jobs', cli.decode(cp.stderr))
+        self.assertIn('Timeout waiting', cli.decode(cp.stderr))
         self.assertLess(elapsed_time_2, 3)
 
     def test_query_invalid_uuid(self):
         cp = cli.show([uuid.uuid4()], self.cook_url)
         self.assertEqual(1, cp.returncode, cp.stderr)
-        self.assertIn('Unable to query job(s)', cli.decode(cp.stderr))
+        self.assertIn('No matching jobs found', cli.stdout(cp))
+        self.assertIn('No matching instances found', cli.stdout(cp))
+        self.assertIn('No matching job groups found', cli.stdout(cp))
         cp = cli.wait([uuid.uuid4()], self.cook_url)
         self.assertEqual(1, cp.returncode, cp.stderr)
-        self.assertIn('Unable to query job(s)', cli.decode(cp.stderr))
+        self.assertIn('No matching jobs, instances, or job groups were found', cli.stdout(cp))
 
     def test_show_requires_at_least_one_uuid(self):
         cp = cli.show([], self.cook_url)
@@ -405,19 +406,6 @@ class CookCliTest(unittest.TestCase):
         self.assertRegex(cli.stdout(cp), 'uris\s+.*cache=False executable=False extract=False value=foo')
         self.assertRegex(cli.stdout(cp), 'uris\s+.*cache=False executable=False extract=False value=bar')
         self.assertRegex(cli.stdout(cp), 'uris\s+.*cache=False executable=False extract=False value=baz')
-
-    def test_show_instances_flag(self):
-        cp, uuids = cli.submit('ls', self.cook_url)
-        self.assertEqual(0, cp.returncode, cp.stderr)
-        cp = cli.wait(uuids, self.cook_url)
-        self.assertEqual(0, cp.returncode, cp.stderr)
-        cp = cli.show(uuids, self.cook_url)
-        self.assertEqual(0, cp.returncode, cp.stderr)
-        self.assertRegex(cli.stdout(cp), 'Instances:\\n\\ntask_id\s+status\s+start_time\s+end_time\s*\\n')
-        cp = cli.show(uuids, self.cook_url, show_flags='--instances')
-        self.assertEqual(0, cp.returncode, cp.stderr)
-        self.assertRegex(cli.stdout(cp), 'Instances:\\n\\ntask_id\s+status\s+start_time\s+end_time\s+mesos_start_time'
-                                         '\s+slave_id\s+executor_id\s+hostname\s+ports\s+backfilled\s+preempted\s*\\n')
 
     def test_show_running_job(self):
         cp, uuids = cli.submit('sleep 60', self.cook_url)

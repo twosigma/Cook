@@ -72,7 +72,10 @@ def show_json(uuids, cook_url=None, flags=None):
     """Shows the job JSON corresponding to the given UUID(s)"""
     flags = (flags + ' ') if flags else ''
     cp = show(uuids, cook_url, '%s--silent' % flags, '--json')
-    return cp, json.loads(stdout(cp))
+    response = json.loads(stdout(cp))
+    entities = next(iter(response['clusters'].values()))
+    jobs = entities['jobs']
+    return cp, jobs
 
 
 def wait(uuids=None, cook_url=None, flags=None, wait_flags=None):

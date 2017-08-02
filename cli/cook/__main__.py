@@ -15,14 +15,7 @@ def main(args=None):
 
     try:
         result = cli(args)
-
-        if type(result) is list:
-            for line in result:
-                print(line)
-        elif result:
-            print(result)
-
-        exit(0)
+        exit(result)
     except Exception as e:
         logging.exception('exception when running with %s' % args)
         print(str(e), file=sys.stderr)

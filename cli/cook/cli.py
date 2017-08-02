@@ -25,7 +25,7 @@ DEFAULT_CONFIG_PATHS = [
 
 def process_uuids(uuids):
     """Processes UUIDs from the command line."""
-    return [uuid.UUID(u.strip()) for u in uuids]
+    return [u.strip() for u in uuids]
 
 
 ###################################################################################################
@@ -180,7 +180,8 @@ def submit_federated(clusters, make_request_fn, success_status, parse_response_f
             resp = make_request_fn(url)
             logging.info('response from cook: %s' % resp.text)
             if resp.status_code == success_status:
-                return parse_response_fn(resp, cluster)
+                print_info(parse_response_fn(resp, cluster))
+                return 0
         except requests.exceptions.ConnectionError as ce:
             logging.info(ce)
     raise Exception('Unable to %s on any of the following clusters: %s' % (description, clusters))
@@ -294,7 +295,7 @@ def make_instance_request(cluster, uuids):
 
 def make_group_request(cluster, uuids):
     """Attempts to query groups corresponding to the given uuids from cluster."""
-    return make_entity_request(cluster, 'group', params={'uuid': uuids, 'detailed': 'true'})
+    return make_entity_request(cluster, 'group', params={'uuid': uuids, 'partial': 'true', 'detailed': 'true'})
 
 
 def query_cluster(cluster, uuids, pred, timeout, interval, make_request_fn):
@@ -314,40 +315,48 @@ def query_cluster(cluster, uuids, pred, timeout, interval, make_request_fn):
                     raise Exception('Timeout waiting for response')
             return entities
         else:
-            return 'No data found'
+            return {}
     except requests.exceptions.ConnectionError as ce:
         logging.info(ce)
-        return 'Unable to connect'
+        return {}
 
 
 def query_entities(cluster, uuids, pred_jobs, pred_instances, pred_groups, timeout, interval,
                    include_jobs=True, include_instances=True, include_groups=True):
     """TODO(DPO)"""
+    count = 0
     entities = {}
     if include_jobs:
         entities['jobs'] = query_cluster(cluster, uuids, pred_jobs, timeout, interval, make_job_request)
+        count += len(entities['jobs'])
     if include_instances:
         entities['instances'] = query_cluster(cluster, uuids, pred_instances, timeout, interval, make_instance_request)
+        count += len(entities['instances'])
     if include_groups:
         entities['groups'] = query_cluster(cluster, uuids, pred_groups, timeout, interval, make_group_request)
+        count += len(entities['groups'])
+    entities['count'] = count
     return entities
 
 
-def query_parallel(clusters, args, pred_jobs=None, pred_instances=None, pred_groups=None, timeout=None, interval=None):
+def query(clusters, uuids, pred_jobs=None, pred_instances=None, pred_groups=None, timeout=None, interval=None):
     """
     Attempts to query entities from the given clusters. The uuids are provided in args. Optionally
     accepts a predicate, pred, which must be satisfied within the timeout.
     """
-    uuids = process_uuids(args.get('uuid'))
-    all_entities = {}
+    count = 0
+    all_entities = {'clusters': {}}
     print_info('Gathering data from %s cluster%s...' % (len(clusters), 's' if len(clusters) > 1 else ''))
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
-        future_to_cluster =\
-            {executor.submit(query_entities, c, uuids, pred_jobs, pred_instances, pred_groups, timeout, interval): c for c in clusters}
+        future_to_cluster = \
+            {executor.submit(query_entities, c, uuids, pred_jobs, pred_instances, pred_groups, timeout, interval): c for
+             c in clusters}
         for future in concurrent.futures.as_completed(future_to_cluster):
             cluster = future_to_cluster[future]
             entities = future.result()
-            all_entities[cluster['name']] = entities
+            all_entities['clusters'][cluster['name']] = entities
+            count += entities['count']
+    all_entities['count'] = count
     return all_entities
 
 
@@ -379,17 +388,22 @@ def wait(clusters, args):
     """Waits for job(s) with the given UUID(s) to complete."""
     timeout = args.get('timeout')
     interval = args.get('interval')
-    query_parallel(clusters, args, all_jobs_completed, all_instances_completed, all_groups_completed, timeout, interval)
-
+    uuids = process_uuids(args.get('uuid'))
+    query_result = query(clusters, uuids, all_jobs_completed, all_instances_completed,
+                         all_groups_completed, timeout, interval)
+    if query_result['count'] > 0:
+        return 0
+    else:
+        print_info('No matching jobs, instances, or job groups were found.')
+        return 1
 
 actions.update({'wait': wait})
 
 ###################################################################################################
 
-show_parser = subparsers.add_parser('show', help='show job(s) by uuid')
+show_parser = subparsers.add_parser('show', help='show jobs / instances / groups by uuid')
 show_parser.add_argument('uuid', nargs='+')
-show_parser.add_argument('--json', help='show the job(s) in JSON format', dest='json', action='store_true')
-show_parser.add_argument('--instances', help='display detailed instance data', dest='instances', action='store_true')
+show_parser.add_argument('--json', help='show the data in JSON format', dest='json', action='store_true')
 
 
 def millis_to_timedelta(ms):
@@ -426,92 +440,77 @@ def format_instance_fields(instance):
     return instance
 
 
-basic_instance_fields = ['task_id', 'status', 'start_time', 'end_time']
-detailed_instance_fields = \
-    basic_instance_fields + \
-    ['mesos_start_time', 'slave_id', 'executor_id', 'hostname', 'ports', 'backfilled', 'preempted']
-
-
-def tabulate_instances(instances, detailed_instances):
+def tabulate_job_instances(instances):
     """Returns either a table displaying the instance info or the string "(no instances)"."""
     if len(instances) > 0:
-        fields = detailed_instance_fields if detailed_instances else basic_instance_fields
-        instances = [OrderedDict([(k, i[k]) for k in fields if k in i]) for i in instances]
-        instance_table = tabulate([format_instance_fields(i) for i in instances], headers='keys')
+        fields = ['task_id', 'status', 'start_time', 'end_time']
+        instances = [format_instance_fields(i) for i in instances]
+        instances = [OrderedDict([(k.upper(), i[k]) for k in fields if k in i]) for i in instances]
+        instance_table = tabulate(instances, headers='keys', tablefmt='plain')
         return instance_table
     else:
         return '(no instances)'
 
 
-def tabulate_job(job, detailed_instances):
+def tabulate_job(job):
     """Given a job, returns a string containing tables for the job and instance fields"""
-    headers = ['Field', 'Value']
     instances = job.pop('instances')
     job['max_runtime'] = millis_to_timedelta(job['max_runtime'])
     job['submit_time'] = millis_to_date_string(job['submit_time'])
     job['env'] = format_dict(job['env'])
     job['labels'] = format_dict(job['labels'])
     job['uris'] = format_list(job['uris'])
-    job_table = tabulate(sorted(job.items()), headers=headers)
-    instance_table = tabulate_instances(instances, detailed_instances)
-    return 'Job:\n\n%s\n\nInstances:\n\n%s' % (job_table, instance_table)
+    job['constraints'] = format_list(job['constraints'])
+    if 'groups' in job:
+        job['groups'] = format_list(job['groups'])
+    job_table = tabulate(sorted(job.items()), tablefmt='plain')
+    instance_table = tabulate_job_instances(instances)
+    return '\nFound job %s...\n\n%s\n\n%s' % (job['uuid'], job_table, instance_table)
+
+
+def tabulate_instance(instance):
+    """Given an instance, returns a string containing a table for the instance fields"""
+    table = tabulate(sorted(format_instance_fields(instance).items()), tablefmt='plain')
+    return '\nFound instance %s...\n\n%s' % (instance['task_id'], table)
+
+
+def tabulate_group(group):
+    """Given a group, returns a string containing a table for the group fields"""
+    table = tabulate(sorted(group.items()), tablefmt='plain')
+    return '\nFound job group %s...\n\n%s' % (group['uuid'], table)
+
+
+def show_data(data, tabulate_fn, noun):
+    """TODO(DPO)"""
+    count = len(data)
+    if count > 0:
+        tables = [tabulate_fn(datum) for datum in data]
+        output = '\n\n==========\n'.join(tables)
+        print(output)
+    else:
+        print_info('\nNo matching %s found on this cluster.' % noun)
+    return count
 
 
 def show(clusters, args):
     """Prints info for the job(s) with the given UUID(s)."""
     as_json = args.get('json')
-    detailed_instances = args.get('instances')
-    jobs = query_parallel(clusters, args)
+    uuids = process_uuids(args.get('uuid'))
+    query_result = query(clusters, uuids)
     if as_json:
-        return json.dumps(jobs)
+        print(json.dumps(query_result))
     else:
-        for cluster_name, response in jobs.items():
-            print_info('\n+++ Cluster: %s' % cluster_name)
-            if isinstance(response, str):
-                print_info(response)
-            else:
-                output = '\n\n==========\n'.join([tabulate_job(job, detailed_instances) for job in response])
-                print(output)
+        for cluster_name, entities in query_result['clusters'].items():
+            cluster_name_line = '** Cluster: %s **' % cluster_name
+            border_line = '*' * len(cluster_name_line)
+            print_info('\n%s\n%s\n%s' % (border_line, cluster_name_line, border_line))
+            jobs = entities['jobs']
+            instances = [i for j in entities['instances'] for i in j['instances'] if i['task_id'] in uuids]
+            groups = entities['groups']
+            show_data(jobs, tabulate_job, 'jobs')
+            show_data(instances, tabulate_instance, 'instances')
+            show_data(groups, tabulate_group, 'job groups')
+    return 0 if query_result['count'] > 0 else 1
 
 
 actions.update({'show': show})
-
-###################################################################################################
-
-show_output_parser = subparsers.add_parser('show-output', help='TODO(DPO)')
-show_output_parser.add_argument('uuid', nargs='+')
-show_output_parser.add_argument('--path', '-p', default='stdout', help='TODO(DPO)')
-
-
-def show_output(clusters, args):
-    """TODO(DPO)"""
-    path = args.get('path')
-    jobs = query_parallel(clusters, args)
-    job_output = None
-    job_outputs = {}
-    for job in jobs:
-        if 'instances' in job:
-            output = None
-            instance_outputs = {}
-            for instance in job['instances']:
-                if 'output_url' in instance:
-                    url = '%s/%s&offset=0' % (instance['output_url'], path)
-                    output = session.get(url).json()['data'].strip()
-                else:
-                    output = 'Output not available.'
-                instance_outputs[instance['task_id']] = output
-            if len(instance_outputs) == 1:
-                job_output = output
-            else:
-                job_output = '\n\n'.join('===== Instance %s =====\n%s' % (k, v) for k, v in instance_outputs.items())
-        else:
-            job_output = 'Job has no instances.'
-        job_outputs[job['uuid']] = job_output
-    if len(job_outputs) == 1:
-        final_output = job_output
-    else:
-        final_output = '\n\n'.join('========== Job %s ==========\n%s' % (k, v) for k, v in sorted(job_outputs.items()))
-    return final_output
-
-
-actions.update({'show-output': show_output})
