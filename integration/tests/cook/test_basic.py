@@ -492,3 +492,7 @@ class CookTest(unittest.TestCase):
         self.assertEqual(200, resp.status_code, resp.json())
         self.assertEqual(2, len(resp.json()))
         self.assertEqual([group_uuid_1, group_uuid_2].sort(), [group['uuid'] for group in resp.json()].sort())
+
+    def test_400_on_group_query_without_uuid(self):
+        resp = util.query_groups(self.cook_url)
+        self.assertEqual(400, resp.status_code)
