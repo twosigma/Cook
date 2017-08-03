@@ -73,8 +73,7 @@ def show_json(uuids, cook_url=None, flags=None):
     flags = (flags + ' ') if flags else ''
     cp = show(uuids, cook_url, '%s--silent' % flags, '--json')
     response = json.loads(stdout(cp))
-    entities = next(iter(response['clusters'].values()))
-    jobs = entities['jobs']
+    jobs = [job for entities in response['clusters'].values() for job in entities['jobs']]
     return cp, jobs
 
 
