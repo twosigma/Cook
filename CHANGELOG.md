@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.5.5] - 2017-08-04
+### Added
+- Added JVM metric reporting, from @pschorf
+- Added support for partial results when querying for groups, from @dposada
+- Added support for user whitelisting, from @dposada
+
 ## [1.5.4] - 2017-07-31
 ### Added
 - Added support for throttling rate of publishing instance progress updates, from @shamsimam
