@@ -27,6 +27,7 @@
             [congestion.storage :as storage]
             [cook.curator :as curator]
             [cook.util :as util]
+            [metrics.jvm.core :as metrics-jvm]
             [metrics.ring.instrument :refer (instrument)]
             [plumbing.core :refer (fnk)]
             [plumbing.graph :as graph]
@@ -86,7 +87,7 @@
                            fenzo-floor-iterations-before-warn fenzo-max-jobs-considered fenzo-scaleback
                            good-enough-fitness mea-culpa-failure-limit mesos-failover-timeout mesos-framework-name
                            mesos-gpu-enabled mesos-leader-path mesos-master mesos-master-hosts mesos-principal
-                           mesos-role offer-incubate-time-ms rebalancer riemann task-constraints]
+                           mesos-role offer-incubate-time-ms progress rebalancer riemann task-constraints]
                           curator-framework framework-id mesos-datomic mesos-datomic-mult mesos-leadership-atom
                           mesos-offer-cache mesos-pending-jobs-atom]
                       (log/info "Initializing mesos scheduler")
@@ -98,7 +99,7 @@
                                                            :mesos-framework-name mesos-framework-name
                                                            :gpus-enabled? mesos-gpu-enabled})
                             get-mesos-utilization-fn (partial (lazy-load-var 'cook.mesos/get-mesos-utilization) mesos-master-hosts)
-                            trigger-chans ((lazy-load-var 'cook.mesos/make-trigger-chans) rebalancer task-constraints)]
+                            trigger-chans ((lazy-load-var 'cook.mesos/make-trigger-chans) rebalancer progress task-constraints)]
                         (try
                           (Class/forName "org.apache.mesos.Scheduler")
                           ((lazy-load-var 'cook.mesos/start-mesos-scheduler)
@@ -111,15 +112,16 @@
                             offer-incubate-time-ms
                             mea-culpa-failure-limit
                             task-constraints
-                            executor
                             (:host riemann)
                             (:port riemann)
                             mesos-pending-jobs-atom
                             mesos-offer-cache
                             mesos-gpu-enabled
-                            rebalancer
                             framework-id
                             mesos-leadership-atom
+                            {:executor-config executor
+                             :rebalancer-config rebalancer
+                             :progress-config progress}
                             {:fenzo-max-jobs-considered fenzo-max-jobs-considered
                              :fenzo-scaleback fenzo-scaleback
                              :fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-warn
@@ -475,6 +477,11 @@
                              (throw (ex-info "You must specify the graphite host!" {:graphite graphite})))
                            (let [config (merge {:port 2003 :pickled? true} graphite)]
                              ((lazy-load-var 'cook.reporter/graphite-reporter) config))))
+     :progress (fnk [[:config {progress nil}]]
+                   (merge {:batch-size 100
+                           :pending-threshold 4000
+                           :publish-interval-ms 2500}
+                          progress))
      :riemann (fnk [[:config [:metrics {riemann nil}]]]
                 riemann)
      :riemann-metrics (fnk [[:config [:metrics {riemann nil}]]]
@@ -576,6 +583,7 @@
       (.println System/err "Configured logging")
       (log/info "Configured logging")
       (log/info "Cook" @util/version "( commit" @util/commit ")")
+      (metrics-jvm/instrument-jvm)
       (let [settings {:settings (config-settings literal-config)}
             _ (log/info "Interpreted settings")
             server (scheduler-server settings)]

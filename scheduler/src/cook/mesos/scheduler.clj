@@ -279,9 +279,118 @@
   (-> (d/entity db [:instance/task-id task-id])
       :db/id))
 
+(meters/defmeter [cook-mesos scheduler progress-aggregator-message-rate])
+(meters/defmeter [cook-mesos scheduler progress-aggregator-drop-rate])
+(counters/defcounter [cook-mesos scheduler progress-aggregator-drop-count])
+(counters/defcounter [cook-mesos scheduler progress-aggregator-pending-states-count])
+
+(defn progress-aggregator
+  "Aggregates the progress state specified in `data` into the current progress state `instance-id->progress-state`.
+   It drops messages if the aggregated state has more than `pending-progress-threshold` different entries.
+   It returns the new progress state."
+  [pending-progress-threshold instance-id->progress-state {:keys [instance-id] :as data}]
+  (meters/mark! progress-aggregator-message-rate)
+  (if (or (< (count instance-id->progress-state) pending-progress-threshold)
+          (contains? instance-id->progress-state instance-id))
+    (let [progress-state (select-keys data [:progress-message :progress-percent])
+          instance-id->progress-state' (assoc instance-id->progress-state instance-id progress-state)]
+      (let [old-count (count instance-id->progress-state)
+            new-count (count instance-id->progress-state')]
+        (when (zero? old-count)
+          (counters/clear! progress-aggregator-pending-states-count))
+        (counters/inc! progress-aggregator-pending-states-count (- new-count old-count)))
+      instance-id->progress-state')
+    (do
+      (meters/mark! progress-aggregator-drop-rate)
+      (counters/inc! progress-aggregator-drop-count)
+      (log/debug "Dropping" data "as threshold has been reached")
+      instance-id->progress-state)))
+
+(defn progress-update-aggregator
+  "Launches a long running go block that triggers publishing the latest aggregated instance-id->progress-state
+   wrapped inside a chan whenever there is a read on the progress-state-chan.
+   It drops messages if the progress-aggregator-chan queue is larger than pending-progress-threshold or the aggregated
+   state has more than pending-progress-threshold different entries.
+   It returns the progress-aggregator-chan which can be used to send progress-state messages to the aggregator.
+
+   Note: the wrapper chan is used due to our use of `util/xform-pipe`"
+  [pending-progress-threshold progress-state-chan]
+  (log/info "Starting progress update aggregator")
+  (let [progress-aggregator-chan (async/chan (async/sliding-buffer pending-progress-threshold))
+        progress-aggregator-fn (fn progress-aggregator-fn [instance-id->progress-state data]
+                                 (progress-aggregator pending-progress-threshold instance-id->progress-state data))
+        aggregator-go-chan (util/reducing-pipe progress-aggregator-chan progress-aggregator-fn progress-state-chan
+                                               :initial-state {})]
+    (async/go
+      (async/<! aggregator-go-chan)
+      (log/info "Progress update aggregator exited"))
+    progress-aggregator-chan))
+
+(histograms/defhistogram [cook-mesos scheduler progress-updater-pending-states])
+(meters/defmeter [cook-mesos scheduler progress-updater-publish-rate])
+(timers/deftimer [cook-mesos scheduler progress-updater-publish-duration])
+(meters/defmeter [cook-mesos scheduler progress-updater-tx-rate])
+(timers/deftimer [cook-mesos scheduler progress-updater-tx-duration])
+
+(defn- publish-progress-to-datomic!
+  "Transacts the latest aggregated instance-id->progress-state to datomic.
+   No more than batch-size facts are updated in individual datomic transactions."
+  [conn instance-id->progress-state batch-size]
+  (histograms/update! progress-updater-pending-states (count instance-id->progress-state))
+  (meters/mark! progress-updater-publish-rate)
+  (timers/time!
+    progress-updater-publish-duration
+    (doseq [instance-id->progress-state-partition
+            (partition-all batch-size instance-id->progress-state)]
+      (try
+        (letfn [(build-progress-txns [[instance-id {:keys [progress-percent progress-message]}]]
+                  (cond-> []
+                          progress-percent (conj [:db/add instance-id :instance/progress (int progress-percent)])
+                          progress-message (conj [:db/add instance-id :instance/progress-message progress-message])))]
+          (let [txns (mapcat build-progress-txns instance-id->progress-state-partition)]
+            (when (seq txns)
+              (log/info "Performing" (count txns) "in progress state update")
+              (meters/mark! progress-updater-tx-rate)
+              (timers/time!
+                progress-updater-tx-duration
+                @(d/transact conn txns)))))
+        (catch Exception e
+          (log/error e "Progress batch update error"))))))
+
+(defn progress-update-transactor
+  "Launches a long running go block that triggers transacting the latest aggregated instance-id->progress-state
+   to datomic whenever there is a message on the progress-updater-trigger-chan.
+   No more than batch-size facts are updated in individual datomic transactions.
+   It returns a map containing the progress-state-chan which can be used to send messages about the latest
+   instance-id->progress-state which must be wrapped inside a channel. The producer must guarantee that this
+   channel is promptly fulfilled if it is successfully put in the progress-state-chan.
+   If no such message is on the progress-state-chan, then no datomic interactions occur."
+  [progress-updater-trigger-chan batch-size conn]
+  (log/info "Starting progress update transactor")
+  (let [progress-state-chan (async/chan)]
+    (letfn [(progress-update-transactor-error-handler [e]
+              (log/error e "Failed to update progress message on tasks!"))
+            (progress-update-transactor-on-finished []
+              (log/info "Exiting progress update transactor"))
+            (process-progress-update-transactor-event []
+              ;; progress-state-chan is expected to receive a promise-chan that contains the instance-id->progress-state
+              (let [[instance-id->progress-state _] (async/alts!! [progress-state-chan (async/timeout 100)] :priority true)]
+                (when instance-id->progress-state
+                  (log/info "Received" (count instance-id->progress-state) "in progress-update-transactor")
+                  (publish-progress-to-datomic! conn instance-id->progress-state batch-size))))]
+      {:cancel-handle (util/chime-at-ch progress-updater-trigger-chan process-progress-update-transactor-event
+                                        {:error-handler progress-update-transactor-error-handler
+                                         :on-finished progress-update-transactor-on-finished})
+       :progress-state-chan progress-state-chan})))
+
+(defn- handle-progress-message!
+  "Processes a progress message by sending it along the progress-aggregator-chan channel."
+  [progress-aggregator-chan progress-message-map]
+  (async/put! progress-aggregator-chan progress-message-map))
+
 (defn handle-framework-message
   "Processes a framework message from Mesos."
-  [conn framework-message]
+  [conn handle-progress-message framework-message]
   (timers/time!
     handle-framework-message-duration
     (try
@@ -294,14 +403,18 @@
             instance-id (task-id->instance-id db task-id)]
         (if (nil? instance-id)
           (throw (ex-info "No instance found!" {:task-id task-id}))
-          (let [txns (cond-> []
-                             exit-code (conj [:db/add instance-id :instance/exit-code (int exit-code)])
-                             progress-message (conj [:db/add instance-id :instance/progress-message (str progress-message)])
-                             progress-percent (conj [:db/add instance-id :instance/progress (int progress-percent)])
-                             sandbox-directory (conj [:db/add instance-id :instance/sandbox-directory (str sandbox-directory)]))]
-            (when (seq txns)
-              (log/info "Updating instance" instance-id "to" txns)
-              (transact-with-retries conn txns)))))
+          (do
+            (when (or progress-message progress-percent)
+              (log/debug "Updating instance" instance-id "progress to" progress-percent progress-message)
+              (handle-progress-message {:instance-id instance-id
+                                        :progress-message progress-message
+                                        :progress-percent progress-percent}))
+            (when (or exit-code sandbox-directory)
+              (let [txns (cond-> []
+                                 exit-code (conj [:db/add instance-id :instance/exit-code (int exit-code)])
+                                 sandbox-directory (conj [:db/add instance-id :instance/sandbox-directory (str sandbox-directory)]))]
+                (log/info "Updating instance" instance-id "to" txns)
+                (transact-with-retries conn txns))))))
       (catch Exception e
         (log/error e "Mesos scheduler framework message error")))))
 
@@ -650,7 +763,7 @@
 
 (defn- launch-matched-tasks!
   "Updates the state of matched tasks in the database and then launches them."
-  [matches conn db driver fenzo framework-id executor]
+  [matches conn db driver fenzo framework-id executor-config]
   (let [task-txns (matches->task-txns matches)]
     ;; Note that this transaction can fail if a job was scheduled
     ;; during a race. If that happens, then other jobs that should
@@ -677,7 +790,7 @@
       handle-resource-offer!-mesos-submit-duration
       (doseq [{:keys [tasks leases]} matches
               :let [offers (mapv :offer leases)
-                    task-data-maps (map #(task/TaskAssignmentResult->task-metadata db framework-id executor %) tasks)
+                    task-data-maps (map #(task/TaskAssignmentResult->task-metadata db framework-id executor-config %) tasks)
                     task-infos (task/compile-mesos-messages offers task-data-maps)]]
         (log/debug "Matched task-infos" task-infos)
         (mesos/launch-tasks! driver (mapv :id offers) task-infos)
@@ -690,7 +803,7 @@
 (defn handle-resource-offers!
   "Gets a list of offers from mesos. Decides what to do with them all--they should all
    be accepted or rejected at the end of the function."
-  [conn driver ^TaskScheduler fenzo framework-id executor category->pending-jobs-atom offer-cache user->usage user->quota num-considerable offers-chan offers]
+  [conn driver ^TaskScheduler fenzo framework-id executor-config category->pending-jobs-atom offer-cache user->usage user->quota num-considerable offers-chan offers]
   (log/debug "invoked handle-resource-offers!")
   (let [offer-stash (atom nil)] ;; This is a way to ensure we never lose offers fenzo assigned if an error occurs in the middle of processing
     ;; TODO: It is possible to have an offer expire by mesos because we recycle it a bunch of times.
@@ -734,7 +847,7 @@
             (do
               (swap! category->pending-jobs-atom remove-matched-jobs-from-pending-jobs category->job-uuids)
               (log/debug "updated category->pending-jobs:" @category->pending-jobs-atom)
-              (launch-matched-tasks! matches conn db driver fenzo framework-id executor)
+              (launch-matched-tasks! matches conn db driver fenzo framework-id executor-config)
               matched-normal-considerable-jobs-head?)))
         (catch Throwable t
           (meters/mark! handle-resource-offer!-errors)
@@ -763,7 +876,7 @@
 (counters/defcounter [cook-mesos scheduler offer-chan-depth])
 
 (defn make-offer-handler
-  [conn driver-atom fenzo framework-id executor pending-jobs-atom offer-cache
+  [conn driver-atom fenzo framework-id executor-config pending-jobs-atom offer-cache
    max-considerable scaleback
    floor-iterations-before-warn floor-iterations-before-reset
    trigger-chan]
@@ -812,7 +925,7 @@
                                                  (cache/miss c slave-id attrs)))))
                       _ (log/debug "Passing following offers to handle-resource-offers!" offers)
                       user->quota (quota/create-user->quota-fn (d/db conn))
-                      matched-head? (handle-resource-offers! conn @driver-atom fenzo framework-id executor pending-jobs-atom offer-cache @user->usage-future user->quota num-considerable offers-chan offers)]
+                      matched-head? (handle-resource-offers! conn @driver-atom fenzo framework-id executor-config pending-jobs-atom offer-cache @user->usage-future user->quota num-considerable offers-chan offers)]
                   (when (seq offers)
                     (reset! resources-atom (view-incubating-offers fenzo)))
                   ;; This check ensures that, although we value Fenzo's optimizations,
@@ -884,7 +997,7 @@
       (doseq [[task-id] running-tasks
               :let [task-ent (d/entity db [:instance/task-id task-id])
                     hostname (:instance/hostname task-ent)
-                    job (:job/_instance task-ent)
+                    job (util/entity->map (:job/_instance task-ent))
                     task-request (make-task-request job :task-id task-id)]]
         ;; Need to lock on fenzo when accessing taskAssigner because taskAssigner and
         ;; scheduleOnce can not be called at the same time.
@@ -1316,7 +1429,7 @@
 
 (let [in-order-queue-counter (counters/counter ["cook-mesos" "scheduler" "in-order-queue-size"])
       in-order-queue-timer (timers/timer ["cook-mesos" "scheduler" "in-order-queue-delay-duration"])
-      parallelism 19 ; a prime number to improve distribution after hashing
+      parallelism 19 ; a prime number to potentially help make the distribution uniform
       processor-agents (->> #(agent nil)
                             (repeatedly parallelism)
                             vec)
@@ -1340,7 +1453,7 @@
 
 (defn create-mesos-scheduler
   "Creates the mesos scheduler which processes status updates asynchronously but in order of receipt."
-  [configured-framework-id gpu-enabled? conn heartbeat-ch fenzo offers-chan match-trigger-chan]
+  [configured-framework-id gpu-enabled? conn heartbeat-ch fenzo offers-chan match-trigger-chan handle-progress-message]
   (mesos/scheduler
     (registered [this driver framework-id master-info]
                 (log/info "Registered with mesos with framework-id " framework-id)
@@ -1378,7 +1491,8 @@
                      )
     (framework-message [this driver executor-id slave-id message]
                        ;; the executor-id is the same as the task-id (see cook.mesos.task/task-info->mesos-message)
-                       (async-in-order-processing (:value executor-id) #(handle-framework-message conn message))
+                       (async-in-order-processing (:value executor-id)
+                                                  #(handle-framework-message conn handle-progress-message message))
                        (heartbeat/notify-heartbeat heartbeat-ch executor-id slave-id message))
     (disconnected [this driver]
                   (log/error "Disconnected from the previous master"))
@@ -1397,16 +1511,22 @@
 (defn create-datomic-scheduler
   [conn driver-atom pending-jobs-atom offer-cache heartbeat-ch offer-incubate-time-ms mea-culpa-failure-limit
    fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset
-   fenzo-fitness-calculator task-constraints executor gpu-enabled? good-enough-fitness framework-id
-   {:keys [match-trigger-chan rank-trigger-chan] :as trigger-chans}]
+   fenzo-fitness-calculator task-constraints gpu-enabled? good-enough-fitness framework-id
+   {:keys [executor-config progress-config]}
+   {:keys [match-trigger-chan progress-updater-trigger-chan rank-trigger-chan] :as trigger-chans}]
 
   (persist-mea-culpa-failure-limit! conn mea-culpa-failure-limit)
 
   (let [fenzo (make-fenzo-scheduler driver-atom offer-incubate-time-ms fenzo-fitness-calculator good-enough-fitness)
         [offers-chan resources-atom]
-        (make-offer-handler conn driver-atom fenzo framework-id executor pending-jobs-atom offer-cache fenzo-max-jobs-considered
-                            fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset match-trigger-chan)]
+        (make-offer-handler conn driver-atom fenzo framework-id executor-config pending-jobs-atom offer-cache fenzo-max-jobs-considered
+                            fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset match-trigger-chan)
+        {:keys [batch-size pending-threshold]} progress-config
+        {:keys [progress-state-chan]} (progress-update-transactor progress-updater-trigger-chan batch-size conn)
+        progress-aggregator-chan (progress-update-aggregator pending-threshold progress-state-chan)
+        handle-progress-message (fn handle-progress-message-curried [progress-message-map]
+                                 (handle-progress-message! progress-aggregator-chan progress-message-map))]
     (start-jobs-prioritizer! conn pending-jobs-atom task-constraints rank-trigger-chan)
     {:scheduler (create-mesos-scheduler framework-id gpu-enabled? conn heartbeat-ch
-                                        fenzo offers-chan match-trigger-chan)
+                                        fenzo offers-chan match-trigger-chan handle-progress-message)
      :view-incubating-offers (fn get-resources-atom [] @resources-atom)}))

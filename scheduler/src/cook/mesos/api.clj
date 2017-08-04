@@ -339,6 +339,13 @@
    (s/optional-key :straggler-handling) StragglerHandling
    (s/optional-key :name) s/Str})
 
+(def QueryGroupsParams
+  "Schema for querying for groups, allowing optionally for 'partial'
+  results, meaning that some uuids can be valid and others not"
+  {:uuid [s/Uuid]
+   (s/optional-key :detailed) s/Bool
+   (s/optional-key :partial) s/Bool})
+
 (def GroupResponse
   "A schema for a group http response"
   (-> Group
@@ -1144,26 +1151,46 @@
                          {:error (str "Exception occurred while creating job - " (.getMessage exception))})
      :handle-created (fn [ctx] (::results ctx))}))
 
+(defn retrieve-groups
+  "Returns a tuple that either has the shape:
+
+    [true {::guuids ...}]
+
+  or:
+
+    [false {::error ...}]
+
+  Given a collection of group uuids, attempts to return the corresponding
+  set of existing group uuids. By default (or if the 'partial' query
+  parameter is false), the function returns an ::error if any of the
+  provided group uuids cannot be found. If 'partial' is true, the function
+  will return the subset of group uuids that were found, assuming at least
+  one was found. This 'partial' flag allows a client to query a particular
+  cook cluster for a set of uuids, where some of them may not belong to that
+  cluster, and get back the data for those that do match."
+  [conn ctx]
+  (try
+    (let [requested-guuids (->> (get-in ctx [:request :query-params "uuid"])
+                                vectorize
+                                (mapv #(UUID/fromString %)))
+          allow-partial-results (get-in ctx [:request :query-params :partial])
+          exists? #(group-exists? (db conn) %)
+          existing-groups (filter exists? requested-guuids)]
+      (if (or (= (count existing-groups) (count requested-guuids))
+              (and allow-partial-results (pos? (count existing-groups))))
+        [true {::guuids existing-groups}]
+        [false {::error (str "UUID "
+                             (str/join
+                               \space
+                               (set/difference (set requested-guuids) (set existing-groups)))
+                             " didn't correspond to a group")}]))
+    (catch Exception e
+      [false {::error e}])))
 
 (defn read-groups-handler
   [conn task-constraints is-authorized-fn]
   (base-cook-handler
     {:allowed-methods [:get]
-     :malformed? (fn [ctx]
-                   (try
-                     (let [requested-guuids (->> (get-in ctx [:request :query-params "uuid"])
-                                                 vectorize
-                                                 (mapv #(UUID/fromString %)))
-                           not-found-guuids (remove #(group-exists? (db conn) %) requested-guuids)]
-                       (if (empty? not-found-guuids)
-                         [false {::guuids requested-guuids}]
-                         [true {::error (str "UUID "
-                                             (str/join
-                                               \space
-                                               not-found-guuids)
-                                             " didn't correspond to a group")}]))
-                     (catch Exception e
-                       [true {::error e}])))
      :allowed? (fn [ctx]
                  (let [user (get-in ctx [:request :authorization/user])
                        guuids (::guuids ctx)
@@ -1177,6 +1204,7 @@
                      true
                      [false {::error (str "You are not authorized to view access the following groups "
                                           (str/join \space unauthorized-guuids))}])))
+     :exists? (partial retrieve-groups conn)
      :handle-ok (fn [ctx]
                   (if (get-in ctx [:request :query-params "detailed"])
                     (mapv #(merge (fetch-group-map (db conn) %)
@@ -1797,7 +1825,7 @@
       "/group" []
       (c-api/resource
        {:get {:summary "Returns info about a set of groups"
-              :parameters {:query-params {:uuid [s/Uuid] (s/optional-key :detailed) s/Bool}}
+              :parameters {:query-params QueryGroupsParams}
               :responses {200 {:schema [GroupResponse]
                                :description "The groups were returned."}
                           400 {:description "Non-UUID values were passed."}

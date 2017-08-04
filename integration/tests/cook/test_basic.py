@@ -65,6 +65,14 @@ class CookTest(unittest.TestCase):
         self.assertEqual(1, len(job['instances']))
         message = json.dumps(job['instances'][0], sort_keys=True)
         self.assertEqual('success', job['instances'][0]['status'], message)
+
+        # allow enough time for progress updates to be submitted
+        publish_interval_ms = util.get_in(util.settings(self.cook_url), 'progress', 'publish-interval-ms')
+        wait_publish_interval_secs = min(2 * publish_interval_ms / 1000, 20)
+        time.sleep(wait_publish_interval_secs)
+        job = util.load_job(self.cook_url, job_uuid)
+        message = json.dumps(job['instances'][0], sort_keys=True)
+
         if util.is_using_cook_executor(self.cook_url):
             self.assertEqual(0, job['instances'][0]['exit_code'], message)
             self.assertEqual(25, job['instances'][0]['progress'], message)
@@ -83,6 +91,14 @@ class CookTest(unittest.TestCase):
         self.assertEqual(1, len(job['instances']))
         message = json.dumps(job['instances'][0], sort_keys=True)
         self.assertEqual('success', job['instances'][0]['status'], message)
+
+        # allow enough time for progress updates to be submitted
+        publish_interval_ms = util.get_in(util.settings(self.cook_url), 'progress', 'publish-interval-ms')
+        wait_publish_interval_secs = min(2 * publish_interval_ms / 1000, 20)
+        time.sleep(wait_publish_interval_secs)
+        job = util.load_job(self.cook_url, job_uuid)
+        message = json.dumps(job['instances'][0], sort_keys=True)
+
         if util.is_using_cook_executor(self.cook_url):
             self.assertEqual(0, job['instances'][0]['exit_code'], message)
             self.assertEqual(75, job['instances'][0]['progress'], message)
@@ -98,9 +114,17 @@ class CookTest(unittest.TestCase):
         self.assertEqual(201, resp.status_code)
         job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
         self.assertEqual(1, len(job['instances']))
-        self.assertEqual('success', job['instances'][0]['status'])
+        message = json.dumps(job['instances'][0], sort_keys=True)
+        self.assertEqual('success', job['instances'][0]['status'], message)
+
+        # allow enough time for progress updates to be submitted
+        publish_interval_ms = util.get_in(util.settings(self.cook_url), 'progress', 'publish-interval-ms')
+        wait_publish_interval_secs = min(2 * publish_interval_ms / 1000, 20)
+        time.sleep(wait_publish_interval_secs)
+        job = util.load_job(self.cook_url, job_uuid)
+        message = json.dumps(job['instances'][0], sort_keys=True)
+
         if util.is_using_cook_executor(self.cook_url):
-            message = json.dumps(job['instances'][0], sort_keys=True)
             self.assertEqual(0, job['instances'][0]['exit_code'], message)
             self.assertEqual(80, job['instances'][0]['progress'], message)
             self.assertEqual('80%', job['instances'][0]['progress_message'], message)
@@ -462,3 +486,37 @@ class CookTest(unittest.TestCase):
         job_uuid, resp = util.submit_job(self.cook_url, ports=10)
         job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
         self.assertEqual(10, len(job['instances'][0]['ports']))
+
+    def test_allow_partial_for_groups(self):
+        def absent_uuids(response):
+            return [part for part in response.json()['error'].split() if util.is_valid_uuid(part)]
+
+        group_uuid_1 = str(uuid.uuid4())
+        group_uuid_2 = str(uuid.uuid4())
+        _, resp = util.submit_job(self.cook_url, group=group_uuid_1)
+        self.assertEqual(201, resp.status_code)
+        _, resp = util.submit_job(self.cook_url, group=group_uuid_2)
+        self.assertEqual(201, resp.status_code)
+
+        # Only valid group uuids
+        resp = util.query_groups(self.cook_url, uuid=[group_uuid_1, group_uuid_2])
+        self.assertEqual(200, resp.status_code)
+
+        # Mixed valid, invalid group uuids
+        bogus_uuid = str(uuid.uuid4())
+        resp = util.query_groups(self.cook_url, uuid=[group_uuid_1, group_uuid_2, bogus_uuid])
+        self.assertEqual(404, resp.status_code)
+        self.assertEqual([bogus_uuid], absent_uuids(resp))
+        resp = util.query_groups(self.cook_url, uuid=[group_uuid_1, group_uuid_2, bogus_uuid], partial='false')
+        self.assertEqual(404, resp.status_code, resp.json())
+        self.assertEqual([bogus_uuid], absent_uuids(resp))
+
+        # Partial results with mixed valid, invalid job uuids
+        resp = util.query_groups(self.cook_url, uuid=[group_uuid_1, group_uuid_2, bogus_uuid], partial='true')
+        self.assertEqual(200, resp.status_code, resp.json())
+        self.assertEqual(2, len(resp.json()))
+        self.assertEqual([group_uuid_1, group_uuid_2].sort(), [group['uuid'] for group in resp.json()].sort())
+
+    def test_400_on_group_query_without_uuid(self):
+        resp = util.query_groups(self.cook_url)
+        self.assertEqual(400, resp.status_code)
