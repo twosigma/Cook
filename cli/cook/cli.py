@@ -476,6 +476,9 @@ def tabulate_instance(instance):
 
 def tabulate_group(group):
     """Given a group, returns a string containing a table for the group fields"""
+    group['host_placement'] = format_dict(group['host_placement'])
+    group['straggler_handling'] = format_dict(group['straggler_handling'])
+    group['jobs'] = format_list(group['jobs'])
     table = tabulate(sorted(group.items()), tablefmt='plain')
     return '\nFound job group %s...\n\n%s' % (group['uuid'], table)
 
@@ -508,7 +511,9 @@ def show(clusters, args):
             instances = [i for j in entities['instances'] for i in j['instances'] if i['task_id'] in uuids]
             groups = entities['groups']
             show_data(jobs, tabulate_job, 'jobs')
+            print('\n==========')
             show_data(instances, tabulate_instance, 'instances')
+            print('\n==========')
             show_data(groups, tabulate_group, 'job groups')
     return 0 if query_result['count'] > 0 else 1
 
