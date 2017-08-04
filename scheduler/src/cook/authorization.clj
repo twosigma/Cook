@@ -145,22 +145,22 @@
                      "is not allowed to perform" verb "on" (str object ",") "denying.")
            false))))
 
-(defn admins-open-gets-auth
-  "Allows admins to do anything to any object, and if whitelisted-user is truthy,
+(defn admins-open-gets-whitelisted-users-auth
+  "Allows admins to do anything to any object, and if user-is-whitelisted? is truthy,
   allows non-admins to manipulate objects that they own and to read (get) any object."
-  [admins user verb {:keys [owner] :as object} whitelisted-user]
-  (let [svo {:user user :verb verb :object object :whitelisted-user? whitelisted-user}]
+  [admins user verb {:keys [owner] :as object} user-is-whitelisted?]
+  (let [svo {:user user :verb verb :object object :user-is-whitelisted? user-is-whitelisted?}]
     (cond (contains? admins user)
           (do
             (log/debug "User" user "is an admin, allowing." (assoc svo :authorized? true))
             true)
 
-          (and (= verb :get) whitelisted-user)
+          (and (= verb :get) user-is-whitelisted?)
           (do
             (log/debug "Verb was get, allowing." (assoc svo :authorized? true))
             true)
 
-          (and (= owner user) whitelisted-user)
+          (and (= owner user) user-is-whitelisted?)
           (do
             (log/debug "Object is owned by user, allowing." (assoc svo :authorized? true))
             true)
@@ -184,7 +184,7 @@
     {:keys [owner item] :as object}]
    (log/debug "Checking whether user" user "may perform" verb "on object" (str object)
               ". Admins are:" admins "and whitelist is:" whitelist)
-   (admins-open-gets-auth admins user verb object (contains? whitelist user))))
+   (admins-open-gets-whitelisted-users-auth admins user verb object (contains? whitelist user))))
 
 (defn configfile-admins-auth-open-gets
   "This authorization function consults the set of usernames specified
@@ -205,7 +205,7 @@
               "may perform" verb
               "on object" (str object) "."
               "Admins are:" admins)
-   (admins-open-gets-auth admins user verb object true)))
+   (admins-open-gets-whitelisted-users-auth admins user verb object true)))
 
 (defn is-authorized?
   "Determines whether the given user can perform the given operation
