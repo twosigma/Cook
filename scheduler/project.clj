@@ -144,6 +144,7 @@
 
    :dev
    {:dependencies [[clj-http-fake "1.0.1"]
+                   [criterium "0.4.4"]
                    [org.mockito/mockito-core "1.10.19"]
                    [twosigma/cook-jobclient "0.1.2-SNAPSHOT"]
                    [org.clojure/test.check "0.6.1"]
