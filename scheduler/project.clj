@@ -165,8 +165,10 @@
 
   :plugins [[lein-print "0.1.0"]]
 
-  :test-selectors {:default (complement :integration)
+  :test-selectors {:default (complement #(or (:integration %)
+                                             (:benchmark %)))
                    :integration :integration
+                   :benchmark :benchmark
                    :all (constantly true)}
 
   :main cook.components
