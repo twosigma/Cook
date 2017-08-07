@@ -1201,7 +1201,7 @@
                sort-jobs-duration
                (->> tasks
                     (group-by util/task-ent->user)
-                    (pc/map-vals (fn [task-ents] (into (sorted-set-by task-comparator) task-ents)))
+                    (pc/map-vals (fn [task-ents] (sort task-comparator task-ents)))
                     (sort-task-scored-task-pairs user->dru-divisors)
                     (filter (fn [[task _]] (contains? pending-task-ents-set task)))
                     (map (fn [[task _]] (:job/_instance task)))))]
