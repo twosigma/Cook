@@ -1247,10 +1247,18 @@
 
 (defn is-offensive?
   [max-memory-mb max-cpus job]
-  (let [{memory-mb :mem
-         cpus :cpus} (util/job-ent->resources job)]
-    (or (> memory-mb max-memory-mb)
-        (> cpus max-cpus))))
+  (loop [resources (:job/resource job)]
+    (let [res (first resources)]
+      (if-not res
+        false
+        (case (:resource/type res)
+          :resource.type/cpus (if (> (:resource/amount res) max-cpus)
+                                true
+                                (recur (rest resources)))
+          :resource.type/mem (if (> (:resource/amount res) max-memory-mb)
+                               true
+                               (recur (rest resources)))
+          (recur (rest resources)))))))
 
 (defn filter-offensive-jobs
   "Base on the constraints on memory and cpus, given a list of job entities it
