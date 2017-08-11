@@ -1191,68 +1191,6 @@
              ;; Return all 0's for a user who does NOT have any running job.
              (zipmap (util/get-all-resource-types db) (repeat 0.0)))})))
 
-;; TODO: Look into data.avl to store sets and use transients 
-;; TODO: store and update merge of running and waiting as well 
-;;       so rank jobs is supa fast
-(defn update-rank-state-helper
-  [rank-state update-fn k task]
-  (let [job (:job/_instance task)
-        category (util/categorize-job job)
-        user (:job/user job)]
-    (-> rank-state
-        (update-in [k category user]
-                   #(update-fn % task)))))
-
-(defn add-task-waiting 
-  [rank-state task]
-  (update-rank-state-helper rank-state 
-                            (fnil conj (sorted-set-by (util/same-user-task-comparator)))
-                            :category->user->waiting-tasks-sorted
-                            task))
-
-(defn remove-task-waiting 
-  [rank-state task]
-  (update-rank-state-helper rank-state 
-                            (fnil disj (sorted-set-by (util/same-user-task-comparator)))
-                            :category->user->waiting-tasks-sorted
-                            task))
-
-(defn add-task-running
-  [rank-state task]
-  (update-rank-state-helper rank-state 
-                            (fnil conj (sorted-set-by (util/same-user-task-comparator)))
-                            :category->user->running-tasks-sorted
-                            task))
-
-(defn remove-task-running
-  [rank-state task]
-  (update-rank-state-helper rank-state 
-                            (fnil disj (sorted-set-by (util/same-user-task-comparator)))
-                            :category->user->running-tasks-sorted
-                            task))
-
-(def category->sort-jobs-by-dru-fn {:normal dru/sorted-task-scored-task-pairs 
-                                    :gpu dru/sorted-task-cumulative-gpu-score-pairs})
-
-(defn sort-jobs-by-dru-rank-state
-  [{:keys [category->user->running-tasks-sorted category->user->waiting-tasks-sorted] :as rank-state} 
-   user->dru-divisors]
-  (letfn [(sort-jobs-by-dru-category-helper [[category user->sorted-tasks]]
-            ;; TODO store waiting jobs instead of waiting tasks (or make create-task-ent deterministic)
-            ;; Favor making create-task-ent deterministic by setting task id to job uuid since we won't 
-            ;; actually use it
-            (let [sort-jobs-by-dru-fn (category->sort-jobs-by-dru-fn category)]
-              [category 
-               (->> user->sorted-tasks
-                    (sort-jobs-by-dru-fn user->dru-divisors)
-                    (filter (fn [[task _]] (= (get-in task [:job/_instance :job/state]) :job.state/waiting)))
-                    (map (fn [[task _]] (:job/_instance task))))]))]
-    (into {} (map sort-jobs-by-dru-category-helper) 
-      (merge-with (partial merge-with into)
-                  category->user->waiting-tasks-sorted 
-                  category->user->running-tasks-sorted))))
-
-
 (defn sort-jobs-by-dru-helper
   "Return a list of job entities ordered by the provided sort function"
   [pending-task-ents running-task-ents user->dru-divisors sort-task-scored-task-pairs sort-jobs-duration]
