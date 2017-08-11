@@ -1223,7 +1223,6 @@
   (sort-jobs-by-dru-helper pending-task-ents running-task-ents user->dru-divisors
                            dru/sorted-task-cumulative-gpu-score-pairs sort-gpu-jobs-hierarchy-duration))
 
-
 (defn sort-jobs-by-dru-category
   "Returns a map from job category to a list of job entities, ordered by dru"
   [unfiltered-db]
@@ -1531,4 +1530,3 @@
     {:scheduler (create-mesos-scheduler framework-id gpu-enabled? conn heartbeat-ch
                                         fenzo offers-chan match-trigger-chan handle-progress-message)
      :view-incubating-offers (fn get-resources-atom [] @resources-atom)}))
-
