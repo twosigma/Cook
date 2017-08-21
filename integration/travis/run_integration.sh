@@ -30,7 +30,7 @@ then
 fi
 
 # Build cook-executor
-$PROJECT_DIR/../travis/build_cook_executor.sh
+${PROJECT_DIR}/../travis/build_cook_executor.sh
 
 # Start minimesos
 cd ${PROJECT_DIR}/../travis
@@ -60,7 +60,7 @@ fi
 
 # Run the integration tests
 cd ${PROJECT_DIR}
-COOK_MULTI_CLUSTER= python setup.py nosetests --attr ${NOSE_ATTRIBUTES} || test_failures=true
+COOK_MULTI_CLUSTER= python3 setup.py nosetests --attr ${NOSE_ATTRIBUTES} || test_failures=true
 
 # If there were failures, dump the executor logs
 if [ "$test_failures" = true ]; then
