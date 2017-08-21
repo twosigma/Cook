@@ -279,7 +279,7 @@
              end]]
            (util/generate-intervals start end (t/hours 7))))))
 
-(def test-get-jobs-by-user-and-states
+(deftest test-get-jobs-by-user-and-states
   (let [uri "datomic:mem://test-get-pending-job-ents"
         conn (restore-fresh-database! uri)]
     (doseq [state [:job.state/waiting :job.state/running :job.state/completed]]
@@ -318,40 +318,22 @@
                                    :submit-time (Date.)
                                    :custom-executor? false)
             _ (Thread/sleep 5)
-            end-time (Date.)]
+            end-time (Date.)
+            states [(name state)]]
         (testing (str "get " state " jobs")
-          (is (= 2 (count (util/get-jobs-by-user-and-states (d/db conn) "u1" [state]
-                                                            start-time half-way-time
-                                                            10))))
-          (is (= 1 (count (util/get-jobs-by-user-and-states (d/db conn) "u1" [state]
-                                                            start-time half-way-time
-                                                            1))))
-          (is (= (map :db/id
-                      (util/get-jobs-by-user-and-states (d/db conn) "u1" [state]
-                                                        start-time half-way-time
-                                                        1))
+          (is (= 2 (count (util/get-jobs-by-user-and-states (d/db conn) "u1" states start-time half-way-time 10))))
+          (is (= 1 (count (util/get-jobs-by-user-and-states (d/db conn) "u1" states start-time half-way-time 1))))
+          (is (= (map :db/id (util/get-jobs-by-user-and-states (d/db conn) "u1" states start-time half-way-time 1))
                  [job1]))
-          (is (= 3 (count (util/get-jobs-by-user-and-states (d/db conn) "u1" [state]
-                                                            start-time end-time
-                                                            10))))
-          (is (= 2 (count (util/get-jobs-by-user-and-states (d/db conn) "u1" [state]
-                                                            start-time end-time
-                                                            2))))
-          (is (= (map :db/id
-                      (util/get-jobs-by-user-and-states (d/db conn) "u1" [state]
-                                                        start-time end-time
-                                                        2))
+          (is (= 3 (count (util/get-jobs-by-user-and-states (d/db conn) "u1" states start-time end-time 10))))
+          (is (= 2 (count (util/get-jobs-by-user-and-states (d/db conn) "u1" states start-time end-time 2))))
+          (is (= (map :db/id (util/get-jobs-by-user-and-states (d/db conn) "u1" states start-time end-time 2))
                  [job1 job2]))
 
-          (is (= 1 (count (util/get-jobs-by-user-and-states (d/db conn) "u2" [state]
-                                                            start-time end-time
-                                                            10))))
-          (is (= 0 (count (util/get-jobs-by-user-and-states (d/db conn) "u3" [state]
-                                                            start-time end-time
-                                                            10))))
-          (is (= 0 (count (util/get-jobs-by-user-and-states (d/db conn) "u1" [state]
-                                                            #inst "2017-06-01" #inst "2017-06-02"
-                                                            10)))))))))
+          (is (= 1 (count (util/get-jobs-by-user-and-states (d/db conn) "u2" states start-time end-time 10))))
+          (is (= 0 (count (util/get-jobs-by-user-and-states (d/db conn) "u3" states start-time end-time 10))))
+          (is (= 0 (count (util/get-jobs-by-user-and-states (d/db conn) "u1" states
+                                                            #inst "2017-06-01" #inst "2017-06-02" 10)))))))))
 
 (deftest test-reducing-pipe
   (testing "basic piping"
