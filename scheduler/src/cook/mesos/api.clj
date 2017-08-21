@@ -803,13 +803,7 @@
         groups (:group/_job job)
         application (:job/application job)
         expected-runtime (:job/expected-runtime job)
-        state (case (:job/state job)
-                :job.state/completed
-                (if (some #{:instance.status/success}
-                          (map :instance/status (:job/instance job)))
-                  "success" "failed")
-                :job.state/running "running"
-                :job.state/waiting "waiting")
+        state (util/job-ent->state job)
         constraints (->> job
                          :job/constraint
                          (map util/remove-datomic-namespacing)
@@ -1558,11 +1552,6 @@
     {:allowed-methods [:get]
      :handle-ok (fn [_] (stringify settings))}))
 
-(defn- str->state-attr
-  [state-str]
-  (when (contains? #{"running" "waiting" "completed"} state-str)
-    (keyword (format "job.state/%s" state-str))))
-
 (defn- parse-int-default
   [s d]
   (if (nil? s)
@@ -1578,6 +1567,17 @@
 (timers/deftimer [cook-scheduler handler fetch-jobs])
 (timers/deftimer [cook-scheduler handler list-endpoint])
 
+(defn normalize-list-states
+  "Given a set, states, returns a new set that only contains one of the
+  'terminal' states of completed, success, and failed. We take completed
+  to mean both success and failed."
+  [states]
+  (if (contains? states "completed")
+    (set/difference states util/instance-states)
+    (if (set/superset? states util/instance-states)
+      (-> states (set/difference util/instance-states) (conj "completed"))
+      states)))
+
 (defn list-resource
   [db framework-id is-authorized-fn agent-query-cache]
   (liberator/resource
@@ -1585,29 +1585,27 @@
     :allowed-methods [:get]
     :as-response (fn [data ctx] {:body data})
     :malformed? (fn [ctx]
-                 ;; since-hours-ago is included for backwards compatibility but is deprecated
-                 ;; please use start-ms and end-ms instead
-                 (let [{:keys [state user since-hours-ago start-ms end-ms limit]
-                        :as params}
-                       (keywordize-keys (or (get-in ctx [:request :query-params])
-                                            (get-in ctx [:request :body-params])))]
-                   (if (and state user)
-                     (let [state-strs (clojure.string/split state #"\+")
-                           states (->> state-strs
-                                       (map str->state-attr)
-                                       (filter (comp not nil?)))]
-                       (if (= (count state-strs) (count states))
-                         (try
-                           [false {::states states
-                                   ::user user
-                                   ::since-hours-ago (parse-int-default since-hours-ago 24)
-                                   ::start-ms (parse-long-default start-ms nil)
-                                   ::limit (parse-int-default limit Integer/MAX_VALUE)
-                                   ::end-ms (parse-long-default end-ms (System/currentTimeMillis))}]
-                           (catch NumberFormatException e
-                             [true {::error (.toString e)}]))
-                         [true {::error (str "unsupported state in " state ", must be running, waiting, or completed")}]))
-                     [true {::error "must supply the state and the user name"}])))
+                  ;; since-hours-ago is included for backwards compatibility but is deprecated
+                  ;; please use start-ms and end-ms instead
+                  (let [{:keys [state user since-hours-ago start-ms end-ms limit]
+                         :as params}
+                        (keywordize-keys (or (get-in ctx [:request :query-params])
+                                             (get-in ctx [:request :body-params])))]
+                    (if (and state user)
+                      (let [states (set (clojure.string/split state #"\+"))
+                            allowed-list-states (set/union util/job-states util/instance-states)]
+                        (if (set/superset? allowed-list-states states)
+                          (try
+                            [false {::states (normalize-list-states states)
+                                    ::user user
+                                    ::since-hours-ago (parse-int-default since-hours-ago 24)
+                                    ::start-ms (parse-long-default start-ms nil)
+                                    ::limit (parse-int-default limit Integer/MAX_VALUE)
+                                    ::end-ms (parse-long-default end-ms (System/currentTimeMillis))}]
+                            (catch NumberFormatException e
+                              [true {::error (.toString e)}]))
+                          [true {::error (str "unsupported state in " state ", must be one of: " allowed-list-states)}]))
+                      [true {::error "must supply the state and the user name"}])))
     :allowed? (fn [ctx]
                (let [{limit ::limit
                       user ::user

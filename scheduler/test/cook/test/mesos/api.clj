@@ -1389,14 +1389,52 @@
     ([settings user verb object]
      (= user special-user))))
 
+(defn- submit-job
+  "Simulates a job submission request using the provided handler and user"
+  [handler user]
+  (let [job (basic-job)]
+    (assoc
+      (handler {:request-method :post
+                :scheme :http
+                :uri "/rawscheduler"
+                :headers {"Content-Type" "application/json"}
+                :authorization/user user
+                :body-params {"jobs" [job]}})
+      :uuid (get job "uuid"))))
+
 (deftest test-job-create-authorization
   (let [conn (restore-fresh-database! "datomic:mem://test-job-create-authorization")
-        handler (basic-handler conn :is-authorized-fn (dummy-auth-factory "alice"))
-        make-request-fn #(handler {:request-method :post
-                                   :scheme :http
-                                   :uri "/rawscheduler"
-                                   :headers {"Content-Type" "application/json"}
-                                   :authorization/user %
-                                   :body-params {"jobs" [(basic-job)]}})]
-    (is (= 201 (:status (make-request-fn "alice"))))
-    (is (= 403 (:status (make-request-fn "bob"))))))
+        handler (basic-handler conn :is-authorized-fn (dummy-auth-factory "alice"))]
+    (is (= 201 (:status (submit-job handler "alice"))))
+    (is (= 403 (:status (submit-job handler "bob"))))))
+
+(deftest test-list-jobs-by-time
+  (let [conn (restore-fresh-database! "datomic:mem://test-list-jobs")
+        handler (basic-handler conn)
+        get-submit-time-fn #(get (first (response->body-data (handler {:request-method :get
+                                                                       :scheme :http
+                                                                       :uri "/rawscheduler"
+                                                                       :authorization/user "user"
+                                                                       :query-params {"job" %}})))
+                                 "submit_time")
+        list-jobs-fn #(response->body-data (handler {:request-method :get
+                                                     :scheme :http
+                                                     :uri "/list"
+                                                     :authorization/user "user"
+                                                     :query-params {"user" "user"
+                                                                    "state" "running+waiting+completed"
+                                                                    "start-ms" (str %1)
+                                                                    "end-ms" (str %2)}}))
+        response-1 (submit-job handler "user")
+        _ (is (= 201 (:status response-1)))
+        _ (Thread/sleep 10)
+        response-2 (submit-job handler "user")
+        _ (is (= 201 (:status response-2)))
+        submit-ms-1 (get-submit-time-fn (:uuid response-1))
+        submit-ms-2 (get-submit-time-fn (:uuid response-2))]
+    (is (< submit-ms-1 submit-ms-2))
+    (is (= 0 (count (list-jobs-fn (inc submit-ms-1) submit-ms-2))))
+    (is (= (:uuid response-1) (get (first (list-jobs-fn submit-ms-1 submit-ms-2)) "uuid")))
+    (is (= (:uuid response-2) (get (first (list-jobs-fn (inc submit-ms-1) (inc submit-ms-2))) "uuid")))
+    (is (= (:uuid response-2) (get (first (list-jobs-fn submit-ms-1 (inc submit-ms-2))) "uuid")))
+    (is (= (:uuid response-1) (get (second (list-jobs-fn submit-ms-1 (inc submit-ms-2))) "uuid")))))
