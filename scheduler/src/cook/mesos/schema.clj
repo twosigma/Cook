@@ -1124,7 +1124,7 @@ for a job. E.g. {:resources {:cpus 4 :mem 3} :constraints {\"unique_host_constra
     :reason/code 6000
     :reason/string "Mesos executor registration timed out"
     :reason/name :mesos-executor-registration-timeout
-    :reason/mea-culpa? false
+    :reason/mea-culpa? true
     :reason/mesos-reason :reason-executor-registration-timeout}
    {:db/id (d/tempid :db.part/user)
     :reason/code 6001
