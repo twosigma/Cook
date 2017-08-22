@@ -1,5 +1,6 @@
 import logging
 import uuid
+from urllib.parse import urlencode
 
 import importlib
 import os
@@ -153,6 +154,7 @@ def wait_for_job(cook_url, job_id, status, max_delay=120000):
         else:
             logger.info('Job {} has status {}'.format(job_id, status))
             return job
+
     try:
         return wait_for_job_inner()
     except:
@@ -165,18 +167,19 @@ def wait_for_exit_code(cook_url, job_id):
     @retry(stop_max_delay=2000, wait_fixed=250)
     def wait_for_exit_code_inner():
         job = load_job(cook_url, job_id)
-        if not 'exit_code' in job['instances'][0]:
+        if 'exit_code' not in job['instances'][0]:
             error_msg = 'Job {} missing exit_code set! Details: {}'.format(job_id, json.dumps(job, sort_keys=True))
             logger.info(error_msg)
             raise RuntimeError(error_msg)
         else:
             logger.info('Job {} has exit_code {}'.format(job_id, job['instances'][0]['exit_code']))
             return job
+
     try:
         return wait_for_exit_code_inner()
     except:
         job_final = load_job(cook_url, job_id)
-        logger.info('Timeout exceeded waiting for job to receive exit code. Job details: %s' % (job_final))
+        logger.info('Timeout exceeded waiting for job to receive exit code. Job details: %s' % job_final)
         raise
 
 
@@ -203,3 +206,15 @@ def get_output_url(cook_url, job_uuid):
         error_msg = 'Job %s had no output_url' % job['uuid']
         logger.info(error_msg)
         raise RuntimeError(error_msg)
+
+
+def list_jobs(cook_url, **kwargs):
+    """Makes a request to the /list endpoint using the provided kwargs as the query params"""
+    query_params = urlencode(kwargs).replace('_', '-')
+    resp = session.get('%s/list?%s' % (cook_url, query_params))
+    return resp
+
+
+def contains_job_uuid(jobs, job_uuid):
+    """Returns true if jobs contains a job with the given uuid"""
+    return any(job for job in jobs if job['uuid'] == job_uuid)
