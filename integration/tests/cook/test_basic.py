@@ -572,3 +572,14 @@ class CookTest(unittest.TestCase):
     def test_400_on_group_query_without_uuid(self):
         resp = util.query_groups(self.cook_url)
         self.assertEqual(400, resp.status_code)
+
+    def test_queue_endpoint(self):
+        job_uuid, resp = util.submit_job(self.cook_url, constraints=[["HOSTNAME",
+                                                                          "EQUALS",
+                                                                          "lol won't get scheduled"]])
+        self.assertEqual(201, resp.status_code, resp.content)
+        time.sleep(30) # Need to wait for a rank cycle
+        queue = util.session.get('%s/queue' % self.cook_url)
+        self.assertEqual(200, queue.status_code, queue.content)
+        self.assertTrue(any([job['job/uuid'] == job_uuid for job in queue.json()['normal']]))
+        util.session.delete('%s/rawscheduler?job=%s' % (self.cook_url, job_uuid))

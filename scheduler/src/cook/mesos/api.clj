@@ -1236,9 +1236,7 @@
    :handle-malformed render-error
    :handle-ok (fn [ctx]
                 (map-vals (fn [queue]
-                            (->> queue
-                                 (take (::limit ctx))
-                                 (map d/touch)))
+                            (take (::limit ctx) queue))
                           (mesos-pending-jobs-fn)))))
 
 ;;
