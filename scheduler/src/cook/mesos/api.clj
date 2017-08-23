@@ -1223,8 +1223,10 @@
 ;;
 ;; /queue
 
+(def leader-hostname-regex #"^([^#]*)#([0-9]*)#.*")
+
 (defn waiting-jobs
-  [mesos-pending-jobs-fn is-authorized-fn]
+  [mesos-pending-jobs-fn is-authorized-fn mesos-leadership-atom leader-selector]
   (liberator/resource
    :available-media-types ["application/json"]
    :allowed-methods [:get]
@@ -1244,6 +1246,20 @@
                    (do
                      (log/info user " has failed auth")
                      [false {::error "Unauthorized"}]))))
+   :exists? (fn [_] [@mesos-leadership-atom {}])
+   :existed? (fn [_] [true {}])
+   :moved-temporarily? (fn [ctx]
+                         (if @mesos-leadership-atom
+                           [false {}]
+                           (let [leader-id (-> leader-selector .getLeader .getId)
+                                 leader-match (re-matcher leader-hostname-regex leader-id)]
+                             (if (.matches leader-match)
+                               (let [leader-hostname (.group leader-match 1)
+                                     leader-port (.group leader-match 2)]
+                                 [true {:location (str "http://" leader-hostname ":" leader-port "/queue")}])
+                               (do
+                                 (log/error "Unable to parse leader id: " leader-id)
+                                 [false {}])))))
    :handle-forbidden (fn [ctx]
                        (log/info (get-in ctx [:request :authorization/user]) " is not authorized to access queue")
                        (render-error ctx))
@@ -1759,7 +1775,9 @@
   [conn framework-id mesos-pending-jobs-fn mesos-agent-query-cache
    {:keys [is-authorized-fn task-constraints]
     gpu-enabled? :mesos-gpu-enabled
-    :as settings}]
+    :as settings}
+   leader-selector
+   mesos-leadership-atom]
   (->
    (routes
     (c-api/api
@@ -1900,7 +1918,7 @@
                           400 {:description "Invalid request format."}
                           404 {:description "The UUID doesn't correspond to a job."}}}})))
     (ANY "/queue" []
-         (waiting-jobs mesos-pending-jobs-fn is-authorized-fn))
+         (waiting-jobs mesos-pending-jobs-fn is-authorized-fn mesos-leadership-atom leader-selector))
     (ANY "/running" []
          (running-jobs conn is-authorized-fn))
     (ANY "/list" []

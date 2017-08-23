@@ -66,13 +66,15 @@
     (resolve var-sym)))
 
 (def raw-scheduler-routes
-  {:scheduler (fnk [mesos-agent-query-cache mesos-datomic mesos-pending-jobs-atom framework-id settings]
+  {:scheduler (fnk [mesos mesos-agent-query-cache mesos-datomic mesos-leadership-atom mesos-pending-jobs-atom framework-id settings]
                 ((lazy-load-var 'cook.mesos.api/main-handler)
                   mesos-datomic
                   framework-id
                   (fn [] @mesos-pending-jobs-atom)
                   mesos-agent-query-cache
-                  settings))
+                  settings
+                  (get-in mesos [:mesos-scheduler :leader-selector])
+                  mesos-leadership-atom))
    :view (fnk [scheduler]
            scheduler)})
 
@@ -87,7 +89,7 @@
                            fenzo-floor-iterations-before-warn fenzo-max-jobs-considered fenzo-scaleback
                            good-enough-fitness mea-culpa-failure-limit mesos-failover-timeout mesos-framework-name
                            mesos-gpu-enabled mesos-leader-path mesos-master mesos-master-hosts mesos-principal
-                           mesos-role offer-incubate-time-ms progress rebalancer riemann task-constraints]
+                           mesos-role offer-incubate-time-ms progress rebalancer riemann server-port task-constraints]
                           curator-framework framework-id mesos-datomic mesos-datomic-mult mesos-leadership-atom
                           mesos-offer-cache mesos-pending-jobs-atom]
                       (log/info "Initializing mesos scheduler")
@@ -119,6 +121,7 @@
                             mesos-gpu-enabled
                             framework-id
                             mesos-leadership-atom
+                            server-port
                             {:executor-config executor
                              :rebalancer-config rebalancer
                              :progress-config progress}
@@ -554,7 +557,12 @@
   (edn/read-string
     {:readers
      {'config/env #(env %)
-      'config/env-int #(Integer/parseInt (env %))}}
+      'config/env-int-default (fn [[variable default]]
+                                (if-let [value (env variable)]
+                                  (Integer/parseInt value)
+                                  default))
+      'config/env-int #(Integer/parseInt (env %))
+      'config/env-bool #(Boolean/parseBoolean (or (env %) "false"))}}
     config))
 
 (defn -main

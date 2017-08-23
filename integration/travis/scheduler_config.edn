@@ -1,9 +1,10 @@
 {:port #config/env-int "COOK_PORT"
  :hostname "172.17.0.1"
  :authorization {:one-user "vagrant"}
- :database {:datomic-uri "datomic:mem://cook-jobs"}
- :zookeeper {:local? true
-             :local-port #config/env-int "COOK_ZOOKEEPER_LOCAL_PORT"}
+ :database {:datomic-uri #config/env "COOK_DATOMIC"}
+ :zookeeper {:connection "172.17.0.3:2181" ; minimesos zookeeper
+             :local? #config/env-bool "COOK_ZOOKEEPER_LOCAL"
+             :local-port #config/env-int-default ["COOK_ZOOKEEPER_LOCAL_PORT" -1]}
  :scheduler {:offer-incubate-ms 15000
              :task-constraints {:timeout-hours 1
                                 :timeout-interval-minutes 1

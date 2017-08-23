@@ -37,23 +37,34 @@ echo "Copying cook-executor from ${COOK_EXECUTOR_FILE} to ${SCHEDULER_EXECUTOR_D
 mkdir -p ${SCHEDULER_EXECUTOR_DIR}
 cp -f ${COOK_EXECUTOR_FILE} ${SCHEDULER_EXECUTOR_DIR}
 
+if [ -z "$(docker network ls -q -f name=cook_nw)" ];
+then
+    echo "Creating cook_nw network"
+    docker network create -d bridge --subnet 172.25.0.0/16 cook_nw
+fi
+
+. $DIR/start-datomic.sh
+
 echo "Starting cook..."
-docker run \
+docker create \
     -i \
     -t \
     --rm \
-    --network=bridge \
     --name=${NAME} \
     --publish=${COOK_NREPL_PORT}:${COOK_NREPL_PORT} \
     --publish=${COOK_PORT}:${COOK_PORT} \
     -e "COOK_EXECUTOR=file://${SCHEDULER_EXECUTOR_DIR}/cook-executor" \
     -e "COOK_PORT=${COOK_PORT}" \
     -e "COOK_NREPL_PORT=${COOK_NREPL_PORT}" \
-    -e "COOK_FRAMEWORK_ID=cook-framework-${COOK_PORT}" \
+    -e "COOK_FRAMEWORK_ID=${COOK_FRAMEWORK_ID:-cook-framework-${COOK_PORT}}" \
     -e "MESOS_MASTER=${ZK}" \
     -e "MESOS_MASTER_HOST=${MINIMESOS_MASTER_IP}" \
-    -v ${DIR}/../log:/opt/cook/log \
+    -e "COOK_ZOOKEEPER=${MINIMESOS_ZOOKEEPER_IP}:2181" \
     cook-scheduler:latest
+
+docker network connect bridge ${NAME}
+docker network connect cook_nw ${NAME}
+docker start -ai ${NAME}
 
 # If Cook is not starting, you may be able to troubleshoot by
 # adding the following line right after the `docker run` line:

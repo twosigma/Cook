@@ -1,9 +1,7 @@
 {:port #config/env-int "COOK_PORT"
  :authorization {:one-user "root"}
- :database {:datomic-uri "datomic:mem://cook-jobs"}
- :zookeeper {:local? true
-             ;:local-port 3291 ; Uncomment to change the default port
-             }
+ :database {:datomic-uri "datomic:free://datomic-free:4334/cook-jobs"}
+ :zookeeper {:connection #config/env "COOK_ZOOKEEPER"}
  :scheduler {:offer-incubate-ms 15000
              :task-constraints {:timeout-hours 1
                                 :timeout-interval-minutes 1

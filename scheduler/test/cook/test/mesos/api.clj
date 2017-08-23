@@ -84,7 +84,9 @@
     (api/main-handler conn "my-framework-id" (fn [] []) (atom (cache/lru-cache-factory {}))
                       {:is-authorized-fn is-authorized-fn
                        :mesos-gpu-enabled gpus-enabled
-                       :task-constraints {:cpus cpus :memory-gb memory-gb :retry-limit retry-limit}})))
+                       :task-constraints {:cpus cpus :memory-gb memory-gb :retry-limit retry-limit}}
+                      (Object.)
+                      (atom true))))
 
 (defn response->body-data [{:keys [body]}]
   (let [baos (ByteArrayOutputStream.)
