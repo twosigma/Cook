@@ -1438,3 +1438,9 @@
     (is (= (:uuid response-2) (get (first (list-jobs-fn (inc submit-ms-1) (inc submit-ms-2))) "uuid")))
     (is (= (:uuid response-2) (get (first (list-jobs-fn submit-ms-1 (inc submit-ms-2))) "uuid")))
     (is (= (:uuid response-1) (get (second (list-jobs-fn submit-ms-1 (inc submit-ms-2))) "uuid")))))
+
+(deftest test-name-filter-str->name-filter-pattern
+  (is (= (str #".*\..*") (str (api/name-filter-str->name-filter-pattern "*.*")))))
+
+(deftest test-name-filter-str->name-filter-fn
+  (is (not ((api/name-filter-str->name-filter-fn "*.*") "foo"))))
