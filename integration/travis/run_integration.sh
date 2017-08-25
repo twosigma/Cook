@@ -30,7 +30,7 @@ then
 fi
 
 # Build cook-executor
-$PROJECT_DIR/../travis/build_cook_executor.sh
+${PROJECT_DIR}/../travis/build_cook_executor.sh
 
 # Start minimesos
 cd ${PROJECT_DIR}/../travis
