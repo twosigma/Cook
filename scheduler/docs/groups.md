@@ -42,13 +42,15 @@ When running a lot of jobs, occasionally it happens that one or two of them run 
 rest.  This can be because they are on a box that is in a bad state, experiencing network problems
 or the process is in a bad state. To avoid having to manually monitor the jobs to find and address
 these problem cases, Cook can be configured to kill and restart jobs in a group that have been
-running much longer then the other jobs in the group. 
+running much longer then the other jobs in the group.
 
 To configure this, set the straggler handling type to `quantile-deviation`. This will have Cook look
 for jobs that have been running multiple times longer than a particular quantile of the group. The
 parameters, `quantile` and `multiplier` decide when a job is considered a straggler. The
 `quantile` decides the target runtime of the group and the `multipier` decides how many times
 longer than the run time of the quantile job before a job is marked as a straggler.
+If a job has already had an instance killed for being as straggler subsequent instances will not be
+considered a straggler regardless of how long it has run for.
 
 ## Host placement constraints
 
