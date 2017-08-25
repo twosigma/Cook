@@ -1440,7 +1440,25 @@
     (is (= (:uuid response-1) (get (second (list-jobs-fn submit-ms-1 (inc submit-ms-2))) "uuid")))))
 
 (deftest test-name-filter-str->name-filter-pattern
-  (is (= (str #".*\..*") (str (api/name-filter-str->name-filter-pattern "*.*")))))
+  (is (= (str #".*") (str (api/name-filter-str->name-filter-pattern "***"))))
+  (is (= (str #".*\..*") (str (api/name-filter-str->name-filter-pattern "*.*"))))
+  (is (= (str #".*-.*") (str (api/name-filter-str->name-filter-pattern "*-*"))))
+  (is (= (str #".*_.*") (str (api/name-filter-str->name-filter-pattern "*_*"))))
+  (is (= (str #"abc") (str (api/name-filter-str->name-filter-pattern "abc")))))
 
 (deftest test-name-filter-str->name-filter-fn
-  (is (not ((api/name-filter-str->name-filter-fn "*.*") "foo"))))
+  (is ((api/name-filter-str->name-filter-fn "***") "foo"))
+  (is ((api/name-filter-str->name-filter-fn "*.*") "f.o"))
+  (is (not ((api/name-filter-str->name-filter-fn "*.*") "foo")))
+  (is ((api/name-filter-str->name-filter-fn "*-*") "f-o"))
+  (is (not ((api/name-filter-str->name-filter-fn "*-*") "foo")))
+  (is ((api/name-filter-str->name-filter-fn "*_*") "f_o"))
+  (is (not ((api/name-filter-str->name-filter-fn "*_*") "foo")))
+  (is ((api/name-filter-str->name-filter-fn "abc") "abc"))
+  (is ((api/name-filter-str->name-filter-fn "abc*") "abcd"))
+  (is (not ((api/name-filter-str->name-filter-fn "abc") "abcd")))
+  (is ((api/name-filter-str->name-filter-fn "*abc") "zabc"))
+  (is (not ((api/name-filter-str->name-filter-fn "abc") "zabc")))
+  (is ((api/name-filter-str->name-filter-fn "a*c") "abc"))
+  (is ((api/name-filter-str->name-filter-fn "a*c") "ac"))
+  (is (not ((api/name-filter-str->name-filter-fn "a*c") "zacd"))))
