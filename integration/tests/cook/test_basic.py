@@ -110,7 +110,7 @@ class CookTest(unittest.TestCase):
                   ''.join(['echo "progress: {0} {0}%" && '.format(a) for a in range(99, 40, -4)]) + \
                   ''.join(['echo "progress: {0} {0}%" && '.format(a) for a in range(40, 81, 2)]) + \
                   'echo "Done" && exit 0'
-        job_uuid, resp = util.submit_job(self.cook_url, command=command, max_runtime=30000)
+        job_uuid, resp = util.submit_job(self.cook_url, command=command, max_runtime=60000)
         self.assertEqual(201, resp.status_code)
         job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
         self.assertEqual(1, len(job['instances']))
@@ -122,9 +122,9 @@ class CookTest(unittest.TestCase):
         wait_publish_interval_secs = min(2 * publish_interval_ms / 1000, 20)
         time.sleep(wait_publish_interval_secs)
         job = util.load_job(self.cook_url, job_uuid)
-        message = json.dumps(job['instances'][0], sort_keys=True)
 
         if util.is_using_cook_executor(self.cook_url):
+            message = json.dumps(job['instances'][0], sort_keys=True)
             self.assertEqual(0, job['instances'][0]['exit_code'], message)
             self.assertEqual(80, job['instances'][0]['progress'], message)
             self.assertEqual('80%', job['instances'][0]['progress_message'], message)
