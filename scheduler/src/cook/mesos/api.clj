@@ -1597,7 +1597,8 @@
   "Returns a name-filtering function (or nil) given a user-provided name filter string"
   [name]
   (if name
-    #(re-matches (name-filter-str->name-filter-pattern name) %)
+    (let [pattern (name-filter-str->name-filter-pattern name)]
+      #(re-matches pattern %))
     nil))
 
 (defn list-resource
