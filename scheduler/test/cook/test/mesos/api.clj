@@ -1146,33 +1146,26 @@
                  (dissoc (api/fetch-job-map (db conn) framework-id retrieve-url-path uuid) :submit_time))))))))
 
 (deftest test-destroy-jobs
-  (testing "should be able to destroy own jobs"
-    (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
-          framework-id #mesomatic.types.FrameworkID{:value "framework-id"}
-          is-authorized-fn (partial auth/is-authorized? {:authorization-fn 'cook.authorization/configfile-admins-auth-open-gets})
-          agent-query-cache (Object.)
+  (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
+        framework-id #mesomatic.types.FrameworkID{:value "framework-id"}
+        is-authorized-fn (partial auth/is-authorized? {:authorization-fn 'cook.authorization/configfile-admins-auth-open-gets})
+        agent-query-cache (Object.)
+        handler (api/destroy-jobs-handler conn framework-id is-authorized-fn agent-query-cache)]
+    (testing "should be able to destroy own jobs"
+      (let [{:keys [uuid user] :as job} (minimal-job)
+            _ (api/create-jobs! conn {::api/jobs [job]})
+            resp (handler {:request-method :delete
+                           :authorization/user user
+                           :query-params {:job uuid}})]
+        (is (= 204 (:status resp)) (:body resp))))
 
-          handler (api/destroy-jobs-handler conn framework-id is-authorized-fn agent-query-cache)
-          {:keys [uuid user] :as job} (minimal-job)
-          _ (api/create-jobs! conn {::api/jobs [job]})
-          resp (handler {:request-method :delete
-                         :authorization/user user
-                         :query-params {:job uuid}})]
-      (is (= 204 (:status resp)) (:body resp))))
-
-  (testing "should not be able to destroy another user's job"
-    (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
-          framework-id #mesomatic.types.FrameworkID{:value "framework-id"}
-          is-authorized-fn (partial auth/is-authorized? {:authorization-fn 'cook.authorization/configfile-admins-auth-open-gets})
-          agent-query-cache (Object.)
-
-          handler (api/destroy-jobs-handler conn framework-id is-authorized-fn agent-query-cache)
-          {:keys [uuid] :as job} (assoc (minimal-job) :user "creator")
-          _ (api/create-jobs! conn {::api/jobs [job]})
-          resp (handler {:request-method :delete
-                         :authorization/user "destroyer"
-                         :query-params {:job uuid}})]
-      (is (= 403 (:status resp))))))
+    (testing "should not be able to destroy another user's job"
+      (let [{:keys [uuid] :as job} (assoc (minimal-job) :user "creator")
+            _ (api/create-jobs! conn {::api/jobs [job]})
+            resp (handler {:request-method :delete
+                           :authorization/user "destroyer"
+                           :query-params {:job uuid}})]
+        (is (= 403 (:status resp)))))))
 
 (defn- minimal-config
   "Returns a minimal configuration map"

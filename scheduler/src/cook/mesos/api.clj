@@ -870,11 +870,14 @@
        :job/_instance
        :job/uuid))
 
-(defn- wrap-seq [v]
-  (when v
-    (if (sequential? v)
-      v
-      [v])))
+(defn- wrap-seq
+  "Returns:
+   - [v] if v is not nil and not sequential
+   - v otherwise"
+  [v]
+  (if (or (nil? v) (sequential? v))
+    v
+    [v]))
 
 (defn retrieve-jobs
   "Returns a tuple that either has the shape:
