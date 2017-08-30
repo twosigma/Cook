@@ -85,65 +85,19 @@
             job-straggler-b (create-dummy-job conn :group group-ent-id)
             straggler-b (create-dummy-instance conn job-straggler-b :instance-status :instance.status/running
                                              :start-time (tc/to-date (t/ago (t/minutes 121))))
+            ;; Not treated as a straggler because instance already failed as a straggler
+            job-straggler-c (create-dummy-job conn :group group-ent-id)
+            straggled-c (create-dummy-instance conn job-straggler-c :instance-status :instance.status/failed
+                                               :reason :straggler
+                                               :start-time (tc/to-date (t/ago (t/hours 4)))
+                                               :end-time (tc/to-date (t/ago (t/hours 2))))
+            not-straggler-c (create-dummy-instance conn job-straggler-c :instance-status :instance.status/running
+                                               :start-time (tc/to-date (t/ago (t/minutes 121))))
             db (d/db conn)
             group-ent (d/entity db group-ent-id)
             straggler-task-a (d/entity db straggler-a)
             straggler-task-b (d/entity db straggler-b)]
         (is (= #{straggler-task-a straggler-task-b} (set (group/find-stragglers group-ent))))))
-    (testing "quantile deviation straggler-handling, stragglers found but was already a straggler"
-      (let [straggler-handling {:straggler-handling/type :straggler-handling.type/quantile-deviation
-                                :straggler-handling/parameters
-                                {:straggler-handling.quantile-deviation/quantile 0.5
-                                 :straggler-handling.quantile-deviation/multiplier 2.0}}
-            group-ent-id (create-dummy-group conn :straggler-handling straggler-handling)
-
-            _ (create-dummy-instance conn
-                                     (create-dummy-job conn :group group-ent-id)
-                                     :instance-status :instance.status/success
-                                     :start-time (tc/to-date (t/ago (t/hours 3)))
-                                     :end-time (tc/to-date (t/ago (t/hours 2))))
-            _ (create-dummy-instance conn
-                                     (create-dummy-job conn :group group-ent-id)
-                                     :instance-status :instance.status/success
-                                     :start-time (tc/to-date (t/ago (t/hours 3)))
-                                     :end-time (tc/to-date (t/ago (t/hours 2))))
-            _ (create-dummy-instance conn
-                                     (create-dummy-job conn :group group-ent-id)
-                                     :instance-status :instance.status/success
-                                     :start-time (tc/to-date (t/ago (t/hours 3)))
-                                     :end-time (tc/to-date (t/ago (t/hours 2))))
-            _ (create-dummy-instance conn
-                                     (create-dummy-job conn :group group-ent-id)
-                                     :instance-status :instance.status/success
-                                     :start-time (tc/to-date (t/ago (t/hours 3)))
-                                     :end-time (tc/to-date (t/ago (t/hours 2))))
-            _ (create-dummy-instance conn
-                                     (create-dummy-job conn :group group-ent-id)
-                                     :instance-status :instance.status/success
-                                     :start-time (tc/to-date (t/ago (t/hours 3)))
-                                     :end-time (tc/to-date (t/ago (t/hours 2))))
-            _ (create-dummy-instance conn
-                                     (create-dummy-job conn :group group-ent-id)
-                                     :instance-status :instance.status/success
-                                     :start-time (tc/to-date (t/ago (t/hours 3)))
-                                     :end-time (tc/to-date (t/ago (t/hours 2))))
-            job-not-straggler (create-dummy-job conn :group group-ent-id)
-            _ (create-dummy-instance conn job-not-straggler :instance-status :instance.status/running
-                                     :start-time (tc/to-date (t/ago (t/minutes 100))))
-            job-straggler-a (create-dummy-job conn :group group-ent-id)
-            straggler-a (create-dummy-instance conn job-straggler-a :instance-status :instance.status/running
-                                               :start-time (tc/to-date (t/ago (t/minutes 190))))
-            job-straggler-b (create-dummy-job conn :group group-ent-id)
-            straggled-b (create-dummy-instance conn job-straggler-b :instance-status :instance.status/failed
-                                               :reason :straggler
-                                               :start-time (tc/to-date (t/ago (t/hours 4)))
-                                               :end-time (tc/to-date (t/ago (t/hours 2))))
-            not-straggler-b (create-dummy-instance conn job-straggler-b :instance-status :instance.status/running
-                                               :start-time (tc/to-date (t/ago (t/minutes 121))))
-            db (d/db conn)
-            group-ent (d/entity db group-ent-id)
-            straggler-task-a (d/entity db straggler-a)]
-        (is (= #{straggler-task-a} (set (group/find-stragglers group-ent))))))
     (testing "quantile deviation straggler-handling, not enough jobs complete"
       (let [straggler-handling {:straggler-handling/type :straggler-handling.type/quantile-deviation
                                 :straggler-handling/parameters

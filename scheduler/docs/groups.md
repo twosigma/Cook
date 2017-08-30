@@ -49,8 +49,8 @@ for jobs that have been running multiple times longer than a particular quantile
 parameters, `quantile` and `multiplier` decide when a job is considered a straggler. The
 `quantile` decides the target runtime of the group and the `multipier` decides how many times
 longer than the run time of the quantile job before a job is marked as a straggler.
-If a job has already had an instance killed for being as straggler subsequent instances will not be
-considered a straggler regardless of how long it has run for.
+If a job has already had an instance killed for being a straggler, subsequent instances will not be
+considered stragglers regardless of how long they have run for.
 
 ## Host placement constraints
 
