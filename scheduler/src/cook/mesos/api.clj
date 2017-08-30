@@ -874,6 +874,15 @@
        :job/_instance
        :job/uuid))
 
+(defn- wrap-seq
+  "Returns:
+   - [v] if v is not nil and not sequential
+   - v otherwise"
+  [v]
+  (if (or (nil? v) (sequential? v))
+    v
+    [v]))
+
 (defn retrieve-jobs
   "Returns a tuple that either has the shape:
 
@@ -894,8 +903,8 @@
   particular cook cluster for a set of uuids, where some of them may not belong
   to that cluster, and get back the data for those that do match."
   [conn ctx]
-  (let [jobs (get-in ctx [:request :query-params :job])
-        instances (get-in ctx [:request :query-params :instance])
+  (let [jobs (wrap-seq (get-in ctx [:request :query-params :job]))
+        instances (wrap-seq (get-in ctx [:request :query-params :instance]))
         allow-partial-results (get-in ctx [:request :query-params :partial])]
     (let [instance-uuid->job-uuid #(instance-uuid->job-uuid (d/db conn) %)
           instance-jobs (mapv instance-uuid->job-uuid instances)
@@ -934,7 +943,7 @@
   [ctx]
   (let [jobs (get-in ctx [:request :query-params :job])
         instances (get-in ctx [:request :query-params :instance])]
-    (if (or (seq jobs) (seq instances))
+    (if (or jobs instances)
       false
       [true {::error "must supply at least one job or instance query param"}])))
 
@@ -947,7 +956,8 @@
 
 (defn job-request-allowed?
   [conn is-authorized-fn ctx]
-  (let [uuids (::jobs ctx)
+  (let [uuids (or (::jobs ctx)
+                  (::jobs (second (retrieve-jobs conn ctx))))
         authorized? (partial user-authorized-for-job? conn is-authorized-fn ctx)]
     (if (every? authorized? uuids)
       true
@@ -972,7 +982,7 @@
 
 ;;; On DELETE; use repeated job argument
 (defn destroy-jobs-handler
-  [conn framework-id task-constraints gpu-enabled? is-authorized-fn agent-query-cache]
+  [conn framework-id is-authorized-fn agent-query-cache]
   (base-cook-handler
     {:allowed-methods [:delete]
      :malformed? check-job-params-present
@@ -1782,7 +1792,7 @@
                              400 {:description "Non-UUID values were passed as jobs."}
                              403 {:description "The supplied UUIDs don't correspond to valid jobs."}}
                  :parameters {:query-params JobOrInstanceIds}
-                 :handler (destroy-jobs-handler conn framework-id task-constraints gpu-enabled? is-authorized-fn mesos-agent-query-cache)}}))
+                 :handler (destroy-jobs-handler conn framework-id is-authorized-fn mesos-agent-query-cache)}}))
 
      (c-api/context
       "/share" []
