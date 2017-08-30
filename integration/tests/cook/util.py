@@ -210,7 +210,11 @@ def get_output_url(cook_url, job_uuid):
 
 def list_jobs(cook_url, **kwargs):
     """Makes a request to the /list endpoint using the provided kwargs as the query params"""
-    query_params = urlencode(kwargs).replace('_', '-')
+    if 'start_ms' in kwargs:
+        kwargs['start-ms'] = kwargs.pop('start_ms')
+    if 'end_ms' in kwargs:
+        kwargs['end-ms'] = kwargs.pop('end_ms')
+    query_params = urlencode(kwargs)
     resp = session.get('%s/list?%s' % (cook_url, query_params))
     return resp
 
