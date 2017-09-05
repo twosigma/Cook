@@ -730,18 +730,22 @@
                                 (remove #(contains? matched-job-uuids (:job/uuid %)) existing-jobs)))]
     (pc/map-from-keys remove-matched-jobs (keys category->pending-jobs))))
 
+(defn- update-match-with-task-metadata-seq
+  "Updates the match with an entry for the task metadata for all tasks."
+  [{:keys [tasks] :as match} db framework-id executor-config]
+  (let [task-metadata-seq (map #(task/TaskAssignmentResult->task-metadata db framework-id executor-config %)
+                            ;; sort-by makes task-txns created in matches->task-txns deterministic
+                            (sort-by (comp :db/id :job #(.getRequest ^TaskAssignmentResult %)) tasks))]
+    (assoc match :task-metadata-seq task-metadata-seq)))
+
 (defn- matches->task-txns
   "Converts matches to a task transactions."
   [matches]
-  (for [{:keys [tasks leases]} matches
+  (for [{:keys [leases task-metadata-seq]} matches
         :let [offers (mapv :offer leases)
               slave-id (-> offers first :slave-id :value)]
-        ^TaskAssignmentResult task (->> tasks
-                                        ;; sort-by makes match transaction deterministic
-                                        (sort-by (comp :db/id :job #(.getRequest %))))
-        :let [request (.getRequest task)
-              task-id (:task-id request)
-              job-ref [:job/uuid (get-in request [:job :job/uuid])]]]
+        {:keys [executor hostname ports-assigned task-id task-request]} task-metadata-seq
+        :let [job-ref [:job/uuid (get-in task-request [:job :job/uuid])]]]
     [[:job/allowed-to-start? job-ref]
      ;; NB we set any job with an instance in a non-terminal
      ;; state to running to prevent scheduling the same job
@@ -749,22 +753,22 @@
      [:db/add job-ref :job/state :job.state/running]
      {:db/id (d/tempid :db.part/user)
       :job/_instance job-ref
-      :instance/task-id task-id
-      :instance/hostname (.getHostname task)
-      :instance/start-time (now)
-      ;; NB command executor uses the task-id
-      ;; as the executor-id
-      :instance/executor-id task-id
-      :instance/slave-id slave-id
-      :instance/ports (.getAssignedPorts task)
+      :instance/executor executor
+      :instance/executor-id task-id ;; NB command executor uses the task-id as the executor-id
+      :instance/hostname hostname
+      :instance/ports ports-assigned
+      :instance/preempted? false
       :instance/progress 0
+      :instance/slave-id slave-id
+      :instance/start-time (now)
       :instance/status :instance.status/unknown
-      :instance/preempted? false}]))
+      :instance/task-id task-id}]))
 
 (defn- launch-matched-tasks!
   "Updates the state of matched tasks in the database and then launches them."
   [matches conn db driver fenzo framework-id executor-config]
-  (let [task-txns (matches->task-txns matches)]
+  (let [matches (map #(update-match-with-task-metadata-seq % db framework-id executor-config) matches)
+        task-txns (matches->task-txns matches)]
     ;; Note that this transaction can fail if a job was scheduled
     ;; during a race. If that happens, then other jobs that should
     ;; be scheduled will not be eligible for rescheduling until
@@ -788,17 +792,16 @@
     (meters/mark! matched-tasks (count task-txns))
     (timers/time!
       handle-resource-offer!-mesos-submit-duration
-      (doseq [{:keys [tasks leases]} matches
+      (doseq [{:keys [leases task-metadata-seq]} matches
               :let [offers (mapv :offer leases)
-                    task-data-maps (map #(task/TaskAssignmentResult->task-metadata db framework-id executor-config %) tasks)
-                    task-infos (task/compile-mesos-messages offers task-data-maps)]]
+                    task-infos (task/compile-mesos-messages offers task-metadata-seq)]]
         (log/debug "Matched task-infos" task-infos)
         (mesos/launch-tasks! driver (mapv :id offers) task-infos)
-        (doseq [^TaskAssignmentResult task tasks]
+        (doseq [{:keys [hostname task-request]} task-metadata-seq]
           (locking fenzo
             (.. fenzo
                 (getTaskAssigner)
-                (call (.getRequest task) (get-in (first leases) [:offer :hostname])))))))))
+                (call task-request hostname))))))))
 
 (defn handle-resource-offers!
   "Gets a list of offers from mesos. Decides what to do with them all--they should all

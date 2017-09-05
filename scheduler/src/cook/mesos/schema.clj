@@ -515,6 +515,13 @@ for a job. E.g. {:resources {:cpus 4 :mem 3} :constraints {\"unique_host_constra
     :db/cardinality :db.cardinality/many
     :db.install/_attribute :db.part/db}
    {:db/id (d/tempid :db.part/db)
+    :db/doc "Specifies the executor used to run this instance."
+    :db/ident :instance/executor
+    :db/valueType :db.type/ref
+    :db/isComponent true
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
     :db/ident :instance/executor-id
     :db/valueType :db.type/string
     :db/cardinality :db.cardinality/one
@@ -752,13 +759,13 @@ for a job. E.g. {:resources {:cpus 4 :mem 3} :constraints {\"unique_host_constra
     :db/doc "Creates an instance for a job"}
    ;; Enum of executor options
    {:db/id (d/tempid :db.part/user)
-    :db/ident :job.executor/cook
+    :db/ident :executor/cook
     :db/doc "Signals intent to use the Cook executor"}
    {:db/id (d/tempid :db.part/user)
-    :db/ident :job.executor/custom
+    :db/ident :executor/custom
     :db/doc "Signals intent to use the custom executor"}
    {:db/id (d/tempid :db.part/user)
-    :db/ident :job.executor/mesos
+    :db/ident :executor/mesos
     :db/doc "Signals intent to use the Mesos command executor"}])
 
 (def straggler-handling-types

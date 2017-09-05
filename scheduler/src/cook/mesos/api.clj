@@ -488,8 +488,8 @@
         container (if (nil? container) [] (build-container user db-id container))
         executor (when executor
                    (case executor
-                     "cook" :job.executor/cook
-                     "mesos" :job.executor/mesos
+                     "cook" :executor/cook
+                     "mesos" :executor/mesos
                      (throw (IllegalArgumentException. (str "Unsupported executor type: " executor)))))
         ;; These are optionally set datoms w/ default val
         ;; ues

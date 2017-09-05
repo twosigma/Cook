@@ -30,7 +30,7 @@
   "Returns true if the job should be scheduled to use the custom executor."
   [job-ent]
   (or (:job/custom-executor job-ent true)
-      (= :job.executor/custom (:job/executor job-ent))))
+      (= :executor/custom (:job/executor job-ent))))
 
 (defn- cook-executor-candidate?
   "A job is a candidate for execution by the cook-executor if all the following are true:
@@ -53,7 +53,7 @@
   [job-ent {:keys [command portion]}]
   (and (not (use-custom-executor? job-ent))
        command
-       (or (= :job.executor/cook (:job/executor job-ent))
+       (or (= :executor/cook (:job/executor job-ent))
            (cook-executor-candidate? job-ent portion))))
 
 (defn build-executor-environment
@@ -92,6 +92,11 @@
                        cook-executor? :cook-executor
                        ;; use mesos' command executor by default
                        :else :command-executor)
+        executor (case executor-key
+                   :command-executor :executor/mesos
+                   :container-command-executor :executor/mesos
+                   :cook-executor :executor/cook
+                   :executor/custom)
         data (.getBytes
                (if cook-executor?
                  (json/write-str {"command" (:job/command job-ent)})
@@ -99,13 +104,14 @@
                    ;;TODO this data is a race-condition
                    {:instance (str (count (:job/instance job-ent)))}))
                "UTF-8")]
-    (when (and (= :job.executor/cook (:job/executor job-ent))
+    (when (and (= :executor/cook (:job/executor job-ent))
                (not= executor-key :cook-executor))
       (log/warn "Task" task-id "requested to use cook executor, but will be executed using" (name executor-key)))
     {:command command
      :container container
      :data data
      :environment environment
+     :executor executor
      :executor-key executor-key
      :framework-id framework-id
      :labels labels
@@ -116,10 +122,11 @@
 
 (defn TaskAssignmentResult->task-metadata
   "Organizes the info Fenzo has already told us about the task we need to run"
-  [db framework-id executor-config ^TaskAssignmentResult fenzo-result]
-  (let [task-request (.getRequest fenzo-result)]
-    (merge (job->task-metadata db framework-id executor-config (:job task-request) (:task-id task-request))
-           {:ports-assigned (.getAssignedPorts fenzo-result)
+  [db framework-id executor-config ^TaskAssignmentResult task-result]
+  (let [{:keys [job task-id] :as task-request} (.getRequest task-result)]
+    (merge (job->task-metadata db framework-id executor-config job task-id)
+           {:hostname (.getHostname task-result)
+            :ports-assigned (.getAssignedPorts task-result)
             :task-request task-request})))
 
 (defmulti combine-like-resources
