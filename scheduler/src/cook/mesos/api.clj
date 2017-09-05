@@ -487,10 +487,12 @@
                             constraints)
         container (if (nil? container) [] (build-container user db-id container))
         executor (when executor
-                   (case executor ;; will throw an exception if invalid value is provided
+                   (case executor
                      "cook" :job.executor/cook
-                     "mesos" :job.executor/mesos))
-        ;; These are optionally set datoms w/ default values
+                     "mesos" :job.executor/mesos
+                     (throw (IllegalArgumentException. (str "Unsupported executor type: " executor)))))
+        ;; These are optionally set datoms w/ default val
+        ;; ues
         maybe-datoms (reduce into
                              []
                              [(when (and priority (not= util/default-job-priority priority))

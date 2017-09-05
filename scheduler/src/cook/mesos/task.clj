@@ -32,24 +32,29 @@
   (or (:job/custom-executor job-ent true)
       (= :job.executor/custom (:job/executor job-ent))))
 
+(defn- cook-executor-candidate?
+  "A job is a candidate for execution by the cook-executor if all the following are true:
+   a. Cook executor has not been explicitly disabled,
+   b. This is going to be the first instance of the job, and
+   c. The job UUID hash mod 100 yields less than portion percent."
+  [job-ent portion]
+  (and (nil? (:job/executor job-ent))
+       (zero? (count (:job/instance job-ent)))
+       portion
+       (> (* portion 100) (-> job-ent :job/uuid hash (mod 100)))))
+
 (defn use-cook-executor?
   "Returns true if the job should be scheduled to use the Cook executor.
    Cook executor is used when the following conditions are true:
    1. The job is not configured to use the custom executor (including backwards compatibility),
-   2. The Cook executor command has been configured
+   2. The Cook executor command has been configured,
    3. Either :job/executor is explicitly enabled
-      Or: a. Cook executor has not been explicitly disabled,
-          b. This is going to be the first instance of the job, and
-          c. The job UUID hash mod 100 yields less than portion percent."
-  [job-ent executor-config]
+      Or: the job is a cook-executor candidate (see cook-executor-candidate?)."
+  [job-ent {:keys [command portion]}]
   (and (not (use-custom-executor? job-ent))
-       (:command executor-config)
+       command
        (or (= :job.executor/cook (:job/executor job-ent))
-           (and (nil? (:job/executor job-ent))
-                (zero? (count (:job/instance job-ent)))
-                (when-let [portion (:portion executor-config)]
-                  (> (* portion 100)
-                     (-> job-ent :job/uuid hash (mod 100))))))))
+           (cook-executor-candidate? job-ent portion))))
 
 (defn build-executor-environment
   "Build the environment for the cook executor."

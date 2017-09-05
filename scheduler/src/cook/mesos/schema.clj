@@ -107,11 +107,12 @@
     :db/doc "Determines if this job will only use the
              1. cook executor (cook),
              2. mesos command executor (mesos), or
-             3. custom (custom executor).
+             3. custom executor (custom).
              When missing and :job/custom-executor is true, then uses a custom executor (for legacy compatibility).
              Else, it may default to any of the Cook executor or Mesos command executor"
     :db/ident :job/executor
     :db/valueType :db.type/ref
+    :db/isComponent true
     :db/cardinality :db.cardinality/one
     :db.install/_attribute :db.part/db}
    {:db/id (d/tempid :db.part/db)
