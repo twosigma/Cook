@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [Unreleased]
+### Added
+- Added support for allowing job to specify which executor (cook|mesos) to use, from @shamsimam
+
 ## [1.5.6] - 2017-08-07
 ### Changed
 - Performance improvement in rank jobs, from @wyegelwel
@@ -16,7 +20,6 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/) and this p
 
 ## [1.5.4] - 2017-07-31
 ### Added
-- Added support for allowing job to specify which executor (cook|mesos) to use, from @shamsimam
 - Added support for throttling rate of publishing instance progress updates, from @shamsimam
 - Added authorization check for job creation, from @dposada
 
