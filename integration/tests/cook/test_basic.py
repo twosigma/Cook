@@ -497,24 +497,32 @@ class CookTest(unittest.TestCase):
                 'multiplier': 2.0
             }
         }
-        slow_job_wait = 1200
+        settings_timeout_interval_minutes = util.get_in(util.settings(self.cook_url), 'task-constraints',
+                                                        'timeout-interval-minutes')
+        # the value needs to be a little more than 2 times settings_timeout_interval_minutes to allow
+        # at least two runs of the straggler handler loop
+        slow_job_wait = (2 * settings_timeout_interval_minutes * 60) + 30
+
         group_spec = self.minimal_group(straggler_handling=straggler_handling)
         job_fast = util.minimal_job(group=group_spec["uuid"])
         job_slow = util.minimal_job(group=group_spec["uuid"],
-                                    command='sleep %d' % slow_job_wait)
+                                    command='sleep %d' % slow_job_wait,
+                                    max_retries=2)
         data = {'jobs': [job_fast, job_slow], 'groups': [group_spec]}
         resp = util.session.post('%s/rawscheduler' % self.cook_url, json=data)
         self.assertEqual(resp.status_code, 201)
         util.wait_for_job(self.cook_url, job_fast['uuid'], 'completed')
+        # Need to wait for initial job to be killed, then restarted and run to completion
         util.wait_for_job(self.cook_url, job_slow['uuid'], 'completed',
-                          slow_job_wait * 1000)
+                          3*slow_job_wait * 1000)
         jobs = util.session.get('%s/rawscheduler?job=%s&job=%s' %
                                 (self.cook_url, job_fast['uuid'], job_slow['uuid']))
         self.assertEqual(200, jobs.status_code)
         jobs = jobs.json()
         self.logger.debug('Loaded jobs %s', jobs)
         self.assertEqual('success', jobs[0]['state'], 'Job details: %s' % (json.dumps(jobs[0], sort_keys=True)))
-        self.assertEqual('failed', jobs[1]['state'])
+        self.assertEqual('success', jobs[1]['state'])
+        self.assertEqual(2, len(jobs[1]['instances']))
         self.assertEqual(2004, jobs[1]['instances'][0]['reason_code'])
 
     def test_expected_runtime_field(self):
