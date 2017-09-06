@@ -733,9 +733,10 @@
 (defn- update-match-with-task-metadata-seq
   "Updates the match with an entry for the task metadata for all tasks."
   [{:keys [tasks] :as match} db framework-id executor-config]
-  (let [task-metadata-seq (map #(task/TaskAssignmentResult->task-metadata db framework-id executor-config %)
-                            ;; sort-by makes task-txns created in matches->task-txns deterministic
-                            (sort-by (comp :db/id :job #(.getRequest ^TaskAssignmentResult %)) tasks))]
+  (let [task-metadata-seq (->> tasks
+                               ;; sort-by makes task-txns created in matches->task-txns deterministic
+                               (sort-by (comp :db/id :job #(.getRequest ^TaskAssignmentResult %)) )
+                               (map #(task/TaskAssignmentResult->task-metadata db framework-id executor-config %)))]
     (assoc match :task-metadata-seq task-metadata-seq)))
 
 (defn- matches->task-txns

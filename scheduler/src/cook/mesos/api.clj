@@ -434,6 +434,16 @@
                 (mk-docker-ports docker-id port-mappings))])
       {})))
 
+(defn- str->executor-enum
+  "Converts an executor string to the corresponding executor option enum.
+   Throws an IllegalArgumentException if the string is non-nil and not supported."
+  [executor]
+  (when executor
+    (case executor
+      "cook" :executor/cook
+      "mesos" :executor/mesos
+      (throw (IllegalArgumentException. (str "Unsupported executor type: " executor))))))
+
 (s/defn make-job-txn
   "Creates the necessary txn data to insert a job into the database"
   [job :- Job]
@@ -486,11 +496,7 @@
                                   :constraint/pattern pattern}]))
                             constraints)
         container (if (nil? container) [] (build-container user db-id container))
-        executor (when executor
-                   (case executor
-                     "cook" :executor/cook
-                     "mesos" :executor/mesos
-                     (throw (IllegalArgumentException. (str "Unsupported executor type: " executor)))))
+        executor (str->executor-enum executor)
         ;; These are optionally set datoms w/ default val
         ;; ues
         maybe-datoms (reduce into
