@@ -97,7 +97,8 @@
   feature, where users are allowed to modify their teammates' jobs."
   (:require [clojure.tools.logging :as log]
             [cook.util :refer [lazy-load-var]]
-            [plumbing.core :refer (fnk defnk)]))
+            [plumbing.core :refer (fnk defnk)])
+  (:import (clojure.lang Keyword)))
 
 
 ;;
@@ -119,12 +120,12 @@
   Usernames in this set are administrators, who are allowed to do anything to any object.
   Non-admins are only allowed to manipulate objects that they own."
   ([^String user
-    ^clojure.lang.Keyword verb
+    ^Keyword verb
     {:keys [owner item] :as object}]
    (configfile-admins-auth {:admins #{}} user verb object))
   ([{:keys [admins] :as settings}
     ^String user
-    ^clojure.lang.Keyword verb
+    ^Keyword verb
     {:keys [owner item] :as object}]
    (log/debug "[configfile-admins-auth] Checking whether user" user
               "may perform" verb
@@ -144,6 +145,47 @@
                      "is not allowed to perform" verb "on" (str object ",") "denying.")
            false))))
 
+(defn admins-open-gets-whitelisted-users-auth
+  "Allows admins to do anything to any object, and if user-is-whitelisted? is truthy,
+  allows non-admins to manipulate objects that they own and to read (get) any object."
+  [admins user verb {:keys [owner] :as object} user-is-whitelisted?]
+  (let [svo {:user user :verb verb :object object :user-is-whitelisted? user-is-whitelisted?}]
+    (cond (contains? admins user)
+          (do
+            (log/debug "User" user "is an admin, allowing." (assoc svo :authorized? true))
+            true)
+
+          (and (= verb :get) user-is-whitelisted?)
+          (do
+            (log/debug "Verb was get, allowing." (assoc svo :authorized? true))
+            true)
+
+          (and (= owner user) user-is-whitelisted?)
+          (do
+            (log/debug "Object is owned by user, allowing." (assoc svo :authorized? true))
+            true)
+
+          :else
+          (do
+            (log/info "Unauthorized access attempt: user" user "is not allowed to perform" verb
+                      "on" (str object ",") "denying." (assoc svo :authorized? false))
+            false))))
+
+(defn configfile-admins-open-gets-whitelisted-users-auth
+  "Like configfile-admins-auth-open-gets, except it additionally supports a user
+  :whitelist. Only whitelisted users are authorized to perform operations."
+  ([^String user
+    ^Keyword verb
+    {:keys [owner item] :as object}]
+   (configfile-admins-open-gets-whitelisted-users-auth {:admins #{}, :whitelist #{}} user verb object))
+  ([{:keys [admins whitelist] :as settings}
+    ^String user
+    ^Keyword verb
+    {:keys [owner item] :as object}]
+   (log/debug "Checking whether user" user "may perform" verb "on object" (str object)
+              ". Admins are:" admins "and whitelist is:" whitelist)
+   (admins-open-gets-whitelisted-users-auth admins user verb object (contains? whitelist user))))
+
 (defn configfile-admins-auth-open-gets
   "This authorization function consults the set of usernames specified
   in the :admins key of the :authorization-config section of the config file.
@@ -152,39 +194,18 @@
   Non-admins are only allowed to manipulate objects that they own but are able to read (get)
    any object."
   ([^String user
-    ^clojure.lang.Keyword verb
+    ^Keyword verb
     {:keys [owner item] :as object}]
    (configfile-admins-auth-open-gets {:admins #{}} user verb object))
   ([{:keys [admins] :as settings}
     ^String user
-    ^clojure.lang.Keyword verb
+    ^Keyword verb
     {:keys [owner item] :as object}]
    (log/debug "[configfile-admins-auth-open-gets] Checking whether user" user
               "may perform" verb
               "on object" (str object) "."
               "Admins are:" admins)
-   (let [svo {:user user :verb verb :object object}]
-     (cond (contains? admins user)
-           (do
-             (log/debug "[configfile-admins-auth-open-gets] User" user "is an admin, allowing." 
-                        (assoc svo :authorized? true))
-             true)
-           (= verb :get)
-           (do
-             (log/debug "[configfile-admins-auth-open-gets] Verb was get, allowing" 
-                        (assoc svo :authorized? true))
-             true)
-           (= owner user)
-           (do
-             (log/debug "[configfile-admins-auth-open-gets] Object is owned by user, allowing." 
-                        (assoc svo :authorized? true))
-             true)
-           :else
-           (do
-             (log/info "[configfile-admins-auth-open-gets] Unauthorized access attempt: user" user
-                       "is not allowed to perform" verb "on" (str object ",") "denying." 
-                       (assoc svo :authorized? false))
-             false)))))
+   (admins-open-gets-whitelisted-users-auth admins user verb object true)))
 
 (defn is-authorized?
   "Determines whether the given user can perform the given operation
@@ -194,7 +215,7 @@
   Returns true if allowed, else false."
   [settings
    ^String user
-   ^clojure.lang.Keyword verb
+   ^Keyword verb
    {:keys [owner item] :as object}]
   (log/debug "[is-authorized?] Checking whether user" user
              "may perform" verb "on" (str object) "...")

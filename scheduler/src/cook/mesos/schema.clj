@@ -1026,7 +1026,7 @@ for a job. E.g. {:resources {:cpus 4 :mem 3} :constraints {\"unique_host_constra
     :reason/code 3001
     :reason/string "Invalid Mesos framework id"
     :reason/name :mesos-invalid-framework-id
-    :reason/mea-culpa? false
+    :reason/mea-culpa? true
     :reason/mesos-reason :reason-invalid-frameworkid}
    {:db/id (d/tempid :db.part/user)
     :reason/code 3002
@@ -1099,13 +1099,13 @@ for a job. E.g. {:resources {:cpus 4 :mem 3} :constraints {\"unique_host_constra
     :reason/code 4005
     :reason/string "Agent disconnected"
     :reason/name :mesos-slave-disconnected
-    :reason/mea-culpa? false
+    :reason/mea-culpa? true
     :reason/mesos-reason :reason-slave-disconnected}
    {:db/id (d/tempid :db.part/user)
     :reason/code 4006
     :reason/string "Unable to contact agent"
     :reason/name :heartbeat-lost
-    :reason/mea-culpa? false}
+    :reason/mea-culpa? true}
 
    {:db/id (d/tempid :db.part/user)
     :reason/code 5000
@@ -1124,7 +1124,7 @@ for a job. E.g. {:resources {:cpus 4 :mem 3} :constraints {\"unique_host_constra
     :reason/code 6000
     :reason/string "Mesos executor registration timed out"
     :reason/name :mesos-executor-registration-timeout
-    :reason/mea-culpa? false
+    :reason/mea-culpa? true
     :reason/mesos-reason :reason-executor-registration-timeout}
    {:db/id (d/tempid :db.part/user)
     :reason/code 6001

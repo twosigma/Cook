@@ -227,6 +227,22 @@
 
 (timers/deftimer [cook-mesos scheduler get-completed-jobs-by-user-duration])
 
+(defn job-ent->state
+  "Given a job entity, returns the corresponding 'state', which means
+  calling with a completed job will return either success or failed,
+  depending on the state of the job's instances"
+  [{:keys [:job/instance :job/state]}]
+  (case state
+    :job.state/completed
+    (if (some #{:instance.status/success} (map :instance/status instance))
+      "success"
+      "failed")
+    :job.state/running "running"
+    :job.state/waiting "waiting"))
+
+(def ^:const job-states #{"running" "waiting" "completed"})
+(def ^:const instance-states #{"success" "failed"})
+
 ;; get-completed-jobs-by-user is a bit opaque because it is
 ;; reaching into datomic internals. Here is a quick explanation.
 ;; seek-datoms provides a pointer into the raw datomic indices 
@@ -241,7 +257,7 @@
 (defn get-completed-jobs-by-user
   "Returns all completed job entities for a particular user
    in the specified timeframe, without a custom executor."
-  [db user start end limit]
+  [db user start end limit state]
   (timers/time!
     get-completed-jobs-by-user-duration
     (let [;; Expand the time range so that clock skew between cook
@@ -251,18 +267,21 @@
           expanded-start (Date. (- (.getTime start)
                                    (-> 1 t/hours t/in-millis)))
           expanded-end (Date. (+ (.getTime end)
-                                 (-> 1 t/hours t/in-millis)))]
-      (->> (d/seek-datoms db :avet :job/user user (d/entid-at db :db.part/user expanded-start))
-           (take-while #(and (< (.e %) (d/entid-at db :db.part/user expanded-end))
-                             (= (.a %) (d/entid db :job/user))
-                             (= (.v %) user)))
-           (map #(.e %))
-           (map (partial d/entity db))
-           (filter #(<= (.getTime start) (.getTime (:job/submit-time %))))
-           (filter #(< (.getTime (:job/submit-time %)) (.getTime end)))
-           (filter #(= :job.state/completed (:job/state %)))
-           (filter #(not (:job/custom-executor %)))
-           (take limit)))))
+                                 (-> 1 t/hours t/in-millis)))
+          jobs
+          (->> (d/seek-datoms db :avet :job/user user (d/entid-at db :db.part/user expanded-start))
+               (take-while #(and (< (.e %) (d/entid-at db :db.part/user expanded-end))
+                                 (= (.a %) (d/entid db :job/user))
+                                 (= (.v %) user)))
+               (map #(.e %))
+               (map (partial d/entity db))
+               (filter #(<= (.getTime start) (.getTime (:job/submit-time %))))
+               (filter #(< (.getTime (:job/submit-time %)) (.getTime end)))
+               (filter #(= :job.state/completed (:job/state %)))
+               (filter #(not (:job/custom-executor %))))]
+      (->>
+        (cond->> jobs (instance-states state) (filter #(= state (job-ent->state %))))
+        (take limit)))))
 
 ;; This is a separate query from completed jobs because most running/waiting jobs
 ;; will be at the end of the time range, so the query is somewhat inefficent.
@@ -274,27 +293,30 @@
    Note that this query is not performant for completed jobs, use
    get-completed-jobs-by-user instead."
   [db user start end state]
-  (timers/time!
-    (timers/timer ["cook-mesos" "scheduler" (str "get-" (name state) "-jobs-by-user-duration")])
-    (->> (q '[:find [?j ...]
-              :in $ ?user ?state ?start ?end
-              :where
-              [?j :job/state ?state]
-              [?j :job/user ?user]
-              [?j :job/submit-time ?t]
-              [(<= ?start ?t)]
-              [(< ?t ?end)]
-              [?j :job/custom-executor false]]
-            db user state start end)
-         (map (partial d/entity db)))))
+  (let [state-keyword (case state
+                        "running" :job.state/running
+                        "waiting" :job.state/waiting)]
+    (timers/time!
+      (timers/timer ["cook-mesos" "scheduler" (str "get-" (name state) "-jobs-by-user-duration")])
+      (->> (q '[:find [?j ...]
+                :in $ ?user ?state ?start ?end
+                :where
+                [?j :job/state ?state]
+                [?j :job/user ?user]
+                [?j :job/submit-time ?t]
+                [(<= ?start ?t)]
+                [(< ?t ?end)]
+                [?j :job/custom-executor false]]
+              db user state-keyword start end)
+           (map (partial d/entity db))))))
 
 (defn get-jobs-by-user-and-states
   "Returns all jobs for a particular user in the specified states
    and timeframe, without a custom executor."
   [db user states start end limit]
   (let [get-jobs-by-state (fn get-jobs-by-state [state]
-                            (if (= state :job.state/completed)
-                              (get-completed-jobs-by-user db user start end limit)
+                            (if (#{"completed" "success" "failed"} state)
+                              (get-completed-jobs-by-user db user start end limit state)
                               (get-active-jobs-by-user-and-state db user start end state)))
         jobs-by-state (mapcat get-jobs-by-state states)]
     (->> jobs-by-state

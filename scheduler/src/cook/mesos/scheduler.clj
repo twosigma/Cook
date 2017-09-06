@@ -1191,7 +1191,7 @@
              ;; Return all 0's for a user who does NOT have any running job.
              (zipmap (util/get-all-resource-types db) (repeat 0.0)))})))
 
-(defn- sort-jobs-by-dru-helper
+(defn sort-jobs-by-dru-helper
   "Return a list of job entities ordered by the provided sort function"
   [pending-task-ents running-task-ents user->dru-divisors sort-task-scored-task-pairs sort-jobs-duration]
   (let [tasks (into (vec running-task-ents) pending-task-ents)
@@ -1201,7 +1201,7 @@
                sort-jobs-duration
                (->> tasks
                     (group-by util/task-ent->user)
-                    (pc/map-vals (fn [task-ents] (into (sorted-set-by task-comparator) task-ents)))
+                    (pc/map-vals (fn [task-ents] (sort task-comparator task-ents)))
                     (sort-task-scored-task-pairs user->dru-divisors)
                     (filter (fn [[task _]] (contains? pending-task-ents-set task)))
                     (map (fn [[task _]] (:job/_instance task)))))]
