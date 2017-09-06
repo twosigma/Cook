@@ -10,14 +10,17 @@ from datetime import datetime, timedelta
 import logging
 
 
-def merge_dicts(*ds):
-    """Merge a variable number of dicts, from right to left."""
-    to_d = ds[0].copy()
-
-    for from_d in ds[1:]:
-        to_d.update(from_d)
-
-    return to_d
+def merge(a, b):
+    """Merges a and b, letting b win if there is a conflict"""
+    merged = a.copy()
+    for key in b:
+        b_value = b[key]
+        merged[key] = b_value
+        if key in a:
+            a_value = a[key]
+            if isinstance(a_value, dict) and isinstance(b_value, dict):
+                merged[key] = merge(a_value, b_value)
+    return merged
 
 
 def read_lines():

@@ -1,20 +1,20 @@
 import argparse
 import concurrent
-import datetime
 import json
 import logging
 import os
 import sys
 import time
 import uuid
-from collections import OrderedDict
-from urllib.parse import urljoin, urlparse
 from concurrent import futures
+from urllib.parse import urljoin, urlparse
 
+import arrow
+import humanfriendly
 import requests
 from tabulate import tabulate
 
-from cook.util import merge_dicts, load_first_json_file, read_lines, wait_until, is_valid_uuid
+from cook.util import merge, load_first_json_file, read_lines, wait_until, is_valid_uuid
 
 # Default locations to check for configuration files if one isn't given on the command line
 DEFAULT_CONFIG_PATHS = [
@@ -34,7 +34,6 @@ parser = argparse.ArgumentParser(description='cs is the Cook Scheduler CLI')
 parser.add_argument('--cluster', '-c', help='the name of the Cook scheduler cluster to use')
 parser.add_argument('--url', '-u', help='the url of the Cook scheduler cluster to use')
 parser.add_argument('--config', '-C', help='the configuration file to use')
-parser.add_argument('--retries', '-r', help='the number of retries to use for HTTP connections', type=int, default=2)
 parser.add_argument('--silent', '-s', help='silent mode', dest='silent', action='store_true')
 parser.add_argument('--verbose', '-v', help='be more verbose/talkative (useful for debugging)',
                     dest='verbose', action='store_true')
@@ -44,6 +43,7 @@ subparsers = parser.add_subparsers(dest='action')
 actions = {}
 
 session = requests.Session()
+http_timeouts = None
 
 silent = False
 
@@ -51,7 +51,10 @@ silent = False
 def default_config():
     return {'defaults': {'submit': {'cpus': 1,
                                     'max-retries': 1,
-                                    'mem': 128}}}
+                                    'mem': 128}},
+            'http': {'retries': 2,
+                     'connect-timeout': 3.05,
+                     'read-timeout': 5}}
 
 
 def cli(args):
@@ -77,10 +80,12 @@ def cli(args):
     config_path = args.pop('config')
     cluster = args.pop('cluster')
     url = args.pop('url')
-    retries = args.pop('retries')
 
     if action is None:
-        parser.print_help()
+        help_text = parser.format_help().splitlines()
+        position_args_title = help_text.index('positional arguments:')
+        help_text.pop(position_args_title + 1)
+        print('\n'.join(help_text))
     else:
         if cluster and url:
             raise Exception('You cannot specify both a cluster name and a cluster url at the same time')
@@ -92,25 +97,36 @@ def cli(args):
             else:
                 raise Exception('The configuration path specified (%s) is not valid' % config_path)
         else:
-            config = load_first_json_file(DEFAULT_CONFIG_PATHS) or default_config()
+            config = load_first_json_file(DEFAULT_CONFIG_PATHS) or {}
+
+        config = merge(default_config(), config)
         logging.debug('using configuration: %s' % config)
 
         defaults = config.get('defaults')
-        clusters = config.get('clusters')
+        configured_clusters = config.get('clusters')
 
         if url:
             if urlparse(url).scheme == '':
                 url = 'http://%s' % url
             clusters = [{'name': url, 'url': url}]
         elif cluster:
-            clusters = [c for c in clusters if c.get('name') == cluster]
+            clusters = [c for c in configured_clusters if c.get('name') == cluster]
+        else:
+            clusters = [c for c in configured_clusters if 'disabled' not in c or not c['disabled']]
 
         if clusters:
+            global http_timeouts
+            http_config = config.get('http')
+            connect_timeout = http_config.get('connect-timeout')
+            read_timeout = http_config.get('read-timeout')
+            http_timeouts = (connect_timeout, read_timeout)
+            logging.debug('using http timeouts: %s', http_timeouts)
+            retries = http_config.get('retries')
             http_adapter = requests.adapters.HTTPAdapter(max_retries=retries)
             session.mount('http://', http_adapter)
             args = {k: v for k, v in args.items() if v is not None}
             action_defaults = (defaults.get(action) if defaults else None) or {}
-            result = actions[action](clusters, merge_dicts(action_defaults, args))
+            result = actions[action](clusters, merge(action_defaults, args))
             logging.debug('result: %s' % result)
             return result
         else:
@@ -126,11 +142,16 @@ submit_parser.add_argument('--uuid', '-u', help='uuid of job')
 submit_parser.add_argument('--name', '-n', help='name of job')
 submit_parser.add_argument('--priority', '-p', help='priority of job, between 0 and 100 (inclusive)',
                            type=int, choices=range(0, 101), metavar='')
-submit_parser.add_argument('--max-retries', help='maximum retries for job', dest='max-retries', type=int)
-submit_parser.add_argument('--max-runtime', help='maximum runtime for job', dest='max-runtime', type=int)
+submit_parser.add_argument('--max-retries', help='maximum retries for job',
+                           dest='max-retries', type=int, metavar='COUNT')
+submit_parser.add_argument('--max-runtime', help='maximum runtime for job',
+                           dest='max-runtime', type=int, metavar='MILLIS')
 submit_parser.add_argument('--cpus', help='cpus to reserve for job', type=float)
 submit_parser.add_argument('--mem', help='memory to reserve for job', type=int)
 submit_parser.add_argument('--group', help='group uuid for job', type=str)
+submit_parser.add_argument('--env', help='environment variable for job (can be repeated)',
+                           metavar='KEY=VALUE', action='append')
+submit_parser.add_argument('--ports', help='number of ports to reserve for job', type=int)
 submit_parser.add_argument('--raw', '-r', help='raw job spec in json format', dest='raw', action='store_true')
 submit_parser.add_argument('command', nargs='?')
 submit_parser.add_argument('args', nargs=argparse.REMAINDER)
@@ -148,9 +169,9 @@ def parse_raw_job_spec(job, r):
         content = json.loads(r)
 
         if type(content) is dict:
-            return [merge_dicts(job, content)]
+            return [merge(job, content)]
         elif type(content) is list:
-            return [merge_dicts(job, c) for c in content]
+            return [merge(job, c) for c in content]
         else:
             raise ValueError('invalid format for raw job')
     except Exception:
@@ -238,14 +259,17 @@ def submit(clusters, args):
         if job.get('uuid') and len(commands) > 1:
             raise Exception('You cannot specify multiple commands with a single UUID')
 
-        jobs = [merge_dicts(job, {'command': c}) for c in commands]
+        if job.get('env'):
+            job['env'] = {e.split('=')[0]: e.split('=')[1] for e in job['env']}
+
+        jobs = [merge(job, {'command': c}) for c in commands]
 
     for j in jobs:
         if not j.get('uuid'):
             j['uuid'] = str(uuid.uuid4())
 
         if not j.get('name'):
-            j['name'] = "{0}_{1}".format(os.environ['USER'], uuid.uuid4())
+            j['name'] = '%s_job' % os.environ['USER']
 
     def parse_submit_response(response, cluster):
         text = response.text.strip('"')
@@ -261,7 +285,7 @@ def submit(clusters, args):
             return "Jobs submitted successfully on %s. Your jobs' UUIDs are:\n%s" % (cluster['name'], '\n'.join(uuids))
 
     request_body = {'jobs': jobs}
-    return submit_federated(clusters, lambda u: session.post(u, json=request_body),
+    return submit_federated(clusters, lambda u: session.post(u, json=request_body, timeout=http_timeouts),
                             201, parse_submit_response, 'create job(s)')
 
 
@@ -278,7 +302,7 @@ wait_parser.add_argument('--interval', '-i', default=5, help='time (in seconds) 
 def make_entity_request(cluster, endpoint, params):
     """Attempts to query entities corresponding to the given params from cluster."""
     url = make_url(cluster, endpoint)
-    resp = session.get(url, params=params)
+    resp = session.get(url, params=params, timeout=http_timeouts)
     logging.info('response from cook: %s' % resp.text)
     return resp
 
@@ -346,7 +370,6 @@ def query(clusters, uuids, pred_jobs=None, pred_instances=None, pred_groups=None
     """
     count = 0
     all_entities = {'clusters': {}}
-    print_info('Gathering data from %s cluster%s...' % (len(clusters), 's' if len(clusters) > 1 else ''))
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
         future_to_cluster = \
             {executor.submit(query_entities, c, uuids, pred_jobs, pred_instances, pred_groups, timeout, interval): c for
@@ -397,6 +420,7 @@ def wait(clusters, args):
         print_info('No matching jobs, instances, or job groups were found.')
         return 1
 
+
 actions.update({'wait': wait})
 
 ###################################################################################################
@@ -408,14 +432,18 @@ show_parser.add_argument('--json', help='show the data in JSON format', dest='js
 
 def millis_to_timedelta(ms):
     """Converts milliseconds to a timedelta for display on screen"""
-    return 'none' if ms == sys.maxsize else datetime.timedelta(milliseconds=ms)
+    return humanfriendly.format_timespan(round(ms / 1000))
 
 
 def millis_to_date_string(ms):
     """Converts milliseconds to a date string for display on screen"""
-    s, ms = divmod(ms, 1000)
-    string = '%s.%03d' % (time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime(s)), ms)
-    return string
+    s, _ = divmod(ms, 1000)
+    utc = time.gmtime(s)
+
+    return arrow.get(utc).humanize()
+
+    # string = time.strftime('%Y-%m-%d %H:%M:%S', utc)
+    # return string
 
 
 def format_dict(d):
@@ -425,73 +453,203 @@ def format_dict(d):
 
 def format_list(l):
     """Formats the given list for display in a table"""
-    return '; '.join([format_dict(x) if isinstance(x, dict) else x for x in l]) if len(l) > 0 else '(empty)'
+    return '; '.join([format_dict(x) if isinstance(x, dict) else str(x) for x in l]) if len(l) > 0 else '(empty)'
 
 
-def format_instance_fields(instance):
-    """Given an instance, formats the fields for display"""
-    instance['start_time'] = millis_to_date_string(instance['start_time'])
+class Codes:
+    ENDC = '\033[0m'
+    BOLD = '\033[1m'
+    REASON = '\033[38;5;3m'
+    UNDERLINE = '\033[4m'
+    SUCCESS = '\033[38;5;22m'
+    RUNNING = '\033[38;5;36m'
+    FAILED = '\033[91m'
+    WAITING = '\033[38;5;130m'
+
+
+def format_instance_status(instance):
+    """TODO(DPO)"""
+    status = instance['status'].capitalize()
+    if status == 'Failed':
+        status_text = Codes.FAILED + Codes.BOLD + status + Codes.ENDC
+    elif status == 'Success':
+        status_text = Codes.SUCCESS + Codes.BOLD + status + Codes.ENDC
+    elif status == 'Running':
+        status_text = Codes.RUNNING + Codes.BOLD + status + Codes.ENDC
+    else:
+        status_text = status
+
+    if 'reason_string' in instance:
+        parenthetical_text = ' (%s)' % (Codes.REASON + instance['reason_string'] + Codes.ENDC)
+    elif 'progress' in instance and instance['progress'] > 0:
+        parenthetical_text = ' (%s%%)' % instance['progress']
+    else:
+        parenthetical_text = ''
+
+    return '%s%s' % (status_text, parenthetical_text)
+
+
+def format_instance_run_time(instance):
+    """TODO(DPO)"""
     if 'end_time' in instance:
-        instance['end_time'] = millis_to_date_string(instance['end_time'])
-    if 'mesos_start_time' in instance:
-        instance['mesos_start_time'] = millis_to_date_string(instance['mesos_start_time'])
-    if 'ports' in instance:
-        instance['ports'] = format_list(instance['ports'])
-    return instance
+        end = instance['end_time']
+    else:
+        end = int(round(time.time() * 1000))
+    run_time = millis_to_timedelta(end - instance['start_time'])
+    return '%s (started %s)' % (run_time, millis_to_date_string(instance['start_time']))
 
 
 def tabulate_job_instances(instances):
     """Returns either a table displaying the instance info or the string "(no instances)"."""
     if len(instances) > 0:
-        fields = ['task_id', 'status', 'start_time', 'end_time']
-        instances = [format_instance_fields(i) for i in instances]
-        instances = [OrderedDict([(k.upper(), i[k]) for k in fields if k in i]) for i in instances]
-        instance_table = tabulate(instances, headers='keys', tablefmt='plain')
+        headers = ['Job Instance', 'Run Time', 'Host', 'Instance Status']
+        rows = [[i['task_id'],
+                 format_instance_run_time(i),
+                 i['hostname'],
+                 format_instance_status(i)]
+                for i in instances]
+        instance_table = tabulate(rows, headers=headers, tablefmt='plain')
         return instance_table
     else:
         return '(no instances)'
 
 
-def tabulate_job(job):
+def juxtapose_text(text_a, text_b, buffer_len):
+    lines_a = text_a.splitlines()
+    lines_b = text_b.splitlines()
+    num_lines_a = len(lines_a)
+    num_lines_b = len(lines_b)
+    longest_line_length_a = max(map(lambda x: len(x), lines_a))
+    buffer = ' ' * buffer_len
+    juxt_lines = []
+    for i in range(max(num_lines_a, num_lines_b)):
+        juxt_line = ''
+        if i < num_lines_a:
+            juxt_line += (lines_a[i] + ((longest_line_length_a - len(lines_a[i])) * ' ') + buffer)
+        else:
+            juxt_line += ((longest_line_length_a * ' ') + buffer)
+        if i < num_lines_b:
+            juxt_line += lines_b[i]
+        juxt_lines.append(juxt_line)
+    return '\n'.join(juxt_lines)
+
+
+def format_job_status(job):
+    """TODO(DPO)"""
+    state = job['state'].capitalize()
+    if state == 'Running':
+        status_text = Codes.RUNNING + Codes.BOLD + state + Codes.ENDC
+    elif state == 'Waiting':
+        status_text = Codes.WAITING + Codes.BOLD + state + Codes.ENDC
+    elif state == 'Failed':
+        status_text = Codes.FAILED + Codes.BOLD + state + Codes.ENDC
+    elif state == 'Success':
+        status_text = Codes.SUCCESS + Codes.BOLD + state + Codes.ENDC
+    else:
+        status_text = state
+    return status_text
+
+
+def tabulate_job(cluster_name, job):
     """Given a job, returns a string containing tables for the job and instance fields"""
-    instances = job.pop('instances')
-    job['max_runtime'] = millis_to_timedelta(job['max_runtime'])
-    job['submit_time'] = millis_to_date_string(job['submit_time'])
-    job['env'] = format_dict(job['env'])
-    job['labels'] = format_dict(job['labels'])
-    job['uris'] = format_list(job['uris'])
-    job['constraints'] = format_list(job['constraints'])
+    job_definition = [['Cluster', cluster_name],
+                      ['Memory', humanfriendly.format_size(job['mem'] * 1000 * 1000)],
+                      ['CPUs', job['cpus']],
+                      ['User', job['user']],
+                      ['Priority', job['priority']]]
+    if job['max_runtime'] != sys.maxsize:
+        job_definition.append(['Max Runtime', millis_to_timedelta(job['max_runtime'])])
+    if job['gpus'] > 0:
+        job_definition.append(['GPUs', job['gpus']])
+    if job['ports'] > 0:
+        job_definition.append(['Ports Requested', job['ports']])
+    if len(job['constraints']) > 0:
+        job_definition.append(['Constraints', format_list(job['constraints'])])
+    if len(job['labels']) > 0:
+        job_definition.append(['Labels', format_dict(job['labels'])])
+    if len(job['uris']) > 0:
+        job_definition.append(['URI(s)', format_list(job['uris'])])
     if 'groups' in job:
-        job['groups'] = format_list(job['groups'])
-    job_table = tabulate(sorted(job.items()), tablefmt='plain')
+        job_definition.append(['Job Group(s)', format_list(job['groups'])])
+
+    job_state = [['Attempts', ('%s / %s' % (job['max_retries'] - job['retries_remaining'], job['max_retries']))],
+                 ['Job Status', format_job_status(job)],
+                 ['Submitted', millis_to_date_string(job['submit_time'])]]
+
+    job_command = 'Command:\n%s' % job['command']
+
+    if len(job['env']) > 0:
+        environment = '\n\nEnvironment:\n%s' % '\n'.join(['%s=%s' % (k, v) for k, v in job['env'].items()])
+    else:
+        environment = ''
+
+    instances = job['instances']
+
+    job_definition_table = tabulate(job_definition, tablefmt='plain')
+    job_state_table = tabulate(job_state, tablefmt='plain')
+    job_tables = juxtapose_text(job_definition_table, job_state_table, 15)
     instance_table = tabulate_job_instances(instances)
-    return '\nFound job %s...\n\n%s\n\n%s' % (job['uuid'], job_table, instance_table)
+    return '\n=== Job: %s (%s) ===\n\n%s\n\n%s%s\n\n%s' % \
+           (job['uuid'], job['name'], job_tables, job_command, environment, instance_table)
 
 
-def tabulate_instance(instance):
+def tabulate_instance(cluster_name, instance_job_pair):
     """Given an instance, returns a string containing a table for the instance fields"""
-    table = tabulate(sorted(format_instance_fields(instance).items()), tablefmt='plain')
-    return '\nFound instance %s...\n\n%s' % (instance['task_id'], table)
+    instance = instance_job_pair[0]
+    job = instance_job_pair[1]
+
+    left = [['Cluster', cluster_name],
+            ['Host', instance['hostname']],
+            ['Slave', instance['slave_id']],
+            ['Job', '%s (%s)' % (job['name'], job['uuid'])]]
+    if len(instance['ports']) > 0:
+        left.append(['Ports Allocated', format_list(instance['ports'])])
+
+    right = [['Run Time', format_instance_run_time(instance)],
+             ['Instance Status', format_instance_status(instance)],
+             ['Job Status', format_job_status(job)]]
+    if 'exit_code' in instance:
+        right.append(['Exit Code', instance['exit_code']])
+
+    left_table = tabulate(left, tablefmt='plain')
+    right_table = tabulate(right, tablefmt='plain')
+    instance_tables = juxtapose_text(left_table, right_table, 15)
+    return '\n=== Job Instance: %s ===\n\n%s' % (instance['task_id'], instance_tables)
 
 
-def tabulate_group(group):
+def tabulate_group(cluster_name, group):
     """Given a group, returns a string containing a table for the group fields"""
-    group['host_placement'] = format_dict(group['host_placement'])
-    group['straggler_handling'] = format_dict(group['straggler_handling'])
-    group['jobs'] = format_list(group['jobs'])
-    table = tabulate(sorted(group.items()), tablefmt='plain')
-    return '\nFound job group %s...\n\n%s' % (group['uuid'], table)
+    left = [['Cluster', cluster_name]]
+    if group['host_placement']['type'] == 'all':
+        left.append(['Host Placement', 'all hosts'])
+    else:
+        left.append(['Host Placement', format_dict(group['host_placement'])])
+    if group['straggler_handling']['type'] == 'none':
+        left.append(['Straggler Handling', 'none'])
+    else:
+        left.append(['Straggler Handling', format_dict(group['straggler_handling'])])
+
+    right = [['# Completed', group['completed']],
+             ['# Running', group['running']],
+             ['# Waiting', group['waiting']]]
+
+    num_jobs = len(group['jobs'])
+    jobs = 'Job group contains %s job%s:\n%s' % (num_jobs, '' if num_jobs == 1 else 's', '\n'.join(group['jobs']))
+
+    left_table = tabulate(left, tablefmt='plain')
+    right_table = tabulate(right, tablefmt='plain')
+    group_tables = juxtapose_text(left_table, right_table, 15)
+    return '\n=== Job Group: %s (%s) ===\n\n%s\n\n%s' % (group['uuid'], group['name'], group_tables, jobs)
 
 
-def show_data(data, tabulate_fn, noun):
+def show_data(cluster_name, data, tabulate_fn):
     """TODO(DPO)"""
     count = len(data)
     if count > 0:
-        tables = [tabulate_fn(datum) for datum in data]
-        output = '\n\n==========\n'.join(tables)
+        tables = [tabulate_fn(cluster_name, datum) for datum in data]
+        output = '\n\n'.join(tables)
         print(output)
-    else:
-        print_info('\nNo matching %s found on this cluster.' % noun)
+        print()
     return count
 
 
@@ -504,17 +662,12 @@ def show(clusters, args):
         print(json.dumps(query_result))
     else:
         for cluster_name, entities in query_result['clusters'].items():
-            cluster_name_line = '** Cluster: %s **' % cluster_name
-            border_line = '*' * len(cluster_name_line)
-            print_info('\n%s\n%s\n%s' % (border_line, cluster_name_line, border_line))
             jobs = entities['jobs']
-            instances = [i for j in entities['instances'] for i in j['instances'] if i['task_id'] in uuids]
+            instances = [[i, j] for j in entities['instances'] for i in j['instances'] if i['task_id'] in uuids]
             groups = entities['groups']
-            show_data(jobs, tabulate_job, 'jobs')
-            print('\n==========')
-            show_data(instances, tabulate_instance, 'instances')
-            print('\n==========')
-            show_data(groups, tabulate_group, 'job groups')
+            show_data(cluster_name, jobs, tabulate_job)
+            show_data(cluster_name, instances, tabulate_instance)
+            show_data(cluster_name, groups, tabulate_group)
     return 0 if query_result['count'] > 0 else 1
 
 
