@@ -13,7 +13,8 @@ from pymesos import encode_data
 import cook
 import cook.config as cc
 import cook.executor as ce
-from tests.utils import assert_message, assert_status, cleanup_output, get_random_task_id, FakeMesosExecutorDriver
+from tests.utils import assert_message, assert_status, cleanup_output, ensure_directory, get_random_task_id, \
+    FakeMesosExecutorDriver
 
 
 class ExecutorTest(unittest.TestCase):
@@ -78,8 +79,8 @@ class ExecutorTest(unittest.TestCase):
         command = 'echo "Hello World"; echo "Error Message" >&2'
         task = {'task_id': {'value': task_id},
                 'data': encode_data(json.dumps({'command': command}).encode('utf8'))}
-        stdout_name = 'build/stdout.' + str(task_id)
-        stderr_name = 'build/stderr.' + str(task_id)
+        stdout_name = ensure_directory('build/stdout.' + str(task_id))
+        stderr_name = ensure_directory('build/stderr.' + str(task_id))
 
         if not os.path.isdir("build"):
             os.mkdir("build")
@@ -134,8 +135,8 @@ class ExecutorTest(unittest.TestCase):
 
     def test_cleanup_process(self):
         task_id = get_random_task_id()
-        stdout_name = 'build/stdout.' + str(task_id)
-        stderr_name = 'build/stderr.' + str(task_id)
+        stdout_name = ensure_directory('build/stdout.' + str(task_id))
+        stderr_name = ensure_directory('build/stderr.' + str(task_id))
 
         stdout = open(stdout_name, 'w+')
         stderr = open(stderr_name, 'w+')
@@ -152,8 +153,8 @@ class ExecutorTest(unittest.TestCase):
     def test_kill_task_terminate(self):
         task_id = get_random_task_id()
 
-        stdout_name = 'build/stdout.' + str(task_id)
-        stderr_name = 'build/stderr.' + str(task_id)
+        stdout_name = ensure_directory('build/stdout.' + str(task_id))
+        stderr_name = ensure_directory('build/stderr.' + str(task_id))
 
         stdout = open(stdout_name, 'w+')
         stderr = open(stderr_name, 'w+')
@@ -179,8 +180,8 @@ class ExecutorTest(unittest.TestCase):
     def test_await_process_completion_normal(self):
         task_id = get_random_task_id()
 
-        stdout_name = 'build/stdout.' + str(task_id)
-        stderr_name = 'build/stderr.' + str(task_id)
+        stdout_name = ensure_directory('build/stdout.' + str(task_id))
+        stderr_name = ensure_directory('build/stderr.' + str(task_id))
 
         stdout = open(stdout_name, 'w+')
         stderr = open(stderr_name, 'w+')
@@ -207,8 +208,8 @@ class ExecutorTest(unittest.TestCase):
     def test_await_process_completion_killed(self):
         task_id = get_random_task_id()
 
-        stdout_name = 'build/stdout.' + str(task_id)
-        stderr_name = 'build/stderr.' + str(task_id)
+        stdout_name = ensure_directory('build/stdout.' + str(task_id))
+        stderr_name = ensure_directory('build/stderr.' + str(task_id))
 
         stdout = open(stdout_name, 'w+')
         stderr = open(stderr_name, 'w+')
@@ -248,8 +249,8 @@ class ExecutorTest(unittest.TestCase):
         task = {'task_id': {'value': task_id},
                 'data': encode_data(json.dumps({'command': command}).encode('utf8'))}
 
-        stdout_name = 'build/stdout.' + str(task_id)
-        stderr_name = 'build/stderr.' + str(task_id)
+        stdout_name = ensure_directory('build/stdout.' + str(task_id))
+        stderr_name = ensure_directory('build/stderr.' + str(task_id))
 
         completed_signal = Event()
         max_message_length = 300
@@ -362,7 +363,7 @@ class ExecutorTest(unittest.TestCase):
             expected_message_2 = {'exit-code': 0, 'task-id': task_id}
             assert_message(self, expected_message_2, actual_encoded_message_2)
 
-        test_file_name = 'build/file.' + get_random_task_id()
+        test_file_name = ensure_directory('build/file.' + get_random_task_id())
         command = ('mkdir -p build; touch {0}; for i in $(seq 20); do echo $i >> {0}; done; '
                    'LINE_COUNT=`wc -l < {0} | tr -d \'[:space:]\'`; cat  {0}; rm -rfv {0}; '
                    'echo "^^^^JOB-PROGRESS: 90 line count is $LINE_COUNT"'.format(test_file_name))

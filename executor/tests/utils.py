@@ -10,6 +10,13 @@ def get_random_task_id():
     return str(random.randint(100000, 999999))
 
 
+def ensure_directory(output_filename):
+    target_dir = os.path.dirname(output_filename)
+    if not os.path.isdir(target_dir):
+        os.mkdir(target_dir)
+    return output_filename
+
+
 def assert_status(testcase, expected_status, actual_status):
     assert actual_status['timestamp'] is not None
     if 'timestamp' in actual_status: del actual_status['timestamp']
