@@ -8,6 +8,7 @@ import uuid
 from datetime import datetime, timedelta
 
 import logging
+from urllib.parse import urljoin
 
 
 def merge(a, b):
@@ -98,3 +99,22 @@ def is_valid_uuid(uuid_to_test, version=4):
         return False
 
     return str(uuid_obj) == uuid_to_test
+
+
+def make_url(cluster, endpoint):
+    """Given a cluster and an endpoint, returns the corresponding full URL"""
+    return urljoin(cluster['url'], endpoint)
+
+
+silent = False
+
+
+def print_info(s):
+    """Prints s, unless in silent mode (-s / --silent)"""
+    if not silent:
+        print(s)
+
+
+def strip_all(strs):
+    """Strips whitespace from each string in strs"""
+    return [s.strip() for s in strs]

@@ -71,7 +71,7 @@ class CookCliTest(unittest.TestCase):
         self.assertEqual(3, len(jobs))
         cp, uuids = cli.submit_stdin(['ls', 'ls', 'ls'], self.cook_url, submit_flags='--uuid %s' % uuid.uuid4())
         self.assertEqual(1, cp.returncode, cp.stderr)
-        self.assertIn('cannot specify multiple commands with a single UUID', cli.decode(cp.stderr))
+        self.assertIn('cannot specify multiple subcommands with a single UUID', cli.decode(cp.stderr))
 
     def test_wait_for_multiple_jobs(self):
         cp, uuids = cli.submit_stdin(['ls', 'ls', 'ls'], self.cook_url)

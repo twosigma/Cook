@@ -4,17 +4,15 @@
 import logging
 import sys
 
-from cook.cli import cli
+from cook.cli import run
 
 
 def main(args=None):
-    """The main routine."""
-
     if args is None:
         args = sys.argv[1:]
 
     try:
-        result = cli(args)
+        result = run(args)
         exit(result)
     except Exception as e:
         logging.exception('exception when running with %s' % args)

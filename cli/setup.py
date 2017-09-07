@@ -10,7 +10,7 @@ requirements = [
 setup(
     name='cook',
     version='1.0',
-    packages=['cook'],
+    packages=['cook', 'cook.subcommands'],
     entry_points={'console_scripts': ['cs = cook.__main__:main']},
     install_requires=requirements
 )

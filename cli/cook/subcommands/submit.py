@@ -1,0 +1,191 @@
+import argparse
+import json
+import logging
+import os
+import sys
+import uuid
+
+import requests
+
+from cook import colors, http
+from cook.util import merge, is_valid_uuid, read_lines, make_url, print_info
+
+
+def parse_raw_job_spec(job, r):
+    """
+    Parse a JSON string containing raw job data and merge with job template.
+    Job data can either be a dict of job attributes (indicating a single job),
+    or a list of dicts (indicating multiple jobs). In either case, the job attributes
+    are merged with (and override) the `job` template attributes.
+    Throws a ValueError if there is a problem parsing the data.
+    """
+    try:
+        content = json.loads(r)
+
+        if type(content) is dict:
+            return [merge(job, content)]
+        elif type(content) is list:
+            return [merge(job, c) for c in content]
+        else:
+            raise ValueError('invalid format for raw job')
+    except Exception:
+        raise ValueError('malformed JSON for raw job')
+
+
+def submit_succeeded_message(cluster_name, uuids):
+    """Generates a successful submission message with the given cluster and uuid(s)"""
+    if len(uuids) == 1:
+        return 'Job submission %s on %s. Your job UUID is:\n%s' % \
+               (colors.success('succeeded'), cluster_name, uuids[0])
+    else:
+        return 'Job submission %s on %s. Your job UUIDs are:\n%s' % \
+               (colors.success('succeeded'), cluster_name, '\n'.join(uuids))
+
+
+def submit_failed_message(cluster_name, reason):
+    """Generates a failed submission message with the given cluster name and reason"""
+    return 'Job submission %s on %s:\n%s' % (colors.failed('failed'), cluster_name, colors.reason(reason))
+
+
+def parse_submit_response(cluster, response):
+    """
+    Parses a submission response from cluster and returns a corresponding message. Note that
+    Cook Scheduler returns text when the submission was successful, and JSON when the submission
+    failed. Also, in the case of failure, there are different possible shapes for the failure payload.
+    """
+    cluster_name = cluster['name']
+    if response.status_code == requests.codes.created:
+        text = response.text.strip('"')
+        if ' submitted groups' in text:
+            group_index = text.index(' submitted groups')
+            text = text[:group_index]
+        uuids = [p for p in text.split() if is_valid_uuid(p)]
+        return submit_succeeded_message(cluster_name, uuids)
+    else:
+        data = response.json()
+        if 'errors' in data:
+            reason = json.dumps(data['errors'])
+        elif 'error' in data:
+            reason = data['error']
+        else:
+            reason = json.dumps(data)
+        return submit_failed_message(cluster_name, reason)
+
+
+def submit_federated(clusters, jobs):
+    """
+    Attempts to submit the provided jobs to each cluster in clusters, until a cluster
+    returns a "created" status code. If no cluster returns "created" status, throws.
+    """
+    for cluster in clusters:
+        cluster_name = cluster['name']
+        try:
+            url = make_url(cluster, 'rawscheduler')
+            print_info('Attempting to submit on %s cluster...' % colors.bold(cluster_name))
+            resp = http.post(url, json={'jobs': jobs})
+            logging.info('response from cook: %s' % resp.text)
+            print_info('%s\n' % parse_submit_response(cluster, resp))
+            if resp.status_code == requests.codes.created:
+                return 0
+        except requests.exceptions.ConnectionError as ce:
+            logging.info(ce)
+            reason = 'Cannot connect to %s (%s)' % (cluster_name, cluster['url'])
+            print_info('%s\n' % submit_failed_message(cluster_name, reason))
+    raise Exception(colors.failed('Job submission failed on all of your configured clusters.'))
+
+
+def safe_pop(d, key):
+    """If key is present in d, pops and returns the value. Otherwise, returns None."""
+    value = d.pop(key) if key in d else None
+    return value
+
+
+def read_commands_from_stdin():
+    """Prompts for and then reads subcommands, one per line, from stdin"""
+    print('Enter the subcommands, one per line (press Ctrl+D on a blank line to submit)', file=sys.stderr)
+    commands = read_lines()
+    if len(commands) < 1:
+        raise Exception('You must specify at least one command')
+    return commands
+
+
+def read_jobs_from_stdin():
+    """Prompts for and then reads job(s) JSON from stdin"""
+    print('Enter the raw job(s) JSON (press Ctrl+D on a blank line to submit)', file=sys.stderr)
+    jobs_json = sys.stdin.read()
+    return jobs_json
+
+
+def submit(clusters, args):
+    """
+    Submits a job (or multiple jobs) to cook scheduler. Assembles a list of jobs,
+    potentially getting data from configuration, the command line, and stdin.
+    """
+    logging.debug('submit args: %s' % args)
+
+    job = args
+    raw = safe_pop(job, 'raw')
+    command_from_command_line = safe_pop(job, 'command')
+    command_args = safe_pop(job, 'args')
+
+    if raw:
+        if command_from_command_line:
+            raise Exception('You cannot specify a command at the command line when using --raw/-r')
+
+        jobs_json = read_jobs_from_stdin()
+        jobs = parse_raw_job_spec(job, jobs_json)
+    else:
+        if command_from_command_line:
+            commands = ['%s%s' % (command_from_command_line, (' ' + ' '.join(command_args)) if command_args else '')]
+        else:
+            commands = read_commands_from_stdin()
+
+        logging.debug('subcommands: %s' % commands)
+
+        if job.get('uuid') and len(commands) > 1:
+            raise Exception('You cannot specify multiple subcommands with a single UUID')
+
+        if job.get('env'):
+            job['env'] = {e.split('=')[0]: e.split('=')[1] for e in job['env']}
+
+        jobs = [merge(job, {'command': c}) for c in commands]
+
+    for j in jobs:
+        if not j.get('uuid'):
+            j['uuid'] = str(uuid.uuid4())
+
+        if not j.get('name'):
+            j['name'] = '%s_job' % os.environ['USER']
+
+    return submit_federated(clusters, jobs)
+
+
+def valid_uuid(s):
+    """Allows argparse to flag user-provided job uuids as valid or not"""
+    try:
+        return str(uuid.UUID(s))
+    except:
+        raise argparse.ArgumentTypeError('%s is not a valid UUID' % s)
+
+
+def register(add_parser):
+    """Adds this sub-command's parser and returns the action function"""
+    submit_parser = add_parser('submit', help='create job for command')
+    submit_parser.add_argument('--uuid', '-u', help='uuid of job', type=valid_uuid)
+    submit_parser.add_argument('--name', '-n', help='name of job')
+    submit_parser.add_argument('--priority', '-p', help='priority of job, between 0 and 100 (inclusive)',
+                               type=int, choices=range(0, 101), metavar='')
+    submit_parser.add_argument('--max-retries', help='maximum retries for job',
+                               dest='max-retries', type=int, metavar='COUNT')
+    submit_parser.add_argument('--max-runtime', help='maximum runtime for job',
+                               dest='max-runtime', type=int, metavar='MILLIS')
+    submit_parser.add_argument('--cpus', help='cpus to reserve for job', type=float)
+    submit_parser.add_argument('--mem', help='memory to reserve for job', type=int)
+    submit_parser.add_argument('--group', help='group uuid for job', type=str)
+    submit_parser.add_argument('--env', help='environment variable for job (can be repeated)',
+                               metavar='KEY=VALUE', action='append')
+    submit_parser.add_argument('--ports', help='number of ports to reserve for job', type=int)
+    submit_parser.add_argument('--raw', '-r', help='raw job spec in json format', dest='raw', action='store_true')
+    submit_parser.add_argument('command', nargs='?')
+    submit_parser.add_argument('args', nargs=argparse.REMAINDER)
+    return submit
