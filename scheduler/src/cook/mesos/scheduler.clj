@@ -736,7 +736,7 @@
   (let [task-metadata-seq (->> tasks
                                ;; sort-by makes task-txns created in matches->task-txns deterministic
                                (sort-by (comp :db/id :job #(.getRequest ^TaskAssignmentResult %)) )
-                               (map #(task/TaskAssignmentResult->task-metadata db framework-id executor-config %)))]
+                               (map (partial task/TaskAssignmentResult->task-metadata db framework-id executor-config)))]
     (assoc match :task-metadata-seq task-metadata-seq)))
 
 (defn- matches->task-txns
