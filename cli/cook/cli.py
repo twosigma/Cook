@@ -4,7 +4,7 @@ import logging
 import os
 from urllib.parse import urlparse
 
-from cook import util, http
+from cook import util, http, colors
 from cook.subcommands import submit, show, wait
 from cook.util import merge, load_first_json_file
 
@@ -39,18 +39,21 @@ def load_target_clusters(config, url=None, cluster=None):
     if cluster and url:
         raise Exception('You cannot specify both a cluster name and a cluster url at the same time')
 
+    clusters = None
     config_clusters = config.get('clusters')
     if url:
         if urlparse(url).scheme == '':
             url = 'http://%s' % url
         clusters = [{'name': url, 'url': url}]
-    elif cluster:
-        clusters = [c for c in config_clusters if c.get('name') == cluster]
-    else:
-        clusters = [c for c in config_clusters if 'disabled' not in c or not c['disabled']]
+    elif config_clusters:
+        if cluster:
+            clusters = [c for c in config_clusters if c.get('name') == cluster]
+        else:
+            clusters = [c for c in config_clusters if 'disabled' not in c or not c['disabled']]
 
     if not clusters:
-        raise Exception('You must specify at least one cluster. Current configuration:\n%s' % config)
+        raise Exception('%s\nYour current configuration is:\n%s' %
+                        (colors.failed('You must specify at least one cluster.'), json.dumps(config, indent=2)))
 
     return clusters
 
