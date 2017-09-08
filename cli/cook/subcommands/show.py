@@ -327,7 +327,12 @@ def show(clusters, args):
             show_data(cluster_name, jobs, tabulate_job)
             show_data(cluster_name, instances, tabulate_instance)
             show_data(cluster_name, groups, tabulate_group)
-    return 0 if query_result['count'] > 0 else 1
+    if query_result['count'] > 0:
+        return 0
+    else:
+        print('%s\nDo you need to add another cluster to your configuration?' %
+              colors.failed('No matching data found  in %s.' % ' / '.join([c['name'] for c in clusters])))
+        return 1
 
 
 def register(add_parser):
