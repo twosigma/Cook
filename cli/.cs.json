@@ -8,12 +8,14 @@
   },
   "clusters": [
     {
-      "name": "dev",
-      "url": "http://127.0.0.1:12321/"
+      "name": "dev0",
+      "url": "http://127.0.0.1:12321/",
+      "disabled": false
     },
     {
-      "name": "foo",
-      "url": "http://127.0.0.2:22321/"
+      "name": "dev1",
+      "url": "http://127.0.0.1:22321/",
+      "disabled": true
     }
   ]
 }

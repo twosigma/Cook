@@ -71,7 +71,7 @@ def format_instance_run_time(instance):
 
 
 def tabulate_job_instances(instances):
-    """Returns either a table displaying the instance info or the string "(no instances)"."""
+    """Returns a table displaying the instance info"""
     if len(instances) > 0:
         headers = ['Job Instance', 'Run Time', 'Host', 'Instance Status']
         rows = [[i['task_id'],
