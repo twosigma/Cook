@@ -11,6 +11,7 @@ def get_random_task_id():
 
 
 def ensure_directory(output_filename):
+    """"Ensures that the directory that contains output_filename is created before returning output_filename."""
     target_dir = os.path.dirname(output_filename)
     if not os.path.isdir(target_dir):
         os.mkdir(target_dir)
