@@ -41,6 +41,7 @@ echo "Starting cook..."
 docker run \
     -i \
     -t \
+    --rm \
     --network=bridge \
     --name=${NAME} \
     --publish=${COOK_NREPL_PORT}:${COOK_NREPL_PORT} \
