@@ -1145,6 +1145,28 @@
           (is (= (expected-job-map job framework-id)
                  (dissoc (api/fetch-job-map (db conn) framework-id retrieve-url-path uuid) :submit_time))))))))
 
+(deftest test-destroy-jobs
+  (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
+        framework-id #mesomatic.types.FrameworkID{:value "framework-id"}
+        is-authorized-fn (partial auth/is-authorized? {:authorization-fn 'cook.authorization/configfile-admins-auth-open-gets})
+        agent-query-cache (Object.)
+        handler (api/destroy-jobs-handler conn framework-id is-authorized-fn agent-query-cache)]
+    (testing "should be able to destroy own jobs"
+      (let [{:keys [uuid user] :as job} (minimal-job)
+            _ (api/create-jobs! conn {::api/jobs [job]})
+            resp (handler {:request-method :delete
+                           :authorization/user user
+                           :query-params {:job uuid}})]
+        (is (= 204 (:status resp)) (:body resp))))
+
+    (testing "should not be able to destroy another user's job"
+      (let [{:keys [uuid] :as job} (assoc (minimal-job) :user "creator")
+            _ (api/create-jobs! conn {::api/jobs [job]})
+            resp (handler {:request-method :delete
+                           :authorization/user "destroyer"
+                           :query-params {:job uuid}})]
+        (is (= 403 (:status resp)))))))
+
 (defn- minimal-config
   "Returns a minimal configuration map"
   []
@@ -1438,3 +1460,27 @@
     (is (= (:uuid response-2) (get (first (list-jobs-fn (inc submit-ms-1) (inc submit-ms-2))) "uuid")))
     (is (= (:uuid response-2) (get (first (list-jobs-fn submit-ms-1 (inc submit-ms-2))) "uuid")))
     (is (= (:uuid response-1) (get (second (list-jobs-fn submit-ms-1 (inc submit-ms-2))) "uuid")))))
+
+(deftest test-name-filter-str->name-filter-pattern
+  (is (= (str #".*") (str (api/name-filter-str->name-filter-pattern "***"))))
+  (is (= (str #".*\..*") (str (api/name-filter-str->name-filter-pattern "*.*"))))
+  (is (= (str #".*-.*") (str (api/name-filter-str->name-filter-pattern "*-*"))))
+  (is (= (str #".*_.*") (str (api/name-filter-str->name-filter-pattern "*_*"))))
+  (is (= (str #"abc") (str (api/name-filter-str->name-filter-pattern "abc")))))
+
+(deftest test-name-filter-str->name-filter-fn
+  (is ((api/name-filter-str->name-filter-fn "***") "foo"))
+  (is ((api/name-filter-str->name-filter-fn "*.*") "f.o"))
+  (is (not ((api/name-filter-str->name-filter-fn "*.*") "foo")))
+  (is ((api/name-filter-str->name-filter-fn "*-*") "f-o"))
+  (is (not ((api/name-filter-str->name-filter-fn "*-*") "foo")))
+  (is ((api/name-filter-str->name-filter-fn "*_*") "f_o"))
+  (is (not ((api/name-filter-str->name-filter-fn "*_*") "foo")))
+  (is ((api/name-filter-str->name-filter-fn "abc") "abc"))
+  (is ((api/name-filter-str->name-filter-fn "abc*") "abcd"))
+  (is (not ((api/name-filter-str->name-filter-fn "abc") "abcd")))
+  (is ((api/name-filter-str->name-filter-fn "*abc") "zabc"))
+  (is (not ((api/name-filter-str->name-filter-fn "abc") "zabc")))
+  (is ((api/name-filter-str->name-filter-fn "a*c") "abc"))
+  (is ((api/name-filter-str->name-filter-fn "a*c") "ac"))
+  (is (not ((api/name-filter-str->name-filter-fn "a*c") "zacd"))))

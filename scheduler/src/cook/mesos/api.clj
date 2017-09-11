@@ -209,6 +209,10 @@
 (s/defschema JobName
   (s/both s/Str (s/both s/Str (s/pred max-128-characters-and-alphanum? 'max-128-characters-and-alphanum?))))
 
+(s/defschema JobNameListFilter
+  (s/both s/Str (s/pred (fn [s]
+                          (re-matches #"[\.a-zA-Z0-9_\-\*]*" s)))))
+
 (s/defschema JobPriority
   (s/both s/Int (s/pred #(<= 0 % 100) 'between-0-and-100)))
 
@@ -870,6 +874,15 @@
        :job/_instance
        :job/uuid))
 
+(defn- wrap-seq
+  "Returns:
+   - [v] if v is not nil and not sequential
+   - v otherwise"
+  [v]
+  (if (or (nil? v) (sequential? v))
+    v
+    [v]))
+
 (defn retrieve-jobs
   "Returns a tuple that either has the shape:
 
@@ -890,8 +903,8 @@
   particular cook cluster for a set of uuids, where some of them may not belong
   to that cluster, and get back the data for those that do match."
   [conn ctx]
-  (let [jobs (get-in ctx [:request :query-params :job])
-        instances (get-in ctx [:request :query-params :instance])
+  (let [jobs (wrap-seq (get-in ctx [:request :query-params :job]))
+        instances (wrap-seq (get-in ctx [:request :query-params :instance]))
         allow-partial-results (get-in ctx [:request :query-params :partial])]
     (let [instance-uuid->job-uuid #(instance-uuid->job-uuid (d/db conn) %)
           instance-jobs (mapv instance-uuid->job-uuid instances)
@@ -930,7 +943,7 @@
   [ctx]
   (let [jobs (get-in ctx [:request :query-params :job])
         instances (get-in ctx [:request :query-params :instance])]
-    (if (or (seq jobs) (seq instances))
+    (if (or jobs instances)
       false
       [true {::error "must supply at least one job or instance query param"}])))
 
@@ -943,7 +956,8 @@
 
 (defn job-request-allowed?
   [conn is-authorized-fn ctx]
-  (let [uuids (::jobs ctx)
+  (let [uuids (or (::jobs ctx)
+                  (::jobs (second (retrieve-jobs conn ctx))))
         authorized? (partial user-authorized-for-job? conn is-authorized-fn ctx)]
     (if (every? authorized? uuids)
       true
@@ -968,7 +982,7 @@
 
 ;;; On DELETE; use repeated job argument
 (defn destroy-jobs-handler
-  [conn framework-id task-constraints gpu-enabled? is-authorized-fn agent-query-cache]
+  [conn framework-id is-authorized-fn agent-query-cache]
   (base-cook-handler
     {:allowed-methods [:delete]
      :malformed? check-job-params-present
@@ -1576,6 +1590,27 @@
       (-> states (set/difference util/instance-states) (conj "completed"))
       states)))
 
+(defn valid-name-filter?
+  "Returns true if the provided name filter is either nil or satisfies the JobNameListFilter schema"
+  [name]
+  (or (nil? name)
+      (nil? (s/check JobNameListFilter name))))
+
+(defn name-filter-str->name-filter-pattern
+  "Generates a regex pattern corresponding to a user-provided name filter string"
+  [name]
+  (re-pattern (-> name
+                  (str/replace #"\." "\\\\.")
+                  (str/replace #"\*+" ".*"))))
+
+(defn name-filter-str->name-filter-fn
+  "Returns a name-filtering function (or nil) given a user-provided name filter string"
+  [name]
+  (if name
+    (let [pattern (name-filter-str->name-filter-pattern name)]
+      #(re-matches pattern %))
+    nil))
+
 (defn list-resource
   [db framework-id is-authorized-fn agent-query-cache]
   (liberator/resource
@@ -1585,25 +1620,35 @@
     :malformed? (fn [ctx]
                   ;; since-hours-ago is included for backwards compatibility but is deprecated
                   ;; please use start-ms and end-ms instead
-                  (let [{:keys [state user since-hours-ago start-ms end-ms limit]
+                  (let [{:keys [state user since-hours-ago start-ms end-ms limit name]
                          :as params}
                         (keywordize-keys (or (get-in ctx [:request :query-params])
-                                             (get-in ctx [:request :body-params])))]
-                    (if (and state user)
-                      (let [states (set (clojure.string/split state #"\+"))
-                            allowed-list-states (set/union util/job-states util/instance-states)]
-                        (if (set/superset? allowed-list-states states)
-                          (try
-                            [false {::states (normalize-list-states states)
-                                    ::user user
-                                    ::since-hours-ago (parse-int-default since-hours-ago 24)
-                                    ::start-ms (parse-long-default start-ms nil)
-                                    ::limit (parse-int-default limit Integer/MAX_VALUE)
-                                    ::end-ms (parse-long-default end-ms (System/currentTimeMillis))}]
-                            (catch NumberFormatException e
-                              [true {::error (.toString e)}]))
-                          [true {::error (str "unsupported state in " state ", must be one of: " allowed-list-states)}]))
-                      [true {::error "must supply the state and the user name"}])))
+                                             (get-in ctx [:request :body-params])))
+                        states (if state (set (clojure.string/split state #"\+")) nil)
+                        allowed-list-states (set/union util/job-states util/instance-states)]
+                    (cond
+                      (not (and state user))
+                      [true {::error "must supply the state and the user name"}]
+
+                      (not (set/superset? allowed-list-states states))
+                      [true {::error (str "unsupported state in " state ", must be one of: " allowed-list-states)}]
+
+                      (not (valid-name-filter? name))
+                      [true {::error
+                             (str "unsupported name filter " name
+                                  ", can only contain alphanumeric characters, '.', '-', '_', and '*' as a wildcard")}]
+
+                      :else
+                      (try
+                        [false {::states (normalize-list-states states)
+                                ::user user
+                                ::since-hours-ago (parse-int-default since-hours-ago 24)
+                                ::start-ms (parse-long-default start-ms nil)
+                                ::limit (parse-int-default limit Integer/MAX_VALUE)
+                                ::end-ms (parse-long-default end-ms (System/currentTimeMillis))
+                                ::name-filter-fn (name-filter-str->name-filter-fn name)}]
+                        (catch NumberFormatException e
+                          [true {::error (.toString e)}])))))
     :allowed? (fn [ctx]
                (let [{limit ::limit
                       user ::user
@@ -1614,13 +1659,17 @@
                  (cond
                    (not (is-authorized-fn request-user :get {:owner user :item :job}))
                    [false {::error (str "You are not authorized to list jobs for " user)}]
+
                    (or (< 168 since-hours-ago)
                        (> 0 since-hours-ago))
                    [false {::error (str "since-hours-ago must be between 0 and 168 (7 days)")}]
+
                    (> 1 limit)
                    [false {::error (str "limit must be positive")}]
+
                    (and start-ms (> start-ms end-ms))
                    [false {::error (str "start-ms (" start-ms ") must be before end-ms (" end-ms ")")}]
+
                    :else true)))
     :handle-malformed ::error
     :handle-forbidden ::error
@@ -1632,7 +1681,8 @@
                         start-ms ::start-ms
                         end-ms ::end-ms
                         since-hours-ago ::since-hours-ago
-                        limit ::limit} ctx
+                        limit ::limit
+                        name-filter-fn ::name-filter-fn} ctx
                        start (if start-ms
                                (Date. start-ms)
                                (Date. (- end-ms (-> since-hours-ago t/hours t/in-millis))))
@@ -1640,12 +1690,7 @@
                        job-uuids (->> (timers/time!
                                        fetch-jobs
                                        ;; Get valid timings
-                                       (util/get-jobs-by-user-and-states db
-                                                                         user
-                                                                         states
-                                                                         start
-                                                                         end
-                                                                         limit))
+                                       (util/get-jobs-by-user-and-states db user states start end limit name-filter-fn))
                                       (sort-by :job/submit-time)
                                       reverse
                                       (map :job/uuid))
@@ -1747,7 +1792,7 @@
                              400 {:description "Non-UUID values were passed as jobs."}
                              403 {:description "The supplied UUIDs don't correspond to valid jobs."}}
                  :parameters {:query-params JobOrInstanceIds}
-                 :handler (destroy-jobs-handler conn framework-id task-constraints gpu-enabled? is-authorized-fn mesos-agent-query-cache)}}))
+                 :handler (destroy-jobs-handler conn framework-id is-authorized-fn mesos-agent-query-cache)}}))
 
      (c-api/context
       "/share" []

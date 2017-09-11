@@ -319,21 +319,22 @@
                                    :custom-executor? false)
             _ (Thread/sleep 5)
             end-time (Date.)
-            states [(name state)]]
+            states [(name state)]
+            name (constantly true)]
         (testing (str "get " state " jobs")
-          (is (= 2 (count (util/get-jobs-by-user-and-states (d/db conn) "u1" states start-time half-way-time 10))))
-          (is (= 1 (count (util/get-jobs-by-user-and-states (d/db conn) "u1" states start-time half-way-time 1))))
-          (is (= (map :db/id (util/get-jobs-by-user-and-states (d/db conn) "u1" states start-time half-way-time 1))
+          (is (= 2 (count (util/get-jobs-by-user-and-states (d/db conn) "u1" states start-time half-way-time 10 name))))
+          (is (= 1 (count (util/get-jobs-by-user-and-states (d/db conn) "u1" states start-time half-way-time 1 name))))
+          (is (= (map :db/id (util/get-jobs-by-user-and-states (d/db conn) "u1" states start-time half-way-time 1 name))
                  [job1]))
-          (is (= 3 (count (util/get-jobs-by-user-and-states (d/db conn) "u1" states start-time end-time 10))))
-          (is (= 2 (count (util/get-jobs-by-user-and-states (d/db conn) "u1" states start-time end-time 2))))
-          (is (= (map :db/id (util/get-jobs-by-user-and-states (d/db conn) "u1" states start-time end-time 2))
+          (is (= 3 (count (util/get-jobs-by-user-and-states (d/db conn) "u1" states start-time end-time 10 name))))
+          (is (= 2 (count (util/get-jobs-by-user-and-states (d/db conn) "u1" states start-time end-time 2 name))))
+          (is (= (map :db/id (util/get-jobs-by-user-and-states (d/db conn) "u1" states start-time end-time 2 name))
                  [job1 job2]))
 
-          (is (= 1 (count (util/get-jobs-by-user-and-states (d/db conn) "u2" states start-time end-time 10))))
-          (is (= 0 (count (util/get-jobs-by-user-and-states (d/db conn) "u3" states start-time end-time 10))))
+          (is (= 1 (count (util/get-jobs-by-user-and-states (d/db conn) "u2" states start-time end-time 10 name))))
+          (is (= 0 (count (util/get-jobs-by-user-and-states (d/db conn) "u3" states start-time end-time 10 name))))
           (is (= 0 (count (util/get-jobs-by-user-and-states (d/db conn) "u1" states
-                                                            #inst "2017-06-01" #inst "2017-06-02" 10)))))))))
+                                                            #inst "2017-06-01" #inst "2017-06-02" 10 name)))))))))
 
 (deftest test-reducing-pipe
   (testing "basic piping"
