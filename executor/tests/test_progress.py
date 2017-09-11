@@ -6,7 +6,6 @@ from threading import Event, Thread
 
 import os
 from nose.tools import *
-from nose.plugins.attrib import attr
 
 import cook.config as cc
 import cook.executor as ce
