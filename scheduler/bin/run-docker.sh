@@ -39,6 +39,8 @@ cp -f ${COOK_EXECUTOR_FILE} ${SCHEDULER_EXECUTOR_DIR}
 
 if [ -z "$(docker network ls -q -f name=cook_nw)" ];
 then
+    # Using a separate network allows us to access hosts by name (cook-scheduler-12321)
+    # instead of IP address which simplifies configuration
     echo "Creating cook_nw network"
     docker network create -d bridge --subnet 172.25.0.0/16 cook_nw
 fi

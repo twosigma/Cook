@@ -6,7 +6,7 @@
 # COOK_PORT_1 - Port for a cook instance running in docker.
 # COOK_PORT_2 - If COOK_MULTI_CLUSTER is set, port for a second cook instance
 #               running in docker.
-# COOK_SLAVE_PORT - If COOK_MASTER_SLAVE is set, port for a cook slave instane
+# COOK_SLAVE_PORT - If COOK_MASTER_SLAVE is set, port for a cook slave instance
 #                   running in docker.
 
 set -euf -o pipefail
@@ -52,7 +52,9 @@ docker create \
        -v ${INTEGRATION_DIR}:/opt/cook/integration \
        cook-integration:latest
 
+# Connect to the default bridge network (for talking to minimesos)
 docker network connect bridge cook-integration
+# Connect to the cook_nw network (for talking to datomic-free and other cook instances using hostnames)
 docker network connect cook_nw cook-integration
 
 docker start -ai cook-integration

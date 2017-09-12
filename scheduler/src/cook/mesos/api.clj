@@ -1257,9 +1257,8 @@
                                (let [leader-hostname (.group leader-match 1)
                                      leader-port (.group leader-match 2)]
                                  [true {:location (str "http://" leader-hostname ":" leader-port "/queue")}])
-                               (do
-                                 (log/error "Unable to parse leader id: " leader-id)
-                                 [false {}])))))
+                               (throw (IllegalStateException.
+                                       (str "Unable to parse leader id: " leader-id)))))))
    :handle-forbidden (fn [ctx]
                        (log/info (get-in ctx [:request :authorization/user]) " is not authorized to access queue")
                        (render-error ctx))

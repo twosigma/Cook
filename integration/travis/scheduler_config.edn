@@ -2,7 +2,7 @@
  :hostname "172.17.0.1"
  :authorization {:one-user "vagrant"}
  :database {:datomic-uri #config/env "COOK_DATOMIC"}
- :zookeeper {:connection "172.17.0.3:2181" ; minimesos zookeeper
+ :zookeeper {:connection #config/env "COOK_ZOOKEEPER"
              :local? #config/env-bool "COOK_ZOOKEEPER_LOCAL"
              :local-port #config/env-int-default ["COOK_ZOOKEEPER_LOCAL_PORT" -1]}
  :scheduler {:offer-incubate-ms 15000
@@ -13,8 +13,8 @@
                                 :cpus 6}}
  :rebalancer {:dru-scale 1}
 
- :mesos {:master "zk://172.17.0.3:2181/mesos" ; minimesos zookeeper
-         :master-hosts ["172.17.0.4"] ; minimesos master
+ :mesos {:master #config/env "MINIMESOS_ZOOKEEPER"
+         :master-hosts [#config/env "MINIMESOS_MASTER_IP"]
          :failover-timeout-ms nil
          :leader-path "/cook-scheduler"
          :role "cook"
@@ -23,7 +23,7 @@
  :unhandled-exceptions {:log-level :error}
  :metrics {:jmx true}
  :nrepl {:enabled? false}
- :log {:file "log/cook.log"
+ :log {:file #config/env "COOK_LOGFILE"
        :levels {"datomic.db" :warn
                 "datomic.peer" :warn
                 "datomic.kv-cluster" :warn
