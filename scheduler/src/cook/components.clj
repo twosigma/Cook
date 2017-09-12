@@ -87,7 +87,7 @@
 (def mesos-scheduler
   {:mesos-scheduler (fnk [[:settings executor fenzo-fitness-calculator fenzo-floor-iterations-before-reset
                            fenzo-floor-iterations-before-warn fenzo-max-jobs-considered fenzo-scaleback
-                           good-enough-fitness mea-culpa-failure-limit mesos-failover-timeout mesos-framework-name
+                           good-enough-fitness hostname mea-culpa-failure-limit mesos-failover-timeout mesos-framework-name
                            mesos-gpu-enabled mesos-leader-path mesos-master mesos-master-hosts mesos-principal
                            mesos-role offer-incubate-time-ms progress rebalancer riemann server-port task-constraints]
                           curator-framework framework-id mesos-datomic mesos-datomic-mult mesos-leadership-atom
@@ -121,7 +121,8 @@
                             mesos-gpu-enabled
                             framework-id
                             mesos-leadership-atom
-                            server-port
+                            {:hostname hostname
+                             :server-port server-port}
                             {:executor-config executor
                              :rebalancer-config rebalancer
                              :progress-config progress}
@@ -288,17 +289,11 @@
                               atom))
      :curator-framework curator-framework}))
 
-(def simple-dns-name
-  (fnk [] (str (System/getProperty "user.name")
-               "."
-               (.getHostName (java.net.InetAddress/getLocalHost)))))
-
 #_(def dev-mem-settings
     {:server-port (fnk [] 12321)
      :authorization-middleware (fnk [] (fn [h] (fn [req] (h (assoc req :authorization/user (System/getProperty "user.name"))))))
      :sim-agent-path (fnk [] "/usr/bin/sim-agent") ;;TODO parameterize
      :mesos-datomic-uri (fnk [] "datomic:mem://mesos-jobs")
-     :dns-name simple-dns-name
      :zookeeper (fnk []
                   "localhost:3291")
      :zookeeper-server (fnk []
@@ -397,8 +392,8 @@
                           (when-not datomic-uri
                             (throw (ex-info "Must set a the :database's :datomic-uri!" {})))
                           datomic-uri)
-     :dns-name simple-dns-name
-     :hostname (fnk [] (.getCanonicalHostName (java.net.InetAddress/getLocalHost)))
+     :hostname (fnk [[:config hostname]]
+                    hostname)
      :leader-reports-unhealthy (fnk [[:config [:mesos {leader-reports-unhealthy false}]]]
                                  leader-reports-unhealthy)
      :local-zk-port (fnk [[:config [:zookeeper {local-port 3291}]]]

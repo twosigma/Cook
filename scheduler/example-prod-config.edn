@@ -1,4 +1,5 @@
 {:port 12321
+ :hostname "cook.example.com"
  :authorization {:http-basic true}
  :database {:datomic-uri "datomic:free://example.com:4334/cook-jobs"}
  :authorization-config {

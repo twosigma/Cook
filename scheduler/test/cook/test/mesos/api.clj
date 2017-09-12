@@ -1179,6 +1179,7 @@
             :scheduler {}
             :zookeeper {:local? true}
             :port 10000
+            :hostname "localhost"
             :metrics {}
             :nrepl {}}})
 

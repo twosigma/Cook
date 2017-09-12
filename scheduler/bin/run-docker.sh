@@ -60,6 +60,8 @@ docker create \
     -e "MESOS_MASTER=${ZK}" \
     -e "MESOS_MASTER_HOST=${MINIMESOS_MASTER_IP}" \
     -e "COOK_ZOOKEEPER=${MINIMESOS_ZOOKEEPER_IP}:2181" \
+    -e "COOK_HOSTNAME=${NAME}" \
+    -v ${DIR}/../log:/opt/cook/log \
     cook-scheduler:latest
 
 docker network connect bridge ${NAME}

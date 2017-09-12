@@ -1,6 +1,7 @@
 {:port #config/env-int "COOK_PORT"
  :authorization {:one-user "root"}
  :database {:datomic-uri "datomic:free://datomic-free:4334/cook-jobs"}
+ :hostname #config/env "COOK_HOSTNAME"
  :zookeeper {:connection #config/env "COOK_ZOOKEEPER"}
  :scheduler {:offer-incubate-ms 15000
              :task-constraints {:timeout-hours 1

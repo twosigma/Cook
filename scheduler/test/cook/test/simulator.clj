@@ -122,7 +122,7 @@
                            :publish-interval-ms 2000}
          rebalancer-config# (merge default-rebalancer-config (:rebalancer-config ~scheduler-config))
          framework-id# "cool-framework-id"
-         server-port# 12321
+         host-settings# {:server-port 12321 :hostname "localhost"}
          mesos-leadership-atom# (atom false)
          fenzo-config# (merge default-fenzo-config (:fenzo-config ~scheduler-config))
          trigger-chans# (or (:trigger-chans ~scheduler-config)
@@ -139,7 +139,7 @@
                                                  pending-jobs-atom# offer-cache#
                                                  gpu-enabled?# framework-id#
                                                  mesos-leadership-atom#
-                                                 server-port#
+                                                 host-settings#
                                                  additional-config#
                                                  fenzo-config#
                                                  trigger-chans#)]
