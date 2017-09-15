@@ -162,7 +162,12 @@
     :source-paths []}
 
    :test-console
-   {:jvm-opts ["-Dcook.test.logging.console"]}}
+   {:jvm-opts ["-Dcook.test.logging.console"]}
+
+   :docker
+   ; avoid calling javac in docker
+   ; (.java sources are only used for unit test support)
+   {:java-source-paths ^:replace []}}
 
   :plugins [[lein-print "0.1.0"]]
 

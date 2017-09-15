@@ -34,6 +34,7 @@ then
 fi
 
 docker run \
+       --rm \
        --name=cook-integration \
        -e "COOK_SCHEDULER_URL=${COOK_URL}" \
        ${COOK_MULTICLUSTER_ENV} \
