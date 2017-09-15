@@ -1214,7 +1214,7 @@
                                           (str/join \space unauthorized-guuids))}])))
      :exists? (partial retrieve-groups conn)
      :handle-ok (fn [ctx]
-                  (if (get-in ctx [:request :query-params "detailed"])
+                  (if (Boolean/valueOf (get-in ctx [:request :query-params "detailed"]))
                     (mapv #(merge (fetch-group-map (db conn) %)
                                   (fetch-group-job-details (db conn) %))
                           (::guuids ctx))
