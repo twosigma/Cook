@@ -35,8 +35,7 @@
             [metatransaction.utils :as dutils]
             [metrics.counters :as counters]
             [swiss.arrows :refer :all])
-  (:import java.net.InetAddress
-           [org.apache.curator.framework.recipes.leader LeaderSelector LeaderSelectorListener]
+  (:import [org.apache.curator.framework.recipes.leader LeaderSelector LeaderSelectorListener]
            org.apache.curator.framework.state.ConnectionState))
 
 ;; ============================================================================

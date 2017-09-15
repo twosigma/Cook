@@ -14,6 +14,7 @@ then
 
     docker create -p 4334-4336:4334-4336 --network=cook_nw -e ALT_HOST=datomic-free --name datomic-free akiel/datomic-free:0.9.5206
 
+    # Datomic needs the metatransaction code in it's classpath, so we need to build cook and copy the jar into the container
     echo "Building cook"
     cd $PROJECT_DIR
     lein jar
