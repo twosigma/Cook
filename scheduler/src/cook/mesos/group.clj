@@ -17,8 +17,8 @@
 (defmethod find-stragglers :quantile-deviation
   ;; Given a group entity, waits for at least `quantile` quantile jobs to complete
   ;; and a straggler is any task that has been running `multiplier` times the run
-  ;; time of the quantile-th job
-  ;; If a job was already restarted for having a straggler it won't be restarted again
+  ;; time of the quantile-th job.
+  ;; If a job was already restarted for having a straggler it won't be restarted again.
   [group-ent]
   (let [{:keys [quantile multiplier] :as params} (->> group-ent
                                                       :group/straggler-handling

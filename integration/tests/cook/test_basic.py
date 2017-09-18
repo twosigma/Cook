@@ -520,10 +520,12 @@ class CookTest(unittest.TestCase):
         self.assertEqual(200, jobs.status_code)
         jobs = jobs.json()
         self.logger.debug('Loaded jobs %s', jobs)
-        self.assertEqual('success', jobs[0]['state'], 'Job details: %s' % (json.dumps(jobs[0], sort_keys=True)))
-        self.assertEqual('success', jobs[1]['state'])
-        self.assertEqual(2, len(jobs[1]['instances']))
-        self.assertEqual(2004, jobs[1]['instances'][0]['reason_code'])
+        fast_job = job[0]
+        slow_job = job[1]
+        self.assertEqual('success', fast_job['state'], 'Job details: %s' % (json.dumps(fast_job, sort_keys=True)))
+        self.assertEqual('success', slow_job['state'])
+        self.assertEqual(2, len(slow_job['instances']))
+        self.assertEqual(2004, slow_job['instances'][0]['reason_code'])
 
     def test_expected_runtime_field(self):
         # Should support expected_runtime
