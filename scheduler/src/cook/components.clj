@@ -392,7 +392,7 @@
                           (when-not datomic-uri
                             (throw (ex-info "Must set a the :database's :datomic-uri!" {})))
                           datomic-uri)
-     :hostname (fnk [[:config {hostname "localhost"}]]
+     :hostname (fnk [[:config {hostname (.getCanonicalHostName (java.net.InetAddress/getLocalHost))}]]
                     hostname)
      :leader-reports-unhealthy (fnk [[:config [:mesos {leader-reports-unhealthy false}]]]
                                  leader-reports-unhealthy)
