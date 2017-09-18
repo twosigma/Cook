@@ -1,10 +1,12 @@
 import json
 import logging
+import subprocess
 import time
 import unittest
 import uuid
 
 from nose.plugins.attrib import attr
+from retrying import retry
 
 from tests.cook import util
 
@@ -760,3 +762,46 @@ class CookTest(unittest.TestCase):
         self.assertEqual(resp.status_code, 201)
         job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
         self.assertEqual('success', job['instances'][0]['status'])
+
+    def test_docker_port_mapping(self):
+        job_uuid, resp = util.submit_job(self.cook_url,
+                                         command='python -m http.server 8080',
+                                         ports=1,
+                                         container={'type': 'DOCKER',
+                                                    'docker': {'image': 'python:3.6',
+                                                               'network': 'BRIDGE',
+                                                               'port-mapping': [{'host-port': 0,
+                                                                                 'container-port': 8080}]}})
+        self.assertEqual(resp.status_code, 201, resp.content)
+        job = util.wait_for_job(self.cook_url, job_uuid, 'running')
+        instance = job['instances'][0]
+
+        # Get agent host/port
+        state = util.get_mesos_state(self.mesos_url)
+        agent = [agent for agent in state['slaves']
+                 if agent['hostname'] == instance['hostname']][0]
+        agent_hostport = agent['pid'].split('@')[1]
+
+        # Get container ID from agent
+        agent_state = util.session.get('http://%s/state.json' % agent_hostport).json()
+        executors = []
+        for framework in agent_state['frameworks']:
+            for executor in framework['executors']:
+                executors.append(executor)
+        executor = [executor for executor in executors
+                    if executor['id'] == instance['executor_id']][0]
+        container_id = 'mesos-%s.%s' % (agent['id'], executor['container'])
+        self.logger.debug('container_id: %s' % container_id)
+
+        @retry(stop_max_delay=60000, wait_fixed=1000) # Wait for docker container to start
+        def get_docker_info():
+            self.logger.info('Running containers: %s' % subprocess.check_output(['docker', 'ps']).decode('utf-8'))
+            return json.loads(subprocess.check_output(['docker', 'inspect', container_id]).decode('utf-8'))
+
+        docker_info = get_docker_info()
+        ports = docker_info[0]['HostConfig']['PortBindings']
+        self.logger.debug('ports: %s' % ports)
+        self.assertTrue('8080/tcp' in ports)
+        self.assertEqual(instance['ports'][0], int(ports['8080/tcp'][0]['HostPort']))
+
+        util.session.delete('%s/rawscheduler?job=%s' % (self.cook_url, job_uuid))

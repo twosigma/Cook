@@ -140,6 +140,7 @@
                 :framework-id "4425e656-2278-4f91-b1e4-9a2e942e6e81"
                 :role "4425e656-2278-4f91-b1e4-9a2e942e6e82",
                 :num-ports 0,
+                :ports-assigned [31000 31001]
                 :resources {:mem 623.0
                             :cpus 1.0
                             :ports [{:begin 31000, :end 31002}]}}
@@ -254,13 +255,21 @@
                                 :parameters [{:key "user" :value "100:5"}]
                                 :port-mapping [{:host-port 0
                                                 :container-port 1
-                                                :protocol "tcp"}]}
+                                                :protocol "tcp"}
+                                               {:host-port 1
+                                                :container-port 2
+                                                :protocol "udp"}]}
                        :hostname "test.docker.hostname"
                        :type "DOCKER"
                        :volumes [{:container-path "/var/lib/sss"
                                   :host-path "/var/lib/sss"
                                   :mode "RW"}]}
             expected-container (-> (update container :docker assoc :network :docker-network-host)
+                                   (update :docker #(clojure.set/rename-keys % {:port-mapping :port-mappings}))
+                                   (assoc-in [:docker :port-mappings 0 :host-port]
+                                             (first (:ports-assigned task)))
+                                   (assoc-in [:docker :port-mappings 1 :host-port]
+                                             (second (:ports-assigned task)))
                                    (assoc :type :container-type-docker)
                                    (update-in [:volumes 0] assoc :mode :volume-rw))]
 

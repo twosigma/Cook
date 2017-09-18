@@ -126,7 +126,7 @@
   (let [{:keys [job task-id] :as task-request} (.getRequest task-result)]
     (merge (job->task-metadata db framework-id executor-config job task-id)
            {:hostname (.getHostname task-result)
-            :ports-assigned (.getAssignedPorts task-result)
+            :ports-assigned (vec (.getAssignedPorts task-result))
             :task-request task-request})))
 
 (defmulti combine-like-resources
@@ -280,12 +280,24 @@
   {"DOCKER" :container-type-docker
    "MESOS" :container-type-mesos})
 
+(defn- assign-port-mappings
+  "Assign port mappings from offer. Port n in the cook job should be mapped to the nth
+   port taken from the offer."
+  [container ports-assigned]
+  (update-in container [:docker :port-mappings]
+             (fn [port-mappings]
+               (map (fn [{:keys [host-port] :as port-mapping}]
+                      (if (contains? ports-assigned host-port)
+                        (assoc port-mapping :host-port (ports-assigned host-port))
+                        port-mapping))
+                    port-mappings))))
+
 (defn task-info->mesos-message
   "Given a clojure data structure (based on Cook's internal data format for jobs),
    which has already been decorated with everything we need to know about
    a task, return a Mesos message that will actually launch that task"
   [{:keys [command container data executor-key framework-id labels name ports-resource-messages
-           scalar-resource-messages slave-id task-id]}]
+           scalar-resource-messages slave-id task-id ports-assigned]}]
   (let [command (update command
                         :environment
                         (fn [env] {:variables (map->mesos-kv env :name)}))
@@ -297,6 +309,9 @@
                                   (if (:network docker)
                                     (update docker :network cook-network->mesomatic-network)
                                     docker)))
+                        (update :docker
+                                #(clojure.set/rename-keys % {:port-mapping :port-mappings}))
+                        (assign-port-mappings ports-assigned)
                         (update :volumes
                                 (fn [volumes]
                                   (map #(update % :mode cook-volume-mode->mesomatic-volume-mode)
