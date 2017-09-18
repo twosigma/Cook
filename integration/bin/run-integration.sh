@@ -3,18 +3,18 @@
 # Usage: run-integration.sh COOK_PORT_1 COOK_PORT_2 COOK_SLAVE_PORT
 
 # Runs the integration tests for cook scheduler in a docker container.
-# COOK_PORT_1 - Port for a cook instance running in docker.
-# COOK_PORT_2 - If COOK_MULTI_CLUSTER is set, port for a second cook instance
-#               running in docker.
-# COOK_SLAVE_PORT - If COOK_MASTER_SLAVE is set, port for a cook slave instance
-#                   running in docker.
+# COOK_PORT_1 (Optional) - Port for a cook instance running in docker.
+# COOK_PORT_2 (Optional) - If COOK_MULTI_CLUSTER is set, port for a second cook instance
+#                          running in docker.
+# COOK_SLAVE_PORT (Optional) - If COOK_MASTER_SLAVE is set, port for a cook slave instance
+#                              running in docker.
 
 set -euf -o pipefail
 
 INTEGRATION_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && cd .. && pwd )"
 COOK_PORT=${1:-12321}
 COOK_PORT_2=${2:-22321}
-COOK_SLAVE_PORT=${2:-22321}
+COOK_SLAVE_PORT=${2:-12322}
 
 NAME=cook-integration
 if [ "$(docker ps -aq -f name=${NAME})" ]

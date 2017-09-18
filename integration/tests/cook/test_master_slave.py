@@ -13,15 +13,15 @@ class MasterSlaveTest(unittest.TestCase):
 
     def setUp(self):
         self.master_url = util.retrieve_cook_url()
-        self.slave_url = util.retrieve_cook_url('COOK_SLAVE_URL', 'http://localhost:22321')
+        self.slave_url = util.retrieve_cook_url('COOK_SLAVE_URL', 'http://localhost:12322')
         self.logger = logging.getLogger(__name__)
         util.wait_for_cook(self.master_url)
         util.wait_for_cook(self.slave_url)
 
     def test_get_queue(self):
         job_uuid, resp = util.submit_job(self.master_url, constraints=[["HOSTNAME",
-                                                                      "EQUALS",
-                                                                      "can't schedule"]])
+                                                                        "EQUALS",
+                                                                        "can't schedule"]])
         self.assertEqual(201, resp.status_code, resp.content)
         slave_queue = util.session.get('%s/queue' % self.slave_url, allow_redirects=False)
         self.assertEqual(307, slave_queue.status_code)
