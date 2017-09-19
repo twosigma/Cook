@@ -66,13 +66,15 @@
     (resolve var-sym)))
 
 (def raw-scheduler-routes
-  {:scheduler (fnk [mesos-agent-query-cache mesos-datomic mesos-pending-jobs-atom framework-id settings]
+  {:scheduler (fnk [mesos mesos-agent-query-cache mesos-datomic mesos-leadership-atom mesos-pending-jobs-atom framework-id settings]
                 ((lazy-load-var 'cook.mesos.api/main-handler)
                   mesos-datomic
                   framework-id
                   (fn [] @mesos-pending-jobs-atom)
                   mesos-agent-query-cache
-                  settings))
+                  settings
+                  (get-in mesos [:mesos-scheduler :leader-selector])
+                  mesos-leadership-atom))
    :view (fnk [scheduler]
            scheduler)})
 
@@ -85,9 +87,9 @@
 (def mesos-scheduler
   {:mesos-scheduler (fnk [[:settings executor fenzo-fitness-calculator fenzo-floor-iterations-before-reset
                            fenzo-floor-iterations-before-warn fenzo-max-jobs-considered fenzo-scaleback
-                           good-enough-fitness mea-culpa-failure-limit mesos-failover-timeout mesos-framework-name
+                           good-enough-fitness hostname mea-culpa-failure-limit mesos-failover-timeout mesos-framework-name
                            mesos-gpu-enabled mesos-leader-path mesos-master mesos-master-hosts mesos-principal
-                           mesos-role offer-incubate-time-ms progress rebalancer riemann task-constraints]
+                           mesos-role offer-incubate-time-ms progress rebalancer riemann server-port task-constraints]
                           curator-framework framework-id mesos-datomic mesos-datomic-mult mesos-leadership-atom
                           mesos-offer-cache mesos-pending-jobs-atom]
                       (log/info "Initializing mesos scheduler")
@@ -119,6 +121,8 @@
                             mesos-gpu-enabled
                             framework-id
                             mesos-leadership-atom
+                            {:hostname hostname
+                             :server-port server-port}
                             {:executor-config executor
                              :rebalancer-config rebalancer
                              :progress-config progress}
@@ -285,17 +289,11 @@
                               atom))
      :curator-framework curator-framework}))
 
-(def simple-dns-name
-  (fnk [] (str (System/getProperty "user.name")
-               "."
-               (.getHostName (java.net.InetAddress/getLocalHost)))))
-
 #_(def dev-mem-settings
     {:server-port (fnk [] 12321)
      :authorization-middleware (fnk [] (fn [h] (fn [req] (h (assoc req :authorization/user (System/getProperty "user.name"))))))
      :sim-agent-path (fnk [] "/usr/bin/sim-agent") ;;TODO parameterize
      :mesos-datomic-uri (fnk [] "datomic:mem://mesos-jobs")
-     :dns-name simple-dns-name
      :zookeeper (fnk []
                   "localhost:3291")
      :zookeeper-server (fnk []
@@ -394,8 +392,8 @@
                           (when-not datomic-uri
                             (throw (ex-info "Must set a the :database's :datomic-uri!" {})))
                           datomic-uri)
-     :dns-name simple-dns-name
-     :hostname (fnk [] (.getCanonicalHostName (java.net.InetAddress/getLocalHost)))
+     :hostname (fnk [[:config {hostname (.getCanonicalHostName (java.net.InetAddress/getLocalHost))}]]
+                    hostname)
      :leader-reports-unhealthy (fnk [[:config [:mesos {leader-reports-unhealthy false}]]]
                                  leader-reports-unhealthy)
      :local-zk-port (fnk [[:config [:zookeeper {local-port 3291}]]]
@@ -554,7 +552,12 @@
   (edn/read-string
     {:readers
      {'config/env #(env %)
-      'config/env-int #(Integer/parseInt (env %))}}
+      'config/env-int-default (fn [[variable default]]
+                                (if-let [value (env variable)]
+                                  (Integer/parseInt value)
+                                  default))
+      'config/env-int #(Integer/parseInt (env %))
+      'config/env-bool #(Boolean/parseBoolean (or (env %) "false"))}}
     config))
 
 (defn -main

@@ -195,6 +195,7 @@
    offer-incubate-time-ms
    mea-culpa-failure-limit task-constraints riemann-host riemann-port mesos-pending-jobs-atom
    offer-cache gpu-enabled? framework-id mesos-leadership-atom
+   {:keys [hostname server-port]}
    {:keys [executor-config rebalancer-config progress-config] :as additional-config}
    {:keys [fenzo-fitness-calculator fenzo-floor-iterations-before-reset fenzo-floor-iterations-before-warn
            fenzo-max-jobs-considered fenzo-scaleback good-enough-fitness]
@@ -282,7 +283,9 @@
                                   ;; to make sure we yield leadership correctly (and fully)
                                   (log/fatal "Lost leadership in zookeeper. Exitting. Expecting a supervisor to restart me!")
                                   (System/exit 0))))))]
-    (.setId leader-selector (str (java.net.InetAddress/getLocalHost) \- (java.util.UUID/randomUUID)))
+    (.setId leader-selector (str hostname \#
+                                 server-port \#
+                                 (java.util.UUID/randomUUID)))
     (.autoRequeue leader-selector)
     (.start leader-selector)
     (log/info "Started the mesos leader selector")

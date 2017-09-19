@@ -1,4 +1,5 @@
 {:port 12321
+ :hostname "localhost"
  ;; We'll set the user to vagrant, since that's the default for many Vagrant-based Mesos setups
  :authorization {:one-user "vagrant"}
  :database {:datomic-uri "datomic:mem://cook-jobs"}
