@@ -4,7 +4,9 @@ from setuptools import setup
 
 requirements = [
     'requests',
-    'tabulate'
+    'tabulate',
+    'arrow',
+    'humanfriendly'
 ]
 
 setup(
