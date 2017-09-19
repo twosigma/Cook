@@ -97,10 +97,7 @@ def run(args):
     url = args.pop('url')
 
     if action is None:
-        help_text = parser.format_help().splitlines()
-        position_args_title = help_text.index('positional arguments:')
-        help_text.pop(position_args_title + 1)
-        print('\n'.join(help_text))
+        parser.print_help()
     else:
         config = load_config(config_path)
         clusters = load_target_clusters(config, url, cluster)

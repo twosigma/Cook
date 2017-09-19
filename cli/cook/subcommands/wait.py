@@ -1,6 +1,6 @@
-from cook.subcommands.show import query
+from cook.subcommands.show import query, print_no_data
 
-from cook.util import strip_all, print_info
+from cook.util import strip_all
 
 
 def all_jobs_completed(jobs):
@@ -37,7 +37,7 @@ def wait(clusters, args):
     if query_result['count'] > 0:
         return 0
     else:
-        print_info('No matching jobs, instances, or job groups were found.')
+        print_no_data(clusters)
         return 1
 
 

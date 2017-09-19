@@ -227,10 +227,7 @@ class CookCliTest(unittest.TestCase):
         self.assertEqual(0, cp.returncode, cp.stderr)
         cp, jobs = cli.show_json(uuids, self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
-        name = jobs[0]['name']
-        name_parts = name.split('_')
-        self.assertEqual(os.environ['USER'], name_parts[0], name)
-        self.assertTrue(util.is_valid_uuid(name_parts[1]), name)
+        self.assertEqual('%s_job' % os.environ['USER'], jobs[0]['name'])
 
     def test_wait_requires_at_least_one_uuid(self):
         cp = cli.wait([], self.cook_url)
@@ -257,12 +254,10 @@ class CookCliTest(unittest.TestCase):
     def test_query_invalid_uuid(self):
         cp = cli.show([uuid.uuid4()], self.cook_url)
         self.assertEqual(1, cp.returncode, cp.stderr)
-        self.assertIn('No matching jobs found', cli.stdout(cp))
-        self.assertIn('No matching instances found', cli.stdout(cp))
-        self.assertIn('No matching job groups found', cli.stdout(cp))
+        self.assertIn('No matching data found', cli.stdout(cp))
         cp = cli.wait([uuid.uuid4()], self.cook_url)
         self.assertEqual(1, cp.returncode, cp.stderr)
-        self.assertIn('No matching jobs, instances, or job groups were found', cli.stdout(cp))
+        self.assertIn('No matching data found', cli.stdout(cp))
 
     def test_show_requires_at_least_one_uuid(self):
         cp = cli.show([], self.cook_url)
@@ -301,21 +296,25 @@ class CookCliTest(unittest.TestCase):
         self.assertIn('Starting new HTTP connection (3)', stderr)
         self.assertNotIn('Starting new HTTP connection (4)', stderr)
         # Set retries = 0
-        cp, uuids = cli.submit('-- ls -al', 'localhost:99999', '--verbose --retries 0')
-        stderr = cli.decode(cp.stderr)
-        self.assertEqual(1, cp.returncode, stderr)
-        self.assertIn('Starting new HTTP connection (1)', stderr)
-        self.assertNotIn('Starting new HTTP connection (2)', stderr)
+        config = {'http': {'retries': 0}}
+        with cli.temp_config_file(config) as path:
+            cp, uuids = cli.submit('-- ls -al', 'localhost:99999', '--verbose --config %s' % path)
+            stderr = cli.decode(cp.stderr)
+            self.assertEqual(1, cp.returncode, stderr)
+            self.assertIn('Starting new HTTP connection (1)', stderr)
+            self.assertNotIn('Starting new HTTP connection (2)', stderr)
         # Set retries = 4
-        cp, uuids = cli.submit('-- ls -al', 'localhost:99999', '--verbose --retries 4')
-        stderr = cli.decode(cp.stderr)
-        self.assertEqual(1, cp.returncode, stderr)
-        self.assertIn('Starting new HTTP connection (1)', stderr)
-        self.assertIn('Starting new HTTP connection (2)', stderr)
-        self.assertIn('Starting new HTTP connection (3)', stderr)
-        self.assertIn('Starting new HTTP connection (4)', stderr)
-        self.assertIn('Starting new HTTP connection (5)', stderr)
-        self.assertNotIn('Starting new HTTP connection (6)', stderr)
+        config = {'http': {'retries': 4}}
+        with cli.temp_config_file(config) as path:
+            cp, uuids = cli.submit('-- ls -al', 'localhost:99999', '--verbose --config %s' % path)
+            stderr = cli.decode(cp.stderr)
+            self.assertEqual(1, cp.returncode, stderr)
+            self.assertIn('Starting new HTTP connection (1)', stderr)
+            self.assertIn('Starting new HTTP connection (2)', stderr)
+            self.assertIn('Starting new HTTP connection (3)', stderr)
+            self.assertIn('Starting new HTTP connection (4)', stderr)
+            self.assertIn('Starting new HTTP connection (5)', stderr)
+            self.assertNotIn('Starting new HTTP connection (6)', stderr)
 
     def test_submit_priority(self):
         cp, uuids = cli.submit('ls', self.cook_url, submit_flags='--priority 0')
@@ -335,77 +334,20 @@ class CookCliTest(unittest.TestCase):
         self.assertEqual(2, cp.returncode, cp.stderr)
         self.assertIn('--priority/-p: invalid choice', cli.decode(cp.stderr))
 
-    def test_default_max_runtime_displays_as_none(self):
-        cp, uuids = cli.submit('ls', self.cook_url)
-        self.assertEqual(0, cp.returncode, cp.stderr)
-        cp = cli.show(uuids, self.cook_url)
-        self.assertEqual(0, cp.returncode, cp.stderr)
-        self.assertRegex(cli.stdout(cp), 'max_runtime\s+none')
-
     def test_submit_output_should_explain_what_happened(self):
         cp, _ = cli.submit('ls', self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
-        self.assertIn("Job submitted successfully", cli.stdout(cp))
-        self.assertIn("Your job's UUID is", cli.stdout(cp))
+        self.assertIn("succeeded", cli.stdout(cp))
+        self.assertIn("Your job UUID is", cli.stdout(cp))
         cp, _ = cli.submit_stdin(['ls', 'ls', 'ls'], self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
-        self.assertIn("Jobs submitted successfully", cli.stdout(cp))
-        self.assertIn("Your jobs' UUIDs are", cli.stdout(cp))
+        self.assertIn("succeeded", cli.stdout(cp))
+        self.assertIn("Your job UUIDs are", cli.stdout(cp))
 
     def test_submit_raw_should_error_if_command_is_given(self):
         cp, _ = cli.submit('ls', self.cook_url, submit_flags='--raw')
         self.assertEqual(1, cp.returncode, cp.stderr)
         self.assertIn('cannot specify a command at the command line when using --raw/-r', cli.decode(cp.stderr))
-
-    def test_env_should_be_nicely_formatted(self):
-        # Empty environment
-        raw_job = {'command': 'ls', 'env': {}}
-        cp, uuids = cli.submit(cook_url=self.cook_url, submit_flags='--raw', stdin=cli.encode(json.dumps(raw_job)))
-        self.assertEqual(0, cp.returncode, cp.stderr)
-        cp = cli.show(uuids, self.cook_url)
-        self.assertEqual(0, cp.returncode, cp.stderr)
-        self.assertRegex(cli.stdout(cp), 'env\s+\(empty\)')
-        # Non-empty environment
-        raw_job = {'command': 'ls', 'env': {'FOO': '1', 'BAR': '2'}}
-        cp, uuids = cli.submit(cook_url=self.cook_url, submit_flags='--raw', stdin=cli.encode(json.dumps(raw_job)))
-        self.assertEqual(0, cp.returncode, cp.stderr)
-        cp = cli.show(uuids, self.cook_url)
-        self.assertEqual(0, cp.returncode, cp.stderr)
-        self.assertRegex(cli.stdout(cp), 'env\s+BAR=2 FOO=1')
-
-    def test_labels_should_be_nicely_formatted(self):
-        # Empty labels
-        raw_job = {'command': 'ls', 'labels': {}}
-        cp, uuids = cli.submit(cook_url=self.cook_url, submit_flags='--raw', stdin=cli.encode(json.dumps(raw_job)))
-        self.assertEqual(0, cp.returncode, cp.stderr)
-        cp = cli.show(uuids, self.cook_url)
-        self.assertEqual(0, cp.returncode, cp.stderr)
-        self.assertRegex(cli.stdout(cp), 'labels\s+\(empty\)')
-        # Non-empty labels
-        raw_job = {'command': 'ls', 'labels': {'FOO': '1', 'BAR': '2'}}
-        cp, uuids = cli.submit(cook_url=self.cook_url, submit_flags='--raw', stdin=cli.encode(json.dumps(raw_job)))
-        self.assertEqual(0, cp.returncode, cp.stderr)
-        cp = cli.show(uuids, self.cook_url)
-        self.assertEqual(0, cp.returncode, cp.stderr)
-        self.assertRegex(cli.stdout(cp), 'labels\s+BAR=2 FOO=1')
-
-    def test_uris_should_be_nicely_formatted(self):
-        # Empty uris
-        raw_job = {'command': 'ls', 'uris': []}
-        cp, uuids = cli.submit(cook_url=self.cook_url, submit_flags='--raw', stdin=cli.encode(json.dumps(raw_job)))
-        self.assertEqual(0, cp.returncode, cp.stderr)
-        cp = cli.show(uuids, self.cook_url)
-        self.assertEqual(0, cp.returncode, cp.stderr)
-        self.assertRegex(cli.stdout(cp), 'uris\s+\(empty\)')
-        # Non-empty uris
-        raw_job = {'command': 'ls', 'uris': [{'value': 'foo'}, {'value': 'bar'}, {'value': 'baz'}]}
-        cp, uuids = cli.submit(cook_url=self.cook_url, submit_flags='--raw', stdin=cli.encode(json.dumps(raw_job)))
-        self.assertEqual(0, cp.returncode, cp.stderr)
-        cp = cli.show(uuids, self.cook_url)
-        self.assertEqual(0, cp.returncode, cp.stderr)
-        self.assertRegex(cli.stdout(cp), 'uris\s+.*cache=False executable=False extract=False value=foo')
-        self.assertRegex(cli.stdout(cp), 'uris\s+.*cache=False executable=False extract=False value=bar')
-        self.assertRegex(cli.stdout(cp), 'uris\s+.*cache=False executable=False extract=False value=baz')
 
     def test_show_running_job(self):
         cp, uuids = cli.submit('sleep 60', self.cook_url)

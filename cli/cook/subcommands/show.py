@@ -312,6 +312,12 @@ def query(clusters, uuids, pred_jobs=None, pred_instances=None, pred_groups=None
     return all_entities
 
 
+def print_no_data(clusters):
+    """Prints a message indicating that no data was found in the given clusters"""
+    print('%s\nDo you need to add another cluster to your configuration?' %
+          colors.failed('No matching data found in %s.' % ' / '.join([c['name'] for c in clusters])))
+
+
 def show(clusters, args):
     """Prints info for the jobs / instances / groups with the given UUIDs."""
     as_json = args.get('json')
@@ -330,8 +336,7 @@ def show(clusters, args):
     if query_result['count'] > 0:
         return 0
     else:
-        print('%s\nDo you need to add another cluster to your configuration?' %
-              colors.failed('No matching data found  in %s.' % ' / '.join([c['name'] for c in clusters])))
+        print_no_data(clusters)
         return 1
 
 
