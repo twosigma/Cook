@@ -20,7 +20,7 @@ In order to use the Cook CLI, you’ll need a configuration file.
 `cs` looks first for a `.cs.json` file in the current directory, and then for a `.cs.json` file in your home directory. 
 The path to this file may also be provided manually via the command line with the `--config` option.
 
-The file looks something like this:
+There is a sample `.cs.json` file included in this directory, which looks something like this:
 
 ```json
 {
@@ -52,7 +52,7 @@ A cluster spec requires a name and a url pointing to a Cook Scheduler.
 
 ### Commands
 
-The fastest way to learn more about `cs` is with the `-h` (or `—help`) option.
+The fastest way to learn more about `cs` is with the `-h` (or `--help`) option.
 
 All global options (`--cluster`, `--config`, etc.) can be provided when using subcommands.
 

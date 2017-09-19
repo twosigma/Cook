@@ -16,9 +16,14 @@ from cook import colors, http
 from cook.util import strip_all, wait_until, make_url
 
 
+def seconds_to_timedelta(s):
+    """Converts seconds to a timedelta for display on screen"""
+    return humanfriendly.format_timespan(s)
+
+
 def millis_to_timedelta(ms):
     """Converts milliseconds to a timedelta for display on screen"""
-    return humanfriendly.format_timespan(round(ms / 1000))
+    return seconds_to_timedelta(round(ms / 1000))
 
 
 def millis_to_date_string(ms):

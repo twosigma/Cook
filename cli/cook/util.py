@@ -57,7 +57,10 @@ def wait_until(pred, timeout=30, interval=5):
     Wait, retrying a predicate until it is True, or the 
     timeout value has been exceeded.
     """
-    finish = datetime.now() + timedelta(seconds=timeout)
+    if timeout:
+        finish = datetime.now() + timedelta(seconds=timeout)
+    else:
+        finish = None
 
     while True:
         result = pred()
@@ -65,7 +68,7 @@ def wait_until(pred, timeout=30, interval=5):
         if result:
             break
 
-        if datetime.now() >= finish:
+        if finish and datetime.now() >= finish:
             break
 
         time.sleep(interval)
