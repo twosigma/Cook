@@ -678,6 +678,28 @@ class CookTest(unittest.TestCase):
         self.assertEqual(2, len(resp.json()))
         self.assertEqual([group_uuid_1, group_uuid_2].sort(), [group['uuid'] for group in resp.json()].sort())
 
+    def test_detailed_for_groups(self):
+        detail_keys = ('waiting', 'running', 'completed')
+
+        group_uuid = str(uuid.uuid4())
+        _, resp = util.submit_job(self.cook_url, group=group_uuid)
+        self.assertEqual(201, resp.status_code)
+
+        # Cases with no details (default or detailed=false)
+        for params in ({}, {'detailed': 'false'}):
+            resp = util.query_groups(self.cook_url, uuid=[group_uuid], **params)
+            self.assertEqual(200, resp.status_code)
+            group_info = resp.json()[0]
+            for k in detail_keys:
+                self.assertNotIn(k, group_info)
+
+        # Case with details (detailed=true)
+        resp = util.query_groups(self.cook_url, uuid=[group_uuid], detailed='true')
+        self.assertEqual(200, resp.status_code)
+        group_info = resp.json()[0]
+        for k in detail_keys:
+            self.assertIn(k, group_info)
+
     def test_400_on_group_query_without_uuid(self):
         resp = util.query_groups(self.cook_url)
         self.assertEqual(400, resp.status_code)
@@ -692,3 +714,14 @@ class CookTest(unittest.TestCase):
         self.assertEqual(200, queue.status_code, queue.content)
         self.assertTrue(any([job['job/uuid'] == job_uuid for job in queue.json()['normal']]))
         util.session.delete('%s/rawscheduler?job=%s' % (self.cook_url, job_uuid))
+
+    def test_basic_docker_job(self):
+        job_uuid, resp = util.submit_job(
+                self.cook_url,
+                name="check_alpine_version",
+                command="cat /etc/alpine-release",
+                container={"type": "DOCKER",
+                           "docker": { 'image': "alpine:latest" }})
+        self.assertEqual(resp.status_code, 201)
+        job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
+        self.assertEqual('success', job['instances'][0]['status'])

@@ -118,9 +118,7 @@
 (defn job-ent->container
   "Take a job entity and return its container"
   [db job-ent]
-  (when-let [ceid (:db/id (:job/container job-ent))]
-    (->> (d/pull db "[*]" ceid)
-         remove-datomic-namespacing)))
+  (some-> job-ent :job/container remove-datomic-namespacing))
 
 (defn job-ent->env
   "Take a job entity and return the environment variable map"

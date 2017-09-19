@@ -1,6 +1,8 @@
 #!/bin/bash
-set -ev
+set -v
 
+echo "what logs are there"
+find $PROJECT_DIR/../scheduler/log -name 'cook*.log'
 echo "Printing out all executor logs..."
 while read path; do
     echo "Contents of ${path}";
@@ -8,6 +10,9 @@ while read path; do
     echo "------------------------------------"
 done <<< "$(find $PROJECT_DIR/../travis/.minimesos -name 'stdout' -o -name 'stderr' -o -name 'executor.log')"
 
-echo "Contents of scheduler/log/cook.log"
-cat $PROJECT_DIR/../scheduler/log/cook.log
-echo "------------------------------------"
+for log in $PROJECT_DIR/../scheduler/log/cook*.log;
+do
+    echo "Contents of ${log}"
+    cat "${log}";
+    echo "------------------------------------"
+done

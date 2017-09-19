@@ -8,7 +8,7 @@ from tests.cook import util
 
 @unittest.skipUnless(os.getenv('COOK_MULTI_CLUSTER') is not None,
                      'Requires setting the COOK_MULTI_CLUSTER environment variable')
-class MultiCookTest(unittest.TestCase):
+class MultiClusterTest(unittest.TestCase):
     _multiprocess_can_split_ = True
 
     def setUp(self):

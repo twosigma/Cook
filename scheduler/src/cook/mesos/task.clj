@@ -42,7 +42,9 @@
         ;; If the custom-executor attr isn't set, we default to using a custom
         ;; executor in order to support jobs submitted before we added this field
         custom-executor? (:job/custom-executor job-ent true)
-        cook-executor? (and (not custom-executor?) (seq executor-config))
+        cook-executor? (and (not custom-executor?)
+                            (not container) ;;TODO support cook-executor in containers
+                            (seq executor-config))
         environment (cond-> (util/job-ent->env job-ent)
                             cook-executor? (merge (build-executor-environment executor-config)))
         labels (util/job-ent->label job-ent)
