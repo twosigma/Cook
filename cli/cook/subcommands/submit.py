@@ -126,7 +126,6 @@ def submit(clusters, args):
     job = args
     raw = safe_pop(job, 'raw')
     command_from_command_line = safe_pop(job, 'command')
-    command_args = safe_pop(job, 'args')
 
     if raw:
         if command_from_command_line:
@@ -136,7 +135,9 @@ def submit(clusters, args):
         jobs = parse_raw_job_spec(job, jobs_json)
     else:
         if command_from_command_line:
-            commands = ['%s%s' % (command_from_command_line, (' ' + ' '.join(command_args)) if command_args else '')]
+            if command_from_command_line[0] == '--':
+                command_from_command_line = command_from_command_line[1:]
+            commands = [' '.join(command_from_command_line)]
         else:
             commands = read_commands_from_stdin()
 
@@ -186,6 +187,5 @@ def register(add_parser):
                                metavar='KEY=VALUE', action='append')
     submit_parser.add_argument('--ports', help='number of ports to reserve for job', type=int)
     submit_parser.add_argument('--raw', '-r', help='raw job spec in json format', dest='raw', action='store_true')
-    submit_parser.add_argument('command', nargs='?')
-    submit_parser.add_argument('args', nargs=argparse.REMAINDER)
+    submit_parser.add_argument('command', nargs=argparse.REMAINDER)
     return submit
