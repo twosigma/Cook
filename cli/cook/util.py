@@ -112,10 +112,12 @@ def make_url(cluster, endpoint):
 silent = False
 
 
-def print_info(s):
-    """Prints s, unless in silent mode (-s / --silent)"""
+def print_info(text, silent_mode_text=None):
+    """Prints text, unless in silent mode (-s / --silent)"""
     if not silent:
-        print(s)
+        print(text)
+    elif silent_mode_text:
+        print(silent_mode_text)
 
 
 def strip_all(strs):

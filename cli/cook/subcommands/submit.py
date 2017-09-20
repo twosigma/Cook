@@ -47,7 +47,7 @@ def submit_failed_message(cluster_name, reason):
     return 'Job submission %s on %s:\n%s' % (colors.failed('failed'), cluster_name, colors.reason(reason))
 
 
-def parse_submit_response(cluster, response):
+def print_submit_result(cluster, response):
     """
     Parses a submission response from cluster and returns a corresponding message. Note that
     Cook Scheduler returns text when the submission was successful, and JSON when the submission
@@ -60,7 +60,7 @@ def parse_submit_response(cluster, response):
             group_index = text.index(' submitted groups')
             text = text[:group_index]
         uuids = [p for p in text.split() if is_valid_uuid(p)]
-        return submit_succeeded_message(cluster_name, uuids)
+        print_info(submit_succeeded_message(cluster_name, uuids), '\n'.join(uuids))
     else:
         data = response.json()
         if 'errors' in data:
@@ -69,7 +69,7 @@ def parse_submit_response(cluster, response):
             reason = data['error']
         else:
             reason = json.dumps(data)
-        return submit_failed_message(cluster_name, reason)
+        print_info(submit_failed_message(cluster_name, reason))
 
 
 def submit_federated(clusters, jobs):
@@ -84,7 +84,7 @@ def submit_federated(clusters, jobs):
             print_info('Attempting to submit on %s cluster...' % colors.bold(cluster_name))
             resp = http.post(url, json={'jobs': jobs})
             logging.info('response from cook: %s' % resp.text)
-            print_info('%s\n' % parse_submit_response(cluster, resp))
+            print_submit_result(cluster, resp)
             if resp.status_code == requests.codes.created:
                 return 0
         except requests.exceptions.ConnectionError as ce:
@@ -102,7 +102,7 @@ def safe_pop(d, key):
 
 def read_commands_from_stdin():
     """Prompts for and then reads subcommands, one per line, from stdin"""
-    print('Enter the subcommands, one per line (press Ctrl+D on a blank line to submit)', file=sys.stderr)
+    print_info('Enter the subcommands, one per line (press Ctrl+D on a blank line to submit)')
     commands = read_lines()
     if len(commands) < 1:
         raise Exception('You must specify at least one command')
