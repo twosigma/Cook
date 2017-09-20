@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [UNRELEASED]
+### Changed
+- A job that already has had a straggler instance will not have subsequent instances be considered stragglers, from @wyegelwel
+
 ## [1.5.6] - 2017-08-07
 ### Changed
 - Performance improvement in rank jobs, from @wyegelwel

@@ -85,6 +85,14 @@
             job-straggler-b (create-dummy-job conn :group group-ent-id)
             straggler-b (create-dummy-instance conn job-straggler-b :instance-status :instance.status/running
                                              :start-time (tc/to-date (t/ago (t/minutes 121))))
+            ;; Not treated as a straggler because instance already failed as a straggler
+            job-straggler-c (create-dummy-job conn :group group-ent-id)
+            straggled-c (create-dummy-instance conn job-straggler-c :instance-status :instance.status/failed
+                                               :reason :straggler
+                                               :start-time (tc/to-date (t/ago (t/hours 4)))
+                                               :end-time (tc/to-date (t/ago (t/hours 2))))
+            not-straggler-c (create-dummy-instance conn job-straggler-c :instance-status :instance.status/running
+                                               :start-time (tc/to-date (t/ago (t/minutes 121))))
             db (d/db conn)
             group-ent (d/entity db group-ent-id)
             straggler-task-a (d/entity db straggler-a)
