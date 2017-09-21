@@ -1,0 +1,9 @@
+.eggs
+.idea
+.minimesos
+bin
+build
+cook_integration.egg-info
+dist
+integration.iml
+travis
