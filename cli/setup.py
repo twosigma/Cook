@@ -6,7 +6,8 @@ requirements = [
     'requests',
     'tabulate',
     'arrow',
-    'humanfriendly'
+    'humanfriendly',
+    'blessings'
 ]
 
 setup(

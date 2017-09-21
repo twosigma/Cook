@@ -1,33 +1,27 @@
-class Codes:
-    ENDC = '\033[0m'
-    BOLD = '\033[1m'
-    REASON = '\033[38;5;3m'
-    UNDERLINE = '\033[4m'
-    SUCCESS = '\033[38;5;22m'
-    RUNNING = '\033[38;5;36m'
-    FAILED = '\033[91m'
-    WAITING = '\033[38;5;130m'
+from blessings import Terminal
+
+t = Terminal()
 
 
 def failed(s):
-    return Codes.FAILED + Codes.BOLD + s + Codes.ENDC
+    return t.bold_red(s)
 
 
 def success(s):
-    return Codes.SUCCESS + Codes.BOLD + s + Codes.ENDC
+    return t.blue(s)
 
 
 def running(s):
-    return Codes.RUNNING + Codes.BOLD + s + Codes.ENDC
+    return t.cyan(s)
 
 
 def waiting(s):
-    return Codes.WAITING + Codes.BOLD + s + Codes.ENDC
+    return t.yellow(s)
 
 
 def reason(s):
-    return Codes.REASON + s + Codes.ENDC
+    return t.red(s)
 
 
 def bold(s):
-    return Codes.BOLD + s + Codes.ENDC
+    return t.bold(s)
