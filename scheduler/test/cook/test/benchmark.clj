@@ -16,17 +16,14 @@
 
 (ns cook.test.benchmark
   (:use clojure.test)
-  (:require [clojure.core.async :as async]
+  (:require [cook.mesos.dru :as dru]
             [cook.mesos.ranker :as ranker]
-            [cook.mesos.util :as util]
-            [cook.mesos.dru :as dru]
-            [cook.mesos.share :as share]
             [cook.mesos.scheduler :as sched]
+            [cook.mesos.share :as share]
+            [cook.mesos.util :as util]
             [cook.test.testutil :refer (restore-fresh-database! create-dummy-group create-dummy-job create-dummy-instance init-offer-cache poll-until)]
             [criterium.core :as cc]
-            [datomic.api :as d]
-            [plumbing.core :as pc]
-            ))
+            [datomic.api :as d]))
 
 (defn create-running-job
   [conn host & args]
@@ -52,7 +49,6 @@
         (cc/quick-bench (sched/rank-jobs db offensive-job-filter))))
     (testing "rank-jobs minus offensive-job-filter"
       (let [db (d/db conn)
-            task-constraints {:memory-gb 100 :cpus 30}
             offensive-job-filter identity]
         (println "============ rank-jobs minus offensive-job-filter timing ============")
         (cc/quick-bench (sched/rank-jobs db offensive-job-filter))))
