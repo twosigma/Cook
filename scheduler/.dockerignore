@@ -1,0 +1,14 @@
+.idea
+.lein-failures
+.minimesos
+.nrepl-port
+bin
+classes
+docs
+gclog.*
+log
+simulator_files
+target
+test
+test-log
+test-resources

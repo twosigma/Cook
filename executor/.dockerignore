@@ -1,0 +1,12 @@
+.cache
+.eggs
+.idea
+bin
+build
+cook_executor.egg-info
+cook-executor.spec
+dist
+executor.iml
+help.spec
+tests
+travis
