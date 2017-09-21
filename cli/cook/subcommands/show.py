@@ -1,20 +1,19 @@
 import concurrent
+import itertools
 import json
 import logging
+import time
 from concurrent import futures
 
 import arrow
 import humanfriendly
-import time
-
-import sys
-
-import itertools
 import requests
 from tabulate import tabulate
 
 from cook import colors, http
 from cook.util import strip_all, wait_until, make_url
+
+DEFAULT_MAX_RUNTIME = 2**63 - 1
 
 
 def seconds_to_timedelta(s):
@@ -120,7 +119,7 @@ def tabulate_job(cluster_name, job):
                       ['CPUs', job['cpus']],
                       ['User', job['user']],
                       ['Priority', job['priority']]]
-    if job['max_runtime'] != sys.maxsize:
+    if job['max_runtime'] != DEFAULT_MAX_RUNTIME:
         job_definition.append(['Max Runtime', millis_to_timedelta(job['max_runtime'])])
     if job['gpus'] > 0:
         job_definition.append(['GPUs', job['gpus']])
