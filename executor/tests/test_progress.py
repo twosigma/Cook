@@ -156,10 +156,6 @@ class ProgressTest(unittest.TestCase):
             if os.path.isfile(file_name):
                 os.remove(file_name)
 
-    # the readline splits random lines at arbitrary locations causing the test to fail, e.g.
-    # root: INFO: 922: line
-    # root: INFO: 923: -922
-    @attr('explicit')
     def test_progress_watcher_tail_lot_of_writes(self):
         file_name = ensure_directory('build/tail_progress_test.' + get_random_task_id())
         config = cc.ExecutorConfig(progress_output_name=file_name)
@@ -190,7 +186,7 @@ class ProgressTest(unittest.TestCase):
                 for index in range(len(collected_data)):
                     logging.info('{}: {}'.format(index, collected_data[index]))
             self.assertEqual(items_to_write, len(collected_data))
-            expected_data = list(map(lambda x: str(x), range(items_to_write)))
+            expected_data = list(map(lambda x: 'line-' + str(x), range(items_to_write)))
             self.assertEqual(expected_data, collected_data)
         finally:
             if os.path.isfile(file_name):

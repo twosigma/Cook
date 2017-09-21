@@ -104,7 +104,19 @@
     :db/cardinality :db.cardinality/one
     :db.install/_attribute :db.part/db}
    {:db/id (d/tempid :db.part/db)
-    :db/doc "Determines if this job uses a custom executor (true) or the cook executor (false).
+    :db/doc "Determines if this job will only use the
+             1. cook executor (cook),
+             2. mesos command executor (mesos), or
+             3. custom executor (custom).
+             When missing and :job/custom-executor is true, then uses a custom executor (for legacy compatibility).
+             Else, it may default to any of the Cook executor or Mesos command executor"
+    :db/ident :job/executor
+    :db/valueType :db.type/ref
+    :db/isComponent true
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/doc "Determines if this job uses a custom executor (true) or one of the other executors (cook/command) (false).
              If unset, then uses a custom executor (for legacy compatibility)."
     :db/ident :job/custom-executor
     :db/valueType :db.type/boolean
@@ -503,6 +515,13 @@ for a job. E.g. {:resources {:cpus 4 :mem 3} :constraints {\"unique_host_constra
     :db/cardinality :db.cardinality/many
     :db.install/_attribute :db.part/db}
    {:db/id (d/tempid :db.part/db)
+    :db/doc "Specifies the executor used to run this instance."
+    :db/ident :instance/executor
+    :db/valueType :db.type/ref
+    :db/isComponent true
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
     :db/ident :instance/executor-id
     :db/valueType :db.type/string
     :db/cardinality :db.cardinality/one
@@ -737,7 +756,17 @@ for a job. E.g. {:resources {:cpus 4 :mem 3} :constraints {\"unique_host_constra
    ;; Functions for database manipulation
    {:db/id (d/tempid :db.part/user)
     :db/ident :instance/create
-    :db/doc "Creates an instance for a job"}])
+    :db/doc "Creates an instance for a job"}
+   ;; Enum of executor options
+   {:db/id (d/tempid :db.part/user)
+    :db/ident :executor/cook
+    :db/doc "Signals intent to use the Cook executor"}
+   {:db/id (d/tempid :db.part/user)
+    :db/ident :executor/custom
+    :db/doc "Signals intent to use the custom executor"}
+   {:db/id (d/tempid :db.part/user)
+    :db/ident :executor/mesos
+    :db/doc "Signals intent to use the Mesos command executor"}])
 
 (def straggler-handling-types
   (->> schema-attributes

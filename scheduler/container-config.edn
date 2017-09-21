@@ -10,6 +10,7 @@
                                 :retry-limit 15
                                 :cpus 6}}
  :executor {:command "./cook-executor"
+            :portion 0.25
             :uri {:cache true
                   :executable true
                   :extract false

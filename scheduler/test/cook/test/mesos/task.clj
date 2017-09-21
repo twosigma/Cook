@@ -326,6 +326,7 @@
         (is (= {:command {:value "run-my-command", :environment {}, :user "test-user", :uris []}
                 :container nil
                 :environment {}
+                :executor :executor/custom
                 :executor-key :custom-executor
                 :framework-id framework-id
                 :labels {}
@@ -347,6 +348,7 @@
         (is (= {:command {:value "run-my-command", :environment {}, :user "test-user", :uris []}
                 :container nil
                 :environment {}
+                :executor :executor/custom
                 :executor-key :custom-executor
                 :framework-id framework-id
                 :labels {}
@@ -360,7 +362,7 @@
     (testing "cook-executor with simple job"
       (let [task-id (str (UUID/randomUUID))
             job (tu/create-dummy-job conn :user "test-user" :job-state :job.state/running :command "run-my-command"
-                                     :custom-executor? false)
+                                     :custom-executor? false :executor :executor/cook)
             db (d/db conn)
             job-ent (d/entity db job)
             framework-id {:value "framework-id"}
@@ -379,6 +381,7 @@
                               "PROGRESS_OUTPUT_FILE" (:default-progress-output-file executor)
                               "PROGRESS_REGEX_STRING" (:default-progress-regex-string executor)
                               "PROGRESS_SAMPLE_INTERVAL_MS" (:progress-sample-interval-ms executor)}
+                :executor :executor/cook
                 :executor-key :cook-executor
                 :framework-id framework-id
                 :labels {}
@@ -404,6 +407,7 @@
                           :value "run-my-command"}
                 :container nil
                 :environment {}
+                :executor :executor/mesos
                 :executor-key :command-executor
                 :framework-id framework-id
                 :labels {}
@@ -438,6 +442,7 @@
                                      :network "HOST"}
                             :type "DOCKER"}
                 :environment {}
+                :executor :executor/custom
                 :executor-key :container-executor
                 :framework-id framework-id
                 :labels {}
@@ -472,6 +477,7 @@
                                      :network "HOST"}
                             :type "DOCKER"}
                 :environment {}
+                :executor :executor/mesos
                 :executor-key :container-command-executor
                 :framework-id framework-id
                 :labels {}
@@ -481,3 +487,84 @@
                 :task-id task-id}
                (dissoc task-metadata :data)))
         (is (= (pr-str {:instance "0"}) (-> task-metadata :data (String. "UTF-8"))))))))
+
+(deftest test-use-cook-executor?
+  (testing "empty entity and config"
+    (let [job-ent {}
+          executor-config {}]
+      (is (not (task/use-cook-executor? job-ent executor-config)))))
+
+  (testing "custom-executor not configured"
+    (let [job-ent {}
+          executor-config {:command "cook-executor"
+                           :portion 0.25}]
+      (is (not (task/use-cook-executor? job-ent executor-config)))))
+
+  (testing "custom-executor enabled"
+    (let [job-ent {:job/custom-executor true}
+          executor-config {:command "cook-executor"
+                           :portion 0.25}]
+      (is (not (task/use-cook-executor? job-ent executor-config)))))
+
+  (testing "custom-executor enabled and cook-executor enabled [faulty state]"
+    (let [job-ent {:job/custom-executor true
+                   :job/executor :executor/cook}
+          executor-config {:command "cook-executor"
+                           :portion 0.25}]
+      (is (not (task/use-cook-executor? job-ent executor-config)))))
+
+  (testing "custom-executor disabled and cook-executor enabled"
+    (let [job-ent {:job/custom-executor false
+                   :job/executor :executor/cook}
+          executor-config {:command "cook-executor"
+                           :portion 0.25}]
+      (is (task/use-cook-executor? job-ent executor-config))))
+
+  (testing "custom-executor disabled and cook-executor disabled"
+    (let [job-ent {:job/custom-executor false
+                   :job/executor :executor/mesos}
+          executor-config {:command "cook-executor"
+                           :portion 0.25}]
+      (is (not (task/use-cook-executor? job-ent executor-config)))))
+
+  (testing "custom-executor disabled and coin toss favorable"
+    (let [job-uuid (str (UUID/randomUUID))
+          job-ent {:job/custom-executor false
+                   :job/uuid job-uuid}
+          executor-config {:command "cook-executor"
+                           :portion 0.25}]
+      (with-redefs [hash (fn [obj] (is (= job-uuid obj)) 10)]
+        (is (task/use-cook-executor? job-ent executor-config)))))
+
+  (testing "custom-executor disabled and coin toss unfavorable"
+    (let [job-uuid (str (UUID/randomUUID))
+          job-ent {:job/custom-executor false
+                   :job/uuid job-uuid}
+          executor-config {:command "cook-executor"
+                           :portion 0.25}]
+      (with-redefs [hash (fn [obj] (is (= job-uuid obj)) 90)]
+        (is (not (task/use-cook-executor? job-ent executor-config))))))
+
+  (testing "custom-executor disabled, coin toss favorable with single instance"
+    (let [instance-1 {:instance/executor-id "foo"}
+          job-uuid (str (UUID/randomUUID))
+          job-ent {:job/custom-executor false
+                   :job/instance [instance-1]
+                   :job/uuid job-uuid}
+          executor-config {:command "cook-executor"
+                           :portion 0.25}]
+      (with-redefs [hash (fn [obj] (is (= job-uuid obj)) 10)]
+        (is (not (task/use-cook-executor? job-ent executor-config))))))
+
+  (testing "custom-executor disabled, coin toss favorable with multiple instances"
+    (let [instance-1 {:instance/executor-id "foo"}
+          instance-2 {:instance/executor-id "bar"}
+          instance-3 {:instance/executor-id "baz"}
+          job-uuid (str (UUID/randomUUID))
+          job-ent {:job/custom-executor false
+                   :job/instance [instance-1 instance-2 instance-3]
+                   :job/uuid job-uuid}
+          executor-config {:command "cook-executor"
+                           :portion 0.25}]
+      (with-redefs [hash (fn [obj] (is (= job-uuid obj)) 10)]
+        (is (not (task/use-cook-executor? job-ent executor-config)))))))

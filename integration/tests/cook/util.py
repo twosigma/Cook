@@ -71,8 +71,9 @@ def is_not_blank(in_string):
     return bool(in_string and in_string.strip())
 
 
-def is_using_cook_executor(cook_url):
-    return is_not_blank(get_in(settings(cook_url), 'executor', 'command'))
+def get_job_executor_type(cook_url):
+    """Returns 'cook' or 'mesos' based on the default executor Cook is configured with."""
+    return 'cook' if is_not_blank(get_in(settings(cook_url), 'executor', 'command')) else 'mesos'
 
 
 def is_connection_error(exception):

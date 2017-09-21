@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [Unreleased]
+### Added
+- Added support for allowing job to specify which executor (cook|mesos) to use, from @shamsimam
+
 ## [1.5.6] - 2017-08-07
 ### Changed
 - Performance improvement in rank jobs, from @wyegelwel

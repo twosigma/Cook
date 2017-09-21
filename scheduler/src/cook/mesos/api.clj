@@ -175,6 +175,7 @@
    (s/optional-key :output_url) s/Str
    (s/optional-key :cancelled) s/Bool
    (s/optional-key :reason_string) s/Str
+   (s/optional-key :executor) s/Str
    (s/optional-key :exit_code) s/Int
    (s/optional-key :progress) s/Int
    (s/optional-key :progress_message) s/Str
@@ -238,6 +239,7 @@
    (s/optional-key :labels) {NonEmptyString s/Str}
    (s/optional-key :constraints) [Constraint]
    (s/optional-key :container) Container
+   (s/optional-key :executor) (s/enum "cook" "mesos")
    (s/optional-key :group) s/Uuid
    (s/optional-key :disable-mea-culpa-retries) s/Bool
    :cpus PosDouble
@@ -433,12 +435,22 @@
                 (mk-docker-ports docker-id port-mappings))])
       {})))
 
+(defn- str->executor-enum
+  "Converts an executor string to the corresponding executor option enum.
+   Throws an IllegalArgumentException if the string is non-nil and not supported."
+  [executor]
+  (when executor
+    (case executor
+      "cook" :executor/cook
+      "mesos" :executor/mesos
+      (throw (IllegalArgumentException. (str "Unsupported executor type: " executor))))))
+
 (s/defn make-job-txn
   "Creates the necessary txn data to insert a job into the database"
   [job :- Job]
   (let [{:keys [uuid command max-retries max-runtime expected-runtime priority cpus mem gpus
                 user name ports uris env labels container group application disable-mea-culpa-retries
-                constraints]
+                constraints executor]
          :or {group nil
               disable-mea-culpa-retries false}} job
         db-id (d/tempid :db.part/user)
@@ -485,6 +497,7 @@
                                   :constraint/pattern pattern}]))
                             constraints)
         container (if (nil? container) [] (build-container user db-id container))
+        executor (str->executor-enum executor)
         ;; These are optionally set datoms w/ default values
         maybe-datoms (reduce into
                              []
@@ -520,7 +533,8 @@
                     application (assoc :job/application
                                        {:application/name (:name application)
                                         :application/version (:version application)})
-                    expected-runtime (assoc :job/expected-runtime expected-runtime))]
+                    expected-runtime (assoc :job/expected-runtime expected-runtime)
+                    executor (assoc :job/executor executor))]
 
     ;; TODO batch these transactions to improve performance
     (-> ports
@@ -612,7 +626,7 @@
   [db user task-constraints gpu-enabled? new-group-uuids
    {:keys [cpus mem gpus uuid command priority max-retries max-runtime expected-runtime name
            uris ports env labels container group application disable-mea-culpa-retries
-           constraints]
+           constraints executor]
     :or {group nil
          disable-mea-culpa-retries false}
     :as job}
@@ -654,6 +668,8 @@
                    {:container container})
                  (when expected-runtime
                    {:expected-runtime expected-runtime})
+                 (when executor
+                   {:executor executor})
                  (when application
                    {:application application}))]
     (s/validate Job munged)
@@ -770,6 +786,7 @@
   [db framework-id agent-query-cache instance]
   (let [hostname (:instance/hostname instance)
         executor-id (:instance/executor-id instance)
+        executor (:instance/executor instance)
         sandbox-directory (:instance/sandbox-directory instance)
         url-path (retrieve-url-path framework-id hostname executor-id agent-query-cache sandbox-directory)
         start (:instance/start-time instance)
@@ -788,6 +805,7 @@
              :slave_id (:instance/slave-id instance)
              :status (name (:instance/status instance))
              :task_id (:instance/task-id instance)}
+            executor (assoc :executor (name executor))
             start (assoc :start_time (.getTime start))
             mesos-start (assoc :mesos_start_time (.getTime mesos-start))
             end (assoc :end_time (.getTime end))
@@ -807,6 +825,7 @@
         groups (:group/_job job)
         application (:job/application job)
         expected-runtime (:job/expected-runtime job)
+        executor (:job/executor job)
         state (util/job-ent->state job)
         constraints (->> job
                          :job/constraint
@@ -839,10 +858,11 @@
                  :uris (:uris resources)
                  :user (:job/user job)
                  :uuid (:job/uuid job)}]
-     (cond-> job-map
+    (cond-> job-map
             groups (assoc :groups (map #(str (:group/uuid %)) groups))
             application (assoc :application (util/remove-datomic-namespacing application))
-            expected-runtime (assoc :expected-runtime expected-runtime))))
+            expected-runtime (assoc :expected-runtime expected-runtime)
+            executor (assoc :executor (name executor)))))
 
 (defn fetch-group-job-details
   [db guuid]
