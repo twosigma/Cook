@@ -531,12 +531,32 @@
     (let [job-ent {:job/custom-executor false}
           executor-config {:command "cook-executor"
                            :portion 0.25}]
-      (with-redefs [hash (fn [x] 10)]
+      (with-redefs [hash (fn [_] 10)]
         (is (task/use-cook-executor? job-ent executor-config)))))
 
   (testing "custom-executor disabled and coin toss unfavorable"
     (let [job-ent {:job/custom-executor false}
           executor-config {:command "cook-executor"
                            :portion 0.25}]
-      (with-redefs [hash (fn [x] 90)]
+      (with-redefs [hash (fn [_] 90)]
+        (is (not (task/use-cook-executor? job-ent executor-config))))))
+
+  (testing "custom-executor disabled, coin toss favorable with single instance"
+    (let [instance-1 {:instance/executor-id "foo"}
+          job-ent {:job/custom-executor false
+                   :job/instance [instance-1]}
+          executor-config {:command "cook-executor"
+                           :portion 0.25}]
+      (with-redefs [hash (fn [_] 10)]
+        (is (not (task/use-cook-executor? job-ent executor-config))))))
+
+  (testing "custom-executor disabled, coin toss favorable with multiple instances"
+    (let [instance-1 {:instance/executor-id "foo"}
+          instance-2 {:instance/executor-id "bar"}
+          instance-3 {:instance/executor-id "baz"}
+          job-ent {:job/custom-executor false
+                   :job/instance [instance-1 instance-2 instance-3]}
+          executor-config {:command "cook-executor"
+                           :portion 0.25}]
+      (with-redefs [hash (fn [_] 10)]
         (is (not (task/use-cook-executor? job-ent executor-config)))))))

@@ -36,6 +36,24 @@ class CookTest(unittest.TestCase):
             self.assertEqual(0, job['instances'][0]['exit_code'])
             self.assertTrue(bool(job['instances'][0]['sandbox_directory']))
 
+    def test_no_cook_executor_on_subsequent_instances(self):
+        job_uuid, resp = util.submit_job(self.cook_url, command='exit 1', max_retries=10)
+        self.assertEqual(resp.status_code, 201, msg=resp.content)
+        try:
+            util.wait_for_job(self.cook_url, job_uuid, 'completed', max_delay=60000)
+        except:
+            pass
+        job = util.load_job(self.cook_url, job_uuid)
+        message = json.dumps(job, sort_keys=True)
+        self.assertEqual('waiting', job['status'], message)
+        job_instances = sorted(job['instances'], key=lambda i: i['end_time'])
+        self.assertTrue(len(job_instances) >= 2, message) # sort job instances
+        for i in range(1, len(job_instances)):
+            message = 'Index ' + str(i) + json.dumps(job_instances[i], sort_keys=True)
+            self.assertEqual('failed', job_instances[i]['status'], message)
+            self.assertEqual('Command exited non-zero', job_instances[i]['reason_string'], message)
+            self.assertEqual('mesos', job_instances[i]['executor'], message)
+
     def test_disable_mea_culpa(self):
         job_uuid, resp = util.submit_job(self.cook_url, disable_mea_culpa_retries=True)
         self.assertEqual(201, resp.status_code, msg=resp.content)

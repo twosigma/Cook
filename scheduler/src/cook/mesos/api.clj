@@ -175,6 +175,7 @@
    (s/optional-key :output_url) s/Str
    (s/optional-key :cancelled) s/Bool
    (s/optional-key :reason_string) s/Str
+   (s/optional-key :executor) s/Str
    (s/optional-key :exit_code) s/Int
    (s/optional-key :progress) s/Int
    (s/optional-key :progress_message) s/Str
@@ -497,8 +498,7 @@
                             constraints)
         container (if (nil? container) [] (build-container user db-id container))
         executor (str->executor-enum executor)
-        ;; These are optionally set datoms w/ default val
-        ;; ues
+        ;; These are optionally set datoms w/ default values
         maybe-datoms (reduce into
                              []
                              [(when (and priority (not= util/default-job-priority priority))
@@ -786,6 +786,7 @@
   [db framework-id agent-query-cache instance]
   (let [hostname (:instance/hostname instance)
         executor-id (:instance/executor-id instance)
+        executor (:instance/executor instance)
         sandbox-directory (:instance/sandbox-directory instance)
         url-path (retrieve-url-path framework-id hostname executor-id agent-query-cache sandbox-directory)
         start (:instance/start-time instance)
@@ -804,6 +805,7 @@
              :slave_id (:instance/slave-id instance)
              :status (name (:instance/status instance))
              :task_id (:instance/task-id instance)}
+            executor (assoc :executor (name executor))
             start (assoc :start_time (.getTime start))
             mesos-start (assoc :mesos_start_time (.getTime mesos-start))
             end (assoc :end_time (.getTime end))
