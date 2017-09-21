@@ -171,11 +171,11 @@
 
   :plugins [[lein-print "0.1.0"]]
 
-  :test-selectors {:default (complement #(or (:integration %)
-                                             (:benchmark %)))
-                   :integration :integration
+  :test-selectors {:all (constantly true)
+                   :all-but-benchmark (complement :benchmark)
                    :benchmark :benchmark
-                   :all (constantly true)}
+                   :default (complement #(or (:integration %) (:benchmark %)))
+                   :integration :integration}
 
   :main cook.components
   :jvm-opts ["-Dpython.cachedir.skip=true"
