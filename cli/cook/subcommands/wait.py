@@ -7,7 +7,7 @@ from cook.util import strip_all, print_info
 
 def all_jobs_completed(jobs):
     """Returns jobs if they are all completed, otherwise False."""
-    if not [j for j in jobs if j.get('status') != 'completed']:
+    if all(j.get('status') == 'completed' for j in jobs):
         return jobs
     else:
         return False
@@ -15,7 +15,7 @@ def all_jobs_completed(jobs):
 
 def all_instances_completed(instances):
     """Returns instances if they are all completed, otherwise False."""
-    if not [i for i in instances if i.get('status') != 'completed']:
+    if all(i.get('status') == 'completed' for i in instances):
         return instances
     else:
         return False
@@ -23,7 +23,7 @@ def all_instances_completed(instances):
 
 def all_groups_completed(groups):
     """Returns groups if they are all completed, otherwise False."""
-    if not [g for g in groups if len(g.get('jobs')) != g.get('completed')]:
+    if all(len(g.get('jobs')) == g.get('completed') for g in groups):
         return groups
     else:
         return False

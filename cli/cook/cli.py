@@ -6,7 +6,7 @@ from urllib.parse import urlparse
 
 from cook import util, http, colors
 from cook.subcommands import submit, show, wait
-from cook.util import merge, load_first_json_file
+from cook.util import deep_merge, load_first_json_file
 
 # Default locations to check for configuration files if one isn't given on the command line
 DEFAULT_CONFIG_PATHS = ['.cs.json',
@@ -68,7 +68,7 @@ def load_config(config_path=None):
             raise Exception('The configuration path specified (%s) is not valid' % config_path)
     else:
         config = load_first_json_file(DEFAULT_CONFIG_PATHS) or {}
-    config = merge(DEFAULT_CONFIG, config)
+    config = deep_merge(DEFAULT_CONFIG, config)
     logging.debug('using configuration: %s' % config)
     return config
 
@@ -105,7 +105,7 @@ def run(args):
         args = {k: v for k, v in args.items() if v is not None}
         defaults = config.get('defaults')
         action_defaults = (defaults.get(action) if defaults else None) or {}
-        result = actions[action](clusters, merge(action_defaults, args))
+        result = actions[action](clusters, deep_merge(action_defaults, args))
         logging.debug('result: %s' % result)
         return result
 

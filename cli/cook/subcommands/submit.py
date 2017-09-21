@@ -8,7 +8,7 @@ import uuid
 import requests
 
 from cook import colors, http
-from cook.util import merge, is_valid_uuid, read_lines, make_url, print_info
+from cook.util import deep_merge, is_valid_uuid, read_lines, make_url, print_info
 
 
 def parse_raw_job_spec(job, r):
@@ -23,9 +23,9 @@ def parse_raw_job_spec(job, r):
         content = json.loads(r)
 
         if type(content) is dict:
-            return [merge(job, content)]
+            return [deep_merge(job, content)]
         elif type(content) is list:
-            return [merge(job, c) for c in content]
+            return [deep_merge(job, c) for c in content]
         else:
             raise ValueError('invalid format for raw job')
     except Exception:
@@ -94,12 +94,6 @@ def submit_federated(clusters, jobs):
     raise Exception(colors.failed('Job submission failed on all of your configured clusters.'))
 
 
-def safe_pop(d, key):
-    """If key is present in d, pops and returns the value. Otherwise, returns None."""
-    value = d.pop(key) if key in d else None
-    return value
-
-
 def read_commands_from_stdin():
     """Prompts for and then reads subcommands, one per line, from stdin"""
     print_info('Enter the subcommands, one per line (press Ctrl+D on a blank line to submit)')
@@ -124,8 +118,8 @@ def submit(clusters, args):
     logging.debug('submit args: %s' % args)
 
     job = args
-    raw = safe_pop(job, 'raw')
-    command_from_command_line = safe_pop(job, 'command')
+    raw = job.pop('raw', None)
+    command_from_command_line = job.pop('command', None)
 
     if raw:
         if command_from_command_line:
@@ -147,9 +141,9 @@ def submit(clusters, args):
             raise Exception('You cannot specify multiple subcommands with a single UUID')
 
         if job.get('env'):
-            job['env'] = {e.split('=')[0]: e.split('=')[1] for e in job['env']}
+            job['env'] = dict([e.split('=', maxsplit=1) for e in job['env']])
 
-        jobs = [merge(job, {'command': c}) for c in commands]
+        jobs = [deep_merge(job, {'command': c}) for c in commands]
 
     for j in jobs:
         if not j.get('uuid'):
@@ -174,7 +168,8 @@ def register(add_parser):
     submit_parser = add_parser('submit', help='create job for command')
     submit_parser.add_argument('--uuid', '-u', help='uuid of job', type=valid_uuid)
     submit_parser.add_argument('--name', '-n', help='name of job')
-    submit_parser.add_argument('--priority', '-p', help='priority of job, between 0 and 100 (inclusive)',
+    submit_parser.add_argument('--priority', '-p', help='priority of job, between 0 and 100 (inclusive), with 100 '
+                                                        'being highest priority (default = 50)',
                                type=int, choices=range(0, 101), metavar='')
     submit_parser.add_argument('--max-retries', help='maximum retries for job',
                                dest='max-retries', type=int, metavar='COUNT')

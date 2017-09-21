@@ -11,7 +11,7 @@ import logging
 from urllib.parse import urljoin
 
 
-def merge(a, b):
+def deep_merge(a, b):
     """Merges a and b, letting b win if there is a conflict"""
     merged = a.copy()
     for key in b:
@@ -20,7 +20,7 @@ def merge(a, b):
         if key in a:
             a_value = a[key]
             if isinstance(a_value, dict) and isinstance(b_value, dict):
-                merged[key] = merge(a_value, b_value)
+                merged[key] = deep_merge(a_value, b_value)
     return merged
 
 

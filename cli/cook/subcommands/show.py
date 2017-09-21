@@ -11,7 +11,7 @@ import requests
 from tabulate import tabulate
 
 from cook import colors, http
-from cook.util import strip_all, wait_until, make_url
+from cook.util import strip_all, wait_until, make_url, print_info
 
 DEFAULT_MAX_RUNTIME = 2**63 - 1
 
@@ -221,8 +221,8 @@ def query_cluster(cluster, uuids, pred, timeout, interval, make_request_fn):
     an optional predicaite, pred, that must be satisfied
     """
 
-    def satisfy_pred(cluster_, uuids_):
-        resp_ = make_request_fn(cluster_, uuids_)
+    def satisfy_pred():
+        resp_ = make_request_fn(cluster, uuids)
         return pred(resp_.json())
 
     try:
@@ -230,7 +230,7 @@ def query_cluster(cluster, uuids, pred, timeout, interval, make_request_fn):
         if resp.status_code == requests.codes.ok:
             entities = resp.json()
             if pred and not pred(entities):
-                entities = wait_until(lambda: satisfy_pred(cluster, uuids), timeout, interval)
+                entities = wait_until(satisfy_pred, timeout, interval)
                 if not entities:
                     raise Exception('Timeout waiting for response')
             return entities
@@ -293,8 +293,7 @@ def query(clusters, uuids, pred_jobs=None, pred_instances=None, pred_groups=None
         future_to_cluster = \
             {executor.submit(query_entities, c, uuids, pred_jobs, pred_instances, pred_groups, timeout, interval): c for
              c in clusters}
-        for future in concurrent.futures.as_completed(future_to_cluster):
-            cluster = future_to_cluster[future]
+        for future, cluster in future_to_cluster.items():
             entities = future.result()
             all_entities['clusters'][cluster['name']] = entities
             count += entities['count']
@@ -304,8 +303,9 @@ def query(clusters, uuids, pred_jobs=None, pred_instances=None, pred_groups=None
 
 def print_no_data(clusters):
     """Prints a message indicating that no data was found in the given clusters"""
-    print('%s\nDo you need to add another cluster to your configuration?' %
-          colors.failed('No matching data found in %s.' % ' / '.join([c['name'] for c in clusters])))
+    clusters_text = ' / '.join([c['name'] for c in clusters])
+    print(colors.failed('No matching data found in %s.' % clusters_text))
+    print_info('Do you need to add another cluster to your configuration?')
 
 
 def show(clusters, args):
