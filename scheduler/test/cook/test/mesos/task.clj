@@ -528,35 +528,43 @@
       (is (not (task/use-cook-executor? job-ent executor-config)))))
 
   (testing "custom-executor disabled and coin toss favorable"
-    (let [job-ent {:job/custom-executor false}
+    (let [job-uuid (str (UUID/randomUUID))
+          job-ent {:job/custom-executor false
+                   :job/uuid job-uuid}
           executor-config {:command "cook-executor"
                            :portion 0.25}]
-      (with-redefs [hash (fn [_] 10)]
+      (with-redefs [hash (fn [obj] (is (= job-uuid obj)) 10)]
         (is (task/use-cook-executor? job-ent executor-config)))))
 
   (testing "custom-executor disabled and coin toss unfavorable"
-    (let [job-ent {:job/custom-executor false}
+    (let [job-uuid (str (UUID/randomUUID))
+          job-ent {:job/custom-executor false
+                   :job/uuid job-uuid}
           executor-config {:command "cook-executor"
                            :portion 0.25}]
-      (with-redefs [hash (fn [_] 90)]
+      (with-redefs [hash (fn [obj] (is (= job-uuid obj)) 90)]
         (is (not (task/use-cook-executor? job-ent executor-config))))))
 
   (testing "custom-executor disabled, coin toss favorable with single instance"
     (let [instance-1 {:instance/executor-id "foo"}
+          job-uuid (str (UUID/randomUUID))
           job-ent {:job/custom-executor false
-                   :job/instance [instance-1]}
+                   :job/instance [instance-1]
+                   :job/uuid job-uuid}
           executor-config {:command "cook-executor"
                            :portion 0.25}]
-      (with-redefs [hash (fn [_] 10)]
+      (with-redefs [hash (fn [obj] (is (= job-uuid obj)) 10)]
         (is (not (task/use-cook-executor? job-ent executor-config))))))
 
   (testing "custom-executor disabled, coin toss favorable with multiple instances"
     (let [instance-1 {:instance/executor-id "foo"}
           instance-2 {:instance/executor-id "bar"}
           instance-3 {:instance/executor-id "baz"}
+          job-uuid (str (UUID/randomUUID))
           job-ent {:job/custom-executor false
-                   :job/instance [instance-1 instance-2 instance-3]}
+                   :job/instance [instance-1 instance-2 instance-3]
+                   :job/uuid job-uuid}
           executor-config {:command "cook-executor"
                            :portion 0.25}]
-      (with-redefs [hash (fn [_] 10)]
+      (with-redefs [hash (fn [obj] (is (= job-uuid obj)) 10)]
         (is (not (task/use-cook-executor? job-ent executor-config)))))))
