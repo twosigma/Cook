@@ -9,6 +9,7 @@ import time
 
 import sys
 
+import itertools
 import requests
 from tabulate import tabulate
 
@@ -97,25 +98,14 @@ def tabulate_job_instances(instances):
         return ''
 
 
-def juxtapose_text(text_a, text_b, buffer_len):
+def juxtapose_text(text_a, text_b, buffer_len=15):
     """Places text_a to the left of text_b with a buffer of spaces in between"""
     lines_a = text_a.splitlines()
     lines_b = text_b.splitlines()
-    num_lines_a = len(lines_a)
-    num_lines_b = len(lines_b)
-    longest_line_length_a = max(map(lambda x: len(x), lines_a))
-    buffer = ' ' * buffer_len
-    juxt_lines = []
-    for i in range(max(num_lines_a, num_lines_b)):
-        juxt_line = ''
-        if i < num_lines_a:
-            juxt_line += (lines_a[i] + ((longest_line_length_a - len(lines_a[i])) * ' ') + buffer)
-        else:
-            juxt_line += ((longest_line_length_a * ' ') + buffer)
-        if i < num_lines_b:
-            juxt_line += lines_b[i]
-        juxt_lines.append(juxt_line)
-    return '\n'.join(juxt_lines)
+    longest_line_length_a = max(map(len, lines_a))
+    paired_lines = itertools.zip_longest(lines_a, lines_b, fillvalue="")
+    a_columns = longest_line_length_a + buffer_len
+    return "\n".join("{0:<{1}}{2}".format(a, a_columns, b) for a, b in paired_lines)
 
 
 def format_job_status(job):
@@ -160,7 +150,7 @@ def tabulate_job(cluster_name, job):
 
     job_definition_table = tabulate(job_definition, tablefmt='plain')
     job_state_table = tabulate(job_state, tablefmt='plain')
-    job_tables = juxtapose_text(job_definition_table, job_state_table, 15)
+    job_tables = juxtapose_text(job_definition_table, job_state_table)
     instance_table = tabulate_job_instances(instances)
     return '\n=== Job: %s (%s) ===\n\n%s\n\n%s%s%s' % \
            (job['uuid'], job['name'], job_tables, job_command, environment, instance_table)
@@ -186,7 +176,7 @@ def tabulate_instance(cluster_name, instance_job_pair):
 
     left_table = tabulate(left, tablefmt='plain')
     right_table = tabulate(right, tablefmt='plain')
-    instance_tables = juxtapose_text(left_table, right_table, 15)
+    instance_tables = juxtapose_text(left_table, right_table)
     return '\n=== Job Instance: %s ===\n\n%s' % (instance['task_id'], instance_tables)
 
 
@@ -211,7 +201,7 @@ def tabulate_group(cluster_name, group):
 
     left_table = tabulate(left, tablefmt='plain')
     right_table = tabulate(right, tablefmt='plain')
-    group_tables = juxtapose_text(left_table, right_table, 15)
+    group_tables = juxtapose_text(left_table, right_table)
     return '\n=== Job Group: %s (%s) ===\n\n%s\n\n%s' % (group['uuid'], group['name'], group_tables, jobs)
 
 
