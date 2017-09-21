@@ -43,18 +43,25 @@ def format_list(l):
     return '; '.join([format_dict(x) if isinstance(x, dict) else str(x) for x in l]) if len(l) > 0 else '(empty)'
 
 
+def format_state(state):
+    """Capitalizes and colorizes the given state"""
+    state = state.capitalize()
+    if state == 'Running':
+        text = colors.running(state)
+    elif state == 'Waiting':
+        text = colors.waiting(state)
+    elif state == 'Failed':
+        text = colors.failed(state)
+    elif state == 'Success':
+        text = colors.success(state)
+    else:
+        text = state
+    return text
+
+
 def format_instance_status(instance):
     """Formats the instance status field"""
-    status = instance['status'].capitalize()
-    if status == 'Failed':
-        status_text = colors.failed(status)
-    elif status == 'Success':
-        status_text = colors.success(status)
-    elif status == 'Running':
-        status_text = colors.running(status)
-    else:
-        status_text = status
-
+    status_text = format_state(instance['status'])
     if 'reason_string' in instance:
         parenthetical_text = ' (%s)' % colors.reason(instance['reason_string'])
     elif 'progress' in instance and instance['progress'] > 0:
@@ -113,18 +120,7 @@ def juxtapose_text(text_a, text_b, buffer_len):
 
 def format_job_status(job):
     """Formats the job status field"""
-    state = job['state'].capitalize()
-    if state == 'Running':
-        status_text = colors.running(state)
-    elif state == 'Waiting':
-        status_text = colors.waiting(state)
-    elif state == 'Failed':
-        status_text = colors.failed(state)
-    elif state == 'Success':
-        status_text = colors.success(state)
-    else:
-        status_text = state
-    return status_text
+    return format_state(job['state'])
 
 
 def tabulate_job(cluster_name, job):
