@@ -2,6 +2,7 @@ import argparse
 import json
 import logging
 import os
+import shlex
 import sys
 import uuid
 
@@ -131,7 +132,7 @@ def submit(clusters, args):
         if command_from_command_line:
             if command_from_command_line[0] == '--':
                 command_from_command_line = command_from_command_line[1:]
-            commands = [' '.join(command_from_command_line)]
+            commands = [' '.join([shlex.quote(s) for s in command_from_command_line])]
         else:
             commands = read_commands_from_stdin()
 
@@ -152,6 +153,7 @@ def submit(clusters, args):
         if not j.get('name'):
             j['name'] = '%s_job' % os.environ['USER']
 
+    logging.debug('jobs: %s' % jobs)
     return submit_federated(clusters, jobs)
 
 
