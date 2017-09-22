@@ -357,10 +357,11 @@ class CookCliTest(unittest.TestCase):
         self.assertEqual(0, cp.returncode, cp.stderr)
 
     def test_quoting(self):
-        command = 'printf "Surname: %s\nName: %s\n" "$SURNAME" "$FIRSTNAME"'
-        raw_job = {'command': command, 'env': {'SURNAME': 'Bar', 'FIRSTNAME': 'Foo'}}
-        cp, uuids = cli.submit(cook_url=self.cook_url, submit_flags='--raw', stdin=cli.encode(json.dumps(raw_job)))
+        cp, uuids = cli.submit('echo "Hello; exit 1"', self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        cp = cli.wait(uuids, self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
         cp, jobs = cli.show_json(uuids, self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
-        self.assertEqual(command, jobs[0]['command'])
+        self.assertEqual('completed', jobs[0]['status'])
+        self.assertEqual('success', jobs[0]['state'])
