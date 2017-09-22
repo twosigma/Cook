@@ -223,3 +223,11 @@ def list_jobs(cook_url, **kwargs):
 def contains_job_uuid(jobs, job_uuid):
     """Returns true if jobs contains a job with the given uuid"""
     return any(job for job in jobs if job['uuid'] == job_uuid)
+
+def get_executor(agent_state, executor_id):
+    '''Returns the executor with id executor_id from agent_state'''
+    for framework in agent_state['frameworks']:
+        for executor in framework['executors']:
+            if executor['id'] == executor_id:
+                return executor
+
