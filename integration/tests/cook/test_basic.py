@@ -779,6 +779,7 @@ class CookTest(unittest.TestCase):
         try:
             job = util.wait_for_job(self.cook_url, job_uuid, 'running')
             instance = job['instances'][0]
+            self.logger.debug('instance: %s' % instance)
 
             # Get agent host/port
             state = util.get_mesos_state(self.mesos_url)
