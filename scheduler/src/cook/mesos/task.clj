@@ -15,6 +15,7 @@
 ;;
 (ns cook.mesos.task
   (:require [clojure.data.json :as json]
+            [clojure.set :as set]
             [clojure.tools.logging :as log]
             [cook.mesos.util :as util]
             [mesomatic.types :as mtypes]
@@ -283,14 +284,12 @@
 (defn- assign-port-mappings
   "Assign port mappings from offer. Port n in the cook job should be mapped to the nth
    port taken from the offer."
-  [container ports-assigned]
-  (update-in container [:docker :port-mappings]
-             (fn [port-mappings]
-               (map (fn [{:keys [host-port] :as port-mapping}]
-                      (if (contains? ports-assigned host-port)
-                        (assoc port-mapping :host-port (ports-assigned host-port))
-                        port-mapping))
-                    port-mappings))))
+  [port-mappings ports-assigned]
+  (map (fn [{:keys [host-port] :as port-mapping}]
+         (if (contains? ports-assigned host-port)
+           (assoc port-mapping :host-port (get ports-assigned host-port))
+           port-mapping))
+       port-mappings))
 
 (defn task-info->mesos-message
   "Given a clojure data structure (based on Cook's internal data format for jobs),
@@ -310,8 +309,9 @@
                                     (update docker :network cook-network->mesomatic-network)
                                     docker)))
                         (update :docker
-                                #(clojure.set/rename-keys % {:port-mapping :port-mappings}))
-                        (assign-port-mappings ports-assigned)
+                                #(set/rename-keys % {:port-mapping :port-mappings}))
+                        (update-in [:docker :port-mappings]
+                                   #(assign-port-mappings % ports-assigned))
                         (update :volumes
                                 (fn [volumes]
                                   (map #(update % :mode cook-volume-mode->mesomatic-volume-mode)
