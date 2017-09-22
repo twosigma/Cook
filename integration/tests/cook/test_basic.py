@@ -763,12 +763,6 @@ class CookTest(unittest.TestCase):
         job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
         self.assertEqual('success', job['instances'][0]['status'])
 
-    def get_executor(agent_state, instance):
-        for framework in agent_state['frameworks']:
-            for executor in framework['executors']:
-                if executor['id'] == instance['executor_id'][0]:
-                    return executor
-
     def test_docker_port_mapping(self):
         job_uuid, resp = util.submit_job(self.cook_url,
                                          command='python -m http.server 8080',
@@ -776,10 +770,11 @@ class CookTest(unittest.TestCase):
                                          container={'type': 'DOCKER',
                                                     'docker': {'image': 'python:3.6',
                                                                'network': 'BRIDGE',
-                                                               'port-mapping': [{'host-port': 0,
+                                                               'port-mapping': [{'host-port': 0, # first assigned port
                                                                                  'container-port': 8080},
-                                                                                {'host-port': 1,
-                                                                                 'container-port': 9090}]}})
+                                                                                {'host-port': 1, # second assigned port
+                                                                                 'container-port': 9090,
+                                                                                 'protocol': 'udp'}]}})
         self.assertEqual(resp.status_code, 201, resp.content)
         try:
             job = util.wait_for_job(self.cook_url, job_uuid, 'running')
@@ -789,11 +784,13 @@ class CookTest(unittest.TestCase):
             state = util.get_mesos_state(self.mesos_url)
             agent = [agent for agent in state['slaves']
                  if agent['hostname'] == instance['hostname']][0]
+            # Get the host and port of the agent API.
+            # Example pid: "slave(1)@172.17.0.7:5051"
             agent_hostport = agent['pid'].split('@')[1]
 
             # Get container ID from agent
             agent_state = util.session.get('http://%s/state.json' % agent_hostport).json()
-            executor = get_executor(agent_state, instance)
+            executor = util.get_executor(agent_state, instance['executor_id'])
             container_id = 'mesos-%s.%s' % (agent['id'], executor['container'])
             self.logger.debug('container_id: %s' % container_id)
 
@@ -807,7 +804,7 @@ class CookTest(unittest.TestCase):
             self.logger.debug('ports: %s' % ports)
             self.assertTrue('8080/tcp' in ports)
             self.assertEqual(instance['ports'][0], int(ports['8080/tcp'][0]['HostPort']))
-            self.assertTrue('9090/tcp' in ports)
-            self.assertEqual(instance['ports'][1], int(ports['9090/tcp'][0]['HostPort']))
+            self.assertTrue('9090/udp' in ports)
+            self.assertEqual(instance['ports'][1], int(ports['9090/udp'][0]['HostPort']))
         finally:
             util.session.delete('%s/rawscheduler?job=%s' % (self.cook_url, job_uuid))
