@@ -127,7 +127,7 @@
   (let [{:keys [job task-id] :as task-request} (.getRequest task-result)]
     (merge (job->task-metadata db framework-id executor-config job task-id)
            {:hostname (.getHostname task-result)
-            :ports-assigned (vec (.getAssignedPorts task-result))
+            :ports-assigned (vec (sort (.getAssignedPorts task-result)))
             :task-request task-request})))
 
 (defmulti combine-like-resources
