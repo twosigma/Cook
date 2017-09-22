@@ -100,7 +100,7 @@ def read_commands_from_stdin():
     print_info('Enter the subcommands, one per line (press Ctrl+D on a blank line to submit)')
     commands = read_lines()
     if len(commands) < 1:
-        raise Exception('You must specify at least one command')
+        raise Exception('You must specify at least one command.')
     return commands
 
 
@@ -111,35 +111,49 @@ def read_jobs_from_stdin():
     return jobs_json
 
 
+def acquire_commands(command_args):
+    """
+    Given the command_args list passed from the command line, returns a
+    list of commands to use for job submission. If command_args is None,
+    the user will be prompted to supply commands from stdin. Otherwise,
+    the returned commands list will only contain 1 element, corresponding
+    to the command specified at the command line.
+    """
+    if command_args:
+        if len(command_args) == 1:
+            commands = command_args
+        else:
+            if command_args[0] == '--':
+                command_args = command_args[1:]
+            commands = [' '.join([shlex.quote(s) for s in command_args])]
+    else:
+        commands = read_commands_from_stdin()
+
+    logging.info('commands: %s' % commands)
+    return commands
+
+
 def submit(clusters, args):
     """
     Submits a job (or multiple jobs) to cook scheduler. Assembles a list of jobs,
     potentially getting data from configuration, the command line, and stdin.
     """
     logging.debug('submit args: %s' % args)
-
     job = args
     raw = job.pop('raw', None)
     command_from_command_line = job.pop('command', None)
 
     if raw:
         if command_from_command_line:
-            raise Exception('You cannot specify a command at the command line when using --raw/-r')
+            raise Exception('You cannot specify a command at the command line when using --raw/-r.')
 
         jobs_json = read_jobs_from_stdin()
         jobs = parse_raw_job_spec(job, jobs_json)
     else:
-        if command_from_command_line:
-            if command_from_command_line[0] == '--':
-                command_from_command_line = command_from_command_line[1:]
-            commands = [' '.join([shlex.quote(s) for s in command_from_command_line])]
-        else:
-            commands = read_commands_from_stdin()
-
-        logging.debug('subcommands: %s' % commands)
+        commands = acquire_commands(command_from_command_line)
 
         if job.get('uuid') and len(commands) > 1:
-            raise Exception('You cannot specify multiple subcommands with a single UUID')
+            raise Exception('You cannot specify multiple subcommands with a single UUID.')
 
         if job.get('env'):
             job['env'] = dict([e.split('=', maxsplit=1) for e in job['env']])
