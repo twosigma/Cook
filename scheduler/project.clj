@@ -13,7 +13,7 @@
 ;; See the License for the specific language governing permissions and
 ;; limitations under the License.
 ;;
-(defproject cook "1.5.7-SNAPSHOT"
+(defproject cook "1.6.1-SNAPSHOT"
   :description "This launches jobs on a Mesos cluster with fair sharing and preemption"
   :license {:name "Apache License, Version 2.0"}
   :dependencies [[org.clojure/clojure "1.8.0"]
@@ -171,11 +171,11 @@
 
   :plugins [[lein-print "0.1.0"]]
 
-  :test-selectors {:default (complement #(or (:integration %)
-                                             (:benchmark %)))
-                   :integration :integration
+  :test-selectors {:all (constantly true)
+                   :all-but-benchmark (complement :benchmark)
                    :benchmark :benchmark
-                   :all (constantly true)}
+                   :default (complement #(or (:integration %) (:benchmark %)))
+                   :integration :integration}
 
   :main cook.components
   :jvm-opts ["-Dpython.cachedir.skip=true"

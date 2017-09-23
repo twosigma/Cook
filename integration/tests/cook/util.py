@@ -71,8 +71,9 @@ def is_not_blank(in_string):
     return bool(in_string and in_string.strip())
 
 
-def is_using_cook_executor(cook_url):
-    return is_not_blank(get_in(settings(cook_url), 'executor', 'command'))
+def get_job_executor_type(cook_url):
+    """Returns 'cook' or 'mesos' based on the default executor Cook is configured with."""
+    return 'cook' if is_not_blank(get_in(settings(cook_url), 'executor', 'command')) else 'mesos'
 
 
 def is_connection_error(exception):
@@ -240,3 +241,11 @@ def list_jobs(cook_url, **kwargs):
 def contains_job_uuid(jobs, job_uuid):
     """Returns true if jobs contains a job with the given uuid"""
     return any(job for job in jobs if job['uuid'] == job_uuid)
+
+def get_executor(agent_state, executor_id):
+    '''Returns the executor with id executor_id from agent_state'''
+    for framework in agent_state['frameworks']:
+        for executor in framework['executors']:
+            if executor['id'] == executor_id:
+                return executor
+

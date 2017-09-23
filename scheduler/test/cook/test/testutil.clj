@@ -76,8 +76,8 @@
 
 (defn create-dummy-job
   "Return the entity id for the created dummy job."
-  [conn & {:keys [command committed? container custom-executor? disable-mea-culpa-retries env gpus group job-state
-                  max-runtime memory name ncpus priority retry-count submit-time user uuid]
+  [conn & {:keys [command committed? container custom-executor? disable-mea-culpa-retries env executor gpus group
+                  job-state max-runtime memory name ncpus priority retry-count submit-time user uuid]
            :or {command "dummy command"
                 committed? true
                 disable-mea-culpa-retries false
@@ -116,6 +116,7 @@
                          :job/user user
                          :job/uuid uuid}
                         (when (not (nil? custom-executor?)) {:job/custom-executor custom-executor?})
+                        (when executor {:job/executor executor})
                         (when group {:group/_job group}))
         job-info (if gpus
                    (update-in job-info [:job/resource] conj {:resource/type :resource.type/gpus

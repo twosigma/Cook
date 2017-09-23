@@ -2,6 +2,7 @@
 
 import json
 import logging
+import os
 import subprocess
 import time
 from threading import Event, Thread
@@ -353,8 +354,12 @@ class CookExecutor(Executor):
 
     def launchTask(self, driver, task):
         logging.info('Driver {} launching task {}'.format(driver, task))
+
+        stdout_file_path = os.path.join(self.config.sandbox_directory, 'stdout')
+        stderr_file_path = os.path.join(self.config.sandbox_directory, 'stderr')
         thread = Thread(target=manage_task,
-                        args=(driver, task, self.stop_signal, self.completed_signal, self.config, 'stdout', 'stderr'))
+                        args=(driver, task, self.stop_signal, self.completed_signal, self.config, stdout_file_path,
+                              stderr_file_path))
         thread.start()
 
     def killTask(self, driver, task_id):

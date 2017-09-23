@@ -109,6 +109,7 @@
                            :default-progress-regex-string "regex-string"
                            :log-level "INFO"
                            :max-message-length 512
+                           :portion 0.25
                            :progress-sample-interval-ms 1000
                            :uri {:cache true
                                  :executable true

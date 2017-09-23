@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 
-COOK_PORT=${1:-12321}
-COOK_NREPL_PORT=${2:-8888}
+# Defaults (overridable via environment)
+: ${COOK_PORT:=${1:-12321}}
+: ${COOK_NREPL_PORT:=${2:-8888}}
+: ${COOK_FRAMEWORK_ID:=cook-framework-$(date +%s)}
 
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 NAME=cook-scheduler-${COOK_PORT}
@@ -58,7 +60,7 @@ docker create \
     -e "COOK_EXECUTOR=file://${SCHEDULER_EXECUTOR_DIR}/cook-executor" \
     -e "COOK_PORT=${COOK_PORT}" \
     -e "COOK_NREPL_PORT=${COOK_NREPL_PORT}" \
-    -e "COOK_FRAMEWORK_ID=${COOK_FRAMEWORK_ID:-cook-framework-${COOK_PORT}}" \
+    -e "COOK_FRAMEWORK_ID=${COOK_FRAMEWORK_ID}" \
     -e "MESOS_MASTER=${ZK}" \
     -e "MESOS_MASTER_HOST=${MINIMESOS_MASTER_IP}" \
     -e "COOK_ZOOKEEPER=${MINIMESOS_ZOOKEEPER_IP}:2181" \

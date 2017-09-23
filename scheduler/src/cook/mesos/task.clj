@@ -15,6 +15,8 @@
 ;;
 (ns cook.mesos.task
   (:require [clojure.data.json :as json]
+            [clojure.set :as set]
+            [clojure.tools.logging :as log]
             [cook.mesos.util :as util]
             [mesomatic.types :as mtypes]
             [plumbing.core :refer (map-vals)])
@@ -24,6 +26,36 @@
 (def cook-executor-source "cook_scheduler_executor")
 (defonce custom-executor-name "cook_agent_executor")
 (defonce custom-executor-source "cook_scheduler")
+
+(defn- use-custom-executor?
+  "Returns true if the job should be scheduled to use the custom executor."
+  [job-ent]
+  (or (:job/custom-executor job-ent true)
+      (= :executor/custom (:job/executor job-ent))))
+
+(defn- cook-executor-candidate?
+  "A job is a candidate for execution by the cook-executor if all the following are true:
+   a. Cook executor has not been explicitly disabled,
+   b. This is going to be the first instance of the job, and
+   c. The job UUID hash mod 100 yields less than portion percent."
+  [job-ent portion]
+  (and (nil? (:job/executor job-ent))
+       (zero? (count (:job/instance job-ent)))
+       portion
+       (> (* portion 100) (-> job-ent :job/uuid hash (mod 100)))))
+
+(defn use-cook-executor?
+  "Returns true if the job should be scheduled to use the Cook executor.
+   Cook executor is used when the following conditions are true:
+   1. The job is not configured to use the custom executor (including backwards compatibility),
+   2. The Cook executor command has been configured,
+   3. Either :job/executor is explicitly enabled
+      Or: the job is a cook-executor candidate (see cook-executor-candidate?)."
+  [job-ent {:keys [command portion]}]
+  (and (not (use-custom-executor? job-ent))
+       command
+       (or (= :executor/cook (:job/executor job-ent))
+           (cook-executor-candidate? job-ent portion))))
 
 (defn build-executor-environment
   "Build the environment for the cook executor."
@@ -41,10 +73,9 @@
         container (util/job-ent->container db job-ent)
         ;; If the custom-executor attr isn't set, we default to using a custom
         ;; executor in order to support jobs submitted before we added this field
-        custom-executor? (:job/custom-executor job-ent true)
-        cook-executor? (and (not custom-executor?)
-                            (not container) ;;TODO support cook-executor in containers
-                            (seq executor-config))
+        custom-executor? (use-custom-executor? job-ent)
+        cook-executor? (and (not container) ;;TODO support cook-executor in containers
+                            (use-cook-executor? job-ent executor-config))
         environment (cond-> (util/job-ent->env job-ent)
                             cook-executor? (merge (build-executor-environment executor-config)))
         labels (util/job-ent->label job-ent)
@@ -62,6 +93,11 @@
                        cook-executor? :cook-executor
                        ;; use mesos' command executor by default
                        :else :command-executor)
+        executor (case executor-key
+                   :command-executor :executor/mesos
+                   :container-command-executor :executor/mesos
+                   :cook-executor :executor/cook
+                   :executor/custom)
         data (.getBytes
                (if cook-executor?
                  (json/write-str {"command" (:job/command job-ent)})
@@ -69,10 +105,14 @@
                    ;;TODO this data is a race-condition
                    {:instance (str (count (:job/instance job-ent)))}))
                "UTF-8")]
+    (when (and (= :executor/cook (:job/executor job-ent))
+               (not= executor-key :cook-executor))
+      (log/warn "Task" task-id "requested to use cook executor, but will be executed using" (name executor-key)))
     {:command command
      :container container
      :data data
      :environment environment
+     :executor executor
      :executor-key executor-key
      :framework-id framework-id
      :labels labels
@@ -83,10 +123,11 @@
 
 (defn TaskAssignmentResult->task-metadata
   "Organizes the info Fenzo has already told us about the task we need to run"
-  [db framework-id executor-config ^TaskAssignmentResult fenzo-result]
-  (let [task-request (.getRequest fenzo-result)]
-    (merge (job->task-metadata db framework-id executor-config (:job task-request) (:task-id task-request))
-           {:ports-assigned (.getAssignedPorts fenzo-result)
+  [db framework-id executor-config ^TaskAssignmentResult task-result]
+  (let [{:keys [job task-id] :as task-request} (.getRequest task-result)]
+    (merge (job->task-metadata db framework-id executor-config job task-id)
+           {:hostname (.getHostname task-result)
+            :ports-assigned (vec (sort (.getAssignedPorts task-result)))
             :task-request task-request})))
 
 (defmulti combine-like-resources
@@ -240,12 +281,22 @@
   {"DOCKER" :container-type-docker
    "MESOS" :container-type-mesos})
 
+(defn- assign-port-mappings
+  "Assign port mappings from offer. Port n in the cook job should be mapped to the nth
+   port taken from the offer."
+  [port-mappings ports-assigned]
+  (map (fn [{:keys [host-port] :as port-mapping}]
+         (if (contains? ports-assigned host-port)
+           (assoc port-mapping :host-port (get ports-assigned host-port))
+           port-mapping))
+       port-mappings))
+
 (defn task-info->mesos-message
   "Given a clojure data structure (based on Cook's internal data format for jobs),
    which has already been decorated with everything we need to know about
    a task, return a Mesos message that will actually launch that task"
   [{:keys [command container data executor-key framework-id labels name ports-resource-messages
-           scalar-resource-messages slave-id task-id]}]
+           scalar-resource-messages slave-id task-id ports-assigned]}]
   (let [command (update command
                         :environment
                         (fn [env] {:variables (map->mesos-kv env :name)}))
@@ -257,6 +308,10 @@
                                   (if (:network docker)
                                     (update docker :network cook-network->mesomatic-network)
                                     docker)))
+                        (update :docker
+                                #(set/rename-keys % {:port-mapping :port-mappings}))
+                        (update-in [:docker :port-mappings]
+                                   #(assign-port-mappings % ports-assigned))
                         (update :volumes
                                 (fn [volumes]
                                   (map #(update % :mode cook-volume-mode->mesomatic-volume-mode)

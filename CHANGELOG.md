@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.6.0] - 2017-09-22
+### Added
+- Added support for allowing job to specify which executor (cook|mesos) to use, from @shamsimam
+- Added support for passing state=success/failed in /list, from @dposada
+- Added support for filtering by name in /list, from @dposada
+### Changed
+- More failure codes have been classified as mea-culpa failures, from @pschorf
+- /queue endpoint redirects to the master on non-master hosts, from @pschorf
+- Fixed handling of detailed parameter on group queries, from @DaoWen
+- Fixed bug with launching docker container jobs, from @DaoWen
+- Fixed bug with docker container port mappings, from @pschorf
+
 ## [1.5.6] - 2017-08-07
 ### Changed
 - Performance improvement in rank jobs, from @wyegelwel
