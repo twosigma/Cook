@@ -1,8 +1,9 @@
 {:port #config/env-int "COOK_PORT"
  :authorization {:one-user "root"}
- :database {:datomic-uri "datomic:free://datomic-free:4334/cook-jobs"}
+ :database {:datomic-uri #config/env "COOK_DATOMIC_URI"}
  :hostname #config/env "COOK_HOSTNAME"
- :zookeeper {:connection #config/env "COOK_ZOOKEEPER"}
+ :zookeeper {:local? #config/env-bool "COOK_ZOOKEEPER_LOCAL"
+             :connection #config/env "COOK_ZOOKEEPER"}
  :scheduler {:offer-incubate-ms 15000
              :task-constraints {:timeout-hours 1
                                 :timeout-interval-minutes 1
@@ -25,7 +26,7 @@
  :metrics {:jmx true}
  :nrepl {:enabled? true
          :port #config/env-int "COOK_NREPL_PORT"}
- :log {:file "log/cook.log"
+ :log {:file #config/env "COOK_LOG_FILE"
        :levels {"datomic.db" :warn
                 "datomic.peer" :warn
                 "datomic.kv-cluster" :warn

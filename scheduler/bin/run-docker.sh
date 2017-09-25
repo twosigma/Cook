@@ -47,7 +47,17 @@ then
     docker network create -d bridge --subnet 172.25.0.0/16 cook_nw
 fi
 
-. $DIR/start-datomic.sh
+if [ -z "${COOK_DATOMIC_URI}" ];
+then
+    COOK_DATOMIC_URI="datomic:mem://cook-jobs"
+fi
+
+if [ "${COOK_ZOOKEEPER_LOCAL}" = false ] ; then
+    COOK_ZOOKEEPER="${MINIMESOS_ZOOKEEPER_IP}:2181"
+else
+    COOK_ZOOKEEPER=""
+    COOK_ZOOKEEPER_LOCAL=true
+fi
 
 echo "Starting cook..."
 docker create \
@@ -63,8 +73,11 @@ docker create \
     -e "COOK_FRAMEWORK_ID=${COOK_FRAMEWORK_ID}" \
     -e "MESOS_MASTER=${ZK}" \
     -e "MESOS_MASTER_HOST=${MINIMESOS_MASTER_IP}" \
-    -e "COOK_ZOOKEEPER=${MINIMESOS_ZOOKEEPER_IP}:2181" \
+    -e "COOK_ZOOKEEPER=${COOK_ZOOKEEPER}" \
+    -e "COOK_ZOOKEEPER_LOCAL=${COOK_ZOOKEEPER_LOCAL}" \
     -e "COOK_HOSTNAME=${NAME}" \
+    -e "COOK_DATOMIC_URI=${COOK_DATOMIC_URI}" \
+    -e "COOK_LOG_FILE=log/cook-${COOK_PORT}.log" \
     -v ${DIR}/../log:/opt/cook/log \
     cook-scheduler:latest
 
