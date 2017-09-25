@@ -15,8 +15,11 @@ def print_state(lines_to_erase):
     lines_to_erase lines and then printing the current state of the data
     list, which contains [item, status] pairs.
     """
-    with term.location(0, term.height - lines_to_erase - 1):
-        print_info('\n'.join([('%s ... %s' % (i, s)) for [i, s] in data]))
+    # term.height can be None, for example, when running in a subprocess
+    if term.height:
+        with term.location(0, term.height - lines_to_erase - 1):
+            state_text = '\n'.join([('%s ... %s' % (i, s)) for [i, s] in data])
+            print_info(state_text)
 
 
 def add(item):
