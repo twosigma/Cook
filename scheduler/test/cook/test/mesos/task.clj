@@ -577,3 +577,54 @@
                            :portion 0.25}]
       (with-redefs [hash (fn [obj] (is (= job-uuid obj)) 10)]
         (is (not (task/use-cook-executor? job-ent executor-config)))))))
+
+(deftest test-build-executor-environment
+  (testing "default values"
+    (is (= {"EXECUTOR_LOG_LEVEL" "INFO"
+            "EXECUTOR_MAX_MESSAGE_LENGTH" 256
+            "PROGRESS_OUTPUT_FILE" "stdout"
+            "PROGRESS_REGEX_STRING" "default-regex"
+            "PROGRESS_SAMPLE_INTERVAL_MS" 2000}
+           (let [executor-config {:default-progress-output-file "stdout"
+                                  :default-progress-regex-string "default-regex"
+                                  :log-level "INFO"
+                                  :max-message-length 256
+                                  :progress-sample-interval-ms 2000}
+                 job-ent nil]
+             (task/build-executor-environment executor-config job-ent)))))
+
+  (testing "job configured values"
+    (is (= {"EXECUTOR_LOG_LEVEL" "DEBUG"
+            "EXECUTOR_MAX_MESSAGE_LENGTH" 768
+            "PROGRESS_OUTPUT_FILE" "progress.out"
+            "PROGRESS_REGEX_STRING" "custom-regex"
+            "PROGRESS_SAMPLE_INTERVAL_MS" 5000}
+           (let [executor-config {:default-progress-output-file "stdout"
+                                  :default-progress-regex-string "default-regex"
+                                  :log-level "INFO"
+                                  :max-message-length 256
+                                  :progress-sample-interval-ms 2000}
+                 job-ent {:job/executor-log-level "DEBUG"
+                          :job/executor-max-message-length 768
+                          :job/progress-output-file "progress.out"
+                          :job/progress-regex-string "custom-regex"
+                          :job/progress-sample-interval-ms 5000}]
+             (task/build-executor-environment executor-config job-ent)))))
+
+  (testing "job configured values sanitized"
+    (is (= {"EXECUTOR_LOG_LEVEL" "INFO"
+            "EXECUTOR_MAX_MESSAGE_LENGTH" 1024
+            "PROGRESS_OUTPUT_FILE" "progress.out"
+            "PROGRESS_REGEX_STRING" "custom-regex"
+            "PROGRESS_SAMPLE_INTERVAL_MS" 600000}
+           (let [executor-config {:default-progress-output-file "stdout"
+                                  :default-progress-regex-string "default-regex"
+                                  :log-level "INFO"
+                                  :max-message-length 256
+                                  :progress-sample-interval-ms 2000}
+                 job-ent {:job/executor-log-level "FOOBAR"
+                          :job/executor-max-message-length 768000
+                          :job/progress-output-file "progress.out"
+                          :job/progress-regex-string "custom-regex"
+                          :job/progress-sample-interval-ms 5000000}]
+             (task/build-executor-environment executor-config job-ent))))))
