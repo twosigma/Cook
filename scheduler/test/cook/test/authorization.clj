@@ -68,19 +68,19 @@
     (is (false? (auth/configfile-admins-auth configfile-admins-settings "unauthorized-user" :update test-job)))
     (is (false? (auth/configfile-admins-auth configfile-admins-settings "unauthorized-user" :destroy test-job)))))
 
-(deftest test-configfile-admins-open-gets-whitelisted-users-auth
-  (let [settings {:authorization-fn 'cook.authorization/configfile-admins-open-gets-whitelisted-users-auth
+(deftest test-configfile-admins-open-gets-allowed-users-auth
+  (let [settings {:authorization-fn 'cook.authorization/configfile-admins-open-gets-allowed-users-auth
                   :admins #{"sally" "joe"}
-                  :whitelist #{"alice" "bob"}}
-        authorized? #(auth/configfile-admins-open-gets-whitelisted-users-auth settings %1 %2 %3)]
+                  :allow #{"alice" "bob"}}
+        authorized? #(auth/configfile-admins-open-gets-allowed-users-auth settings %1 %2 %3)]
 
-    (testing "whitelisted users can manipulate their own objects"
+    (testing "allowed users can manipulate their own objects"
       (is (true? (authorized? "alice" :create {:owner "alice" :item :job})))
       (is (true? (authorized? "alice" :read {:owner "alice" :item :job})))
       (is (true? (authorized? "alice" :update {:owner "alice" :item :job})))
       (is (true? (authorized? "alice" :destroy {:owner "alice" :item :job}))))
 
-    (testing "non-whitelisted users cannot manipulate their own objects"
+    (testing "non-allowed users cannot manipulate their own objects"
       (is (false? (authorized? "bill" :create {:owner "bill" :item :job})))
       (is (false? (authorized? "bill" :read {:owner "bill" :item :job})))
       (is (false? (authorized? "bill" :update {:owner "bill" :item :job})))
@@ -112,12 +112,12 @@
       (is (false? (authorized? "bob" :destroy {:owner ::system :item ::system})))
       (is (false? (authorized? "bob" :access {:owner ::system :item ::system}))))
 
-    (testing "whitelisted users can :get anything"
+    (testing "allowed users can :get anything"
       (is (true? (authorized? "bob" :get {})))
       (is (true? (authorized? "bob" :get {:owner "bill" :item :job})))
       (is (true? (authorized? "bob" :get {:owner "anyone" :item :anything}))))
 
-    (testing "non-whitelisted users cannot :get anything"
+    (testing "non-allowed users cannot :get anything"
       (is (false? (authorized? "bill" :get {})))
       (is (false? (authorized? "bill" :get {:owner "bill" :item :job})))
       (is (false? (authorized? "bill" :get {:owner "anyone" :item :anything}))))))

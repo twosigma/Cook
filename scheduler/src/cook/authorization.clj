@@ -145,22 +145,22 @@
                      "is not allowed to perform" verb "on" (str object ",") "denying.")
            false))))
 
-(defn admins-open-gets-whitelisted-users-auth
-  "Allows admins to do anything to any object, and if user-is-whitelisted? is truthy,
+(defn admins-open-gets-allowed-users-auth
+  "Allows admins to do anything to any object, and if user-is-allowed? is truthy,
   allows non-admins to manipulate objects that they own and to read (get) any object."
-  [admins user verb {:keys [owner] :as object} user-is-whitelisted?]
-  (let [svo {:user user :verb verb :object object :user-is-whitelisted? user-is-whitelisted?}]
+  [admins user verb {:keys [owner] :as object} user-is-allowed?]
+  (let [svo {:user user :verb verb :object object :user-is-allowed? user-is-allowed?}]
     (cond (contains? admins user)
           (do
             (log/debug "User" user "is an admin, allowing." (assoc svo :authorized? true))
             true)
 
-          (and (= verb :get) user-is-whitelisted?)
+          (and (= verb :get) user-is-allowed?)
           (do
             (log/debug "Verb was get, allowing." (assoc svo :authorized? true))
             true)
 
-          (and (= owner user) user-is-whitelisted?)
+          (and (= owner user) user-is-allowed?)
           (do
             (log/debug "Object is owned by user, allowing." (assoc svo :authorized? true))
             true)
@@ -171,20 +171,20 @@
                       "on" (str object ",") "denying." (assoc svo :authorized? false))
             false))))
 
-(defn configfile-admins-open-gets-whitelisted-users-auth
+(defn configfile-admins-open-gets-allowed-users-auth
   "Like configfile-admins-auth-open-gets, except it additionally supports a user
-  :whitelist. Only whitelisted users are authorized to perform operations."
+  :allow list. Only allowed users are authorized to perform operations."
   ([^String user
     ^Keyword verb
     {:keys [owner item] :as object}]
-   (configfile-admins-open-gets-whitelisted-users-auth {:admins #{}, :whitelist #{}} user verb object))
-  ([{:keys [admins whitelist] :as settings}
+   (configfile-admins-open-gets-allowed-users-auth {:admins #{}, :allow #{}} user verb object))
+  ([{:keys [admins allow] :as settings}
     ^String user
     ^Keyword verb
     {:keys [owner item] :as object}]
    (log/debug "Checking whether user" user "may perform" verb "on object" (str object)
-              ". Admins are:" admins "and whitelist is:" whitelist)
-   (admins-open-gets-whitelisted-users-auth admins user verb object (contains? whitelist user))))
+              ". Admins are:" admins "and allow is:" allow)
+   (admins-open-gets-allowed-users-auth admins user verb object (contains? allow user))))
 
 (defn configfile-admins-auth-open-gets
   "This authorization function consults the set of usernames specified
@@ -205,7 +205,7 @@
               "may perform" verb
               "on object" (str object) "."
               "Admins are:" admins)
-   (admins-open-gets-whitelisted-users-auth admins user verb object true)))
+   (admins-open-gets-allowed-users-auth admins user verb object true)))
 
 (defn is-authorized?
   "Determines whether the given user can perform the given operation
