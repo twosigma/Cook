@@ -1,0 +1,21 @@
+{
+  "defaults": {
+    "submit": {
+      "mem": 128,
+      "cpus": 1,
+      "max-retries": 1
+    }
+  },
+  "clusters": [
+    {
+      "name": "dev0",
+      "url": "http://127.0.0.1:12321/",
+      "disabled": false
+    },
+    {
+      "name": "dev1",
+      "url": "http://127.0.0.1:22321/",
+      "disabled": true
+    }
+  ]
+}

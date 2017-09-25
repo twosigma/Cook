@@ -164,6 +164,24 @@ def wait_for_job(cook_url, job_id, status, max_delay=120000):
         raise
 
 
+def query_jobs(cook_url, **kwargs):
+    """
+    Queries cook for a set of jobs, by job and/or instance uuid. The kwargs
+    passed to this function are sent straight through as query parameters on
+    the request.
+    """
+    return session.get('%s/rawscheduler' % cook_url, params=kwargs)
+
+
+def multi_cluster_tests_enabled():
+    return os.getenv('COOK_MULTI_CLUSTER') is not None
+
+  
+def get_job(cook_url, job_uuid):
+    """Loads a job by UUID using GET /rawscheduler"""
+    return query_jobs(cook_url, job=[job_uuid]).json()[0]
+
+
 def wait_for_exit_code(cook_url, job_id):
     @retry(stop_max_delay=2000, wait_fixed=250)
     def wait_for_exit_code_inner():

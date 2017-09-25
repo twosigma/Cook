@@ -18,18 +18,7 @@ class MultiClusterTest(unittest.TestCase):
         util.wait_for_cook(self.cook_url_1)
         util.wait_for_cook(self.cook_url_2)
 
-#    Commented out due to flakiness, github issue #381
-#    def test_basic_submit(self):
-#        job_uuid_1, resp = util.submit_job(self.cook_url_1)
-#        self.assertEqual(resp.status_code, 201)
-#        job_uuid_2, resp = util.submit_job(self.cook_url_2)
-#        self.assertEqual(resp.status_code, 201)
-#        job = util.wait_for_job(self.cook_url_1, job_uuid_1, 'completed')
-#        self.assertEqual('success', job['instances'][0]['status'])
-#        job = util.wait_for_job(self.cook_url_2, job_uuid_2, 'completed')
-#        self.assertEqual('success', job['instances'][0]['status'])
-
-    def test_federated_fetch(self):
+    def test_federated_query(self):
         # Submit to cluster #1
         job_uuid_1, resp = util.submit_job(self.cook_url_1)
         self.assertEqual(resp.status_code, 201)

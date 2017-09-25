@@ -76,9 +76,16 @@ if [ "$curl_error" = true ]; then
     exit 1
 fi
 
+# Install the CLI
+cd ${PROJECT_DIR}/../cli
+python3 setup.py install
+CLI=$(pyenv which cs)
+export PATH=${PATH}:$(dirname ${CLI})
+cs --help
+
 # Run the integration tests
 cd ${PROJECT_DIR}
-COOK_MULTI_CLUSTER= COOK_MASTER_SLAVE= COOK_SLAVE_URL=http://localhost:12322 python3 setup.py nosetests --attr ${NOSE_ATTRIBUTES} || test_failures=true
+COOK_MULTI_CLUSTER= COOK_MASTER_SLAVE= COOK_SLAVE_URL=http://localhost:12322 python3 setup.py nosetests --attr ${NOSE_ATTRIBUTES} --verbosity=3 || test_failures=true
 
 # If there were failures, dump the executor logs
 if [ "$test_failures" = true ]; then
