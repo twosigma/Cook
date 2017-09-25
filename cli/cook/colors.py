@@ -1,27 +1,27 @@
 from blessings import Terminal
 
-t = Terminal()
+term = Terminal()
 
 
 def failed(s):
-    return t.bold_red(s)
+    return term.bold_red(s)
 
 
 def success(s):
-    return t.blue(s)
+    return term.blue(s)
 
 
 def running(s):
-    return t.cyan(s)
+    return term.cyan(s)
 
 
 def waiting(s):
-    return t.yellow(s)
+    return term.yellow(s)
 
 
 def reason(s):
-    return t.red(s)
+    return term.red(s)
 
 
 def bold(s):
-    return t.bold(s)
+    return term.bold(s)

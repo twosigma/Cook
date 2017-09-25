@@ -115,9 +115,9 @@ silent = False
 def print_info(text, silent_mode_text=None):
     """Prints text, unless in silent mode (-s / --silent)"""
     if not silent:
-        print(text)
+        print(text, flush=True)
     elif silent_mode_text:
-        print(silent_mode_text)
+        print(silent_mode_text, flush=True)
 
 
 def strip_all(strs):

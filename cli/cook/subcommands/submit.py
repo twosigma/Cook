@@ -173,9 +173,9 @@ def submit(clusters, args):
 
 def valid_uuid(s):
     """Allows argparse to flag user-provided job uuids as valid or not"""
-    try:
+    if is_valid_uuid(s):
         return str(uuid.UUID(s))
-    except:
+    else:
         raise argparse.ArgumentTypeError('%s is not a valid UUID' % s)
 
 
@@ -191,10 +191,10 @@ def register(add_parser):
                                dest='max-retries', type=int, metavar='COUNT')
     submit_parser.add_argument('--max-runtime', help='maximum runtime for job',
                                dest='max-runtime', type=int, metavar='MILLIS')
-    submit_parser.add_argument('--cpus', help='cpus to reserve for job', type=float)
-    submit_parser.add_argument('--mem', help='memory to reserve for job', type=int)
-    submit_parser.add_argument('--group', help='group uuid for job', type=str)
-    submit_parser.add_argument('--env', help='environment variable for job (can be repeated)',
+    submit_parser.add_argument('--cpus', '-c', help='cpus to reserve for job', type=float)
+    submit_parser.add_argument('--mem', '-m', help='memory to reserve for job', type=int)
+    submit_parser.add_argument('--group', '-g', help='group uuid for job', type=str, metavar='UUID')
+    submit_parser.add_argument('--env', '-e', help='environment variable for job (can be repeated)',
                                metavar='KEY=VALUE', action='append')
     submit_parser.add_argument('--ports', help='number of ports to reserve for job', type=int)
     submit_parser.add_argument('--raw', '-r', help='raw job spec in json format', dest='raw', action='store_true')

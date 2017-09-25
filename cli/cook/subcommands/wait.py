@@ -35,17 +35,10 @@ def wait(clusters, args):
     interval = args.get('interval')
     uuids = strip_all(args.get('uuid'))
     timeout_text = ('up to %s' % seconds_to_timedelta(timeout)) if timeout else 'indefinitely'
-    print_info('Waiting %s for job(s) to complete...' % timeout_text)
-    start = time.time()
+    print_info('Will wait %s.' % timeout_text)
     query_result = query(clusters, uuids, all_jobs_completed, all_instances_completed,
                          all_groups_completed, timeout, interval)
-    end = time.time()
     if query_result['count'] > 0:
-        elapsed = end - start
-        if elapsed >= interval:
-            print_info('Job(s) completed after waiting for a total of %s.' % seconds_to_timedelta(elapsed))
-        else:
-            print_info('Job(s) are already complete.')
         return 0
     else:
         print_no_data(clusters)

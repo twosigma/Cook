@@ -10,10 +10,15 @@ requirements = [
     'blessings'
 ]
 
+test_requirements = [
+    'nose'
+]
+
 setup(
     name='cook',
     version='1.0',
     packages=['cook', 'cook.subcommands'],
     entry_points={'console_scripts': ['cs = cook.__main__:main']},
-    install_requires=requirements
+    install_requires=requirements,
+    tests_require=test_requirements
 )

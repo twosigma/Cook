@@ -10,10 +10,10 @@ import humanfriendly
 import requests
 from tabulate import tabulate
 
-from cook import colors, http
+from cook import colors, http, progress
 from cook.util import strip_all, wait_until, make_url, print_info
 
-DEFAULT_MAX_RUNTIME = 2**63 - 1
+DEFAULT_MAX_RUNTIME = 2 ** 63 - 1
 
 
 def seconds_to_timedelta(s):
@@ -215,10 +215,10 @@ def show_data(cluster_name, data, format_fn):
     return count
 
 
-def query_cluster(cluster, uuids, pred, timeout, interval, make_request_fn):
+def query_cluster(cluster, uuids, pred, timeout, interval, make_request_fn, entity_type):
     """
     Queries the given cluster for the given uuids with
-    an optional predicaite, pred, that must be satisfied
+    an optional predicate, pred, that must be satisfied
     """
 
     def satisfy_pred():
@@ -229,10 +229,27 @@ def query_cluster(cluster, uuids, pred, timeout, interval, make_request_fn):
         resp = make_request_fn(cluster, uuids)
         if resp.status_code == requests.codes.ok:
             entities = resp.json()
-            if pred and not pred(entities):
-                entities = wait_until(satisfy_pred, timeout, interval)
-                if not entities:
-                    raise Exception('Timeout waiting for response')
+            if pred:
+                if entity_type == 'job':
+                    wait_text = 'Waiting for the following jobs'
+                elif entity_type == 'instance':
+                    wait_text = 'Waiting for instances of the following jobs'
+                elif entity_type == 'group':
+                    wait_text = 'Waiting for the following job groups'
+                else:
+                    raise Exception('Invalid entity type %s.' % entity_type)
+
+                uuid_text = ', '.join([e['uuid'] for e in entities])
+                wait_text = '%s on %s: %s' % (wait_text, colors.bold(cluster['name']), uuid_text)
+                index = progress.add(wait_text)
+                if pred(entities):
+                    progress.update(index, colors.bold('Done'))
+                else:
+                    entities = wait_until(satisfy_pred, timeout, interval)
+                    if entities:
+                        progress.update(index, colors.bold('Done'))
+                    else:
+                        raise Exception('Timeout waiting for response.')
             return entities
         else:
             return {}
@@ -270,13 +287,16 @@ def query_entities(cluster, uuids, pred_jobs, pred_instances, pred_groups, timeo
     count = 0
     entities = {}
     if include_jobs:
-        entities['jobs'] = query_cluster(cluster, uuids, pred_jobs, timeout, interval, make_job_request)
+        entities['jobs'] = query_cluster(cluster, uuids, pred_jobs, timeout,
+                                         interval, make_job_request, 'job')
         count += len(entities['jobs'])
     if include_instances:
-        entities['instances'] = query_cluster(cluster, uuids, pred_instances, timeout, interval, make_instance_request)
+        entities['instances'] = query_cluster(cluster, uuids, pred_instances, timeout,
+                                              interval, make_instance_request, 'instance')
         count += len(entities['instances'])
     if include_groups:
-        entities['groups'] = query_cluster(cluster, uuids, pred_groups, timeout, interval, make_group_request)
+        entities['groups'] = query_cluster(cluster, uuids, pred_groups, timeout,
+                                           interval, make_group_request, 'group')
         count += len(entities['groups'])
     entities['count'] = count
     return entities

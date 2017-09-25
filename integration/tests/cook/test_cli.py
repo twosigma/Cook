@@ -365,3 +365,36 @@ class CookCliTest(unittest.TestCase):
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual('completed', jobs[0]['status'])
         self.assertEqual('success', jobs[0]['state'])
+
+    def test_complex_commands(self):
+        desired_command = '(foo -x \'def bar = "baz"\')'
+        # Incorrectly submitted command
+        command = '"(foo -x \'def bar = "baz"\')"'
+        cp, uuids = cli.submit(command, self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        cp, jobs = cli.show_json(uuids, self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertEqual(desired_command.replace('"', ''), jobs[0]['command'])
+        # Correctly submitted command
+        command = '"(foo -x \'def bar = \\"baz\\"\')"'
+        cp, uuids = cli.submit(command, self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        cp, jobs = cli.show_json(uuids, self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertEqual(desired_command, jobs[0]['command'])
+
+        desired_command = "export HOME=$MESOS_DIRECTORY; export LOGNAME=$(whoami); JAVA_OPTS='-Xmx15000m' foo"
+        # Incorrectly submitted command
+        command = "'export HOME=$MESOS_DIRECTORY; export LOGNAME=$(whoami); JAVA_OPTS='-Xmx15000m' foo'"
+        cp, uuids = cli.submit(command, self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        cp, jobs = cli.show_json(uuids, self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertEqual(desired_command.replace("'", ''), jobs[0]['command'])
+        # Correctly submitted command
+        command = "'export HOME=$MESOS_DIRECTORY; export LOGNAME=$(whoami); JAVA_OPTS='\"'\"'-Xmx15000m'\"'\"' foo'"
+        cp, uuids = cli.submit(command, self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        cp, jobs = cli.show_json(uuids, self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertEqual(desired_command, jobs[0]['command'])
