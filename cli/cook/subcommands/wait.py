@@ -1,8 +1,6 @@
-import time
+from cook.subcommands.show import query, print_no_data
 
-from cook.subcommands.show import query, print_no_data, seconds_to_timedelta
-
-from cook.util import strip_all, print_info
+from cook.util import strip_all, print_info, seconds_to_timedelta
 
 
 def all_jobs_completed(jobs):

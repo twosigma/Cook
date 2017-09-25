@@ -15,7 +15,7 @@
     {
       "name": "dev1",
       "url": "http://127.0.0.1:22321/",
-      "disabled": false 
+      "disabled": true
     }
   ]
 }

@@ -10,6 +10,9 @@ from datetime import datetime, timedelta
 import logging
 from urllib.parse import urljoin
 
+import arrow
+import humanfriendly
+
 
 def deep_merge(a, b):
     """Merges a and b, letting b win if there is a conflict"""
@@ -123,3 +126,20 @@ def print_info(text, silent_mode_text=None):
 def strip_all(strs):
     """Strips whitespace from each string in strs"""
     return [s.strip() for s in strs]
+
+
+def seconds_to_timedelta(s):
+    """Converts seconds to a timedelta for display on screen"""
+    return humanfriendly.format_timespan(s)
+
+
+def millis_to_timedelta(ms):
+    """Converts milliseconds to a timedelta for display on screen"""
+    return seconds_to_timedelta(round(ms / 1000))
+
+
+def millis_to_date_string(ms):
+    """Converts milliseconds to a date string for display on screen"""
+    s, _ = divmod(ms, 1000)
+    utc = time.gmtime(s)
+    return arrow.get(utc).humanize()

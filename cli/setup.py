@@ -3,15 +3,16 @@
 from setuptools import setup
 
 requirements = [
-    'requests',
-    'tabulate',
     'arrow',
+    'blessings',
     'humanfriendly',
-    'blessings'
+    'requests',
+    'tabulate'
 ]
 
 test_requirements = [
-    'nose'
+    'nose',
+    'requests-mock'
 ]
 
 setup(

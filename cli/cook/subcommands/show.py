@@ -5,32 +5,15 @@ import logging
 import time
 from concurrent import futures
 
-import arrow
 import humanfriendly
+import os
 import requests
 from tabulate import tabulate
 
 from cook import colors, http, progress
-from cook.util import strip_all, wait_until, make_url, print_info
+from cook.util import strip_all, wait_until, make_url, print_info, millis_to_timedelta, millis_to_date_string
 
 DEFAULT_MAX_RUNTIME = 2 ** 63 - 1
-
-
-def seconds_to_timedelta(s):
-    """Converts seconds to a timedelta for display on screen"""
-    return humanfriendly.format_timespan(s)
-
-
-def millis_to_timedelta(ms):
-    """Converts milliseconds to a timedelta for display on screen"""
-    return seconds_to_timedelta(round(ms / 1000))
-
-
-def millis_to_date_string(ms):
-    """Converts milliseconds to a date string for display on screen"""
-    s, _ = divmod(ms, 1000)
-    utc = time.gmtime(s)
-    return arrow.get(utc).humanize()
 
 
 def format_dict(d):
@@ -256,6 +239,9 @@ def query_cluster(cluster, uuids, pred, timeout, interval, make_request_fn, enti
     except requests.exceptions.ConnectionError as ce:
         logging.info(ce)
         return {}
+    except json.decoder.JSONDecodeError as jde:
+        logging.exception(jde)
+        return {}
 
 
 def make_entity_request(cluster, endpoint, params):
@@ -309,10 +295,13 @@ def query(clusters, uuids, pred_jobs=None, pred_instances=None, pred_groups=None
     """
     count = 0
     all_entities = {'clusters': {}}
-    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
-        future_to_cluster = \
-            {executor.submit(query_entities, c, uuids, pred_jobs, pred_instances, pred_groups, timeout, interval): c for
-             c in clusters}
+    max_workers = len(os.sched_getaffinity(0))
+    logging.debug('querying with max workers = %s' % max_workers)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+        def submit(c):
+            return executor.submit(query_entities, c, uuids, pred_jobs, pred_instances, pred_groups, timeout, interval)
+
+        future_to_cluster = {submit(c): c for c in clusters}
         for future, cluster in future_to_cluster.items():
             entities = future.result()
             all_entities['clusters'][cluster['name']] = entities
