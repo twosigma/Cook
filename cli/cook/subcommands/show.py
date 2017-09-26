@@ -2,16 +2,15 @@ import concurrent
 import itertools
 import json
 import logging
+import os
 import time
 from concurrent import futures
 
 import humanfriendly
-import os
-import requests
 from tabulate import tabulate
 
-from cook import colors, http, progress
-from cook.util import strip_all, wait_until, make_url, print_info, millis_to_timedelta, millis_to_date_string
+from cook import colors, progress, http
+from cook.util import strip_all, wait_until, print_info, millis_to_timedelta, millis_to_date_string
 
 DEFAULT_MAX_RUNTIME = 2 ** 63 - 1
 
@@ -95,10 +94,20 @@ def format_job_status(job):
     return format_state(job['state'])
 
 
+def format_job_memory(job):
+    """Formats the job memory field"""
+    return humanfriendly.format_size(job['mem'] * 1000 * 1000)
+
+
+def format_job_attempts(job):
+    """Formats the job attempts field (e.g. 2 / 5)"""
+    return '%s / %s' % (job['max_retries'] - job['retries_remaining'], job['max_retries'])
+
+
 def tabulate_job(cluster_name, job):
     """Given a job, returns a string containing tables for the job and instance fields"""
     job_definition = [['Cluster', cluster_name],
-                      ['Memory', humanfriendly.format_size(job['mem'] * 1000 * 1000)],
+                      ['Memory', format_job_memory(job)],
                       ['CPUs', job['cpus']],
                       ['User', job['user']],
                       ['Priority', job['priority']]]
@@ -112,12 +121,12 @@ def tabulate_job(cluster_name, job):
         job_definition.append(['Constraints', format_list(job['constraints'])])
     if len(job['labels']) > 0:
         job_definition.append(['Labels', format_dict(job['labels'])])
-    if len(job['uris']) > 0:
+    if job['uris'] and len(job['uris']) > 0:
         job_definition.append(['URI(s)', format_list(job['uris'])])
     if 'groups' in job:
         job_definition.append(['Job Group(s)', format_list(job['groups'])])
 
-    job_state = [['Attempts', ('%s / %s' % (job['max_retries'] - job['retries_remaining'], job['max_retries']))],
+    job_state = [['Attempts', format_job_attempts(job)],
                  ['Job Status', format_job_status(job)],
                  ['Submitted', millis_to_date_string(job['submit_time'])]]
 
@@ -208,63 +217,44 @@ def query_cluster(cluster, uuids, pred, timeout, interval, make_request_fn, enti
         resp_ = make_request_fn(cluster, uuids)
         return pred(resp_.json())
 
-    try:
-        resp = make_request_fn(cluster, uuids)
-        if resp.status_code == requests.codes.ok:
-            entities = resp.json()
-            if pred:
-                if entity_type == 'job':
-                    wait_text = 'Waiting for the following jobs'
-                elif entity_type == 'instance':
-                    wait_text = 'Waiting for instances of the following jobs'
-                elif entity_type == 'group':
-                    wait_text = 'Waiting for the following job groups'
-                else:
-                    raise Exception('Invalid entity type %s.' % entity_type)
-
-                uuid_text = ', '.join([e['uuid'] for e in entities])
-                wait_text = '%s on %s: %s' % (wait_text, colors.bold(cluster['name']), uuid_text)
-                index = progress.add(wait_text)
-                if pred(entities):
-                    progress.update(index, colors.bold('Done'))
-                else:
-                    entities = wait_until(satisfy_pred, timeout, interval)
-                    if entities:
-                        progress.update(index, colors.bold('Done'))
-                    else:
-                        raise Exception('Timeout waiting for response.')
-            return entities
+    entities = http.make_data_request(lambda: make_request_fn(cluster, uuids))
+    if pred:
+        if entity_type == 'job':
+            wait_text = 'Waiting for the following jobs'
+        elif entity_type == 'instance':
+            wait_text = 'Waiting for instances of the following jobs'
+        elif entity_type == 'group':
+            wait_text = 'Waiting for the following job groups'
         else:
-            return {}
-    except requests.exceptions.ConnectionError as ce:
-        logging.info(ce)
-        return {}
-    except json.decoder.JSONDecodeError as jde:
-        logging.exception(jde)
-        return {}
+            raise Exception('Invalid entity type %s.' % entity_type)
 
-
-def make_entity_request(cluster, endpoint, params):
-    """Attempts to query entities corresponding to the given params from cluster."""
-    url = make_url(cluster, endpoint)
-    resp = http.get(url, params=params)
-    logging.info('response from cook: %s' % resp.text)
-    return resp
+        uuid_text = ', '.join([e['uuid'] for e in entities])
+        wait_text = '%s on %s: %s' % (wait_text, colors.bold(cluster['name']), uuid_text)
+        index = progress.add(wait_text)
+        if pred(entities):
+            progress.update(index, colors.bold('Done'))
+        else:
+            entities = wait_until(satisfy_pred, timeout, interval)
+            if entities:
+                progress.update(index, colors.bold('Done'))
+            else:
+                raise Exception('Timeout waiting for response.')
+    return entities
 
 
 def make_job_request(cluster, uuids):
     """Attempts to query jobs corresponding to the given uuids from cluster."""
-    return make_entity_request(cluster, 'rawscheduler', params={'job': uuids, 'partial': 'true'})
+    return http.get(cluster, 'rawscheduler', params={'job': uuids, 'partial': 'true'})
 
 
 def make_instance_request(cluster, uuids):
     """Attempts to query instances corresponding to the given uuids from cluster."""
-    return make_entity_request(cluster, 'rawscheduler', params={'instance': uuids, 'partial': 'true'})
+    return http.get(cluster, 'rawscheduler', params={'instance': uuids, 'partial': 'true'})
 
 
 def make_group_request(cluster, uuids):
     """Attempts to query groups corresponding to the given uuids from cluster."""
-    return make_entity_request(cluster, 'group', params={'uuid': uuids, 'partial': 'true', 'detailed': 'true'})
+    return http.get(cluster, 'group', params={'uuid': uuids, 'partial': 'true', 'detailed': 'true'})
 
 
 def query_entities(cluster, uuids, pred_jobs, pred_instances, pred_groups, timeout, interval,
@@ -288,7 +278,7 @@ def query_entities(cluster, uuids, pred_jobs, pred_instances, pred_groups, timeo
     return entities
 
 
-def query(clusters, uuids, pred_jobs=None, pred_instances=None, pred_groups=None, timeout=None, interval=None):
+def query_across_clusters(clusters, query_fn):
     """
     Attempts to query entities from the given clusters. The uuids are provided in args. Optionally
     accepts a predicate, pred, which must be satisfied within the timeout.
@@ -298,16 +288,26 @@ def query(clusters, uuids, pred_jobs=None, pred_instances=None, pred_groups=None
     max_workers = len(os.sched_getaffinity(0))
     logging.debug('querying with max workers = %s' % max_workers)
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-        def submit(c):
-            return executor.submit(query_entities, c, uuids, pred_jobs, pred_instances, pred_groups, timeout, interval)
-
-        future_to_cluster = {submit(c): c for c in clusters}
+        future_to_cluster = {query_fn(c, executor): c for c in clusters}
         for future, cluster in future_to_cluster.items():
             entities = future.result()
             all_entities['clusters'][cluster['name']] = entities
             count += entities['count']
     all_entities['count'] = count
     return all_entities
+
+
+def query(clusters, uuids, pred_jobs=None, pred_instances=None, pred_groups=None, timeout=None, interval=None):
+    """
+    Uses query_across_clusters to make the /rawscheduler
+    requests in parallel across the given clusters
+    """
+
+    def submit(cluster, executor):
+        return executor.submit(query_entities, cluster, uuids, pred_jobs,
+                               pred_instances, pred_groups, timeout, interval)
+
+    return query_across_clusters(clusters, submit)
 
 
 def print_no_data(clusters):
@@ -339,7 +339,7 @@ def show(clusters, args):
         return 1
 
 
-def register(add_parser):
+def register(add_parser, _):
     """Adds this sub-command's parser and returns the action function"""
     show_parser = add_parser('show', help='show jobs / instances / groups by uuid')
     show_parser.add_argument('uuid', nargs='+')

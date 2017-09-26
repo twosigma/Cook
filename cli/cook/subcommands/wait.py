@@ -1,4 +1,4 @@
-from cook.subcommands.show import query, print_no_data
+from cook.subcommands.show import print_no_data, query
 
 from cook.util import strip_all, print_info, seconds_to_timedelta
 
@@ -43,10 +43,13 @@ def wait(clusters, args):
         return 1
 
 
-def register(add_parser):
+def register(add_parser, add_defaults):
     """Adds this sub-command's parser and returns the action function"""
     wait_parser = add_parser('wait', help='wait for job(s) to complete by uuid')
     wait_parser.add_argument('uuid', nargs='+')
-    wait_parser.add_argument('--timeout', '-t', default=None, help='maximum time (in seconds) to wait', type=int)
-    wait_parser.add_argument('--interval', '-i', default=5, help='time (in seconds) to wait between polling', type=int)
+    wait_parser.add_argument('--timeout', '-t', help='maximum time (in seconds) to wait', type=int)
+    wait_parser.add_argument('--interval', '-i', help='time (in seconds) to wait between polling', type=int)
+
+    add_defaults('wait', {'timeout': None, 'interval': 5})
+
     return wait
