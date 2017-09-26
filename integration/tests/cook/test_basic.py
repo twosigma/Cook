@@ -42,12 +42,14 @@ class CookTest(unittest.TestCase):
         job_uuid, resp = util.submit_job(self.cook_url, command='exit 1', max_retries=10)
         self.assertEqual(resp.status_code, 201, msg=resp.content)
         try:
-            util.wait_for_job(self.cook_url, job_uuid, 'completed', max_delay=60000)
+            job = util.wait_for_job(self.cook_url, job_uuid, 'completed', max_delay=60000)
+            message = json.dumps(job, sort_keys=True)
+            self.assertEqual('failed', job['state'], message)
+            self.assertEqual('completed', job['status'], message)
         except:
             pass
         job = util.load_job(self.cook_url, job_uuid)
         message = json.dumps(job, sort_keys=True)
-        self.assertEqual('waiting', job['status'], message)
         job_instances = sorted(job['instances'], key=lambda i: i['end_time'])
         self.assertTrue(len(job_instances) >= 2, message) # sort job instances
         for i in range(1, len(job_instances)):
