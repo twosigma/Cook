@@ -26,6 +26,7 @@ pom.xml
 pom.xml.asc
 scheduler/checkouts
 scheduler/log/
+scheduler/resources/public/cook-executor*
 scheduler/src/cfg
 scheduler/trace*.csv
 src/cfg/current.clj
