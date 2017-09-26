@@ -116,6 +116,36 @@
     :db/cardinality :db.cardinality/one
     :db.install/_attribute :db.part/db}
    {:db/id (d/tempid :db.part/db)
+    :db/doc "Determines the log level of the Cook executor. It must be one of DEBUG, ERROR, INFO, or WARNING."
+    :db/ident :job/executor-log-level
+    :db/valueType :db.type/string
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/doc "Determines the maximum message length sent from the Cook executor. It must be in the range [64, 1024]."
+    :db/ident :job/executor-max-message-length
+    :db/valueType :db.type/long
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/doc "Determines the file used by the Cook executor to search for progress messages."
+    :db/ident :job/progress-output-file
+    :db/valueType :db.type/string
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/doc "Determines the regex used by the Cook executor to identify progress messages."
+    :db/ident :job/progress-regex-string
+    :db/valueType :db.type/string
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/doc "Determines the sample interval used by the Cook executor to look for updates in the progress output file."
+    :db/ident :job/progress-sample-interval-ms
+    :db/valueType :db.type/long
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
     :db/doc "Determines if this job uses a custom executor (true) or one of the other executors (cook/command) (false).
              If unset, then uses a custom executor (for legacy compatibility)."
     :db/ident :job/custom-executor
