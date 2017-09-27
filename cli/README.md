@@ -75,6 +75,17 @@ UUIDs are passed as positional arguments.
 This command shows information about the queried jobs, instances, and groups. 
 If you use `--json`, the command returns a JSON representation instead of tables.
 
+#### `list`
+
+The `list` command allows you to list all jobs:
+
+- in a particular state (e.g. running / waiting),
+- for a particular user,
+- submitted within the last X hours,
+- with a particular name pattern (e.g. "spark*")
+
+As with `show`, `list` will list jobs across all configured clusters.
+
 ### Examples
 
 Simple job creation:
@@ -132,4 +143,14 @@ ls
 
 Job Instance                          Run Time                      Host        Instance Status
 3c625387-b9a6-40db-a971-f37a7eb728e6  0 seconds (started just now)  172.17.0.7  Success
+```
+
+List all jobs submitted by root, in any state, within the last (one) hour:
+```bash
+$ cs list --user root --state all --lookback 1
+Cluster    UUID                                  Name                                  Memory      CPUs    Priority  Attempts    Submitted       Command    Job Status
+dev0       df1ecf44-e42e-4aa3-8cc3-40a289b98666  ff9e3613-97c5-4a33-b4bd-5194fae9c29e  128 MB         1          50  1 / 1       44 minutes ago  exit 1     Failed
+dev0       ec62e5c3-a2e0-454b-ada6-e31ac35ff79b  ff9e3613-97c5-4a33-b4bd-5194fae9c29e  128 MB         1          50  1 / 1       44 minutes ago  ls         Success
+dev0       9bd67f93-824a-4f82-a7b1-599b3cc5a8c3  ff9e3613-97c5-4a33-b4bd-5194fae9c29e  128 MB         1          50  1 / 1       44 minutes ago  sleep 60   Success
+dev0       07420e7b-915a-468f-b53b-be67debcc915  ff9e3613-97c5-4a33-b4bd-5194fae9c29e  128 MB         1          50  0 / 1       44 minutes ago  ls         Waiting
 ```
