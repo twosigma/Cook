@@ -80,7 +80,8 @@ def list_jobs(clusters, args):
             show_data(cluster_job_pairs)
         return 0
     else:
-        print_no_data(clusters)
+        if not as_json:
+            print_no_data(clusters)
         return 1
 
 

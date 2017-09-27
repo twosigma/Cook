@@ -218,7 +218,7 @@ def query_cluster(cluster, uuids, pred, timeout, interval, make_request_fn, enti
         return pred(resp_.json())
 
     entities = http.make_data_request(lambda: make_request_fn(cluster, uuids))
-    if pred:
+    if pred and len(entities) > 0:
         if entity_type == 'job':
             wait_text = 'Waiting for the following jobs'
         elif entity_type == 'instance':
@@ -335,7 +335,8 @@ def show(clusters, args):
     if query_result['count'] > 0:
         return 0
     else:
-        print_no_data(clusters)
+        if not as_json:
+            print_no_data(clusters)
         return 1
 
 

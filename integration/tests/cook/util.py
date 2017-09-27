@@ -164,22 +164,8 @@ def wait_for_job(cook_url, job_id, status, max_delay=120000):
         raise
 
 
-def query_jobs(cook_url, **kwargs):
-    """
-    Queries cook for a set of jobs, by job and/or instance uuid. The kwargs
-    passed to this function are sent straight through as query parameters on
-    the request.
-    """
-    return session.get('%s/rawscheduler' % cook_url, params=kwargs)
-
-
 def multi_cluster_tests_enabled():
     return os.getenv('COOK_MULTI_CLUSTER') is not None
-
-  
-def get_job(cook_url, job_uuid):
-    """Loads a job by UUID using GET /rawscheduler"""
-    return query_jobs(cook_url, job=[job_uuid]).json()[0]
 
 
 def wait_for_exit_code(cook_url, job_id):
@@ -242,10 +228,15 @@ def contains_job_uuid(jobs, job_uuid):
     """Returns true if jobs contains a job with the given uuid"""
     return any(job for job in jobs if job['uuid'] == job_uuid)
 
+
 def get_executor(agent_state, executor_id):
-    '''Returns the executor with id executor_id from agent_state'''
+    """Returns the executor with id executor_id from agent_state"""
     for framework in agent_state['frameworks']:
         for executor in framework['executors']:
             if executor['id'] == executor_id:
                 return executor
 
+
+def get_user(cook_url, job_uuid):
+    """Retrieves the job corresponding to the given job_uuid and returns the user"""
+    return load_job(cook_url, job_uuid)['user']

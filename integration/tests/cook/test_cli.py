@@ -398,3 +398,43 @@ class CookCliTest(unittest.TestCase):
         cp, jobs = cli.show_json(uuids, self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual(desired_command, jobs[0]['command'])
+
+    def test_list_no_matching_jobs(self):
+        cp = cli.list_jobs(self.cook_url, '--name %s' % uuid.uuid4())
+        self.assertEqual(1, cp.returncode, cp.stderr)
+        self.assertEqual('No jobs found in %s.' % self.cook_url, cli.stdout(cp))
+
+    def list_jobs(self, name, user, state):
+        """Invokes the list subcommand with the given name, user, and state filters"""
+        cp, jobs = cli.list_jobs_json(self.cook_url, '--name %s --user %s --state %s' % (name, user, state))
+        return cp, jobs
+
+    def test_list_by_state(self):
+        name = str(uuid.uuid4())
+        # running
+        cp, uuids = cli.submit('sleep 60', self.cook_url, submit_flags='--name %s' % name)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        user = util.get_user(self.cook_url, uuids[0])
+        util.wait_for_job(self.cook_url, uuids[0], 'running')
+        cp, jobs = self.list_jobs(name, user, 'running')
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertEqual(1, len(jobs))
+        self.assertEqual(uuids[0], jobs[0]['uuid'])
+        # completed
+        cp, uuids = cli.submit('ls', self.cook_url, submit_flags='--name %s' % name)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        util.wait_for_job(self.cook_url, uuids[0], 'completed')
+        cp, jobs = self.list_jobs(name, user, 'completed')
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertEqual(1, len(jobs))
+        self.assertEqual(uuids[0], jobs[0]['uuid'])
+        # waiting
+        raw_job = {'command': 'ls', 'name': name, 'constraints': [['HOSTNAME', 'EQUALS', 'will not get scheduled']]}
+        cp, uuids = cli.submit(stdin=cli.encode(json.dumps(raw_job)), cook_url=self.cook_url, submit_flags='--raw')
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        util.wait_for_job(self.cook_url, uuids[0], 'waiting')
+        cp, jobs = self.list_jobs(name, user, 'waiting')
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertEqual(1, len(jobs))
+        self.assertEqual(uuids[0], jobs[0]['uuid'])
+

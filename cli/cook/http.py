@@ -62,10 +62,10 @@ def make_data_request(make_request_fn):
         if resp.status_code == requests.codes.ok:
             return resp.json()
         else:
-            return {}
+            return []
     except requests.exceptions.ConnectionError as ce:
         logging.info(ce)
-        return {}
+        return []
     except json.decoder.JSONDecodeError as jde:
         logging.exception(jde)
-        return {}
+        return []
