@@ -411,15 +411,26 @@ class CookCliTest(unittest.TestCase):
 
     def test_list_by_state(self):
         name = str(uuid.uuid4())
+        # waiting
+        raw_job = {'command': 'ls', 'name': name, 'constraints': [['HOSTNAME', 'EQUALS', 'will not get scheduled']]}
+        cp, uuids = cli.submit(stdin=cli.encode(json.dumps(raw_job)), cook_url=self.cook_url, submit_flags='--raw')
+        user = util.get_user(self.cook_url, uuids[0])
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        util.wait_for_job(self.cook_url, uuids[0], 'waiting')
+        cp, jobs = self.list_jobs(name, user, 'waiting')
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertEqual(1, len(jobs))
+        self.assertEqual(uuids[0], jobs[0]['uuid'])
+        waiting_uuid = uuids[0]
         # running
         cp, uuids = cli.submit('sleep 60', self.cook_url, submit_flags='--name %s' % name)
         self.assertEqual(0, cp.returncode, cp.stderr)
-        user = util.get_user(self.cook_url, uuids[0])
         util.wait_for_job(self.cook_url, uuids[0], 'running')
         cp, jobs = self.list_jobs(name, user, 'running')
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual(1, len(jobs))
         self.assertEqual(uuids[0], jobs[0]['uuid'])
+        running_uuid = uuids[0]
         # completed
         cp, uuids = cli.submit('ls', self.cook_url, submit_flags='--name %s' % name)
         self.assertEqual(0, cp.returncode, cp.stderr)
@@ -428,13 +439,47 @@ class CookCliTest(unittest.TestCase):
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual(1, len(jobs))
         self.assertEqual(uuids[0], jobs[0]['uuid'])
-        # waiting
-        raw_job = {'command': 'ls', 'name': name, 'constraints': [['HOSTNAME', 'EQUALS', 'will not get scheduled']]}
-        cp, uuids = cli.submit(stdin=cli.encode(json.dumps(raw_job)), cook_url=self.cook_url, submit_flags='--raw')
-        self.assertEqual(0, cp.returncode, cp.stderr)
-        util.wait_for_job(self.cook_url, uuids[0], 'waiting')
-        cp, jobs = self.list_jobs(name, user, 'waiting')
+        # success
+        cp, jobs = self.list_jobs(name, user, 'success')
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual(1, len(jobs))
         self.assertEqual(uuids[0], jobs[0]['uuid'])
+        success_uuid = uuids[0]
+        # failed
+        cp, uuids = cli.submit('exit 1', self.cook_url, submit_flags='--name %s' % name)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        util.wait_for_job(self.cook_url, uuids[0], 'completed')
+        cp, jobs = self.list_jobs(name, user, 'failed')
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertEqual(1, len(jobs))
+        self.assertEqual(uuids[0], jobs[0]['uuid'])
+        failed_uuid = uuids[0]
+        # all
+        cp, jobs = self.list_jobs(name, user, 'all')
+        uuids = [j['uuid'] for j in jobs]
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertEqual(4, len(jobs))
+        self.assertIn(waiting_uuid, uuids)
+        self.assertIn(running_uuid, uuids)
+        self.assertIn(success_uuid, uuids)
+        self.assertIn(failed_uuid, uuids)
+        # waiting+running
+        cp, jobs = self.list_jobs(name, user, 'waiting+running')
+        uuids = [j['uuid'] for j in jobs]
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertEqual(2, len(jobs))
+        self.assertIn(waiting_uuid, uuids)
+        self.assertIn(running_uuid, uuids)
+        # completed+waiting
+        cp, jobs = self.list_jobs(name, user, 'completed+waiting')
+        uuids = [j['uuid'] for j in jobs]
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertEqual(3, len(jobs))
+        self.assertIn(waiting_uuid, uuids)
+        self.assertIn(success_uuid, uuids)
+        self.assertIn(failed_uuid, uuids)
 
+    def test_list_invalid_state(self):
+        cp = cli.list_jobs(self.cook_url, '--state foo')
+        self.assertEqual(2, cp.returncode, cp.stderr)
+        self.assertIn('foo is not a valid state filter', cli.decode(cp.stderr))

@@ -18,7 +18,7 @@ def print_no_data(clusters):
 
 
 def list_jobs_on_cluster(cluster, state, user, lookback_hours, name, limit):
-    """Queries cluster for jobs with the given state / user / time / name."""
+    """Queries cluster for jobs with the given state / user / time / name"""
     now_ms = int(round(time.time() * 1000))
     lookback_ms = int(lookback_hours * MILLIS_PER_HOUR)
     start_ms = now_ms - lookback_ms
