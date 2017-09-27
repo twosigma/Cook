@@ -401,12 +401,13 @@ class CookCliTest(unittest.TestCase):
 
     def test_list_no_matching_jobs(self):
         cp = cli.list_jobs(self.cook_url, '--name %s' % uuid.uuid4())
-        self.assertEqual(1, cp.returncode, cp.stderr)
+        self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual('No jobs found in %s.' % self.cook_url, cli.stdout(cp))
 
-    def list_jobs(self, name, user, state):
+    def list_jobs(self, name, user, *state):
         """Invokes the list subcommand with the given name, user, and state filters"""
-        cp, jobs = cli.list_jobs_json(self.cook_url, '--name %s --user %s --state %s' % (name, user, state))
+        state_flags = ' '.join(['--state %s' % s for s in state])
+        cp, jobs = cli.list_jobs_json(self.cook_url, '--name %s --user %s %s' % (name, user, state_flags))
         return cp, jobs
 
     def test_list_by_state(self):
@@ -464,14 +465,14 @@ class CookCliTest(unittest.TestCase):
         self.assertIn(success_uuid, uuids)
         self.assertIn(failed_uuid, uuids)
         # waiting+running
-        cp, jobs = self.list_jobs(name, user, 'waiting+running')
+        cp, jobs = self.list_jobs(name, user, 'waiting', 'running')
         uuids = [j['uuid'] for j in jobs]
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual(2, len(jobs))
         self.assertIn(waiting_uuid, uuids)
         self.assertIn(running_uuid, uuids)
         # completed+waiting
-        cp, jobs = self.list_jobs(name, user, 'completed+waiting')
+        cp, jobs = self.list_jobs(name, user, 'completed', 'waiting')
         uuids = [j['uuid'] for j in jobs]
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual(3, len(jobs))
@@ -482,4 +483,4 @@ class CookCliTest(unittest.TestCase):
     def test_list_invalid_state(self):
         cp = cli.list_jobs(self.cook_url, '--state foo')
         self.assertEqual(2, cp.returncode, cp.stderr)
-        self.assertIn('foo is not a valid state filter', cli.decode(cp.stderr))
+        self.assertIn("invalid choice: 'foo'", cli.decode(cp.stderr))

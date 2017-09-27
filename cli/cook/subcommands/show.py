@@ -1,3 +1,4 @@
+import collections
 import concurrent
 import itertools
 import json
@@ -67,13 +68,12 @@ def format_instance_run_time(instance):
 def tabulate_job_instances(instances):
     """Returns a table displaying the instance info"""
     if len(instances) > 0:
-        headers = ['Job Instance', 'Run Time', 'Host', 'Instance Status']
-        rows = [[i['task_id'],
-                 format_instance_run_time(i),
-                 i['hostname'],
-                 format_instance_status(i)]
+        rows = [collections.OrderedDict([('Job Instance', i['task_id']),
+                                         ('Run Time', format_instance_run_time(i)),
+                                         ('Host', i['hostname']),
+                                         ('Instance Status', format_instance_status(i))])
                 for i in instances]
-        instance_table = tabulate(rows, headers=headers, tablefmt='plain')
+        instance_table = tabulate(rows, headers='keys', tablefmt='plain')
         return '\n\n%s' % instance_table
     else:
         return ''
@@ -214,8 +214,7 @@ def query_cluster(cluster, uuids, pred, timeout, interval, make_request_fn, enti
     """
 
     def satisfy_pred():
-        resp_ = make_request_fn(cluster, uuids)
-        return pred(resp_.json())
+        return pred(http.make_data_request(lambda: make_request_fn(cluster, uuids)))
 
     entities = http.make_data_request(lambda: make_request_fn(cluster, uuids))
     if pred and len(entities) > 0:
@@ -238,7 +237,7 @@ def query_cluster(cluster, uuids, pred, timeout, interval, make_request_fn, enti
             if entities:
                 progress.update(index, colors.bold('Done'))
             else:
-                raise Exception('Timeout waiting for response.')
+                raise TimeoutError('Timeout waiting for response.')
     return entities
 
 
