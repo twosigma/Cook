@@ -1,4 +1,6 @@
+import json
 import logging
+from urllib.parse import urljoin
 
 import requests
 
@@ -19,11 +21,51 @@ def configure(config):
     session.mount('http://', http_adapter)
 
 
-def post(url, json):
+def __post(url, json_body):
     """Sends a POST with the json payload to the given url"""
-    return session.post(url, json=json, timeout=timeouts)
+    return session.post(url, json=json_body, timeout=timeouts)
 
 
-def get(url, params=None):
+def __get(url, params=None):
     """Sends a GET with params to the given url"""
     return session.get(url, params=params, timeout=timeouts)
+
+
+def __make_url(cluster, endpoint):
+    """Given a cluster and an endpoint, returns the corresponding full URL"""
+    return urljoin(cluster['url'], endpoint)
+
+
+def post(cluster, endpoint, json_body):
+    """POSTs data to cluster at /endpoint"""
+    url = __make_url(cluster, endpoint)
+    resp = __post(url, json_body)
+    logging.info('response from cook: %s' % resp.text)
+    return resp
+
+
+def get(cluster, endpoint, params):
+    """GETs data corresponding to the given params from cluster at /endpoint"""
+    url = __make_url(cluster, endpoint)
+    resp = __get(url, params)
+    logging.info('response from cook: %s' % resp.text)
+    return resp
+
+
+def make_data_request(make_request_fn):
+    """
+    Makes a request (using make_request_fn), parsing the
+    assumed-to-be-JSON response and handling common errors
+    """
+    try:
+        resp = make_request_fn()
+        if resp.status_code == requests.codes.ok:
+            return resp.json()
+        else:
+            return []
+    except requests.exceptions.ConnectionError as ce:
+        logging.info(ce)
+        return []
+    except json.decoder.JSONDecodeError as jde:
+        logging.exception(jde)
+        return []

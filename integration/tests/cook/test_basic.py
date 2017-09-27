@@ -232,7 +232,7 @@ class CookTest(unittest.TestCase):
         request_body = {'jobs': [job_spec]}
         resp = util.session.post('%s/rawscheduler' % self.cook_url, json=request_body)
         self.assertEqual(resp.status_code, 201)
-        return util.load_job(self.cook_url, job_spec['uuid'])['user']
+        return util.get_user(self.cook_url, job_spec['uuid'])
 
     def test_list_jobs_by_state(self):
         # schedule a bunch of jobs in hopes of getting jobs into different statuses
@@ -745,10 +745,10 @@ class CookTest(unittest.TestCase):
 
     def test_queue_endpoint(self):
         job_uuid, resp = util.submit_job(self.cook_url, constraints=[["HOSTNAME",
-                                                                          "EQUALS",
-                                                                          "lol won't get scheduled"]])
+                                                                      "EQUALS",
+                                                                      "lol won't get scheduled"]])
         self.assertEqual(201, resp.status_code, resp.content)
-        time.sleep(30) # Need to wait for a rank cycle
+        time.sleep(30)  # Need to wait for a rank cycle
         queue = util.session.get('%s/queue' % self.cook_url)
         self.assertEqual(200, queue.status_code, queue.content)
         self.assertTrue(any([job['job/uuid'] == job_uuid for job in queue.json()['normal']]))
@@ -756,11 +756,11 @@ class CookTest(unittest.TestCase):
 
     def test_basic_docker_job(self):
         job_uuid, resp = util.submit_job(
-                self.cook_url,
-                name="check_alpine_version",
-                command="cat /etc/alpine-release",
-                container={"type": "DOCKER",
-                           "docker": { 'image': "alpine:latest" }})
+            self.cook_url,
+            name="check_alpine_version",
+            command="cat /etc/alpine-release",
+            container={"type": "DOCKER",
+                       "docker": {'image': "alpine:latest"}})
         self.assertEqual(resp.status_code, 201)
         job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
         self.assertEqual('success', job['instances'][0]['status'])
@@ -772,9 +772,9 @@ class CookTest(unittest.TestCase):
                                          container={'type': 'DOCKER',
                                                     'docker': {'image': 'python:3.6',
                                                                'network': 'BRIDGE',
-                                                               'port-mapping': [{'host-port': 0, # first assigned port
+                                                               'port-mapping': [{'host-port': 0,  # first assigned port
                                                                                  'container-port': 8080},
-                                                                                {'host-port': 1, # second assigned port
+                                                                                {'host-port': 1,  # second assigned port
                                                                                  'container-port': 9090,
                                                                                  'protocol': 'udp'}]}})
         self.assertEqual(resp.status_code, 201, resp.content)
@@ -786,7 +786,7 @@ class CookTest(unittest.TestCase):
             # Get agent host/port
             state = util.get_mesos_state(self.mesos_url)
             agent = [agent for agent in state['slaves']
-                 if agent['hostname'] == instance['hostname']][0]
+                     if agent['hostname'] == instance['hostname']][0]
             # Get the host and port of the agent API.
             # Example pid: "slave(1)@172.17.0.7:5051"
             agent_hostport = agent['pid'].split('@')[1]
@@ -797,7 +797,7 @@ class CookTest(unittest.TestCase):
             container_id = 'mesos-%s.%s' % (agent['id'], executor['container'])
             self.logger.debug('container_id: %s' % container_id)
 
-            @retry(stop_max_delay=60000, wait_fixed=1000) # Wait for docker container to start
+            @retry(stop_max_delay=60000, wait_fixed=1000)  # Wait for docker container to start
             def get_docker_info():
                 self.logger.info('Running containers: %s' % subprocess.check_output(['docker', 'ps']).decode('utf-8'))
                 return json.loads(subprocess.check_output(['docker', 'inspect', container_id]).decode('utf-8'))

@@ -1,14 +1,12 @@
 """Module containing utility functions that don't fit nicely anywhere else."""
 
 import json
+import logging
 import os
 import sys
 import time
 import uuid
 from datetime import datetime, timedelta
-
-import logging
-from urllib.parse import urljoin
 
 import arrow
 import humanfriendly
@@ -107,11 +105,6 @@ def is_valid_uuid(uuid_to_test, version=4):
     return str(uuid_obj) == uuid_to_test
 
 
-def make_url(cluster, endpoint):
-    """Given a cluster and an endpoint, returns the corresponding full URL"""
-    return urljoin(cluster['url'], endpoint)
-
-
 silent = False
 
 
@@ -143,3 +136,8 @@ def millis_to_date_string(ms):
     s, _ = divmod(ms, 1000)
     utc = time.gmtime(s)
     return arrow.get(utc).humanize()
+
+
+def current_user():
+    """Returns the value of the USER environment variable"""
+    return os.environ['USER']

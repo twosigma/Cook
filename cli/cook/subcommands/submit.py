@@ -1,7 +1,6 @@
 import argparse
 import json
 import logging
-import os
 import shlex
 import sys
 import uuid
@@ -9,7 +8,7 @@ import uuid
 import requests
 
 from cook import colors, http
-from cook.util import deep_merge, is_valid_uuid, read_lines, make_url, print_info
+from cook.util import deep_merge, is_valid_uuid, read_lines, print_info, current_user
 
 
 def parse_raw_job_spec(job, r):
@@ -81,10 +80,8 @@ def submit_federated(clusters, jobs):
     for cluster in clusters:
         cluster_name = cluster['name']
         try:
-            url = make_url(cluster, 'rawscheduler')
             print_info('Attempting to submit on %s cluster...' % colors.bold(cluster_name))
-            resp = http.post(url, json={'jobs': jobs})
-            logging.info('response from cook: %s' % resp.text)
+            resp = http.post(cluster, 'rawscheduler', {'jobs': jobs})
             print_submit_result(cluster, resp)
             if resp.status_code == requests.codes.created:
                 return 0
@@ -165,7 +162,7 @@ def submit(clusters, args):
             j['uuid'] = str(uuid.uuid4())
 
         if not j.get('name'):
-            j['name'] = '%s_job' % os.environ['USER']
+            j['name'] = '%s_job' % current_user()
 
     logging.debug('jobs: %s' % jobs)
     return submit_federated(clusters, jobs)
@@ -179,7 +176,7 @@ def valid_uuid(s):
         raise argparse.ArgumentTypeError('%s is not a valid UUID' % s)
 
 
-def register(add_parser):
+def register(add_parser, add_defaults):
     """Adds this sub-command's parser and returns the action function"""
     submit_parser = add_parser('submit', help='create job for command')
     submit_parser.add_argument('--uuid', '-u', help='uuid of job', type=valid_uuid)
@@ -199,4 +196,7 @@ def register(add_parser):
     submit_parser.add_argument('--ports', help='number of ports to reserve for job', type=int)
     submit_parser.add_argument('--raw', '-r', help='raw job spec in json format', dest='raw', action='store_true')
     submit_parser.add_argument('command', nargs=argparse.REMAINDER)
+
+    add_defaults('submit', {'cpus': 1, 'max-retries': 1, 'mem': 128})
+
     return submit

@@ -5,19 +5,23 @@ import os
 from urllib.parse import urlparse
 
 from cook import util, http, colors
-from cook.subcommands import submit, show, wait
+from cook.subcommands import submit, show, wait, list
 from cook.util import deep_merge, load_first_json_file
 
 # Default locations to check for configuration files if one isn't given on the command line
 DEFAULT_CONFIG_PATHS = ['.cs.json',
                         os.path.expanduser('~/.cs.json')]
 
-DEFAULT_CONFIG = {'defaults': {'submit': {'cpus': 1,
-                                          'max-retries': 1,
-                                          'mem': 128}},
+DEFAULT_CONFIG = {'defaults': {},
                   'http': {'retries': 2,
                            'connect-timeout': 3.05,
                            'read-timeout': 5}}
+
+
+def add_defaults(action, defaults):
+    """Adds default arguments for the given action to the DEFAULT_CONFIG map"""
+    DEFAULT_CONFIG['defaults'][action] = defaults
+
 
 parser = argparse.ArgumentParser(description='cs is the Cook Scheduler CLI')
 parser.add_argument('--cluster', '-c', help='the name of the Cook scheduler cluster to use')
@@ -29,9 +33,10 @@ parser.add_argument('--verbose', '-v', help='be more verbose/talkative (useful f
 
 subparsers = parser.add_subparsers(dest='action')
 
-actions = {'submit': submit.register(subparsers.add_parser),
-           'show': show.register(subparsers.add_parser),
-           'wait': wait.register(subparsers.add_parser)}
+actions = {'submit': submit.register(subparsers.add_parser, add_defaults),
+           'show': show.register(subparsers.add_parser, add_defaults),
+           'wait': wait.register(subparsers.add_parser, add_defaults),
+           'list': list.register(subparsers.add_parser, add_defaults)}
 
 
 def load_target_clusters(config, url=None, cluster=None):
