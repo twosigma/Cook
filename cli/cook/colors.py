@@ -8,7 +8,7 @@ def failed(s):
 
 
 def success(s):
-    return term.blue(s)
+    return term.green(s)
 
 
 def running(s):

@@ -284,7 +284,7 @@ def query_across_clusters(clusters, query_fn):
     """
     count = 0
     all_entities = {'clusters': {}}
-    max_workers = len(os.sched_getaffinity(0))
+    max_workers = os.cpu_count()
     logging.debug('querying with max workers = %s' % max_workers)
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
         future_to_cluster = {query_fn(c, executor): c for c in clusters}

@@ -1,23 +1,27 @@
+import importlib
 import json
 import logging
 from urllib.parse import urljoin
 
-import requests
-
-session = requests.Session()
+session = None
 timeouts = None
 
 
 def configure(config):
     """Configures HTTP timeouts and retries to be used"""
+    global session
     global timeouts
     http_config = config.get('http')
+    modules_config = http_config.get('modules')
+    session_module = importlib.import_module(modules_config.get('session-module'))
+    adapters_module = importlib.import_module(modules_config.get('adapters-module'))
     connect_timeout = http_config.get('connect-timeout')
     read_timeout = http_config.get('read-timeout')
     timeouts = (connect_timeout, read_timeout)
     logging.debug('using http timeouts: %s', timeouts)
     retries = http_config.get('retries')
-    http_adapter = requests.adapters.HTTPAdapter(max_retries=retries)
+    http_adapter = adapters_module.HTTPAdapter(max_retries=retries)
+    session = session_module.Session()
     session.mount('http://', http_adapter)
 
 
@@ -59,12 +63,12 @@ def make_data_request(make_request_fn):
     """
     try:
         resp = make_request_fn()
-        if resp.status_code == requests.codes.ok:
+        if resp.status_code == 200:
             return resp.json()
         else:
             return []
-    except requests.exceptions.ConnectionError as ce:
-        logging.info(ce)
+    except IOError as ioe:
+        logging.info(ioe)
         return []
     except json.decoder.JSONDecodeError as jde:
         logging.exception(jde)
