@@ -14,11 +14,11 @@ def main(args=None):
 
     try:
         result = run(args)
-        exit(result)
+        sys.exit(result)
     except Exception as e:
         logging.exception('exception when running with %s' % args)
         print(colors.failed(str(e)), file=sys.stderr)
-        exit(1)
+        sys.exit(1)
 
 
 if __name__ == '__main__':
