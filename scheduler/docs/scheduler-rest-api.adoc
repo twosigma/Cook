@@ -69,7 +69,7 @@ The request body is list of job maps with each entry containing a map of the fol
 |JSON Key | Type | Description
 |`uuid` | string | a user provided UUID for tracking and referring to the job.
 |`command` | string | the command to run
-|`executor` | string [cook|mesos] | Flag to force use of the Cook executor / Mesos command executor.
+|`executor` | string [cook\|mesos] | Flag to force use of the Cook executor / Mesos command executor.
 |`name` | string | name of the job
 |`priority` | integer | priority of the job. Should be between 0 and 100, inclusive.
 |`max_retries` | integer | the maximum number of retries
@@ -272,7 +272,7 @@ This method will add retries to a job and set the status of the job to "waiting"
 .Example Usage
 [source,bash]
 ----
-$ curl -X POST -u: --negotiate $cook_uri/retry?job=$uuid&retry=10"
+$ curl -X POST -u: --negotiate "$cook_uri/retry?job=$uuid&retry=10"
 10 # new retries
 ----
 
@@ -281,7 +281,7 @@ $ curl -X POST -u: --negotiate $cook_uri/retry?job=$uuid&retry=10"
 This method will return a list of jobs run by a particular user over a specific time range. 
 The data returned takes the same shape as getting jobs on the /rawscheduler endpoint.
 
-'GET /list?user=:user&state=:state1%2B:state2&start_ms=:start&end_ms=:end'
+`GET /list?user=:user&state=:state1%2B:state2&start_ms=:start&end_ms=:end`
 
 .Query params
 [options="header"]
@@ -311,7 +311,7 @@ $ curl -u: --negotiate "$cook_uri/list?user=$USER&state=running&start_ms=1400046
 
 
 
-=== Operator apis
+=== Operator APIs
 
 The following apis are intended for use by operators of cook because they allow setting system level propertries like the weight of users or the max resources a user is allows to have.
 
