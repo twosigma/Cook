@@ -34,12 +34,12 @@ Once logging is initialized, all further logging data will be written to the log
 Thus, all messages printed to stdout and stderr are about the connection to Mesos.
 
 To deploy the scheduler, simply build a jar as described above, and then run it with `java -cp target/cook-0.1.0-SNAPSHOT-standalone.jar cook.components dev-config.edn`.
-See the Asciidoc document `docs/configuration.asc` for details on the config file format and options.
+See the Asciidoc document `docs/configuration.adoc` for details on the config file format and options.
 
 ## API
 
 Cook comes with two APIs: the REST API, and the Datomic API.
-To use the REST API, see the `docs/scheduler-rest-api.asc` Asciidoc document for the API description.
+To use the REST API, see the `docs/scheduler-rest-api.adoc` Asciidoc document for the API description.
 Most users should use the REST API, since it's compatible and will not change.
 
 For advanced integration with JVM-based projects, you can write new jobs directly to Datomic, and Cook will automatically detect these jobs and scheduler them.

@@ -317,7 +317,7 @@ The following apis are intended for use by operators of cook because they allow 
 
 ==== User share
 
-Share in Cook encapsulates two ideas. The first is non-preemptable amount of resources a user is entitled to. All resources under their share will not be preempted. The second is to decide the weight between users based on DRU when making preemption decisions. See rebalancer-config.asc for more details.
+Share in Cook encapsulates two ideas. The first is non-preemptable amount of resources a user is entitled to. All resources under their share will not be preempted. The second is to decide the weight between users based on DRU when making preemption decisions. See rebalancer-config.adoc for more details.
 
 An operator can set a share per user or set a default share which applies to users without a share set.
 

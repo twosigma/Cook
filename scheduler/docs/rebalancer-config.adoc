@@ -10,7 +10,7 @@ For more detailed information about the design of the Rebalancer, see the source
 
 === How the Configuration is stored
 
-While you can optionally set the rebalancer configuration parameters via the scheduler's link:configuration.asc#rebalancer-configuration[main configuration file], the Rebalancer configuration is also stored in Datomic.  Among other advantages, this allows interested parties to use Datomic's history API to discover what configuration was in effect at any point in the past, in order to facilitate analysis and troubleshooting.
+While you can optionally set the rebalancer configuration parameters via the scheduler's link:configuration.adoc#rebalancer-configuration[main configuration file], the Rebalancer configuration is also stored in Datomic.  Among other advantages, this allows interested parties to use Datomic's history API to discover what configuration was in effect at any point in the past, in order to facilitate analysis and troubleshooting.
 
 In Cook's database, Rebalancer configuration options are facts about the entity with id :rebalancer/config.  Thus, to configure the systemwide behavior of the Rebalancer, you will need to run code like this:
 
@@ -57,7 +57,7 @@ Note that there is no default configuration for the Rebalancer.  Thus, no preemp
 
 If you set your parameters to be encourage a lot of pre-emption, as in the example above, it is possible that you will harm your cluster's performance, as jobs will rarely be allowed to finish.   On the other hand, if you don't configure pre-emption, or use parameters that don't allow preemption to happen very often, the Fairness of Cook may not be effectively enforced as a few users consume too many resources via long-running tasks.  Unfortunately, it's impossible to suggest specific parameter values, because the point at which each of these problems will start to occur will vary depending on your cluster configuration, and on what types of jobs are being run on your cluster.  Some experimentation will likely be required in order to find the optimal settings for your own installation.
 
-In order to intelligently tweak safe-dru-threshold and min-dur-diff, you will need to know specifics about the DRU values that are in play during the Rebalancer's calculation on your cluster.   Fortunately, Cook records these values in the forms of histogram metrics, which you can access in a variety of ways (see link:configuration.asc[main configuration documentation].  Look for these histograms:
+In order to intelligently tweak safe-dru-threshold and min-dur-diff, you will need to know specifics about the DRU values that are in play during the Rebalancer's calculation on your cluster.   Fortunately, Cook records these values in the forms of histogram metrics, which you can access in a variety of ways (see link:configuration.adoc[main configuration documentation].  Look for these histograms:
 
 * pending-job-drus
 * nearest-task-drus

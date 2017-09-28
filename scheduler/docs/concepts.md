@@ -9,7 +9,7 @@ be done if your job is not.
 
 A job is specified with a bash command, the resource requirements (cpus, mem, gpus), the number of times to retry the job, 
 and the priority of the job. Additionally, there are a variety of optional parameters that can be set for a job, including a container to
-run it with. The [rest api specification](docs/scheduler-rest-api.asc) describes all the options. 
+run it with. The [rest api specification](docs/scheduler-rest-api.adoc) describes all the options. 
 
 A job may be a member of a [group](docs/groups.md) of jobs. Grouping jobs allows for additional semantics in querying, retrying, killing, and placing jobs. 
 
@@ -28,7 +28,7 @@ The second item is called preemption and is the job of the rebalancer in Cook. T
 
 # Where should the job be running: matching
 
-Matching is the process of taking waiting jobs and deciding what available host to run the on. When matching jobs to available resources, Cook removes jobs that are already running from this global ordering. Cook then tries to place the most important job on the available hosts by first checking it will fit and passes the constraints the job has and second such that it is bin packed well. Whether or not the most important job could be placed, Cook will try the next job with the remaining resources. This will continue until Cook runs out of jobs or resources to consider. If Cook was unable to place the most important job, it will shrink the number of jobs to consider until at last only the most important job is considered until it is scheduled. The fenzo [configurations options](docs/configuration.asc) explain this in more detail. 
+Matching is the process of taking waiting jobs and deciding what available host to run the on. When matching jobs to available resources, Cook removes jobs that are already running from this global ordering. Cook then tries to place the most important job on the available hosts by first checking it will fit and passes the constraints the job has and second such that it is bin packed well. Whether or not the most important job could be placed, Cook will try the next job with the remaining resources. This will continue until Cook runs out of jobs or resources to consider. If Cook was unable to place the most important job, it will shrink the number of jobs to consider until at last only the most important job is considered until it is scheduled. The fenzo [configurations options](docs/configuration.adoc) explain this in more detail. 
 
 
 

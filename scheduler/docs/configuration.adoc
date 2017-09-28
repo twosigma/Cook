@@ -224,22 +224,22 @@ Example: +
 [[rebalancer]]
 ==== Rebalancer configuration
 
-Optionally, you can include a "rebalancer" stanza.  If you do, on startup, Cook will update its link:rebalancer-config.asc[Rebalancer configuration] to match the values you specify here.
+Optionally, you can include a "rebalancer" stanza.  If you do, on startup, Cook will update its link:rebalancer-config.adoc[Rebalancer configuration] to match the values you specify here.
 
  :interval-seconds::
    How often to rebalance the cluster for fairness between users.  Default is 300 (5 minutes).
 
  :safe-dru-threshold::
-  See the link:rebalancer-config.asc[Rebalancer documentation]
+  See the link:rebalancer-config.adoc[Rebalancer documentation]
 
  :min-dru-diff::
-  See the link:rebalancer-config.asc[Rebalancer documentation]
+  See the link:rebalancer-config.adoc[Rebalancer documentation]
 
  :max-preemption::
-  See the link:rebalancer-config.asc[Rebalancer documentation]
+  See the link:rebalancer-config.adoc[Rebalancer documentation]
 
  :min-utilization-threshold::
-  See the link:rebalancer-config.asc[Rebalancer documentation]
+  See the link:rebalancer-config.adoc[Rebalancer documentation]
 
 `:dru-scale`::
   This is only used to control the metrics reporting of DRU values.  On some clusters,
