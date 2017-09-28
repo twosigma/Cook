@@ -61,17 +61,11 @@
   "Build the environment for the cook executor."
   [{:keys [default-progress-output-file default-progress-regex-string log-level max-message-length progress-sample-interval-ms]}
    job-ent]
-  {"EXECUTOR_LOG_LEVEL" (-> (:job/executor-log-level job-ent)
-                            #{"DEBUG" "ERROR" "INFO" "WARNING"}
-                            (or log-level))
-   "EXECUTOR_MAX_MESSAGE_LENGTH" (-> (:job/executor-max-message-length job-ent max-message-length)
-                                     (min 1024)
-                                     (max 64))
+  {"EXECUTOR_LOG_LEVEL" log-level
+   "EXECUTOR_MAX_MESSAGE_LENGTH" max-message-length
    "PROGRESS_OUTPUT_FILE" (:job/progress-output-file job-ent default-progress-output-file)
    "PROGRESS_REGEX_STRING" (:job/progress-regex-string job-ent default-progress-regex-string)
-   "PROGRESS_SAMPLE_INTERVAL_MS" (-> (:job/progress-sample-interval-ms job-ent progress-sample-interval-ms)
-                                     (min 600000)
-                                     (max 1000))})
+   "PROGRESS_SAMPLE_INTERVAL_MS" progress-sample-interval-ms})
 
 (defn job->task-metadata
   "Takes a job entity, returns task metadata"

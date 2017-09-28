@@ -240,11 +240,8 @@
    (s/optional-key :constraints) [Constraint]
    (s/optional-key :container) Container
    (s/optional-key :executor) (s/enum "cook" "mesos")
-   (s/optional-key :executor-log-level) (s/enum "DEBUG" "ERROR" "INFO" "WARNING")
-   (s/optional-key :executor-max-message-length) PosInt
    (s/optional-key :progress-output-file) NonEmptyString
    (s/optional-key :progress-regex-string) NonEmptyString
-   (s/optional-key :progress-sample-interval-ms) PosInt
    (s/optional-key :group) s/Uuid
    (s/optional-key :disable-mea-culpa-retries) s/Bool
    :cpus PosDouble
@@ -455,8 +452,7 @@
   [job :- Job]
   (let [{:keys [uuid command max-retries max-runtime expected-runtime priority cpus mem gpus
                 user name ports uris env labels container group application disable-mea-culpa-retries
-                constraints executor executor-log-level executor-max-message-length
-                progress-output-file progress-regex-string progress-sample-interval-ms]
+                constraints executor progress-output-file progress-regex-string]
          :or {group nil
               disable-mea-culpa-retries false}} job
         db-id (d/tempid :db.part/user)
@@ -541,11 +537,8 @@
                                         :application/version (:version application)})
                     expected-runtime (assoc :job/expected-runtime expected-runtime)
                     executor (assoc :job/executor executor)
-                    executor-log-level (assoc :job/executor-log-level executor-log-level)
-                    executor-max-message-length (assoc :job/executor-max-message-length executor-max-message-length)
                     progress-output-file (assoc :job/progress-output-file progress-output-file)
-                    progress-regex-string (assoc :job/progress-regex-string progress-regex-string)
-                    progress-sample-interval-ms (assoc :job/progress-sample-interval-ms progress-sample-interval-ms))]
+                    progress-regex-string (assoc :job/progress-regex-string progress-regex-string))]
 
     ;; TODO batch these transactions to improve performance
     (-> ports
@@ -637,8 +630,7 @@
   [db user task-constraints gpu-enabled? new-group-uuids
    {:keys [cpus mem gpus uuid command priority max-retries max-runtime expected-runtime name
            uris ports env labels container group application disable-mea-culpa-retries
-           constraints executor executor-log-level executor-max-message-length
-           progress-output-file progress-regex-string progress-sample-interval-ms]
+           constraints executor progress-output-file progress-regex-string]
     :or {group nil
          disable-mea-culpa-retries false}
     :as job}
@@ -673,11 +665,8 @@
                  (when container {:container container})
                  (when expected-runtime {:expected-runtime expected-runtime})
                  (when executor {:executor executor})
-                 (when executor-log-level {:executor-log-level executor-log-level})
-                 (when executor-max-message-length {:executor-max-message-length executor-max-message-length})
                  (when progress-output-file {:progress-output-file progress-output-file})
                  (when progress-regex-string {:progress-regex-string progress-regex-string})
-                 (when progress-sample-interval-ms {:progress-sample-interval-ms progress-sample-interval-ms})
                  (when application {:application application}))]
     (s/validate Job munged)
     (when (and (:gpus munged) (not gpu-enabled?))
@@ -833,11 +822,8 @@
         application (:job/application job)
         expected-runtime (:job/expected-runtime job)
         executor (:job/executor job)
-        executor-log-level (:job/executor-log-level job)
-        executor-max-message-length (:job/executor-max-message-length job)
         progress-output-file (:job/progress-output-file job)
         progress-regex-string (:job/progress-regex-string job)
-        progress-sample-interval-ms (:job/progress-sample-interval-ms job)
         state (util/job-ent->state job)
         constraints (->> job
                          :job/constraint
@@ -875,11 +861,8 @@
             application (assoc :application (util/remove-datomic-namespacing application))
             expected-runtime (assoc :expected-runtime expected-runtime)
             executor (assoc :executor (name executor))
-            executor-log-level (assoc :executor-log-level executor-log-level)
-            executor-max-message-length (assoc :executor-max-message-length executor-max-message-length)
             progress-output-file (assoc :progress-output-file progress-output-file)
-            progress-regex-string (assoc :progress-regex-string progress-regex-string)
-            progress-sample-interval-ms (assoc :progress-sample-interval-ms progress-sample-interval-ms))))
+            progress-regex-string (assoc :progress-regex-string progress-regex-string))))
 
 (defn fetch-group-job-details
   [db guuid]

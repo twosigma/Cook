@@ -120,13 +120,12 @@ class CookTest(unittest.TestCase):
         command = 'echo "message: 25 Twenty-five percent" > progress_file.txt; sleep 1; exit 0'
         job_uuid, resp = util.submit_job(self.cook_url, command=command, executor=job_executor_type, max_runtime=60000,
                                          progress_output_file='progress_file.txt',
-                                         progress_regex_string='message: (\d*) (.*)', progress_sample_interval_ms=2000)
+                                         progress_regex_string='message: (\d*) (.*)')
         self.assertEqual(201, resp.status_code, msg=resp.content)
         job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
         message = json.dumps(job, sort_keys=True)
         self.assertEqual('progress_file.txt', job['progress_output_file'], message)
         self.assertEqual('message: (\d*) (.*)', job['progress_regex_string'], message)
-        self.assertEqual(2000, job['progress_sample_interval_ms'], message)
         self.assertEqual(1, len(job['instances']))
         message = json.dumps(job['instances'][0], sort_keys=True)
         self.assertEqual('success', job['instances'][0]['status'], message)

@@ -594,11 +594,11 @@
              (task/build-executor-environment executor-config job-ent)))))
 
   (testing "job configured values"
-    (is (= {"EXECUTOR_LOG_LEVEL" "DEBUG"
-            "EXECUTOR_MAX_MESSAGE_LENGTH" 768
+    (is (= {"EXECUTOR_LOG_LEVEL" "INFO"
+            "EXECUTOR_MAX_MESSAGE_LENGTH" 256
             "PROGRESS_OUTPUT_FILE" "progress.out"
             "PROGRESS_REGEX_STRING" "custom-regex"
-            "PROGRESS_SAMPLE_INTERVAL_MS" 5000}
+            "PROGRESS_SAMPLE_INTERVAL_MS" 2000}
            (let [executor-config {:default-progress-output-file "stdout"
                                   :default-progress-regex-string "default-regex"
                                   :log-level "INFO"
@@ -613,10 +613,10 @@
 
   (testing "job configured values sanitized"
     (is (= {"EXECUTOR_LOG_LEVEL" "INFO"
-            "EXECUTOR_MAX_MESSAGE_LENGTH" 1024
+            "EXECUTOR_MAX_MESSAGE_LENGTH" 256
             "PROGRESS_OUTPUT_FILE" "progress.out"
             "PROGRESS_REGEX_STRING" "custom-regex"
-            "PROGRESS_SAMPLE_INTERVAL_MS" 600000}
+            "PROGRESS_SAMPLE_INTERVAL_MS" 2000}
            (let [executor-config {:default-progress-output-file "stdout"
                                   :default-progress-regex-string "default-regex"
                                   :log-level "INFO"
