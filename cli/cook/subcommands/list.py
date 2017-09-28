@@ -113,6 +113,6 @@ def register(add_parser, add_defaults):
     list_parser.add_argument('--limit', '-l', help='limit the number of results', type=check_positive)
     list_parser.add_argument('--json', help='show the data in JSON format', dest='json', action='store_true')
 
-    add_defaults('list', {'state': 'running', 'user': current_user(), 'lookback': 6, 'limit': 150})
+    add_defaults('list', {'state': ['running'], 'user': current_user(), 'lookback': 6, 'limit': 150})
 
     return list_jobs
