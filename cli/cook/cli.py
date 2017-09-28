@@ -15,7 +15,9 @@ DEFAULT_CONFIG_PATHS = ['.cs.json',
 DEFAULT_CONFIG = {'defaults': {},
                   'http': {'retries': 2,
                            'connect-timeout': 3.05,
-                           'read-timeout': 5}}
+                           'read-timeout': 5,
+                           'modules': {'session-module': 'requests',
+                                       'adapters-module': 'requests.adapters'}}}
 
 
 def add_defaults(action, defaults):
@@ -90,9 +92,10 @@ def run(args):
 
     log_format = '%(asctime)s [%(levelname)s] %(message)s'
     if verbose:
+        logging.getLogger('').handlers = []
         logging.basicConfig(format=log_format, level=logging.DEBUG)
     else:
-        logging.basicConfig(format=log_format, level=logging.FATAL)
+        logging.disable(logging.FATAL)
 
     logging.debug('args: %s' % args)
 

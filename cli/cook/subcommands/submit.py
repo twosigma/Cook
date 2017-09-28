@@ -5,8 +5,6 @@ import shlex
 import sys
 import uuid
 
-import requests
-
 from cook import colors, http
 from cook.util import deep_merge, is_valid_uuid, read_lines, print_info, current_user
 
@@ -54,7 +52,7 @@ def print_submit_result(cluster, response):
     failed. Also, in the case of failure, there are different possible shapes for the failure payload.
     """
     cluster_name = cluster['name']
-    if response.status_code == requests.codes.created:
+    if response.status_code == 201:
         text = response.text.strip('"')
         if ' submitted groups' in text:
             group_index = text.index(' submitted groups')
@@ -62,13 +60,16 @@ def print_submit_result(cluster, response):
         uuids = [p for p in text.split() if is_valid_uuid(p)]
         print_info(submit_succeeded_message(cluster_name, uuids), '\n'.join(uuids))
     else:
-        data = response.json()
-        if 'errors' in data:
-            reason = json.dumps(data['errors'])
-        elif 'error' in data:
-            reason = data['error']
-        else:
-            reason = json.dumps(data)
+        try:
+            data = response.json()
+            if 'errors' in data:
+                reason = json.dumps(data['errors'])
+            elif 'error' in data:
+                reason = data['error']
+            else:
+                reason = json.dumps(data)
+        except json.decoder.JSONDecodeError:
+            reason = '%s\n' % response.text
         print_info(submit_failed_message(cluster_name, reason))
 
 
@@ -83,10 +84,10 @@ def submit_federated(clusters, jobs):
             print_info('Attempting to submit on %s cluster...' % colors.bold(cluster_name))
             resp = http.post(cluster, 'rawscheduler', {'jobs': jobs})
             print_submit_result(cluster, resp)
-            if resp.status_code == requests.codes.created:
+            if resp.status_code == 201:
                 return 0
-        except requests.exceptions.ConnectionError as ce:
-            logging.info(ce)
+        except IOError as ioe:
+            logging.info(ioe)
             reason = 'Cannot connect to %s (%s)' % (cluster_name, cluster['url'])
             print_info('%s\n' % submit_failed_message(cluster_name, reason))
     raise Exception(colors.failed('Job submission failed on all of your configured clusters.'))
