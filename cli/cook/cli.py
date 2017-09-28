@@ -4,7 +4,7 @@ import logging
 import os
 from urllib.parse import urlparse
 
-from cook import util, http, colors
+from cook import util, http, colors, metrics
 from cook.subcommands import submit, show, wait, list
 from cook.util import deep_merge, load_first_json_file
 
@@ -17,7 +17,8 @@ DEFAULT_CONFIG = {'defaults': {},
                            'connect-timeout': 3.05,
                            'read-timeout': 5,
                            'modules': {'session-module': 'requests',
-                                       'adapters-module': 'requests.adapters'}}}
+                                       'adapters-module': 'requests.adapters'}},
+                  'metrics': {'disabled': True}}
 
 
 def add_defaults(action, defaults):
@@ -108,13 +109,18 @@ def run(args):
         parser.print_help()
     else:
         config = load_config(config_path)
-        clusters = load_target_clusters(config, url, cluster)
-        http.configure(config)
-        args = {k: v for k, v in args.items() if v is not None}
-        defaults = config.get('defaults')
-        action_defaults = (defaults.get(action) if defaults else None) or {}
-        result = actions[action](clusters, deep_merge(action_defaults, args))
-        logging.debug('result: %s' % result)
-        return result
+        try:
+            metrics.initialize(config)
+            metrics.inc('cs.commands.%s' % action)
+            clusters = load_target_clusters(config, url, cluster)
+            http.configure(config)
+            args = {k: v for k, v in args.items() if v is not None}
+            defaults = config.get('defaults')
+            action_defaults = (defaults.get(action) if defaults else None) or {}
+            result = actions[action](clusters, deep_merge(action_defaults, args))
+            logging.debug('result: %s' % result)
+            return result
+        finally:
+            metrics.close()
 
     return None

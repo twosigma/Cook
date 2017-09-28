@@ -17,5 +17,13 @@
       "url": "http://127.0.0.1:22321/",
       "disabled": true
     }
-  ]
+  ],
+  "metrics": {
+    "disabled": true,
+    "host": "localhost",
+    "port": 8125,
+    "line-formats": {
+      "count": "{name}:{value}|c"
+    }
+  }
 }
