@@ -23,7 +23,7 @@
     "host": "localhost",
     "port": 8125,
     "line-formats": {
-      "count": "{name}:{value}|c"
+      "count": "{namespace}.{name}:{value}|c"
     }
   }
 }

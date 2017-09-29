@@ -111,7 +111,7 @@ def run(args):
         config = load_config(config_path)
         try:
             metrics.initialize(config)
-            metrics.inc('cs.commands.%s' % action)
+            metrics.inc('command.%s.runs' % action)
             clusters = load_target_clusters(config, url, cluster)
             http.configure(config)
             args = {k: v for k, v in args.items() if v is not None}
