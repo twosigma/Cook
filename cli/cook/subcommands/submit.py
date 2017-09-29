@@ -5,7 +5,7 @@ import shlex
 import sys
 import uuid
 
-from cook import colors, http
+from cook import colors, http, metrics
 from cook.util import deep_merge, is_valid_uuid, read_lines, print_info, current_user
 
 
@@ -85,6 +85,7 @@ def submit_federated(clusters, jobs):
             resp = http.post(cluster, 'rawscheduler', {'jobs': jobs})
             print_submit_result(cluster, resp)
             if resp.status_code == 201:
+                metrics.inc('command.submit.jobs', len(jobs))
                 return 0
         except IOError as ioe:
             logging.info(ioe)
