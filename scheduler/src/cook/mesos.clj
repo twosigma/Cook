@@ -177,8 +177,8 @@
    zk-prefix                -- str, prefix in zk for cook data
    offer-incubate-time-ms   -- long, time in millis that offers are allowed to sit before they are declined
    mea-culpa-failure-limit  -- long, max failures of mea culpa reason before it is considered a 'real' failure
-                                     see scheduler/docs/configuration.asc for more details
-   task-constraints         -- map, constraints on task. See scheduler/docs/configuration.asc for more details
+                                     see scheduler/docs/configuration.adoc for more details
+   task-constraints         -- map, constraints on task. See scheduler/docs/configuration.adoc for more details
    executor                 -- cook executor config includes command, default-progress-output-file,
                                      default-progress-regex-string, log-level, message-length,
                                      progress-sample-interval-ms and uri.
@@ -187,10 +187,10 @@
    mesos-pending-jobs-atom  -- atom, Populate (and update) list of pending jobs into atom
    offer-cache              -- atom, map from host to most recent offer. Used to get attributes
    gpu-enabled?             -- boolean, whether cook will schedule gpus
-   rebalancer-config        -- map, config for rebalancer. See scheduler/docs/rebalancer-config.asc for details
-   progress-config          -- map, config for progress publishing. See scheduler/docs/configuration.asc for more details
+   rebalancer-config        -- map, config for rebalancer. See scheduler/docs/rebalancer-config.adoc for details
+   progress-config          -- map, config for progress publishing. See scheduler/docs/configuration.adoc for more details
    framework-id             -- str, the Mesos framework id from the cook settings
-   fenzo-config             -- map, config for fenzo, See scheduler/docs/configuration.asc for more details"
+   fenzo-config             -- map, config for fenzo, See scheduler/docs/configuration.adoc for more details"
   [make-mesos-driver-fn get-mesos-utilization curator-framework mesos-datomic-conn mesos-datomic-mult zk-prefix
    offer-incubate-time-ms
    mea-culpa-failure-limit task-constraints riemann-host riemann-port mesos-pending-jobs-atom

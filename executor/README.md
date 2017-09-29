@@ -67,7 +67,7 @@ For example:
  ...}
 ```
 
-For more detailed information about the executor configuration, see the Cook Executor section in [configuration documentation](../scheduler/docs/configuration.asc).
+For more detailed information about the executor configuration, see the Cook Executor section in [configuration documentation](../scheduler/docs/configuration.adoc).
 Some of the executor configurations are sent to the Cook executor as the following environment variables:
 
 | environment variable name | executor config key |

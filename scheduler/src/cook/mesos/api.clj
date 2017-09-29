@@ -769,7 +769,7 @@
    sandbox-directory will be populated in the instance by the cook executor, else it may be nil when the query to
    the agent needs to me made.
    Hardcodes fun stuff like the port we run the agent on. Users will need to add the file path & offset to their query.
-   Refer to the 'Using the output_url' section in docs/scheduler-rest-api.asc for further details."
+   Refer to the 'Using the output_url' section in docs/scheduler-rest-api.adoc for further details."
   [framework-id agent-hostname executor-id agent-query-cache sandbox-directory]
   (try
     (when-let [directory (or sandbox-directory
