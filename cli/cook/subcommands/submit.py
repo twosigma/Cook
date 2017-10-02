@@ -5,6 +5,8 @@ import shlex
 import sys
 import uuid
 
+import pkg_resources
+
 from cook import colors, http, metrics
 from cook.util import deep_merge, is_valid_uuid, read_lines, print_info, current_user
 
@@ -141,6 +143,9 @@ def submit(clusters, args):
     job = args
     raw = job.pop('raw', None)
     command_from_command_line = job.pop('command', None)
+    application_name = job.pop('application_name', 'cook-scheduler-cli')
+    application_version = job.pop('application_version', pkg_resources.require('twosigma.cook-cli')[0].version)
+    job['application'] = {'name': application_name, 'version': application_version}
 
     if raw:
         if command_from_command_line:
@@ -196,6 +201,8 @@ def register(add_parser, add_defaults):
     submit_parser.add_argument('--env', '-e', help='environment variable for job (can be repeated)',
                                metavar='KEY=VALUE', action='append')
     submit_parser.add_argument('--ports', help='number of ports to reserve for job', type=int)
+    submit_parser.add_argument('--application-name', '-a', help='name of application submitting the job')
+    submit_parser.add_argument('--application-version', '-v', help='version of application submitting the job')
     submit_parser.add_argument('--raw', '-r', help='raw job spec in json format', dest='raw', action='store_true')
     submit_parser.add_argument('command', nargs=argparse.REMAINDER)
 

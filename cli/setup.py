@@ -16,8 +16,8 @@ test_requirements = [
 ]
 
 setup(
-    name='cook',
-    version='1.0',
+    name='twosigma.cook-cli',
+    version='0.1.0a1',
     packages=['cook', 'cook.subcommands'],
     entry_points={'console_scripts': ['cs = cook.__main__:main']},
     install_requires=requirements,
