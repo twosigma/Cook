@@ -484,3 +484,17 @@ class CookCliTest(unittest.TestCase):
         cp = cli.list_jobs(self.cook_url, '--state foo')
         self.assertEqual(2, cp.returncode, cp.stderr)
         self.assertIn("invalid choice: 'foo'", cli.decode(cp.stderr))
+
+    def test_submit_with_application(self):
+        # Specifying application name and version
+        cp, uuids = cli.submit('ls', self.cook_url,
+                               submit_flags='--application-name %s --application-version %s' % ('foo', '1.2.3'))
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        cp, jobs = cli.show_json(uuids, self.cook_url)
+        self.assertEqual('foo', jobs[0]['application']['name'])
+        self.assertEqual('1.2.3', jobs[0]['application']['version'])
+        # Default application name
+        cp, uuids = cli.submit('ls', self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        cp, jobs = cli.show_json(uuids, self.cook_url)
+        self.assertEqual('cook-scheduler-cli', jobs[0]['application']['name'])
