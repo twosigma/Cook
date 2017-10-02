@@ -353,10 +353,10 @@ class CookExecutor(Executor):
         logging.info('Executor disconnected!')
 
     def launchTask(self, driver, task):
-        logging.info('Driver {} launching task {}'.format(driver, task))
+        logging.info('Driver {} launching task with id {}'.format(driver, get_task_id(task)))
 
-        stdout_file_path = os.path.join(self.config.sandbox_directory, 'stdout')
-        stderr_file_path = os.path.join(self.config.sandbox_directory, 'stderr')
+        stdout_file_path = os.path.join(self.config.sandbox_directory, 'executor.stdout')
+        stderr_file_path = os.path.join(self.config.sandbox_directory, 'executor.stderr')
         thread = Thread(target=manage_task,
                         args=(driver, task, self.stop_signal, self.completed_signal, self.config, stdout_file_path,
                               stderr_file_path))
