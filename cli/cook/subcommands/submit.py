@@ -144,7 +144,7 @@ def submit(clusters, args):
     raw = job.pop('raw', None)
     command_from_command_line = job.pop('command', None)
     application_name = job.pop('application_name', 'cook-scheduler-cli')
-    application_version = job.pop('application_version', pkg_resources.require('twosigma.cook-cli')[0].version)
+    application_version = job.pop('application_version', pkg_resources.require('cook_client')[0].version)
     job['application'] = {'name': application_name, 'version': application_version}
 
     if raw:
