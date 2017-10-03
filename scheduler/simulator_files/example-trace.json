@@ -2,6 +2,8 @@
   "run-time-ms" : 1157730,
   "job/max-runtime" : 432000000,
   "submit-time-ms" : -855,
+  "job/group" : "591c97d8-1a66-49ec-abd6-cf1165b28798",
+  "job/expected-runtime" : 100,
   "job/priority" : 50,
   "job/resource" : [ {
     "resource/type" : "resource.type/cpus",
@@ -38,6 +40,7 @@
   "run-time-ms" : 1649093,
   "job/max-runtime" : 432000000,
   "submit-time-ms" : -422,
+  "job/group" : "591c97d8-1a66-49ec-abd6-cf1165b28798",
   "job/priority" : 50,
   "job/resource" : [ {
     "resource/type" : "resource.type/cpus",
