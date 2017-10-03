@@ -312,6 +312,7 @@
                                                  :rebalancer-trigger-chan rebalancer-trigger-chan
                                                  :optimizer-trigger-chan optimizer-trigger-chan
                                                  ;; Don't care about these yet
+                                                 :progress-updater-trigger-chan (async/chan)
                                                  :straggler-trigger-chan (async/chan)
                                                  :lingering-task-trigger-chan (async/chan)
                                                  :cancelled-task-trigger-chan (async/chan)}})]
