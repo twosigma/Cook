@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import subprocess
+import sys
 import time
 from threading import Event, Thread
 
@@ -94,22 +95,17 @@ def send_message(driver, message, max_message_length):
         return False
 
 
-def launch_task(task, stdout_name, stderr_name):
+def launch_task(task):
     """Launches the task using the command available in the json map from the data field.
 
     Parameters
     ----------
     task: map
         The task to execute.
-    stdout_name: string
-        The file to use to redirect stdout.
-    stderr_name: string
-        The file to use to redirect stderr.
 
     Returns
     -------
-    When command is provided and a process can be started, the tuple containing the process launched, stdout file, 
-    and stderr file.
+    When command is provided and a process can be started, the process launched.
     Else it logs the reason and returns None.
     """
     try:
@@ -121,11 +117,9 @@ def launch_task(task, stdout_name, stderr_name):
             logging.warning('No command provided!')
             return None
 
-        stdout = open(stdout_name, 'a+')
-        stderr = open(stderr_name, 'a+')
-        process = subprocess.Popen(command, shell=True, stdout=stdout, stderr=stderr)
+        process = subprocess.Popen(command, shell=True, stdout=sys.stdout.fileno(), stderr=sys.stderr.fileno())
 
-        return process, stdout, stderr
+        return process
     except Exception:
         logging.exception('Error in launch_task')
         return None
@@ -146,26 +140,7 @@ def is_running(process):
     return process.poll() is None
 
 
-def cleanup_process(process_info):
-    """Closes the stdout and stderr files.
-    
-    Parameters
-    ----------
-    process_info: tuple
-        Tuple of (process, stdout_file, stderr_file)
-
-    Returns
-    -------
-    Nothing
-    """
-    _, stdout, stderr = process_info
-    logging.info('Closing {}'.format(stdout.name))
-    stdout.close()
-    logging.info('Closing {}'.format(stderr.name))
-    stderr.close()
-
-
-def kill_task(process_info, shutdown_grace_period_ms):
+def kill_task(process, shutdown_grace_period_ms):
     """Attempts to kill a process.
      First attempt is made by sending the process a SIGTERM.
      If the process does not terminate inside (shutdown_grace_period_ms - 100) ms, it is then sent a SIGKILL.
@@ -173,8 +148,8 @@ def kill_task(process_info, shutdown_grace_period_ms):
 
     Parameters
     ----------
-    process_info: tuple
-        Tuple of (process, stdout_file, stderr_file)
+    process: subprocess.Popen
+        The process to kill
     shutdown_grace_period_ms: int
         Grace period before forceful kill
 
@@ -183,7 +158,6 @@ def kill_task(process_info, shutdown_grace_period_ms):
     Nothing
     """
     shutdown_grace_period_ms = max(shutdown_grace_period_ms - 100, 0)
-    process, _, _ = process_info
     if is_running(process):
         logging.info('Waiting up to {} ms for process to terminate'.format(shutdown_grace_period_ms))
         process.terminate()
@@ -196,18 +170,17 @@ def kill_task(process_info, shutdown_grace_period_ms):
         if is_running(process):
             logging.info('Process did not terminate, forcefully killing it')
             process.kill()
-    cleanup_process(process_info)
 
 
-def await_process_completion(stop_signal, process_info, shutdown_grace_period_ms):
-    """Awaits process (available in process_info) completion.
+def await_process_completion(stop_signal, process, shutdown_grace_period_ms):
+    """Awaits process completion.
 
     Parameters
     ----------
     stop_signal: Event
         Event that determines if an interrupt was sent
-    process_info: tuple
-        Tuple of (process, stdout_file, stderr_file)
+    process: subprocess.Popen
+        The process to await completion for.
     shutdown_grace_period_ms: int
         Grace period before forceful kill
 
@@ -215,19 +188,14 @@ def await_process_completion(stop_signal, process_info, shutdown_grace_period_ms
     -------
     True if the process was killed, False if it terminated naturally.
     """
-    process, _, _ = process_info
-
     while is_running(process):
 
         if stop_signal.isSet():
             logging.info('Executor has been instructed to terminate')
-            kill_task(process_info, shutdown_grace_period_ms)
+            kill_task(process, shutdown_grace_period_ms)
             break
 
         time.sleep(cook.RUNNING_POLL_INTERVAL_SECS)
-
-    if not stop_signal.isSet():
-        cleanup_process(process_info)
 
 
 def get_task_state(exit_code):
@@ -268,8 +236,8 @@ def manage_task(driver, task, stop_signal, completed_signal, config, stdout_name
         sandbox_message = json.dumps({'sandbox-directory': config.sandbox_directory, 'task-id': task_id})
         send_message(driver, sandbox_message, config.max_message_length)
 
-        process_info = launch_task(task, stdout_name, stderr_name)
-        if process_info:
+        process = launch_task(task)
+        if process:
             # task has begun running successfully
             update_status(driver, task_id, cook.TASK_RUNNING)
         else:
@@ -278,7 +246,6 @@ def manage_task(driver, task, stop_signal, completed_signal, config, stdout_name
             update_status(driver, task_id, cook.TASK_ERROR)
             return
 
-        process, _, _ = process_info
         task_completed_signal = Event() # event to track task execution completion
 
         progress_watcher = cp.ProgressWatcher(config, stop_signal, task_completed_signal)
@@ -286,7 +253,7 @@ def manage_task(driver, task, stop_signal, completed_signal, config, stdout_name
                                               config.progress_sample_interval_ms, send_message)
         progress_complete_event = cp.launch_progress_tracker(progress_watcher, progress_updater)
 
-        await_process_completion(stop_signal, process_info, config.shutdown_grace_period_ms)
+        await_process_completion(stop_signal, process, config.shutdown_grace_period_ms)
         task_completed_signal.set()
 
         # propagate the exit code
