@@ -73,13 +73,13 @@ def show_data(cluster_job_pairs):
 def list_jobs(clusters, args):
     """Prints info for the jobs with the given list criteria"""
     as_json = args.get('json')
-    state = args.get('state')
+    states = args.get('states') or ['running', 'waiting']
     user = args.get('user')
     lookback_hours = args.get('lookback')
     name = args.get('name')
     limit = args.get('limit')
 
-    query_result = query(clusters, state, user, lookback_hours, name, limit)
+    query_result = query(clusters, states, user, lookback_hours, name, limit)
     if as_json:
         print(json.dumps(query_result))
     elif query_result['count'] > 0:
@@ -104,8 +104,18 @@ def check_positive(value):
 def register(add_parser, add_defaults):
     """Adds this sub-command's parser and returns the action function"""
     list_parser = add_parser('list', help='list jobs by state / user / time / name')
-    list_parser.add_argument('--state', '-s', help='list jobs by status (can be repeated)', action='append',
-                             choices=('waiting', 'running', 'completed', 'failed', 'success', 'all'))
+    list_parser.add_argument('--waiting', '-w', help='list waiting jobs', dest='states',
+                             action='append_const', const='waiting')
+    list_parser.add_argument('--running', '-r', help='list running jobs', dest='states',
+                             action='append_const', const='running')
+    list_parser.add_argument('--completed', '-c', help='list completed jobs', dest='states',
+                             action='append_const', const='completed')
+    list_parser.add_argument('--failed', '-f', help='list failed jobs', dest='states',
+                             action='append_const', const='failed')
+    list_parser.add_argument('--success', '-s', help='list successful jobs', dest='states',
+                             action='append_const', const='success')
+    list_parser.add_argument('--all', '-a', help='list all jobs, regardless of status', dest='states',
+                             action='append_const', const='all')
     list_parser.add_argument('--user', '-u', help='list jobs for a user')
     list_parser.add_argument('--lookback', '-t', help='list jobs for the last X hours', type=float)
     list_parser.add_argument('--name', '-n', help="list jobs with a particular name pattern (name filters can contain "

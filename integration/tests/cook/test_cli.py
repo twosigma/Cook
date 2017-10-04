@@ -404,9 +404,9 @@ class CookCliTest(unittest.TestCase):
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual('No jobs found in %s.' % self.cook_url, cli.stdout(cp))
 
-    def list_jobs(self, name, user, *state):
+    def list_jobs(self, name, user, *states):
         """Invokes the list subcommand with the given name, user, and state filters"""
-        state_flags = ' '.join(['--state %s' % s for s in state])
+        state_flags = ' '.join([f'--{state}' for state in states])
         cp, jobs = cli.list_jobs_json(self.cook_url, '--name %s --user %s %s' % (name, user, state_flags))
         return cp, jobs
 
@@ -481,9 +481,9 @@ class CookCliTest(unittest.TestCase):
         self.assertIn(failed_uuid, uuids)
 
     def test_list_invalid_state(self):
-        cp = cli.list_jobs(self.cook_url, '--state foo')
+        cp = cli.list_jobs(self.cook_url, '--foo')
         self.assertEqual(2, cp.returncode, cp.stderr)
-        self.assertIn("invalid choice: 'foo'", cli.decode(cp.stderr))
+        self.assertIn('error: unrecognized arguments: --foo', cli.decode(cp.stderr))
 
     def test_submit_with_application(self):
         # Specifying application name and version
