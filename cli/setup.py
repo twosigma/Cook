@@ -2,6 +2,8 @@
 
 from setuptools import setup
 
+from cook import version
+
 requirements = [
     'arrow',
     'blessings',
@@ -17,7 +19,7 @@ test_requirements = [
 
 setup(
     name='cook_client',
-    version='0.1.0a4',
+    version=version.VERSION,
     description="Two Sigma's Cook CLI",
     long_description="This package contains Two Sigma's Cook Scheduler command line interface, cs. cs allows you to "
                      "submit jobs and view jobs, job instances, and job groups across multiple Cook clusters.",

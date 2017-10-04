@@ -5,9 +5,7 @@ import shlex
 import sys
 import uuid
 
-import pkg_resources
-
-from cook import colors, http, metrics
+from cook import colors, http, metrics, version
 from cook.util import deep_merge, is_valid_uuid, read_lines, print_info, current_user
 
 
@@ -144,7 +142,7 @@ def submit(clusters, args):
     raw = job.pop('raw', None)
     command_from_command_line = job.pop('command', None)
     application_name = job.pop('application_name', 'cook-scheduler-cli')
-    application_version = job.pop('application_version', pkg_resources.require('cook_client')[0].version)
+    application_version = job.pop('application_version', version.VERSION)
     job['application'] = {'name': application_name, 'version': application_version}
 
     if raw:

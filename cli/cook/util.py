@@ -41,6 +41,8 @@ def load_json_file(path):
                 content = json.load(json_file)
             except Exception:
                 pass
+    else:
+        logging.info(f'{path} is not a file')
 
     return content
 
@@ -49,7 +51,7 @@ def load_first_json_file(paths=None):
     """Returns the contents of the first parseable JSON file in a list of paths."""
     if paths is None:
         paths = []
-    contents = (load_json_file(p) for p in paths if p)
+    contents = (load_json_file(os.path.abspath(p)) for p in paths if p)
     return next((c for c in contents if c), None)
 
 
