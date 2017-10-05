@@ -6,15 +6,14 @@ import time
 import unittest
 from threading import Event, Thread
 
-import os
 from nose.tools import *
 from pymesos import encode_data
 
 import cook
 import cook.config as cc
 import cook.executor as ce
-from tests.utils import assert_message, assert_status, cleanup_output, ensure_directory, get_random_task_id, \
-    FakeMesosExecutorDriver
+from tests.utils import assert_message, assert_status, cleanup_output, close_sys_outputs, ensure_directory, \
+    get_random_task_id, redirect_stderr_to_file, redirect_stdout_to_file, FakeMesosExecutorDriver
 
 
 class ExecutorTest(unittest.TestCase):
@@ -79,27 +78,27 @@ class ExecutorTest(unittest.TestCase):
         command = 'echo "Hello World"; echo "Error Message" >&2'
         task = {'task_id': {'value': task_id},
                 'data': encode_data(json.dumps({'command': command}).encode('utf8'))}
+
         stdout_name = ensure_directory('build/stdout.' + str(task_id))
         stderr_name = ensure_directory('build/stderr.' + str(task_id))
 
-        if not os.path.isdir("build"):
-            os.mkdir("build")
+        redirect_stdout_to_file(stdout_name)
+        redirect_stderr_to_file(stderr_name)
 
         try:
-            process, stdout, stderr = ce.launch_task(task, stdout_name, stderr_name)
+            process = ce.launch_task(task)
 
             self.assertIsNotNone(process)
             for i in range(100):
                 if process.poll() is None:
                     time.sleep(0.01)
 
-            stdout.close()
-            stderr.close()
-
             if process.poll() is None:
                 process.kill()
 
             self.assertEqual(0, process.poll())
+
+            close_sys_outputs()
 
             with open(stdout_name) as f:
                 stdout_content = f.read()
@@ -108,7 +107,6 @@ class ExecutorTest(unittest.TestCase):
             with open(stderr_name) as f:
                 stderr_content = f.read()
                 self.assertEqual("Error Message\n", stderr_content)
-
         finally:
             cleanup_output(stdout_name, stderr_name)
 
@@ -116,39 +114,18 @@ class ExecutorTest(unittest.TestCase):
         task_id = get_random_task_id()
         task = {'task_id': {'value': task_id},
                 'data': encode_data(json.dumps({'command': ''}).encode('utf8'))}
-        stdout_name = ''
-        stderr_name = ''
 
-        result = ce.launch_task(task, stdout_name, stderr_name)
+        process = ce.launch_task(task)
 
-        self.assertIsNone(result)
+        self.assertIsNone(process)
 
     def test_launch_task_handle_exception(self):
         task_id = get_random_task_id()
         task = {'task_id': {'value': task_id}}
-        stdout_name = ''
-        stderr_name = ''
 
-        result = ce.launch_task(task, stdout_name, stderr_name)
+        process = ce.launch_task(task)
 
-        self.assertIsNone(result)
-
-    def test_cleanup_process(self):
-        task_id = get_random_task_id()
-        stdout_name = ensure_directory('build/stdout.' + str(task_id))
-        stderr_name = ensure_directory('build/stderr.' + str(task_id))
-
-        stdout = open(stdout_name, 'w+')
-        stderr = open(stderr_name, 'w+')
-
-        try:
-            process_info = None, stdout, stderr
-            ce.cleanup_process(process_info)
-
-            self.assertTrue(stdout.closed)
-            self.assertTrue(stderr.closed)
-        finally:
-            cleanup_output(stdout_name, stderr_name)
+        self.assertIsNone(process)
 
     def test_kill_task_terminate(self):
         task_id = get_random_task_id()
@@ -156,23 +133,19 @@ class ExecutorTest(unittest.TestCase):
         stdout_name = ensure_directory('build/stdout.' + str(task_id))
         stderr_name = ensure_directory('build/stderr.' + str(task_id))
 
-        stdout = open(stdout_name, 'w+')
-        stderr = open(stderr_name, 'w+')
+        redirect_stdout_to_file(stdout_name)
+        redirect_stderr_to_file(stderr_name)
 
         try:
             command = 'sleep 100'
-            process = subprocess.Popen(command, shell=True, stdout=stdout, stderr=stderr)
-            process_info = process, stdout, stderr
+            process = subprocess.Popen(command, shell=True)
             shutdown_grace_period_ms = 2000
-            ce.kill_task(process_info, shutdown_grace_period_ms)
+            ce.kill_task(process, shutdown_grace_period_ms)
 
             # await process termination
             while process.poll() is None:
                 time.sleep(0.01)
             self.assertEqual(-1 * signal.SIGTERM, process.poll())
-
-            self.assertTrue(stdout.closed)
-            self.assertTrue(stderr.closed)
 
         finally:
             cleanup_output(stdout_name, stderr_name)
@@ -183,24 +156,20 @@ class ExecutorTest(unittest.TestCase):
         stdout_name = ensure_directory('build/stdout.' + str(task_id))
         stderr_name = ensure_directory('build/stderr.' + str(task_id))
 
-        stdout = open(stdout_name, 'w+')
-        stderr = open(stderr_name, 'w+')
+        redirect_stdout_to_file(stdout_name)
+        redirect_stderr_to_file(stderr_name)
 
         try:
             command = 'sleep 2'
-            process = subprocess.Popen(command, shell=True, stdout=stdout, stderr=stderr)
-            process_info = process, stdout, stderr
+            process = subprocess.Popen(command, shell=True)
             shutdown_grace_period_ms = 1000
 
             stop_signal = Event()
 
-            ce.await_process_completion(stop_signal, process_info, shutdown_grace_period_ms)
+            ce.await_process_completion(stop_signal, process, shutdown_grace_period_ms)
 
             self.assertFalse(stop_signal.isSet())
             self.assertEqual(0, process.returncode)
-
-            self.assertTrue(stdout.closed)
-            self.assertTrue(stderr.closed)
 
         finally:
             cleanup_output(stdout_name, stderr_name)
@@ -211,13 +180,12 @@ class ExecutorTest(unittest.TestCase):
         stdout_name = ensure_directory('build/stdout.' + str(task_id))
         stderr_name = ensure_directory('build/stderr.' + str(task_id))
 
-        stdout = open(stdout_name, 'w+')
-        stderr = open(stderr_name, 'w+')
+        redirect_stdout_to_file(stdout_name)
+        redirect_stderr_to_file(stderr_name)
 
         try:
             command = 'sleep 100'
-            process = subprocess.Popen(command, shell=True, stdout=stdout, stderr=stderr)
-            process_info = process, stdout, stderr
+            process = subprocess.Popen(command, shell=True)
             shutdown_grace_period_ms = 2000
 
             stop_signal = Event()
@@ -228,12 +196,9 @@ class ExecutorTest(unittest.TestCase):
             thread = Thread(target=sleep_and_set_stop_signal, args=())
             thread.start()
 
-            ce.await_process_completion(stop_signal, process_info, shutdown_grace_period_ms)
+            ce.await_process_completion(stop_signal, process, shutdown_grace_period_ms)
 
             self.assertTrue(process.returncode < 0)
-
-            self.assertTrue(stdout.closed)
-            self.assertTrue(stderr.closed)
 
         finally:
             cleanup_output(stdout_name, stderr_name)
@@ -251,6 +216,9 @@ class ExecutorTest(unittest.TestCase):
 
         stdout_name = ensure_directory('build/stdout.' + str(task_id))
         stderr_name = ensure_directory('build/stderr.' + str(task_id))
+
+        redirect_stdout_to_file(stdout_name)
+        redirect_stderr_to_file(stderr_name)
 
         completed_signal = Event()
         max_message_length = 300

@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import random
+import sys
 
 from pymesos import decode_data
 
@@ -18,6 +19,28 @@ def ensure_directory(output_filename):
     return output_filename
 
 
+def reset_stdout():
+    sys.stdout = sys.__stdout__
+
+
+def reset_stderr():
+    sys.stderr = sys.__stderr__
+
+
+def initialize_file(output_filename):
+    output_filename = ensure_directory(output_filename)
+    output_file = open(output_filename, 'w+')
+    return output_file
+
+
+def redirect_stdout_to_file(output_filename):
+    sys.stdout = initialize_file(output_filename)
+
+
+def redirect_stderr_to_file(output_filename):
+    sys.stderr = initialize_file(output_filename)
+
+
 def assert_status(testcase, expected_status, actual_status):
     assert actual_status['timestamp'] is not None
     if 'timestamp' in actual_status: del actual_status['timestamp']
@@ -29,7 +52,20 @@ def assert_message(testcase, expected_message, actual_encoded_message):
     testcase.assertEquals(expected_message, actual_message)
 
 
+def close_sys_outputs():
+    if not sys.stdout.closed:
+        sys.stdout.flush()
+        sys.stdout.close()
+
+    if not sys.stderr.closed:
+        sys.stderr.flush()
+        sys.stderr.close()
+
+
 def cleanup_output(stdout_name, stderr_name):
+
+    close_sys_outputs()
+
     if os.path.isfile(stdout_name):
         with open(stdout_name) as f:
             logging.debug('==========================================')
@@ -42,6 +78,9 @@ def cleanup_output(stdout_name, stderr_name):
             logging.debug('Contents of {}:'.format(stderr_name))
             logging.debug(f.read())
         os.remove(stderr_name)
+
+    reset_stdout()
+    reset_stderr()
 
 
 class FakeMesosExecutorDriver(object):
