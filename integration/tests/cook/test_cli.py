@@ -91,15 +91,20 @@ class CookCliTest(unittest.TestCase):
         self.assertEqual(1, cp.returncode, cp.stderr)
 
     def test_specifying_cluster_name_explicitly(self):
-        config = {'clusters': [{'name': 'foo', 'url': self.cook_url}],
+        cluster_name = 'foo'
+        config = {'clusters': [{'name': cluster_name, 'url': self.cook_url}],
                   'defaults': {'submit': {'mem': 256, 'cpus': 2, 'max-retries': 2}}}
         with cli.temp_config_file(config) as path:
-            flags = '--config %s --cluster foo' % path
+            flags = f'--config {path} --cluster {cluster_name}'
             cp, uuids = cli.submit('ls', flags=flags)
             self.assertEqual(0, cp.returncode, cp.stderr)
             cp, jobs = cli.show_json(uuids, flags=flags)
             self.assertEqual(0, cp.returncode, cp.stderr)
-            cp = cli.wait(uuids, flags=flags)
+            # Cluster names are case insensitive
+            uppercase_cluster_name = cluster_name.upper()
+            self.assertNotEqual(cluster_name, uppercase_cluster_name)
+            flags = f'--config {path} --cluster {uppercase_cluster_name}'
+            cp, jobs = cli.show_json(uuids, flags=flags)
             self.assertEqual(0, cp.returncode, cp.stderr)
 
     def test_verbose_flag(self):
@@ -498,3 +503,54 @@ class CookCliTest(unittest.TestCase):
         self.assertEqual(0, cp.returncode, cp.stderr)
         cp, jobs = cli.show_json(uuids, self.cook_url)
         self.assertEqual('cook-scheduler-cli', jobs[0]['application']['name'])
+
+    def test_list_connection_error(self):
+        config = {'http': {'read-timeout': 0.001}}
+        with cli.temp_config_file(config) as path:
+            cp = cli.list_jobs(self.cook_url, flags=f'--config {path}')
+            self.assertEqual(1, cp.returncode)
+            self.assertIn('Encountered connection error', cli.decode(cp.stderr))
+
+    def test_list_invalid_flags(self):
+        error_fragment = 'cannot specify both lookback hours and submitted after / before times'
+        cp = cli.list_jobs(self.cook_url, '--lookback 1 --submitted-after "yesterday" --submitted-before "now"')
+        self.assertEqual(1, cp.returncode, cp.stderr)
+        self.assertIn(error_fragment, cli.decode(cp.stderr))
+        cp = cli.list_jobs(self.cook_url, '--lookback 1 --submitted-after "yesterday"')
+        self.assertEqual(1, cp.returncode, cp.stderr)
+        self.assertIn(error_fragment, cli.decode(cp.stderr))
+        cp = cli.list_jobs(self.cook_url, '--lookback 1 --submitted-before "now"')
+        self.assertEqual(1, cp.returncode, cp.stderr)
+        self.assertIn(error_fragment, cli.decode(cp.stderr))
+
+    def test_list_with_time_ranges(self):
+        name = str(uuid.uuid4())
+        cp, uuids = cli.submit('ls', self.cook_url, submit_flags=f'--name {name}')
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        user = util.get_user(self.cook_url, uuids[0])
+        # Time range that should be empty
+        list_flags = f'--submitted-after "30 minutes ago" --submitted-before "15 minutes ago" ' \
+                     f'--user {user} --all --name {name}'
+        cp, jobs = cli.list_jobs_json(self.cook_url, list_flags)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertEqual(0, len(jobs))
+        # Time range that should contain our job (wait for job to complete to avoid racing with the "now" query)
+        cp = cli.wait(uuids, self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        list_flags = f'--submitted-after "30 minutes ago" --submitted-before "now" --user {user} --all --name {name}'
+        cp, jobs = cli.list_jobs_json(self.cook_url, list_flags)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertEqual(1, len(jobs))
+        self.assertIn(uuids[0], jobs[0]['uuid'])
+        # --submitted-after is not required
+        list_flags = f'--submitted-before "now" --user {user} --all --name {name}'
+        cp, jobs = cli.list_jobs_json(self.cook_url, list_flags)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertEqual(1, len(jobs))
+        self.assertIn(uuids[0], jobs[0]['uuid'])
+        # --submitted-before is not required
+        list_flags = f'--submitted-after "15 minutes ago" --user {user} --all --name {name}'
+        cp, jobs = cli.list_jobs_json(self.cook_url, list_flags)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertEqual(1, len(jobs))
+        self.assertIn(uuids[0], jobs[0]['uuid'])

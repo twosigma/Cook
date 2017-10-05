@@ -107,10 +107,10 @@ class temp_config_file:
         os.remove(self.path)
 
 
-def list_jobs(cook_url=None, list_flags=None):
+def list_jobs(cook_url=None, list_flags=None, flags=None):
     """Invokes the list subcommand"""
-    args = 'list %s' % list_flags + ' ' if list_flags else ''
-    cp = cli(args, cook_url)
+    args = f'list{" " + list_flags if list_flags else ""}'
+    cp = cli(args, cook_url, flags)
     return cp
 
 
