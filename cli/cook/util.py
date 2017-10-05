@@ -113,12 +113,12 @@ def is_valid_uuid(uuid_to_test, version=4):
 silent = False
 
 
-def print_info(text, silent_mode_text=None):
+def print_info(text, silent_mode_text=None, end='\n'):
     """Prints text, unless in silent mode (-s / --silent)"""
     if not silent:
-        print(text, flush=True)
+        print(text, flush=True, end=end)
     elif silent_mode_text:
-        print(silent_mode_text, flush=True)
+        print(silent_mode_text, flush=True, end=end)
 
 
 def strip_all(strs):

@@ -424,7 +424,7 @@ class CookCliTest(unittest.TestCase):
         self.assertEqual(uuids[0], jobs[0]['uuid'])
         waiting_uuid = uuids[0]
         # running
-        cp, uuids = cli.submit('sleep 60', self.cook_url, submit_flags='--name %s' % name)
+        cp, uuids = cli.submit('sleep 120', self.cook_url, submit_flags='--name %s' % name)
         self.assertEqual(0, cp.returncode, cp.stderr)
         util.wait_for_job(self.cook_url, uuids[0], 'running')
         cp, jobs = self.list_jobs(name, user, 'running')
@@ -475,7 +475,7 @@ class CookCliTest(unittest.TestCase):
         cp, jobs = self.list_jobs(name, user, 'completed', 'waiting')
         uuids = [j['uuid'] for j in jobs]
         self.assertEqual(0, cp.returncode, cp.stderr)
-        self.assertEqual(3, len(jobs))
+        self.assertEqual(3, len(jobs), f'Expected 3 jobs, got: {jobs}')
         self.assertIn(waiting_uuid, uuids)
         self.assertIn(success_uuid, uuids)
         self.assertIn(failed_uuid, uuids)
