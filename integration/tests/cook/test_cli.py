@@ -249,7 +249,7 @@ class CookCliTest(unittest.TestCase):
         elapsed_time_2 = time.time() - start_time
         self.assertEqual(1, cp.returncode, cp.stderr)
         self.assertIn('Timeout waiting', cli.decode(cp.stderr))
-        self.assertLess(elapsed_time_2, 3)
+        self.assertLess(elapsed_time_2, elapsed_time)
 
     def test_query_invalid_uuid(self):
         cp = cli.show([uuid.uuid4()], self.cook_url)
