@@ -45,11 +45,16 @@ def wait(clusters, args):
 
 def register(add_parser, add_defaults):
     """Adds this sub-command's parser and returns the action function"""
+    default_timeout = None
+    default_timeout_text = 'wait indefinitely'
+    default_interval = 5
     wait_parser = add_parser('wait', help='wait for job(s) to complete by uuid')
     wait_parser.add_argument('uuid', nargs='+')
-    wait_parser.add_argument('--timeout', '-t', help='maximum time (in seconds) to wait', type=int)
-    wait_parser.add_argument('--interval', '-i', help='time (in seconds) to wait between polling', type=int)
+    wait_parser.add_argument('--timeout', '-t',
+                             help=f'maximum time (in seconds) to wait (default = {default_timeout_text})', type=int)
+    wait_parser.add_argument('--interval', '-i',
+                             help=f'time (in seconds) to wait between polling (default = {default_interval})', type=int)
 
-    add_defaults('wait', {'timeout': None, 'interval': 5})
+    add_defaults('wait', {'timeout': default_timeout, 'interval': default_interval})
 
     return wait

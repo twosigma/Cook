@@ -9,7 +9,10 @@ requirements = [
     'blessings',
     'humanfriendly',
     'requests',
-    'tabulate'
+    'tabulate',
+    'parsedatetime',
+    'tzlocal',
+    'pytz'
 ]
 
 test_requirements = [

@@ -12,6 +12,9 @@ import arrow
 import humanfriendly
 
 
+quit_running = False
+
+
 def deep_merge(a, b):
     """Merges a and b, letting b win if there is a conflict"""
     merged = a.copy()
@@ -68,7 +71,7 @@ def wait_until(pred, timeout=30, interval=5):
     while True:
         result = pred()
 
-        if result:
+        if result or quit_running:
             break
 
         if finish and datetime.now() >= finish:

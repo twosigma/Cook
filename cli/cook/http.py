@@ -3,6 +3,8 @@ import json
 import logging
 from urllib.parse import urljoin
 
+import requests
+
 session = None
 timeouts = None
 
@@ -67,8 +69,11 @@ def make_data_request(make_request_fn):
             return resp.json()
         else:
             return []
+    except requests.exceptions.ConnectionError as ce:
+        logging.exception(ce)
+        raise Exception('Encountered connection error.')
     except IOError as ioe:
-        logging.info(ioe)
+        logging.exception(ioe)
         return []
     except json.decoder.JSONDecodeError as jde:
         logging.exception(jde)

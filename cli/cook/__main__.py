@@ -2,9 +2,10 @@
 """Module implementing a CLI for the Cook scheduler API. """
 
 import logging
+import signal
 import sys
 
-from cook import colors
+from cook import colors, util
 from cook.cli import run
 
 
@@ -20,6 +21,18 @@ def main(args=None):
         print(colors.failed(str(e)), file=sys.stderr)
         sys.exit(1)
 
+
+def sigint_handler(_, __):
+    """
+    Sets util.quit_running to True (which is read by other
+    threads to determine when to stop), and then exits.
+    """
+    util.quit_running = True
+    print('Exiting...')
+    sys.exit(0)
+
+
+signal.signal(signal.SIGINT, sigint_handler)
 
 if __name__ == '__main__':
     main()

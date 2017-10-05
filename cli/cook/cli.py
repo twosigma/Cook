@@ -15,7 +15,7 @@ DEFAULT_CONFIG_PATHS = ['.cs.json',
 DEFAULT_CONFIG = {'defaults': {},
                   'http': {'retries': 2,
                            'connect-timeout': 3.05,
-                           'read-timeout': 5,
+                           'read-timeout': 20,
                            'modules': {'session-module': 'requests',
                                        'adapters-module': 'requests.adapters'}},
                   'metrics': {'disabled': True}}
@@ -55,7 +55,7 @@ def load_target_clusters(config, url=None, cluster=None):
         clusters = [{'name': url, 'url': url}]
     elif config_clusters:
         if cluster:
-            clusters = [c for c in config_clusters if c.get('name') == cluster]
+            clusters = [c for c in config_clusters if c.get('name').lower() == cluster.lower()]
         else:
             clusters = [c for c in config_clusters if 'disabled' not in c or not c['disabled']]
 
