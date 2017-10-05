@@ -1,8 +1,6 @@
 language: java
 jdk:
 - oraclejdk8
-python:
-  - "3.6"
 services:
   - docker
 before_install:
@@ -10,7 +8,8 @@ before_install:
   - echo "deb https://repos.mesosphere.io/ubuntu/ trusty main" | sudo tee /etc/apt/sources.list.d/mesosphere.list
   - sudo apt-get update -qq
   - sudo apt-get install mesos -y </dev/null
-  - pyenv global 3.6
+  - pyenv install 3.6.2
+  - pyenv global 3.6.2
 branches:
   only:
     - master
