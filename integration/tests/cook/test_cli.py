@@ -508,10 +508,10 @@ class CookCliTest(unittest.TestCase):
         config = {'http': {'read-timeout': 0.0001}}
         with cli.temp_config_file(config) as path:
             cp = cli.list_jobs(self.cook_url, flags=f'--config {path} --verbose')
-            self.assertEqual(1, cp.returncode, cli.stdout(cp))
+            self.assertEqual(1, cp.returncode, cli.output(cp))
             self.assertIn('Encountered connection error', cli.decode(cp.stderr))
             cp, uuids = cli.submit('ls', self.cook_url, flags=f'--config {path} --verbose')
-            self.assertEqual(1, cp.returncode)
+            self.assertEqual(1, cp.returncode, cli.output(cp))
             self.assertIn('Encountered read timeout', cli.stdout(cp))
             self.assertIn('Your submission may have completed', cli.stdout(cp))
 

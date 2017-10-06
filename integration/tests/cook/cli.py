@@ -120,3 +120,8 @@ def list_jobs_json(cook_url=None, list_flags=None):
     response = json.loads(stdout(cp))
     jobs = [job for entities in response['clusters'].values() for job in entities['jobs']]
     return cp, jobs
+
+
+def output(cp):
+    """Returns a string containing the stdout and stderr from the given CompletedProcess"""
+    return f'\nstdout:\n{stdout(cp)}\n\nstderr:\n{decode(cp.stderr)}'
