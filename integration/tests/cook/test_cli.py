@@ -505,11 +505,11 @@ class CookCliTest(unittest.TestCase):
         self.assertEqual('cook-scheduler-cli', jobs[0]['application']['name'])
 
     def test_read_timeout_messaging(self):
-        config = {'http': {'read-timeout': 0.0001}}
+        config = {'http': {'read-timeout': 0.0001, 'retries': 0}}
         with cli.temp_config_file(config) as path:
             cp = cli.list_jobs(self.cook_url, flags=f'--config {path} --verbose')
             self.assertEqual(1, cp.returncode, cli.output(cp))
-            self.assertIn('Encountered connection error', cli.decode(cp.stderr))
+            self.assertIn('Encountered read timeout', cli.decode(cp.stderr))
             cp, uuids = cli.submit('ls', self.cook_url, flags=f'--config {path} --verbose')
             self.assertEqual(1, cp.returncode, cli.output(cp))
             self.assertIn('Encountered read timeout', cli.stdout(cp))

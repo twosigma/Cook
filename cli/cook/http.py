@@ -72,6 +72,9 @@ def make_data_request(make_request_fn):
     except requests.exceptions.ConnectionError as ce:
         logging.exception(ce)
         raise Exception('Encountered connection error.')
+    except requests.exceptions.ReadTimeout as rt:
+        logging.exception(rt)
+        raise Exception('Encountered read timeout.')
     except IOError as ioe:
         logging.exception(ioe)
         return []
