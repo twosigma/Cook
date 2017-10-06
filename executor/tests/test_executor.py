@@ -324,7 +324,10 @@ class ExecutorTest(unittest.TestCase):
             assert_message(self, expected_message_0, actual_encoded_message_0)
 
             actual_encoded_message_1 = driver.messages[1]
-            expected_message_1 = {'progress-message': 'line count is 20', 'progress-percent': 90, 'task-id': task_id}
+            expected_message_1 = {'progress-message': 'line count is 20',
+                                  'progress-percent': 90,
+                                  'progress-sequence': 1,
+                                  'task-id': task_id}
             assert_message(self, expected_message_1, actual_encoded_message_1)
 
             actual_encoded_message_2 = driver.messages[2]
@@ -363,11 +366,17 @@ class ExecutorTest(unittest.TestCase):
             assert_message(self, expected_message_0, actual_encoded_message_0)
 
             actual_encoded_message_1 = driver.messages[1]
-            expected_message_1 = {'progress-message': 'Fifty percent', 'progress-percent': 50, 'task-id': task_id}
+            expected_message_1 = {'progress-message': 'Fifty percent',
+                                  'progress-percent': 50,
+                                  'progress-sequence': 1,
+                                  'task-id': task_id}
             assert_message(self, expected_message_1, actual_encoded_message_1)
 
             actual_encoded_message_2 = driver.messages[2]
-            expected_message_2 = {'progress-message': 'Fifty-five percent', 'progress-percent': 55, 'task-id': task_id}
+            expected_message_2 = {'progress-message': 'Fifty-five percent',
+                                  'progress-percent': 55,
+                                  'progress-sequence': 2,
+                                  'task-id': task_id}
             assert_message(self, expected_message_2, actual_encoded_message_2)
 
             actual_encoded_message_3 = driver.messages[3]

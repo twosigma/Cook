@@ -262,21 +262,21 @@ class ProgressTest(unittest.TestCase):
             file.flush()
 
             time.sleep(0.10)
-            self.assertEqual({'progress-message': 'Fifty percent', 'progress-percent': 50},
+            self.assertEqual({'progress-message': 'Fifty percent', 'progress-percent': 50, 'progress-sequence': 2},
                              progress_watcher.current_progress())
 
             file.write("Stage Three complete\n")
             file.flush()
 
             time.sleep(0.10)
-            self.assertEqual({'progress-message': 'Fifty percent', 'progress-percent': 50},
+            self.assertEqual({'progress-message': 'Fifty percent', 'progress-percent': 50, 'progress-sequence': 2},
                              progress_watcher.current_progress())
 
             file.write("^^^^JOB-PROGRESS: 55 Fifty-five percent\n")
             file.flush()
 
             time.sleep(0.10)
-            self.assertEqual({'progress-message': 'Fifty-five percent', 'progress-percent': 55},
+            self.assertEqual({'progress-message': 'Fifty-five percent', 'progress-percent': 55, 'progress-sequence': 3},
                              progress_watcher.current_progress())
 
             file.write("Stage Four complete\n")
@@ -285,7 +285,7 @@ class ProgressTest(unittest.TestCase):
             file.flush()
 
             time.sleep(0.10)
-            self.assertEqual({'progress-message': 'Hundred percent', 'progress-percent': 100},
+            self.assertEqual({'progress-message': 'Hundred percent', 'progress-percent': 100, 'progress-sequence': 4},
                              progress_watcher.current_progress())
 
         finally:
@@ -338,7 +338,8 @@ class ProgressTest(unittest.TestCase):
             read_progress_states_thread.join()
 
             expected_data = list(map(lambda x: {'progress-message': 'completed-{}-percent'.format(x),
-                                                'progress-percent': x},
+                                                'progress-percent': x,
+                                                'progress-sequence': x},
                                      range(1, 101)))
 
             self.assertEqual(expected_data, collected_data)
