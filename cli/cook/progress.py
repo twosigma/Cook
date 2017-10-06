@@ -12,7 +12,7 @@ lock = threading.Lock()
 def __print_state(lines_to_move_up):
     """
     "Refreshes" the state on the terminal by moving the cursor up
-    lines_to_erase lines and then printing the current state of the data
+    lines_to_move_up lines and then printing the current state of the data
     list, which contains [item, status] pairs.
     """
     print_info(term.move_up * lines_to_move_up, end='')
