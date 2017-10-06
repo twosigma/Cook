@@ -287,19 +287,34 @@
 (defn progress-aggregator
   "Aggregates the progress state specified in `data` into the current progress state `instance-id->progress-state`.
    It drops messages if the aggregated state has more than `pending-progress-threshold` different entries.
-   It returns the new progress state."
+   It returns the new progress state.
+   The aggregator also makes a local best-effort to avoid updating the progress state of individual instances with
+   stale data based on the value of progress-sequence in the message.
+   We avoid this stale check in the datomic transaction as it is relatively expensive to perform the checks on a per
+   instance basis in the query."
   [pending-progress-threshold instance-id->progress-state {:keys [instance-id] :as data}]
   (meters/mark! progress-aggregator-message-rate)
   (if (or (< (count instance-id->progress-state) pending-progress-threshold)
           (contains? instance-id->progress-state instance-id))
-    (let [progress-state (select-keys data [:progress-message :progress-percent])
-          instance-id->progress-state' (assoc instance-id->progress-state instance-id progress-state)]
-      (let [old-count (count instance-id->progress-state)
-            new-count (count instance-id->progress-state')]
-        (when (zero? old-count)
-          (counters/clear! progress-aggregator-pending-states-count))
-        (counters/inc! progress-aggregator-pending-states-count (- new-count old-count)))
-      instance-id->progress-state')
+    (if (integer? (:progress-sequence data))
+      (let [progress-state (select-keys data [:progress-message :progress-percent :progress-sequence])
+            instance-id->progress-state' (update instance-id->progress-state instance-id
+                                                 (fn [current-state]
+                                                   (let [new-progress-sequence (:progress-sequence progress-state)
+                                                         old-progress-sequence (:progress-sequence current-state)]
+                                                     (if (or (nil? current-state)
+                                                             (< old-progress-sequence new-progress-sequence))
+                                                       progress-state
+                                                       current-state))))]
+        (let [old-count (count instance-id->progress-state)
+              new-count (count instance-id->progress-state')]
+          (when (zero? old-count)
+            (counters/clear! progress-aggregator-pending-states-count))
+          (counters/inc! progress-aggregator-pending-states-count (- new-count old-count)))
+        instance-id->progress-state')
+      (do
+        (log/warn "skipping" data "as it is missing an integer progress-sequence")
+        instance-id->progress-state))
     (do
       (meters/mark! progress-aggregator-drop-rate)
       (counters/inc! progress-aggregator-drop-count)
@@ -395,7 +410,7 @@
     handle-framework-message-duration
     (try
       (let [db (db conn)
-            {:strs [exit-code progress-message progress-percent sandbox-directory task-id] :as message}
+            {:strs [exit-code progress-message progress-percent progress-sequence sandbox-directory task-id] :as message}
             (-> (String. ^bytes framework-message "UTF-8") (json/read-str))
             _ (log/debug "Received framework message:" {:task-id task-id, :message message})
             _ (when (str/blank? task-id)
@@ -408,7 +423,8 @@
               (log/debug "Updating instance" instance-id "progress to" progress-percent progress-message)
               (handle-progress-message {:instance-id instance-id
                                         :progress-message progress-message
-                                        :progress-percent progress-percent}))
+                                        :progress-percent progress-percent
+                                        :progress-sequence progress-sequence}))
             (when (or exit-code sandbox-directory)
               (let [txns (cond-> []
                                  exit-code (conj [:db/add instance-id :instance/exit-code (int exit-code)])

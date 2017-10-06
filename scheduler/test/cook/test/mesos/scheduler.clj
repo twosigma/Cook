@@ -1049,7 +1049,7 @@
             ;; no asynchronous transaction should be created
             (is (nil? (sched/handle-framework-message conn handle-progress-message message)))
             (is (nil? (query-instance-field instance-id :instance/progress-message)))
-            (is (= {:instance-id instance-id :progress-message progress-message :progress-percent nil}
+            (is (= {:instance-id instance-id :progress-message progress-message :progress-percent nil :progress-sequence nil}
                    (deref progress-aggregator-promise 1000 nil))))))
 
       (testing "progress update"
@@ -1060,23 +1060,31 @@
           (let [progress-aggregator-promise (promise)
                 handle-progress-message (handle-progress-message-factory progress-aggregator-promise)
                 progress-percent 20
-                message (make-message {:task-id task-id :progress-percent progress-percent})]
+                progress-sequence 11
+                message (make-message {:task-id task-id :progress-percent progress-percent :progress-sequence progress-sequence})]
             ;; no asynchronous transaction should be created
             (is (nil? (sched/handle-framework-message conn handle-progress-message message)))
             (is (= 0 (query-instance-field instance-id :instance/progress)))
             (is (nil? (query-instance-field instance-id :instance/progress-message)))
-            (is (= {:instance-id instance-id :progress-message nil :progress-percent progress-percent}
+            (is (= {:instance-id instance-id
+                    :progress-message nil
+                    :progress-percent progress-percent
+                    :progress-sequence progress-sequence}
                    (deref progress-aggregator-promise 1000 nil))))
 
           (let [progress-aggregator-promise (promise)
                 handle-progress-message (handle-progress-message-factory progress-aggregator-promise)
                 progress-percent 50
-                message (make-message {:task-id task-id :progress-percent progress-percent})]
+                progress-sequence 19
+                message (make-message {:task-id task-id :progress-percent progress-percent :progress-sequence progress-sequence})]
             ;; no asynchronous transaction should be created
             (is (nil? (sched/handle-framework-message conn handle-progress-message message)))
             (is (= 0 (query-instance-field instance-id :instance/progress)))
             (is (nil? (query-instance-field instance-id :instance/progress-message)))
-            (is (= {:instance-id instance-id :progress-message nil :progress-percent progress-percent}
+            (is (= {:instance-id instance-id
+                    :progress-message nil
+                    :progress-percent progress-percent
+                    :progress-sequence progress-sequence}
                    (deref progress-aggregator-promise 1000 nil))))))
 
       (testing "exit-code update"
@@ -1111,7 +1119,10 @@
             (is (= sandbox-directory (query-instance-field instance-id :instance/sandbox-directory)))
             (is (= 0 (query-instance-field instance-id :instance/progress)))
             (is (nil? (query-instance-field instance-id :instance/progress-message)))
-            (is (= {:instance-id instance-id :progress-message progress-message :progress-percent progress-percent}
+            (is (= {:instance-id instance-id
+                    :progress-message progress-message
+                    :progress-percent progress-percent
+                    :progress-sequence nil}
                    (deref progress-aggregator-promise 1000 nil)))))))))
 
 (deftest test-handle-stragglers
@@ -1683,26 +1694,43 @@
         (is (= [foo bar fie] (->> "T3" (get @messages-store) vec)))
         (is (= [foo] (->> "T4" (get @messages-store) vec)))))))
 
+(defn- progress-entry
+  [message percent sequence & {:keys [instance-id]}]
+  (cond-> {:progress-message message
+           :progress-percent percent
+           :progress-sequence sequence}
+          instance-id (assoc :instance-id instance-id)))
+
 (deftest test-progress-aggregator
-  (testing "basic update from inital state"
-    (is (= {"i1" {:progress-message "i1.m1" :progress-percent 10}}
-           (sched/progress-aggregator 10 {} {:instance-id "i1" :progress-message "i1.m1" :progress-percent 10}))))
+  (testing "basic update from initial state"
+    (is (= {"i1" (progress-entry "i1.m1" 10 1)}
+           (sched/progress-aggregator 10 {} (progress-entry "i1.m1" 10 1 :instance-id "i1")))))
 
   (testing "update state for known instance"
-    (is (= {"i1" {:progress-message "i1.m2" :progress-percent 20}}
-           (sched/progress-aggregator 10 {"i1" {:progress-message "i1.m1" :progress-percent 10}}
-                                      {:instance-id "i1" :progress-message "i1.m2" :progress-percent 20}))))
+    (is (= {"i1" (progress-entry "i1.m2" 20 2)}
+           (sched/progress-aggregator 10 {"i1" (progress-entry "i1.m1" 10 1)}
+                                      (progress-entry "i1.m2" 20 2 :instance-id "i1")))))
+
+  (testing "skip update state when missing progress-sequence"
+    (is (= {"i1" (progress-entry "i1.m1" 10 1)}
+           (sched/progress-aggregator 10 {"i1" (progress-entry "i1.m1" 10 1)}
+                                      (progress-entry "i1.m2" 20 nil :instance-id "i1")))))
+
+  (testing "do not update state for outdated message"
+    (is (= {"i1" (progress-entry "i1.m2" 20 2)}
+           (sched/progress-aggregator 10 {"i1" (progress-entry "i1.m2" 20 2)}
+                                      (progress-entry "i1.m1" 10 1 :instance-id "i1")))))
 
   (testing "handle threshold exceeded"
-    (is (= {"i1" {:progress-message "i1.m1" :progress-percent 10}}
-           (sched/progress-aggregator 1 {"i1" {:progress-message "i1.m1" :progress-percent 10}}
-                                      {:instance-id "i2" :progress-message "i2.m1" :progress-percent 20}))))
+    (is (= {"i1" (progress-entry "i1.m1" 10 1)}
+           (sched/progress-aggregator 1 {"i1" (progress-entry "i1.m1" 10 1)}
+                                      (progress-entry "i2.m2" 20 2 :instance-id "i2")))))
 
   (testing "handle threshold limit reached"
-    (is (= {"i1" {:progress-message "i1.m1" :progress-percent 10}
-            "i2" {:progress-message "i2.m1" :progress-percent 20}}
-           (sched/progress-aggregator 2 {"i1" {:progress-message "i1.m1" :progress-percent 10}}
-                                      {:instance-id "i2" :progress-message "i2.m1" :progress-percent 20})))))
+    (is (= {"i1" (progress-entry "i1.m1" 10 1)
+            "i2" (progress-entry "i2.m2" 20 2)}
+           (sched/progress-aggregator 2 {"i1" (progress-entry "i1.m1" 10 1)}
+                                      (progress-entry "i2.m2" 20 2 :instance-id "i2"))))))
 
 (deftest test-progress-update-aggregator
   (let [actual-progress-aggregator sched/progress-aggregator
@@ -1737,15 +1765,15 @@
           (let [pending-progress-threshold 10
                 progress-state-chan (async/chan)
                 progress-aggregator-chan (sched/progress-update-aggregator pending-progress-threshold progress-state-chan)]
-            (send progress-aggregator-chan {:instance-id "i1" :progress-message "i1.m1" :progress-percent 10})
-            (send progress-aggregator-chan {:instance-id "i2" :progress-message "i2.m1" :progress-percent 10})
-            (send progress-aggregator-chan {:instance-id "i3" :progress-message "i3.m1" :progress-percent 10})
-            (send progress-aggregator-chan {:instance-id "i2" :progress-message "i2.m2" :progress-percent 25})
-            (send progress-aggregator-chan {:instance-id "i1" :progress-message "i1.m2" :progress-percent 45} :sync true)
+            (send progress-aggregator-chan (progress-entry "i1.m1" 10 1 :instance-id "i1"))
+            (send progress-aggregator-chan (progress-entry "i2.m1" 10 1 :instance-id "i2"))
+            (send progress-aggregator-chan (progress-entry "i3.m1" 10 1 :instance-id "i3"))
+            (send progress-aggregator-chan (progress-entry "i2.m2" 25 2 :instance-id "i2"))
+            (send progress-aggregator-chan (progress-entry "i1.m2" 45 2 :instance-id "i1") :sync true)
 
-            (is (= {"i1" {:progress-message "i1.m2" :progress-percent 45}
-                    "i2" {:progress-message "i2.m2", :progress-percent 25}
-                    "i3" {:progress-message "i3.m1", :progress-percent 10}}
+            (is (= {"i1" (progress-entry "i1.m2" 45 2)
+                    "i2" (progress-entry "i2.m2" 25 2)
+                    "i3" (progress-entry "i3.m1" 10 1)}
                    (async/<!! progress-state-chan)))
             (is (= {} (async/<!! progress-state-chan)))
 
@@ -1766,11 +1794,11 @@
                     progress-state-chan (async/chan)
                     progress-aggregator-chan (sched/progress-update-aggregator pending-progress-threshold progress-state-chan)]
                 (dotimes [n 100]
-                  (send progress-aggregator-chan {:instance-id "i1" :progress-message (str "i1.m" n) :progress-percent n}))
-                (send progress-aggregator-chan {:instance-id "i1" :progress-message "i1.m100" :progress-percent 100} :sync true)
+                  (send progress-aggregator-chan (progress-entry (str "i1.m" n) n n :instance-id "i1")))
+                (send progress-aggregator-chan (progress-entry "i1.m100" 100 100 :instance-id "i1") :sync true)
 
                 (is (< @progress-aggregator-counter 100))
-                (is (= {"i1" {:progress-message "i1.m100", :progress-percent 100}}
+                (is (= {"i1" (progress-entry "i1.m100" 100 100)}
                        (async/<!! progress-state-chan)))
                 (is (= {} (async/<!! progress-state-chan)))
 
@@ -1790,7 +1818,7 @@
             response-chan (async/promise-chan)]
         ;; publish the data
         (async/>!! publish-progress-trigger-chan response-chan)
-        (async/>!! progress-state-chan {i1 {:progress-message "i1.m1" :progress-percent 10}})
+        (async/>!! progress-state-chan {i1 (progress-entry "i1.m1" 10 1)})
         ;; force db transactions
         (async/<!! response-chan)
         ;; assert the state of the db
