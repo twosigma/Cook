@@ -7,15 +7,16 @@ from cook import version
 requirements = [
     'arrow',
     'blessed',
-    'dateparser',
     'humanfriendly',
+    'python-dateutil',
     'pytz',
     'requests',
     'tabulate',
-    'tzlocal'
+    'tzlocal',
 ]
 
 test_requirements = [
+    'freezegun',
     'nose',
     'requests-mock'
 ]

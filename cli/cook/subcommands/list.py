@@ -73,10 +73,10 @@ def show_data(cluster_job_pairs):
 
 def date_time_string_to_ms_since_epoch(date_time_string):
     """Converts the given date_time_string (e.g. '5 minutes ago') to milliseconds since epoch"""
-    import dateparser
     import tzlocal
-    local_tz = str(tzlocal.get_localzone())
-    dt = dateparser.parse(date_time_string, settings={'TIMEZONE': local_tz, 'RETURN_AS_TIMEZONE_AWARE': True})
+    from cook import dateparser
+    local_tz = tzlocal.get_localzone()
+    dt = dateparser.parse(date_time_string, local_tz)
     if dt:
         import pytz
         logging.debug(f'parsed "{date_time_string}" as {dt}')
