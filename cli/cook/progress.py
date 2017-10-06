@@ -1,6 +1,6 @@
 import threading
 
-from blessings import Terminal
+from blessed import Terminal
 
 from cook.util import print_info
 

@@ -6,13 +6,13 @@ from cook import version
 
 requirements = [
     'arrow',
-    'blessings',
+    'blessed',
+    'dateparser',
     'humanfriendly',
+    'pytz',
     'requests',
     'tabulate',
-    'parsedatetime',
-    'tzlocal',
-    'pytz'
+    'tzlocal'
 ]
 
 test_requirements = [

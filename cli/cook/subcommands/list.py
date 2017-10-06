@@ -5,9 +5,6 @@ import json
 import logging
 import time
 
-import parsedatetime
-import pytz
-import tzlocal
 from tabulate import tabulate
 
 from cook import colors, http
@@ -17,7 +14,6 @@ from cook.util import current_user, print_info, millis_to_date_string
 MILLIS_PER_HOUR = 60 * 60 * 1000
 DEFAULT_LOOKBACK_HOURS = 6
 DEFAULT_LIMIT = 150
-EPOCH = datetime.datetime(1970, 1, 1, tzinfo=pytz.utc)
 
 
 def print_no_data(clusters):
@@ -77,12 +73,16 @@ def show_data(cluster_job_pairs):
 
 def date_time_string_to_ms_since_epoch(date_time_string):
     """Converts the given date_time_string (e.g. '5 minutes ago') to milliseconds since epoch"""
-    calendar = parsedatetime.Calendar()
-    local_tz = tzlocal.get_localzone()
-    dt, parse_status = calendar.parseDT(datetimeString=date_time_string, tzinfo=local_tz)
-    if parse_status == 1 or parse_status == 2:
-        ms_since_epoch = int((dt - EPOCH).total_seconds() * 1000)
-        logging.debug(f'parsed "{date_time_string}" as {dt} (ms = {ms_since_epoch}) using time zone {local_tz}')
+    import dateparser
+    import tzlocal
+    local_tz = str(tzlocal.get_localzone())
+    dt = dateparser.parse(date_time_string, settings={'TIMEZONE': local_tz, 'RETURN_AS_TIMEZONE_AWARE': True})
+    if dt:
+        import pytz
+        logging.debug(f'parsed "{date_time_string}" as {dt}')
+        epoch = datetime.datetime(1970, 1, 1, tzinfo=pytz.utc)
+        ms_since_epoch = int((dt - epoch).total_seconds() * 1000)
+        logging.debug(f'converted "{date_time_string}" to ms {ms_since_epoch}')
         return ms_since_epoch
     else:
         raise Exception(f'"{date_time_string}" is not a valid date / time string.')
