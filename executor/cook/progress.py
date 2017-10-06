@@ -185,6 +185,9 @@ class ProgressWatcher(object):
                 progress_report = ProgressWatcher.match_progress_update(self.progress_regex_string, line)
                 if progress_report is not None:
                     percent, message = progress_report
+                    if not percent.isdigit():
+                        logging.info('Skipping "{}" as the percent entry is not an int'.format(progress_report))
+                        continue
                     logging.info('Updating progress to {} percent, message: {}'.format(percent, message))
                     sequence += 1
                     self.progress = {'progress-message': message.strip(),

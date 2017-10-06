@@ -289,7 +289,7 @@ An example configuration looks like:
 {...
  :executor {:command "cook-executor"
             :default-progress-output-file "stdout"
-            :default-progress-regex-string "progress: (\d*)(?: )?(.*)"
+            :default-progress-regex-string "progress: (\d+)(?: )?(.*)"
             :log-level "INFO"
             :max-message-length 512
             :progress-sample-interval-ms 1000

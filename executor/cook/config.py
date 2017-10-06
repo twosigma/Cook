@@ -52,7 +52,7 @@ def initialize_config(environment):
     max_bytes_read_per_line = int(environment.get('EXECUTOR_MAX_BYTES_READ_PER_LINE', 4 * 1024))
     max_message_length = int(environment.get('EXECUTOR_MAX_MESSAGE_LENGTH', 512))
     progress_output_name = environment.get('PROGRESS_OUTPUT_FILE', 'stdout')
-    progress_regex_string = environment.get('PROGRESS_REGEX_STRING', 'progress: (\d*), (.*)')
+    progress_regex_string = environment.get('PROGRESS_REGEX_STRING', 'progress: (\d+), (.*)')
     progress_sample_interval_ms = int(environment.get('PROGRESS_SAMPLE_INTERVAL_MS', 1000))
     sandbox_directory = environment.get('MESOS_SANDBOX', '')
     shutdown_grace_period = environment.get('MESOS_EXECUTOR_SHUTDOWN_GRACE_PERIOD', '2secs')

@@ -380,7 +380,7 @@
                      (when (and (:portion executor) (not (<= 0 (:portion executor) 1)))
                        (throw (ex-info "Executor portion must be in the range [0, 1]!" {:executor executor})))
                      (let [default-executor-config {:default-progress-output-file "stdout"
-                                                    :default-progress-regex-string "progress: (\\d*)(?: )?(.*)"
+                                                    :default-progress-regex-string "progress: (\\d+)(?: )?(.*)"
                                                     :log-level "INFO"
                                                     :max-message-length 512
                                                     :portion 0.0

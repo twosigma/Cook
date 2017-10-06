@@ -49,7 +49,7 @@ class ConfigTest(unittest.TestCase):
         self.assertEqual(4 * 1024, config.max_bytes_read_per_line)
         self.assertEqual(512, config.max_message_length)
         self.assertEqual('stdout', config.progress_output_name)
-        self.assertEqual('progress: (\\d*), (.*)', config.progress_regex_string)
+        self.assertEqual('progress: (\\d+), (.*)', config.progress_regex_string)
         self.assertEqual(1000, config.progress_sample_interval_ms)
         self.assertEqual('', config.sandbox_directory)
         self.assertEqual(2000, config.shutdown_grace_period_ms)
