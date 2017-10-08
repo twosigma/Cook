@@ -240,6 +240,8 @@
    (s/optional-key :constraints) [Constraint]
    (s/optional-key :container) Container
    (s/optional-key :executor) (s/enum "cook" "mesos")
+   (s/optional-key :progress-output-file) NonEmptyString
+   (s/optional-key :progress-regex-string) NonEmptyString
    (s/optional-key :group) s/Uuid
    (s/optional-key :disable-mea-culpa-retries) s/Bool
    :cpus PosDouble
@@ -450,7 +452,7 @@
   [job :- Job]
   (let [{:keys [uuid command max-retries max-runtime expected-runtime priority cpus mem gpus
                 user name ports uris env labels container group application disable-mea-culpa-retries
-                constraints executor]
+                constraints executor progress-output-file progress-regex-string]
          :or {group nil
               disable-mea-culpa-retries false}} job
         db-id (d/tempid :db.part/user)
@@ -534,7 +536,9 @@
                                        {:application/name (:name application)
                                         :application/version (:version application)})
                     expected-runtime (assoc :job/expected-runtime expected-runtime)
-                    executor (assoc :job/executor executor))]
+                    executor (assoc :job/executor executor)
+                    progress-output-file (assoc :job/progress-output-file progress-output-file)
+                    progress-regex-string (assoc :job/progress-regex-string progress-regex-string))]
 
     ;; TODO batch these transactions to improve performance
     (-> ports
@@ -626,7 +630,7 @@
   [db user task-constraints gpu-enabled? new-group-uuids
    {:keys [cpus mem gpus uuid command priority max-retries max-runtime expected-runtime name
            uris ports env labels container group application disable-mea-culpa-retries
-           constraints executor]
+           constraints executor progress-output-file progress-regex-string]
     :or {group nil
          disable-mea-culpa-retries false}
     :as job}
@@ -646,32 +650,24 @@
                   :cpus (double cpus)
                   :mem (double mem)
                   :disable-mea-culpa-retries disable-mea-culpa-retries}
-                 (when gpus
-                   {:gpus (int gpus)})
-                 (when env
-                   {:env (walk/stringify-keys env)})
-                 (when uris
-                   {:uris (map (fn [{:keys [value executable cache extract]}]
-                                 (merge {:value value}
-                                        (when executable {:executable? executable})
-                                        (when cache {:cache? cache})
-                                        (when extract {:extract? extract})))
-                               uris)})
-                 (when labels
-                   {:labels (walk/stringify-keys labels)})
-                 (when constraints
-                   ;; Rest framework keywordifies all keys, we want these to be strings!
-                   {:constraints constraints})
-                 (when group-uuid
-                   {:group group-uuid})
-                 (when container
-                   {:container container})
-                 (when expected-runtime
-                   {:expected-runtime expected-runtime})
-                 (when executor
-                   {:executor executor})
-                 (when application
-                   {:application application}))]
+                 (when gpus {:gpus (int gpus)})
+                 (when env {:env (walk/stringify-keys env)})
+                 (when uris {:uris (map (fn [{:keys [value executable cache extract]}]
+                                          (merge {:value value}
+                                                 (when executable {:executable? executable})
+                                                 (when cache {:cache? cache})
+                                                 (when extract {:extract? extract})))
+                                        uris)})
+                 (when labels {:labels (walk/stringify-keys labels)})
+                 ;; Rest framework keywordifies all keys, we want these to be strings!
+                 (when constraints {:constraints constraints})
+                 (when group-uuid {:group group-uuid})
+                 (when container {:container container})
+                 (when expected-runtime {:expected-runtime expected-runtime})
+                 (when executor {:executor executor})
+                 (when progress-output-file {:progress-output-file progress-output-file})
+                 (when progress-regex-string {:progress-regex-string progress-regex-string})
+                 (when application {:application application}))]
     (s/validate Job munged)
     (when (and (:gpus munged) (not gpu-enabled?))
       (throw (ex-info (str "GPU support is not enabled") {:gpus gpus})))
@@ -826,6 +822,8 @@
         application (:job/application job)
         expected-runtime (:job/expected-runtime job)
         executor (:job/executor job)
+        progress-output-file (:job/progress-output-file job)
+        progress-regex-string (:job/progress-regex-string job)
         state (util/job-ent->state job)
         constraints (->> job
                          :job/constraint
@@ -862,7 +860,9 @@
             groups (assoc :groups (map #(str (:group/uuid %)) groups))
             application (assoc :application (util/remove-datomic-namespacing application))
             expected-runtime (assoc :expected-runtime expected-runtime)
-            executor (assoc :executor (name executor)))))
+            executor (assoc :executor (name executor))
+            progress-output-file (assoc :progress-output-file progress-output-file)
+            progress-regex-string (assoc :progress-regex-string progress-regex-string))))
 
 (defn fetch-group-job-details
   [db guuid]

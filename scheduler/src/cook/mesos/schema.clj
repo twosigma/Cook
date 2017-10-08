@@ -116,6 +116,18 @@
     :db/cardinality :db.cardinality/one
     :db.install/_attribute :db.part/db}
    {:db/id (d/tempid :db.part/db)
+    :db/doc "Determines the file used by the Cook executor to search for progress messages."
+    :db/ident :job/progress-output-file
+    :db/valueType :db.type/string
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/doc "Determines the regex used by the Cook executor to identify progress messages."
+    :db/ident :job/progress-regex-string
+    :db/valueType :db.type/string
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
     :db/doc "Determines if this job uses a custom executor (true) or one of the other executors (cook/command) (false).
              If unset, then uses a custom executor (for legacy compatibility)."
     :db/ident :job/custom-executor
