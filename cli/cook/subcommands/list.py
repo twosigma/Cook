@@ -29,7 +29,7 @@ def list_jobs_on_cluster(cluster, state, user, start_ms, end_ms, name, limit):
     else:
         state_string = '+'.join(state)
     params = {'state': state_string, 'user': user, 'start-ms': start_ms, 'end-ms': end_ms, 'name': name, 'limit': limit}
-    jobs = http.make_data_request(lambda: http.get(cluster, 'list', params=params))
+    jobs = http.make_data_request(cluster, lambda: http.get(cluster, 'list', params=params))
     entities = {'jobs': jobs, 'count': len(jobs)}
     return entities
 
@@ -114,10 +114,8 @@ def list_jobs(clusters, args):
     if submitted_after or submitted_before:
         start_ms = date_time_string_to_ms_since_epoch(submitted_after or f'{DEFAULT_LOOKBACK_HOURS} hours ago')
         end_ms = date_time_string_to_ms_since_epoch(submitted_before or 'now')
-    elif lookback_hours:
-        start_ms, end_ms = lookback_hours_to_range(lookback_hours)
     else:
-        start_ms, end_ms = lookback_hours_to_range(DEFAULT_LOOKBACK_HOURS)
+        start_ms, end_ms = lookback_hours_to_range(lookback_hours or DEFAULT_LOOKBACK_HOURS)
 
     query_result = query(clusters, states, user, start_ms, end_ms, name, limit)
     if as_json:

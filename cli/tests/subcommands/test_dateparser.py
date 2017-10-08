@@ -48,3 +48,9 @@ class CookCliTest(unittest.TestCase):
             self.assertEqual(datetime.datetime(2003, 9, 25, 10, 49, 41,
                                                tzinfo=tz.tzoffset(None, datetime.timedelta(hours=-3))),
                              dateparser.parse('Thu, 25 Sep 2003 10:49:41 -0300', time_zone))
+            self.assertIsNone(dateparser.parse('1 day ago 1 hour ago', time_zone))
+            self.assertIsNone(dateparser.parse('1 day', time_zone))
+            self.assertIsNone(dateparser.parse('day ago', time_zone))
+            self.assertIsNone(dateparser.parse('day', time_zone))
+            self.assertIsNone(dateparser.parse('ago', time_zone))
+            self.assertIsNone(dateparser.parse('foo', time_zone))

@@ -58,7 +58,7 @@ def get(cluster, endpoint, params):
     return resp
 
 
-def make_data_request(make_request_fn):
+def make_data_request(cluster, make_request_fn):
     """
     Makes a request (using make_request_fn), parsing the
     assumed-to-be-JSON response and handling common errors
@@ -71,10 +71,10 @@ def make_data_request(make_request_fn):
             return []
     except requests.exceptions.ConnectionError as ce:
         logging.exception(ce)
-        raise Exception('Encountered connection error.')
+        raise Exception(f'Encountered connection error with {cluster["name"]} ({cluster["url"]}).')
     except requests.exceptions.ReadTimeout as rt:
         logging.exception(rt)
-        raise Exception('Encountered read timeout.')
+        raise Exception(f'Encountered read timeout with {cluster["name"]} ({cluster["url"]}).')
     except IOError as ioe:
         logging.exception(ioe)
         return []

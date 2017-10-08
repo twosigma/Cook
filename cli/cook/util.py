@@ -50,7 +50,7 @@ def load_json_file(path):
     return content
 
 
-def load_first_json_file(paths=None):
+def load_first_json_file(paths):
     """Returns the contents of the first parseable JSON file in a list of paths."""
     if paths is None:
         paths = []

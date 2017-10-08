@@ -109,7 +109,7 @@ class temp_config_file:
 
 def list_jobs(cook_url=None, list_flags=None, flags=None):
     """Invokes the list subcommand"""
-    args = f'list{" " + list_flags if list_flags else ""}'
+    args = f'list {list_flags}' if list_flags else 'list'
     cp = cli(args, cook_url, flags)
     return cp
 
