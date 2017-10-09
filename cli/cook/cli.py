@@ -94,8 +94,6 @@ def run(args):
     log_format = '%(asctime)s [%(levelname)s] [%(name)s] %(message)s'
     if verbose:
         logging.getLogger('').handlers = []
-        logging.getLogger('requests').setLevel(logging.DEBUG)
-        logging.getLogger('urllib3').setLevel(logging.DEBUG)
         logging.basicConfig(format=log_format, level=logging.DEBUG)
     else:
         logging.disable(logging.FATAL)
