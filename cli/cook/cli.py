@@ -91,9 +91,11 @@ def run(args):
     util.silent = args.pop('silent')
     verbose = args.pop('verbose') and not util.silent
 
-    log_format = '%(asctime)s [%(levelname)s] %(message)s'
+    log_format = '%(asctime)s [%(levelname)s] [%(name)s] %(message)s'
     if verbose:
         logging.getLogger('').handlers = []
+        logging.getLogger('requests').setLevel(logging.DEBUG)
+        logging.getLogger('urllib3').setLevel(logging.DEBUG)
         logging.basicConfig(format=log_format, level=logging.DEBUG)
     else:
         logging.disable(logging.FATAL)
