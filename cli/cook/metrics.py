@@ -25,8 +25,11 @@ def initialize(config):
 
         global __conn
         global __line_formats
+        address = (metrics_config.get('host'), metrics_config.get('port'))
         __conn = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        __conn.connect((metrics_config.get('host'), metrics_config.get('port')))
+        logging.info(f'connecting to {address} for metrics...')
+        __conn.connect(address)
+        logging.info(f'...connected')
         __line_formats = metrics_config.get('line-formats')
     except:
         __disabled = True
