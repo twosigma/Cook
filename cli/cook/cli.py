@@ -19,7 +19,7 @@ DEFAULT_CONFIG = {'defaults': {},
                            'modules': {'session-module': 'requests',
                                        'adapters-module': 'requests.adapters'}},
                   'metrics': {'disabled': True,
-                              'timeout': 0.05,
+                              'timeout': 0.15,
                               'max-retries': 2}}
 
 

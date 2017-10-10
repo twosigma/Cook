@@ -65,6 +65,7 @@ def __send(metric):
         metric_line = line_format.format(**metric)
         logging.info('sending metric %s' % metric_line)
         __conn.send(('%s\n' % metric_line).encode())
+        logging.info('metric send completed')
     except:
         __disabled = True
         logging.exception('exception when sending metric %s' % metric)
