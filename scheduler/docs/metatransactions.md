@@ -60,4 +60,4 @@ Simple example where a user can submit any number of jobs, one at a time to the 
 
 ## License
 
-© Two Sigma Open Source, LLC
+&copy; Two Sigma Open Source, LLC

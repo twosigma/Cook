@@ -531,4 +531,4 @@ You can use Swagger-UI to explore the API (end even experiment with it) by brows
 
 
 
-© Two Sigma Open Source, LLC
+(C) Two Sigma Open Source, LLC
