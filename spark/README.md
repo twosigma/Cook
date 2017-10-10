@@ -70,4 +70,4 @@ requires shuffle-service):
 
 For more configuration options please refer to [Dynamic Allocation](http://spark.apache.org/docs/latest/configuration.html#dynamic-allocation) documentation.
 
-© Two Sigma Open Source, LLC
+&copy; Two Sigma Open Source, LLC
