@@ -286,15 +286,15 @@
 
 (defn progress-aggregator
   "Aggregates the progress state specified in `data` into the current progress state `instance-id->progress-state`.
-   It drops messages if the aggregated state has more than `pending-progress-threshold` different entries.
+   It drops messages if the aggregated state has more than `pending-threshold` different entries.
    It returns the new progress state.
    The aggregator also makes a local best-effort to avoid updating the progress state of individual instances with
    stale data based on the value of progress-sequence in the message.
    We avoid this stale check in the datomic transaction as it is relatively expensive to perform the checks on a per
    instance basis in the query."
-  [pending-progress-threshold sequence-cache-store instance-id->progress-state {:keys [instance-id] :as data}]
+  [pending-threshold sequence-cache-store instance-id->progress-state {:keys [instance-id] :as data}]
   (meters/mark! progress-aggregator-message-rate)
-  (if (or (< (count instance-id->progress-state) pending-progress-threshold)
+  (if (or (< (count instance-id->progress-state) pending-threshold)
           (contains? instance-id->progress-state instance-id))
     (if (integer? (:progress-sequence data))
       (let [progress-state (select-keys data [:progress-message :progress-percent :progress-sequence])
@@ -326,19 +326,20 @@
 (defn progress-update-aggregator
   "Launches a long running go block that triggers publishing the latest aggregated instance-id->progress-state
    wrapped inside a chan whenever there is a read on the progress-state-chan.
-   It drops messages if the progress-aggregator-chan queue is larger than pending-progress-threshold or the aggregated
-   state has more than pending-progress-threshold different entries.
+   It drops messages if the progress-aggregator-chan queue is larger than pending-threshold or the aggregated
+   state has more than pending-threshold different entries.
    It returns the progress-aggregator-chan which can be used to send progress-state messages to the aggregator.
 
    Note: the wrapper chan is used due to our use of `util/xform-pipe`"
-  [pending-progress-threshold sequence-cache-threshold progress-state-chan]
+  [{:keys [pending-threshold publish-interval-ms sequence-cache-threshold]} progress-state-chan]
   (log/info "Starting progress update aggregator")
-  (let [progress-aggregator-chan (async/chan (async/sliding-buffer pending-progress-threshold))
+  (let [progress-aggregator-chan (async/chan (async/sliding-buffer pending-threshold))
         sequence-cache-store (-> {}
-                                (cache/lru-cache-factory :threshold sequence-cache-threshold)
-                                atom)
+                                 (cache/lru-cache-factory :threshold sequence-cache-threshold)
+                                 (cache/ttl-cache-factory :ttl (* 2 publish-interval-ms))
+                                 atom)
         progress-aggregator-fn (fn progress-aggregator-fn [instance-id->progress-state data]
-                                 (progress-aggregator pending-progress-threshold sequence-cache-store instance-id->progress-state data))
+                                 (progress-aggregator pending-threshold sequence-cache-store instance-id->progress-state data))
         aggregator-go-chan (util/reducing-pipe progress-aggregator-chan progress-aggregator-fn progress-state-chan
                                                :initial-state {})]
     (async/go
@@ -1546,9 +1547,9 @@
         [offers-chan resources-atom]
         (make-offer-handler conn driver-atom fenzo framework-id executor-config pending-jobs-atom offer-cache fenzo-max-jobs-considered
                             fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset match-trigger-chan)
-        {:keys [batch-size pending-threshold sequence-cache-threshold]} progress-config
+        {:keys [batch-size]} progress-config
         {:keys [progress-state-chan]} (progress-update-transactor progress-updater-trigger-chan batch-size conn)
-        progress-aggregator-chan (progress-update-aggregator pending-threshold sequence-cache-threshold progress-state-chan)
+        progress-aggregator-chan (progress-update-aggregator progress-config progress-state-chan)
         handle-progress-message (fn handle-progress-message-curried [progress-message-map]
                                  (handle-progress-message! progress-aggregator-chan progress-message-map))]
     (start-jobs-prioritizer! conn pending-jobs-atom task-constraints rank-trigger-chan)

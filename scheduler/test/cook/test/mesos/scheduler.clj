@@ -1703,13 +1703,13 @@
           instance-id (assoc :instance-id instance-id)))
 
 (deftest test-progress-aggregator
-  (let [pending-progress-threshold 10
+  (let [pending-threshold 10
         sequence-cache-store-fn (fn [& {:keys [data threshold] :or {data {} threshold 100}}]
                                   (atom (cache/lru-cache-factory data :threshold threshold)))]
     (testing "basic update from initial state"
       (is (= {"i1" (progress-entry "i1.m1" 10 1)}
              (sched/progress-aggregator
-               pending-progress-threshold
+               pending-threshold
                (sequence-cache-store-fn)
                {}
                (progress-entry "i1.m1" 10 1 :instance-id "i1")))))
@@ -1718,7 +1718,7 @@
       (let [sequence-cache-store (sequence-cache-store-fn :data {"i1" 1})]
         (is (= {"i1" (progress-entry "i1.m2" 20 2)}
                (sched/progress-aggregator
-                 pending-progress-threshold
+                 pending-threshold
                  sequence-cache-store
                  {"i1" (progress-entry "i1.m1" 10 1)}
                  (progress-entry "i1.m2" 20 2 :instance-id "i1"))))
@@ -1728,7 +1728,7 @@
       (let [sequence-cache-store (sequence-cache-store-fn :data {"i1" 1})]
         (is (= {"i1" (progress-entry "i1.m1" 10 1)}
                (sched/progress-aggregator
-                 pending-progress-threshold
+                 pending-threshold
                  sequence-cache-store
                  {"i1" (progress-entry "i1.m1" 10 1)}
                  (progress-entry "i1.m2" 20 nil :instance-id "i1"))))
@@ -1738,7 +1738,7 @@
       (let [sequence-cache-store (sequence-cache-store-fn :data {"i1" 2})]
         (is (= {"i1" (progress-entry "i1.m2" 20 2)}
                (sched/progress-aggregator
-                 pending-progress-threshold
+                 pending-threshold
                  sequence-cache-store
                  {"i1" (progress-entry "i1.m2" 20 2)}
                  (progress-entry "i1.m1" 10 1 :instance-id "i1"))))
@@ -1766,12 +1766,13 @@
         (is (= {"i1" 1, "i2" 2} (.cache @sequence-cache-store)))))))
 
 (deftest test-progress-update-aggregator
-  (let [pending-progress-threshold 10
-        sequence-cache-threshold 10
+  (let [progress-config {:pending-threshold 10
+                         :publish-interval-ms 10000
+                         :sequence-cache-threshold 10}
         actual-progress-aggregator sched/progress-aggregator
         redef-progress-aggregator (fn redef-progress-aggregator
-                                    [pending-progress-threshold sequence-cache-store instance-id->progress-state {:keys [response-chan] :as data}]
-                                    (let [result (actual-progress-aggregator pending-progress-threshold sequence-cache-store instance-id->progress-state data)]
+                                    [pending-threshold sequence-cache-store instance-id->progress-state {:keys [response-chan] :as data}]
+                                    (let [result (actual-progress-aggregator pending-threshold sequence-cache-store instance-id->progress-state data)]
                                       (when response-chan
                                         (async/close! response-chan))
                                       result))]
@@ -1787,7 +1788,7 @@
         (testing "no progress to publish"
           (let [progress-state-chan (async/chan 1)
                 progress-aggregator-chan
-                (sched/progress-update-aggregator pending-progress-threshold sequence-cache-threshold progress-state-chan)]
+                (sched/progress-update-aggregator progress-config progress-state-chan)]
 
             (is (= {} (async/<!! progress-state-chan)))
             (is (= {} (async/<!! progress-state-chan)))
@@ -1799,7 +1800,7 @@
         (testing "basic progress publishing"
           (let [progress-state-chan (async/chan)
                 progress-aggregator-chan
-                (sched/progress-update-aggregator pending-progress-threshold sequence-cache-threshold progress-state-chan)]
+                (sched/progress-update-aggregator progress-config progress-state-chan)]
             (send progress-aggregator-chan (progress-entry "i1.m1" 10 1 :instance-id "i1"))
             (send progress-aggregator-chan (progress-entry "i2.m1" 10 1 :instance-id "i2"))
             (send progress-aggregator-chan (progress-entry "i3.m1" 10 1 :instance-id "i3"))
@@ -1820,14 +1821,14 @@
           (let [progress-aggregator-counter (atom 0)]
             (with-redefs [sched/progress-aggregator
                           (fn progress-aggregator
-                            [pending-progress-threshold sequence-cache-store instance-id->progress-state {:keys [response-chan] :as data}]
+                            [pending-threshold sequence-cache-store instance-id->progress-state {:keys [response-chan] :as data}]
                             (swap! progress-aggregator-counter inc)
                             (Thread/sleep 100) ;; delay processing of message to cause queue to build up
-                            (redef-progress-aggregator pending-progress-threshold sequence-cache-store instance-id->progress-state data))]
+                            (redef-progress-aggregator pending-threshold sequence-cache-store instance-id->progress-state data))]
 
               (let [progress-state-chan (async/chan)
                     progress-aggregator-chan
-                    (sched/progress-update-aggregator pending-progress-threshold sequence-cache-threshold progress-state-chan)]
+                    (sched/progress-update-aggregator progress-config progress-state-chan)]
                 (dotimes [n 100]
                   (send progress-aggregator-chan (progress-entry (str "i1.m" n) n n :instance-id "i1")))
                 (send progress-aggregator-chan (progress-entry "i1.m100" 100 100 :instance-id "i1") :sync true)

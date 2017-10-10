@@ -377,8 +377,10 @@ The configuration values are defined as follows:
   The default value is 2500.
 
 `:sequence-cache-threshold`::
-  An integer representing the size of the task id to progress sequence cache to maintain.
+  An integer representing the max number of items in the task sequence cache.
   This cache is used to track the latest sequence number of progress message processed for a given task.
+  In order to avoid the potential for out-of-order progress updates,
+  this cache should be sized to handle the maximum number of active tasks that are reporting progress.
   The default value is 1000.
 
 === Debugging Facilities

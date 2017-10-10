@@ -18,6 +18,7 @@
   (:require [clj-time.coerce :as tc]
             [clj-time.core :as t]
             [clojure.core.async :as async]
+            [clojure.core.cache :as cache]
             [cook.mesos.util :as util]
             [cook.test.testutil :as testutil :refer (create-dummy-instance create-dummy-job restore-fresh-database!)]
             [datomic.api :as d :refer (q db)])
@@ -373,5 +374,29 @@
       (async/<!! reducing-go-chan) ;; wait for go-block to terminate
       (testing "out-chan should be closed"
         (is (nil? (async/<!! out-chan)))))))
+
+(deftest test-cache-lookup-and-update
+  (let [cache-store (-> {}
+                        (cache/lru-cache-factory :threshold 2)
+                        atom)]
+    (is (= 10 (util/cache-lookup! cache-store "A" 10)))
+    (is (= {"A" 10} (.cache @cache-store)))
+
+    (is (= 10 (util/cache-lookup! cache-store "A" 11)))
+    (is (= {"A" 10} (.cache @cache-store)))
+
+    (is (= 20 (util/cache-lookup! cache-store "B" 20)))
+    (is (= {"A" 10, "B" 20} (.cache @cache-store)))
+
+    (is (= 30 (util/cache-lookup! cache-store "C" 30)))
+    (is (= {"B" 20, "C" 30} (.cache @cache-store)))
+
+    (util/cache-update! cache-store "C" 31)
+    (is (= {"B" 20, "C" 31} (.cache @cache-store)))
+    (is (= 31 (util/cache-lookup! cache-store "C" 32)))
+    (is (= {"B" 20, "C" 31} (.cache @cache-store)))
+
+    (is (= 12 (util/cache-lookup! cache-store "A" 12)))
+    (is (= {"A" 12, "C" 31} (.cache @cache-store)))))
 
 (comment (run-tests))
