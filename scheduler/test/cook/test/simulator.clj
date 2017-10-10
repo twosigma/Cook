@@ -120,7 +120,8 @@
          gpu-enabled?# (or (:gpus-enabled? ~scheduler-config) false)
          progress-config# {:batch-size 100
                            :pending-threshold 1000
-                           :publish-interval-ms 2000}
+                           :publish-interval-ms 2000
+                           :sequence-cache-threshold 1000}
          rebalancer-config# (merge default-rebalancer-config (:rebalancer-config ~scheduler-config))
          framework-id# "cool-framework-id"
          host-settings# {:server-port 12321 :hostname "localhost"}

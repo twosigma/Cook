@@ -481,7 +481,8 @@
      :progress (fnk [[:config {progress nil}]]
                    (merge {:batch-size 100
                            :pending-threshold 4000
-                           :publish-interval-ms 2500}
+                           :publish-interval-ms 2500
+                           :sequence-cache-threshold 1000}
                           progress))
      :riemann (fnk [[:config [:metrics {riemann nil}]]]
                 riemann)

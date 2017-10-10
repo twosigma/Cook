@@ -598,3 +598,21 @@
                (when close?
                  (async/close! to))
                (recur (reducer state data)))))))
+
+(defn cache-lookup!
+  "Lookup a value by key in the cache store.
+   If the cache has the key, return the value corresponding to the key in the cache.
+   If the cache does not have the key, update the cache with key->not-found-value and return not-found-value."
+  [cache-store key not-found-value]
+  (cache/lookup (swap! cache-store
+                       #(if (cache/has? % key)
+                          (cache/hit % key)
+                          (cache/miss % key not-found-value)))
+                key))
+
+(defn cache-update!
+  "Updates the key->value mapping in the cache store."
+  [cache-store key value]
+  (swap! cache-store #(-> %
+                          (cache/evict key)
+                          (cache/miss key value))))
