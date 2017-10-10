@@ -168,7 +168,7 @@ def register(add_parser, add_defaults):
                              type=check_positive)
     list_parser.add_argument('--json', help='show the data in JSON format', dest='json', action='store_true')
 
-    add_defaults('list', {'states': ['running', 'waiting'],
+    add_defaults('list', {'states': ['running'],
                           'user': current_user(),
                           'limit': DEFAULT_LIMIT})
 
