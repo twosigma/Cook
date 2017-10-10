@@ -18,7 +18,9 @@ DEFAULT_CONFIG = {'defaults': {},
                            'read-timeout': 20,
                            'modules': {'session-module': 'requests',
                                        'adapters-module': 'requests.adapters'}},
-                  'metrics': {'disabled': True}}
+                  'metrics': {'disabled': True,
+                              'timeout': 0.05,
+                              'max-retries': 2}}
 
 
 def add_defaults(action, defaults):

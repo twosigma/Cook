@@ -25,12 +25,21 @@ def initialize(config):
 
         global __conn
         global __line_formats
-        address = (metrics_config.get('host'), metrics_config.get('port'))
-        __conn = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        logging.info(f'connecting to {address} for metrics...')
-        __conn.connect(address)
-        logging.info(f'...connected')
         __line_formats = metrics_config.get('line-formats')
+        __conn = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        __conn.settimeout(metrics_config.get('timeout'))
+        address = (metrics_config.get('host'), metrics_config.get('port'))
+        for attempt in range(metrics_config.get('max-retries') + 1):
+            try:
+                logging.info(f'connecting to {address} for metrics (attempt = {attempt})...')
+                __conn.connect(address)
+                logging.info(f'...connected')
+                break
+            except TimeoutError:
+                logging.exception(f'timeout attempting to connect to {address}')
+        else:
+            __disabled = True
+            logging.error(f'unable to connect to {address} for metrics, giving up')
     except:
         __disabled = True
         logging.exception('exception when initializing metrics')
