@@ -539,4 +539,4 @@ Here's a table with some options that should work for a cluster with thousands o
 
 ### License
 
-© Two Sigma Open Source, LLC
+(C) Two Sigma Open Source, LLC

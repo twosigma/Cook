@@ -11,4 +11,4 @@ Usage
     (use '[clj-http-async-pool.client :as http])
     (http/get router "https://www.random.org/sequences/?min=1&max=42&col=1&format=plain")
 
-© Two Sigma Open Source, LLC
+&copy; Two Sigma Open Source, LLC

@@ -74,4 +74,4 @@ We recommend not changing the version of Datomic, although moving to a version s
 
 If you'd like email notifications on critical exceptions, make sure that JavaMail will work on the server you've set up.
 
-© Two Sigma Open Source, LLC
+(C) Two Sigma Open Source, LLC
