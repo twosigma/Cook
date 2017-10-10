@@ -1,16 +1,22 @@
-# Cook Simulator
+[[cook-simulator]]
+Cook Simulator
+--------------
 
 This project is a CLI interface to generated simulated workloads, to run them against a real instance of Cook, and to report on how the jobs in a given simulation were handled.
 
-Note, this is different than the "simulator" within the scheduler code proper. This is a system simulator that stands up cook and all of its dependencies as well as clients which submit jobs. The other simulator is a faster than real time simulator of just the scheduling components. The faster than real time simulator is more useful for understanding and tuning the scheduling algorithms in cook whereas the system simulator is more useful for testing and understanding the full system interactions. 
+Note, this is different than the "simulator" within the scheduler code proper.
+This is a system simulator that stands up cook and all of its dependencies as well as clients which submit jobs.
+The other simulator is a faster than real time simulator of just the scheduling components.
+The faster than real time simulator is more useful for understanding and tuning the scheduling algorithms in cook whereas the system simulator is more useful for testing and understanding the full system interactions.
 
-## Example usage
+[[example-usage]]
+Example usage
+~~~~~~~~~~~~~
 
 First, edit your intended settings file (e.g. config/settings.edn) as you see fit.
-Since the program exits after each command, you'll need to be running against a
-Datomic with persistent storage.
+Since the program exits after each command, you'll need to be running against a Datomic with persistent storage.
 
-<pre><code>
+....
 ~/projects/cook/simulator $ lein run -c config/settings.edn setup-database
 
 
@@ -113,9 +119,12 @@ Connecting to simulation database...
 Connecting to Cook database...
 Comparing overhead for sims (387028093003501) to baseline 387028093003449 ...
 Outputting comparison image to comparison.png
-</code></pre>
+....
 
-## Developing
+[[developing]]
+Developing
+~~~~~~~~~~
 
-If you'd like to extend the Simulator or just run a lot of sims quickly via
-the REPL, [this document](doc/development.md) will help you get started.
+If you'd like to extend the Simulator or just run a lot of sims quickly via the REPL, link:doc/development.adoc[this document] will help you get started.
+
+(C) Two Sigma Open Source, LLC

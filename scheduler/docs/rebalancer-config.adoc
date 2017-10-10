@@ -62,3 +62,5 @@ In order to intelligently tweak safe-dru-threshold and min-dur-diff, you will ne
 * pending-job-drus
 * nearest-task-drus
 * positive-dru-diffs (this one in particular will help you to speculate about the ramifications of various values of min-dru-diff).
+
+(C) Two Sigma Open Source, LLC

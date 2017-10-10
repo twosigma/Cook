@@ -115,11 +115,13 @@ We'll look at the configurable options in turn:
 
 `:principal`::
   This sets the principal that Cook will connect to Mesos with.
-  You can omit this property unless you've enabled security features with Mesos. The value here should match with authorized `principals` in `register_frameworks` Action in Mesos Authorization file. See http://mesos.apache.org/documentation/latest/authorization/ for details.
+  You can omit this property unless you've enabled security features with Mesos. The value here should match with authorized `principals` in `register_frameworks` Action in Mesos Authorization file.
+  See http://mesos.apache.org/documentation/latest/authorization/ for details.
 
 `:role`::
   This sets the role that Cook will connect to Mesos with. Default: `*`
-  You can omit this property unless you've enabled security features in Mesos. The value should be in authorized list for the current `:principal` in `register_frameworks` Action in Mesos Authorization file. See http://mesos.apache.org/documentation/latest/authorization/ for details.
+  You can omit this property unless you've enabled security features in Mesos. The value should be in authorized list for the current `:principal` in `register_frameworks` Action in Mesos Authorization file.
+  See http://mesos.apache.org/documentation/latest/authorization/ for details.
 
 `:framework-name`::
   This sets part of the name of the framework that Cook will register to Mesos. Default: Cook
@@ -131,7 +133,7 @@ We'll look at the configurable options in turn:
   This property will only work with Mesos 1.0 and above, since that's when GPU support was added.
   If you enable this on an earlier version of Mesos, Cook will fail to start and print the error in the log.
   If you enable this and your cluster doesn't have any GPU machines, Cook will accept GPU jobs, but they'll never be scheduled.
-  See https://github.com/apache/mesos/blob/master/docs/gpu-support.md for details on configuring the agents, installing external NVidia dependencies, and configuring Docker/GPU integration.
+  See https://github.com/apache/mesos/blob/master/docs/gpu-support.adoc for details on configuring the agents, installing external NVidia dependencies, and configuring Docker/GPU integration.
 
 `:leader-reports-unhealthy`::
     This configures whether or not the leader reports his status as healthy by returning 200 from the /debug endpoint.
@@ -281,7 +283,7 @@ Optionally, you can include a "rebalancer" stanza.  If you do, on startup, Cook 
 The Cook executor is a custom executor written in Python.
 It is enabled when the `:command` option (see below) is configured to a non-empty string.
 When enabled, it replaces the default command executor in order to enable a number of features for both operators and end users.
-Please see the link:../../executor/README.md[Cook Executor README] for more detailed information about the Cook executor.
+Please see the link:../../executor/README.adoc[Cook Executor README] for more detailed information about the Cook executor.
 
 An example configuration looks like:
 
@@ -335,6 +337,7 @@ The configuration values are defined as follows:
   The default is an empty map, i.e. no executable to download.
   The `uri` structure is defined below:
 
+[width="100%",cols="20%,20%,60%",options="header"]
 |===
 | key | type | description
 | `:cache` | boolean | Mesos 0.23 and later only: should the URI be cached in the fetcher cache?
@@ -521,7 +524,7 @@ It can be intimidating to choose JVM options to enable Cook to run with high per
 Here's a table with some options that should work for a cluster with thousands of machines:
 
 .Cook JVM Options Recommendations for Large Clusters
-[options="header"]
+[width="100%",cols="40%,60%",options="header"]
 |====
 |Options | Reasoning
 |`-XX:UseG1GC` | This enables the low-pause collector, which gives better API latency characteristics
