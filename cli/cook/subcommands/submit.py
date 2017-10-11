@@ -5,9 +5,9 @@ import shlex
 import sys
 import uuid
 
-import pkg_resources
+import requests
 
-from cook import colors, http, metrics
+from cook import colors, http, metrics, version
 from cook.util import deep_merge, is_valid_uuid, read_lines, print_info, current_user
 
 
@@ -82,6 +82,7 @@ def submit_federated(clusters, jobs):
     """
     for cluster in clusters:
         cluster_name = cluster['name']
+        cluster_url = cluster['url']
         try:
             print_info('Attempting to submit on %s cluster...' % colors.bold(cluster_name))
             resp = http.post(cluster, 'rawscheduler', {'jobs': jobs})
@@ -89,10 +90,16 @@ def submit_federated(clusters, jobs):
             if resp.status_code == 201:
                 metrics.inc('command.submit.jobs', len(jobs))
                 return 0
+        except requests.exceptions.ReadTimeout as rt:
+            logging.exception(rt)
+            print_info(colors.failed(
+                f'Encountered read timeout with {cluster_name} ({cluster_url}). Your submission may have completed.'))
+            return 1
         except IOError as ioe:
-            logging.info(ioe)
-            reason = 'Cannot connect to %s (%s)' % (cluster_name, cluster['url'])
-            print_info('%s\n' % submit_failed_message(cluster_name, reason))
+            logging.exception(ioe)
+            reason = f'Cannot connect to {cluster_name} ({cluster_url})'
+            message = submit_failed_message(cluster_name, reason)
+            print_info(f'{message}\n')
     raise Exception(colors.failed('Job submission failed on all of your configured clusters.'))
 
 
@@ -144,7 +151,7 @@ def submit(clusters, args):
     raw = job.pop('raw', None)
     command_from_command_line = job.pop('command', None)
     application_name = job.pop('application_name', 'cook-scheduler-cli')
-    application_version = job.pop('application_version', pkg_resources.require('cook_client')[0].version)
+    application_version = job.pop('application_version', version.VERSION)
     job['application'] = {'name': application_name, 'version': application_version}
 
     if raw:

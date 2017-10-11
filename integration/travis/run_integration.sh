@@ -78,6 +78,7 @@ fi
 
 # Install the CLI
 cd ${PROJECT_DIR}/../cli
+python3 --version
 python3 setup.py install
 CLI=$(pyenv which cs)
 export PATH=${PATH}:$(dirname ${CLI})

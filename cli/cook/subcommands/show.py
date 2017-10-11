@@ -216,9 +216,9 @@ def query_cluster(cluster, uuids, pred, timeout, interval, make_request_fn, enti
     """
 
     def satisfy_pred():
-        return pred(http.make_data_request(lambda: make_request_fn(cluster, uuids)))
+        return pred(http.make_data_request(cluster, lambda: make_request_fn(cluster, uuids)))
 
-    entities = http.make_data_request(lambda: make_request_fn(cluster, uuids))
+    entities = http.make_data_request(cluster, lambda: make_request_fn(cluster, uuids))
     if pred and len(entities) > 0:
         if entity_type == 'job':
             wait_text = 'Waiting for the following jobs'

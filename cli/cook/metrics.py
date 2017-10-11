@@ -25,9 +25,21 @@ def initialize(config):
 
         global __conn
         global __line_formats
-        __conn = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        __conn.connect((metrics_config.get('host'), metrics_config.get('port')))
         __line_formats = metrics_config.get('line-formats')
+        __conn = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        __conn.settimeout(metrics_config.get('timeout'))
+        address = (metrics_config.get('host'), metrics_config.get('port'))
+        for attempt in range(metrics_config.get('max-retries') + 1):
+            try:
+                logging.info(f'connecting to {address} for metrics (attempt = {attempt})...')
+                __conn.connect(address)
+                logging.info(f'...connected')
+                break
+            except TimeoutError:
+                logging.exception(f'timeout attempting to connect to {address}')
+        else:
+            __disabled = True
+            logging.error(f'unable to connect to {address} for metrics, giving up')
     except:
         __disabled = True
         logging.exception('exception when initializing metrics')
@@ -53,6 +65,7 @@ def __send(metric):
         metric_line = line_format.format(**metric)
         logging.info('sending metric %s' % metric_line)
         __conn.send(('%s\n' % metric_line).encode())
+        logging.info('metric send completed')
     except:
         __disabled = True
         logging.exception('exception when sending metric %s' % metric)

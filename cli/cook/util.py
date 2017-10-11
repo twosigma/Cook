@@ -12,6 +12,9 @@ import arrow
 import humanfriendly
 
 
+quit_running = False
+
+
 def deep_merge(a, b):
     """Merges a and b, letting b win if there is a conflict"""
     merged = a.copy()
@@ -41,15 +44,17 @@ def load_json_file(path):
                 content = json.load(json_file)
             except Exception:
                 pass
+    else:
+        logging.info(f'{path} is not a file')
 
     return content
 
 
-def load_first_json_file(paths=None):
+def load_first_json_file(paths):
     """Returns the contents of the first parseable JSON file in a list of paths."""
     if paths is None:
         paths = []
-    contents = (load_json_file(p) for p in paths if p)
+    contents = (load_json_file(os.path.abspath(p)) for p in paths if p)
     return next((c for c in contents if c), None)
 
 
@@ -66,7 +71,7 @@ def wait_until(pred, timeout=30, interval=5):
     while True:
         result = pred()
 
-        if result:
+        if result or quit_running:
             break
 
         if finish and datetime.now() >= finish:
@@ -108,12 +113,12 @@ def is_valid_uuid(uuid_to_test, version=4):
 silent = False
 
 
-def print_info(text, silent_mode_text=None):
+def print_info(text, silent_mode_text=None, end='\n'):
     """Prints text, unless in silent mode (-s / --silent)"""
     if not silent:
-        print(text, flush=True)
+        print(text, flush=True, end=end)
     elif silent_mode_text:
-        print(silent_mode_text, flush=True)
+        print(silent_mode_text, flush=True, end=end)
 
 
 def strip_all(strs):

@@ -15,10 +15,12 @@ DEFAULT_CONFIG_PATHS = ['.cs.json',
 DEFAULT_CONFIG = {'defaults': {},
                   'http': {'retries': 2,
                            'connect-timeout': 3.05,
-                           'read-timeout': 5,
+                           'read-timeout': 20,
                            'modules': {'session-module': 'requests',
                                        'adapters-module': 'requests.adapters'}},
-                  'metrics': {'disabled': True}}
+                  'metrics': {'disabled': True,
+                              'timeout': 0.15,
+                              'max-retries': 2}}
 
 
 def add_defaults(action, defaults):
@@ -55,7 +57,7 @@ def load_target_clusters(config, url=None, cluster=None):
         clusters = [{'name': url, 'url': url}]
     elif config_clusters:
         if cluster:
-            clusters = [c for c in config_clusters if c.get('name') == cluster]
+            clusters = [c for c in config_clusters if c.get('name').lower() == cluster.lower()]
         else:
             clusters = [c for c in config_clusters if 'disabled' not in c or not c['disabled']]
 
@@ -91,7 +93,7 @@ def run(args):
     util.silent = args.pop('silent')
     verbose = args.pop('verbose') and not util.silent
 
-    log_format = '%(asctime)s [%(levelname)s] %(message)s'
+    log_format = '%(asctime)s [%(levelname)s] [%(name)s] %(message)s'
     if verbose:
         logging.getLogger('').handlers = []
         logging.basicConfig(format=log_format, level=logging.DEBUG)

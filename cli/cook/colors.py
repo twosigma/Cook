@@ -1,4 +1,4 @@
-from blessings import Terminal
+from blessed import Terminal
 
 term = Terminal()
 

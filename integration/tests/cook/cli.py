@@ -107,10 +107,10 @@ class temp_config_file:
         os.remove(self.path)
 
 
-def list_jobs(cook_url=None, list_flags=None):
+def list_jobs(cook_url=None, list_flags=None, flags=None):
     """Invokes the list subcommand"""
-    args = 'list %s' % list_flags + ' ' if list_flags else ''
-    cp = cli(args, cook_url)
+    args = f'list {list_flags}' if list_flags else 'list'
+    cp = cli(args, cook_url, flags)
     return cp
 
 
@@ -120,3 +120,8 @@ def list_jobs_json(cook_url=None, list_flags=None):
     response = json.loads(stdout(cp))
     jobs = [job for entities in response['clusters'].values() for job in entities['jobs']]
     return cp, jobs
+
+
+def output(cp):
+    """Returns a string containing the stdout and stderr from the given CompletedProcess"""
+    return f'\nstdout:\n{stdout(cp)}\n\nstderr:\n{decode(cp.stderr)}'
