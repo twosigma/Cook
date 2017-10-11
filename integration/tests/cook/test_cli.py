@@ -515,6 +515,12 @@ class CookCliTest(unittest.TestCase):
         cp = cli.list_jobs(self.cook_url, '--lookback 1 --submitted-before "now"')
         self.assertEqual(1, cp.returncode, cp.stderr)
         self.assertIn(error_fragment, cli.decode(cp.stderr))
+        cp = cli.list_jobs(self.cook_url, '--submitted-after ""')
+        self.assertEqual(1, cp.returncode, cp.stderr)
+        self.assertIn('"" is not a valid date / time string', cli.decode(cp.stderr))
+        cp = cli.list_jobs(self.cook_url, '--submitted-before ""')
+        self.assertEqual(1, cp.returncode, cp.stderr)
+        self.assertIn('"" is not a valid date / time string', cli.decode(cp.stderr))
 
     def test_list_with_time_ranges(self):
         name = str(uuid.uuid4())

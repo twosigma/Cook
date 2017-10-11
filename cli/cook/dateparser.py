@@ -37,7 +37,7 @@ def parse(date_time_string, time_zone):
     date_time_string_lower = date_time_string.lower()
     now = datetime.datetime.now(tz=time_zone)
 
-    if date_time_string_lower == 'now' or date_time_string_lower == 'today':
+    if date_time_string_lower in ('now', 'today'):
         return now
 
     if date_time_string_lower == 'yesterday':

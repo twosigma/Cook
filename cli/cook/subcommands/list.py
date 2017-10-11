@@ -111,9 +111,11 @@ def list_jobs(clusters, args):
     if lookback_hours and (submitted_after or submitted_before):
         raise Exception('You cannot specify both lookback hours and submitted after / before times.')
 
-    if submitted_after or submitted_before:
-        start_ms = date_time_string_to_ms_since_epoch(submitted_after or f'{DEFAULT_LOOKBACK_HOURS} hours ago')
-        end_ms = date_time_string_to_ms_since_epoch(submitted_before or 'now')
+    if submitted_after is not None or submitted_before is not None:
+        start_ms = date_time_string_to_ms_since_epoch(
+            submitted_after if submitted_after is not None else f'{DEFAULT_LOOKBACK_HOURS} hours ago')
+        end_ms = date_time_string_to_ms_since_epoch(
+            submitted_before if submitted_before is not None else 'now')
     else:
         start_ms, end_ms = lookback_hours_to_range(lookback_hours or DEFAULT_LOOKBACK_HOURS)
 

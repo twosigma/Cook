@@ -23,10 +23,13 @@ class CookCliTest(unittest.TestCase):
         with freeze_time(now):
             self.assertEqual(now, dateparser.parse('now', time_zone))
             self.assertEqual(now, dateparser.parse('NOW', time_zone))
+            self.assertEqual(now, dateparser.parse('Now', time_zone))
             self.assertEqual(now, dateparser.parse('today', time_zone))
             self.assertEqual(now, dateparser.parse('TODAY', time_zone))
+            self.assertEqual(now, dateparser.parse('Today', time_zone))
             self.assertEqual(now - datetime.timedelta(1), dateparser.parse('yesterday', time_zone))
             self.assertEqual(now - datetime.timedelta(1), dateparser.parse('YESTERDAY', time_zone))
+            self.assertEqual(now - datetime.timedelta(1), dateparser.parse('Yesterday', time_zone))
             self.assertEqual(now - datetime.timedelta(seconds=1), dateparser.parse('1 sec ago', time_zone))
             self.assertEqual(now - datetime.timedelta(seconds=1), dateparser.parse('1 second ago', time_zone))
             self.assertEqual(now - datetime.timedelta(seconds=2), dateparser.parse('2 seconds ago', time_zone))
@@ -39,6 +42,7 @@ class CookCliTest(unittest.TestCase):
             self.assertEqual(now - datetime.timedelta(days=2), dateparser.parse('2 days ago', time_zone))
             self.assertEqual(now - datetime.timedelta(weeks=1), dateparser.parse('1 week ago', time_zone))
             self.assertEqual(now - datetime.timedelta(weeks=2), dateparser.parse('2 weeks ago', time_zone))
+            self.assertEqual(now - datetime.timedelta(weeks=3), dateparser.parse('3 WEEKS AGO', time_zone))
             self.assertEqual(datetime.datetime(2017, 10, 5, tzinfo=time_zone),
                              dateparser.parse('2017-10-05', time_zone))
             self.assertEqual(datetime.datetime(2017, 10, 5, 16, 36, tzinfo=time_zone),
@@ -54,3 +58,4 @@ class CookCliTest(unittest.TestCase):
             self.assertIsNone(dateparser.parse('day', time_zone))
             self.assertIsNone(dateparser.parse('ago', time_zone))
             self.assertIsNone(dateparser.parse('foo', time_zone))
+            self.assertIsNone(dateparser.parse('', time_zone))
