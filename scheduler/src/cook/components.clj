@@ -380,7 +380,7 @@
                      (when (and (:portion executor) (not (<= 0 (:portion executor) 1)))
                        (throw (ex-info "Executor portion must be in the range [0, 1]!" {:executor executor})))
                      (let [default-executor-config {:default-progress-output-file "stdout"
-                                                    :default-progress-regex-string "progress: (\\d*)(?: )?(.*)"
+                                                    :default-progress-regex-string "progress: (\\d+)(?: )?(.*)"
                                                     :log-level "INFO"
                                                     :max-message-length 512
                                                     :portion 0.0
@@ -481,7 +481,8 @@
      :progress (fnk [[:config {progress nil}]]
                    (merge {:batch-size 100
                            :pending-threshold 4000
-                           :publish-interval-ms 2500}
+                           :publish-interval-ms 2500
+                           :sequence-cache-threshold 1000}
                           progress))
      :riemann (fnk [[:config [:metrics {riemann nil}]]]
                 riemann)

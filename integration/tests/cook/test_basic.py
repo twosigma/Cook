@@ -150,6 +150,7 @@ class CookTest(unittest.TestCase):
         job_executor_type = util.get_job_executor_type(self.cook_url)
         command = 'echo "progress: 25 Twenty-five percent" && sleep 2 && ' \
                   'echo "progress: 50 Fifty percent" && sleep 2 && ' \
+                  'echo "progress: Sixty percent invalid format" && sleep 2 && ' \
                   'echo "progress: 75 Seventy-five percent" && sleep 2 && ' \
                   'echo "progress: Eighty percent invalid format" && sleep 2 && ' \
                   'echo "Done" && exit 0'

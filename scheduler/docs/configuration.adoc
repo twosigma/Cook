@@ -289,7 +289,7 @@ An example configuration looks like:
 {...
  :executor {:command "cook-executor"
             :default-progress-output-file "stdout"
-            :default-progress-regex-string "progress: (\d*)(?: )?(.*)"
+            :default-progress-regex-string "progress: (\d+)(?: )?(.*)"
             :log-level "INFO"
             :max-message-length 512
             :progress-sample-interval-ms 1000
@@ -356,7 +356,8 @@ An example configuration looks like:
 {...
  :progress {:batch-size 100
             :pending-threshold 4000
-            :publish-interval-ms 2500}
+            :publish-interval-ms 2500
+            :sequence-cache-threshold 1000}
  ...}
 ```
 
@@ -374,6 +375,13 @@ The configuration values are defined as follows:
 `:publish-interval-ms`::
   An integer representing the number of millisecond intervals at which progress updates will be published to datomic.
   The default value is 2500.
+
+`:sequence-cache-threshold`::
+  An integer representing the max number of items in the task sequence cache.
+  This cache is used to track the latest sequence number of progress message processed for a given task.
+  In order to avoid the potential for out-of-order progress updates,
+  this cache should be sized to handle the maximum number of active tasks that are reporting progress.
+  The default value is 1000.
 
 === Debugging Facilities
 

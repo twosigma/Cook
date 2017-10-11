@@ -71,13 +71,13 @@ class ProgressUpdater(object):
                     message_dict['task-id'] = self.task_id
                     progress_message = json.dumps(message_dict)
 
-                    if len(progress_message) > self.max_message_length and cook.PROGRESS_MESSAGE_KEY in message_dict:
-                        progress_str = message_dict[cook.PROGRESS_MESSAGE_KEY]
+                    if len(progress_message) > self.max_message_length and 'progress-message' in message_dict:
+                        progress_str = message_dict['progress-message']
                         num_extra_chars = len(progress_message) - self.max_message_length
                         allowed_progress_message_length = max(len(progress_str) - num_extra_chars - 3, 0)
                         new_progress_str = progress_str[:allowed_progress_message_length].strip() + '...'
                         logging.info('Progress message trimmed to {}'.format(new_progress_str))
-                        message_dict[cook.PROGRESS_MESSAGE_KEY] = new_progress_str
+                        message_dict['progress-message'] = new_progress_str
                         progress_message = json.dumps(message_dict)
 
                     self.send_message(self.driver, progress_message, self.max_message_length)
@@ -180,12 +180,19 @@ class ProgressWatcher(object):
         """
         if self.progress_regex_string:
             sleep_time_ms = 50
+            sequence = 0
             for line in self.tail(sleep_time_ms):
                 progress_report = ProgressWatcher.match_progress_update(self.progress_regex_string, line)
                 if progress_report is not None:
                     percent, message = progress_report
+                    if not percent or not percent.isdigit():
+                        logging.info('Skipping "{}" as the percent entry is not an int'.format(progress_report))
+                        continue
                     logging.info('Updating progress to {} percent, message: {}'.format(percent, message))
-                    self.progress = {cook.PROGRESS_MESSAGE_KEY: message.strip(), 'progress-percent': int(percent)}
+                    sequence += 1
+                    self.progress = {'progress-message': message.strip(),
+                                     'progress-percent': int(percent),
+                                     'progress-sequence': sequence}
                     yield self.progress
 
 

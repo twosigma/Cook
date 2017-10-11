@@ -4,7 +4,6 @@
             [chime :refer [chime-ch]]
             [clj-time.core :as t]
             [clj-time.coerce :as tc]
-            [clj-time.periodic :as periodic]
             [clojure.core.async :as async]
             [clojure.core.cache :as cache]
             [clojure.edn :as edn]
@@ -19,17 +18,13 @@
             [cook.mesos :as c]
             [cook.mesos.mesos-mock :as mm]
             [cook.mesos.share :as share]
-            [cook.mesos.scheduler :as sched]
             [cook.mesos.util :as util]
             [cook.test.testutil :refer (restore-fresh-database! poll-until)]
             [datomic.api :as d]
-            [mesomatic.scheduler :as mesos]
-            [mesomatic.types :as mesos-types]
             [plumbing.core :refer (map-vals map-keys map-from-vals)])
   (:import org.apache.curator.framework.CuratorFrameworkFactory
            org.apache.curator.framework.state.ConnectionStateListener
-           org.apache.curator.retry.BoundedExponentialBackoffRetry
-           org.joda.time.DateTimeUtils)
+           org.apache.curator.retry.BoundedExponentialBackoffRetry)
   (:gen-class))
 
 ;;; This namespace contains a simulator for cook scheduler that accepts a trace file
@@ -120,7 +115,8 @@
          gpu-enabled?# (or (:gpus-enabled? ~scheduler-config) false)
          progress-config# {:batch-size 100
                            :pending-threshold 1000
-                           :publish-interval-ms 2000}
+                           :publish-interval-ms 2000
+                           :sequence-cache-threshold 1000}
          rebalancer-config# (merge default-rebalancer-config (:rebalancer-config ~scheduler-config))
          framework-id# "cool-framework-id"
          host-settings# {:server-port 12321 :hostname "localhost"}
@@ -130,8 +126,8 @@
                             (c/make-trigger-chans rebalancer-config# progress-config# task-constraints#))]
      (try
        (let [additional-config# {:executor-config executor-config#
-                                :rebalancer-config rebalancer-config#
-                                :progress-config progress-config#}
+                                 :rebalancer-config rebalancer-config#
+                                 :progress-config progress-config#}
              scheduler# (c/start-mesos-scheduler ~make-mesos-driver-fn get-mesos-utilization#
                                                  curator-framework# ~conn
                                                  mesos-mult# zk-prefix#

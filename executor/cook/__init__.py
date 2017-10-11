@@ -7,8 +7,6 @@ For more information on Mesos executors, see the "Working with Executors"
 section at http://mesos.apache.org/documentation/latest/app-framework-development-guide/
 """
 
-PROGRESS_MESSAGE_KEY = 'progress-message'
-
 RUNNING_POLL_INTERVAL_SECS = 1
 
 TASK_ERROR = 'TASK_ERROR'
