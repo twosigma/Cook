@@ -1,0 +1,9 @@
+[[contributing]]
+Contributing
+~~~~~~~~~~~~
+
+In order to accept your code contributions, please fill out the appropriate Contributor License Agreement in the `cla` folder and submit it to tsos@twosigma.com.
+
+In your pull request, add a line in the link:CHANGELOG.adoc[changelog] under "unreleased" describing your change.
+
+(C) Two Sigma Open Source, LLC

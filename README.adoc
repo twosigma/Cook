@@ -1,0 +1,65 @@
+[[cook-scheduler]]
+Cook Scheduler
+--------------
+
+https://travis-ci.org/twosigma/Cook[image:https://travis-ci.org/twosigma/Cook.svg[Build Status]]
+
+Welcome to Two Sigma's Cook Scheduler!
+
+What is Cook?
+
+* Cook is a powerful batch scheduler, specifically designed to provide a great user experience when there are more jobs to run than your cluster has capacity for.
+* Cook is able to intelligently preempt jobs to ensure that no user ever needs to wait long to get quick answers, while simultaneously helping you to achieve 90%+ utilization for massive workloads.
+* Cook has been battle-hardened to automatically recover after dozens of classes of cluster failures.
+* Cook can act as a Spark scheduler, and it comes with a REST API and Java client.
+
+link:scheduler/docs/concepts.adoc[Core concepts] is a good place to start
+to learn more.
+
+[[releases]]
+Releases
+~~~~~~~~
+
+Check the link:CHANGELOG.adoc[changelog] for release info.
+
+[[subproject-summary]]
+Subproject Summary
+~~~~~~~~~~~~~~~~~~
+
+In this repository, you'll find several subprojects, each of which has its own documentation.
+
+* `scheduler` - This is the actual Mesos framework, Cook. It comes with a JSON REST API.
+* `jobclient` - This is the Java API for Cook, which uses the REST API under the hood.
+* `spark` - This contains the patch to Spark to enable Cook as a backend.
+
+Please visit the `scheduler` subproject first to get started.
+
+[[quickstart]]
+Quickstart
+~~~~~~~~~~
+
+The quickest way to get Mesos and Cook running locally is with link:https://www.docker.com/[docker] and link:https://minimesos.org/[minimesos].
+
+1.  Install `docker`
+2.  Install `minimesos`
+3.  Clone down this repo
+4.  `cd scheduler`
+5.  Run `bin/build-docker-image.sh` to build the Cook scheduler image
+6.  Run `minimesos up` to start Mesos and ZooKeeper
+7.  Run `bin/run-docker.sh` to start the Cook scheduler
+8.  Cook should now be listening locally on port 12321
+
+[[contributing]]
+Contributing
+~~~~~~~~~~~~
+
+In order to accept your code contributions, please fill out the appropriate Contributor License Agreement in the `cla` folder and submit it to tsos@twosigma.com.
+
+[[disclaimer]]
+Disclaimer
+~~~~~~~~~~
+
+Apache Mesos is a trademark of The Apache Software Foundation.
+The Apache Software Foundation is not affiliated, endorsed, connected, sponsored or otherwise associated in any way to Two Sigma, Cook, or this website in any manner.
+
+(C) Two Sigma Open Source, LLC
