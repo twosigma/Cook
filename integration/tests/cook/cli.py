@@ -25,18 +25,18 @@ def stdout(cp):
     return decode(cp.stdout).strip()
 
 
-def sh(command, stdin=None):
+def sh(command, stdin=None, env=None):
     """Runs command using subprocess.run"""
     logger.info(command + ((' # stdin: %s' % decode(stdin)) if stdin else ''))
-    cp = subprocess.run(shlex.split(command), stdout=subprocess.PIPE, stderr=subprocess.PIPE, input=stdin)
+    cp = subprocess.run(shlex.split(command), stdout=subprocess.PIPE, stderr=subprocess.PIPE, input=stdin, env=env)
     return cp
 
 
-def cli(args, cook_url=None, flags=None, stdin=None):
+def cli(args, cook_url=None, flags=None, stdin=None, env=None):
     """Runs a CLI command with the given URL, flags, and stdin"""
     url_flag = ('--url %s ' % cook_url) if cook_url else ''
     other_flags = ('%s ' % flags) if flags else ''
-    cp = sh('cs %s%s%s' % (url_flag, other_flags, args), stdin)
+    cp = sh('cs %s%s%s' % (url_flag, other_flags, args), stdin, env)
     return cp
 
 
@@ -125,3 +125,10 @@ def list_jobs_json(cook_url=None, list_flags=None):
 def output(cp):
     """Returns a string containing the stdout and stderr from the given CompletedProcess"""
     return f'\nstdout:\n{stdout(cp)}\n\nstderr:\n{decode(cp.stderr)}'
+
+
+def ssh(uuid, cook_url, env=None):
+    """Invokes the ssh subcommand"""
+    args = f'ssh {uuid}'
+    cp = cli(args, cook_url, env=env)
+    return cp

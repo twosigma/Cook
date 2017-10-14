@@ -553,3 +553,67 @@ class CookCliTest(unittest.TestCase):
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual(1, len(jobs))
         self.assertIn(uuids[0], jobs[0]['uuid'])
+
+    def test_ssh_job_uuid(self):
+        cp, uuids = cli.submit('ls', self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        instance = util.wait_for_output_url(self.cook_url, uuids[0])
+        hostname = instance['hostname']
+        env = os.environ
+        env['SSH'] = 'echo'
+        cp = cli.ssh(uuids[0], self.cook_url, env=env)
+        stdout = cli.stdout(cp)
+        self.assertEqual(0, cp.returncode, stdout)
+        self.assertIn(f'Attempting ssh for job instance {instance["task_id"]}', stdout)
+        self.assertIn('Executing ssh', stdout)
+        self.assertIn(hostname, stdout)
+        self.assertIn(f'-t {hostname} cd', stdout)
+        self.assertIn('; bash', stdout)
+
+    def test_ssh_no_instances(self):
+        raw_job = {'command': 'ls', 'constraints': [['HOSTNAME', 'EQUALS', 'will not get scheduled']]}
+        cp, uuids = cli.submit(stdin=cli.encode(json.dumps(raw_job)), cook_url=self.cook_url, submit_flags='--raw')
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        util.wait_for_job(self.cook_url, uuids[0], 'waiting')
+        cp = cli.ssh(uuids[0], self.cook_url)
+        self.assertEqual(1, cp.returncode, cp.stdout)
+        self.assertIn('This job currently has no instances', cli.decode(cp.stderr))
+
+    def test_ssh_invalid_uuid(self):
+        cp = cli.ssh(uuid.uuid4(), self.cook_url)
+        self.assertEqual(1, cp.returncode, cp.stdout)
+        self.assertIn('No matching data found', cli.stdout(cp))
+
+    def test_ssh_duplicate_uuid(self):
+        cp, uuids = cli.submit('ls', self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        instance = util.wait_for_output_url(self.cook_url, uuids[0])
+        instance_uuid = instance["task_id"]
+        cp, uuids = cli.submit('ls', self.cook_url, submit_flags=f'--uuid {instance_uuid}')
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        cp = cli.ssh(instance_uuid, self.cook_url)
+        self.assertEqual(1, cp.returncode, cp.stdout)
+        self.assertIn('There is more than one match for the given uuid', cli.stdout(cp))
+
+    def test_ssh_group_uuid(self):
+        group_uuid = uuid.uuid4()
+        cp, uuids = cli.submit('ls', self.cook_url, submit_flags=f'--group {group_uuid}')
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        cp = cli.ssh(group_uuid, self.cook_url)
+        self.assertEqual(1, cp.returncode, cp.stdout)
+        self.assertIn('You provided a job group uuid', cli.decode(cp.stderr))
+
+    def test_ssh_instance_uuid(self):
+        cp, uuids = cli.submit('ls', self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        instance = util.wait_for_output_url(self.cook_url, uuids[0])
+        hostname = instance['hostname']
+        env = os.environ
+        env['SSH'] = 'echo'
+        cp = cli.ssh(instance['task_id'], self.cook_url, env=env)
+        stdout = cli.stdout(cp)
+        self.assertEqual(0, cp.returncode, stdout)
+        self.assertIn('Executing ssh', stdout)
+        self.assertIn(hostname, stdout)
+        self.assertIn(f'-t {hostname} cd', stdout)
+        self.assertIn('; bash', stdout)

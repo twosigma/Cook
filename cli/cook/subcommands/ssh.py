@@ -38,10 +38,12 @@ def ssh_to_instance(instance, job):
         raise Exception('Mesos agent state did not include its work directory.')
 
     hostname = instance['hostname']
+    print_info(f'Executing ssh to {colors.bold(hostname)}.')
     agent_work_dir = flags['work_dir']
     directory = sandbox_directory(agent_work_dir, instance, job)
-    print_info(f'Executing ssh to {colors.bold(hostname)}.')
-    os.execlp('ssh', 'ssh', '-t', hostname, f'cd {directory} ; bash')
+    file = os.environ.get('SSH', 'ssh')
+    logging.info(f'using ssh file: {file}')
+    os.execlp(file, 'ssh', '-t', hostname, f'cd {directory} ; bash')
 
 
 def ssh_to_job(job):
@@ -78,7 +80,10 @@ def ssh(clusters, args):
         return 1
 
     if num_results > 1:
-        # This is unlikely to happen in the wild, but it could...
+        # This is unlikely to happen in the wild, but it could.
+        # A couple of examples of how this could happen:
+        # - same uuid on an instance and a job (not necessarily the parent job)
+        # - same uuid on a job in cluster x as another job in cluster y
         print_info('There is more than one match for the given uuid.')
         return 1
 
@@ -100,6 +105,6 @@ def ssh(clusters, args):
 
 def register(add_parser, _):
     """Adds this sub-command's parser and returns the action function"""
-    show_parser = add_parser('ssh', help='ssh to the corresponding Mesos agent by jobs or instance uuid')
+    show_parser = add_parser('ssh', help='ssh to the corresponding Mesos agent by job or instance uuid')
     show_parser.add_argument('uuid', nargs=1)
     return ssh

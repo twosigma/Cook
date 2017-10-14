@@ -33,7 +33,7 @@ class CookTest(unittest.TestCase):
         job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
         self.assertEqual('success', job['instances'][0]['status'])
         self.assertEqual(False, job['disable_mea_culpa_retries'])
-        self.assertTrue(len(util.get_output_url(self.cook_url, job_uuid)) > 0)
+        self.assertTrue(len(util.wait_for_output_url(self.cook_url, job_uuid)['output_url']) > 0)
         if job_executor_type == 'cook':
             self.assertEqual(0, job['instances'][0]['exit_code'])
             self.assertTrue(bool(job['instances'][0]['sandbox_directory']))
