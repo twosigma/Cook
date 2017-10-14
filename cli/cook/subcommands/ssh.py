@@ -21,23 +21,23 @@ def ssh_to_instance(instance, job):
     """Attempts to ssh (using os.execlp) to the Mesos agent corresponding to the given instance."""
     if 'output_url' not in instance:
         logging.error(f'output_url was not provided on instance')
-        raise Exception('Unable to determine sandbox directory for this job instance.')
+        raise Exception('Unable to determine the Mesos agent sandbox for this job instance.')
 
     output_url = instance['output_url']
     url = urlparse(output_url)
     resp = http.__get(f'{url.scheme}://{url.netloc}/state')
-    logging.debug(f'response from mesos agent: {resp.text}')
     if resp.status_code != 200:
-        logging.error(f'mesos agent returned status code {resp.status_code}')
-        raise Exception('Unable to determine sandbox directory for this job instance.')
+        logging.error(f'mesos agent returned status code {resp.status_code} and body {resp.text}')
+        raise Exception('Encountered error when querying Mesos agent for its work directory.')
 
     resp_json = resp.json()
-    if 'work_dir' not in resp_json['flags']:
-        logging.error(f'work_dir was not present in mesos agent state')
-        raise Exception('Unable to determine sandbox directory for this job instance.')
+    flags = resp_json['flags']
+    if 'work_dir' not in flags:
+        logging.error(f'work_dir was not present in mesos agent state flags: {flags}')
+        raise Exception('Mesos agent state did not include its work directory.')
 
     hostname = instance['hostname']
-    agent_work_dir = resp_json['flags']['work_dir']
+    agent_work_dir = flags['work_dir']
     directory = sandbox_directory(agent_work_dir, instance, job)
     print_info(f'Attempting to ssh to {colors.bold(hostname)} and cd to sandbox...')
     os.execlp('ssh', 'ssh', '-t', hostname, f'cd {directory} ; bash')
