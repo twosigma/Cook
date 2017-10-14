@@ -1,5 +1,6 @@
 import logging
 import os
+from operator import itemgetter
 from urllib.parse import urlparse
 
 from cook import colors, http
@@ -39,15 +40,34 @@ def ssh_to_instance(instance, job):
     hostname = instance['hostname']
     agent_work_dir = flags['work_dir']
     directory = sandbox_directory(agent_work_dir, instance, job)
-    print_info(f'Attempting to ssh to {colors.bold(hostname)} and cd to sandbox...')
+    print_info(f'Executing ssh to {colors.bold(hostname)}.')
     os.execlp('ssh', 'ssh', '-t', hostname, f'cd {directory} ; bash')
+
+
+def ssh_to_job(job):
+    """
+    Tries ssh_to_instance for each instance from most to least recent, until either
+    ssh can be executed for an instance, or all instances have been tried and failed.
+    """
+    instances = job['instances']
+    if len(instances) == 0:
+        raise Exception('This job currently has no instances.')
+
+    for instance in sorted(instances, key=itemgetter('start_time'), reverse=True):
+        try:
+            print_info(f'Attempting ssh for job instance {colors.bold(instance["task_id"])}...')
+            ssh_to_instance(instance, job)
+        except Exception as e:
+            print_info(str(e))
+    else:
+        raise Exception(f'Unable to ssh for any instance of this job.')
 
 
 def ssh(clusters, args):
     """Attempts to ssh (using os.execlp) to the Mesos agent corresponding to the given job or instance uuid."""
     uuids = strip_all(args.get('uuid'))
     if len(uuids) > 1:
-        # The argparse library should prevent this, but we're defensive here anyway
+        # argparse should prevent this, but we'll be defensive anyway
         raise Exception(f'You can only provide a single uuid.')
 
     query_result = query(clusters, uuids)
@@ -58,24 +78,24 @@ def ssh(clusters, args):
         return 1
 
     if num_results > 1:
-        # This is unlikely to happen in the wild, but it could
+        # This is unlikely to happen in the wild, but it could...
         print_info('There is more than one match for the given uuid.')
         return 1
 
     for cluster_name, entities in query_result['clusters'].items():
         if len(entities['groups']) > 0:
-            print_info('You must provide a job uuid or job instance uuid. You provided a job group uuid.')
-            return 1
+            raise Exception('You must provide a job uuid or job instance uuid. You provided a job group uuid.')
 
         jobs = entities['jobs']
         instances = [[i, j] for j in entities['instances'] for i in j['instances'] if i['task_id'] in uuids]
         if len(jobs) > 0:
-            print('NOT YET IMPLEMENTED')
+            job = jobs[0]
+            ssh_to_job(job)
         elif len(instances) > 0:
             instance, job = instances[0]
             ssh_to_instance(instance, job)
     else:
-        raise Exception(f'Encountered unexpected error in ssh command for uuid {uuids[0]}')
+        raise Exception(f'Encountered unexpected error in ssh command for uuid {uuids[0]}.')
 
 
 def register(add_parser, _):
