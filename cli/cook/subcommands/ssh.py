@@ -26,7 +26,7 @@ def ssh_to_instance(instance, job):
         url = urlparse(output_url)
         netloc = url.netloc
     else:
-        logging.info(f'assuming default agent port of 5051')
+        logging.info('assuming default agent port of 5051')
         netloc = f'{hostname}:5051'
 
     resp = http.__get(f'http://{netloc}/state')
