@@ -4,7 +4,7 @@ from operator import itemgetter
 from urllib.parse import urlparse
 
 from cook import colors, http
-from cook.subcommands.show import query, print_no_data
+from cook.querying import query, no_data_message
 from cook.util import print_info, strip_all
 
 
@@ -38,33 +38,62 @@ def ssh_to_instance(instance, job):
     flags = resp_json['flags']
     if 'work_dir' not in flags:
         logging.error(f'work_dir was not present in mesos agent state flags: {flags}')
-        raise Exception('Mesos agent state did not include its work directory.')
+        raise Exception('The Mesos agent state did not include its work directory.')
 
     print_info(f'Executing ssh to {colors.bold(hostname)}.')
     agent_work_dir = flags['work_dir']
     directory = sandbox_directory(agent_work_dir, instance, job)
-    file = os.environ.get('SSH', 'ssh')
-    logging.info(f'using ssh file: {file}')
-    os.execlp(file, 'ssh', '-t', hostname, f'cd {directory} ; bash')
+    command = os.environ.get('CS_SSH', 'ssh')
+    logging.info(f'using ssh command: {command}')
+    os.execlp(command, 'ssh', '-t', hostname, f'cd "{directory}" ; bash')
 
 
 def ssh_to_job(job):
-    """
-    Tries ssh_to_instance for each instance from most to least recent, until either
-    ssh can be executed for an instance, or all instances have been tried and failed.
-    """
+    """Tries ssh_to_instance for the most recently started instance of job."""
     instances = job['instances']
     if len(instances) == 0:
         raise Exception('This job currently has no instances.')
 
-    for instance in sorted(instances, key=itemgetter('start_time'), reverse=True):
-        try:
-            print_info(f'Attempting ssh for job instance {colors.bold(instance["task_id"])}...')
-            ssh_to_instance(instance, job)
-        except Exception as e:
-            print_info(str(e))
-    else:
-        raise Exception(f'Unable to ssh for any instance of this job.')
+    instance = max(instances, key=itemgetter('start_time'))
+    print_info(f'Attempting ssh for job instance {colors.bold(instance["task_id"])}...')
+    ssh_to_instance(instance, job)
+
+
+def query_unique(clusters, uuid):
+    """Resolves a uuid to a unique job or (instance, job) pair."""
+    query_result = query(clusters, [uuid])
+    num_results = query_result['count']
+
+    if num_results == 0:
+        raise Exception(no_data_message(clusters))
+
+    if num_results > 1:
+        # This is unlikely to happen in the wild, but it could.
+        # A couple of examples of how this could happen:
+        # - same uuid on an instance and a job (not necessarily the parent job)
+        # - same uuid on a job in cluster x as another job in cluster y
+        raise Exception('There is more than one match for the given uuid.')
+
+    cluster_name, entities = next(iter(query_result['clusters'].items()))
+
+    # Check for a group, which will raise an Exception
+    if len(entities['groups']) > 0:
+        raise Exception('You must provide a job uuid or job instance uuid. You provided a job group uuid.')
+
+    # Check for a job
+    jobs = entities['jobs']
+    if len(jobs) > 0:
+        job = jobs[0]
+        return {'type': 'job', 'data': job}
+
+    # Check for a job instance
+    instances = [[i, j] for j in entities['instances'] for i in j['instances'] if i['task_id'] == uuid]
+    if len(instances) > 0:
+        instance, job = instances[0]
+        return {'type': 'instance', 'data': (instance, job)}
+
+    # This should not happen (the only entities we generate are jobs, instances, and groups)
+    raise Exception(f'Encountered unexpected error when querying for uuid {uuid}.')
 
 
 def ssh(clusters, args):
@@ -74,35 +103,13 @@ def ssh(clusters, args):
         # argparse should prevent this, but we'll be defensive anyway
         raise Exception(f'You can only provide a single uuid.')
 
-    query_result = query(clusters, uuids)
-    num_results = query_result['count']
-
-    if num_results == 0:
-        print_no_data(clusters)
-        return 1
-
-    if num_results > 1:
-        # This is unlikely to happen in the wild, but it could.
-        # A couple of examples of how this could happen:
-        # - same uuid on an instance and a job (not necessarily the parent job)
-        # - same uuid on a job in cluster x as another job in cluster y
-        print_info('There is more than one match for the given uuid.')
-        return 1
-
-    for cluster_name, entities in query_result['clusters'].items():
-        if len(entities['groups']) > 0:
-            raise Exception('You must provide a job uuid or job instance uuid. You provided a job group uuid.')
-
-        jobs = entities['jobs']
-        instances = [[i, j] for j in entities['instances'] for i in j['instances'] if i['task_id'] in uuids]
-        if len(jobs) > 0:
-            job = jobs[0]
-            ssh_to_job(job)
-        elif len(instances) > 0:
-            instance, job = instances[0]
-            ssh_to_instance(instance, job)
-    else:
-        raise Exception(f'Encountered unexpected error in ssh command for uuid {uuids[0]}.')
+    query_result = query_unique(clusters, uuids[0])
+    if query_result['type'] == 'job':
+        job = query_result['data']
+        ssh_to_job(job)
+    elif query_result['type'] == 'instance':
+        instance, job = query_result['data']
+        ssh_to_instance(instance, job)
 
 
 def register(add_parser, _):

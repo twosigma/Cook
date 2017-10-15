@@ -8,7 +8,8 @@ import time
 from tabulate import tabulate
 
 from cook import colors, http
-from cook.subcommands.show import query_across_clusters, format_job_status, format_job_memory, format_job_attempts
+from cook.format import format_job_memory, format_job_attempts, format_job_status
+from cook.querying import query_across_clusters
 from cook.util import current_user, print_info, millis_to_date_string
 
 MILLIS_PER_HOUR = 60 * 60 * 1000

@@ -560,7 +560,7 @@ class CookCliTest(unittest.TestCase):
         instance = util.wait_for_output_url(self.cook_url, uuids[0])
         hostname = instance['hostname']
         env = os.environ
-        env['SSH'] = 'echo'
+        env['CS_SSH'] = 'echo'
         cp = cli.ssh(uuids[0], self.cook_url, env=env)
         stdout = cli.stdout(cp)
         self.assertEqual(0, cp.returncode, stdout)
@@ -582,7 +582,7 @@ class CookCliTest(unittest.TestCase):
     def test_ssh_invalid_uuid(self):
         cp = cli.ssh(uuid.uuid4(), self.cook_url)
         self.assertEqual(1, cp.returncode, cp.stdout)
-        self.assertIn('No matching data found', cli.stdout(cp))
+        self.assertIn('No matching data found', cli.decode(cp.stderr))
 
     def test_ssh_duplicate_uuid(self):
         cp, uuids = cli.submit('ls', self.cook_url)
@@ -593,7 +593,7 @@ class CookCliTest(unittest.TestCase):
         self.assertEqual(0, cp.returncode, cp.stderr)
         cp = cli.ssh(instance_uuid, self.cook_url)
         self.assertEqual(1, cp.returncode, cp.stdout)
-        self.assertIn('There is more than one match for the given uuid', cli.stdout(cp))
+        self.assertIn('There is more than one match for the given uuid', cli.decode(cp.stderr))
 
     def test_ssh_group_uuid(self):
         group_uuid = uuid.uuid4()
@@ -609,7 +609,7 @@ class CookCliTest(unittest.TestCase):
         instance = util.wait_for_output_url(self.cook_url, uuids[0])
         hostname = instance['hostname']
         env = os.environ
-        env['SSH'] = 'echo'
+        env['CS_SSH'] = 'echo'
         cp = cli.ssh(instance['task_id'], self.cook_url, env=env)
         stdout = cli.stdout(cp)
         self.assertEqual(0, cp.returncode, stdout)

@@ -1,0 +1,70 @@
+import time
+
+import humanfriendly
+
+from cook import colors
+from cook.util import millis_to_timedelta, millis_to_date_string
+
+
+def format_dict(d):
+    """Formats the given dictionary for display in a table"""
+    return ' '.join(['%s=%s' % (k, v) for k, v in sorted(d.items())]) if len(d) > 0 else '(empty)'
+
+
+def format_list(l):
+    """Formats the given list for display in a table"""
+    return '; '.join([format_dict(x) if isinstance(x, dict) else str(x) for x in l]) if len(l) > 0 else '(empty)'
+
+
+def format_state(state):
+    """Capitalizes and colorizes the given state"""
+    state = state.capitalize()
+    if state == 'Running':
+        text = colors.running(state)
+    elif state == 'Waiting':
+        text = colors.waiting(state)
+    elif state == 'Failed':
+        text = colors.failed(state)
+    elif state == 'Success':
+        text = colors.success(state)
+    else:
+        text = state
+    return text
+
+
+def format_instance_status(instance):
+    """Formats the instance status field"""
+    status_text = format_state(instance['status'])
+    if 'reason_string' in instance:
+        parenthetical_text = ' (%s)' % colors.reason(instance['reason_string'])
+    elif 'progress' in instance and instance['progress'] > 0:
+        parenthetical_text = ' (%s%%)' % instance['progress']
+    else:
+        parenthetical_text = ''
+
+    return '%s%s' % (status_text, parenthetical_text)
+
+
+def format_instance_run_time(instance):
+    """Formats the instance run time field"""
+    if 'end_time' in instance:
+        end = instance['end_time']
+    else:
+        end = int(round(time.time() * 1000))
+    run_time = millis_to_timedelta(end - instance['start_time'])
+    return '%s (started %s)' % (run_time, millis_to_date_string(instance['start_time']))
+
+
+def format_job_status(job):
+    """Formats the job status field"""
+    return format_state(job['state'])
+
+
+def format_job_memory(job):
+    """Formats the job memory field"""
+    return humanfriendly.format_size(job['mem'] * 1000 * 1000)
+
+
+def format_job_attempts(job):
+    """Formats the job attempts field (e.g. 2 / 5)"""
+    return '%s / %s' % (job['max_retries'] - job['retries_remaining'], job['max_retries'])
