@@ -10,7 +10,7 @@ from cook.util import print_info, strip_all
 
 def sandbox_directory(agent_work_dir, instance, job):
     """
-    Constructs the agent sandbox directory given the agent working directory, and instance, and its parent job.
+    Constructs the agent sandbox directory given the agent working directory, an instance, and its parent job.
     """
     directory = os.path.join(agent_work_dir, 'slaves', f'{instance["slave_id"]}', 'frameworks',
                              f'{job["framework_id"]}', 'executors', f'{instance["executor_id"]}', 'runs', 'latest')
