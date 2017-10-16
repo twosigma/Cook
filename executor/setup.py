@@ -6,7 +6,7 @@ from setuptools import setup
 
 setup(
     name='cook-executor',
-    version='0.1.0',
+    version=open("cook/_version.py").readlines()[-1].split('"')[1],
     description='Custom Mesos executor for Cook written in Python',
     url='https://github.com/twosigma/Cook',
     license="Apache Software License 2.0",
