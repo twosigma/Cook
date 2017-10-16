@@ -21,6 +21,11 @@ import cook.executor as ce
 
 
 def main(args=None):
+    if len(sys.argv) == 2 and sys.argv[1] == "--version":
+        from _version import __version__
+        print(__version__)
+        sys.exit(0)
+
     print('Starting cook executor...')
 
     environment = os.environ
