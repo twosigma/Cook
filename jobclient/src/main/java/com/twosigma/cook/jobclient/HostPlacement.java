@@ -16,16 +16,14 @@
 
 package com.twosigma.cook.jobclient;
 
-import java.util.Map;
-import java.util.HashMap;
-import java.util.Iterator;
-
-import org.json.JSONArray;
+import com.google.common.base.Preconditions;
+import com.google.common.collect.ImmutableMap;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-import com.google.common.collect.ImmutableMap;
-import com.google.common.base.Preconditions;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.Map;
 
 /**
  * An immutable host-placement implementation.
@@ -39,27 +37,45 @@ final public class HostPlacement {
     /**
      * There are five types of host placement: UNIQUE, BALANCED, ONE, ATTRIBUTE_EQUALS and ALL.
      */
-    public static enum Type {
+    public enum Type {
         UNIQUE("UNIQUE"), BALANCED("BALANCED"), ONE("ONE"), ATTRIBUTE_EQUALS("ATTRIBUTE-EQUALS"),
-            ALL("ALL");
+        ALL("ALL");
 
-        private Type(String name) {}
+        private final String name;
+
+        // Reverse-lookup map for getting a Type from its name
+        private static final Map<String, Type> lookup = new HashMap<>();
+
+        static {
+            for (Type type : Type.values()) {
+                lookup.put(type.name, type);
+            }
+        }
+
+        Type(String name) {
+            this.name = name;
+        }
 
         /**
          * @param name specifies a string representation of status.
          * @return a constant for the specified name.
          */
         public static Type fromString(String name) {
-            return Enum.valueOf(Type.class, name.trim().toUpperCase());
+            return lookup.get(name);
+        }
+
+        @Override
+        public String toString() {
+            return this.name;
         }
     }
+
     /**
      * HostPlacement builder
      */
-    public static class Builder
-    {
+    public static class Builder {
         private Type _type;
-        private Map<String,String> _parameters = new HashMap<>();
+        private Map<String, String> _parameters = new HashMap<>();
 
         /**
          * Prior to {@code build()}, type must be set.<br>
@@ -72,7 +88,7 @@ final public class HostPlacement {
                 _type = Type.fromString("ALL");
             } else if (_type == Type.ATTRIBUTE_EQUALS) {
                 Preconditions.checkNotNull(_parameters.get("attribute"), "attribute parameter is required with " +
-                        "type attribute-equals" );
+                        "type attribute-equals");
             }
 
             // set the default values
@@ -82,7 +98,7 @@ final public class HostPlacement {
         /**
          * Set command, memory, cpus, env vars, uris, and retries from a job.
          *
-         * @param job {@link Job} specifies a job.
+         * @param hp {@link HostPlacement} specifies a host placement constraint.
          * @return this builder.
          */
         public Builder of(HostPlacement hp) {
@@ -108,7 +124,7 @@ final public class HostPlacement {
          * @param parameters The HostPlacement parameters
          * @return this builder
          */
-        public Builder setParameters(Map<String,String> parameters) {
+        public Builder setParameters(Map<String, String> parameters) {
             _parameters = ImmutableMap.copyOf(parameters);
             return this;
         }
@@ -117,7 +133,7 @@ final public class HostPlacement {
          * Add a HostPlacement parameter
          *
          * @param name The name of the parameter
-         * @param val The value of the parameter
+         * @param val  The value of the parameter
          * @return this builder
          */
         public Builder setParameter(String name, String val) {
@@ -128,9 +144,9 @@ final public class HostPlacement {
     }
 
     final private Type _type;
-    final private Map<String,String> _parameters;
+    final private Map<String, String> _parameters;
 
-    private HostPlacement(Type type, Map<String,String> parameters) {
+    private HostPlacement(Type type, Map<String, String> parameters) {
         _type = type;
         _parameters = ImmutableMap.copyOf(parameters);
     }
@@ -145,7 +161,7 @@ final public class HostPlacement {
     /**
      * @return the HostPlacement parameters
      */
-    public Map<String,String> getParameters() {
+    public Map<String, String> getParameters() {
         return _parameters;
     }
 
@@ -176,7 +192,7 @@ final public class HostPlacement {
      * @throws JSONException
      */
     public static JSONObject jsonize(HostPlacement hp)
-        throws JSONException {
+            throws JSONException {
         final JSONObject object = new JSONObject();
         object.put("type", hp.getType().toString().toLowerCase());
         object.put("parameters", hp.getParameters());
@@ -184,16 +200,16 @@ final public class HostPlacement {
     }
 
     public static HostPlacement parseFromJSON(JSONObject hpJson, InstanceDecorator decorator)
-        throws JSONException {
+            throws JSONException {
         Builder hpBuilder = new Builder();
 
         String type = hpJson.getString("type");
         hpBuilder.setType(Type.fromString(type.substring(type.lastIndexOf("/") + 1).toUpperCase()));
-        if (hpJson.has("parameters")){
+        if (hpJson.has("parameters")) {
             JSONObject paramJson = hpJson.getJSONObject("parameters");
             Iterator names = paramJson.keys();
             while (names.hasNext()) {
-                String name = (String)names.next();
+                String name = (String) names.next();
                 hpBuilder.setParameter(name, paramJson.getString(name));
             }
         }
@@ -202,10 +218,6 @@ final public class HostPlacement {
 
     @Override
     public String toString() {
-        StringBuilder stringBuilder = new StringBuilder(512);
-        stringBuilder
-            .append("HostPlacement [_type=" + _type + ", _parameters=" + _parameters.toString() + "]");
-        stringBuilder.append('\n');
-        return stringBuilder.toString();
+        return ("HostPlacement [_type=" + _type + ", _parameters=" + _parameters.toString() + "]") + '\n';
     }
 }
