@@ -4,7 +4,7 @@ from operator import itemgetter
 from urllib.parse import urlparse
 
 from cook import colors, http
-from cook.querying import query, no_data_message
+from cook.querying import query_unique
 from cook.util import print_info, strip_all
 
 
@@ -57,43 +57,6 @@ def ssh_to_job(job):
     instance = max(instances, key=itemgetter('start_time'))
     print_info(f'Attempting ssh for job instance {colors.bold(instance["task_id"])}...')
     ssh_to_instance(instance, job)
-
-
-def query_unique(clusters, uuid):
-    """Resolves a uuid to a unique job or (instance, job) pair."""
-    query_result = query(clusters, [uuid])
-    num_results = query_result['count']
-
-    if num_results == 0:
-        raise Exception(no_data_message(clusters))
-
-    if num_results > 1:
-        # This is unlikely to happen in the wild, but it could.
-        # A couple of examples of how this could happen:
-        # - same uuid on an instance and a job (not necessarily the parent job)
-        # - same uuid on a job in cluster x as another job in cluster y
-        raise Exception('There is more than one match for the given uuid.')
-
-    cluster_name, entities = next(iter(query_result['clusters'].items()))
-
-    # Check for a group, which will raise an Exception
-    if len(entities['groups']) > 0:
-        raise Exception('You must provide a job uuid or job instance uuid. You provided a job group uuid.')
-
-    # Check for a job
-    jobs = entities['jobs']
-    if len(jobs) > 0:
-        job = jobs[0]
-        return {'type': 'job', 'data': job}
-
-    # Check for a job instance
-    instances = [[i, j] for j in entities['instances'] for i in j['instances'] if i['task_id'] == uuid]
-    if len(instances) > 0:
-        instance, job = instances[0]
-        return {'type': 'instance', 'data': (instance, job)}
-
-    # This should not happen (the only entities we generate are jobs, instances, and groups)
-    raise Exception(f'Encountered unexpected error when querying for uuid {uuid}.')
 
 
 def ssh(clusters, args):
