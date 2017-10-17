@@ -1,5 +1,4 @@
-from cook.subcommands.show import print_no_data, query
-
+from cook.querying import query, print_no_data
 from cook.util import strip_all, print_info, seconds_to_timedelta
 
 

@@ -86,6 +86,12 @@ The `list` command allows you to list all jobs:
 
 As with `show`, `list` will list jobs across all configured clusters.
 
+#### `ssh`
+
+The `ssh` command accepts either a job or instance uuid and executes ssh to the corresponding Mesos agent.
+Assuming the ssh connection is successful, it will also `cd` to the appropriate sandbox directory.
+When given a job instance uuid, it will choose the most recently started instance's agent to ssh to.
+
 ### Examples
 
 Simple job creation:
