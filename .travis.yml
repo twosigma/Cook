@@ -21,7 +21,7 @@ env:
     - CLJ_HTTP_ASYNC_POOL_TEST_DURATION_MULTIPLIER=5
   matrix:
     - COOK_EXECUTOR='1' TEST_DIR=executor DEPS_CMD='travis/setup.sh' TEST_CMD='travis/run_tests.sh'
-    - COOK_EXECUTOR='1' TEST_DIR=scheduler DEPS_CMD='lein with-profiles +test deps' TEST_CMD='lein test :all-but-benchmark'
+    - COOK_EXECUTOR='1' TEST_DIR=scheduler DEPS_CMD='travis/setup.sh' TEST_CMD='lein test :all-but-benchmark'
     - COOK_EXECUTOR='1' TEST_DIR=scheduler DEPS_CMD='lein with-profiles +test deps' TEST_CMD='lein test :benchmark'
     - COOK_EXECUTOR='1' TEST_DIR=jobclient DEPS_CMD='mvn dependency:resolve' TEST_CMD='mvn test'
     - COOK_EXECUTOR='1' TEST_DIR=simulator DEPS_CMD='travis/prepare_simulation.sh' TEST_CMD='travis/run_simulation.sh'
