@@ -127,8 +127,8 @@ def output(cp):
     return f'\nstdout:\n{stdout(cp)}\n\nstderr:\n{decode(cp.stderr)}'
 
 
-def ssh(uuid, cook_url, env=None):
+def ssh(uuid, cook_url=None, env=None, flags=None):
     """Invokes the ssh subcommand"""
     args = f'ssh {uuid}'
-    cp = cli(args, cook_url, env=env)
+    cp = cli(args, cook_url, flags=flags, env=env)
     return cp
