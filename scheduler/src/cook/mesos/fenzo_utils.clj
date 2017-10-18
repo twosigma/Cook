@@ -71,7 +71,7 @@
                   (reduce summarize-placement-failure {} failures))]
     (log/debug "Job" (:job/uuid job) " placement failure summary:" summary)
     (when (and under-investigation? (seq summary))
-      [(:db/id job) summary])))
+      [(:job/uuid job) summary])))
 
 (defn record-placement-failures!
   "For any failure-results for jobs that are under investigation,  persists all
@@ -81,11 +81,11 @@
   (log/debug "Fenzo placement failure information:" failure-results)
   (let [failures-by-job (into {} (map accumulate-placement-failures
                                       failure-results))
-        transactions (mapv (fn [[job-db-id failures-description]]
+        transactions (mapv (fn [[job-uuid failures-description]]
                              (let [failure-summary (str failures-description)]
                                (when (> (count failure-summary) 25000)
                                  (log/warn "Fenzo placement Failure summary is too long!" failure-summary))
-                               {:db/id job-db-id
+                               {:db/id [:job/uuid job-uuid]
                                 :job/under-investigation false
                                 :job/last-fenzo-placement-failure failure-summary}))
                            failures-by-job)]
