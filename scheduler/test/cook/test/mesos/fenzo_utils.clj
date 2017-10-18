@@ -101,4 +101,7 @@
         ^TaskRequest task-request (scheduler/make-task-request job)
         failure (assignment-failure :mem)
         assignment-result (SimpleAssignmentResult. [failure] nil task-request)]
-    (is (fenzo/record-placement-failures! conn [[assignment-result]]))))
+    (is (fenzo/record-placement-failures! conn [[assignment-result]]))
+    (let [job-post-transaction (d/entity (d/db conn) job-id)]
+      (is (not (:job/under-investigation job-post-transaction)))
+      (is (:job/last-fenzo-placement-failure job-post-transaction)))))
