@@ -137,7 +137,7 @@ def query_unique(clusters, uuid):
         # - same uuid on a job in cluster x as another job in cluster y
         raise Exception('There is more than one match for the given uuid.')
 
-    cluster_name, entities = next(iter(query_result['clusters'].items()))
+    cluster_name, entities = next((c, e) for (c, e) in iter(query_result['clusters'].items()) if e['count'] > 0)
 
     # Check for a group, which will raise an Exception
     if len(entities['groups']) > 0:
