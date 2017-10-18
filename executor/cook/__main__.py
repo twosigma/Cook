@@ -21,12 +21,13 @@ import cook.executor as ce
 
 
 def main(args=None):
+    from _version import __version__
+
     if len(sys.argv) == 2 and sys.argv[1] == "--version":
-        from _version import __version__
         print(__version__)
         sys.exit(0)
 
-    print('Starting cook executor...')
+    print('Cook Executor version {}'.format(__version__))
 
     environment = os.environ
     executor_id = environment.get('MESOS_EXECUTOR_ID', '1')
