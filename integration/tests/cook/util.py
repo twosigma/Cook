@@ -242,7 +242,9 @@ def get_user(cook_url, job_uuid):
     return load_job(cook_url, job_uuid)['user']
 
 def unscheduled_jobs(cook_url, job_uuid):
+    """Retrieves the unscheduled_jobs reasons for the given job_uuid"""
     return session.get('%s/unscheduled_jobs?job=%s' % (cook_url, job_uuid)).json()
 
 def kill_job(cook_url, job_uuid):
+    """Kills the given job_uuid"""
     session.delete('%s/rawscheduler?job=%s' % (cook_url, job_uuid))
