@@ -7,8 +7,12 @@
 #
 # When using the quiet flag (-q|--quiet), no additional output is printed.
 #
-# Note that versions containing the case-insensitive string "SNAPSHOT" never match
+# Note: versions containing the case-insensitive string "SNAPSHOT" never match
 # (i.e., they're considered "unstable", and should always require a rebuild).
+
+#
+# Parse options
+#
 
 case "$1" in
     -q|--quiet)
@@ -23,7 +27,23 @@ case "$1" in
         exit -1
 esac
 
+#
+# Switch to executor directory
+#
+
+executor_bin_dir="$(dirname ${BASH_SOURCE[0]})"
+
+cd "$executor_bin_dir/.."
+
+#
+# Get source code version
+#
+
 source_version=`python3 -c 'from cook._version import __version__; print(__version__)'`
+
+#
+# Check for source code SNAPSHOT version
+#
 
 shopt -s nocasematch
 
@@ -34,6 +54,10 @@ if [[ "$source_version" == *SNAPSHOT* ]]; then
     exit 1
 fi
 
+#
+# Get installed binary's version
+#
+
 binary_app=./dist/cook-executor
 
 if [ -e $binary_app ]; then
@@ -41,6 +65,10 @@ if [ -e $binary_app ]; then
 else
     installed_version=none
 fi
+
+#
+# Compare source vs installed binary versions
+#
 
 if [ "$installed_version" == "$source_version" ]; then
     if $verbose; then
