@@ -846,32 +846,25 @@ class CookTest(unittest.TestCase):
         finally:
             util.session.delete('%s/rawscheduler?job=%s' % (self.cook_url, job_uuid))
 
-
     def test_unscheduled_jobs(self):
         job_uuid, resp = util.submit_job(self.cook_url,
                                          command='ls',
                                          constraints=[['HOSTNAME', 'EQUALS', 'fakehost']])
         self.assertEqual(resp.status_code, 201, resp.content)
         try:
-            unscheduled_resp = util.session.get('%s/unscheduled_jobs?job=%s' % (self.cook_url,
-                                                                                job_uuid))
-            self.assertEqual(200, unscheduled_resp.status_code, unscheduled_resp)
-            unscheduled_resp = unscheduled_resp.json()[0]
+            unscheduled_jobs = util.unscheduled_jobs(self.cook_url, job_uuid)[0]
             self.assertTrue(
-                any(['The job is now under investigation. Check back in a minute for more details!' == reason['reason'] for reason in unscheduled_resp['reasons']]),
-                unscheduled_resp)
-            self.assertEqual(job_uuid, unscheduled_resp['uuid'])
+                any(['The job is now under investigation. Check back in a minute for more details!' == reason['reason'] for reason in unscheduled_jobs['reasons']]),
+                unscheduled_jobs)
+            self.assertEqual(job_uuid, unscheduled_jobs['uuid'])
 
             @retry(stop_max_delay=60000, wait_fixed=1000)
             def check_unscheduled_reason():
-                unscheduled_resp_2 = util.session.get('%s/unscheduled_jobs?job=%s' % (self.cook_url,
-                                                                                      job_uuid))
-                self.assertEqual(200, unscheduled_resp_2.status_code, unscheduled_resp_2)
-                unscheduled_resp_2 = unscheduled_resp_2.json()[0]
+                unscheduled_jobs = util.unscheduled_jobs(self.cook_url, job_uuid)[0]
                 self.assertTrue(
-                    any(['The job couldn\'t be placed on any available hosts.' == reason['reason'] for reason in unscheduled_resp_2['reasons']]),
-                    unscheduled_resp_2)
-                self.assertEqual(job_uuid, unscheduled_resp_2['uuid'])
+                    any(['The job couldn\'t be placed on any available hosts.' == reason['reason'] for reason in unscheduled_jobs['reasons']]),
+                    unscheduled_jobs)
+                self.assertEqual(job_uuid, unscheduled_jobs['uuid'])
             check_unscheduled_reason()
         finally:
-            util.session.delete('%s/rawscheduler?job=%s' % (self.cook_url, job_uuid))
+            util.kill_job(self.cook_url, job_uuid)
