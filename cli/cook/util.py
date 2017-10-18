@@ -11,7 +11,6 @@ from datetime import datetime, timedelta
 import arrow
 import humanfriendly
 
-
 quit_running = False
 
 

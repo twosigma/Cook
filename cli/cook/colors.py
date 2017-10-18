@@ -25,3 +25,11 @@ def reason(s):
 
 def bold(s):
     return term.bold(s)
+
+
+def directory(s):
+    return term.blue(s)
+
+
+def executable(s):
+    return term.green(s)

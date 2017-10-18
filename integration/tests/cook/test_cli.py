@@ -577,7 +577,7 @@ class CookCliTest(unittest.TestCase):
         util.wait_for_job(self.cook_url, uuids[0], 'waiting')
         cp = cli.ssh(uuids[0], self.cook_url)
         self.assertEqual(1, cp.returncode, cp.stdout)
-        self.assertIn('This job currently has no instances', cli.decode(cp.stderr))
+        self.assertIn('currently has no instances', cli.decode(cp.stderr))
 
     def test_ssh_invalid_uuid(self):
         cp = cli.ssh(uuid.uuid4(), self.cook_url)

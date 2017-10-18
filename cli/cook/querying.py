@@ -2,6 +2,7 @@ import concurrent
 import logging
 import os
 from concurrent import futures
+from operator import itemgetter
 
 from cook import http, colors, progress
 from cook.util import wait_until
@@ -157,3 +158,25 @@ def query_unique(clusters, uuid):
 
     # This should not happen (the only entities we generate are jobs, instances, and groups)
     raise Exception(f'Encountered unexpected error when querying for uuid {uuid}.')
+
+
+def __choose_latest_instance(job):
+    """Returns the most recently started (i.e. latest) instance of the given job"""
+    instances = job['instances']
+    if len(instances) == 0:
+        raise Exception(f'Job {job["uuid"]} currently has no instances.')
+
+    instance = max(instances, key=itemgetter('start_time'))
+    return instance
+
+
+def query_unique_and_run(clusters, job_or_instance_uuid, command_fn):
+    """Calls query_unique and then calls the given command_fn on the resulting job instance"""
+    query_result = query_unique(clusters, job_or_instance_uuid)
+    if query_result['type'] == 'job':
+        job = query_result['data']
+        instance = __choose_latest_instance(job)
+        command_fn(instance, job)
+    elif query_result['type'] == 'instance':
+        instance, job = query_result['data']
+        command_fn(instance, job)
