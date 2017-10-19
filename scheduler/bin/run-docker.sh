@@ -49,6 +49,10 @@ else
 fi
 
 echo "Starting cook..."
+
+# NOTE: since the cook scheduler directory is mounted as a volume
+# by the minimesos agents, they have access to the cook-executor binary
+# using the absolute file path URI given for COOK_EXECUTOR below.
 docker create \
     -i \
     -t \
@@ -56,9 +60,6 @@ docker create \
     --name=${NAME} \
     --publish=${COOK_NREPL_PORT}:${COOK_NREPL_PORT} \
     --publish=${COOK_PORT}:${COOK_PORT} \
-    # NOTE: since the cook scheduler directory is mounted as a volume
-    # by the minimesos agents, they have access to the cook-executor binary
-    # using the absolute file path URI below.
     -e "COOK_EXECUTOR=file://${SCHEDULER_EXECUTOR_DIR}/cook-executor" \
     -e "COOK_PORT=${COOK_PORT}" \
     -e "COOK_NREPL_PORT=${COOK_NREPL_PORT}" \
