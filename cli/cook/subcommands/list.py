@@ -1,4 +1,3 @@
-import argparse
 import collections
 import datetime
 import json
@@ -10,7 +9,7 @@ from tabulate import tabulate
 from cook import colors, http
 from cook.format import format_job_memory, format_job_attempts, format_job_status
 from cook.querying import query_across_clusters
-from cook.util import current_user, print_info, millis_to_date_string
+from cook.util import current_user, print_info, millis_to_date_string, check_positive
 
 MILLIS_PER_HOUR = 60 * 60 * 1000
 DEFAULT_LOOKBACK_HOURS = 6
@@ -129,17 +128,6 @@ def list_jobs(clusters, args):
     else:
         print_no_data(clusters)
     return 0
-
-
-def check_positive(value):
-    """Checks that the given limit value is a positive integer"""
-    try:
-        integer = int(value)
-    except:
-        raise argparse.ArgumentTypeError("%s is not an integer" % value)
-    if integer <= 0:
-        raise argparse.ArgumentTypeError("%s is not a positive integer" % value)
-    return integer
 
 
 def register(add_parser, add_defaults):

@@ -1,5 +1,6 @@
 """Module containing utility functions that don't fit nicely anywhere else."""
 
+import argparse
 import json
 import logging
 import os
@@ -145,3 +146,14 @@ def millis_to_date_string(ms):
 def current_user():
     """Returns the value of the USER environment variable"""
     return os.environ['USER']
+
+
+def check_positive(value):
+    """Checks that the given value is a positive integer"""
+    try:
+        integer = int(value)
+    except:
+        raise argparse.ArgumentTypeError("%s is not an integer" % value)
+    if integer <= 0:
+        raise argparse.ArgumentTypeError("%s is not a positive integer" % value)
+    return integer

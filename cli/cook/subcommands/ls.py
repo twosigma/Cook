@@ -83,7 +83,7 @@ def ls(clusters, args):
 
 def register(add_parser, _):
     """Adds this sub-command's parser and returns the action function"""
-    parser = add_parser('ls', help='list contents of the corresponding Mesos sandbox by job or instance uuid')
+    parser = add_parser('ls', help='list contents of the Mesos sandbox by job or instance uuid')
     parser.add_argument('-l', help='use a long listing format', dest='long_format', action='store_true')
     parser.add_argument('--json', help='show the data in JSON format', dest='json', action='store_true')
     parser.add_argument('uuid', nargs=1)
