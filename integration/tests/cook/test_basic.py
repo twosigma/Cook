@@ -845,3 +845,30 @@ class CookTest(unittest.TestCase):
             self.assertEqual(instance['ports'][1], int(ports['9090/udp'][0]['HostPort']))
         finally:
             util.session.delete('%s/rawscheduler?job=%s' % (self.cook_url, job_uuid))
+
+    def test_unscheduled_jobs(self):
+        job_uuid, resp = util.submit_job(self.cook_url,
+                                         command='ls',
+                                         constraints=[['HOSTNAME', 'EQUALS', 'fakehost']])
+        self.assertEqual(resp.status_code, 201, resp.content)
+        try:
+            unscheduled_jobs = util.unscheduled_jobs(self.cook_url, job_uuid)[0]
+            # If the job from the test is submitted after another one, unscheduled_jobs will report "There are jobs ahead of this in the queue"
+            # so we cannot assert that there is exactly one failure reason.
+            self.assertTrue(
+                any(['The job is now under investigation. Check back in a minute for more details!' == reason['reason'] for reason in unscheduled_jobs['reasons']]),
+                unscheduled_jobs)
+            self.assertEqual(job_uuid, unscheduled_jobs['uuid'])
+
+            @retry(stop_max_delay=60000, wait_fixed=1000)
+            def check_unscheduled_reason():
+                unscheduled_jobs = util.unscheduled_jobs(self.cook_url, job_uuid)[0]
+                # If the job from the test is submitted after another one, unscheduled_jobs will report "There are jobs ahead of this in the queue"
+                # so we cannot assert that there is exactly one failure reason.
+                self.assertTrue(
+                    any(['The job couldn\'t be placed on any available hosts.' == reason['reason'] for reason in unscheduled_jobs['reasons']]),
+                    unscheduled_jobs)
+                self.assertEqual(job_uuid, unscheduled_jobs['uuid'])
+            check_unscheduled_reason()
+        finally:
+            util.kill_job(self.cook_url, job_uuid)

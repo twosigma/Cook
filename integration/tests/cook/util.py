@@ -240,3 +240,11 @@ def get_executor(agent_state, executor_id):
 def get_user(cook_url, job_uuid):
     """Retrieves the job corresponding to the given job_uuid and returns the user"""
     return load_job(cook_url, job_uuid)['user']
+
+def unscheduled_jobs(cook_url, job_uuid):
+    """Retrieves the unscheduled_jobs reasons for the given job_uuid"""
+    return session.get('%s/unscheduled_jobs?job=%s' % (cook_url, job_uuid)).json()
+
+def kill_job(cook_url, job_uuid):
+    """Kills the given job_uuid"""
+    session.delete('%s/rawscheduler?job=%s' % (cook_url, job_uuid))
