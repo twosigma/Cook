@@ -1,14 +1,11 @@
 import logging
-from urllib.parse import urlparse
+from urllib.parse import urlparse, parse_qs
 
 from cook import http
 
 
 def instance_to_agent_url(instance):
-    """
-    Given a job instance, returns the base Mesos agent URL,
-    e.g. http://agent123.example.com:5051
-    """
+    """Given a job instance, returns the base Mesos agent URL, e.g. http://agent123.example.com:5051"""
     hostname = instance['hostname']
     if 'output_url' in instance:
         output_url = instance['output_url']
@@ -21,19 +18,36 @@ def instance_to_agent_url(instance):
 
 
 def retrieve_instance_sandbox_directory(instance, job):
-    """
-    Given an instance and its parent job, queries the corresponding
-    Mesos agent and returns the sandbox directory for the instance
-    """
+    """Given an instance and its parent job, determines the Mesos agent sandbox directory"""
+
+    # Check if we've simply been handed the sandbox directory
+    if 'sandbox_directory' in instance:
+        logging.debug('found sandbox directory directly on instance')
+        return instance['sandbox_directory']
+
+    # Try parsing it from the output url if present
+    if 'output_url' in instance:
+        output_url = instance['output_url']
+        url = urlparse(output_url)
+        query_dict = parse_qs(url.query)
+        if 'path' in query_dict:
+            logging.debug('parsed sandbox directory from output url')
+            return query_dict['path'][0]
+
+    # As a last resort, query the Mesos agent state
     agent_url = instance_to_agent_url(instance)
     resp = http.__get(f'{agent_url}/state')
     if resp.status_code != 200:
         logging.error(f'mesos agent returned status code {resp.status_code} and body {resp.text}')
-        raise Exception('Encountered error when querying Mesos agent for its work directory.')
+        raise Exception('Encountered error when querying Mesos agent for the sandbox directory.')
 
+    # Parse the Mesos agent state and look for a matching executor
     resp_json = resp.json()
     frameworks = resp_json['completed_frameworks'] + resp_json['frameworks']
     cook_framework = next(f for f in frameworks if f['id'] == job['framework_id'])
     cook_executors = cook_framework['completed_executors'] + cook_framework['executors']
-    directory = next(e['directory'] for e in cook_executors if e['id'] == instance['task_id'])
-    return directory
+    directories = [e['directory'] for e in cook_executors if e['id'] == instance['task_id']]
+    if len(directories) == 0:
+        raise Exception(f'Unable to retrieve sandbox directory for job instance {instance["task_id"]}.')
+
+    return directories[0]

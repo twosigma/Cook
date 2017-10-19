@@ -28,7 +28,7 @@ def bold(s):
 
 
 def directory(s):
-    return term.blue(s)
+    return term.cyan(s)
 
 
 def executable(s):
