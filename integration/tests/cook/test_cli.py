@@ -617,3 +617,21 @@ class CookCliTest(unittest.TestCase):
         self.assertIn(hostname, stdout)
         self.assertIn(f'-t {hostname} cd', stdout)
         self.assertIn('; bash', stdout)
+
+    def test_tail_basic(self):
+        cp, uuids = cli.submit('bash -c "for i in {1..100}; do echo $i >> foo; done"', self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        cp = cli.wait(uuids, self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        cp = cli.tail(uuids[0], 'foo', self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertEqual('\n'.join([str(i) for i in range(91, 101)]) + '\n', cli.decode(cp.stdout))
+
+    def test_tail_no_newlines(self):
+        cp, uuids = cli.submit('bash -c \'for i in {1..100}; do printf "$i " >> foo; done\'', self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        cp = cli.wait(uuids, self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        cp = cli.tail(uuids[0], 'foo', self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertEqual(' '.join([str(i) for i in range(1, 101)]) + ' ', cli.decode(cp.stdout))

@@ -76,20 +76,23 @@ def tail_for_instance(instance, sandbox_dir, path, num_lines_to_print, follow, f
             text_buffer = text_buffer[:index_first_delimiter]
             line_buffer = lines[1:] + line_buffer
 
-        # Check if we've read enough lines, and if the last line
-        # is empty, don't count it as a line that we care about
-        last_line_empty = line_buffer[-1] == ''
-        num_lines_printable = len(line_buffer) - (1 if last_line_empty else 0)
-        if num_lines_printable >= num_lines_to_print:
-            if last_line_empty:
-                num_lines_to_print = num_lines_to_print + 1
-            print_lines(line_buffer[-num_lines_to_print:])
-            break
+        # Check if we've read enough lines
+        num_lines_buffered = len(line_buffer)
+        if num_lines_buffered > 0:
+            # If the last line is empty, don't count it as a line that we care about
+            last_line_empty = line_buffer[-1] == ''
+            num_lines_printable = num_lines_buffered - (1 if last_line_empty else 0)
+            if num_lines_printable >= num_lines_to_print:
+                if last_line_empty:
+                    num_lines_to_print = num_lines_to_print + 1
+                print_lines(line_buffer[-num_lines_to_print:])
+                break
 
         # Check if we've reached the start of the file
         if offset == 0:
-            print(text_buffer)
-            print_lines(line_buffer)
+            print(text_buffer, end='')
+            if num_lines_buffered > 0:
+                print_lines(line_buffer)
             break
 
         # Update our offset and length
