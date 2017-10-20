@@ -47,8 +47,9 @@ def tail_for_instance(instance, sandbox_dir, path, num_lines_to_print, follow, f
     Tails the contents of the Mesos sandbox path for the given instance. The
     algorithm reads chunks backwards from the end of the file and splits them into
     lines as it goes. If it finds that enough lines have been read to satisfy the
-    user's request, or if it reaches the beginning of the file, it stops. Note that
-    this assumes files will not shrink.
+    user's request, or if it reaches the beginning of the file, it stops (unless
+    follow is truthy). If follow is truthy, it will try and read more data from the
+    file until the user terminates. Note that this assumes files will not shrink.
     """
     read = partial(read_file, instance=instance, sandbox_dir=sandbox_dir, path=path)
 

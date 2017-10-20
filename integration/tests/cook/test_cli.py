@@ -639,6 +639,10 @@ class CookCliTest(unittest.TestCase):
         cp = cli.tail(uuids[0], 'foo', self.cook_url, '--lines 1000')
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual('\n'.join([str(i) for i in range(1, 101)]) + '\n', cli.decode(cp.stdout))
+        # Ask for a file that doesn't exist
+        cp = cli.tail(uuids[0], uuid.uuid4(), self.cook_url)
+        self.assertEqual(1, cp.returncode, cp.stderr)
+        self.assertIn('file was not found', cli.decode(cp.stderr))
 
     def test_tail_no_newlines(self):
         cp, uuids = cli.submit('bash -c \'for i in {1..100}; do printf "$i " >> foo; done\'', self.cook_url)
@@ -648,3 +652,18 @@ class CookCliTest(unittest.TestCase):
         cp = cli.tail(uuids[0], 'foo', self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual(' '.join([str(i) for i in range(1, 101)]) + ' ', cli.decode(cp.stdout))
+
+    def test_tail_large_file(self):
+        iterations = 20
+        cp, uuids = cli.submit('bash -c \'printf "hello\\nworld\\n" > file.txt ; '
+                               f'for i in {{1..{iterations}}}; do '
+                               'cat file.txt file.txt > file2.txt && '
+                               'mv file2.txt file.txt; done\'',
+                               self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        cp = cli.wait(uuids, self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        lines_to_tail = pow(2, iterations - 1)
+        cp = cli.tail(uuids[0], 'file.txt', self.cook_url, f'--lines {lines_to_tail}')
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertEqual('hello\nworld\n' * int(lines_to_tail / 2), cli.decode(cp.stdout))
