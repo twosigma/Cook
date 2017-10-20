@@ -92,6 +92,7 @@ def tail_for_instance(instance, sandbox_dir, path, num_lines_to_print, follow, f
         if offset == 0:
             print(text_buffer, end='')
             if num_lines_buffered > 0:
+                print()
                 print_lines(line_buffer)
             break
 

@@ -134,8 +134,8 @@ def ssh(uuid, cook_url=None, env=None, flags=None):
     return cp
 
 
-def tail(uuid, path, cook_url):
+def tail(uuid, path, cook_url, tail_flags=None):
     """Invokes the tail subcommand"""
-    args = f'tail {uuid} {path}'
+    args = f'tail {tail_flags} {uuid} {path}' if tail_flags else f'tail {uuid} {path}'
     cp = cli(args, cook_url)
     return cp
