@@ -4,7 +4,7 @@ import os
 from concurrent import futures
 from operator import itemgetter
 
-from cook import http, colors, progress
+from cook import http, colors, progress, mesos
 from cook.util import wait_until
 
 
@@ -176,7 +176,9 @@ def query_unique_and_run(clusters, job_or_instance_uuid, command_fn):
     if query_result['type'] == 'job':
         job = query_result['data']
         instance = __choose_latest_instance(job)
-        command_fn(instance, job)
+        directory = mesos.retrieve_instance_sandbox_directory(instance, job)
+        command_fn(instance, directory)
     elif query_result['type'] == 'instance':
         instance, job = query_result['data']
-        command_fn(instance, job)
+        directory = mesos.retrieve_instance_sandbox_directory(instance, job)
+        command_fn(instance, directory)

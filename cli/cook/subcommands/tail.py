@@ -1,5 +1,6 @@
 import logging
 import os
+import time
 
 from functools import partial
 
@@ -12,6 +13,7 @@ from cook.util import strip_all, check_positive
 CHUNK_SIZE = 4096
 LINE_DELIMITER = '\n'
 DEFAULT_NUM_LINES = 10
+DEFAULT_FOLLOW_SLEEP_SECS = 1.0
 
 
 def read_file(instance, sandbox_dir, path, offset=None, length=None):
@@ -23,7 +25,11 @@ def read_file(instance, sandbox_dir, path, offset=None, length=None):
         params['offset'] = offset
     if length is not None:
         params['length'] = length
+
     resp = http.__get(f'{agent_url}/files/read', params=params)
+    if resp.status_code == 404:
+        raise Exception(f"Cannot open '{path}' for reading (file was not found).")
+
     if resp.status_code != 200:
         logging.error(f'mesos agent returned status code {resp.status_code} and body {resp.text}')
         raise Exception('Encountered error when reading file from Mesos agent.')
@@ -36,7 +42,7 @@ def print_lines(lines):
     print(LINE_DELIMITER.join(lines), end='')
 
 
-def tail_for_instance(instance, job, path, num_lines_to_print):
+def tail_for_instance(instance, sandbox_dir, path, num_lines_to_print, follow, follow_sleep_seconds):
     """
     Tails the contents of the Mesos sandbox path for the given instance. The
     algorithm reads chunks backwards from the end of the file and splits them into
@@ -44,13 +50,10 @@ def tail_for_instance(instance, job, path, num_lines_to_print):
     user's request, or if it reaches the beginning of the file, it stops. Note that
     this assumes files will not shrink.
     """
-    # Get the sandbox dir for the provided instance
-    sandbox_dir = mesos.retrieve_instance_sandbox_directory(instance, job)
     read = partial(read_file, instance=instance, sandbox_dir=sandbox_dir, path=path)
 
     # Get the current file size
-    resp = read()
-    file_size = resp['offset']
+    file_size = read()['offset']
 
     # Initialize loop variables
     offset = max(file_size - CHUNK_SIZE, 0)
@@ -94,12 +97,30 @@ def tail_for_instance(instance, job, path, num_lines_to_print):
         length = offset - new_offset
         offset = new_offset
 
+    if not follow:
+        return
+
+    # Follow as the file grows
+    offset = file_size
+    length = CHUNK_SIZE
+    while True:
+        resp = read(offset=offset, length=length)
+        data = resp['data']
+        num_chars_read = len(data)
+        if num_chars_read > 0:
+            print(data, end='')
+            offset = offset + num_chars_read
+
+        time.sleep(follow_sleep_seconds)
+
 
 def tail(clusters, args):
     """Tails the contents of the corresponding Mesos sandbox path by job or instance uuid."""
     uuids = strip_all(args.get('uuid'))
     paths = strip_all(args.get('path'))
     lines = args.get('lines')
+    follow = args.get('follow')
+    sleep_interval = args.get('sleep-interval')
 
     if len(uuids) > 1:
         # argparse should prevent this, but we'll be defensive anyway
@@ -109,18 +130,23 @@ def tail(clusters, args):
         # argparse should prevent this, but we'll be defensive anyway
         raise Exception(f'You can only provide a single path.')
 
-    command_fn = partial(tail_for_instance, path=paths[0], num_lines_to_print=lines)
+    command_fn = partial(tail_for_instance, path=paths[0], num_lines_to_print=lines,
+                         follow=follow, follow_sleep_seconds=sleep_interval)
     query_unique_and_run(clusters, uuids[0], command_fn)
 
 
 def register(add_parser, add_defaults):
     """Adds this sub-command's parser and returns the action function"""
     parser = add_parser('tail', help='output the last part of files in the Mesos sandbox by job or instance uuid')
-    parser.add_argument('--lines', '-n', help=f'output the last NUM lines (default = {DEFAULT_NUM_LINES})',
+    parser.add_argument('--lines', '-n', help=f'output the last NUM lines (default {DEFAULT_NUM_LINES})',
                         metavar='NUM', type=check_positive)
+    parser.add_argument('--follow', '-f', help='output appended data as the file grows', action='store_true')
+    parser.add_argument('--sleep-interval', '-s',
+                        help=f'with -f, sleep for N seconds (default {DEFAULT_FOLLOW_SLEEP_SECS}) between iterations',
+                        metavar='N')
     parser.add_argument('uuid', nargs=1)
     parser.add_argument('path', nargs=1)
 
-    add_defaults('tail', {'lines': DEFAULT_NUM_LINES})
+    add_defaults('tail', {'lines': DEFAULT_NUM_LINES, 'sleep-interval': DEFAULT_FOLLOW_SLEEP_SECS})
 
     return tail

@@ -45,10 +45,9 @@ def directory_entry_to_row(entry):
             format_path(entry))
 
 
-def ls_for_instance(instance, job, path, long_format, json):
+def ls_for_instance(instance, sandbox_dir, path, long_format, json):
     """Lists contents of the Mesos sandbox path for the given instance"""
     agent_url = mesos.instance_to_agent_url(instance)
-    sandbox_dir = mesos.retrieve_instance_sandbox_directory(instance, job)
     resp = http.__get(f'{agent_url}/files/browse', params={'path': os.path.join(sandbox_dir, path or '')})
     if resp.status_code != 200:
         logging.error(f'mesos agent returned status code {resp.status_code} and body {resp.text}')
