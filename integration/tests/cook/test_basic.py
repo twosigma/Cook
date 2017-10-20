@@ -271,25 +271,25 @@ class CookTest(unittest.TestCase):
         return util.get_user(self.cook_url, uuid)
 
     def test_list_jobs_by_state(self):
-        # schedule a bunch of jobs in hopes of getting jobs into different statuses
-        job_specs = [ util.minimal_job(command=f"sleep {i}") for i in range(1, 20) ]
-        _, resp = util.submit_jobs(self.cook_url, job_specs)
-        self.assertEqual(resp.status_code, 201)
+        try:
+            # schedule a bunch of jobs in hopes of getting jobs into different statuses
+            job_specs = [ util.minimal_job(command=f"sleep {i}") for i in range(1, 20) ]
+            _, resp = util.submit_jobs(self.cook_url, job_specs)
+            self.assertEqual(resp.status_code, 201)
 
-        # let some jobs get scheduled
-        time.sleep(10)
-        user = self.determine_user()
+            # let some jobs get scheduled
+            time.sleep(10)
+            user = self.determine_user()
 
-        for state in ['waiting', 'running', 'completed']:
-            resp = util.list_jobs(self.cook_url, user=user, state=state)
-            self.assertEqual(200, resp.status_code, msg=resp.content)
-            jobs = resp.json()
-            for job in jobs:
-                # print "%s %s" % (job['uuid'], job['status'])
-                self.assertEquals(state, job['status'])
-
-        # cancel the jobs
-        util.cancel_jobs(self.cook_url, jobs)
+            for state in ['waiting', 'running', 'completed']:
+                resp = util.list_jobs(self.cook_url, user=user, state=state)
+                self.assertEqual(200, resp.status_code, msg=resp.content)
+                jobs = resp.json()
+                for job in jobs:
+                    # print "%s %s" % (job['uuid'], job['status'])
+                    self.assertEquals(state, job['status'])
+        finally:
+            util.kill_jobs(self.cook_url, jobs)
 
     def test_list_jobs_by_time(self):
         # schedule two jobs with different submit times
@@ -507,14 +507,14 @@ class CookTest(unittest.TestCase):
     def test_cancel_job(self):
         job_uuid, _ = util.submit_job(self.cook_url, command='sleep 300')
         util.wait_for_job(self.cook_url, job_uuid, 'running')
-        resp = util.cancel_jobs(self.cook_url, [job_uuid])
+        resp = util.kill_jobs(self.cook_url, [job_uuid])
         job = util.get_job(self.cook_url, job_uuid)
         self.assertEqual('failed', job['state'])
 
     def test_change_retries(self):
         job_uuid, _ = util.submit_job(self.cook_url, command='sleep 10')
         util.wait_for_job(self.cook_url, job_uuid, 'running')
-        resp = util.cancel_jobs(self.cook_url, [job_uuid])
+        resp = util.kill_jobs(self.cook_url, [job_uuid])
         job = util.get_job(self.cook_url, job_uuid)
         self.assertEqual('failed', job['state'])
         resp = util.session.put('%s/retry' % self.cook_url, json={'retries': 2, 'jobs': [job_uuid]})
@@ -640,23 +640,24 @@ class CookTest(unittest.TestCase):
                                                                           "lol won't get scheduled"]])
         self.assertEqual(resp.status_code, 201, resp.text)
 
-        host_to_job_uuid = {}
-        for hostname in hosts:
-            constraints = [["HOSTNAME", "EQUALS", hostname]]
-            job_uuid, resp = util.submit_job(self.cook_url, constraints=constraints)
-            self.assertEqual(resp.status_code, 201, resp.text)
-            host_to_job_uuid[hostname] = job_uuid
+        try:
+            host_to_job_uuid = {}
+            for hostname in hosts:
+                constraints = [["HOSTNAME", "EQUALS", hostname]]
+                job_uuid, resp = util.submit_job(self.cook_url, constraints=constraints)
+                self.assertEqual(resp.status_code, 201, resp.text)
+                host_to_job_uuid[hostname] = job_uuid
 
-        for hostname, job_uuid in host_to_job_uuid.items():
-            job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
-            hostname_constrained = job['instances'][0]['hostname']
-            self.assertEqual(hostname, hostname_constrained)
-            self.assertEqual([["HOSTNAME", "EQUALS", hostname]], job['constraints'])
-        # This job should have been scheduled since the job submitted after it has completed
-        # however, its constraint means it won't get scheduled
-        util.wait_for_job(self.cook_url, bad_job_uuid, 'waiting', max_delay=3000)
-        # Clean up after ourselves
-        util.cancel_jobs(self.cook_url, [bad_job_uuid])
+            for hostname, job_uuid in host_to_job_uuid.items():
+                job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
+                hostname_constrained = job['instances'][0]['hostname']
+                self.assertEqual(hostname, hostname_constrained)
+                self.assertEqual([["HOSTNAME", "EQUALS", hostname]], job['constraints'])
+            # This job should have been scheduled since the job submitted after it has completed
+            # however, its constraint means it won't get scheduled
+            util.wait_for_job(self.cook_url, bad_job_uuid, 'waiting', max_delay=3000)
+        finally:
+            util.kill_jobs(self.cook_url, [bad_job_uuid])
 
     def test_allow_partial(self):
         def absent_uuids(response):
@@ -773,15 +774,16 @@ class CookTest(unittest.TestCase):
         self.assertEqual(400, resp.status_code)
 
     def test_queue_endpoint(self):
-        job_uuid, resp = util.submit_job(self.cook_url, constraints=[["HOSTNAME",
-                                                                      "EQUALS",
-                                                                      "lol won't get scheduled"]])
-        self.assertEqual(201, resp.status_code, resp.content)
-        time.sleep(30)  # Need to wait for a rank cycle
-        queue = util.session.get('%s/queue' % self.cook_url)
-        self.assertEqual(200, queue.status_code, queue.content)
-        self.assertTrue(any([job['job/uuid'] == job_uuid for job in queue.json()['normal']]))
-        util.cancel_jobs(self.cook_url, [job_uuid])
+        try:
+            constraints = [["HOSTNAME", "EQUALS", "lol won't get scheduled"]]
+            job_uuid, resp = util.submit_job(self.cook_url, constraints=constraints)
+            self.assertEqual(201, resp.status_code, resp.content)
+            time.sleep(30)  # Need to wait for a rank cycle
+            queue = util.session.get('%s/queue' % self.cook_url)
+            self.assertEqual(200, queue.status_code, queue.content)
+            self.assertTrue(any([job['job/uuid'] == job_uuid for job in queue.json()['normal']]))
+        finally:
+            util.kill_jobs(self.cook_url, [job_uuid])
 
     def test_basic_docker_job(self):
         job_uuid, resp = util.submit_job(
@@ -866,4 +868,4 @@ class CookTest(unittest.TestCase):
                 self.assertEqual(job_uuid, unscheduled_jobs['uuid'])
             check_unscheduled_reason()
         finally:
-            util.cancel_jobs(self.cook_url, [job_uuid])
+            util.kill_jobs(self.cook_url, [job_uuid])

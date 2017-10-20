@@ -122,14 +122,14 @@ def submit_jobs(cook_url, job_specs, clones=1, **kwargs):
     request_body = {'jobs': jobs}
     request_body.update(kwargs)
     logger.info(request_body)
-    resp = session.post('%s/rawscheduler' % cook_url, json=request_body)
+    resp = session.post(f'{cook_url}/rawscheduler', json=request_body)
     return [ j['uuid'] for j in jobs ], resp
 
 
-def cancel_jobs(cook_url, jobs, assert_response=True):
-    """Cancel one or more jobs"""
-    params = "&".join("job=%s" % unpack_uuid(j) for j in jobs)
-    response = session.delete('%s/rawscheduler?%s' % (cook_url, params))
+def kill_jobs(cook_url, jobs, assert_response=True):
+    """Kill one or more jobs"""
+    params = {'job': [unpack_uuid(j) for j in jobs]}
+    response = session.delete(f'{cook_url}/rawscheduler', params=params)
     if assert_response:
         assert 204 == response.status_code, response.content
     return response
@@ -142,6 +142,7 @@ def submit_job(cook_url, **kwargs):
 
 
 def unpack_uuid(entity):
+    """Unpack the UUID string from a job spec, or no-op for UUID strings"""
     return entity['uuid'] if isinstance(entity, dict) else entity
 
 
@@ -156,7 +157,7 @@ def query_jobs(cook_url, assert_response=False, **kwargs):
     for key in ('job', 'instance'):
         if key in kwargs:
             kwargs[key] = map(unpack_uuid, kwargs[key])
-    response = session.get('%s/rawscheduler' % cook_url, params=kwargs)
+    response = session.get(f'{cook_url}/rawscheduler', params=kwargs)
     if assert_response:
         assert 200 == response.status_code
     return response
@@ -210,7 +211,7 @@ def wait_until(query, predicate, max_wait_ms=30000, wait_interval_ms=1000):
         return wait_until_inner()
     except:
         final_response = query()
-        logger.info("Timeout exceeded waiting for condition. Details: %s" % final_response.json())
+        logger.info(f"Timeout exceeded waiting for condition. Details: {final_response.json()}")
         raise
 
 
@@ -224,36 +225,40 @@ def all_instances_killed(response):
             return False
         for inst in job['instances']:
             if inst['status'] != 'failed':
-                logger.info("Job {} instance {} has non-failure status {}."
-                            .format(job['uuid'], inst['task_id'], inst['status']))
+                logger.info(f"Job {job['uuid']} instance {inst['task_id']} has non-failure status {inst['status']}.")
                 return False
     return True
 
 
 def wait_for_job(cook_url, job_id, status, max_delay=120000):
+    """Wait for the given job's status to change to the specified value."""
     job_id = unpack_uuid(job_id)
     query = lambda: query_jobs(cook_url, True, job=[job_id])
     def predicate(response):
         job = response.json()[0]
-        logger.info("Job {} has status {}, expecting {}.".format(job_id, job['status'], status))
+        logger.info(f"Job {job_id} has status {job['status']}, expecting {status}.")
         return job['status'] == status
     response = wait_until(query, predicate, max_wait_ms=max_delay, wait_interval_ms=2000)
     return response.json()[0]
 
 
 def wait_for_exit_code(cook_url, job_id):
+    """
+    Wait for the given job's exit_code field to appear.
+    (Only supported by Cook Executor jobs.)
+    """
     job_id = unpack_uuid(job_id)
     query = lambda: query_jobs(cook_url, True, job=[job_id])
     def predicate(response):
         job = response.json()[0]
         if not job['instances']:
-            logger.info("Job {} has no instances.".format(job_id))
+            logger.info(f"Job {job_id} has no instances.")
         else:
             inst = job['instances'][0]
             if 'exit_code' not in inst:
-                logger.info("Job {} instance {} has no exit code.".format(job_id, inst['task_id']))
+                logger.info(f"Job {job_id} instance {inst['task_id']} has no exit code.")
             else:
-                logger.info("Job {} instance {} has exit code {}.".format(job_id, inst['task_id'], inst['exit_code']))
+                logger.info(f"Job {job_id} instance {inst['task_id']} has exit code {inst['exit_code']}.")
                 return True
     response = wait_until(query, predicate, max_wait_ms=2000, wait_interval_ms=250)
     return response.json()[0]
@@ -266,22 +271,21 @@ def get_mesos_state(mesos_url):
     return session.get('%s/state.json' % mesos_url).json()
 
 
-@retry(stop_max_delay=120000, wait_fixed=5000)
 def wait_for_output_url(cook_url, job_uuid):
     """
-    Gets the output_url for the given job, retrying every 5 
-    seconds for a maximum of 2 minutes. The retries are 
-    necessary because currently the Mesos agent sandbox
-    directories are cached in Cook.
+    Wait for the output_url for the given job to be populated,
+    retrying every 5 seconds for a maximum of 2 minutes.
+    The retries are necessary because currently the Mesos
+    agent sandbox directories are cached in Cook.
     """
-    job = load_job(cook_url, job_uuid, assert_response=False)
-    instance = job['instances'][0]
-    if 'output_url' in instance:
-        return instance
-    else:
-        error_msg = 'Job %s had no output_url' % job['uuid']
-        logger.info(error_msg)
-        raise RuntimeError(error_msg)
+    query = lambda: load_job(cook_url, job_uuid, assert_response=False)
+    def predicate(job):
+        if 'output_url' in job['instances'][0]:
+            return True
+        else:
+            logger.info(f"Job {job['uuid']} had no output_url")
+    response = wait_until(query, predicate, max_wait_ms=120000)
+    return response['instances'][0]
 
 
 def list_jobs(cook_url, **kwargs):
