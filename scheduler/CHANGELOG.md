@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.7.0] - 2017-10-19
+### Changed
+- Renamed user whitelist to users allowed, from @dposada
+- Fixes for stderr/out file handling in Cook executor, from @shamsimam
+- Fixed bug with /unscheduled_jobs endpoint, from @pschorf
+
 ## [1.6.0] - 2017-09-22
 ### Added
 - Added support for allowing job to specify which executor (cook|mesos) to use, from @shamsimam

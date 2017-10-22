@@ -24,14 +24,19 @@ public class SimpleAssignmentResult extends TaskAssignmentResult {
 
     public SimpleAssignmentResult(List<AssignmentFailure> assignmentFailures,
                                   ConstraintFailure constraintFailure) {
+        this(assignmentFailures, constraintFailure, getDummyRequest());
+    }
+
+    public SimpleAssignmentResult(List<AssignmentFailure> assignmentFailures,
+                                  ConstraintFailure constraintFailure,
+                                  TaskRequest request) {
         super(SimpleAssignmentResult.getDummyAvm(),
-              SimpleAssignmentResult.getDummyRequest(),
+              request,
               false,
               assignmentFailures,
               constraintFailure,
               0.0);
     }
-
 
     public static AssignableVirtualMachine getDummyAvm() {
         return new AssignableVirtualMachine(null, null, "my.fake.host",

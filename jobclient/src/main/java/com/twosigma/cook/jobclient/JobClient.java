@@ -883,7 +883,7 @@ public class JobClient implements Closeable {
     /**
      * Query a group for a group's jobs.
      * @param group specifies a group, whose jobs will be queried.
-     * @return a {@link ImmutableList} of {@link Job}s.
+     * @return a {@link ImmutableMap} from job {@link UUID} to {@link Job}.
      * @throws JobClientException
      */
     public Map<UUID, Job> queryGroupJobs(Group group)

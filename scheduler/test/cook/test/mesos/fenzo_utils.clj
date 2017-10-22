@@ -15,7 +15,11 @@
 ;;
 (ns cook.test.mesos.fenzo-utils
   (:use clojure.test)
-  (:require [cook.mesos.fenzo-utils :as fenzo])
+  (:require [cook.mesos.fenzo-utils :as fenzo]
+            [cook.mesos.scheduler :as scheduler]
+            [cook.mesos.util :as util]
+            [cook.test.testutil :refer (restore-fresh-database! create-dummy-job)]
+            [datomic.api :as d])
   (import com.netflix.fenzo.SimpleAssignmentResult
           com.netflix.fenzo.AssignmentFailure
           com.netflix.fenzo.ConstraintFailure
@@ -85,3 +89,19 @@
                         "mem" 2
                         "ports" 2
                         "disk" 1}}))))
+
+
+(deftest test-record-placement-failures
+  (let [uri "datomic:mem://test-record-placement-failures"
+        conn (restore-fresh-database! uri)
+        job-id (create-dummy-job conn :under-investigation true)
+        job (->> job-id
+                 (d/entity (d/db conn))
+                 util/entity->map)
+        ^TaskRequest task-request (scheduler/make-task-request job)
+        failure (assignment-failure :mem)
+        assignment-result (SimpleAssignmentResult. [failure] nil task-request)]
+    (is (fenzo/record-placement-failures! conn [[assignment-result]]))
+    (let [job-post-transaction (d/entity (d/db conn) job-id)]
+      (is (not (:job/under-investigation job-post-transaction)))
+      (is (:job/last-fenzo-placement-failure job-post-transaction)))))

@@ -26,18 +26,7 @@ else
 fi
 
 SCHEDULER_DIR="$( dirname ${DIR} )"
-EXECUTOR_DIR="$(dirname ${SCHEDULER_DIR})/executor"
-COOK_EXECUTOR_FILE=${EXECUTOR_DIR}/dist/cook-executor
 SCHEDULER_EXECUTOR_DIR=${SCHEDULER_DIR}/resources/public
-
-if [ ! -f ${COOK_EXECUTOR_FILE} ]; then
-    echo "cook-executor not found at ${COOK_EXECUTOR_FILE}"
-    echo "Triggering build of cook-executor before proceeding."
-    ${EXECUTOR_DIR}/bin/build-cook-executor.sh
-fi
-echo "Copying cook-executor from ${COOK_EXECUTOR_FILE} to ${SCHEDULER_EXECUTOR_DIR}"
-mkdir -p ${SCHEDULER_EXECUTOR_DIR}
-cp -f ${COOK_EXECUTOR_FILE} ${SCHEDULER_EXECUTOR_DIR}
 
 if [ -z "$(docker network ls -q -f name=cook_nw)" ];
 then
@@ -60,6 +49,10 @@ else
 fi
 
 echo "Starting cook..."
+
+# NOTE: since the cook scheduler directory is mounted as a volume
+# by the minimesos agents, they have access to the cook-executor binary
+# using the absolute file path URI given for COOK_EXECUTOR below.
 docker create \
     -i \
     -t \
