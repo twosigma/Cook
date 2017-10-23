@@ -417,11 +417,13 @@
             container-params (or (:parameters docker) [])
             port-mappings (or (:port-mapping docker) [])
             expected-user-params {:key "user" :value (str (uid user) ":" (gid user))}
-            defined-user-params (or (first (filter #(= (:key %) "user") container-params)) expected-user-params)
-            params (if (nil? defined-user-params) container-params (concat container-params [expected-user-params]))]
-        (if (and (force-container-user? (or (= (uid user) "") (= (gid user) ""))))
+            defined-user-params (first (filter #(= (:key %) "user") container-params))
+            params (if defined-user-params
+                     container-params
+                     (cons expected-user-params container-params))]
+        (when (and (force-container-user? (or (= (uid user) "") (= (gid user) ""))))
           (throw (ex-info "failed to look up uid/gid of user submitting." {:user user})))
-        (if (not= (expected-user-params :value) (defined-user-params :value))
+        (when (not= (:value expected-user-params) (:value defined-user-params))
           (throw (ex-info "user parameter must match uid and gid of user submitting."
                           {:expected-user-params expected-user-params
                            :defined-user-params defined-user-params})))
@@ -450,7 +452,7 @@
 
 (s/defn make-job-txn
   "Creates the necessary txn data to insert a job into the database"
-  [job :- Job force-container-user?]
+  [job :- Job force-container-user? :- Boolean]
   (let [{:keys [uuid command max-retries max-runtime expected-runtime priority cpus mem gpus
                 user name ports uris env labels container group application disable-mea-culpa-retries
                 constraints executor]
@@ -1077,7 +1079,7 @@
                                (map make-default-group))
           groups (into (vec implicit-groups) groups)
           job-asserts (map (fn [j] [:entity/ensure-not-exists [:job/uuid (:uuid j)]]) jobs)
-          job-txns (mapcat #(make-job-txn %) jobs force-container-user?)
+          job-txns (mapcat #(make-job-txn % force-container-user?) jobs)
           job-uuids->dbids (->> job-txns
                                 ;; Not all txns are for the top level job
                                 (filter :job/uuid)
