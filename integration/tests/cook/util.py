@@ -116,7 +116,12 @@ def submit_jobs(cook_url, job_specs, clones=1, **kwargs):
     """
     if isinstance(job_specs, dict):
         job_specs = [job_specs] * clones
-    jobs = [minimal_job(**spec) for spec in job_specs]
+    def full_spec(spec):
+        if 'uuid' not in spec:
+            return minimal_job(**spec)
+        else:
+            return spec
+    jobs = [ full_spec(j) for j in job_specs ]
     request_body = {'jobs': jobs}
     request_body.update(kwargs)
     logger.info(request_body)
@@ -128,6 +133,15 @@ def kill_jobs(cook_url, jobs, assert_response=True):
     """Kill one or more jobs"""
     params = {'job': [unpack_uuid(j) for j in jobs]}
     response = session.delete(f'{cook_url}/rawscheduler', params=params)
+    if assert_response:
+        assert 204 == response.status_code, response.content
+    return response
+
+
+def kill_groups(cook_url, groups, assert_response=True):
+    """Kill one or more groups of jobs"""
+    params = {'uuid': [unpack_uuid(g) for g in groups]}
+    response = session.delete(f'{cook_url}/group', params=params)
     if assert_response:
         assert 204 == response.status_code, response.content
     return response
@@ -268,6 +282,20 @@ def wait_for_exit_code(cook_url, job_id):
 
     response = wait_until(query, predicate, max_wait_ms=2000, wait_interval_ms=250)
     return response.json()[0]
+
+
+def all_instances_killed(response):
+    """
+    Helper method used with the wait_until function.
+    Checks a response from query_jobs to see if all jobs and instances have been killed.
+    """
+    for job in response.json():
+        if job['state'] != 'failed':
+            return False
+        for inst in job['instances']:
+            if inst['status'] != 'failed':
+                return False
+    return True
 
 
 def get_mesos_state(mesos_url):
