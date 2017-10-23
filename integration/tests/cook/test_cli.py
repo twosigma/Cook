@@ -712,3 +712,72 @@ class CookCliTest(unittest.TestCase):
         finally:
             proc.kill()
             util.kill_jobs(self.cook_url, jobs=uuids)
+
+    def test_ls(self):
+
+        def entry_by_name(name):
+            return next(e for e in entries if os.path.basename(os.path.normpath(e['path'])) == name)
+
+        cp, uuids = cli.submit('"mkdir foo; echo 123 > foo/bar; echo 45678 > baz; mkdir empty"', self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        util.wait_for_job(self.cook_url, uuids[0], 'completed')
+
+        # Path that doesn't exist
+        cp, entries = cli.ls(uuids[0], self.cook_url, 'qux', parse_json=False)
+        self.assertEqual(1, cp.returncode, cp.stderr)
+        self.assertIn('no such file or directory', cli.decode(cp.stderr))
+
+        # baz file
+        cp, entries = cli.ls(uuids[0], self.cook_url, 'baz')
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertEqual(1, len(entries))
+        self.logger.debug(entries)
+        baz = entry_by_name('baz')
+        self.assertEqual('-rw-r--r--', baz['mode'])
+        self.assertEqual(1, baz['nlink'])
+        self.assertEqual(6, baz['size'])
+
+        # empty directory
+        cp, entries = cli.ls(uuids[0], self.cook_url, 'empty')
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertEqual(0, len(entries))
+        self.logger.debug(entries)
+
+        # Root of the sandbox
+        cp, entries = cli.ls(uuids[0], self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertLessEqual(4, len(entries))
+        self.logger.debug(entries)
+        foo = entry_by_name('foo')
+        self.assertEqual('drwxr-xr-x', foo['mode'])
+        self.assertEqual(2, foo['nlink'])
+        baz = entry_by_name('baz')
+        self.assertEqual('-rw-r--r--', baz['mode'])
+        self.assertEqual(1, baz['nlink'])
+        self.assertEqual(6, baz['size'])
+        stdout = entry_by_name('stdout')
+        self.assertEqual('-rw-r--r--', stdout['mode'])
+        self.assertEqual(1, stdout['nlink'])
+        stderr = entry_by_name('stderr')
+        self.assertEqual('-rw-r--r--', stderr['mode'])
+        self.assertEqual(1, stderr['nlink'])
+
+        # foo directory
+        cp, entries = cli.ls(uuids[0], self.cook_url, 'foo')
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertEqual(1, len(entries))
+        self.logger.debug(entries)
+        bar = entry_by_name('bar')
+        self.assertEqual('-rw-r--r--', bar['mode'])
+        self.assertEqual(1, bar['nlink'])
+        self.assertEqual(4, bar['size'])
+
+        # foo/bar file
+        cp, entries = cli.ls(uuids[0], self.cook_url, 'foo/bar')
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertEqual(1, len(entries))
+        self.logger.debug(entries)
+        bar = entry_by_name('bar')
+        self.assertEqual('-rw-r--r--', bar['mode'])
+        self.assertEqual(1, bar['nlink'])
+        self.assertEqual(4, bar['size'])
