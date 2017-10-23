@@ -97,7 +97,7 @@
         job-id (create-dummy-job conn :under-investigation true)
         job (->> job-id
                  (d/entity (d/db conn))
-                 util/entity->map)
+                 util/job-ent->map)
         ^TaskRequest task-request (scheduler/make-task-request job)
         failure (assignment-failure :mem)
         assignment-result (SimpleAssignmentResult. [failure] nil task-request)]

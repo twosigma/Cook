@@ -941,3 +941,47 @@ class CookTest(unittest.TestCase):
             check_unscheduled_reason()
         finally:
             util.kill_jobs(self.cook_url, [job_uuid])
+
+    def test_unique_host_constraint(self):
+        state = util.get_mesos_state(self.mesos_url)
+        num_hosts = len(state['slaves'])
+        group = {'uuid': str(uuid.uuid4()),
+                 'host-placement': {'type': 'unique'}}
+        job_spec = {'group': group['uuid'], 'command': 'sleep 600'}
+        # Don't submit too many jobs for the test. If the cluster is larger than 19 hosts, only submit 20 jobs.
+        num_jobs = min(num_hosts, 19) + 1
+        uuids, resp = util.submit_jobs(self.cook_url, job_spec, num_jobs, groups=[group])
+        self.assertEqual(resp.status_code, 201, resp.content)
+        try:
+            query = lambda: util.query_jobs(self.cook_url, job=uuids).json()
+            def num_running_predicate(response):
+                num_jobs = len(response)
+                num_running = len([j for j in response if j['status'] == 'running'])
+                num_waiting = len([j for j in response if j['status'] == 'waiting'])
+                if num_jobs == num_hosts + 1:
+                    # One job should not be scheduled
+                    return (num_running == num_jobs - 1) and (num_waiting == 1)
+                else:
+                    # All of the jobs should be running
+                    return num_running == num_jobs
+            jobs = util.wait_until(query, num_running_predicate, max_wait_ms=60000)
+            hosts = [job['instances'][0]['hostname'] for job in jobs
+                     if job['status'] == 'running']
+            # Only one job should run on each host
+            self.assertEqual(len(set(hosts)), len(hosts))
+            # If one job was not running, check the output of unscheduled_jobs
+            if num_jobs == num_hosts + 1:
+                waiting_job = [j for j in jobs if j['status'] == 'waiting'][0]
+                query = lambda: util.unscheduled_jobs(self.cook_url, waiting_job['uuid'])[0]
+                def check_unique_constraint(unscheduled_jobs):
+                    self.logger.debug('unscheduled_jobs response: %s' % unscheduled_jobs)
+                    return any([r['reason'] == "The job couldn't be placed on any available hosts."
+                                for r in unscheduled_jobs['reasons']])
+                unscheduled_jobs = util.wait_until(query, check_unique_constraint)
+                unique_reason = [r for r in unscheduled_jobs['reasons'] if r['reason'] ==
+                                 "The job couldn't be placed on any available hosts."][0]
+                self.assertEqual("unique-host-placement-group-constraint",
+                                 unique_reason['data']['reasons'][0]['reason'],
+                                 unique_reason)
+        finally:
+            util.kill_jobs(self.cook_url, [uuids])

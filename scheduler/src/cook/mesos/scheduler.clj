@@ -757,7 +757,7 @@
   [{:keys [tasks] :as match} db framework-id executor-config]
   (let [task-metadata-seq (->> tasks
                                ;; sort-by makes task-txns created in matches->task-txns deterministic
-                               (sort-by (comp :db/id :job #(.getRequest ^TaskAssignmentResult %)) )
+                               (sort-by (comp :job/uuid :job #(.getRequest ^TaskAssignmentResult %)) )
                                (map (partial task/TaskAssignmentResult->task-metadata db framework-id executor-config)))]
     (assoc match :task-metadata-seq task-metadata-seq)))
 
@@ -1023,7 +1023,7 @@
       (doseq [[task-id] running-tasks
               :let [task-ent (d/entity db [:instance/task-id task-id])
                     hostname (:instance/hostname task-ent)
-                    job (util/entity->map (:job/_instance task-ent))
+                    job (util/job-ent->map (:job/_instance task-ent))
                     task-request (make-task-request job :task-id task-id)]]
         ;; Need to lock on fenzo when accessing taskAssigner because taskAssigner and
         ;; scheduleOnce can not be called at the same time.
@@ -1344,7 +1344,7 @@
       (let [jobs (->> (sort-jobs-by-dru-category unfiltered-db)
                       ;; Apply the offensive job filter first before taking.
                       (pc/map-vals offensive-job-filter)
-                      (pc/map-vals #(map util/entity->map %)))]
+                      (pc/map-vals #(map util/job-ent->map %)))]
         (log/debug "Total number of pending jobs is:" (apply + (map count (vals jobs)))
                    "The first 20 pending normal jobs:" (take 20 (:normal jobs))
                    "The first 5 pending gpu jobs:" (take 5 (:gpu jobs)))

@@ -128,7 +128,10 @@
 
 (defn schedule-and-run-jobs
   [conn framework-id scheduler offers job-ids]
-  (let [jobs (map #(d/entity (d/db conn) %) job-ids)
+  (let [db (d/db conn)
+        jobs (->> job-ids
+                  (map #(d/entity db %))
+                  (map #(util/job-ent->map %)))
         task-ids (take (count jobs) (repeatedly #(str (java.util.UUID/randomUUID))))
         guuid->considerable-cotask-ids (util/make-guuid->considerable-cotask-ids (zipmap jobs task-ids))
         tasks (map #(sched/make-task-request %1 :task-id %2 :guuid->considerable-cotask-ids guuid->considerable-cotask-ids)
@@ -146,7 +149,7 @@
     (if (> (count scheduled) 0)
       (do
         ; Create an instance as if job was running
-        (doall (map #(create-dummy-instance conn (:db/id (get tid-to-job (key %))) :instance-status :instance.status/running
+        (doall (map #(create-dummy-instance conn [:job/uuid (:job/uuid (get tid-to-job (key %)))] :instance-status :instance.status/running
                                             :task-id (key %) :hostname (val %)) tid-to-hostname))
         ; Tell fenzo the job was scheduled
         (doall (map #(.call (.getTaskAssigner scheduler) (get tid-to-task (key %)) (val %)) tid-to-hostname))
@@ -578,7 +581,7 @@
         jobs [job-entity-1 job-entity-2]
         offensive-jobs-ch (sched/make-offensive-job-stifler conn)
         offensive-job-filter (partial sched/filter-offensive-jobs constraints offensive-jobs-ch)]
-    (is (= {:normal (list (util/entity->map job-entity-2))
+    (is (= {:normal (list (util/job-ent->map job-entity-2))
             :gpu ()}
            (sched/rank-jobs test-db offensive-job-filter)))))
 
@@ -1268,7 +1271,7 @@
         test-user (System/getProperty "user.name")
         group-ent-id (create-dummy-group conn)
         entity->map (fn [entity]
-                      (util/entity->map entity (d/db conn)))
+                      (util/job-ent->map entity (d/db conn)))
         job-1 (entity->map (d/entity test-db (create-dummy-job conn :group group-ent-id :ncpus 3 :memory 2048)))
         job-2 (entity->map (d/entity test-db (create-dummy-job conn :group group-ent-id :ncpus 13 :memory 1024)))
         job-3 (entity->map (d/entity test-db (create-dummy-job conn :group group-ent-id :ncpus 7 :memory 4096)))
@@ -1464,7 +1467,7 @@
                                             job-5 (d/entity test-db (create-dummy-job conn :group group-ent-id :name "job-5" :ncpus 5 :memory 2048 :gpus 2))
                                             job-6 (d/entity test-db (create-dummy-job conn :group group-ent-id :name "job-6" :ncpus 19 :memory 1024 :gpus 4))
                                             entity->map (fn [entity]
-                                                          (util/entity->map entity (d/db conn)))
+                                                          (util/job-ent->map entity (d/db conn)))
                                             category->pending-jobs (->> {:normal [job-1 job-2 job-3 job-4] :gpu [job-5 job-6]}
                                                                         (pc/map-vals (partial map entity->map)))
                                             category->pending-jobs-atom (atom category->pending-jobs)

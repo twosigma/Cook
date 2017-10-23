@@ -1,4 +1,4 @@
-FROM python:3.5
+FROM python:3.6
 
 RUN apt-get update && apt-get -y install apt-transport-https ca-certificates curl gnupg2 software-properties-common
 RUN curl -fsSL https://download.docker.com/linux/debian/gpg | apt-key add -
@@ -6,9 +6,15 @@ RUN add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/debia
 
 RUN apt-get update && apt-get -y install docker-ce
 
+RUN mkdir -p /opt/cook/cli
+WORKDIR /opt/cook/cli
+COPY cli.tar.gz /opt/cook/cli
+RUN tar xzf cli.tar.gz
+RUN pip install -e .
+
 RUN mkdir -p /opt/cook/integration
 COPY . /opt/cook/integration
 WORKDIR /opt/cook/integration
 RUN python setup.py install
 
-CMD ["python", "setup.py", "nosetests"]
+CMD ["nosetests"]

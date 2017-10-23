@@ -48,6 +48,7 @@ docker create \
        --rm \
        --name=cook-integration \
        -e "COOK_SCHEDULER_URL=${COOK_URL}" \
+       -e "USER=root" \
        ${COOK_MULTICLUSTER_ENV} \
        -v ${INTEGRATION_DIR}:/opt/cook/integration \
        -v /var/run/docker.sock:/var/run/docker.sock \

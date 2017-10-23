@@ -121,7 +121,7 @@
                                ]]
                  [org.apache.curator/curator-test "2.7.1"]]
 
-  :repositories {"maven2" {:url "http://files.couchbase.com/maven2/"}
+  :repositories {"maven2" {:url "https://files.couchbase.com/maven2/"}
                  "sonatype-oss-public" "https://oss.sonatype.org/content/groups/public/"}
 
   :filespecs [{:type :fn

@@ -16,6 +16,7 @@
                   :executable true
                   :extract false
                   :value #config/env "COOK_EXECUTOR"}}
+ :rate-limit {:user-limit-per-m 1000000}
  :rebalancer {:dru-scale 1}
  :mesos {:master #config/env "MESOS_MASTER"
          :master-hosts [#config/env "MESOS_MASTER_HOST"]
