@@ -1,13 +1,10 @@
 import logging
 import os
 import time
-
 from functools import partial
 
 from cook import mesos, http
-
 from cook.querying import query_unique_and_run
-
 from cook.util import strip_all, check_positive
 
 CHUNK_SIZE = 4096
