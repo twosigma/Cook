@@ -693,20 +693,18 @@ class CookCliTest(unittest.TestCase):
                         f'--follow --sleep-interval {sleep_seconds_between_lines}',
                         wait_for_exit=False)
         try:
-            # Wait a bit while the tail runs and then check the output
-            sleep_seconds_before_tail_check = sleep_seconds_between_lines * 3
-            time.sleep(sleep_seconds_before_tail_check)
-            lines = proc.stdout.readlines()
-            self.logger.info(f'lines read: {lines}')
-            self.assertLess(0, len(lines))
+            def readlines():
+                lines_read = proc.stdout.readlines()
+                self.logger.info(f'lines read: {lines_read}')
+                return lines_read
+
+            # Wait until the tail prints some lines and then check the output
+            lines = util.wait_until(readlines, lambda l: len(l) > 0)
             for i, line in enumerate(lines):
                 self.assertEqual(f'{i+1}\n', line.decode())
 
-            # Wait another bit and then check the (new) output
-            time.sleep(sleep_seconds_before_tail_check)
-            lines = proc.stdout.readlines()
-            self.logger.info(f'lines read: {lines}')
-            self.assertLess(0, len(lines))
+            # Wait until it prints some more lines and then check the (new) output
+            lines = util.wait_until(readlines, lambda l: len(l) > 0)
             for j, line in enumerate(lines):
                 self.assertEqual(f'{i+1+j+1}\n', line.decode())
         finally:
