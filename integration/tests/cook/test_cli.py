@@ -700,13 +700,14 @@ class CookCliTest(unittest.TestCase):
 
             # Wait until the tail prints some lines and then check the output
             lines = util.wait_until(readlines, lambda l: len(l) > 0)
+            start = int(lines[0].decode().strip())
             for i, line in enumerate(lines):
-                self.assertEqual(f'{i+1}\n', line.decode())
+                self.assertEqual(f'{start+i}\n', line.decode())
 
             # Wait until it prints some more lines and then check the (new) output
             lines = util.wait_until(readlines, lambda l: len(l) > 0)
             for j, line in enumerate(lines):
-                self.assertEqual(f'{i+1+j+1}\n', line.decode())
+                self.assertEqual(f'{start+i+j+1}\n', line.decode())
         finally:
             proc.kill()
             util.kill_jobs(self.cook_url, jobs=uuids)
