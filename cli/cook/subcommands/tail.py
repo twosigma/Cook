@@ -16,6 +16,11 @@ DEFAULT_NUM_LINES = 10
 DEFAULT_FOLLOW_SLEEP_SECS = 1.0
 
 
+# For everything we print in tail, we want to forcibly flush
+# the stream, and we don't want to end with a newline
+prn = partial(print, flush=True, end='')
+
+
 def read_file(instance, sandbox_dir, path, offset=None, length=None):
     """Calls the Mesos agent files/read API for the given path, offset, and length"""
     logging.info(f'reading file from sandbox {sandbox_dir} with path {path} at offset {offset} and length {length}')
@@ -39,7 +44,7 @@ def read_file(instance, sandbox_dir, path, offset=None, length=None):
 
 def print_lines(lines):
     """Prints the given list of lines, delimited, and with no trailing newline"""
-    print(LINE_DELIMITER.join(lines), end='')
+    prn(LINE_DELIMITER.join(lines))
 
 
 def tail_for_instance(instance, sandbox_dir, path, num_lines_to_print, follow, follow_sleep_seconds):
@@ -91,9 +96,9 @@ def tail_for_instance(instance, sandbox_dir, path, num_lines_to_print, follow, f
 
         # Check if we've reached the start of the file
         if offset == 0:
-            print(text_buffer, end='')
+            prn(text_buffer)
             if num_lines_buffered > 0:
-                print()
+                prn('\n')
                 print_lines(line_buffer)
             break
 
@@ -113,7 +118,7 @@ def tail_for_instance(instance, sandbox_dir, path, num_lines_to_print, follow, f
         data = resp['data']
         num_chars_read = len(data)
         if num_chars_read > 0:
-            print(data, end='')
+            prn(data)
             offset = offset + num_chars_read
 
         time.sleep(follow_sleep_seconds)

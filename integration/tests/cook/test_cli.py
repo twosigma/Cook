@@ -655,7 +655,7 @@ class CookCliTest(unittest.TestCase):
 
     def test_tail_large_file(self):
         iterations = 20
-        cp, uuids = cli.submit('bash -c \'printf "hello\\nworld\\n" > file.txt ; '
+        cp, uuids = cli.submit('bash -c \'printf "hello\\nworld\\n" > file.txt; '
                                f'for i in {{1..{iterations}}}; do '
                                'cat file.txt file.txt > file2.txt && '
                                'mv file2.txt file.txt; done\'',
@@ -667,3 +667,48 @@ class CookCliTest(unittest.TestCase):
         cp = cli.tail(uuids[0], 'file.txt', self.cook_url, f'--lines {lines_to_tail}')
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual('hello\nworld\n' * int(lines_to_tail / 2), cli.decode(cp.stdout))
+
+    def test_tail_large_file_no_newlines(self):
+        iterations = 18
+        cp, uuids = cli.submit('bash -c \'printf "helloworld" > file.txt; '
+                               f'for i in {{1..{iterations}}}; do '
+                               'cat file.txt file.txt > file2.txt && '
+                               'mv file2.txt file.txt; done\'',
+                               self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        cp = cli.wait(uuids, self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        cp = cli.tail(uuids[0], 'file.txt', self.cook_url, f'--lines 1')
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertEqual('helloworld' * pow(2, iterations), cli.decode(cp.stdout))
+
+    def test_tail_follow(self):
+        sleep_seconds_between_lines = 0.5
+        cp, uuids = cli.submit(
+            f'bash -c \'for i in {{1..30}}; do echo $i >> bar; sleep {sleep_seconds_between_lines}; done\'',
+            self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        util.wait_for_job(self.cook_url, uuids[0], 'running')
+        proc = cli.tail(uuids[0], 'bar', self.cook_url,
+                        f'--follow --sleep-interval {sleep_seconds_between_lines}',
+                        wait_for_exit=False)
+        try:
+            # Wait a bit while the tail runs and then check the output
+            sleep_seconds_before_tail_check = sleep_seconds_between_lines * 3
+            time.sleep(sleep_seconds_before_tail_check)
+            lines = proc.stdout.readlines()
+            self.logger.info(f'lines read: {lines}')
+            self.assertLess(0, len(lines))
+            for i, line in enumerate(lines):
+                self.assertEqual(f'{i+1}\n', line.decode())
+
+            # Wait another bit and then check the (new) output
+            time.sleep(sleep_seconds_before_tail_check)
+            lines = proc.stdout.readlines()
+            self.logger.info(f'lines read: {lines}')
+            self.assertLess(0, len(lines))
+            for j, line in enumerate(lines):
+                self.assertEqual(f'{i+1+j+1}\n', line.decode())
+        finally:
+            proc.kill()
+            util.kill_jobs(self.cook_url, jobs=uuids)
