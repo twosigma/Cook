@@ -160,14 +160,15 @@ def query_unique(clusters, uuid):
     raise Exception(f'Encountered unexpected error when querying for uuid {uuid}.')
 
 
-def __choose_latest_instance(job):
+def __get_latest_instance(job):
     """Returns the most recently started (i.e. latest) instance of the given job"""
-    instances = job['instances']
-    if len(instances) == 0:
-        raise Exception(f'Job {job["uuid"]} currently has no instances.')
+    if 'instances' in job:
+        instances = job['instances']
+        if instances:
+            instance = max(instances, key=itemgetter('start_time'))
+            return instance
 
-    instance = max(instances, key=itemgetter('start_time'))
-    return instance
+    raise Exception(f'Job {job["uuid"]} currently has no instances.')
 
 
 def query_unique_and_run(clusters, job_or_instance_uuid, command_fn):
@@ -175,10 +176,14 @@ def query_unique_and_run(clusters, job_or_instance_uuid, command_fn):
     query_result = query_unique(clusters, job_or_instance_uuid)
     if query_result['type'] == 'job':
         job = query_result['data']
-        instance = __choose_latest_instance(job)
+        instance = __get_latest_instance(job)
         directory = mesos.retrieve_instance_sandbox_directory(instance, job)
         command_fn(instance, directory)
     elif query_result['type'] == 'instance':
         instance, job = query_result['data']
         directory = mesos.retrieve_instance_sandbox_directory(instance, job)
         command_fn(instance, directory)
+    else:
+        # This should not happen, because query_unique should
+        # only return a map with type "job" or type "instance"
+        raise Exception(f'Encountered error when querying for {job_or_instance_uuid}.')

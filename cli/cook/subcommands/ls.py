@@ -95,7 +95,9 @@ def ls_for_instance(instance, sandbox_dir, path, long_format, as_json):
                 table = tabulate(rows, tablefmt='plain')
                 print(table)
             else:
-                print('  '.join([format_path(e) for e in entries]))
+                print('\n'.join(colors.wrap('  '.join([format_path(e) for e in entries]))))
+        else:
+            logging.info('the directory is empty')
 
 
 def ls(clusters, args):
