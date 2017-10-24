@@ -544,7 +544,7 @@ class CookTest(unittest.TestCase):
         util.kill_jobs(self.cook_url, [job_uuid])
         job = util.load_job(self.cook_url, job_uuid)
         self.assertEqual('failed', job['state'])
-        resp = util.session.put('%s/retry' % self.cook_url, json={'retries': 2, 'jobs': [job_uuid]})
+        resp = util.retry_jobs(self.cook_url, retries=2, jobs=[job_uuid])
         self.assertEqual(201, resp.status_code, resp.text)
         job = util.load_job(self.cook_url, job_uuid)
         self.assertIn(job['status'], ['waiting', 'running'])
@@ -867,6 +867,39 @@ class CookTest(unittest.TestCase):
         finally:
             # Now try to kill the group again
             # (ensure it still works when there are no live jobs)
+            util.kill_groups(self.cook_url, [group_uuid])
+
+    def test_group_change_retries(self):
+        group_spec = self.minimal_group()
+        group_uuid = group_spec['uuid']
+        job_spec = {'group': group_uuid, 'command': f'sleep 1'}
+        try:
+            jobs, resp = util.submit_jobs(self.cook_url, job_spec, 10, groups=[group_spec])
+            self.assertEqual(resp.status_code, 201)
+            # wait for some job to start
+            def group_query():
+                return util.group_detail_query(self.cook_url, group_uuid)
+            util.wait_until(group_query, util.group_some_job_started)
+            # kill the whole group
+            util.kill_groups(self.cook_url, [group_uuid])
+            # wait for all the jobs to die
+            def jobs_query():
+                return util.query_jobs(self.cook_url, True, job=jobs)
+            util.wait_until(jobs_query, util.all_instances_done)
+            # retry all jobs in the group
+            resp = util.retry_jobs(self.cook_url, retries=2, groups=[group_uuid])
+            # wait for some job to start
+            util.wait_until(group_query, util.group_some_job_started)
+            # ensure none of the jobs are still in a failed state
+            job_data = util.query_jobs(self.cook_url, job=jobs)
+            self.assertEqual(200, job_data.status_code)
+            for job in job_data.json():
+                if job['status'] not in ['waiting', 'running']:
+                    job_details = f'Job details: {json.dumps(job, sort_keys=True)}'
+                    self.assertEqual('completed', job['status'], job_details)
+                    self.assertEqual('success', job['state'], job_details)
+        finally:
+            # ensure that we don't leave a bunch of jobs running/waiting
             util.kill_groups(self.cook_url, [group_uuid])
 
     def test_400_on_group_query_without_uuid(self):
