@@ -223,22 +223,24 @@ class CookTest(unittest.TestCase):
             util.wait_for_job(self.cook_url, job_uuid, 'running')
             util.wait_for_job(self.cook_url, job_uuid, 'completed', job_timeout_interval_ms)
             job = util.wait_for_end_time(self.cook_url, job_uuid)
-            self.assertEqual(1, len(job['instances']))
+            job_details = f"Job details: {json.dumps(job, sort_keys=True)}"
+            self.assertEqual(1, len(job['instances']), job_details)
             instance = job['instances'][0]
-            self.assertEqual('failed', instance['status'])
+            self.assertEqual('failed', instance['status'], job_details)
             valid_reasons = [# we killed the job because it took too long
                              CookTest.REASON_MAX_RUNTIME_EXCEEDED,
                              # the job was killed before the executor was properly registered
                              CookTest.REASON_EXECUTOR_UNREGISTERED,
                              # the job didn't die gracefully when we terminated it
                              CookTest.REASON_CMD_NON_ZERO_EXIT]
-            self.assertIn(instance['reason_code'], valid_reasons)
+            self.assertIn(instance['reason_code'], valid_reasons, job_details)
             actual_running_time_ms = instance['end_time'] - instance['start_time']
-            self.assertGreater(actual_running_time_ms, max_runtime_ms)
+            self.assertGreater(actual_running_time_ms, max_runtime_ms, job_details)
+            self.assertGreater(job_timeout_interval_ms, actual_running_time_ms, job_details)
             if job_executor_type == 'cook':
                 job = util.wait_for_exit_code(self.cook_url, job_uuid)
-                self.assertNotEqual(0, job['instances'][0]['exit_code'])
-                self.assertTrue(bool(job['instances'][0]['sandbox_directory']))
+                self.assertNotEqual(0, job['instances'][0]['exit_code'], job_details)
+                self.assertTrue(bool(job['instances'][0]['sandbox_directory']), job_details)
         finally:
             util.kill_jobs(self.cook_url, [job_uuid])
 
