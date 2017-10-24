@@ -284,6 +284,25 @@ def wait_for_exit_code(cook_url, job_id):
     return response.json()[0]
 
 
+def wait_for_end_time(cook_url, job_id):
+    """Wait for the given job's end_time field to appear in instance 0."""
+    job_id = unpack_uuid(job_id)
+    query = lambda: query_jobs(cook_url, True, job=[job_id])
+    def predicate(response):
+        job = response.json()[0]
+        if not job['instances']:
+            logger.info(f"Job {job_id} has no instances.")
+        else:
+            inst = job['instances'][0]
+            if 'end_time' not in inst:
+                logger.info(f"Job {job_id} instance {inst['task_id']} has no end time.")
+            else:
+                logger.info(f"Job {job_id} instance {inst['task_id']} has end_time {inst['end_time']}.")
+                return True
+    response = wait_until(query, predicate, max_wait_ms=2000, wait_interval_ms=250)
+    return response.json()[0]
+
+
 def all_instances_killed(response):
     """
     Helper method used with the wait_until function.
