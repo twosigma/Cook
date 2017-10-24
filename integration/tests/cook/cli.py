@@ -28,7 +28,7 @@ def stdout(cp):
 
 def sh(command, stdin=None, env=None, wait_for_exit=True):
     """Runs command using subprocess.run"""
-    logger.info(command + ((' # stdin: %s' % decode(stdin)) if stdin else ''))
+    logger.info(command + (f' # stdin: {decode(stdin)}' if stdin else ''))
     command_args = shlex.split(command)
     if wait_for_exit:
         cp = subprocess.run(command_args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, input=stdin, env=env)
@@ -45,9 +45,9 @@ def sh(command, stdin=None, env=None, wait_for_exit=True):
 
 def cli(args, cook_url=None, flags=None, stdin=None, env=None, wait_for_exit=True):
     """Runs a CLI command with the given URL, flags, and stdin"""
-    url_flag = ('--url %s ' % cook_url) if cook_url else ''
-    other_flags = ('%s ' % flags) if flags else ''
-    cp = sh('cs %s%s%s' % (url_flag, other_flags, args), stdin, env, wait_for_exit)
+    url_flag = f'--url {cook_url} ' if cook_url else ''
+    other_flags = f'{flags} ' if flags else ''
+    cp = sh(f'cs {url_flag}{other_flags}{args}', stdin, env, wait_for_exit)
     return cp
 
 

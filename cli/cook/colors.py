@@ -16,7 +16,7 @@ def __ls_color(s, code, fallback_fn):
     Parses the LS_COLORS environment variable to get consistent colors with the
     user's current setup, falling back to default formatting if the parsing fails
     """
-    if 'LS_COLORS' in os.environ:
+    if term.is_a_tty and 'LS_COLORS' in os.environ:
         split_pairs = [p.split('=') for p in os.environ['LS_COLORS'].split(':')]
         matched_pairs = [p for p in split_pairs if len(p) == 2 and p[0] == code]
         if len(matched_pairs) > 0:

@@ -15,14 +15,14 @@ DEFAULT_FOLLOW_SLEEP_SECS = 1.0
 
 # For everything we print in tail, we want to forcibly flush
 # the stream, and we don't want to end with a newline
-prn = partial(print, flush=True, end='')
+__print = partial(print, flush=True, end='')
 
 
 def read_file(instance, sandbox_dir, path, offset=None, length=None):
     """Calls the Mesos agent files/read API for the given path, offset, and length"""
     logging.info(f'reading file from sandbox {sandbox_dir} with path {path} at offset {offset} and length {length}')
     agent_url = mesos.instance_to_agent_url(instance)
-    params = {'path': os.path.join(sandbox_dir, path or '')}
+    params = {'path': os.path.join(sandbox_dir, path)}
     if offset is not None:
         params['offset'] = offset
     if length is not None:
@@ -41,62 +41,68 @@ def read_file(instance, sandbox_dir, path, offset=None, length=None):
 
 def print_lines(lines):
     """Prints the given list of lines, delimited, and with no trailing newline"""
-    prn(LINE_DELIMITER.join(lines))
+    __print(LINE_DELIMITER.join(lines))
 
 
-def tail_for_instance(instance, sandbox_dir, path, num_lines_to_print, follow, follow_sleep_seconds):
+def check_enough_lines_read(line_buffer, num_lines_to_print):
+    """If enough lines have been read to satisfy the user's request, prints those lines"""
+    num_lines_buffered = len(line_buffer)
+    if num_lines_buffered > 0:
+        # If the last line is empty, don't count it as a line that we care about
+        last_line_empty = line_buffer[-1] == ''
+        num_lines_printable = num_lines_buffered - (1 if last_line_empty else 0)
+        if num_lines_printable >= num_lines_to_print:
+            if last_line_empty:
+                num_lines_to_print = num_lines_to_print + 1
+            print_lines(line_buffer[-num_lines_to_print:])
+            return True
+    return False
+
+
+def check_start_of_file(offset, partial_line_buffer, line_buffer):
+    """If we have reached the start of the file, prints what we have read"""
+    if offset == 0:
+        __print(partial_line_buffer)
+        num_lines_buffered = len(line_buffer)
+        if num_lines_buffered > 0:
+            __print('\n')
+            print_lines(line_buffer)
+        return True
+    return False
+
+
+def tail_backwards(file_size, read_fn, num_lines_to_print):
     """
-    Tails the contents of the Mesos sandbox path for the given instance. The
-    algorithm reads chunks backwards from the end of the file and splits them into
-    lines as it goes. If it finds that enough lines have been read to satisfy the
-    user's request, or if it reaches the beginning of the file, it stops (unless
-    follow is truthy). If follow is truthy, it will try and read more data from the
-    file until the user terminates. Note that this assumes files will not shrink.
+    Reads chunks backwards from the end of the file and splits them into
+    lines as it goes. If it finds that enough lines have been read to satisfy
+    the user's request, or if it reaches the beginning of the file, it stops
     """
-    read = partial(read_file, instance=instance, sandbox_dir=sandbox_dir, path=path)
-
-    # Get the current file size
-    file_size = read()['offset']
-
-    # Initialize loop variables
     offset = max(file_size - CHUNK_SIZE, 0)
     length = file_size - offset
-    text_buffer = ''
+    partial_line_buffer = ''
     line_buffer = []
 
     while True:
         # Read the data at offset and length
-        resp = read(offset=offset, length=length)
+        resp = read_fn(offset=offset, length=length)
         data = resp['data']
 
         # Add to our buffer of text we've read from the agent
-        text_buffer = data + text_buffer
+        partial_line_buffer = data + partial_line_buffer
 
         # Attempt to split into lines
-        lines = text_buffer.split(LINE_DELIMITER)
+        lines = partial_line_buffer.split(LINE_DELIMITER)
         if len(lines) > 1:
             index_first_delimiter = len(lines[0])
-            text_buffer = text_buffer[:index_first_delimiter]
+            partial_line_buffer = partial_line_buffer[:index_first_delimiter]
             line_buffer = lines[1:] + line_buffer
 
         # Check if we've read enough lines
-        num_lines_buffered = len(line_buffer)
-        if num_lines_buffered > 0:
-            # If the last line is empty, don't count it as a line that we care about
-            last_line_empty = line_buffer[-1] == ''
-            num_lines_printable = num_lines_buffered - (1 if last_line_empty else 0)
-            if num_lines_printable >= num_lines_to_print:
-                if last_line_empty:
-                    num_lines_to_print = num_lines_to_print + 1
-                print_lines(line_buffer[-num_lines_to_print:])
-                break
+        if check_enough_lines_read(line_buffer, num_lines_to_print):
+            break
 
         # Check if we've reached the start of the file
-        if offset == 0:
-            prn(text_buffer)
-            if num_lines_buffered > 0:
-                prn('\n')
-                print_lines(line_buffer)
+        if check_start_of_file(offset, partial_line_buffer, line_buffer):
             break
 
         # Update our offset and length
@@ -104,21 +110,32 @@ def tail_for_instance(instance, sandbox_dir, path, num_lines_to_print, follow, f
         length = offset - new_offset
         offset = new_offset
 
-    if not follow:
-        return
 
-    # Follow as the file grows
+def tail_follow(file_size, read_fn, follow_sleep_seconds):
+    """Follows the file as it grows, printing new contents"""
     offset = file_size
     length = CHUNK_SIZE
     while True:
-        resp = read(offset=offset, length=length)
+        resp = read_fn(offset=offset, length=length)
         data = resp['data']
         num_chars_read = len(data)
         if num_chars_read > 0:
-            prn(data)
+            __print(data)
             offset = offset + num_chars_read
 
         time.sleep(follow_sleep_seconds)
+
+
+def tail_for_instance(instance, sandbox_dir, path, num_lines_to_print, follow, follow_sleep_seconds):
+    """
+    Tails the contents of the Mesos sandbox path for the given instance. If follow is truthy, it will
+    try and read more data from the file until the user terminates. This assumes files will not shrink.
+    """
+    read = partial(read_file, instance=instance, sandbox_dir=sandbox_dir, path=path)
+    file_size = read()['offset']
+    tail_backwards(file_size, read, num_lines_to_print)
+    if follow:
+        tail_follow(file_size, read, follow_sleep_seconds)
 
 
 def tail(clusters, args):
@@ -150,7 +167,7 @@ def register(add_parser, add_defaults):
     parser.add_argument('--follow', '-f', help='output appended data as the file grows', action='store_true')
     parser.add_argument('--sleep-interval', '-s',
                         help=f'with -f, sleep for N seconds (default {DEFAULT_FOLLOW_SLEEP_SECS}) between iterations',
-                        metavar='N')
+                        metavar='N', type=float)
     parser.add_argument('uuid', nargs=1)
     parser.add_argument('path', nargs=1)
 

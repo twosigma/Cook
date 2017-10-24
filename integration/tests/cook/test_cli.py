@@ -712,6 +712,15 @@ class CookCliTest(unittest.TestCase):
             proc.kill()
             util.kill_jobs(self.cook_url, jobs=uuids)
 
+    def test_tail_zero_byte_file(self):
+        cp, uuids = cli.submit('touch file.txt', self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        cp = cli.wait(uuids, self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        cp = cli.tail(uuids[0], 'file.txt', self.cook_url, f'--lines 1')
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertEqual('', cli.decode(cp.stdout))
+
     def test_ls(self):
 
         def entry(name):
@@ -793,7 +802,7 @@ class CookCliTest(unittest.TestCase):
         path = 't?.sh'
         cp, _ = cli.ls(uuids[0], self.cook_url, path, parse_json=False)
         self.assertEqual(1, cp.returncode, cp.stderr)
-        self.assertIn('The ls command does not support globbing', cli.stdout(cp))
+        self.assertIn('ls does not support globbing', cli.stdout(cp))
         cp, entries = cli.ls(uuids[0], self.cook_url, f'{path} --literal')
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual(1, len(entries))
@@ -806,7 +815,7 @@ class CookCliTest(unittest.TestCase):
         path = '[ab]*'
         cp, _ = cli.ls(uuids[0], self.cook_url, path, parse_json=False)
         self.assertEqual(1, cp.returncode, cp.stderr)
-        self.assertIn('The ls command does not support globbing', cli.stdout(cp))
+        self.assertIn('ls does not support globbing', cli.stdout(cp))
         cp, entries = cli.ls(uuids[0], self.cook_url, f'{path} --literal')
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual(1, len(entries))
@@ -819,7 +828,7 @@ class CookCliTest(unittest.TestCase):
         path = '{b,c,est}'
         cp, _ = cli.ls(uuids[0], self.cook_url, path, parse_json=False)
         self.assertEqual(1, cp.returncode, cp.stderr)
-        self.assertIn('The ls command does not support globbing', cli.stdout(cp))
+        self.assertIn('ls does not support globbing', cli.stdout(cp))
         cp, entries = cli.ls(uuids[0], self.cook_url, f'{path} --literal')
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual(1, len(entries))
@@ -832,7 +841,7 @@ class CookCliTest(unittest.TestCase):
         path = '*'
         cp, _ = cli.ls(uuids[0], self.cook_url, path, parse_json=False)
         self.assertEqual(1, cp.returncode, cp.stderr)
-        self.assertIn('The ls command does not support globbing', cli.stdout(cp))
+        self.assertIn('ls does not support globbing', cli.stdout(cp))
         cp, entries = cli.ls(uuids[0], self.cook_url, f'{path} --literal')
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual(1, len(entries))
@@ -845,7 +854,7 @@ class CookCliTest(unittest.TestCase):
         path = 't*'
         cp, _ = cli.ls(uuids[0], self.cook_url, path, parse_json=False)
         self.assertEqual(1, cp.returncode, cp.stderr)
-        self.assertIn('The ls command does not support globbing', cli.stdout(cp))
+        self.assertIn('ls does not support globbing', cli.stdout(cp))
         cp, entries = cli.ls(uuids[0], self.cook_url, f'{path} --literal')
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual(1, len(entries))
