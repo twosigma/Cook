@@ -10,3 +10,7 @@ dist
 __pycache__
 *.egg-info
 *.spec
+
+# Log file
+executor.log
+

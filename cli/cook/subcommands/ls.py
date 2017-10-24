@@ -106,10 +106,23 @@ def ls(clusters, args):
     path = args.get('path')
     long_format = args.get('long_format')
     as_json = args.get('json')
+    literal = args.get('literal')
 
     if len(uuids) > 1:
         # argparse should prevent this, but we'll be defensive anyway
         raise Exception(f'You can only provide a single uuid.')
+
+    if path and not literal and any(c in path for c in '*?[]{}'):
+        message = 'It looks like you are trying to glob, but ls does not support globbing. ' \
+                  f'You can use the {colors.bold("ssh")} command instead:\n' \
+                  '\n' \
+                  f'  cs ssh {uuids[0]}\n' \
+                  '\n' \
+                  f'Or, if you want the literal path {colors.bold(path)}, add {colors.bold("--literal")}:\n' \
+                  '\n' \
+                  f'  cs ls {colors.bold("--literal")} {uuids[0]} {path}'
+        print(message)
+        return 1
 
     command_fn = partial(ls_for_instance, path=path, long_format=long_format, as_json=as_json)
     query_unique_and_run(clusters, uuids[0], command_fn)
@@ -121,6 +134,7 @@ def register(add_parser, _):
     group = parser.add_mutually_exclusive_group()
     group.add_argument('-l', help='use a long listing format', dest='long_format', action='store_true')
     group.add_argument('--json', help='show the data in JSON format', dest='json', action='store_true')
+    parser.add_argument('--literal', help='treat globbing characters literally', dest='literal', action='store_true')
     parser.add_argument('uuid', nargs=1)
     parser.add_argument('path', nargs='?')
     return ls

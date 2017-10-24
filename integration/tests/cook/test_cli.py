@@ -714,8 +714,8 @@ class CookCliTest(unittest.TestCase):
 
     def test_ls(self):
 
-        def entry_by_name(name):
-            return next(e for e in entries if os.path.basename(os.path.normpath(e['path'])) == name)
+        def entry(name):
+            return cli.ls_entry_by_name(entries, name)
 
         cp, uuids = cli.submit('"mkdir foo; echo 123 > foo/bar; echo 45678 > baz; mkdir empty"', self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
@@ -731,7 +731,7 @@ class CookCliTest(unittest.TestCase):
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual(1, len(entries))
         self.logger.debug(entries)
-        baz = entry_by_name('baz')
+        baz = entry('baz')
         self.assertEqual('-rw-r--r--', baz['mode'])
         self.assertEqual(1, baz['nlink'])
         self.assertEqual(6, baz['size'])
@@ -747,17 +747,17 @@ class CookCliTest(unittest.TestCase):
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertLessEqual(4, len(entries))
         self.logger.debug(entries)
-        foo = entry_by_name('foo')
+        foo = entry('foo')
         self.assertEqual('drwxr-xr-x', foo['mode'])
         self.assertEqual(2, foo['nlink'])
-        baz = entry_by_name('baz')
+        baz = entry('baz')
         self.assertEqual('-rw-r--r--', baz['mode'])
         self.assertEqual(1, baz['nlink'])
         self.assertEqual(6, baz['size'])
-        stdout = entry_by_name('stdout')
+        stdout = entry('stdout')
         self.assertEqual('-rw-r--r--', stdout['mode'])
         self.assertEqual(1, stdout['nlink'])
-        stderr = entry_by_name('stderr')
+        stderr = entry('stderr')
         self.assertEqual('-rw-r--r--', stderr['mode'])
         self.assertEqual(1, stderr['nlink'])
 
@@ -766,7 +766,7 @@ class CookCliTest(unittest.TestCase):
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual(1, len(entries))
         self.logger.debug(entries)
-        bar = entry_by_name('bar')
+        bar = entry('bar')
         self.assertEqual('-rw-r--r--', bar['mode'])
         self.assertEqual(1, bar['nlink'])
         self.assertEqual(4, bar['size'])
@@ -776,7 +776,81 @@ class CookCliTest(unittest.TestCase):
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual(1, len(entries))
         self.logger.debug(entries)
-        bar = entry_by_name('bar')
+        bar = entry('bar')
         self.assertEqual('-rw-r--r--', bar['mode'])
         self.assertEqual(1, bar['nlink'])
         self.assertEqual(4, bar['size'])
+
+    def test_ls_with_globbing_characters(self):
+
+        def entry(name):
+            return cli.ls_entry_by_name(entries, name)
+
+        cp, uuids = cli.submit('"touch t?.sh; touch [ab]*; touch {b,c,est}; touch \'*\'; touch \'t*\'"', self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        util.wait_for_job(self.cook_url, uuids[0], 'completed')
+
+        path = 't?.sh'
+        cp, _ = cli.ls(uuids[0], self.cook_url, path, parse_json=False)
+        self.assertEqual(1, cp.returncode, cp.stderr)
+        self.assertIn('The ls command does not support globbing', cli.stdout(cp))
+        cp, entries = cli.ls(uuids[0], self.cook_url, f'{path} --literal')
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertEqual(1, len(entries))
+        self.logger.debug(entries)
+        bar = entry(path)
+        self.assertEqual('-rw-r--r--', bar['mode'])
+        self.assertEqual(1, bar['nlink'])
+        self.assertEqual(0, bar['size'])
+
+        path = '[ab]*'
+        cp, _ = cli.ls(uuids[0], self.cook_url, path, parse_json=False)
+        self.assertEqual(1, cp.returncode, cp.stderr)
+        self.assertIn('The ls command does not support globbing', cli.stdout(cp))
+        cp, entries = cli.ls(uuids[0], self.cook_url, f'{path} --literal')
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertEqual(1, len(entries))
+        self.logger.debug(entries)
+        bar = entry(path)
+        self.assertEqual('-rw-r--r--', bar['mode'])
+        self.assertEqual(1, bar['nlink'])
+        self.assertEqual(0, bar['size'])
+
+        path = '{b,c,est}'
+        cp, _ = cli.ls(uuids[0], self.cook_url, path, parse_json=False)
+        self.assertEqual(1, cp.returncode, cp.stderr)
+        self.assertIn('The ls command does not support globbing', cli.stdout(cp))
+        cp, entries = cli.ls(uuids[0], self.cook_url, f'{path} --literal')
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertEqual(1, len(entries))
+        self.logger.debug(entries)
+        bar = entry(path)
+        self.assertEqual('-rw-r--r--', bar['mode'])
+        self.assertEqual(1, bar['nlink'])
+        self.assertEqual(0, bar['size'])
+
+        path = '*'
+        cp, _ = cli.ls(uuids[0], self.cook_url, path, parse_json=False)
+        self.assertEqual(1, cp.returncode, cp.stderr)
+        self.assertIn('The ls command does not support globbing', cli.stdout(cp))
+        cp, entries = cli.ls(uuids[0], self.cook_url, f'{path} --literal')
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertEqual(1, len(entries))
+        self.logger.debug(entries)
+        bar = entry(path)
+        self.assertEqual('-rw-r--r--', bar['mode'])
+        self.assertEqual(1, bar['nlink'])
+        self.assertEqual(0, bar['size'])
+
+        path = 't*'
+        cp, _ = cli.ls(uuids[0], self.cook_url, path, parse_json=False)
+        self.assertEqual(1, cp.returncode, cp.stderr)
+        self.assertIn('The ls command does not support globbing', cli.stdout(cp))
+        cp, entries = cli.ls(uuids[0], self.cook_url, f'{path} --literal')
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertEqual(1, len(entries))
+        self.logger.debug(entries)
+        bar = entry(path)
+        self.assertEqual('-rw-r--r--', bar['mode'])
+        self.assertEqual(1, bar['nlink'])
+        self.assertEqual(0, bar['size'])

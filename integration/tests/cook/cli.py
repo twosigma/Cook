@@ -158,3 +158,11 @@ def ls(uuid, cook_url, path=None, parse_json=True):
     cp = cli(args, cook_url)
     entries = json.loads(stdout(cp)) if parse_json else None
     return cp, entries
+
+
+def ls_entry_by_name(entries, name):
+    """
+    Given a collection of entries returned by ls, and a name
+    to find, returns the first entry with a matching name
+    """
+    return next(e for e in entries if os.path.basename(os.path.normpath(e['path'])) == name)
