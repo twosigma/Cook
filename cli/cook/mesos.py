@@ -56,6 +56,6 @@ def retrieve_instance_sandbox_directory(instance, job):
 
     if len(directories) > 1:
         # This should not happen, but we'll be defensive anyway
-        raise Exception(f'Found more than Mesos executor with ID {instance_id}')
+        raise Exception(f'Found more than one Mesos executor with ID {instance_id}')
 
     return directories[0]
