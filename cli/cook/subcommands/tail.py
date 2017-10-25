@@ -161,7 +161,7 @@ def tail(clusters, args):
 
 def register(add_parser, add_defaults):
     """Adds this sub-command's parser and returns the action function"""
-    parser = add_parser('tail', help='output the last part of files in the Mesos sandbox by job or instance uuid')
+    parser = add_parser('tail', help='output last part of files by job or instance uuid')
     parser.add_argument('--lines', '-n', help=f'output the last NUM lines (default {DEFAULT_NUM_LINES})',
                         metavar='NUM', type=check_positive)
     parser.add_argument('--follow', '-f', help='output appended data as the file grows', action='store_true')

@@ -47,7 +47,7 @@ def register(add_parser, add_defaults):
     default_timeout = None
     default_timeout_text = 'wait indefinitely'
     default_interval = 5
-    wait_parser = add_parser('wait', help='wait for job(s) to complete by uuid')
+    wait_parser = add_parser('wait', help='wait for jobs / instances / groups to complete by uuid')
     wait_parser.add_argument('uuid', nargs='+')
     wait_parser.add_argument('--timeout', '-t',
                              help=f'maximum time (in seconds) to wait (default = {default_timeout_text})', type=int)
