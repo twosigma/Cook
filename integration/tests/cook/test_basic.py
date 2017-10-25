@@ -208,26 +208,35 @@ class CookTest(unittest.TestCase):
                                                         'timeout-interval-minutes')
         # the value needs to be a little more than 2 times settings_timeout_interval_minutes to allow
         # at least two runs of the lingering task killer
-        job_timeout_interval_seconds = (2 * settings_timeout_interval_minutes * 60) + 15
-        job_timeout_interval_ms = job_timeout_interval_seconds * 1000
+        job_sleep_seconds = (2 * settings_timeout_interval_minutes * 60) + 15
+        job_sleep_ms = job_sleep_seconds * 1000
         max_runtime_ms = 5000
-        assert max_runtime_ms < job_timeout_interval_ms
+        assert max_runtime_ms < job_sleep_ms
         try:
+            # schedule a job that will go over its max_runtime time limit
             job_uuid, resp = util.submit_job(self.cook_url,
-                                             command=f'sleep {job_timeout_interval_seconds}',
+                                             command=f'sleep {job_sleep_seconds}',
                                              executor=job_executor_type, max_runtime=max_runtime_ms)
             self.assertEqual(201, resp.status_code, msg=resp.content)
+            # We wait for the job to start running, and only then start waiting for the max-runtime timeout,
+            # otherwise we could get a false-negative on wait-for-job 'completed' because of a scheduling delay.
+            # We wait for the 'end_time' attribute separately because there is another small delay
+            # between the job being killed and that attribute being set.
+            # Having three separate waits also disambiguates the root cause of a wait-timeout failure.
             util.wait_for_job(self.cook_url, job_uuid, 'running')
-            util.wait_for_job(self.cook_url, job_uuid, 'completed', job_timeout_interval_ms)
+            util.wait_for_job(self.cook_url, job_uuid, 'completed', job_sleep_ms)
             job = util.wait_for_end_time(self.cook_url, job_uuid)
             job_details = f"Job details: {json.dumps(job, sort_keys=True)}"
             self.assertEqual(1, len(job['instances']), job_details)
             instance = job['instances'][0]
+            # did the job fail as expected?
             self.assertEqual('failed', instance['status'], job_details)
             self.assertEqual(instance['reason_code'], reasons.MAX_RUNTIME_EXCEEDED, job_details)
+            # was the actual running time consistent with running over time and being killed?
             actual_running_time_ms = instance['end_time'] - instance['start_time']
             self.assertGreater(actual_running_time_ms, max_runtime_ms, job_details)
-            self.assertGreater(job_timeout_interval_ms, actual_running_time_ms, job_details)
+            self.assertGreater(job_sleep_ms, actual_running_time_ms, job_details)
+            # verify additional fields set when the cook executor is used
             if job_executor_type == 'cook':
                 job = util.wait_for_exit_code(self.cook_url, job_uuid)
                 self.assertNotEqual(0, job['instances'][0]['exit_code'], job_details)
