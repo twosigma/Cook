@@ -273,9 +273,8 @@ def wait_for_exit_code(cook_url, job_id, max_delay_ms=2000):
 
     def query():
         return query_jobs(cook_url, True, job=[job_id])
-
-    def predicate(resp):
-        job = resp.json()[0]
+    def predicate(response):
+        job = response.json()[0]
         if not job['instances']:
             logger.info(f"Job {job_id} has no instances.")
         else:
@@ -297,7 +296,8 @@ def wait_for_end_time(cook_url, job_id, max_delay_ms=2000):
     and raises an exception if the max_delay_ms wait time is exceeded.
     """
     job_id = unpack_uuid(job_id)
-    query = lambda: query_jobs(cook_url, True, job=[job_id])
+    def query():
+        return query_jobs(cook_url, True, job=[job_id])
     def predicate(response):
         job = response.json()[0]
         if not job['instances']:
