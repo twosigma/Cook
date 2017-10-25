@@ -8,14 +8,11 @@ import uuid
 from nose.plugins.attrib import attr
 from retrying import retry
 
+from tests.cook import reasons
 from tests.cook import util
 
 class CookTest(unittest.TestCase):
     _multiprocess_can_split_ = True
-
-    REASON_CMD_NON_ZERO_EXIT     = 99003
-    REASON_MAX_RUNTIME_EXCEEDED  =  2003
-    REASON_EXECUTOR_UNREGISTERED =  6002
 
     @staticmethod
     def minimal_group(**kwargs):
@@ -227,13 +224,7 @@ class CookTest(unittest.TestCase):
             self.assertEqual(1, len(job['instances']), job_details)
             instance = job['instances'][0]
             self.assertEqual('failed', instance['status'], job_details)
-            valid_reasons = [# we killed the job because it took too long
-                             CookTest.REASON_MAX_RUNTIME_EXCEEDED,
-                             # the job was killed before the executor was properly registered
-                             CookTest.REASON_EXECUTOR_UNREGISTERED,
-                             # the job didn't die gracefully when we terminated it
-                             CookTest.REASON_CMD_NON_ZERO_EXIT]
-            self.assertIn(instance['reason_code'], valid_reasons, job_details)
+            self.assertEqual(instance['reason_code'], reasons.MAX_RUNTIME_EXCEEDED, job_details)
             actual_running_time_ms = instance['end_time'] - instance['start_time']
             self.assertGreater(actual_running_time_ms, max_runtime_ms, job_details)
             self.assertGreater(job_timeout_interval_ms, actual_running_time_ms, job_details)
@@ -807,7 +798,7 @@ class CookTest(unittest.TestCase):
         jobs = util.query_jobs(self.cook_url, True, job=[job_fast, job_slow]).json()
         self.assertEqual('success', jobs[0]['state'], f"Job details: {json.dumps(jobs[0], sort_keys=True)}")
         self.assertEqual('failed',  jobs[1]['state'], f"Job details: {json.dumps(jobs[1], sort_keys=True)}")
-        self.assertEqual(CookTest.REASON_CMD_NON_ZERO_EXIT, jobs[1]['instances'][0]['reason_code'])
+        self.assertEqual(reasons.CMD_NON_ZERO_EXIT, jobs[1]['instances'][0]['reason_code'])
         # Now try to kill the group again
         # (ensure it still works when there are no live jobs)
         util.kill_groups(self.cook_url, [group_uuid])
