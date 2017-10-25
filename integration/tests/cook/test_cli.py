@@ -577,7 +577,7 @@ class CookCliTest(unittest.TestCase):
         util.wait_for_job(self.cook_url, uuids[0], 'waiting')
         cp = cli.ssh(uuids[0], self.cook_url)
         self.assertEqual(1, cp.returncode, cp.stdout)
-        self.assertIn('This job currently has no instances', cli.decode(cp.stderr))
+        self.assertIn('currently has no instances', cli.decode(cp.stderr))
 
     def test_ssh_invalid_uuid(self):
         cp = cli.ssh(uuid.uuid4(), self.cook_url)
@@ -617,3 +617,253 @@ class CookCliTest(unittest.TestCase):
         self.assertIn(hostname, stdout)
         self.assertIn(f'-t {hostname} cd', stdout)
         self.assertIn('; bash', stdout)
+
+    def test_tail_basic(self):
+        cp, uuids = cli.submit('bash -c "for i in {1..100}; do echo $i >> foo; done"', self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        cp = cli.wait(uuids, self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        # Ask for 0 lines
+        cp = cli.tail(uuids[0], 'foo', self.cook_url, '--lines 0')
+        self.assertEqual(2, cp.returncode, cp.stderr)
+        self.assertIn('0 is not a positive integer', cli.decode(cp.stderr))
+        # Ask for 1 line
+        cp = cli.tail(uuids[0], 'foo', self.cook_url, '--lines 1')
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertEqual('100\n', cli.decode(cp.stdout))
+        # Ask for 10 lines
+        cp = cli.tail(uuids[0], 'foo', self.cook_url, '--lines 10')
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertEqual('\n'.join([str(i) for i in range(91, 101)]) + '\n', cli.decode(cp.stdout))
+        # Ask for 100 lines
+        cp = cli.tail(uuids[0], 'foo', self.cook_url, '--lines 100')
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertEqual('\n'.join([str(i) for i in range(1, 101)]) + '\n', cli.decode(cp.stdout))
+        # Ask for 1000 lines
+        cp = cli.tail(uuids[0], 'foo', self.cook_url, '--lines 1000')
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertEqual('\n'.join([str(i) for i in range(1, 101)]) + '\n', cli.decode(cp.stdout))
+        # Ask for a file that doesn't exist
+        cp = cli.tail(uuids[0], uuid.uuid4(), self.cook_url)
+        self.assertEqual(1, cp.returncode, cp.stderr)
+        self.assertIn('file was not found', cli.decode(cp.stderr))
+
+    def test_tail_no_newlines(self):
+        cp, uuids = cli.submit('bash -c \'for i in {1..100}; do printf "$i " >> foo; done\'', self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        cp = cli.wait(uuids, self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        cp = cli.tail(uuids[0], 'foo', self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertEqual(' '.join([str(i) for i in range(1, 101)]) + ' ', cli.decode(cp.stdout))
+
+    def test_tail_large_file(self):
+        iterations = 20
+        cp, uuids = cli.submit('bash -c \'printf "hello\\nworld\\n" > file.txt; '
+                               f'for i in {{1..{iterations}}}; do '
+                               'cat file.txt file.txt > file2.txt && '
+                               'mv file2.txt file.txt; done\'',
+                               self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        cp = cli.wait(uuids, self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        lines_to_tail = pow(2, iterations - 1)
+        cp = cli.tail(uuids[0], 'file.txt', self.cook_url, f'--lines {lines_to_tail}')
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertEqual('hello\nworld\n' * int(lines_to_tail / 2), cli.decode(cp.stdout))
+
+    def test_tail_large_file_no_newlines(self):
+        iterations = 18
+        cp, uuids = cli.submit('bash -c \'printf "helloworld" > file.txt; '
+                               f'for i in {{1..{iterations}}}; do '
+                               'cat file.txt file.txt > file2.txt && '
+                               'mv file2.txt file.txt; done\'',
+                               self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        cp = cli.wait(uuids, self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        cp = cli.tail(uuids[0], 'file.txt', self.cook_url, f'--lines 1')
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertEqual('helloworld' * pow(2, iterations), cli.decode(cp.stdout))
+
+    def test_tail_follow(self):
+        sleep_seconds_between_lines = 0.5
+        cp, uuids = cli.submit(
+            f'bash -c \'for i in {{1..30}}; do echo $i >> bar; sleep {sleep_seconds_between_lines}; done\'',
+            self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        util.wait_for_job(self.cook_url, uuids[0], 'running')
+        proc = cli.tail(uuids[0], 'bar', self.cook_url,
+                        f'--follow --sleep-interval {sleep_seconds_between_lines}',
+                        wait_for_exit=False)
+        try:
+            def readlines():
+                lines_read = proc.stdout.readlines()
+                self.logger.info(f'lines read: {lines_read}')
+                return lines_read
+
+            # Wait until the tail prints some lines and then check the output
+            lines = util.wait_until(readlines, lambda l: len(l) > 0)
+            start = int(lines[0].decode().strip())
+            for i, line in enumerate(lines):
+                self.assertEqual(f'{start+i}\n', line.decode())
+
+            # Wait until it prints some more lines and then check the (new) output
+            lines = util.wait_until(readlines, lambda l: len(l) > 0)
+            for j, line in enumerate(lines):
+                self.assertEqual(f'{start+i+j+1}\n', line.decode())
+        finally:
+            proc.kill()
+            util.kill_jobs(self.cook_url, jobs=uuids)
+
+    def test_tail_zero_byte_file(self):
+        cp, uuids = cli.submit('touch file.txt', self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        cp = cli.wait(uuids, self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        cp = cli.tail(uuids[0], 'file.txt', self.cook_url, f'--lines 1')
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertEqual('', cli.decode(cp.stdout))
+
+    def test_ls(self):
+
+        def entry(name):
+            return cli.ls_entry_by_name(entries, name)
+
+        cp, uuids = cli.submit('"mkdir foo; echo 123 > foo/bar; echo 45678 > baz; mkdir empty"', self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        util.wait_for_job(self.cook_url, uuids[0], 'completed')
+
+        # Path that doesn't exist
+        cp, entries = cli.ls(uuids[0], self.cook_url, 'qux', parse_json=False)
+        self.assertEqual(1, cp.returncode, cp.stderr)
+        self.assertIn('no such file or directory', cli.decode(cp.stderr))
+
+        # baz file
+        cp, entries = cli.ls(uuids[0], self.cook_url, 'baz')
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertEqual(1, len(entries))
+        self.logger.debug(entries)
+        baz = entry('baz')
+        self.assertEqual('-rw-r--r--', baz['mode'])
+        self.assertEqual(1, baz['nlink'])
+        self.assertEqual(6, baz['size'])
+
+        # empty directory
+        cp, entries = cli.ls(uuids[0], self.cook_url, 'empty')
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertEqual(0, len(entries))
+        self.logger.debug(entries)
+
+        # Root of the sandbox
+        cp, entries = cli.ls(uuids[0], self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertLessEqual(4, len(entries))
+        self.logger.debug(entries)
+        foo = entry('foo')
+        self.assertEqual('drwxr-xr-x', foo['mode'])
+        self.assertEqual(2, foo['nlink'])
+        baz = entry('baz')
+        self.assertEqual('-rw-r--r--', baz['mode'])
+        self.assertEqual(1, baz['nlink'])
+        self.assertEqual(6, baz['size'])
+        stdout = entry('stdout')
+        self.assertEqual('-rw-r--r--', stdout['mode'])
+        self.assertEqual(1, stdout['nlink'])
+        stderr = entry('stderr')
+        self.assertEqual('-rw-r--r--', stderr['mode'])
+        self.assertEqual(1, stderr['nlink'])
+
+        # foo directory
+        cp, entries = cli.ls(uuids[0], self.cook_url, 'foo')
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertEqual(1, len(entries))
+        self.logger.debug(entries)
+        bar = entry('bar')
+        self.assertEqual('-rw-r--r--', bar['mode'])
+        self.assertEqual(1, bar['nlink'])
+        self.assertEqual(4, bar['size'])
+
+        # foo/bar file
+        cp, entries = cli.ls(uuids[0], self.cook_url, 'foo/bar')
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertEqual(1, len(entries))
+        self.logger.debug(entries)
+        bar = entry('bar')
+        self.assertEqual('-rw-r--r--', bar['mode'])
+        self.assertEqual(1, bar['nlink'])
+        self.assertEqual(4, bar['size'])
+
+    def test_ls_with_globbing_characters(self):
+
+        def entry(name):
+            return cli.ls_entry_by_name(entries, name)
+
+        cp, uuids = cli.submit('"touch t?.sh; touch [ab]*; touch {b,c,est}; touch \'*\'; touch \'t*\'"', self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        util.wait_for_job(self.cook_url, uuids[0], 'completed')
+
+        path = 't?.sh'
+        cp, _ = cli.ls(uuids[0], self.cook_url, path, parse_json=False)
+        self.assertEqual(1, cp.returncode, cp.stderr)
+        self.assertIn('ls does not support globbing', cli.stdout(cp))
+        cp, entries = cli.ls(uuids[0], self.cook_url, f'{path} --literal')
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertEqual(1, len(entries))
+        self.logger.debug(entries)
+        bar = entry(path)
+        self.assertEqual('-rw-r--r--', bar['mode'])
+        self.assertEqual(1, bar['nlink'])
+        self.assertEqual(0, bar['size'])
+
+        path = '[ab]*'
+        cp, _ = cli.ls(uuids[0], self.cook_url, path, parse_json=False)
+        self.assertEqual(1, cp.returncode, cp.stderr)
+        self.assertIn('ls does not support globbing', cli.stdout(cp))
+        cp, entries = cli.ls(uuids[0], self.cook_url, f'{path} --literal')
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertEqual(1, len(entries))
+        self.logger.debug(entries)
+        bar = entry(path)
+        self.assertEqual('-rw-r--r--', bar['mode'])
+        self.assertEqual(1, bar['nlink'])
+        self.assertEqual(0, bar['size'])
+
+        path = '{b,c,est}'
+        cp, _ = cli.ls(uuids[0], self.cook_url, path, parse_json=False)
+        self.assertEqual(1, cp.returncode, cp.stderr)
+        self.assertIn('ls does not support globbing', cli.stdout(cp))
+        cp, entries = cli.ls(uuids[0], self.cook_url, f'{path} --literal')
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertEqual(1, len(entries))
+        self.logger.debug(entries)
+        bar = entry(path)
+        self.assertEqual('-rw-r--r--', bar['mode'])
+        self.assertEqual(1, bar['nlink'])
+        self.assertEqual(0, bar['size'])
+
+        path = '*'
+        cp, _ = cli.ls(uuids[0], self.cook_url, path, parse_json=False)
+        self.assertEqual(1, cp.returncode, cp.stderr)
+        self.assertIn('ls does not support globbing', cli.stdout(cp))
+        cp, entries = cli.ls(uuids[0], self.cook_url, f'{path} --literal')
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertEqual(1, len(entries))
+        self.logger.debug(entries)
+        bar = entry(path)
+        self.assertEqual('-rw-r--r--', bar['mode'])
+        self.assertEqual(1, bar['nlink'])
+        self.assertEqual(0, bar['size'])
+
+        path = 't*'
+        cp, _ = cli.ls(uuids[0], self.cook_url, path, parse_json=False)
+        self.assertEqual(1, cp.returncode, cp.stderr)
+        self.assertIn('ls does not support globbing', cli.stdout(cp))
+        cp, entries = cli.ls(uuids[0], self.cook_url, f'{path} --literal')
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertEqual(1, len(entries))
+        self.logger.debug(entries)
+        bar = entry(path)
+        self.assertEqual('-rw-r--r--', bar['mode'])
+        self.assertEqual(1, bar['nlink'])
+        self.assertEqual(0, bar['size'])

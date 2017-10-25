@@ -1,11 +1,9 @@
+import importlib
 import logging
+import os
 import uuid
 from urllib.parse import urlencode
 
-import importlib
-import os
-
-import json
 import requests
 from retrying import retry
 
@@ -107,7 +105,7 @@ def minimal_job(**kwargs):
 
 def minimal_jobs(job_count, **kwargs):
     """Build a list of of multiple homogeneous job specifications"""
-    return [ minimal_job(**kwargs) for _ in range(job_count) ]
+    return [minimal_job(**kwargs) for _ in range(job_count)]
 
 
 def submit_jobs(cook_url, job_specs, clones=1, **kwargs):
@@ -128,7 +126,7 @@ def submit_jobs(cook_url, job_specs, clones=1, **kwargs):
     request_body.update(kwargs)
     logger.info(request_body)
     resp = session.post(f'{cook_url}/rawscheduler', json=request_body)
-    return [ j['uuid'] for j in jobs ], resp
+    return [j['uuid'] for j in jobs], resp
 
 
 def kill_jobs(cook_url, jobs, assert_response=True):
@@ -209,10 +207,10 @@ def wait_until(query, predicate, max_wait_ms=30000, wait_interval_ms=1000):
     and returns True if the condition is met, or False otherwise.
     See `wait_for_job` for an example of using this method.
     """
+
     @retry(stop_max_delay=max_wait_ms, wait_fixed=wait_interval_ms)
     def wait_until_inner():
         response = query()
-        error_msg = None
         if not predicate(response):
             error_msg = "wait_until condition not yet met, retrying..."
             logger.info(error_msg)
@@ -247,11 +245,15 @@ def all_instances_killed(response):
 def wait_for_job(cook_url, job_id, status, max_delay=120000):
     """Wait for the given job's status to change to the specified value."""
     job_id = unpack_uuid(job_id)
-    query = lambda: query_jobs(cook_url, True, job=[job_id])
-    def predicate(response):
-        job = response.json()[0]
+
+    def query():
+        return query_jobs(cook_url, True, job=[job_id])
+
+    def predicate(resp):
+        job = resp.json()[0]
         logger.info(f"Job {job_id} has status {job['status']}, expecting {status}.")
         return job['status'] == status
+
     response = wait_until(query, predicate, max_wait_ms=max_delay, wait_interval_ms=2000)
     return response.json()[0]
 
@@ -262,9 +264,12 @@ def wait_for_exit_code(cook_url, job_id):
     (Only supported by Cook Executor jobs.)
     """
     job_id = unpack_uuid(job_id)
-    query = lambda: query_jobs(cook_url, True, job=[job_id])
-    def predicate(response):
-        job = response.json()[0]
+
+    def query():
+        return query_jobs(cook_url, True, job=[job_id])
+
+    def predicate(resp):
+        job = resp.json()[0]
         if not job['instances']:
             logger.info(f"Job {job_id} has no instances.")
         else:
@@ -274,6 +279,7 @@ def wait_for_exit_code(cook_url, job_id):
             else:
                 logger.info(f"Job {job_id} instance {inst['task_id']} has exit code {inst['exit_code']}.")
                 return True
+
     response = wait_until(query, predicate, max_wait_ms=2000, wait_interval_ms=250)
     return response.json()[0]
 
@@ -306,12 +312,16 @@ def wait_for_output_url(cook_url, job_uuid):
     The retries are necessary because currently the Mesos
     agent sandbox directories are cached in Cook.
     """
-    query = lambda: load_job(cook_url, job_uuid, assert_response=False)
+
+    def query():
+        return load_job(cook_url, job_uuid, assert_response=False)
+
     def predicate(job):
         if 'output_url' in job['instances'][0]:
             return True
         else:
             logger.info(f"Job {job['uuid']} had no output_url")
+
     response = wait_until(query, predicate, max_wait_ms=120000)
     return response['instances'][0]
 
@@ -343,6 +353,7 @@ def get_executor(agent_state, executor_id):
 def get_user(cook_url, job_uuid):
     """Retrieves the job corresponding to the given job_uuid and returns the user"""
     return load_job(cook_url, job_uuid)['user']
+
 
 def unscheduled_jobs(cook_url, job_uuid):
     """Retrieves the unscheduled_jobs reasons for the given job_uuid"""

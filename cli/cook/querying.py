@@ -2,8 +2,9 @@ import concurrent
 import logging
 import os
 from concurrent import futures
+from operator import itemgetter
 
-from cook import http, colors, progress
+from cook import http, colors, progress, mesos
 from cook.util import wait_until
 
 
@@ -157,3 +158,32 @@ def query_unique(clusters, uuid):
 
     # This should not happen (the only entities we generate are jobs, instances, and groups)
     raise Exception(f'Encountered unexpected error when querying for uuid {uuid}.')
+
+
+def __get_latest_instance(job):
+    """Returns the most recently started (i.e. latest) instance of the given job"""
+    if 'instances' in job:
+        instances = job['instances']
+        if instances:
+            instance = max(instances, key=itemgetter('start_time'))
+            return instance
+
+    raise Exception(f'Job {job["uuid"]} currently has no instances.')
+
+
+def query_unique_and_run(clusters, job_or_instance_uuid, command_fn):
+    """Calls query_unique and then calls the given command_fn on the resulting job instance"""
+    query_result = query_unique(clusters, job_or_instance_uuid)
+    if query_result['type'] == 'job':
+        job = query_result['data']
+        instance = __get_latest_instance(job)
+        directory = mesos.retrieve_instance_sandbox_directory(instance, job)
+        command_fn(instance, directory)
+    elif query_result['type'] == 'instance':
+        instance, job = query_result['data']
+        directory = mesos.retrieve_instance_sandbox_directory(instance, job)
+        command_fn(instance, directory)
+    else:
+        # This should not happen, because query_unique should
+        # only return a map with type "job" or type "instance"
+        raise Exception(f'Encountered error when querying for {job_or_instance_uuid}.')

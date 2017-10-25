@@ -92,6 +92,19 @@ The `ssh` command accepts either a job or instance uuid and executes ssh to the 
 Assuming the ssh connection is successful, it will also `cd` to the appropriate sandbox directory.
 When given a job instance uuid, it will choose the most recently started instance's agent to ssh to.
 
+### `ls`
+
+The `ls` command accepts a job or instance uuid, along with an optional path, and lists sandbox directory contents.
+The path is relative to the sandbox directory on the Mesos agent where the instance runs.
+When given a job instance uuid, it will choose the most recently started instance's agent to list files.
+
+### `tail`
+
+The `tail` command accepts a job or instance uuid and a path, and outputs the last part of the file with that path.
+The path is relative to the sandbox directory on the Mesos agent where the instance runs.
+When given a job instance uuid, it will choose the most recently started instance's agent to tail files.
+`tail` also supports "following" a file, meaning that it will output appended data as the file grows.
+
 ### Examples
 
 Simple job creation:

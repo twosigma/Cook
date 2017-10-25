@@ -4,6 +4,7 @@ import os
 import shlex
 import subprocess
 import tempfile
+from fcntl import fcntl, F_GETFL, F_SETFL
 
 from tests.cook import util
 
@@ -25,18 +26,28 @@ def stdout(cp):
     return decode(cp.stdout).strip()
 
 
-def sh(command, stdin=None, env=None):
+def sh(command, stdin=None, env=None, wait_for_exit=True):
     """Runs command using subprocess.run"""
-    logger.info(command + ((' # stdin: %s' % decode(stdin)) if stdin else ''))
-    cp = subprocess.run(shlex.split(command), stdout=subprocess.PIPE, stderr=subprocess.PIPE, input=stdin, env=env)
-    return cp
+    logger.info(command + (f' # stdin: {decode(stdin)}' if stdin else ''))
+    command_args = shlex.split(command)
+    if wait_for_exit:
+        cp = subprocess.run(command_args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, input=stdin, env=env)
+        return cp
+    else:
+        proc = subprocess.Popen(command_args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        # Get the current stdout flags
+        flags = fcntl(proc.stdout, F_GETFL)
+        # Set the O_NONBLOCK flag of the stdout file descriptor
+        # (if we don't set this, calls to readlines() will block)
+        fcntl(proc.stdout, F_SETFL, flags | os.O_NONBLOCK)
+        return proc
 
 
-def cli(args, cook_url=None, flags=None, stdin=None, env=None):
+def cli(args, cook_url=None, flags=None, stdin=None, env=None, wait_for_exit=True):
     """Runs a CLI command with the given URL, flags, and stdin"""
-    url_flag = ('--url %s ' % cook_url) if cook_url else ''
-    other_flags = ('%s ' % flags) if flags else ''
-    cp = sh('cs %s%s%s' % (url_flag, other_flags, args), stdin, env)
+    url_flag = f'--url {cook_url} ' if cook_url else ''
+    other_flags = f'{flags} ' if flags else ''
+    cp = sh(f'cs {url_flag}{other_flags}{args}', stdin, env, wait_for_exit)
     return cp
 
 
@@ -132,3 +143,26 @@ def ssh(uuid, cook_url=None, env=None, flags=None):
     args = f'ssh {uuid}'
     cp = cli(args, cook_url, flags=flags, env=env)
     return cp
+
+
+def tail(uuid, path, cook_url, tail_flags=None, wait_for_exit=True):
+    """Invokes the tail subcommand"""
+    args = f'tail {tail_flags} {uuid} {path}' if tail_flags else f'tail {uuid} {path}'
+    cp = cli(args, cook_url, wait_for_exit=wait_for_exit)
+    return cp
+
+
+def ls(uuid, cook_url, path=None, parse_json=True):
+    """Invokes the ls subcommand"""
+    args = f'ls --json {uuid} {path}' if path else f'ls --json {uuid}'
+    cp = cli(args, cook_url)
+    entries = json.loads(stdout(cp)) if parse_json else None
+    return cp, entries
+
+
+def ls_entry_by_name(entries, name):
+    """
+    Given a collection of entries returned by ls, and a name
+    to find, returns the first entry with a matching name
+    """
+    return next(e for e in entries if os.path.basename(os.path.normpath(e['path'])) == name)
