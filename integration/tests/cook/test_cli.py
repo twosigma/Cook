@@ -623,6 +623,10 @@ class CookCliTest(unittest.TestCase):
         self.assertEqual(0, cp.returncode, cp.stderr)
         cp = cli.wait(uuids, self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
+        # Ask for 0 lines
+        cp = cli.tail(uuids[0], 'foo', self.cook_url, '--lines 0')
+        self.assertEqual(2, cp.returncode, cp.stderr)
+        self.assertIn('0 is not a positive integer', cli.decode(cp.stderr))
         # Ask for 1 line
         cp = cli.tail(uuids[0], 'foo', self.cook_url, '--lines 1')
         self.assertEqual(0, cp.returncode, cp.stderr)
