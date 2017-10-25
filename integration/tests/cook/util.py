@@ -243,23 +243,18 @@ def all_instances_killed(response):
 
 
 def wait_for_job(cook_url, job_id, status, max_delay=120000):
-    """
-    Wait for the given job's status to change to the specified value.
-    Returns an up-to-date job description object on success,
-    and raises an exception if the max_delay wait time is exceeded.
-    """
-    job_id = unpack_uuid(job_id)
+    """Wait for the given job's status to change to the specified value."""
+    return wait_for_jobs(cook_url, [job_id], status, max_delay)[0]
 
-    def query():
-        return query_jobs(cook_url, True, job=[job_id])
-
-    def predicate(resp):
-        job = resp.json()[0]
-        logger.info(f"Job {job_id} has status {job['status']}, expecting {status}.")
-        return job['status'] == status
-
+def wait_for_jobs(cook_url, job_ids, status, max_delay=120000):
+    query = lambda: query_jobs(cook_url, True, job=job_ids)
+    def predicate(response):
+        jobs = response.json()
+        for job in jobs:
+            logger.info(f"Job {job['uuid']} has status {job['status']}, expecting {status}.")
+        return all([job['status'] == status for job in jobs])
     response = wait_until(query, predicate, max_wait_ms=max_delay, wait_interval_ms=2000)
-    return response.json()[0]
+    return response.json()
 
 
 def wait_for_exit_code(cook_url, job_id, max_delay_ms=2000):
