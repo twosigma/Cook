@@ -49,9 +49,18 @@ def initialize_config(environment):
     """Initializes the config using the environment.
     Populates the default values for missing environment variables.
     """
+    executor_id = environment.get('MESOS_EXECUTOR_ID', 'executor')
+    default_progress_output_name = '{}.progress'.format(executor_id)
+    progress_output_file_env = environment.get('EXECUTOR_PROGRESS_OUTPUT_FILE_ENV', 'PROGRESS_OUTPUT_FILE')
+    sandbox_directory = environment.get('MESOS_SANDBOX', '')
+    if sandbox_directory:
+        default_progress_output_file = '{}/{}'.format(sandbox_directory, default_progress_output_name)
+    else:
+        default_progress_output_file = default_progress_output_name
+
     max_bytes_read_per_line = max(int(environment.get('EXECUTOR_MAX_BYTES_READ_PER_LINE', 4 * 1024)), 128)
     max_message_length = max(int(environment.get('EXECUTOR_MAX_MESSAGE_LENGTH', 512)), 64)
-    progress_output_name = environment.get('PROGRESS_OUTPUT_FILE', 'stdout')
+    progress_output_name = environment.get(progress_output_file_env, default_progress_output_file)
     progress_regex_string = environment.get('PROGRESS_REGEX_STRING', 'progress: (\d+), (.*)')
     progress_sample_interval_ms = max(int(environment.get('PROGRESS_SAMPLE_INTERVAL_MS', 1000)), 100)
     sandbox_directory = environment.get('MESOS_SANDBOX', '')

@@ -2,6 +2,7 @@
 
 import json
 import logging
+import os
 import subprocess
 import time
 from threading import Event, Thread
@@ -61,7 +62,7 @@ def update_status(driver, task_id, task_state):
     -------
     Nothing.
     """
-    logging.debug('Updating task {} state to {}'.format(task_id, task_state))
+    logging.info('Updating task {} state to {}'.format(task_id, task_state))
     status = create_status(task_id, task_state)
     driver.sendStatusUpdate(status)
 
@@ -82,7 +83,7 @@ def send_message(driver, message, max_message_length):
     -------
     whether the message was successfully sent
     """
-    logging.debug('Sending framework message {}'.format(message))
+    logging.info('Sending framework message {}'.format(message))
     message_string = str(message).encode('utf8')
     if len(message_string) < max_message_length:
         encoded_message = encode_data(message_string)
@@ -94,7 +95,7 @@ def send_message(driver, message, max_message_length):
         return False
 
 
-def launch_task(task, max_bytes_read_per_line):
+def launch_task(task, environment):
     """Launches the task using the command available in the json map from the data field.
 
     Parameters
@@ -119,6 +120,7 @@ def launch_task(task, max_bytes_read_per_line):
             return None
 
         process = subprocess.Popen(command,
+                                   env=environment,
                                    shell=True,
                                    stderr=subprocess.PIPE,
                                    stdout=subprocess.PIPE)
@@ -252,6 +254,24 @@ def get_task_state(exit_code):
         return cook.TASK_FINISHED
 
 
+def retrieve_process_environment(config, os_environ):
+    environment = dict(os_environ)
+    # set the progress output file in the environment variable
+    custom_progress_output_file_env = environment.get('EXECUTOR_PROGRESS_OUTPUT_FILE_ENV', '')
+    progress_output_file = environment.get(custom_progress_output_file_env, '')
+    if not progress_output_file:
+        if custom_progress_output_file_env:
+            logging.info('Setting process environment[{}]={}'.format(
+                custom_progress_output_file_env, progress_output_file))
+            environment[custom_progress_output_file_env] = config.progress_output_name
+        default_progress_output_file_env = 'PROGRESS_OUTPUT_FILE'
+        if default_progress_output_file_env not in environment:
+            logging.info('Setting process environment[{}]={}'.format(
+                default_progress_output_file_env, progress_output_file))
+            environment[default_progress_output_file_env] = config.progress_output_name
+    return environment
+
+
 def manage_task(driver, task, stop_signal, completed_signal, config):
     """Manages the execution of a task waiting for it to terminate normally or be killed.
        It also sends the task status updates, sandbox location and exit code back to the scheduler.
@@ -271,14 +291,15 @@ def manage_task(driver, task, stop_signal, completed_signal, config):
         sandbox_message = json.dumps({'sandbox-directory': config.sandbox_directory, 'task-id': task_id})
         send_message(driver, sandbox_message, config.max_message_length)
 
-        process = launch_task(task, config.max_bytes_read_per_line)
+        environment = retrieve_process_environment(config, os.environ)
+        process = launch_task(task, environment)
         if process:
             # task has begun running successfully
             update_status(driver, task_id, cook.TASK_RUNNING)
             cio.print_and_log('Forked command at {}'.format(process.pid))
         else:
             # task launch failed, report an error
-            logging.info('Error in launching task')
+            logging.warning('Error in launching task')
             update_status(driver, task_id, cook.TASK_ERROR)
             return
 

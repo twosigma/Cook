@@ -48,7 +48,7 @@ class ConfigTest(unittest.TestCase):
 
         self.assertEqual(4 * 1024, config.max_bytes_read_per_line)
         self.assertEqual(512, config.max_message_length)
-        self.assertEqual('stdout', config.progress_output_name)
+        self.assertEqual('executor.progress', config.progress_output_name)
         self.assertEqual('progress: (\\d+), (.*)', config.progress_regex_string)
         self.assertEqual(1000, config.progress_sample_interval_ms)
         self.assertEqual('', config.sandbox_directory)
@@ -67,6 +67,62 @@ class ConfigTest(unittest.TestCase):
         self.assertEqual(1234, config.max_bytes_read_per_line)
         self.assertEqual(1024, config.max_message_length)
         self.assertEqual('progress_file', config.progress_output_name)
+        self.assertEqual('progress/regex', config.progress_regex_string)
+        self.assertEqual(2500, config.progress_sample_interval_ms)
+        self.assertEqual('/sandbox/location', config.sandbox_directory)
+        self.assertEqual(4000, config.shutdown_grace_period_ms)
+
+    def test_initialize_config_custom_progress_file_without_sandbox(self):
+        environment = {'EXECUTOR_MAX_BYTES_READ_PER_LINE': '1234',
+                       'EXECUTOR_MAX_MESSAGE_LENGTH': '1024',
+                       'MESOS_EXECUTOR_SHUTDOWN_GRACE_PERIOD': '4secs',
+                       'OUTPUT_TARGET_FILE': 'progress.out',
+                       'EXECUTOR_PROGRESS_OUTPUT_FILE_ENV': 'OUTPUT_TARGET_FILE',
+                       'PROGRESS_REGEX_STRING': 'progress/regex',
+                       'PROGRESS_SAMPLE_INTERVAL_MS': '2500'}
+        config = cc.initialize_config(environment)
+
+        self.assertEqual(1234, config.max_bytes_read_per_line)
+        self.assertEqual(1024, config.max_message_length)
+        self.assertEqual('progress.out', config.progress_output_name)
+        self.assertEqual('progress/regex', config.progress_regex_string)
+        self.assertEqual(2500, config.progress_sample_interval_ms)
+        self.assertEqual('', config.sandbox_directory)
+        self.assertEqual(4000, config.shutdown_grace_period_ms)
+
+    def test_initialize_config_custom_progress_file_with_sandbox(self):
+        environment = {'EXECUTOR_MAX_BYTES_READ_PER_LINE': '1234',
+                       'EXECUTOR_MAX_MESSAGE_LENGTH': '1024',
+                       'MESOS_EXECUTOR_SHUTDOWN_GRACE_PERIOD': '4secs',
+                       'MESOS_SANDBOX': '/sandbox/location',
+                       'OUTPUT_TARGET_FILE': 'progress.out',
+                       'EXECUTOR_PROGRESS_OUTPUT_FILE_ENV': 'OUTPUT_TARGET_FILE',
+                       'PROGRESS_REGEX_STRING': 'progress/regex',
+                       'PROGRESS_SAMPLE_INTERVAL_MS': '2500'}
+        config = cc.initialize_config(environment)
+
+        self.assertEqual(1234, config.max_bytes_read_per_line)
+        self.assertEqual(1024, config.max_message_length)
+        self.assertEqual('progress.out', config.progress_output_name)
+        self.assertEqual('progress/regex', config.progress_regex_string)
+        self.assertEqual(2500, config.progress_sample_interval_ms)
+        self.assertEqual('/sandbox/location', config.sandbox_directory)
+        self.assertEqual(4000, config.shutdown_grace_period_ms)
+
+    def test_initialize_config_default_progress_file_with_sandbox(self):
+        environment = {'EXECUTOR_MAX_BYTES_READ_PER_LINE': '1234',
+                       'EXECUTOR_MAX_MESSAGE_LENGTH': '1024',
+                       'MESOS_EXECUTOR_ID': 'e123456',
+                       'MESOS_EXECUTOR_SHUTDOWN_GRACE_PERIOD': '4secs',
+                       'MESOS_SANDBOX': '/sandbox/location',
+                       'EXECUTOR_PROGRESS_OUTPUT_FILE_ENV': 'OUTPUT_TARGET_FILE',
+                       'PROGRESS_REGEX_STRING': 'progress/regex',
+                       'PROGRESS_SAMPLE_INTERVAL_MS': '2500'}
+        config = cc.initialize_config(environment)
+
+        self.assertEqual(1234, config.max_bytes_read_per_line)
+        self.assertEqual(1024, config.max_message_length)
+        self.assertEqual('/sandbox/location/e123456.progress', config.progress_output_name)
         self.assertEqual('progress/regex', config.progress_regex_string)
         self.assertEqual(2500, config.progress_sample_interval_ms)
         self.assertEqual('/sandbox/location', config.sandbox_directory)
