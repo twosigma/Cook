@@ -283,7 +283,7 @@
                   {:dru 1.52 :task [task-ent4 task-ent3 task-ent8] :mem 50.0 :cpus 50.0}]})
 
       (is (= {:hostname "hostB" :dru 2.2 :task [task-ent4] :mem 25.0 :cpus 15.0 :gpus 0.0}
-             (rebalancer/compute-preemption-decision offer-cache
+             (rebalancer/compute-preemption-decision db offer-cache
                                                      (->State task->scored-task
                                                               user->sorted-running-task-ents
                                                               {}
@@ -294,7 +294,7 @@
                                                      (d/entity db job9))))
 
       (is (= {:hostname "hostB" :dru Double/MAX_VALUE :task nil :mem 15.0 :cpus 15.0 :gpus 0.0}
-             (rebalancer/compute-preemption-decision offer-cache
+             (rebalancer/compute-preemption-decision db offer-cache
                                                      (->State task->scored-task
                                                               user->sorted-running-task-ents
                                                               {"hostB" {:mem 15.0 :cpus 15.0}}
@@ -305,7 +305,7 @@
                                                      (d/entity db job9))))
 
       (is (= {:hostname "hostA" :dru Double/MAX_VALUE :task nil :mem 20.0 :cpus 20.0 :gpus 0.0}
-             (rebalancer/compute-preemption-decision offer-cache
+             (rebalancer/compute-preemption-decision db offer-cache
                                                      (->State task->scored-task
                                                               user->sorted-running-task-ents
                                                               {"hostA" {:mem 20.0 :cpus 20.0}
@@ -317,7 +317,7 @@
                                                      (d/entity db job9))))
 
       (is (= {:hostname "hostB" :dru 2.2 :task [task-ent4] :mem 35.0 :cpus 25.0 :gpus 0.0}
-             (rebalancer/compute-preemption-decision offer-cache
+             (rebalancer/compute-preemption-decision db offer-cache
                                                      (->State task->scored-task
                                                               user->sorted-running-task-ents
                                                               {"hostA" {:mem 10.0 :cpus 10.0}
@@ -329,7 +329,7 @@
                                                      (d/entity db job9))))
 
       (is (= {:hostname "hostB" :dru 2.2 :task [task-ent4] :mem 25.0 :cpus 15.0 :gpus 0.0}
-             (rebalancer/compute-preemption-decision offer-cache
+             (rebalancer/compute-preemption-decision db offer-cache
                                                      (->State task->scored-task
                                                               user->sorted-running-task-ents
                                                               {}
@@ -340,7 +340,7 @@
                                                      (d/entity db job10))))
 
       (is (= nil
-             (rebalancer/compute-preemption-decision offer-cache
+             (rebalancer/compute-preemption-decision db offer-cache
                                                      (->State task->scored-task
                                                               user->sorted-running-task-ents
                                                               {}
@@ -351,7 +351,7 @@
                                                      (d/entity db job11))))
 
       (is (= nil
-             (rebalancer/compute-preemption-decision offer-cache
+             (rebalancer/compute-preemption-decision db offer-cache
                                                      (->State task->scored-task
                                                               user->sorted-running-task-ents
                                                               {}
@@ -362,7 +362,7 @@
                                                      (d/entity db job12))))
 
       (is (= {:hostname "hostA" :dru Double/MAX_VALUE :task nil :mem 40.0 :cpus 40.0 :gpus 0.0}
-             (rebalancer/compute-preemption-decision offer-cache
+             (rebalancer/compute-preemption-decision db offer-cache
                                                      (->State task->scored-task
                                                               user->sorted-running-task-ents
                                                               {"hostA" {:mem 40.0 :cpus 40.0}}
@@ -373,7 +373,7 @@
                                                      (d/entity db job12))))
 
       (is (= nil
-             (rebalancer/compute-preemption-decision offer-cache
+             (rebalancer/compute-preemption-decision db offer-cache
                                                      (->State task->scored-task
                                                               user->sorted-running-task-ents
                                                               {"hostA" {:mem 35.0 :cpus 35.0}}
@@ -384,7 +384,7 @@
                                                      (d/entity db job12))))
 
       (is (= {:hostname "hostB" :dru 2.2 :task [task-ent4] :mem 55.0 :cpus 45.0 :gpus 0.0}
-             (rebalancer/compute-preemption-decision offer-cache
+             (rebalancer/compute-preemption-decision db offer-cache
                                                      (->State task->scored-task
                                                               user->sorted-running-task-ents
                                                               {"hostA" {:mem 35.0 :cpus 35.0}
@@ -396,7 +396,7 @@
                                                      (d/entity db job12))))
 
       (is (= nil
-             (rebalancer/compute-preemption-decision offer-cache
+             (rebalancer/compute-preemption-decision db offer-cache
                                                      (->State task->scored-task
                                                               user->sorted-running-task-ents
                                                               {}
@@ -407,7 +407,7 @@
                                                      (d/entity db job13))))
 
       (is (= nil
-             (rebalancer/compute-preemption-decision offer-cache
+             (rebalancer/compute-preemption-decision db offer-cache
                                                      (->State task->scored-task
                                                               user->sorted-running-task-ents
                                                               {}
@@ -418,7 +418,7 @@
                                                      (d/entity db job13))))
 
       (is (= nil
-             (rebalancer/compute-preemption-decision offer-cache
+             (rebalancer/compute-preemption-decision db offer-cache
                                                      (->State task->scored-task
                                                               user->sorted-running-task-ents
                                                               {}
@@ -456,7 +456,7 @@
               [task->scored-task user->sorted-running-task-ents user->dru-divisors]
                 (initialize-rebalancer db (list pending-job))]
           (is (= "rebar"
-                (:hostname (rebalancer/compute-preemption-decision offer-cache
+                (:hostname (rebalancer/compute-preemption-decision db offer-cache
                                                                    (->State task->scored-task
                                                                             user->sorted-running-task-ents
                                                                             {}
@@ -481,7 +481,7 @@
               [task->scored-task user->sorted-running-task-ents user->dru-divisors]
                 (initialize-rebalancer db (list pending-job))]
           (is (= "rebar"
-                (:hostname (rebalancer/compute-preemption-decision offer-cache
+                (:hostname (rebalancer/compute-preemption-decision db offer-cache
                                                                    (->State task->scored-task
                                                                             user->sorted-running-task-ents
                                                                             {}
@@ -496,7 +496,7 @@
               [task->scored-task user->sorted-running-task-ents user->dru-divisors]
                 (initialize-rebalancer db (list pending-job))]
           (is (not (nil?
-                 (:hostname (rebalancer/compute-preemption-decision offer-cache
+                 (:hostname (rebalancer/compute-preemption-decision db offer-cache
                                                                  (->State task->scored-task
                                                                           user->sorted-running-task-ents
                                                                           {}
@@ -533,7 +533,7 @@
               [task->scored-task user->sorted-running-task-ents user->dru-divisors]
                 (initialize-rebalancer db (list pending-job))]
           (is (= "rebar"
-                (:hostname (rebalancer/compute-preemption-decision offer-cache
+                (:hostname (rebalancer/compute-preemption-decision db offer-cache
                                                                    (->State task->scored-task
                                                                             user->sorted-running-task-ents
                                                                             {}
@@ -553,7 +553,7 @@
               [task->scored-task user->sorted-running-task-ents user->dru-divisors]
                 (initialize-rebalancer db (list pending-job))]
           (is (= nil
-                (rebalancer/compute-preemption-decision offer-cache
+                (rebalancer/compute-preemption-decision db offer-cache
                                                         (->State task->scored-task
                                                                  user->sorted-running-task-ents
                                                                  {}
@@ -596,7 +596,7 @@
               [task->scored-task user->sorted-running-task-ents user->dru-divisors]
                 (initialize-rebalancer db (list pending-job))]
           (is (= "rebar"
-                (:hostname (rebalancer/compute-preemption-decision offer-cache
+                (:hostname (rebalancer/compute-preemption-decision db offer-cache
                                                                    (->State task->scored-task
                                                                             user->sorted-running-task-ents
                                                                             {}
@@ -619,7 +619,7 @@
               [task->scored-task user->sorted-running-task-ents user->dru-divisors]
                 (initialize-rebalancer db (list pending-job))]
           (is (= nil
-                (rebalancer/compute-preemption-decision offer-cache
+                (rebalancer/compute-preemption-decision db offer-cache
                                                         (->State task->scored-task
                                                                  user->sorted-running-task-ents
                                                                  {}
@@ -673,6 +673,7 @@
               [task->scored-task user->sorted-running-task-ents user->dru-divisors]
                 (initialize-rebalancer db (list pending-job))]
           (let [preempted-host (:hostname (rebalancer/compute-preemption-decision
+                                             db
                                              offer-cache
                                              (->State task->scored-task
                                                       user->sorted-running-task-ents
@@ -710,6 +711,7 @@
               [task->scored-task user->sorted-running-task-ents user->dru-divisors]
                 (initialize-rebalancer db (list pending-job))]
           (let [preempted-host (:hostname (rebalancer/compute-preemption-decision
+                                             db
                                              offer-cache
                                              (->State task->scored-task
                                                       user->sorted-running-task-ents

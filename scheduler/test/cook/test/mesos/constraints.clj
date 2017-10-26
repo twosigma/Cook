@@ -79,7 +79,7 @@
         other-gpu-job (d/entity db other-gpu-job-id)
         non-gpu-job (d/entity db non-gpu-job-id)
         mock-gpu-assignment #(-> (Mockito/when (.getRequest (Mockito/mock com.netflix.fenzo.TaskAssignmentResult)))
-                                 (.thenReturn (sched/make-task-request other-gpu-job))
+                                 (.thenReturn (sched/make-task-request db other-gpu-job))
                                  (.getMock))]
     (doseq [[type gpu-lease] [["gpu avail"
                                (reify com.netflix.fenzo.VirtualMachineCurrentState
@@ -90,7 +90,7 @@
                               ["running gpu"
                                (reify com.netflix.fenzo.VirtualMachineCurrentState
                                 (getHostname [_] "test-host")
-                                (getRunningTasks [_] [(sched/make-task-request other-gpu-job)])
+                                (getRunningTasks [_] [(sched/make-task-request db other-gpu-job)])
                                 (getTasksCurrentlyAssigned [_] [])
                                 (getCurrAvailableResources [_]  (sched/->VirtualMachineLeaseAdapter non-gpu-offer 0)))]
                               ["gpu assigned"
@@ -101,19 +101,19 @@
                                 (getCurrAvailableResources [_]  (sched/->VirtualMachineLeaseAdapter non-gpu-offer 0)))]]]
       (is (.isSuccessful
             (.evaluate (constraints/fenzoize-job-constraint (constraints/build-gpu-host-constraint gpu-job))
-                       (sched/make-task-request gpu-job)
+                       (sched/make-task-request db gpu-job)
                        gpu-lease
                        nil))
           (str "GPU task on GPU host with " type " should succeed"))
       (is (not (.isSuccessful
                  (.evaluate (constraints/fenzoize-job-constraint (constraints/build-gpu-host-constraint non-gpu-job))
-                            (sched/make-task-request non-gpu-job)
+                            (sched/make-task-request db non-gpu-job)
                             gpu-lease
                             nil)))
           (str "non GPU task on GPU host with " type " should fail"))
       (is (not (.isSuccessful
                  (.evaluate (constraints/fenzoize-job-constraint (constraints/build-gpu-host-constraint gpu-job))
-                            (sched/make-task-request gpu-job)
+                            (sched/make-task-request db gpu-job)
                             (reify com.netflix.fenzo.VirtualMachineCurrentState
                               (getHostname [_] "test-host")
                               (getRunningTasks [_] [])
@@ -123,7 +123,7 @@
           "GPU task on non GPU host should fail")
       (is (.isSuccessful
             (.evaluate (constraints/fenzoize-job-constraint (constraints/build-gpu-host-constraint non-gpu-job))
-                       (sched/make-task-request non-gpu-job)
+                       (sched/make-task-request db non-gpu-job)
                        (reify com.netflix.fenzo.VirtualMachineCurrentState
                          (getHostname [_] "test-host")
                          (getRunningTasks [_] [])

@@ -96,6 +96,14 @@
   ([entity]
    (deep-transduce-kv (map identity) entity)))
 
+(defn job-ent->map
+  "Convert a job entity to a map. This also loads the associated group and converts it to a map."
+  ([job db]
+   (job-ent->map (d/entity db (:db/id job))))
+  ([job]
+   (-> (entity->map job)
+       (assoc :group/_job (entity->map (:group/_job job))))))
+
 (defn remove-datomic-namespacing
   "Takes a map from datomic (pull) and removes the namespace
    as well as :db/id keys"

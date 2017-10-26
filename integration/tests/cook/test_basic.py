@@ -1,3 +1,4 @@
+from collections import Counter
 import json
 import logging
 import subprocess
@@ -941,3 +942,124 @@ class CookTest(unittest.TestCase):
             check_unscheduled_reason()
         finally:
             util.kill_jobs(self.cook_url, [job_uuid])
+
+    def test_unique_host_constraint(self):
+        state = util.get_mesos_state(self.mesos_url)
+        num_hosts = len(state['slaves'])
+        group = {'uuid': str(uuid.uuid4()),
+                 'host-placement': {'type': 'unique'}}
+        job_spec = {'group': group['uuid'], 'command': 'sleep 600'}
+        # Don't submit too many jobs for the test. If the cluster is larger than 19 hosts, only submit 20 jobs.
+        num_jobs = min(num_hosts + 1, 20)
+        uuids, resp = util.submit_jobs(self.cook_url, job_spec, num_jobs, groups=[group])
+        self.assertEqual(resp.status_code, 201, resp.content)
+        try:
+            def query():
+                return util.query_jobs(self.cook_url, job=uuids).json()
+            def num_running_predicate(response):
+                num_jobs = len(response)
+                num_running = len([j for j in response if j['status'] == 'running'])
+                num_waiting = len([j for j in response if j['status'] == 'waiting'])
+                if num_jobs == num_hosts + 1:
+                    # One job should not be scheduled
+                    return (num_running == num_jobs - 1) and (num_waiting == 1)
+                else:
+                    # All of the jobs should be running
+                    return num_running == num_jobs
+            jobs = util.wait_until(query, num_running_predicate, max_wait_ms=60000)
+            hosts = [job['instances'][0]['hostname'] for job in jobs
+                     if job['status'] == 'running']
+            # Only one job should run on each host
+            self.assertEqual(len(set(hosts)), len(hosts))
+            # If one job was not running, check the output of unscheduled_jobs
+            if num_jobs == num_hosts + 1:
+                waiting_jobs = [j for j in jobs if j['status'] == 'waiting']
+                self.assertEqual(1, len(waiting_jobs))
+                waiting_job = waiting_jobs[0]
+                def query():
+                    return util.unscheduled_jobs(self.cook_url, waiting_job['uuid'])[0]
+                def check_unique_constraint(unscheduled_jobs):
+                    self.logger.debug('unscheduled_jobs response: %s' % unscheduled_jobs)
+                    return any([r['reason'] == "The job couldn't be placed on any available hosts."
+                                for r in unscheduled_jobs['reasons']])
+                unscheduled_jobs = util.wait_until(query, check_unique_constraint)
+                unique_reason = [r for r in unscheduled_jobs['reasons'] if r['reason'] ==
+                                 "The job couldn't be placed on any available hosts."][0]
+                self.assertEqual("unique-host-placement-group-constraint",
+                                 unique_reason['data']['reasons'][0]['reason'],
+                                 unique_reason)
+        finally:
+            util.kill_jobs(self.cook_url, [uuids])
+
+    def test_balanced_host_constraint(self):
+        state = util.get_mesos_state(self.mesos_url)
+        num_hosts = len(state['slaves'])
+        minimum_hosts = min(num_hosts, 10)
+        group = {'uuid': str(uuid.uuid4()),
+                 'host-placement': {'type': 'balanced',
+                                    'parameters': {'attribute': 'HOSTNAME',
+                                                   'minimum': minimum_hosts}}}
+        job_spec = {'group': group['uuid'],
+                    'command': 'sleep 600'}
+        max_jobs_per_host = 3
+        num_jobs = minimum_hosts * max_jobs_per_host
+        uuids, resp = util.submit_jobs(self.cook_url, job_spec, num_jobs, groups=[group])
+        self.assertEqual(201, resp.status_code, resp.content)
+        try:
+            jobs = util.wait_for_jobs(self.cook_url, uuids, 'running')
+            hosts = [j['instances'][0]['hostname'] for j in jobs]
+            host_count = Counter(hosts)
+            self.assertTrue(len(host_count) >= minimum_hosts)
+            self.assertTrue(max(host_count.values()) <= max_jobs_per_host)
+        finally:
+            util.kill_jobs(self.cook_url, [uuids])
+
+    def test_attribute_equals_hostname_constraint(self):
+        slaves = util.get_mesos_state(self.mesos_url)['slaves']
+        max_slave_cpus = max([s['resources']['cpus'] for s in slaves])
+        task_constraint_cpus = util.settings(self.cook_url)['task-constraints']['cpus']
+        # The largest job we can submit that actually fits on a slave
+        max_cpus = min(max_slave_cpus, task_constraint_cpus)
+        # Use the rest of the machine, plus one half CPU so the large job won't fit
+        # The max is required for cases when the task_constraints are larger than the actual hosts
+        canary_cpus = max(0, max_slave_cpus - task_constraint_cpus) + 0.5
+        group = {'uuid': str(uuid.uuid4()),
+                 'host-placement': {'type': 'attribute-equals',
+                                    'parameters': {'attribute': 'HOSTNAME'}}}
+        # First job - a canary job with high priority which uses canary_cpus cpus
+        canary = util.minimal_job(group=group['uuid'],
+                                  priority=100,
+                                  cpus=canary_cpus,
+                                  command='sleep 600')
+        # Second job - a big job with low priority using max_cpus cpus
+        # Based on the priority, canary should be scheduled ahead of big_job, but because
+        # of the host-placement constraint they have to be scheduled on the same host.
+        # The canary should be able to be scheduled, but big_job should never be scheduled.
+        big_job = util.minimal_job(group=group['uuid'],
+                                   priority=1,
+                                   cpus=max_cpus)
+        uuids, resp = util.submit_jobs(self.cook_url, [canary, big_job], groups=[group])
+        self.assertEqual(201, resp.status_code, resp.content)
+        try:
+            jobs = util.wait_for_job(self.cook_url, canary['uuid'], 'running')
+            def query():
+                return util.unscheduled_jobs(self.cook_url, big_job['uuid'])[0]
+            def check_unique_constraint(unscheduled_jobs):
+                self.logger.debug('unscheduled_jobs response: %s' % unscheduled_jobs)
+                no_hosts = [r for r in unscheduled_jobs['reasons'] if r['reason'] ==
+                            "The job couldn't be placed on any available hosts."]
+                if len(no_hosts) == 0:
+                    return False
+                return len(no_hosts[0]['data']['reasons']) > 1
+            unscheduled_jobs = util.wait_until(query, check_unique_constraint)
+            no_hosts = [r for r in unscheduled_jobs['reasons'] if r['reason'] ==
+                        "The job couldn't be placed on any available hosts."][0]
+            self.assertEqual("Not enough cpus available.",
+                             no_hosts['data']['reasons'][0]['reason'],
+                             no_hosts)
+            self.assertEqual( "Host had a different attribute than other jobs in the group.",
+                             no_hosts['data']['reasons'][1]['reason'],
+                             no_hosts)
+
+        finally:
+            util.kill_jobs(self.cook_url, [uuids])

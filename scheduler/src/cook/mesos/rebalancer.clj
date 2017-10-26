@@ -297,7 +297,7 @@
   "Takes state, parameters and a pending job entity, returns a preemption decision
    A preemption decision is a map that describes a possible way to perform preemption on a host. It has a hostname, a seq of tasks
    to preempt and available mem and cpus on the host after the preemption."
-  [offer-cache
+  [db offer-cache
    {:keys [task->scored-task host->spare-resources compute-pending-job-dru preempted-tasks] :as state}
    {:keys [min-dru-diff safe-dru-threshold] :as params}
    pending-job-ent]
@@ -323,6 +323,7 @@
          group-constraints (->> pending-job-ent
                                 :group/_job
                                 (map #(constraints/make-rebalancer-group-constraint
+                                        db
                                         %
                                         (partial util/get-slave-attrs-from-cache offer-cache)
                                         preempted-tasks))
@@ -370,9 +371,9 @@
 
 (defn compute-next-state-and-preemption-decision
   "Takes state, params and a pending job entity, returns new state and preemption decision"
-  [offer-cache state params pending-job]
+  [db offer-cache state params pending-job]
   (log/debug "Trying to find space for: " pending-job)
-  (if-let [preemption-decision (compute-preemption-decision offer-cache state params pending-job)]
+  (if-let [preemption-decision (compute-preemption-decision db offer-cache state params pending-job)]
     [(next-state state pending-job preemption-decision)
      (assoc preemption-decision
             :to-make-room-for pending-job)]
@@ -395,7 +396,7 @@
            [pending-job-ent & jobs-to-make-room-for] jobs-to-make-room-for
            preemption-decisions []]
       (if (and pending-job-ent (pos? remaining-preemption))
-        (let [[state' preemption-decision] (compute-next-state-and-preemption-decision offer-cache state params pending-job-ent)]
+        (let [[state' preemption-decision] (compute-next-state-and-preemption-decision db offer-cache state params pending-job-ent)]
           (if preemption-decision
             (recur state'
                    (dec remaining-preemption)

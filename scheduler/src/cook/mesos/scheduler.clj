@@ -579,14 +579,14 @@
    given a job, its resources, its task-id and a function assigned-cotask-getter. assigned-cotask-getter should be a
    function that takes a group uuid and returns a set of task-ids, which correspond to the tasks that will be assigned
    during the same Fenzo scheduling cycle as the newly created TaskRequest."
-  [job & {:keys [resources task-id assigned-resources guuid->considerable-cotask-ids]
+  [db job & {:keys [resources task-id assigned-resources guuid->considerable-cotask-ids]
           :or {resources (util/job-ent->resources job)
                task-id (str (java.util.UUID/randomUUID))
                assigned-resources (atom nil)
                guuid->considerable-cotask-ids (constantly #{})}}]
   (let [constraints (into (constraints/make-fenzo-job-constraints job)
                           (remove nil?
-                                  (mapv #(constraints/make-fenzo-group-constraint
+                                  (mapv #(constraints/make-fenzo-group-constraint db
                                            % (guuid->considerable-cotask-ids (:group/uuid %))) (:group/_job job))))
         needs-gpus? (constraints/job-needs-gpus? job)
         scalar-requests (reduce (fn [result resource]
@@ -605,7 +605,7 @@
 
    Returns {:matches (list of tasks that got matched to the offer)
             :failures (list of unmatched tasks, and why they weren't matched)}"
-  [^TaskScheduler fenzo considerable offers]
+  [db ^TaskScheduler fenzo considerable offers]
   (log/debug "Matching" (count offers) "offers to" (count considerable) "jobs with fenzo")
   (log/debug "offers to scheduleOnce" offers)
   (log/debug "tasks to scheduleOnce" considerable)
@@ -617,7 +617,7 @@
         guuid->considerable-cotask-ids (util/make-guuid->considerable-cotask-ids considerable->task-id)
         ; Important that requests maintains the same order as considerable
         requests (mapv (fn [job]
-                         (make-task-request job :task-id (considerable->task-id job) :guuid->considerable-cotask-ids guuid->considerable-cotask-ids))
+                         (make-task-request db job :task-id (considerable->task-id job) :guuid->considerable-cotask-ids guuid->considerable-cotask-ids))
                        considerable)
         ;; Need to lock on fenzo when accessing scheduleOnce because scheduleOnce and
         ;; task assigner can not be called at the same time.
@@ -757,7 +757,7 @@
   [{:keys [tasks] :as match} db framework-id executor-config]
   (let [task-metadata-seq (->> tasks
                                ;; sort-by makes task-txns created in matches->task-txns deterministic
-                               (sort-by (comp :db/id :job #(.getRequest ^TaskAssignmentResult %)) )
+                               (sort-by (comp :job/uuid :job #(.getRequest ^TaskAssignmentResult %)) )
                                (map (partial task/TaskAssignmentResult->task-metadata db framework-id executor-config)))]
     (assoc match :task-metadata-seq task-metadata-seq)))
 
@@ -845,7 +845,7 @@
                                               db category->pending-jobs user->quota user->usage num-considerable))
               {:keys [matches failures]} (timers/time!
                                            handle-resource-offer!-match-duration
-                                           (match-offer-to-schedule fenzo (reduce into [] (vals category->considerable-jobs)) offers))
+                                           (match-offer-to-schedule db fenzo (reduce into [] (vals category->considerable-jobs)) offers))
               _ (log/debug "got matches:" matches)
               offers-scheduled (for [{:keys [leases]} matches
                                      lease leases]
@@ -1023,8 +1023,8 @@
       (doseq [[task-id] running-tasks
               :let [task-ent (d/entity db [:instance/task-id task-id])
                     hostname (:instance/hostname task-ent)
-                    job (util/entity->map (:job/_instance task-ent))
-                    task-request (make-task-request job :task-id task-id)]]
+                    job (util/job-ent->map (:job/_instance task-ent))
+                    task-request (make-task-request db job :task-id task-id)]]
         ;; Need to lock on fenzo when accessing taskAssigner because taskAssigner and
         ;; scheduleOnce can not be called at the same time.
         (locking fenzo
@@ -1344,7 +1344,7 @@
       (let [jobs (->> (sort-jobs-by-dru-category unfiltered-db)
                       ;; Apply the offensive job filter first before taking.
                       (pc/map-vals offensive-job-filter)
-                      (pc/map-vals #(map util/entity->map %)))]
+                      (pc/map-vals #(map util/job-ent->map %)))]
         (log/debug "Total number of pending jobs is:" (apply + (map count (vals jobs)))
                    "The first 20 pending normal jobs:" (take 20 (:normal jobs))
                    "The first 5 pending gpu jobs:" (take 5 (:gpu jobs)))

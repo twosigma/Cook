@@ -1,6 +1,7 @@
 (ns cook.mesos.group
   (:require [clj-time.coerce :as tc]
             [clj-time.core :as t]
+            [datomic.api :as d]
             [cook.mesos.util :as util]))
 
 (defmulti find-stragglers
@@ -49,8 +50,8 @@
    limbo between where mesos has been instructed to run them, but the action has not been confirmed
    by mesos) instances. Returns set to allow set operations (difference, union) with the result of
    datomic queries for job instances (also sets)."
-  [group]
-  (->> group
+  [db group]
+  (->> (d/entity db [:group/uuid (:group/uuid group)])
        :group/job
        (mapcat :job/instance)
        (filter #(#{:instance.status/running :instance.status/unknown} (:instance/status %)))
@@ -60,9 +61,9 @@
   "A wrapper around group->running-task-id-set that returns a set of task-ids instead of task
    entities. Returns a set so that set operations can be used to manipulate the result in
    conjunction with the result of cotask-getters, which also return sets."
-  [group]
+  [db group]
   (->> group
-       group->running-task-set
+       (group->running-task-set db)
        (map :instance/task-id)
        set))
 

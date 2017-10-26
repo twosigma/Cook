@@ -97,8 +97,8 @@
         job-id (create-dummy-job conn :under-investigation true)
         job (->> job-id
                  (d/entity (d/db conn))
-                 util/entity->map)
-        ^TaskRequest task-request (scheduler/make-task-request job)
+                 util/job-ent->map)
+        ^TaskRequest task-request (scheduler/make-task-request (d/db conn) job)
         failure (assignment-failure :mem)
         assignment-result (SimpleAssignmentResult. [failure] nil task-request)]
     (is (fenzo/record-placement-failures! conn [[assignment-result]]))
