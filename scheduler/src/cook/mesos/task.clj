@@ -59,13 +59,17 @@
 
 (defn build-executor-environment
   "Build the environment for the cook executor."
-  [{:keys [default-progress-output-file default-progress-regex-string log-level max-message-length progress-sample-interval-ms]}
+  [{:keys [default-progress-regex-string environment log-level max-message-length progress-sample-interval-ms]}
    job-ent]
-  {"EXECUTOR_LOG_LEVEL" log-level
-   "EXECUTOR_MAX_MESSAGE_LENGTH" max-message-length
-   "PROGRESS_OUTPUT_FILE" (:job/progress-output-file job-ent default-progress-output-file)
-   "PROGRESS_REGEX_STRING" (:job/progress-regex-string job-ent default-progress-regex-string)
-   "PROGRESS_SAMPLE_INTERVAL_MS" progress-sample-interval-ms})
+  (let [progress-output-file (:job/progress-output-file job-ent)]
+    (cond-> (assoc environment
+              "EXECUTOR_LOG_LEVEL" log-level
+              "EXECUTOR_MAX_MESSAGE_LENGTH" max-message-length
+              "PROGRESS_REGEX_STRING" (:job/progress-regex-string job-ent default-progress-regex-string)
+              "PROGRESS_SAMPLE_INTERVAL_MS" progress-sample-interval-ms)
+            progress-output-file
+            (assoc "EXECUTOR_PROGRESS_OUTPUT_FILE" progress-output-file
+                   "EXECUTOR_PROGRESS_OUTPUT_FILE_ENV" "EXECUTOR_PROGRESS_OUTPUT_FILE"))))
 
 (defn job->task-metadata
   "Takes a job entity, returns task metadata"
