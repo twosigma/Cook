@@ -2,9 +2,7 @@
 
 import json
 import logging
-import os
 import subprocess
-import sys
 import time
 from threading import Event, Thread
 
@@ -312,6 +310,9 @@ def manage_task(driver, task, stop_signal, completed_signal, config):
     finally:
         # ensure completed_signal is set so driver can stop
         completed_signal.set()
+        message = 'Executor completed execution of {}'.format(task_id)
+        cio.print_out(message, flush=True)
+        logging.info(message)
 
 
 def run_mesos_driver(stop_signal, config):

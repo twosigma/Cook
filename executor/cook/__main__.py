@@ -43,8 +43,10 @@ def main(args=None):
     config = cc.initialize_config(environment)
 
     def handle_interrupt(interrupt_code, _):
-        print('Received kill for task {} with grace period of {}'.format(executor_id, config.shutdown_grace_period))
-        logging.info('Received interrupt code {}, preparing to terminate executor'.format(interrupt_code))
+        cio.print_out('Received kill for task {} with grace period of {}'.format(
+            executor_id, config.shutdown_grace_period))
+        logging.info('Received interrupt code {}, preparing to terminate executor'.format(
+            interrupt_code))
         stop_signal.set()
     signal.signal(signal.SIGINT, handle_interrupt)
     signal.signal(signal.SIGTERM, handle_interrupt)
@@ -57,9 +59,9 @@ def main(args=None):
     logging.info('Driver thread has completed')
 
     exit_code = 1 if stop_signal.isSet() else 0
-    cio.print_out('Executor completed execution of {}'.format(executor_id), flush=True)
-    logging.info('Executor completed execution of {} with code {}'.format(executor_id, exit_code))
+    logging.info('Executor exiting with code {}'.format(exit_code))
     sys.exit(exit_code)
+
 
 if __name__ == '__main__':
     main()
