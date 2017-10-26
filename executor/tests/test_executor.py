@@ -382,14 +382,14 @@ class ExecutorTest(unittest.TestCase):
             assert_message(self, expected_message_1, actual_encoded_message_1)
 
             actual_encoded_message_2 = driver.messages[2]
-            expected_message_2 = {'exit-code': 0, 'task-id': task_id}
-            assert_message(self, expected_message_2, actual_encoded_message_2)
-
-            actual_encoded_message_3 = driver.messages[3]
-            expected_message_3 = {'progress-message': 'Fifty-five percent',
+            expected_message_2 = {'progress-message': 'Fifty-five percent',
                                   'progress-percent': 55,
                                   'progress-sequence': 2,
                                   'task-id': task_id}
+            assert_message(self, expected_message_2, actual_encoded_message_2)
+
+            actual_encoded_message_3 = driver.messages[3]
+            expected_message_3 = {'exit-code': 0, 'task-id': task_id}
             assert_message(self, expected_message_3, actual_encoded_message_3)
 
         command = 'echo "Hello World"; ' \
