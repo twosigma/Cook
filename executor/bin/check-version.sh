@@ -61,7 +61,7 @@ fi
 binary_app=./dist/cook-executor
 
 if [ -e $binary_app ]; then
-    installed_version="$($binary_app --version)"
+    installed_version="$(docker run -v $(pwd):/opt/cook python:3.5 /opt/cook/$binary_app --version)"
 else
     installed_version=none
 fi
