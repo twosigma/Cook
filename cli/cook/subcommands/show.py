@@ -59,6 +59,8 @@ def tabulate_job(cluster_name, job):
         job_definition.append(['Job Group(s)', format_list(job['groups'])])
     if 'application' in job:
         job_definition.append(['Application', '%s (%s)' % (job['application']['name'], job['application']['version'])])
+    if 'executor' in job:
+        job_definition.append(['Executor', job['executor']])
 
     job_state = [['Attempts', format_job_attempts(job)],
                  ['Job Status', format_job_status(job)],

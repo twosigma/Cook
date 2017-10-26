@@ -12,7 +12,7 @@
                                 :cpus 6}}
  :executor {:command "./cook-executor"
             :portion 0.25
-            :uri {:cache true
+            :uri {:cache false
                   :executable true
                   :extract false
                   :value #config/env "COOK_EXECUTOR"}}

@@ -36,13 +36,16 @@ def format_instance_status(instance):
     """Formats the instance status field"""
     status_text = format_state(instance['status'])
     if 'reason_string' in instance:
-        parenthetical_text = ' (%s)' % colors.reason(instance['reason_string'])
+        parenthetical_text = f' ({colors.reason(instance["reason_string"])})'
     elif 'progress' in instance and instance['progress'] > 0:
-        parenthetical_text = ' (%s%%)' % instance['progress']
+        if 'progress_message' in instance:
+            parenthetical_text = f' ({instance["progress"]}% {instance["progress_message"]})'
+        else:
+            parenthetical_text = f' ({instance["progress"]}%)'
     else:
         parenthetical_text = ''
 
-    return '%s%s' % (status_text, parenthetical_text)
+    return f'{status_text}{parenthetical_text}'
 
 
 def format_instance_run_time(instance):
