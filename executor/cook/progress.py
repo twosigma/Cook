@@ -6,7 +6,7 @@ from threading import Event, Lock, Thread
 import os
 import re
 
-import cook
+import cook.io_helper as cio
 
 
 class ProgressUpdater(object):
@@ -150,16 +150,20 @@ class ProgressWatcher(object):
 
             logging.info('{} has been created, reading contents'.format(self.target_file))
             target_file_obj = open(self.target_file, 'r')
+            line_index = 0
             while not self.stop_signal.isSet():
                 line = target_file_obj.readline(self.max_bytes_read_per_line)
                 if not line:
                     # exit if program has completed and there are no more lines to read
                     if self.task_completed_signal.isSet():
-                        logging.info('Done processing file for progress messages')
+                        message = 'Done processing progress messages, {} lines read'.format(line_index)
+                        cio.print_out(message)
+                        logging.info(message)
                         break
                     # no new line available, sleep before trying again
                     time.sleep(sleep_param)
                     continue
+                line_index += 1
                 yield line
             if self.stop_signal.isSet() and not self.task_completed_signal.isSet():
                 logging.info('Task requested to be killed, may not have processed all progress messages')

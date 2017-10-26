@@ -18,6 +18,7 @@ import encodings.idna
 
 import cook.config as cc
 import cook.executor as ce
+import cook.io_helper as cio
 
 
 def main(args=None):
@@ -27,7 +28,7 @@ def main(args=None):
         print(__version__)
         sys.exit(0)
 
-    print('Cook Executor version {}'.format(__version__))
+    cio.print_out('Cook Executor version {}'.format(__version__))
 
     environment = os.environ
     executor_id = environment.get('MESOS_EXECUTOR_ID', '1')
@@ -42,6 +43,7 @@ def main(args=None):
     config = cc.initialize_config(environment)
 
     def handle_interrupt(interrupt_code, _):
+        print('Received kill for task {} with grace period of {}'.format(executor_id, config.shutdown_grace_period))
         logging.info('Received interrupt code {}, preparing to terminate executor'.format(interrupt_code))
         stop_signal.set()
     signal.signal(signal.SIGINT, handle_interrupt)
@@ -56,6 +58,7 @@ def main(args=None):
 
     exit_code = 1 if stop_signal.isSet() else 0
     logging.info('Executor exiting with code {}'.format(exit_code))
+    print('Executor completed execution of {}'.format(executor_id))
     sys.exit(exit_code)
 
 if __name__ == '__main__':

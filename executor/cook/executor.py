@@ -11,6 +11,7 @@ from threading import Event, Thread
 from pymesos import Executor, MesosExecutorDriver, decode_data, encode_data
 
 import cook
+import cook.io_helper as cio
 import cook.progress as cp
 
 
@@ -117,7 +118,8 @@ def launch_task(task):
             logging.warning('No command provided!')
             return None
 
-        process = subprocess.Popen(command, shell=True, stdout=sys.stdout.fileno(), stderr=sys.stderr.fileno())
+        process = subprocess.Popen(command, shell=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
+        cio.track_outputs(process)
 
         return process
     except Exception:
@@ -165,11 +167,16 @@ def kill_task(process, shutdown_grace_period_ms):
         for i in range(loop_limit):
             time.sleep(0.01)
             if not is_running(process):
-                logging.info('Process has terminated')
+                message = 'Command terminated with signal Terminated (pid: {})'.format(process.pid)
+                cio.print_out(message, flush=True)
+                logging.info(message)
                 break
         if is_running(process):
             logging.info('Process did not terminate, forcefully killing it')
             process.kill()
+            message = 'Command terminated with signal Killed (pid: {})'.format(process.pid)
+            cio.print_out(message, flush=True)
+            logging.info(message)
 
 
 def await_process_completion(stop_signal, process, shutdown_grace_period_ms):
@@ -229,6 +236,7 @@ def manage_task(driver, task, stop_signal, completed_signal, config, stdout_name
     Nothing
     """
     task_id = get_task_id(task)
+    cio.print_out('Starting task {}'.format(task_id))
     try:
         # not yet started to run the task
         update_status(driver, task_id, cook.TASK_STARTING)
@@ -258,7 +266,9 @@ def manage_task(driver, task, stop_signal, completed_signal, config, stdout_name
 
         # propagate the exit code
         exit_code = process.returncode
-        logging.info('Process completed with exit code {}'.format(exit_code))
+        message = 'Command exited with status {} (pid: {})'.format(exit_code, process.pid)
+        cio.print_out(message, flush=True)
+        logging.info(message)
         exit_message = json.dumps({'exit-code': exit_code, 'task-id': task_id})
         send_message(driver, exit_message, config.max_message_length)
 
