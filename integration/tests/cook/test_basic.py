@@ -1043,23 +1043,16 @@ class CookTest(unittest.TestCase):
         try:
             jobs = util.wait_for_job(self.cook_url, canary['uuid'], 'running')
             def query():
-                return util.unscheduled_jobs(self.cook_url, big_job['uuid'])[0]
-            def check_unique_constraint(unscheduled_jobs):
-                self.logger.debug('unscheduled_jobs response: %s' % unscheduled_jobs)
+                unscheduled_jobs = util.unscheduled_jobs(self.cook_url, big_job['uuid'])[0]
                 no_hosts = [r for r in unscheduled_jobs['reasons'] if r['reason'] ==
                             "The job couldn't be placed on any available hosts."]
-                if len(no_hosts) == 0:
-                    return False
-                return len(no_hosts[0]['data']['reasons']) > 1
-            unscheduled_jobs = util.wait_until(query, check_unique_constraint)
-            no_hosts = [r for r in unscheduled_jobs['reasons'] if r['reason'] ==
-                        "The job couldn't be placed on any available hosts."][0]
-            self.assertEqual("Not enough cpus available.",
-                             no_hosts['data']['reasons'][0]['reason'],
-                             no_hosts)
-            self.assertEqual( "Host had a different attribute than other jobs in the group.",
-                             no_hosts['data']['reasons'][1]['reason'],
-                             no_hosts)
-
+                for reason in no_hosts:
+                    for reason in reason['data']['reasons']:
+                        if reason['reason'] == "Host had a different attribute than other jobs in the group.":
+                            return reason
+                return None
+            reason = util.wait_until(query, lambda r: r is not None)
+            self.assertEqual(reason['reason'],
+                             "Host had a different attribute than other jobs in the group.")
         finally:
             util.kill_jobs(self.cook_url, [uuids])
