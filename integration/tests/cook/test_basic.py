@@ -1026,10 +1026,15 @@ class CookTest(unittest.TestCase):
         group = {'uuid': str(uuid.uuid4()),
                  'host-placement': {'type': 'attribute-equals',
                                     'parameters': {'attribute': 'HOSTNAME'}}}
+        # First job - a canary job with high priority which uses canary_cpus cpus
         canary = util.minimal_job(group=group['uuid'],
                                   priority=100,
                                   cpus=canary_cpus,
                                   command='sleep 600')
+        # Second job - a big job with low priority using max_cpus cpus
+        # Based on the priority, canary should be scheduled ahead of big_job, but because
+        # of the host-placement constraint they have to be scheduled on the same host.
+        # The canary should be able to be scheduled, but big_job should never be scheduled.
         big_job = util.minimal_job(group=group['uuid'],
                                    priority=1,
                                    cpus=max_cpus)
@@ -1052,7 +1057,7 @@ class CookTest(unittest.TestCase):
             self.assertEqual("Not enough cpus available.",
                              no_hosts['data']['reasons'][0]['reason'],
                              no_hosts)
-            self.assertEqual("attribute-equals-host-placement-group-constraint",
+            self.assertEqual( "Host had a different attribute than other jobs in the group.",
                              no_hosts['data']['reasons'][1]['reason'],
                              no_hosts)
 

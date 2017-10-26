@@ -69,7 +69,8 @@
 (def constraint-name->message
   {"novel_host_constraint" "Job already ran on this host."
    "gpu_host_constraint" "Host has no GPU support."
-   "non_gpu_host_constraint" "Host is reserved for jobs that need GPU support."})
+   "non_gpu_host_constraint" "Host is reserved for jobs that need GPU support."
+   "attribute-equals-host-placement-group-constraint" "Host had a different attribute than other jobs in the group."})
 
 (defn fenzo-failures-for-user
   "Given a minimal data structure containing serialized summary of fenzo errors,
