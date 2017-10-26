@@ -8,12 +8,11 @@ import uuid
 from nose.plugins.attrib import attr
 from retrying import retry
 
+from tests.cook import reasons
 from tests.cook import util
 
 class CookTest(unittest.TestCase):
     _multiprocess_can_split_ = True
-
-    CMD_NON_ZERO_EXIT_REASON = 99003
 
     @staticmethod
     def minimal_group(**kwargs):
@@ -209,23 +208,41 @@ class CookTest(unittest.TestCase):
                                                         'timeout-interval-minutes')
         # the value needs to be a little more than 2 times settings_timeout_interval_minutes to allow
         # at least two runs of the lingering task killer
-        job_timeout_interval_seconds = (2 * settings_timeout_interval_minutes * 60) + 15
-        job_timeout_interval_ms = job_timeout_interval_seconds * 1000
+        job_sleep_seconds = (2 * settings_timeout_interval_minutes * 60) + 15
+        job_sleep_ms = job_sleep_seconds * 1000
         max_runtime_ms = 5000
-        assert max_runtime_ms < job_timeout_interval_ms
-        job_uuid, resp = util.submit_job(self.cook_url, command='sleep %s' % job_timeout_interval_seconds,
-                                         executor=job_executor_type, max_runtime=max_runtime_ms)
-        self.assertEqual(201, resp.status_code, msg=resp.content)
-        util.wait_for_job(self.cook_url, job_uuid, 'completed', job_timeout_interval_ms)
-        job = util.load_job(self.cook_url, job_uuid)
-        self.assertEqual(1, len(job['instances']))
-        self.assertEqual('failed', job['instances'][0]['status'])
-        self.assertEqual(2003, job['instances'][0]['reason_code'])
-        self.assertEqual('Task max runtime exceeded', job['instances'][0]['reason_string'])
-        if job_executor_type == 'cook':
-            job = util.wait_for_exit_code(self.cook_url, job_uuid)
-            self.assertEqual(-15, job['instances'][0]['exit_code'])
-            self.assertTrue(bool(job['instances'][0]['sandbox_directory']))
+        assert max_runtime_ms < job_sleep_ms
+        try:
+            # schedule a job that will go over its max_runtime time limit
+            job_uuid, resp = util.submit_job(self.cook_url,
+                                             command=f'sleep {job_sleep_seconds}',
+                                             executor=job_executor_type, max_runtime=max_runtime_ms)
+            self.assertEqual(201, resp.status_code, msg=resp.content)
+            # We wait for the job to start running, and only then start waiting for the max-runtime timeout,
+            # otherwise we could get a false-negative on wait-for-job 'completed' because of a scheduling delay.
+            # We wait for the 'end_time' attribute separately because there is another small delay
+            # between the job being killed and that attribute being set.
+            # Having three separate waits also disambiguates the root cause of a wait-timeout failure.
+            util.wait_for_job(self.cook_url, job_uuid, 'running')
+            util.wait_for_job(self.cook_url, job_uuid, 'completed', job_sleep_ms)
+            job = util.wait_for_end_time(self.cook_url, job_uuid)
+            job_details = f"Job details: {json.dumps(job, sort_keys=True)}"
+            self.assertEqual(1, len(job['instances']), job_details)
+            instance = job['instances'][0]
+            # did the job fail as expected?
+            self.assertEqual('failed', instance['status'], job_details)
+            self.assertEqual(instance['reason_code'], reasons.MAX_RUNTIME_EXCEEDED, job_details)
+            # was the actual running time consistent with running over time and being killed?
+            actual_running_time_ms = instance['end_time'] - instance['start_time']
+            self.assertGreater(actual_running_time_ms, max_runtime_ms, job_details)
+            self.assertGreater(job_sleep_ms, actual_running_time_ms, job_details)
+            # verify additional fields set when the cook executor is used
+            if job_executor_type == 'cook':
+                job = util.wait_for_exit_code(self.cook_url, job_uuid)
+                self.assertNotEqual(0, job['instances'][0]['exit_code'], job_details)
+                self.assertTrue(bool(job['instances'][0]['sandbox_directory']), job_details)
+        finally:
+            util.kill_jobs(self.cook_url, [job_uuid])
 
 
     def test_get_job(self):
@@ -790,7 +807,7 @@ class CookTest(unittest.TestCase):
         jobs = util.query_jobs(self.cook_url, True, job=[job_fast, job_slow]).json()
         self.assertEqual('success', jobs[0]['state'], f"Job details: {json.dumps(jobs[0], sort_keys=True)}")
         self.assertEqual('failed',  jobs[1]['state'], f"Job details: {json.dumps(jobs[1], sort_keys=True)}")
-        self.assertEqual(CookTest.CMD_NON_ZERO_EXIT_REASON, jobs[1]['instances'][0]['reason_code'])
+        self.assertEqual(reasons.CMD_NON_ZERO_EXIT, jobs[1]['instances'][0]['reason_code'])
         # Now try to kill the group again
         # (ensure it still works when there are no live jobs)
         util.kill_groups(self.cook_url, [group_uuid])
