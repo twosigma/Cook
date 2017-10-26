@@ -234,7 +234,7 @@ class ExecutorTest(unittest.TestCase):
 
         try:
 
-            ce.manage_task(driver, task, stop_signal, completed_signal, config, stdout_name, stderr_name)
+            ce.manage_task(driver, task, stop_signal, completed_signal, config)
 
             self.assertTrue(completed_signal.isSet())
             assertions_fn(driver, task_id, sandbox_directory)

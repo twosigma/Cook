@@ -225,7 +225,7 @@ def get_task_state(exit_code):
         return cook.TASK_FINISHED
 
 
-def manage_task(driver, task, stop_signal, completed_signal, config, stdout_name, stderr_name):
+def manage_task(driver, task, stop_signal, completed_signal, config):
     """Manages the execution of a task waiting for it to terminate normally or be killed.
        It also sends the task status updates, sandbox location and exit code back to the scheduler.
        Progress updates are tracked on a separate thread and are also sent to the scheduler.
@@ -332,12 +332,10 @@ class CookExecutor(Executor):
     def launchTask(self, driver, task):
         logging.info('Driver {} launching task {}'.format(driver, task))
 
-        stdout_file_path = os.path.join(self.config.sandbox_directory, 'stdout')
-        stderr_file_path = os.path.join(self.config.sandbox_directory, 'stderr')
-        thread = Thread(target=manage_task,
-                        args=(driver, task, self.stop_signal, self.completed_signal, self.config, stdout_file_path,
-                              stderr_file_path))
-        thread.start()
+        stop_signal = self.stop_signal
+        completed_signal = self.completed_signal
+        config = self.config
+        Thread(target=manage_task, args=(driver, task, stop_signal, completed_signal, config)).start()
 
     def killTask(self, driver, task_id):
         logging.info('Task {} has been killed by Mesos'.format(task_id))
