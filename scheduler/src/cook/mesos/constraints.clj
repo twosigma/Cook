@@ -190,7 +190,7 @@
   "Given a group and a job, finds the set of all the running instances that belong to the jobs in
    'group', but do not belong to 'job'"
   (-> (group/group->running-task-set db group)
-      (clojure.set/difference (:job/instance job))))
+      (clojure.set/difference (set (:job/instance job)))))
 
 (defn get-cotasks-from-tracker-state
   "Returns all the Fenzo TaskTracker.ActiveTask (stored in task-tracker-state) that correspond to

@@ -247,7 +247,8 @@ def wait_for_job(cook_url, job_id, status, max_delay=120000):
     return wait_for_jobs(cook_url, [job_id], status, max_delay)[0]
 
 def wait_for_jobs(cook_url, job_ids, status, max_delay=120000):
-    query = lambda: query_jobs(cook_url, True, job=job_ids)
+    def query():
+        return query_jobs(cook_url, True, job=job_ids)
     def predicate(response):
         jobs = response.json()
         for job in jobs:
