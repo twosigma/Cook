@@ -142,11 +142,8 @@ class ExecutorTest(unittest.TestCase):
         try:
             command = 'sleep 100'
             process = subprocess.Popen(command, shell=True)
-            stdout_thread = Thread()
-            stderr_thread = Thread()
-            process_info = process, stdout_thread, stderr_thread
             shutdown_grace_period_ms = 2000
-            ce.kill_task(process_info, shutdown_grace_period_ms)
+            ce.kill_task(process, shutdown_grace_period_ms)
 
             # await process termination
             while process.poll() is None:

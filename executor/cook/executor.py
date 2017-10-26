@@ -126,8 +126,23 @@ def launch_task(task):
         return None
 
 
-def is_running(process_info):
+def is_process_running(process):
     """Checks whether the process is still running.
+
+    Parameters
+    ----------
+    process: subprocess.Popen
+        The process to query
+
+    Returns
+    -------
+    whether the process is still running.
+    """
+    return process.poll() is None
+
+
+def is_running(process_info):
+    """Checks whether any of the process or the piping threads are still running.
 
     Parameters
     ----------
@@ -144,10 +159,10 @@ def is_running(process_info):
     whether any of the process or the piping threads are still running.
     """
     process, stdout_thread, stderr_thread = process_info
-    return process.poll() is None or stdout_thread.isAlive() or stderr_thread.isAlive()
+    return is_process_running(process) or stdout_thread.isAlive() or stderr_thread.isAlive()
 
 
-def kill_task(process_info, shutdown_grace_period_ms):
+def kill_task(process, shutdown_grace_period_ms):
     """Attempts to kill a process.
      First attempt is made by sending the process a SIGTERM.
      If the process does not terminate inside (shutdown_grace_period_ms - 100) ms, it is then sent a SIGKILL.
@@ -155,13 +170,8 @@ def kill_task(process_info, shutdown_grace_period_ms):
 
     Parameters
     ----------
-    process_info: tuple of process, stdout_thread, stderr_thread
-        process: subprocess.Popen
-            The process to query
-        stdout_thread: threading.Thread
-            The thread that is piping the subprocess stdout.
-        stderr_thread: threading.Thread
-            The thread that is piping the subprocess stderr.
+    process: subprocess.Popen
+        The process to kill
     shutdown_grace_period_ms: int
         Grace period before forceful kill
 
@@ -169,20 +179,19 @@ def kill_task(process_info, shutdown_grace_period_ms):
     -------
     Nothing
     """
-    process, _, _ = process_info
     shutdown_grace_period_ms = max(shutdown_grace_period_ms - 100, 0)
-    if is_running(process_info):
+    if is_process_running(process):
         logging.info('Waiting up to {} ms for process to terminate'.format(shutdown_grace_period_ms))
         process.terminate()
         loop_limit = int(shutdown_grace_period_ms / 10)
         for i in range(loop_limit):
             time.sleep(0.01)
-            if not is_running(process_info):
+            if not is_process_running(process):
                 message = 'Command terminated with signal Terminated (pid: {})'.format(process.pid)
                 cio.print_out(message, flush=True)
                 logging.info(message)
                 break
-        if is_running(process_info):
+        if is_process_running(process):
             logging.info('Process did not terminate, forcefully killing it')
             process.kill()
             message = 'Command terminated with signal Killed (pid: {})'.format(process.pid)
@@ -215,7 +224,8 @@ def await_process_completion(stop_signal, process_info, shutdown_grace_period_ms
 
         if stop_signal.isSet():
             logging.info('Executor has been instructed to terminate')
-            kill_task(process_info, shutdown_grace_period_ms)
+            process, _, _ = process_info
+            kill_task(process, shutdown_grace_period_ms)
             break
 
         time.sleep(cook.RUNNING_POLL_INTERVAL_SECS)
