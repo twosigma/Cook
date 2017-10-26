@@ -91,7 +91,12 @@ def track_outputs(process):
 
     Returns
     -------
-    Nothing.
+    A tuple containing the two threads that have been started: stdout_thread, stderr_thread.
     """
-    Thread(target=process_output, args=('stderr', process.stderr, print_err, sys.stderr.flush)).start()
-    Thread(target=process_output, args=('stdout', process.stdout, print_out, sys.stdout.flush)).start()
+    stderr_thread = Thread(target=process_output, args=('stderr', process.stderr, print_err, sys.stderr.flush))
+    stdout_thread = Thread(target=process_output, args=('stdout', process.stdout, print_out, sys.stdout.flush))
+
+    stderr_thread.start()
+    stdout_thread.start()
+
+    return stdout_thread, stderr_thread

@@ -86,9 +86,12 @@ class ExecutorTest(unittest.TestCase):
         redirect_stderr_to_file(stderr_name)
 
         try:
-            process = ce.launch_task(task)
+            process, stdout_thread, stderr_thread = ce.launch_task(task)
 
             self.assertIsNotNone(process)
+            self.assertIsNotNone(stdout_thread)
+            self.assertIsNotNone(stderr_thread)
+
             for i in range(100):
                 if process.poll() is None:
                     time.sleep(0.01)
@@ -139,8 +142,11 @@ class ExecutorTest(unittest.TestCase):
         try:
             command = 'sleep 100'
             process = subprocess.Popen(command, shell=True)
+            stdout_thread = Thread()
+            stderr_thread = Thread()
+            process_info = process, stdout_thread, stderr_thread
             shutdown_grace_period_ms = 2000
-            ce.kill_task(process, shutdown_grace_period_ms)
+            ce.kill_task(process_info, shutdown_grace_period_ms)
 
             # await process termination
             while process.poll() is None:
@@ -162,11 +168,14 @@ class ExecutorTest(unittest.TestCase):
         try:
             command = 'sleep 2'
             process = subprocess.Popen(command, shell=True)
+            stdout_thread = Thread()
+            stderr_thread = Thread()
+            process_info = process, stdout_thread, stderr_thread
             shutdown_grace_period_ms = 1000
 
             stop_signal = Event()
 
-            ce.await_process_completion(stop_signal, process, shutdown_grace_period_ms)
+            ce.await_process_completion(stop_signal, process_info, shutdown_grace_period_ms)
 
             self.assertFalse(stop_signal.isSet())
             self.assertEqual(0, process.returncode)
@@ -186,6 +195,9 @@ class ExecutorTest(unittest.TestCase):
         try:
             command = 'sleep 100'
             process = subprocess.Popen(command, shell=True)
+            stdout_thread = Thread()
+            stderr_thread = Thread()
+            process_info = process, stdout_thread, stderr_thread
             shutdown_grace_period_ms = 2000
 
             stop_signal = Event()
@@ -196,7 +208,7 @@ class ExecutorTest(unittest.TestCase):
             thread = Thread(target=sleep_and_set_stop_signal, args=())
             thread.start()
 
-            ce.await_process_completion(stop_signal, process, shutdown_grace_period_ms)
+            ce.await_process_completion(stop_signal, process_info, shutdown_grace_period_ms)
 
             self.assertTrue(process.returncode < 0)
 

@@ -106,7 +106,8 @@ def launch_task(task):
 
     Returns
     -------
-    When command is provided and a process can be started, the process launched.
+    When command is provided and a process can be started, the process launched along
+    with the two threads that are piping the stdout and stderr.
     Else it logs the reason and returns None.
     """
     try:
@@ -119,30 +120,36 @@ def launch_task(task):
             return None
 
         process = subprocess.Popen(command, shell=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
-        cio.track_outputs(process)
+        stdout_thread, stderr_thread = cio.track_outputs(process)
 
-        return process
+        return process, stdout_thread, stderr_thread
     except Exception:
         logging.exception('Error in launch_task')
         return None
 
 
-def is_running(process):
+def is_running(process_info):
     """Checks whether the process is still running.
 
     Parameters
     ----------
-    process: 
-        The process to query
+    process_info: tuple of process, stdout_thread, stderr_thread
+        process: subprocess.Popen
+            The process to query
+        stdout_thread: threading.Thread
+            The thread that is piping the subprocess stdout.
+        stderr_thread: threading.Thread
+            The thread that is piping the subprocess stderr.
 
     Returns
     -------
-    whether the process is still running.
+    whether any of the process or the piping threads are still running.
     """
-    return process.poll() is None
+    process, stdout_thread, stderr_thread = process_info
+    return process.poll() is None or stdout_thread.isAlive() or stderr_thread.isAlive()
 
 
-def kill_task(process, shutdown_grace_period_ms):
+def kill_task(process_info, shutdown_grace_period_ms):
     """Attempts to kill a process.
      First attempt is made by sending the process a SIGTERM.
      If the process does not terminate inside (shutdown_grace_period_ms - 100) ms, it is then sent a SIGKILL.
@@ -150,8 +157,13 @@ def kill_task(process, shutdown_grace_period_ms):
 
     Parameters
     ----------
-    process: subprocess.Popen
-        The process to kill
+    process_info: tuple of process, stdout_thread, stderr_thread
+        process: subprocess.Popen
+            The process to query
+        stdout_thread: threading.Thread
+            The thread that is piping the subprocess stdout.
+        stderr_thread: threading.Thread
+            The thread that is piping the subprocess stderr.
     shutdown_grace_period_ms: int
         Grace period before forceful kill
 
@@ -159,19 +171,20 @@ def kill_task(process, shutdown_grace_period_ms):
     -------
     Nothing
     """
+    process, _, _ = process_info
     shutdown_grace_period_ms = max(shutdown_grace_period_ms - 100, 0)
-    if is_running(process):
+    if is_running(process_info):
         logging.info('Waiting up to {} ms for process to terminate'.format(shutdown_grace_period_ms))
         process.terminate()
         loop_limit = int(shutdown_grace_period_ms / 10)
         for i in range(loop_limit):
             time.sleep(0.01)
-            if not is_running(process):
+            if not is_running(process_info):
                 message = 'Command terminated with signal Terminated (pid: {})'.format(process.pid)
                 cio.print_out(message, flush=True)
                 logging.info(message)
                 break
-        if is_running(process):
+        if is_running(process_info):
             logging.info('Process did not terminate, forcefully killing it')
             process.kill()
             message = 'Command terminated with signal Killed (pid: {})'.format(process.pid)
@@ -179,15 +192,20 @@ def kill_task(process, shutdown_grace_period_ms):
             logging.info(message)
 
 
-def await_process_completion(stop_signal, process, shutdown_grace_period_ms):
+def await_process_completion(stop_signal, process_info, shutdown_grace_period_ms):
     """Awaits process completion.
 
     Parameters
     ----------
     stop_signal: Event
         Event that determines if an interrupt was sent
-    process: subprocess.Popen
-        The process to await completion for.
+    process_info: tuple of process, stdout_thread, stderr_thread
+        process: subprocess.Popen
+            The process to query
+        stdout_thread: threading.Thread
+            The thread that is piping the subprocess stdout.
+        stderr_thread: threading.Thread
+            The thread that is piping the subprocess stderr.
     shutdown_grace_period_ms: int
         Grace period before forceful kill
 
@@ -195,11 +213,11 @@ def await_process_completion(stop_signal, process, shutdown_grace_period_ms):
     -------
     True if the process was killed, False if it terminated naturally.
     """
-    while is_running(process):
+    while is_running(process_info):
 
         if stop_signal.isSet():
             logging.info('Executor has been instructed to terminate')
-            kill_task(process, shutdown_grace_period_ms)
+            kill_task(process_info, shutdown_grace_period_ms)
             break
 
         time.sleep(cook.RUNNING_POLL_INTERVAL_SECS)
@@ -244,8 +262,8 @@ def manage_task(driver, task, stop_signal, completed_signal, config):
         sandbox_message = json.dumps({'sandbox-directory': config.sandbox_directory, 'task-id': task_id})
         send_message(driver, sandbox_message, config.max_message_length)
 
-        process = launch_task(task)
-        if process:
+        process_info = launch_task(task)
+        if process_info:
             # task has begun running successfully
             update_status(driver, task_id, cook.TASK_RUNNING)
         else:
@@ -261,10 +279,11 @@ def manage_task(driver, task, stop_signal, completed_signal, config):
                                               config.progress_sample_interval_ms, send_message)
         progress_complete_event = cp.launch_progress_tracker(progress_watcher, progress_updater)
 
-        await_process_completion(stop_signal, process, config.shutdown_grace_period_ms)
+        await_process_completion(stop_signal, process_info, config.shutdown_grace_period_ms)
         task_completed_signal.set()
 
         # propagate the exit code
+        process, _, _ = process_info
         exit_code = process.returncode
         message = 'Command exited with status {} (pid: {})'.format(exit_code, process.pid)
         cio.print_out(message, flush=True)

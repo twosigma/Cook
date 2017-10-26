@@ -57,8 +57,8 @@ def main(args=None):
     logging.info('Driver thread has completed')
 
     exit_code = 1 if stop_signal.isSet() else 0
-    logging.info('Executor exiting with code {}'.format(exit_code))
-    print('Executor completed execution of {}'.format(executor_id))
+    cio.print_out('Executor completed execution of {}'.format(executor_id), flush=True)
+    logging.info('Executor completed execution of {} with code {}'.format(executor_id, exit_code))
     sys.exit(exit_code)
 
 if __name__ == '__main__':
