@@ -96,10 +96,10 @@ class CookTest(unittest.TestCase):
 
     def test_progress_update_submit(self):
         job_executor_type = util.get_job_executor_type(self.cook_url)
-        command = 'echo "progress: 25 Twenty-five percent"; sleep 1; exit 0'
+        command = 'echo "progress: 25 Twenty-five percent in ${CUSTOM_PROGRESS_OUTPUT_FILE}"; sleep 1; exit 0'
         job_uuid, resp = util.submit_job(self.cook_url, command=command,
-                                         env={'EXECUTOR_PROGRESS_OUTPUT_FILE_ENV': 'PROGRESS_OUTPUT_FILE',
-                                              'PROGRESS_OUTPUT_FILE': 'stdout'},
+                                         env={'EXECUTOR_PROGRESS_OUTPUT_FILE_ENV': 'CUSTOM_PROGRESS_OUTPUT_FILE',
+                                              'CUSTOM_PROGRESS_OUTPUT_FILE': 'stdout'},
                                          executor=job_executor_type, max_runtime=60000)
         self.assertEqual(201, resp.status_code, msg=resp.content)
         job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
@@ -114,12 +114,13 @@ class CookTest(unittest.TestCase):
             time.sleep(wait_publish_interval_secs)
 
             job = util.load_job(self.cook_url, job_uuid)
-            message = json.dumps(job['instances'][0], sort_keys=True)
+            instance = job['instances'][0]
+            message = json.dumps(instance, sort_keys=True)
 
-            self.assertEqual(0, job['instances'][0]['exit_code'], message)
-            self.assertEqual(25, job['instances'][0]['progress'], message)
-            self.assertEqual('Twenty-five percent', job['instances'][0]['progress_message'], message)
-            self.assertIsNotNone(job['instances'][0]['sandbox_directory'], message)
+            self.assertEqual(0, instance['exit_code'], message)
+            self.assertEqual(25, instance['progress'], message)
+            self.assertEqual('Twenty-five percent in stdout', instance['progress_message'], message)
+            self.assertIsNotNone(instance['sandbox_directory'], message)
 
     def test_configurable_progress_update_submit(self):
         job_executor_type = util.get_job_executor_type(self.cook_url)
