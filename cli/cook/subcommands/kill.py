@@ -25,13 +25,13 @@ def guard_against_duplicates(uuids, query_result):
 
     for cluster_name, entities in query_result['clusters'].items():
         jobs = entities['jobs']
-        instances = [[i, j] for j in entities['instances'] for i in j['instances'] if i['task_id'] in uuids]
+        instances = [i for j in entities['instances'] for i in j['instances'] if i['task_id'] in uuids]
         groups = entities['groups']
 
         for job in jobs:
             add(job['uuid'], 'job', job, cluster_name)
 
-        for instance, _ in instances:
+        for instance in instances:
             add(instance['task_id'], 'job instance', instance, cluster_name)
 
         for group in groups:
