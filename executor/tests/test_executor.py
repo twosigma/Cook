@@ -400,7 +400,7 @@ class ExecutorTest(unittest.TestCase):
                     expected_message = expected_progress_messages.pop(0)
                     self.assertEquals(expected_message, actual_message)
                 else:
-                    self.assertTrue(False, 'Unexpected message: {}'.format(actual_message))
+                    self.fail('Unexpected message: {}'.format(actual_message))
 
         command = 'echo "Hello World"; ' \
                   'echo "^^^^JOB-PROGRESS: 50 Fifty percent"; ' \
