@@ -28,7 +28,7 @@ def main(args=None):
         print(__version__)
         sys.exit(0)
 
-    cio.print_and_log('Cook Executor version {}'.format(__version__))
+    cio.print_out('Cook Executor version {}'.format(__version__))
 
     environment = os.environ
     executor_id = environment.get('MESOS_EXECUTOR_ID', '1')
@@ -37,7 +37,7 @@ def main(args=None):
     logging.basicConfig(level = log_level,
                         filename = 'executor.log',
                         format='%(asctime)s %(levelname)s %(message)s')
-    logging.info('Starting cook executor {} for executor-id={}'.format(__version__, executor_id))
+    logging.info('Starting Cook Executor {} for executor-id={}'.format(__version__, executor_id))
     logging.info('Log level is {}'.format(log_level))
 
     config = cc.initialize_config(environment)
