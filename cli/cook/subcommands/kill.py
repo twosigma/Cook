@@ -1,8 +1,6 @@
 from cook import http, colors
-
 from cook.querying import query, print_no_data
-
-from cook.util import strip_all
+from cook.util import strip_all, print_info
 
 
 def guard_against_duplicates(uuids, query_result):
@@ -25,15 +23,14 @@ def guard_against_duplicates(uuids, query_result):
 
     for cluster_name, entities in query_result['clusters'].items():
         jobs = entities['jobs']
-        instances = [i for j in entities['instances'] for i in j['instances'] if i['task_id'] in uuids]
-        groups = entities['groups']
-
         for job in jobs:
             add(job['uuid'], 'job', job, cluster_name)
 
+        instances = [i for j in entities['instances'] for i in j['instances'] if i['task_id'] in uuids]
         for instance in instances:
             add(instance['task_id'], 'job instance', instance, cluster_name)
 
+        groups = entities['groups']
         for group in groups:
             add(group['uuid'], 'job group', group, cluster_name)
 
@@ -64,9 +61,9 @@ def kill_entities(uuids, query_result, clusters):
             resp = http.delete(cluster, 'rawscheduler', params={'job': job_uuids, 'instance': instance_uuids})
             if resp.status_code == 204:
                 for job in jobs:
-                    print(f'Killed job {colors.bold(job["uuid"])} on {colors.bold(cluster_name)}.')
+                    print_info(f'Killed job {colors.bold(job["uuid"])} on {colors.bold(cluster_name)}.')
                 for instance in instances:
-                    print(f'Killed job instance {colors.bold(instance["task_id"])} on {colors.bold(cluster_name)}.')
+                    print_info(f'Killed job instance {colors.bold(instance["task_id"])} on {colors.bold(cluster_name)}.')
             else:
                 exit_code = 1
                 for job in jobs:
@@ -80,7 +77,7 @@ def kill_entities(uuids, query_result, clusters):
             resp = http.delete(cluster, 'group', params={'uuid': group_uuids})
             if resp.status_code == 204:
                 for group in groups:
-                    print(f'Killed job group {colors.bold(group["uuid"])} on {colors.bold(cluster_name)}.')
+                    print_info(f'Killed job group {colors.bold(group["uuid"])} on {colors.bold(cluster_name)}.')
             else:
                 exit_code = 1
                 for group in groups:
