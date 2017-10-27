@@ -13,8 +13,8 @@ def guard_against_duplicates(uuids, query_result):
     uuid_to_entries = {}
     duplicate_uuids = []
 
-    def add(uuid, entity_type, entity, cluster):
-        entry_map = {'type': entity_type, 'data': entity, 'cluster_name': cluster}
+    def add(uuid, entity_type, cluster):
+        entry_map = {'type': entity_type, 'cluster_name': cluster}
         if uuid in uuid_to_entries:
             uuid_to_entries[uuid].append(entry_map)
             duplicate_uuids.append(uuid)
@@ -24,15 +24,15 @@ def guard_against_duplicates(uuids, query_result):
     for cluster_name, entities in query_result['clusters'].items():
         jobs = entities['jobs']
         for job in jobs:
-            add(job['uuid'], 'job', job, cluster_name)
+            add(job['uuid'], 'job', cluster_name)
 
         instances = [i for j in entities['instances'] for i in j['instances'] if i['task_id'] in uuids]
         for instance in instances:
-            add(instance['task_id'], 'job instance', instance, cluster_name)
+            add(instance['task_id'], 'job instance', cluster_name)
 
         groups = entities['groups']
         for group in groups:
-            add(group['uuid'], 'job group', group, cluster_name)
+            add(group['uuid'], 'job group', cluster_name)
 
     if len(duplicate_uuids) > 0:
         messages = []
@@ -48,7 +48,7 @@ def guard_against_duplicates(uuids, query_result):
 
 
 def kill_entities(uuids, query_result, clusters):
-    """Attempts to kill the jobs / job instances / job groups with the given UUIDs"""
+    """Attempts to kill the jobs / instances / groups with the given UUIDs"""
     exit_code = 0
     for cluster_name, entities in query_result['clusters'].items():
         cluster = next(c for c in clusters if c['name'] == cluster_name)
@@ -63,7 +63,8 @@ def kill_entities(uuids, query_result, clusters):
                 for job in jobs:
                     print_info(f'Killed job {colors.bold(job["uuid"])} on {colors.bold(cluster_name)}.')
                 for instance in instances:
-                    print_info(f'Killed job instance {colors.bold(instance["task_id"])} on {colors.bold(cluster_name)}.')
+                    instance_uuid = instance['task_id']
+                    print_info(f'Killed job instance {colors.bold(instance_uuid)} on {colors.bold(cluster_name)}.')
             else:
                 exit_code = 1
                 for job in jobs:
@@ -94,8 +95,11 @@ def kill(clusters, args):
         print_no_data(clusters)
         return 1
 
+    # If the user provides UUIDs that map to more than one entity,
+    # we will raise an Exception that contains the details
     guard_against_duplicates(uuids, query_result)
-    kill_entities(uuids, query_result, clusters)
+
+    return kill_entities(uuids, query_result, clusters)
 
 
 def register(add_parser, _):
