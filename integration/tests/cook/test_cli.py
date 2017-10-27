@@ -939,12 +939,35 @@ class CookCliTest(unittest.TestCase):
     def test_kill_job(self):
         cp, uuids = cli.submit('sleep 60', self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
+
+        # Job should not be completed
         cp, jobs = cli.show_json(uuids, self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertNotEqual('completed', jobs[0]['status'])
+
+        # Kill the job
         cp = cli.kill(uuids, self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertIn(f'Killed job {uuids[0]}', cli.stdout(cp))
+
+        # Job should now be completed
         cp, jobs = cli.show_json(uuids, self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual('completed', jobs[0]['status'])
+
+    def test_kill_instance(self):
+        # Submit a job, allowing for a second try
+        cp, uuids = cli.submit('sleep 60', self.cook_url, submit_flags='--max-retries 2')
+        self.assertEqual(0, cp.returncode, cp.stderr)
+
+        # Wait for an instance to appear, and the kill it
+        job = util.wait_until(lambda: cli.show_json(uuids, self.cook_url)[1][0], lambda j: len(j['instances']) > 0)
+        instance_uuid = job['instances'][0]['task_id']
+        cp = cli.kill([instance_uuid], self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertIn(f'Killed job instance {instance_uuid}', cli.stdout(cp))
+
+        # Wait for the second instance to appear and check their statuses
+        job = util.wait_until(lambda: cli.show_json(uuids, self.cook_url)[1][0], lambda j: len(j['instances']) > 1)
+        self.assertEqual('failed', next(i['status'] for i in job['instances'] if i['task_id'] == instance_uuid))
+        self.assertEqual('running', next(i['status'] for i in job['instances'] if i['task_id'] != instance_uuid))
