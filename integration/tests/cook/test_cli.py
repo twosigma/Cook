@@ -802,6 +802,7 @@ class CookCliTest(unittest.TestCase):
         cp, uuids = cli.submit('"touch t?.sh; touch [ab]*; touch {b,c,est}; touch \'*\'; touch \'t*\'"', self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
         util.wait_for_job(self.cook_url, uuids[0], 'completed')
+        self.assertEqual(0, cp.returncode, cp.stderr)
 
         path = 't?.sh'
         cp, _ = cli.ls(uuids[0], self.cook_url, path, parse_json=False)
@@ -867,3 +868,31 @@ class CookCliTest(unittest.TestCase):
         self.assertEqual('-rw-r--r--', bar['mode'])
         self.assertEqual(1, bar['nlink'])
         self.assertEqual(0, bar['size'])
+
+    def test_show_progress_message(self):
+        executor = util.get_job_executor_type(self.cook_url)
+        cp, uuids = cli.submit('echo "progress: 99 We\'re so close!"', self.cook_url,
+                               submit_flags=f'--executor {executor}')
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        util.wait_for_job(self.cook_url, uuids[0], 'completed')
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        cp, jobs = cli.show_json(uuids, self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertEqual(executor, jobs[0]['instances'][0]['executor'])
+        if executor == 'cook':
+            instance = util.wait_until(lambda: cli.show_json(uuids, self.cook_url)[1][0]['instances'][0],
+                                       lambda i: 'progress' in i and 'progress_message' in i)
+            self.assertEqual(99, instance['progress'])
+            self.assertEqual("We're so close!", instance['progress_message'])
+            cp = cli.show(uuids, self.cook_url)
+            self.assertEqual(0, cp.returncode, cp.stderr)
+            self.assertIn("99% We're so close!", cli.stdout(cp))
+
+    def test_submit_with_executor(self):
+        cp, uuids = cli.submit('ls', self.cook_url, submit_flags='--executor cook')
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        cp, uuids = cli.submit('ls', self.cook_url, submit_flags='--executor mesos')
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        cp, uuids = cli.submit('ls', self.cook_url, submit_flags='--executor bogus')
+        self.assertEqual(2, cp.returncode, cp.stderr)
+        self.assertIn("invalid choice: 'bogus'", cli.decode(cp.stderr))

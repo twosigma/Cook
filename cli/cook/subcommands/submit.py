@@ -210,6 +210,8 @@ def register(add_parser, add_defaults):
     submit_parser.add_argument('--ports', help='number of ports to reserve for job', type=int)
     submit_parser.add_argument('--application-name', '-a', help='name of application submitting the job')
     submit_parser.add_argument('--application-version', '-v', help='version of application submitting the job')
+    submit_parser.add_argument('--executor', '-E', help='executor to use to run the job on the Mesos agent',
+                               choices=('cook', 'mesos'))
     submit_parser.add_argument('--raw', '-r', help='raw job spec in json format', dest='raw', action='store_true')
     submit_parser.add_argument('command', nargs=argparse.REMAINDER)
 
