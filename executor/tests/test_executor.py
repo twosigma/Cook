@@ -220,7 +220,7 @@ class ExecutorTest(unittest.TestCase):
         self.assertEqual(cook.TASK_KILLED, ce.get_task_state(-1))
 
     def test_retrieve_process_environment(self):
-        self.assertEqual({'PROGRESS_OUTPUT_FILE': 'stdout'},
+        self.assertEqual({},
                          ce.retrieve_process_environment(cc.ExecutorConfig(), {}))
         self.assertEqual({'FOO': 'BAR',
                           'MESOS_SANDBOX': '/path/to/sandbox',
@@ -230,12 +230,20 @@ class ExecutorTest(unittest.TestCase):
                              {'FOO': 'BAR',
                               'MESOS_SANDBOX': '/path/to/sandbox',
                               'PROGRESS_OUTPUT_FILE': 'executor.progress'}))
-        self.assertEqual({'CUSTOM_PROGRESS_OUTPUT_FILE': 'executor.progress',
-                          'PROGRESS_OUTPUT_FILE': 'executor.progress',
+        self.assertEqual({'CUSTOM_PROGRESS_OUTPUT_FILE': 'custom.progress',
                           'EXECUTOR_PROGRESS_OUTPUT_FILE_ENV': 'CUSTOM_PROGRESS_OUTPUT_FILE'},
                          ce.retrieve_process_environment(
-                             cc.ExecutorConfig(progress_output_name='executor.progress'),
-                             {'EXECUTOR_PROGRESS_OUTPUT_FILE_ENV': 'CUSTOM_PROGRESS_OUTPUT_FILE'}))
+                             cc.ExecutorConfig(progress_output_name='custom.progress'),
+                             {'CUSTOM_PROGRESS_OUTPUT_FILE': 'executor.progress',
+                              'EXECUTOR_PROGRESS_OUTPUT_FILE_ENV': 'CUSTOM_PROGRESS_OUTPUT_FILE'}))
+        self.assertEqual({'CUSTOM_PROGRESS_OUTPUT_FILE': 'custom.progress',
+                          'EXECUTOR_PROGRESS_OUTPUT_FILE_ENV': 'CUSTOM_PROGRESS_OUTPUT_FILE',
+                          'PROGRESS_OUTPUT_FILE': 'stdout'},
+                         ce.retrieve_process_environment(
+                             cc.ExecutorConfig(progress_output_name='custom.progress'),
+                             {'CUSTOM_PROGRESS_OUTPUT_FILE': 'executor.progress',
+                              'EXECUTOR_PROGRESS_OUTPUT_FILE_ENV': 'CUSTOM_PROGRESS_OUTPUT_FILE',
+                              'PROGRESS_OUTPUT_FILE': 'stdout'}))
 
     def manage_task_runner(self, command, assertions_fn, stop_signal=Event()):
         driver = FakeMesosExecutorDriver()
@@ -272,7 +280,7 @@ class ExecutorTest(unittest.TestCase):
             cleanup_output(stdout_name, stderr_name)
 
     def test_manage_task_environment_output(self):
-        def assertions(driver, task_id, sandbox_directory):
+        def assertions(driver, task_id, _):
             logging.info('Statuses: {}'.format(driver.statuses))
             self.assertEqual(3, len(driver.statuses))
 
@@ -284,12 +292,12 @@ class ExecutorTest(unittest.TestCase):
                 file_contents = f.read()
                 self.assertTrue('FEE=FIE' in file_contents)
                 self.assertTrue('FOO=BAR' in file_contents)
-                self.assertTrue('PROGRESS_OUTPUT_FILE=build/stdout.{}'.format(task_id) in file_contents)
+                self.assertTrue('PROGRESS_OUTPUT_FILE=foobar' in file_contents)
 
         command = 'env | sort'
         current_environ = os.environ
         try:
-            os.environ = {'FOO': 'BAR', 'FEE': 'FIE'}
+            os.environ = {'FOO': 'BAR', 'FEE': 'FIE', 'PROGRESS_OUTPUT_FILE': 'foobar'}
             self.manage_task_runner(command, assertions)
         finally:
             os.environ = current_environ

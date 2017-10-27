@@ -254,21 +254,42 @@ def get_task_state(exit_code):
         return cook.TASK_FINISHED
 
 
+def set_environment(environment, key, value):
+    """Updates an entry in the environment dictionary.
+
+    Returns
+    -------
+    Nothing.
+    """
+    if key not in environment or environment[key] != value:
+        logging.info('Setting process environment[{}]={}'.format(key, value))
+        environment[key] = value
+
+
 def retrieve_process_environment(config, os_environ):
+    """Prepares the environment for the subprocess.
+    The function also ensures that env[EXECUTOR_PROGRESS_OUTPUT_FILE_ENV]
+    and PROGRESS_OUTPUT_FILE is set to config.progress_output_name in the
+    returned environment.
+
+    Parameters
+    ----------
+    config: cook.config.ExecutorConfig
+        The current executor config.
+    os_environ: dictionary
+        A dictionary representing the current environment.
+
+    Returns
+    -------
+    The environment dictionary for the subprocess.
+    """
     environment = dict(os_environ)
-    # set the progress output file in the environment variable
+
+    progress_output_name = config.progress_output_name
     custom_progress_output_file_env = environment.get('EXECUTOR_PROGRESS_OUTPUT_FILE_ENV', '')
-    progress_output_file = environment.get(custom_progress_output_file_env, '')
-    if not progress_output_file:
-        if custom_progress_output_file_env:
-            logging.info('Setting process environment[{}]={}'.format(
-                custom_progress_output_file_env, progress_output_file))
-            environment[custom_progress_output_file_env] = config.progress_output_name
-        default_progress_output_file_env = 'PROGRESS_OUTPUT_FILE'
-        if default_progress_output_file_env not in environment:
-            logging.info('Setting process environment[{}]={}'.format(
-                default_progress_output_file_env, progress_output_file))
-            environment[default_progress_output_file_env] = config.progress_output_name
+    if custom_progress_output_file_env:
+        set_environment(environment, custom_progress_output_file_env, progress_output_name)
+
     return environment
 
 
