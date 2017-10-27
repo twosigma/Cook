@@ -7,7 +7,7 @@
 #
 # When using the quiet flag (-q|--quiet), no additional output is printed.
 #
-# Note: versions containing the case-insensitive string "SNAPSHOT" never match
+# Note: versions containing the case-insensitive string "dev" never match
 # (i.e., they're considered "unstable", and should always require a rebuild).
 
 #
@@ -42,14 +42,14 @@ cd "$executor_bin_dir/.."
 source_version=`python3 -c 'from cook._version import __version__; print(__version__)'`
 
 #
-# Check for source code SNAPSHOT version
+# Check for source code dev version
 #
 
 shopt -s nocasematch
 
-if [[ "$source_version" == *SNAPSHOT* ]]; then
+if [[ "$source_version" == *dev* ]]; then
     if $verbose; then
-        echo "Detected snapshot (unstable) version: $source_version"
+        echo "Detected dev (unstable) version: $source_version"
     fi
     exit 1
 fi
