@@ -252,6 +252,51 @@ def get_task_state(exit_code):
         return cook.TASK_FINISHED
 
 
+def ensure_heartbeats(driver, task_id, stop_signal, process, heartbeat_interval_ms, max_message_length):
+    """Sends heartbeat framework messages at intervals of heartbeat_interval_ms ms.
+    Aborts sending the messages when the process terminates or when the stop_signal has been set.
+
+    Parameters
+    ----------
+    driver: MesosExecutorDriver
+        The driver to send the status update to.
+    task_id: string
+        The id of the task that is being executed.
+    stop_signal: Event
+        Event that determines if an interrupt was sent
+    process: subprocess.Popen
+        The process to await completion for.
+    heartbeat_interval_ms: int
+        An integer that represents the heartbeat interval.
+    max_message_length: int
+        The allowed max message length after encoding.
+
+    Returns
+    -------
+    Nothing.
+    """
+    try:
+        logging.info('Starting heartbeats')
+
+        sleep_duration_ms = min(100, heartbeat_interval_ms / 2)
+        sleep_duration_sec = sleep_duration_ms / 1000.0
+
+        pulse_time_elapsed_ms = 0
+        while is_process_running(process) and not stop_signal.isSet():
+            if pulse_time_elapsed_ms >= heartbeat_interval_ms:
+                pulse_time_elapsed_ms = 0
+                epoch_ms = int(time.time() * 1000)
+                heartbeat_message = json.dumps({'task-id': task_id, 'timestamp': epoch_ms})
+                send_message(driver, heartbeat_message, max_message_length)
+            else:
+                time.sleep(sleep_duration_sec)
+                pulse_time_elapsed_ms += sleep_duration_ms
+
+        logging.info('Terminating heartbeats')
+    except Exception:
+        logging.exception('Error in sending heartbeats')
+
+
 def manage_task(driver, task, stop_signal, completed_signal, config):
     """Manages the execution of a task waiting for it to terminate normally or be killed.
        It also sends the task status updates, sandbox location and exit code back to the scheduler.
@@ -281,6 +326,12 @@ def manage_task(driver, task, stop_signal, completed_signal, config):
             logging.info('Error in launching task')
             update_status(driver, task_id, cook.TASK_ERROR)
             return
+
+        # launch thread to send heartbeats
+        heartbeat_thread = Thread(target=ensure_heartbeats,
+                                  args=(driver, task_id, stop_signal, process, config.heartbeat_interval_ms,
+                                        config.max_message_length))
+        heartbeat_thread.start()
 
         stdout_thread, stderr_thread = cio.track_outputs(task_id, process, config.max_bytes_read_per_line)
         task_completed_signal = Event() # event to track task execution completion

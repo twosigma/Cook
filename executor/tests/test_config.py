@@ -19,6 +19,7 @@ class ConfigTest(unittest.TestCase):
         self.assertEqual(1000, cc.ExecutorConfig.parse_time_ms('corrupt-value'))
 
     def test_executor_config(self):
+        heartbeat_interval_ms = 2 * 60 * 1000
         max_bytes_read_per_line = 16 * 1024
         max_message_length = 300
         progress_output_name = 'stdout_name'
@@ -26,7 +27,8 @@ class ConfigTest(unittest.TestCase):
         progress_sample_interval_ms = 100
         sandbox_directory = '/location/to/task/sandbox/task_id'
         shutdown_grace_period_secs = '5secs'
-        config = cc.ExecutorConfig(max_bytes_read_per_line=max_bytes_read_per_line,
+        config = cc.ExecutorConfig(heartbeat_interval_ms=heartbeat_interval_ms,
+                                   max_bytes_read_per_line=max_bytes_read_per_line,
                                    max_message_length=max_message_length,
                                    progress_output_name=progress_output_name,
                                    progress_regex_string=progress_regex_string,
@@ -34,6 +36,7 @@ class ConfigTest(unittest.TestCase):
                                    sandbox_directory=sandbox_directory,
                                    shutdown_grace_period=shutdown_grace_period_secs)
 
+        self.assertEqual(heartbeat_interval_ms, config.heartbeat_interval_ms)
         self.assertEqual(max_bytes_read_per_line, config.max_bytes_read_per_line)
         self.assertEqual(max_message_length, config.max_message_length)
         self.assertEqual(progress_output_name, config.progress_output_name)
@@ -46,6 +49,7 @@ class ConfigTest(unittest.TestCase):
         environment = {}
         config = cc.initialize_config(environment)
 
+        self.assertEqual(5 * 60 * 1000, config.heartbeat_interval_ms)
         self.assertEqual(4 * 1024, config.max_bytes_read_per_line)
         self.assertEqual(512, config.max_message_length)
         self.assertEqual('stdout', config.progress_output_name)
@@ -55,7 +59,8 @@ class ConfigTest(unittest.TestCase):
         self.assertEqual(2000, config.shutdown_grace_period_ms)
 
     def test_initialize_config_custom(self):
-        environment = {'EXECUTOR_MAX_BYTES_READ_PER_LINE': '1234',
+        environment = {'EXECUTOR_HEARTBEAT_INTERVAL_MS': '2345',
+                       'EXECUTOR_MAX_BYTES_READ_PER_LINE': '1234',
                        'EXECUTOR_MAX_MESSAGE_LENGTH': '1024',
                        'MESOS_EXECUTOR_SHUTDOWN_GRACE_PERIOD': '4secs',
                        'MESOS_SANDBOX': '/sandbox/location',
@@ -64,6 +69,7 @@ class ConfigTest(unittest.TestCase):
                        'PROGRESS_SAMPLE_INTERVAL_MS': '2500'}
         config = cc.initialize_config(environment)
 
+        self.assertEqual(2345, config.heartbeat_interval_ms)
         self.assertEqual(1234, config.max_bytes_read_per_line)
         self.assertEqual(1024, config.max_message_length)
         self.assertEqual('progress_file', config.progress_output_name)
