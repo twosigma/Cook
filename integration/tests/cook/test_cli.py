@@ -878,9 +878,10 @@ class CookCliTest(unittest.TestCase):
         self.assertEqual(0, cp.returncode, cp.stderr)
         cp, jobs = cli.show_json(uuids, self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
-        instance = jobs[0]['instances'][0]
-        self.assertEqual(executor, instance['executor'])
+        self.assertEqual(executor, jobs[0]['instances'][0]['executor'])
         if executor == 'cook':
+            instance = util.wait_until(lambda: cli.show_json(uuids, self.cook_url)[1][0]['instances'][0],
+                                       lambda i: 'progress' in i and 'progress_message' in i)
             self.assertEqual(99, instance['progress'])
             self.assertEqual("We're so close!", instance['progress_message'])
             cp = cli.show(uuids, self.cook_url)
