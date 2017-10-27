@@ -94,13 +94,15 @@ def send_message(driver, message, max_message_length):
         return False
 
 
-def launch_task(task):
+def launch_task(task, max_bytes_read_per_line):
     """Launches the task using the command available in the json map from the data field.
 
     Parameters
     ----------
     task: map
         The task to execute.
+    max_bytes_read_per_line: int
+        The maximum number of bytes to read per call to readline().
 
     Returns
     -------
@@ -117,10 +119,13 @@ def launch_task(task):
             logging.warning('No command provided!')
             return None
 
-        process = subprocess.Popen(command, shell=True, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
-        stdout_thread, stderr_thread = cio.track_outputs(process)
+        process = subprocess.Popen(command,
+                                   bufsize=2*max_bytes_read_per_line,
+                                   shell=True,
+                                   stderr=subprocess.PIPE,
+                                   stdout=subprocess.PIPE)
 
-        return process, stdout_thread, stderr_thread
+        return process
     except Exception:
         logging.exception('Error in launch_task')
         return None
@@ -188,14 +193,14 @@ def kill_task(process, shutdown_grace_period_ms):
             time.sleep(0.01)
             if not is_process_running(process):
                 message = 'Command terminated with signal Terminated (pid: {})'.format(process.pid)
-                cio.print_out(message, flush=True)
+                cio.printline_out(message, flush=True)
                 logging.info(message)
                 break
         if is_process_running(process):
             logging.info('Process did not terminate, forcefully killing it')
             process.kill()
             message = 'Command terminated with signal Killed (pid: {})'.format(process.pid)
-            cio.print_out(message, flush=True)
+            cio.printline_out(message, flush=True)
             logging.info(message)
 
 
@@ -262,7 +267,7 @@ def manage_task(driver, task, stop_signal, completed_signal, config):
     Nothing
     """
     task_id = get_task_id(task)
-    cio.print_out('Starting task {}'.format(task_id))
+    cio.printline_out('Starting task {}'.format(task_id))
     try:
         # not yet started to run the task
         update_status(driver, task_id, cook.TASK_STARTING)
@@ -270,8 +275,8 @@ def manage_task(driver, task, stop_signal, completed_signal, config):
         sandbox_message = json.dumps({'sandbox-directory': config.sandbox_directory, 'task-id': task_id})
         send_message(driver, sandbox_message, config.max_message_length)
 
-        process_info = launch_task(task)
-        if process_info:
+        process = launch_task(task, config.max_bytes_read_per_line)
+        if process:
             # task has begun running successfully
             update_status(driver, task_id, cook.TASK_RUNNING)
         else:
@@ -280,6 +285,7 @@ def manage_task(driver, task, stop_signal, completed_signal, config):
             update_status(driver, task_id, cook.TASK_ERROR)
             return
 
+        stdout_thread, stderr_thread = cio.track_outputs(process, config.max_bytes_read_per_line)
         task_completed_signal = Event() # event to track task execution completion
 
         progress_watcher = cp.ProgressWatcher(config, stop_signal, task_completed_signal)
@@ -287,6 +293,7 @@ def manage_task(driver, task, stop_signal, completed_signal, config):
                                               config.progress_sample_interval_ms, send_message)
         progress_complete_event = cp.launch_progress_tracker(progress_watcher, progress_updater)
 
+        process_info = process, stdout_thread, stderr_thread
         await_process_completion(stop_signal, process_info, config.shutdown_grace_period_ms)
         task_completed_signal.set()
 
@@ -294,7 +301,7 @@ def manage_task(driver, task, stop_signal, completed_signal, config):
         process, _, _ = process_info
         exit_code = process.returncode
         message = 'Command exited with status {} (pid: {})'.format(exit_code, process.pid)
-        cio.print_out(message, flush=True)
+        cio.printline_out(message, flush=True)
         logging.info(message)
 
         # await progress updater termination if executor is terminating normally
@@ -323,7 +330,7 @@ def manage_task(driver, task, stop_signal, completed_signal, config):
         # ensure completed_signal is set so driver can stop
         completed_signal.set()
         message = 'Executor completed execution of {}'.format(task_id)
-        cio.print_out(message, flush=True)
+        cio.printline_out(message, flush=True)
         logging.info(message)
 
 

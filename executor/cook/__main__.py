@@ -28,7 +28,7 @@ def main(args=None):
         print(__version__)
         sys.exit(0)
 
-    cio.print_out('Cook Executor version {}'.format(__version__))
+    cio.printline_out('Cook Executor version {}'.format(__version__))
 
     environment = os.environ
     executor_id = environment.get('MESOS_EXECUTOR_ID', '1')
@@ -43,7 +43,7 @@ def main(args=None):
     config = cc.initialize_config(environment)
 
     def handle_interrupt(interrupt_code, _):
-        cio.print_out('Received kill for task {} with grace period of {}'.format(
+        cio.printline_out('Received kill for task {} with grace period of {}'.format(
             executor_id, config.shutdown_grace_period))
         logging.info('Received interrupt code {}, preparing to terminate executor'.format(
             interrupt_code))

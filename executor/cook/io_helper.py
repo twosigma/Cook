@@ -4,6 +4,7 @@
 """
 
 import logging
+import os
 import sys
 from threading import Lock, Thread
 
@@ -11,43 +12,72 @@ __stdout_lock__ = Lock()
 __stderr_lock__ = Lock()
 
 
-def print_out(string_data, flush=False):
+def print_out(string_data, flush=False, newline=True):
     """Wrapper function that prints to stdout in a thread-safe manner using the __stdout_lock__ lock.
 
     Parameters
     ----------
     string_data: string
         The string to output
+    flush: boolean
+        Flag determining whether to trigger a sys.stdout.flush()
+    newline: boolean
+        Flag determining whether to output a newline at the end
 
     Returns
     -------
     Nothing.
     """
+    message = '{}{}'.format(string_data, os.linesep) if newline else string_data
     with __stdout_lock__:
-        print(string_data, file=sys.stdout)
+        sys.stdout.write(message)
     if flush:
         sys.stdout.flush()
 
 
-def print_err(string_data, flush=False):
+def printline_out(string_data, flush=False, newline=True):
+    """Wrapper function that prints to stdout in a thread-safe manner ensuring newline at the start.
+
+    Parameters
+    ----------
+    string_data: string
+        The string to output
+    flush: boolean
+        Flag determining whether to trigger a sys.stdout.flush()
+    newline: boolean
+        Flag determining whether to output a newline at the end
+
+    Returns
+    -------
+    Nothing.
+    """
+    print_out('{}{}'.format(os.linesep, string_data), flush=flush, newline=newline)
+
+
+def print_err(string_data, flush=False, newline=True):
     """Wrapper function that prints to stderr in a thread-safe manner using the __stderr_lock__ lock.
 
     Parameters
     ----------
     string_data: string
         The string to output
+    flush: boolean
+        Flag determining whether to trigger a sys.stderr.flush()
+    newline: boolean
+        Flag determining whether to output a newline at the end
 
     Returns
     -------
     Nothing.
     """
+    message = '{}{}'.format(string_data, os.linesep) if newline else string_data
     with __stderr_lock__:
-        print(string_data, file=sys.stderr)
+        sys.stderr.write(message)
     if flush:
-        sys.stdout.flush()
+        sys.stderr.flush()
 
 
-def process_output(label, out_file, out_fn, flush_fn):
+def process_output(label, out_file, max_bytes_read_per_line, out_fn, flush_fn):
     """Processes output piped from the out_file and prints it using the out_fn function.
     When done reading the file, calls flush_fn to flush the output.
 
@@ -57,6 +87,8 @@ def process_output(label, out_file, out_fn, flush_fn):
         The string to associate in outputs
     out_file: a file object
         Provides that output from the child process
+    max_bytes_read_per_line: int
+        The maximum number of bytes to read per call to readline().
     out_fn: function(string)
         Function to output a string
     flush_fn: function()
@@ -67,34 +99,41 @@ def process_output(label, out_file, out_fn, flush_fn):
     Nothing.
     """
     message = 'Starting to pipe {} from launched process'.format(label)
-    print_out(message)
+    printline_out(message)
     logging.info(message)
     try:
-        for line in out_file:
-            out_fn(line.decode('utf-8').rstrip())
+        while True:
+            line = out_file.readline(max_bytes_read_per_line)
+            if not line:
+                break
+            out_fn(line.decode('utf-8'), newline=False)
         flush_fn()
         message = 'Done piping {} from launched process'.format(label)
-        print_out(message)
+        printline_out(message)
         logging.info(message)
     except Exception:
         logging.exception('Error in process_output of {}'.format(label))
-        print_out('Error in process_output of {}'.format(label), flush=True)
+        printline_out('Error in process_output of {}'.format(label), flush=True)
 
 
-def track_outputs(process):
+def track_outputs(process, max_bytes_read_per_line):
     """Launches two threads to pipe the stderr/stdout from the subprocess to the system stderr/stdout.
 
     Parameters
     ----------
     process: subprocess.Popen
         The process whose stderr and stdout to monitor.
+    max_bytes_read_per_line: int
+        The maximum number of bytes to read per call to readline().
 
     Returns
     -------
     A tuple containing the two threads that have been started: stdout_thread, stderr_thread.
     """
-    stderr_thread = Thread(target=process_output, args=('stderr', process.stderr, print_err, sys.stderr.flush))
-    stdout_thread = Thread(target=process_output, args=('stdout', process.stdout, print_out, sys.stdout.flush))
+    stderr_thread = Thread(target=process_output,
+                           args=('stderr', process.stderr, max_bytes_read_per_line, print_err, sys.stderr.flush))
+    stdout_thread = Thread(target=process_output,
+                           args=('stdout', process.stdout, max_bytes_read_per_line, print_out, sys.stdout.flush))
 
     stderr_thread.start()
     stdout_thread.start()
