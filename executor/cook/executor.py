@@ -283,7 +283,7 @@ def manage_task(driver, task, stop_signal, completed_signal, config):
             update_status(driver, task_id, cook.TASK_ERROR)
             return
 
-        stdout_thread, stderr_thread = cio.track_outputs(process, config.max_bytes_read_per_line)
+        stdout_thread, stderr_thread = cio.track_outputs(task_id, process, config.max_bytes_read_per_line)
         task_completed_signal = Event() # event to track task execution completion
 
         progress_watcher = cp.ProgressWatcher(config, stop_signal, task_completed_signal)

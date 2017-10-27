@@ -89,7 +89,7 @@ class ExecutorTest(unittest.TestCase):
         try:
             max_bytes_read_per_line = 4096
             process = ce.launch_task(task, max_bytes_read_per_line)
-            cio.track_outputs(process, max_bytes_read_per_line)
+            cio.track_outputs(task_id, process, max_bytes_read_per_line)
 
             self.assertIsNotNone(process)
 

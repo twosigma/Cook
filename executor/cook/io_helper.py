@@ -114,11 +114,13 @@ def process_output(label, out_file, max_bytes_read_per_line, out_fn, flush_fn):
         print_out('Error in process_output of {}{}'.format(label, os.linesep), flush=True)
 
 
-def track_outputs(process, max_bytes_read_per_line):
+def track_outputs(task_id, process, max_bytes_read_per_line):
     """Launches two threads to pipe the stderr/stdout from the subprocess to the system stderr/stdout.
 
     Parameters
     ----------
+    task_id: string
+        The ID of the task being executed.
     process: subprocess.Popen
         The process whose stderr and stdout to monitor.
     max_bytes_read_per_line: int
@@ -128,12 +130,14 @@ def track_outputs(process, max_bytes_read_per_line):
     -------
     A tuple containing the two threads that have been started: stdout_thread, stderr_thread.
     """
+    stderr_label = 'stderr (task-id: {}, pid: {})'.format(task_id, process.pid)
     stderr_thread = Thread(target=process_output,
-                           args=('stderr', process.stderr, max_bytes_read_per_line, print_err, sys.stderr.flush))
-    stdout_thread = Thread(target=process_output,
-                           args=('stdout', process.stdout, max_bytes_read_per_line, print_out, sys.stdout.flush))
-
+                           args=(stderr_label, process.stderr, max_bytes_read_per_line, print_err, sys.stderr.flush))
     stderr_thread.start()
+
+    stdout_label = 'stdout (task-id: {}, pid: {})'.format(task_id, process.pid)
+    stdout_thread = Thread(target=process_output,
+                           args=(stdout_label, process.stdout, max_bytes_read_per_line, print_out, sys.stdout.flush))
     stdout_thread.start()
 
     return stdout_thread, stderr_thread
