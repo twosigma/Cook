@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import logging
+import os
 
 from pymesos.utils import parse_duration
 
@@ -53,18 +54,14 @@ def initialize_config(environment):
     sandbox_directory = environment.get('MESOS_SANDBOX', '')
     default_progress_output_name = '{}.progress'.format(executor_id)
     if sandbox_directory:
-        default_progress_output_file = '{}/{}'.format(sandbox_directory, default_progress_output_name)
+        default_progress_output_file = os.path.join(sandbox_directory, default_progress_output_name)
     else:
         default_progress_output_file = default_progress_output_name
 
-    if 'EXECUTOR_PROGRESS_OUTPUT_FILE_ENV' in environment:
-        progress_output_file_env = environment.get('EXECUTOR_PROGRESS_OUTPUT_FILE_ENV')
-        logging.info('Progress location environment variable is {}'.format(progress_output_file_env))
-        if progress_output_file_env not in environment:
-            logging.warning('No entry found for {} in the environment'.format(progress_output_file_env))
-    else:
-        progress_output_file_env = 'PROGRESS_OUTPUT_FILE'
-        logging.info('Progress location environment variable is {}'.format(progress_output_file_env))
+    progress_output_file_env = environment.get('EXECUTOR_PROGRESS_OUTPUT_FILE_ENV', 'PROGRESS_OUTPUT_FILE')
+    logging.info('Progress location environment variable is {}'.format(progress_output_file_env))
+    if progress_output_file_env not in environment:
+        logging.warning('No entry found for {} in the environment'.format(progress_output_file_env))
 
     max_bytes_read_per_line = max(int(environment.get('EXECUTOR_MAX_BYTES_READ_PER_LINE', 4 * 1024)), 128)
     max_message_length = max(int(environment.get('EXECUTOR_MAX_MESSAGE_LENGTH', 512)), 64)
