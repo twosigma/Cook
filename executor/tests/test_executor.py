@@ -14,7 +14,7 @@ import cook.config as cc
 import cook.executor as ce
 import cook.io_helper as cio
 from tests.utils import assert_message, assert_status, cleanup_output, close_sys_outputs, ensure_directory, \
-    get_random_task_id, redirect_stderr_to_file, redirect_stdout_to_file, FakeMesosExecutorDriver
+    get_random_task_id, parse_message, redirect_stderr_to_file, redirect_stdout_to_file, FakeMesosExecutorDriver
 
 
 class ExecutorTest(unittest.TestCase):
@@ -333,16 +333,22 @@ class ExecutorTest(unittest.TestCase):
             expected_message_0 = {'sandbox-directory': sandbox_directory, 'task-id': task_id}
             assert_message(self, expected_message_0, actual_encoded_message_0)
 
-            actual_encoded_message_1 = driver.messages[1]
-            expected_message_1 = {'progress-message': 'line count is 20',
-                                  'progress-percent': 90,
-                                  'progress-sequence': 1,
-                                  'task-id': task_id}
-            assert_message(self, expected_message_1, actual_encoded_message_1)
+            expected_exit_messages = [{'exit-code': 0, 'task-id': task_id}]
+            expected_progress_messages = [{'progress-message': 'line count is 20',
+                                           'progress-percent': 90,
+                                           'progress-sequence': 1,
+                                           'task-id': task_id}]
 
-            actual_encoded_message_2 = driver.messages[2]
-            expected_message_2 = {'exit-code': 0, 'task-id': task_id}
-            assert_message(self, expected_message_2, actual_encoded_message_2)
+            for i in range(1, len(driver.messages)):
+                actual_message = parse_message(driver.messages[i])
+                if 'exit-code' in actual_message and len(expected_exit_messages) > 0:
+                    expected_message = expected_exit_messages.pop(0)
+                    self.assertEquals(expected_message, actual_message)
+                elif 'progress-sequence' in actual_message and len(expected_progress_messages) > 0:
+                    expected_message = expected_progress_messages.pop(0)
+                    self.assertEquals(expected_message, actual_message)
+                else:
+                    self.assertTrue(False, 'Unexpected message: {}'.format(actual_message))
 
         test_file_name = ensure_directory('build/file.' + get_random_task_id())
         command = ('mkdir -p build; touch {0}; for i in $(seq 20); do echo $i >> {0}; done; '
@@ -375,23 +381,26 @@ class ExecutorTest(unittest.TestCase):
             expected_message_0 = {'sandbox-directory': sandbox_directory, 'task-id': task_id}
             assert_message(self, expected_message_0, actual_encoded_message_0)
 
-            actual_encoded_message_1 = driver.messages[1]
-            expected_message_1 = {'progress-message': 'Fifty percent',
-                                  'progress-percent': 50,
-                                  'progress-sequence': 1,
-                                  'task-id': task_id}
-            assert_message(self, expected_message_1, actual_encoded_message_1)
+            expected_exit_messages = [{'exit-code': 0, 'task-id': task_id}]
+            expected_progress_messages = [{'progress-message': 'Fifty percent',
+                                           'progress-percent': 50,
+                                           'progress-sequence': 1,
+                                           'task-id': task_id},
+                                          {'progress-message': 'Fifty-five percent',
+                                           'progress-percent': 55,
+                                           'progress-sequence': 2,
+                                           'task-id': task_id}]
 
-            actual_encoded_message_2 = driver.messages[2]
-            expected_message_2 = {'progress-message': 'Fifty-five percent',
-                                  'progress-percent': 55,
-                                  'progress-sequence': 2,
-                                  'task-id': task_id}
-            assert_message(self, expected_message_2, actual_encoded_message_2)
-
-            actual_encoded_message_3 = driver.messages[3]
-            expected_message_3 = {'exit-code': 0, 'task-id': task_id}
-            assert_message(self, expected_message_3, actual_encoded_message_3)
+            for i in range(1, len(driver.messages)):
+                actual_message = parse_message(driver.messages[i])
+                if 'exit-code' in actual_message and len(expected_exit_messages) > 0:
+                    expected_message = expected_exit_messages.pop(0)
+                    self.assertEquals(expected_message, actual_message)
+                elif 'progress-sequence' in actual_message and len(expected_progress_messages) > 0:
+                    expected_message = expected_progress_messages.pop(0)
+                    self.assertEquals(expected_message, actual_message)
+                else:
+                    self.assertTrue(False, 'Unexpected message: {}'.format(actual_message))
 
         command = 'echo "Hello World"; ' \
                   'echo "^^^^JOB-PROGRESS: 50 Fifty percent"; ' \

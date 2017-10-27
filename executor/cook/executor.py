@@ -301,9 +301,6 @@ def manage_task(driver, task, stop_signal, completed_signal, config):
         cio.print_and_log('Command exited with status {} (pid: {})'.format(exit_code, process.pid),
                           flush=True)
 
-        # force send any available latest progress state
-        cp.force_send_progress_update(progress_watcher, progress_updater)
-
         exit_message = json.dumps({'exit-code': exit_code, 'task-id': task_id})
         send_message(driver, exit_message, config.max_message_length)
 
@@ -313,7 +310,7 @@ def manage_task(driver, task, stop_signal, completed_signal, config):
             progress_complete_event.wait()
             logging.info('Progress updater completed')
 
-        # force send the latest progress state after progress tracking completion
+        # force send any available latest progress state
         cp.force_send_progress_update(progress_watcher, progress_updater)
 
         # task either completed successfully or aborted with an error
