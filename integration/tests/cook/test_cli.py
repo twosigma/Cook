@@ -896,3 +896,55 @@ class CookCliTest(unittest.TestCase):
         cp, uuids = cli.submit('ls', self.cook_url, submit_flags='--executor bogus')
         self.assertEqual(2, cp.returncode, cp.stderr)
         self.assertIn("invalid choice: 'bogus'", cli.decode(cp.stderr))
+
+    def test_kill_fails_with_duplicate_uuids(self):
+        # Duplicate job and group uuid
+        duplicate_uuid = uuid.uuid4()
+        cp, uuids = cli.submit('ls', self.cook_url, submit_flags=f'--uuid {duplicate_uuid} --group {duplicate_uuid}')
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        cp = cli.kill(uuids, self.cook_url)
+        self.assertEqual(1, cp.returncode, cp.stderr)
+        self.assertIn('Unable to kill due to duplicate UUIDs', cli.decode(cp.stderr))
+        self.assertIn('as a job', cli.decode(cp.stderr))
+        self.assertIn('as a job group', cli.decode(cp.stderr))
+
+        # Duplicate job and instance uuid
+        cp = cli.wait(uuids, self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        cp, jobs = cli.show_json(uuids, self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        duplicate_uuid = jobs[0]['instances'][0]['task_id']
+        cp, uuids = cli.submit('ls', self.cook_url, submit_flags=f'--uuid {duplicate_uuid}')
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        cp = cli.kill(uuids, self.cook_url)
+        self.assertEqual(1, cp.returncode, cp.stderr)
+        self.assertIn('Unable to kill due to duplicate UUIDs', cli.decode(cp.stderr))
+        self.assertIn('as a job', cli.decode(cp.stderr))
+        self.assertIn('as a job instance', cli.decode(cp.stderr))
+
+        # Duplicate instance and group uuid
+        cp = cli.wait(uuids, self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        cp, jobs = cli.show_json(uuids, self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        duplicate_uuid = jobs[0]['instances'][0]['task_id']
+        cp, uuids = cli.submit('ls', self.cook_url, submit_flags=f'--group {duplicate_uuid}')
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        cp = cli.kill([duplicate_uuid], self.cook_url)
+        self.assertEqual(1, cp.returncode, cp.stderr)
+        self.assertIn('Unable to kill due to duplicate UUIDs', cli.decode(cp.stderr))
+        self.assertIn('as a job group', cli.decode(cp.stderr))
+        self.assertIn('as a job instance', cli.decode(cp.stderr))
+
+    def test_kill_job(self):
+        cp, uuids = cli.submit('sleep 60', self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        cp, jobs = cli.show_json(uuids, self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertNotEqual('completed', jobs[0]['status'])
+        cp = cli.kill(uuids, self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertIn(f'Killed job {uuids[0]}', cli.stdout(cp))
+        cp, jobs = cli.show_json(uuids, self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertEqual('completed', jobs[0]['status'])
