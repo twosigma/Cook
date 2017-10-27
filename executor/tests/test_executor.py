@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 import signal
 import subprocess
 import time
@@ -499,6 +500,16 @@ class ExecutorTest(unittest.TestCase):
             actual_encoded_message_1 = driver.messages[1]
             expected_message_1 = {'exit-code': 0, 'task-id': task_id}
             assert_message(self, expected_message_1, actual_encoded_message_1)
+
+            stdout_name = ensure_directory('build/stdout.' + str(task_id))
+            if os.path.isfile(stdout_name):
+                with open(stdout_name) as f:
+                    file_contents = f.read()
+                    expected_string = 'Hello' * 1000000
+                    self.assertTrue(expected_string in file_contents)
+            else:
+                self.fail('{} does not exist.'.format(stdout_name))
+
 
         stop_signal = Event()
 

@@ -28,9 +28,10 @@ def print_out(string_data, flush=False, newline=True):
     -------
     Nothing.
     """
-    message = '{}{}'.format(string_data, os.linesep) if newline else string_data
     with __stdout_lock__:
-        sys.stdout.write(message)
+        sys.stdout.write(string_data)
+        if newline:
+            sys.stdout.write(os.linesep)
     if flush:
         sys.stdout.flush()
 
@@ -72,9 +73,10 @@ def print_err(string_data, flush=False, newline=True):
     -------
     Nothing.
     """
-    message = '{}{}'.format(string_data, os.linesep) if newline else string_data
     with __stderr_lock__:
-        sys.stderr.write(message)
+        sys.stderr.write(string_data)
+        if newline:
+            sys.stderr.write(os.linesep)
     if flush:
         sys.stderr.flush()
 
@@ -106,7 +108,7 @@ def process_output(label, out_file, max_bytes_read_per_line, out_fn, flush_fn):
             line = out_file.readline(max_bytes_read_per_line)
             if not line:
                 break
-            out_fn(line.decode('utf-8'), newline=False)
+            out_fn(line.decode(), newline=False)
         flush_fn()
         logging.info('Done piping {}'.format(label))
     except Exception:

@@ -106,8 +106,7 @@ def launch_task(task, max_bytes_read_per_line):
 
     Returns
     -------
-    When command is provided and a process can be started, the process launched along
-    with the two threads that are piping the stdout and stderr.
+    When command is provided and a process can be started, the process launched.
     Else it logs the reason and returns None.
     """
     try:
@@ -120,7 +119,7 @@ def launch_task(task, max_bytes_read_per_line):
             return None
 
         process = subprocess.Popen(command,
-                                   bufsize=2*max_bytes_read_per_line,
+                                   bufsize=10*max_bytes_read_per_line,
                                    shell=True,
                                    stderr=subprocess.PIPE,
                                    stdout=subprocess.PIPE)
@@ -297,7 +296,6 @@ def manage_task(driver, task, stop_signal, completed_signal, config):
         task_completed_signal.set()
 
         # propagate the exit code
-        process, _, _ = process_info
         exit_code = process.returncode
         cio.print_and_log('Command exited with status {} (pid: {})'.format(exit_code, process.pid),
                           flush=True)

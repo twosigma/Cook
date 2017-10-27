@@ -148,18 +148,23 @@ class ProgressWatcher(object):
 
             logging.info('{} has been created, reading contents'.format(self.target_file))
             target_file_obj = open(self.target_file, 'r')
+            fragment_index = 0
             line_index = 0
             while not self.stop_signal.isSet():
                 line = target_file_obj.readline(self.max_bytes_read_per_line)
                 if not line:
                     # exit if program has completed and there are no more lines to read
                     if self.task_completed_signal.isSet():
-                        logging.info('Done processing progress messages, {} lines read'.format(line_index))
+                        message = 'Done processing progress messages, {} fragments and {} lines read'
+                        logging.info(message.format(fragment_index, line_index))
                         break
                     # no new line available, sleep before trying again
                     time.sleep(sleep_param)
                     continue
-                line_index += 1
+
+                fragment_index += 1
+                if line.endswith(os.linesep):
+                    line_index += 1
                 yield line
             if self.stop_signal.isSet() and not self.task_completed_signal.isSet():
                 logging.info('Task requested to be killed, may not have processed all progress messages')
