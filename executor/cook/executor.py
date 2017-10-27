@@ -192,16 +192,14 @@ def kill_task(process, shutdown_grace_period_ms):
         for i in range(loop_limit):
             time.sleep(0.01)
             if not is_process_running(process):
-                message = 'Command terminated with signal Terminated (pid: {})'.format(process.pid)
-                cio.printline_out(message, flush=True)
-                logging.info(message)
+                cio.print_and_log('Command terminated with signal Terminated (pid: {})'.format(process.pid),
+                                  flush=True)
                 break
         if is_process_running(process):
             logging.info('Process did not terminate, forcefully killing it')
             process.kill()
-            message = 'Command terminated with signal Killed (pid: {})'.format(process.pid)
-            cio.printline_out(message, flush=True)
-            logging.info(message)
+            cio.print_and_log('Command terminated with signal Killed (pid: {})'.format(process.pid),
+                              flush=True)
 
 
 def await_process_completion(stop_signal, process_info, shutdown_grace_period_ms):
@@ -267,7 +265,7 @@ def manage_task(driver, task, stop_signal, completed_signal, config):
     Nothing
     """
     task_id = get_task_id(task)
-    cio.printline_out('Starting task {}'.format(task_id))
+    cio.print_and_log('Starting task {}'.format(task_id))
     try:
         # not yet started to run the task
         update_status(driver, task_id, cook.TASK_STARTING)
@@ -300,9 +298,8 @@ def manage_task(driver, task, stop_signal, completed_signal, config):
         # propagate the exit code
         process, _, _ = process_info
         exit_code = process.returncode
-        message = 'Command exited with status {} (pid: {})'.format(exit_code, process.pid)
-        cio.printline_out(message, flush=True)
-        logging.info(message)
+        cio.print_and_log('Command exited with status {} (pid: {})'.format(exit_code, process.pid),
+                          flush=True)
 
         # await progress updater termination if executor is terminating normally
         if not stop_signal.isSet():
@@ -329,9 +326,7 @@ def manage_task(driver, task, stop_signal, completed_signal, config):
     finally:
         # ensure completed_signal is set so driver can stop
         completed_signal.set()
-        message = 'Executor completed execution of {}'.format(task_id)
-        cio.printline_out(message, flush=True)
-        logging.info(message)
+        cio.print_and_log('Executor completed execution of {}'.format(task_id), flush=True)
 
 
 def run_mesos_driver(stop_signal, config):

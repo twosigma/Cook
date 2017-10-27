@@ -35,8 +35,9 @@ def print_out(string_data, flush=False, newline=True):
         sys.stdout.flush()
 
 
-def printline_out(string_data, flush=False, newline=True):
+def print_and_log(string_data, flush=False, newline=True):
     """Wrapper function that prints to stdout in a thread-safe manner ensuring newline at the start.
+    The function also outputs the same message via logging.info().
 
     Parameters
     ----------
@@ -52,6 +53,7 @@ def printline_out(string_data, flush=False, newline=True):
     Nothing.
     """
     print_out('{}{}'.format(os.linesep, string_data), flush=flush, newline=newline)
+    logging.info(string_data)
 
 
 def print_err(string_data, flush=False, newline=True):
@@ -98,9 +100,7 @@ def process_output(label, out_file, max_bytes_read_per_line, out_fn, flush_fn):
     -------
     Nothing.
     """
-    message = 'Starting to pipe {} from launched process'.format(label)
-    printline_out(message)
-    logging.info(message)
+    print_and_log('Starting to pipe {} from launched process'.format(label))
     try:
         while True:
             line = out_file.readline(max_bytes_read_per_line)
@@ -108,12 +108,10 @@ def process_output(label, out_file, max_bytes_read_per_line, out_fn, flush_fn):
                 break
             out_fn(line.decode('utf-8'), newline=False)
         flush_fn()
-        message = 'Done piping {} from launched process'.format(label)
-        printline_out(message)
-        logging.info(message)
+        print_and_log('Done piping {} from launched process'.format(label))
     except Exception:
         logging.exception('Error in process_output of {}'.format(label))
-        printline_out('Error in process_output of {}'.format(label), flush=True)
+        print_out('Error in process_output of {}{}'.format(label, os.linesep), flush=True)
 
 
 def track_outputs(process, max_bytes_read_per_line):

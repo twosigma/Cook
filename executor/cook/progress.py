@@ -156,9 +156,8 @@ class ProgressWatcher(object):
                 if not line:
                     # exit if program has completed and there are no more lines to read
                     if self.task_completed_signal.isSet():
-                        message = 'Done processing progress messages, {} lines read'.format(line_index)
-                        cio.printline_out(message)
-                        logging.info(message)
+                        cio.print_and_log('Done processing progress messages, {} lines read'.format(
+                            line_index))
                         break
                     # no new line available, sleep before trying again
                     time.sleep(sleep_param)
