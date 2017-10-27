@@ -54,7 +54,7 @@ class ProgressUpdater(object):
         
         Parameters
         ----------
-        progress_data: map 
+        progress_data: dictionary
             The progress data to send.
         force_send: boolean, optional
             Defaults to false.

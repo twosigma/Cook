@@ -18,7 +18,7 @@ def get_task_id(task):
 
     Parameters
     ----------
-    task: map
+    task: dictionary
         The task
 
     Returns
@@ -52,7 +52,7 @@ def update_status(driver, task_id, task_state):
     ----------
     driver: MesosExecutorDriver
         The driver to send the status update to.
-    task: map
+    task: dictionary
         The task whose status update to send.
     task_state: string
         The state of the task which will be sent to the driver.
@@ -99,7 +99,7 @@ def launch_task(task, max_bytes_read_per_line):
 
     Parameters
     ----------
-    task: map
+    task: dictionary
         The task to execute.
     max_bytes_read_per_line: int
         The maximum number of bytes to read per call to readline().
