@@ -43,6 +43,12 @@ def __get(url, params=None):
     return session.get(url, params=params, timeout=timeouts)
 
 
+def __delete(url, params=None):
+    """Sends a DELETE with params to the given url"""
+    logging.info(f'DELETE {url} with params {params}')
+    return session.delete(url, params=params, timeout=timeouts)
+
+
 def __make_url(cluster, endpoint):
     """Given a cluster and an endpoint, returns the corresponding full URL"""
     return urljoin(cluster['url'], endpoint)
@@ -60,6 +66,14 @@ def get(cluster, endpoint, params):
     """GETs data corresponding to the given params from cluster at /endpoint"""
     url = __make_url(cluster, endpoint)
     resp = __get(url, params)
+    logging.info('response from cook: %s' % resp.text)
+    return resp
+
+
+def delete(cluster, endpoint, params):
+    """DELETEs data corresponding to the given params on cluster at /endpoint"""
+    url = __make_url(cluster, endpoint)
+    resp = __delete(url, params)
     logging.info('response from cook: %s' % resp.text)
     return resp
 
