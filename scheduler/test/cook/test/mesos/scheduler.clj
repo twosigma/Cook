@@ -22,6 +22,7 @@
             [clojure.core.cache :as cache]
             [clojure.data.json :as json]
             [clojure.string :as str]
+            [clojure.walk :as walk]
             [cook.mesos.heartbeat :as heartbeat]
             [cook.mesos.scheduler :as sched]
             [cook.mesos.share :as share]
@@ -1002,7 +1003,7 @@
         conn (restore-fresh-database! uri)]
 
     (letfn [(make-message [message]
-              (-> message json/write-str str (.getBytes "UTF-8")))
+              (-> message walk/stringify-keys ))
             (query-instance-field [instance-id field]
               (ffirst (q '[:find ?value
                            :in $ ?i ?field
@@ -1662,14 +1663,42 @@
         (is (= [:task-starting :task-running :task-failed] (->> "T3" (get @status-store) vec)))
         (is (= [:task-starting] (->> "T4" (get @status-store) vec)))))))
 
+(deftest test-framework-message-processing-delegation
+  (let [handle-framework-message-store (atom [])
+        notify-heartbeat-store (atom [])]
+    (with-redefs [heartbeat/notify-heartbeat (fn [_ _ _ framework-message]
+                                               (swap! notify-heartbeat-store conj framework-message))
+                  sched/handle-framework-message (fn [_ _ framework-message]
+                                                   (swap! handle-framework-message-store conj framework-message))]
+      (let [s (sched/create-mesos-scheduler nil true nil nil nil nil nil nil)
+            task-id "T1"
+            executor-id (-> task-id mtypes/->ExecutorID mtypes/data->pb)
+            make-message (fn [message] (-> message json/write-str str (.getBytes "UTF-8")))
+            m1 {"task-id" task-id}
+            m2 {"task-id" task-id, "timestamp" 123456}
+            m3 {"sandbox" "/path/to/a/directory", "task-id" task-id}
+            m4 {"exit-code" 0, "task-id" task-id, "timestamp" 123456}]
+
+        (.frameworkMessage s nil executor-id nil (make-message m1))
+        (.frameworkMessage s nil executor-id nil (make-message m2))
+        (.frameworkMessage s nil executor-id nil (make-message m3))
+        (.frameworkMessage s nil executor-id nil (make-message m4))
+
+        (let [latch (CountDownLatch. 1)]
+          (sched/async-in-order-processing task-id #(.countDown latch))
+          (.await latch))
+
+        (is (= [m3 m4] @handle-framework-message-store))
+        (is (= [m1 m2 m3 m4] @notify-heartbeat-store))))))
+
 (deftest test-in-order-framework-message-processing
   (let [messages-store (atom {})
         latch (CountDownLatch. 11)]
     (with-redefs [heartbeat/notify-heartbeat (constantly true)
                   sched/handle-framework-message
-                  (fn [_ _ message-bytes]
-                    (let [[task-index message] (vec message-bytes)
-                          task-id (str "T" task-index)]
+                  (fn [_ _ framework-message]
+                    (let [{:strs [index message]} framework-message
+                          task-id (str "T" index)]
                       (swap! messages-store update (str task-id) (fn [messages] (conj (or messages []) message))))
                     (Thread/sleep (rand-int 100))
                     (.countDown latch))]
@@ -1677,19 +1706,21 @@
             foo 11
             bar 21
             fee 31
-            fie 41]
+            fie 41
+            make-message (fn [index message]
+                           (-> {"index" index, "message" message} json/write-str str (.getBytes "UTF-8")) )]
 
-        (.frameworkMessage s nil (-> "" mtypes/->ExecutorID mtypes/data->pb) nil (byte-array [0 foo]))
-        (.frameworkMessage s nil (-> "T1" mtypes/->ExecutorID mtypes/data->pb) nil (byte-array [1 foo]))
-        (.frameworkMessage s nil (-> "T2" mtypes/->ExecutorID mtypes/data->pb) nil (byte-array [2 foo]))
-        (.frameworkMessage s nil (-> "T1" mtypes/->ExecutorID mtypes/data->pb) nil (byte-array [1 bar]))
-        (.frameworkMessage s nil (-> "T2" mtypes/->ExecutorID mtypes/data->pb) nil (byte-array [2 bar]))
-        (.frameworkMessage s nil (-> "T3" mtypes/->ExecutorID mtypes/data->pb) nil (byte-array [3 foo]))
-        (.frameworkMessage s nil (-> "T3" mtypes/->ExecutorID mtypes/data->pb) nil (byte-array [3 bar]))
-        (.frameworkMessage s nil (-> "T1" mtypes/->ExecutorID mtypes/data->pb) nil (byte-array [1 fee]))
-        (.frameworkMessage s nil (-> "T3" mtypes/->ExecutorID mtypes/data->pb) nil (byte-array [3 fie]))
-        (.frameworkMessage s nil (-> "T4" mtypes/->ExecutorID mtypes/data->pb) nil (byte-array [4 foo]))
-        (.frameworkMessage s nil (-> "" mtypes/->ExecutorID mtypes/data->pb) nil (byte-array [0 fie]))
+        (.frameworkMessage s nil (-> "" mtypes/->ExecutorID mtypes/data->pb) nil (make-message 0 foo))
+        (.frameworkMessage s nil (-> "T1" mtypes/->ExecutorID mtypes/data->pb) nil (make-message 1 foo))
+        (.frameworkMessage s nil (-> "T2" mtypes/->ExecutorID mtypes/data->pb) nil (make-message 2 foo))
+        (.frameworkMessage s nil (-> "T1" mtypes/->ExecutorID mtypes/data->pb) nil (make-message 1 bar))
+        (.frameworkMessage s nil (-> "T2" mtypes/->ExecutorID mtypes/data->pb) nil (make-message 2 bar))
+        (.frameworkMessage s nil (-> "T3" mtypes/->ExecutorID mtypes/data->pb) nil (make-message 3 foo))
+        (.frameworkMessage s nil (-> "T3" mtypes/->ExecutorID mtypes/data->pb) nil (make-message 3 bar))
+        (.frameworkMessage s nil (-> "T1" mtypes/->ExecutorID mtypes/data->pb) nil (make-message 1 fee))
+        (.frameworkMessage s nil (-> "T3" mtypes/->ExecutorID mtypes/data->pb) nil (make-message 3 fie))
+        (.frameworkMessage s nil (-> "T4" mtypes/->ExecutorID mtypes/data->pb) nil (make-message 4 foo))
+        (.frameworkMessage s nil (-> "" mtypes/->ExecutorID mtypes/data->pb) nil (make-message 0 fie))
 
         (.await latch 4 TimeUnit/SECONDS)
 

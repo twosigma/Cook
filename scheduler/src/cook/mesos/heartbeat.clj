@@ -19,38 +19,38 @@
             [clj-time.core :as time]
             [clj-time.periodic :as periodic]
             [clojure.core.async :as async :refer [alts! go-loop go >!]]
-            [clojure.data.json :as json]
             [clojure.tools.logging :as log]
             [datomic.api :as d :refer (q)]
             [metatransaction.core :refer (db)]
             [metrics.meters :as meters]
             [metrics.timers :as timers]))
 
-"State is a vector of three things. The first is a set that contains all the timeout channels.
-The second is a map from task id to its timeout channel. The third is a timeout channel to task id."
+"State is a vector of three things.
+ - The first is a set that contains all the timeout channels.
+ - The second is a map from task id to its timeout channel.
+ - The third is a timeout channel to task id."
 
 (defn create-timeout-ch
-  "Create a chime-ch that will send event 5 minutes after creation"
+  "Create a chime-ch that will send event 15 minutes after creation"
   []
   (chime-ch [(-> 15 time/minutes time/from-now)]))
 
 (defn notify-heartbeat
   "Notify a heartbeat."
-  [ch executor-id slave-id data]
+  [ch executor-id slave-id {:strs [task-id] :as data}]
   (try
-    (let [{:strs [task-id] :as data} (-> data (String. "UTF-8") json/read-str)]
-      (case (async/alt!!
-             [[ch data]] :success
-             :default :dropped
-             :priority true)
-        :dropped (log/error "dropped heartbeat from task" task-id)
-        :success (log/debug "Received heartbeat from task" task-id)
-        nil))
+    (case (async/alt!!
+            [[ch data]] :success
+            :default :dropped
+            :priority true)
+      :dropped (log/error "Dropped heartbeat from task" task-id)
+      :success (log/debug "Received heartbeat from task" task-id)
+      nil)
     (catch Throwable ex
       (log/error ex "Failed to handle heartbeat" {:data data, :executor-id executor-id, :slave-id slave-id}))))
 
 (defn update-heartbeat
-  "Update state upon receving an heartbeat."
+  "Update state upon receiving a heartbeat."
   [[timeout-chs task->ch ch->task] task-id new-ch]
   (let [old-ch (get task->ch task-id)]
     (log/debug "Replacing the timeout channel for task" task-id "from" old-ch "to" new-ch)
@@ -81,8 +81,8 @@ The second is a map from task id to its timeout channel. The third is a timeout 
 (timers/deftimer [cook-mesos heartbeat datomic-sync-duration])
 
 (defn sync-with-datomic
-  "Synchronize state with datomic database. It will add new timeout channels
-   for missing tasks which are using custom executor."
+  "Synchronize state with datomic database.
+   It will add new timeout channels for missing tasks which are using custom executor."
   [[timeout-chs task->ch ch->task] db]
   (timers/time!
     datomic-sync-duration
@@ -108,7 +108,8 @@ The second is a map from task id to its timeout channel. The third is a timeout 
       [new-timeout-chs new-task->ch new-ch->task])))
 
 (defn transact-timeout-async
-  "Takes a timeout txn and transact it asynchronously. Log timeout warning if this txn does actually timeout the task. (Completed/failed tasks will have timeout event too since we don't clean up timeout channels for completed/failed tasks."
+  "Takes a timeout txn and transact it asynchronously. Log timeout warning if this txn does actually timeout the task.
+   (Completed/failed tasks will have timeout event too since we don't clean up timeout channels for completed/failed tasks."
   [conn task-id txn]
   ;; The query is an optimization. It will reduce the number of transactions significantly.
   (let [db (db conn)
