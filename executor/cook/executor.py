@@ -311,7 +311,7 @@ def manage_task(driver, task, stop_signal, completed_signal, config):
             progress_complete_event.wait()
             logging.info('Progress updater completed')
 
-        # force send any available latest progress state
+        # force send the latest progress state if available
         cp.force_send_progress_update(progress_watcher, progress_updater)
 
         # task either completed successfully or aborted with an error

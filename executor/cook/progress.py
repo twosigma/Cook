@@ -6,8 +6,6 @@ from threading import Event, Lock, Thread
 import os
 import re
 
-import cook.io_helper as cio
-
 
 class ProgressUpdater(object):
     """This class is responsible for sending progress updates to the scheduler.
@@ -156,8 +154,7 @@ class ProgressWatcher(object):
                 if not line:
                     # exit if program has completed and there are no more lines to read
                     if self.task_completed_signal.isSet():
-                        cio.print_and_log('Done processing progress messages, {} lines read'.format(
-                            line_index))
+                        logging.info('Done processing progress messages, {} lines read'.format(line_index))
                         break
                     # no new line available, sleep before trying again
                     time.sleep(sleep_param)

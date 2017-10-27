@@ -100,7 +100,7 @@ def process_output(label, out_file, max_bytes_read_per_line, out_fn, flush_fn):
     -------
     Nothing.
     """
-    print_and_log('Starting to pipe {}'.format(label))
+    logging.info('Starting to pipe {}'.format(label))
     try:
         while True:
             line = out_file.readline(max_bytes_read_per_line)
@@ -108,10 +108,9 @@ def process_output(label, out_file, max_bytes_read_per_line, out_fn, flush_fn):
                 break
             out_fn(line.decode('utf-8'), newline=False)
         flush_fn()
-        print_and_log('Done piping {}'.format(label))
+        logging.info('Done piping {}'.format(label))
     except Exception:
         logging.exception('Error in process_output of {}'.format(label))
-        print_out('Error in process_output of {}{}'.format(label, os.linesep), flush=True)
 
 
 def track_outputs(task_id, process, max_bytes_read_per_line):
