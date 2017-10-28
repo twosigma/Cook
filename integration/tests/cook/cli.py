@@ -170,6 +170,6 @@ def ls_entry_by_name(entries, name):
 
 def kill(uuids, cook_url):
     """Invokes the kill subcommand"""
-    args = f'kill {" ".join(uuids)}'
+    args = f'kill {" ".join([str(u) for u in uuids])}'
     cp = cli(args, cook_url)
     return cp

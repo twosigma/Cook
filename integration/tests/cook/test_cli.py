@@ -960,14 +960,40 @@ class CookCliTest(unittest.TestCase):
         cp, uuids = cli.submit('sleep 60', self.cook_url, submit_flags='--max-retries 2')
         self.assertEqual(0, cp.returncode, cp.stderr)
 
-        # Wait for an instance to appear, and the kill it
-        job = util.wait_until(lambda: cli.show_json(uuids, self.cook_url)[1][0], lambda j: len(j['instances']) > 0)
+        # Wait for an instance to appear, and kill it
+        job = util.wait_until(lambda: cli.show_json(uuids, self.cook_url)[1][0], lambda j: len(j['instances']) == 1)
         instance_uuid = job['instances'][0]['task_id']
         cp = cli.kill([instance_uuid], self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertIn(f'Killed job instance {instance_uuid}', cli.stdout(cp))
 
         # Wait for the second instance to appear and check their statuses
-        job = util.wait_until(lambda: cli.show_json(uuids, self.cook_url)[1][0], lambda j: len(j['instances']) > 1)
+        job = util.wait_until(lambda: cli.show_json(uuids, self.cook_url)[1][0], lambda j: len(j['instances']) == 2)
         self.assertEqual('failed', next(i['status'] for i in job['instances'] if i['task_id'] == instance_uuid))
         self.assertEqual('running', next(i['status'] for i in job['instances'] if i['task_id'] != instance_uuid))
+
+    def test_kill_group(self):
+        # Submit a group with one job
+        group_uuid = uuid.uuid4()
+        cp, uuids = cli.submit('sleep 60', self.cook_url, submit_flags=f'--group {group_uuid}')
+        self.assertEqual(0, cp.returncode, cp.stderr)
+
+        # Job should not be completed
+        cp, jobs = cli.show_json(uuids, self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertNotEqual('completed', jobs[0]['status'])
+
+        # Kill the group
+        cp = cli.kill([group_uuid], self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertIn(f'Killed job group {group_uuid}', cli.stdout(cp))
+
+        # Job should now be completed
+        cp, jobs = cli.show_json(uuids, self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertEqual('completed', jobs[0]['status'])
+
+    def test_kill_bogus_uuid(self):
+        cp = cli.kill([uuid.uuid4()], self.cook_url)
+        self.assertEqual(1, cp.returncode, cp.stderr)
+        self.assertIn(f'No matching data found', cli.stdout(cp))
