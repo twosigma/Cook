@@ -881,7 +881,9 @@ class CookCliTest(unittest.TestCase):
     def test_show_progress_message(self):
         executor = util.get_job_executor_type(self.cook_url)
         cp, uuids = cli.submit('echo "progress: 99 We\'re so close!"', self.cook_url,
-                               submit_flags=f'--executor {executor}')
+                               submit_flags=f'--executor {executor} '
+                                            '--env EXECUTOR_PROGRESS_OUTPUT_FILE_ENV=PROGRESS_OUTPUT_FILE '
+                                            '--env PROGRESS_OUTPUT_FILE=stdout')
         self.assertEqual(0, cp.returncode, cp.stderr)
         util.wait_for_job(self.cook_url, uuids[0], 'completed')
         self.assertEqual(0, cp.returncode, cp.stderr)
