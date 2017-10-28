@@ -970,7 +970,8 @@ class CookCliTest(unittest.TestCase):
         # Wait for the second instance to appear and check their statuses
         job = util.wait_until(lambda: cli.show_json(uuids, self.cook_url)[1][0], lambda j: len(j['instances']) == 2)
         self.assertEqual('failed', next(i['status'] for i in job['instances'] if i['task_id'] == instance_uuid))
-        self.assertEqual('running', next(i['status'] for i in job['instances'] if i['task_id'] != instance_uuid))
+        self.assertIn(next(i['status'] for i in job['instances'] if i['task_id'] != instance_uuid),
+                      ['running', 'unknown'])
 
     def test_kill_group(self):
         # Submit a group with one job
