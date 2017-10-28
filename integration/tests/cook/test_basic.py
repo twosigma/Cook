@@ -232,7 +232,10 @@ class CookTest(unittest.TestCase):
             instance = job['instances'][0]
             # did the job fail as expected?
             self.assertEqual('failed', instance['status'], job_details)
-            self.assertEqual(instance['reason_code'], reasons.MAX_RUNTIME_EXCEEDED, job_details)
+            # We currently have two possible reason codes that we can observe
+            # due to a race in the scheduler. See issue #515 on GitHub for more details.
+            allowed_reasons = [reasons.MAX_RUNTIME_EXCEEDED, reasons.CMD_NON_ZERO_EXIT]
+            self.assertIn(instance['reason_code'], allowed_reasons, job_details)
             # was the actual running time consistent with running over time and being killed?
             actual_running_time_ms = instance['end_time'] - instance['start_time']
             self.assertGreater(actual_running_time_ms, max_runtime_ms, job_details)
