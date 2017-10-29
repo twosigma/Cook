@@ -29,7 +29,6 @@ class ExecutorConfig(object):
             return 1000
 
     def __init__(self,
-                 heartbeat_interval_ms=5*60*1000,
                  max_bytes_read_per_line=1024,
                  max_message_length=512,
                  progress_output_name='stdout',
@@ -37,7 +36,6 @@ class ExecutorConfig(object):
                  progress_sample_interval_ms=100,
                  sandbox_directory='',
                  shutdown_grace_period='1secs'):
-        self.heartbeat_interval_ms = heartbeat_interval_ms
         self.max_bytes_read_per_line = max_bytes_read_per_line
         self.max_message_length = max_message_length
         self.progress_output_name = progress_output_name
@@ -51,7 +49,6 @@ def initialize_config(environment):
     """Initializes the config using the environment.
     Populates the default values for missing environment variables.
     """
-    heartbeat_interval_ms = max(int(environment.get('EXECUTOR_HEARTBEAT_INTERVAL_MS', 5 * 60 * 1000)), 10)
     max_bytes_read_per_line = max(int(environment.get('EXECUTOR_MAX_BYTES_READ_PER_LINE', 4 * 1024)), 128)
     max_message_length = max(int(environment.get('EXECUTOR_MAX_MESSAGE_LENGTH', 512)), 64)
     progress_output_name = environment.get('PROGRESS_OUTPUT_FILE', 'stdout')
@@ -60,17 +57,15 @@ def initialize_config(environment):
     sandbox_directory = environment.get('MESOS_SANDBOX', '')
     shutdown_grace_period = environment.get('MESOS_EXECUTOR_SHUTDOWN_GRACE_PERIOD', '2secs')
 
-    logging.info('Heartbeat interval is {} ms'.format(heartbeat_interval_ms))
     logging.info('Max bytes read per line is {}'.format(max_bytes_read_per_line))
     logging.info('Max message length is {}'.format(max_message_length))
     logging.info('Progress output file is {}'.format(progress_output_name))
     logging.info('Progress regex is {}'.format(progress_regex_string))
-    logging.info('Progress sample interval is {} ms'.format(progress_sample_interval_ms))
+    logging.info('Progress sample interval is {}'.format(progress_sample_interval_ms))
     logging.info('Sandbox location is {}'.format(sandbox_directory))
     logging.info('Shutdown grace period is {}'.format(shutdown_grace_period))
 
-    return ExecutorConfig(heartbeat_interval_ms=heartbeat_interval_ms,
-                          max_bytes_read_per_line=max_bytes_read_per_line,
+    return ExecutorConfig(max_bytes_read_per_line=max_bytes_read_per_line,
                           max_message_length=max_message_length,
                           progress_output_name=progress_output_name,
                           progress_regex_string=progress_regex_string,

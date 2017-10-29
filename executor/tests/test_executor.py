@@ -219,34 +219,6 @@ class ExecutorTest(unittest.TestCase):
         self.assertEqual(cook.TASK_FAILED, ce.get_task_state(1))
         self.assertEqual(cook.TASK_KILLED, ce.get_task_state(-1))
 
-    def test_ensure_heartbeats(self):
-        driver = FakeMesosExecutorDriver()
-        task_id = get_random_task_id()
-        stop_signal = Event()
-        process = subprocess.Popen('sleep 1', shell=True)
-        heartbeat_interval_ms = 150
-        max_message_length = 512
-
-        def sleep_and_set_stop_signal():
-            time.sleep(2)
-            stop_signal.set()
-        thread = Thread(target=sleep_and_set_stop_signal, args=())
-        thread.start()
-
-        start_epoch_ms = int(time.time() * 1000)
-        ce.ensure_heartbeats(driver, task_id, stop_signal, process, heartbeat_interval_ms, max_message_length)
-
-        self.assertTrue(len(driver.messages) >= 6)
-        last_time_ms = start_epoch_ms
-        for encoded_message in driver.messages:
-            parsed_message = parse_message(encoded_message)
-            self.assertEquals(2, len(parsed_message))
-            self.assertEquals(task_id, parsed_message.get('task-id', ''))
-            self.assertTrue('timestamp' in parsed_message)
-            loop_time_ms = parsed_message.get('timestamp')
-            self.assertGreaterEqual(loop_time_ms - last_time_ms, heartbeat_interval_ms)
-            last_time_ms = loop_time_ms
-
     def manage_task_runner(self, command, assertions_fn, stop_signal=Event()):
         driver = FakeMesosExecutorDriver()
         task_id = get_random_task_id()
