@@ -999,16 +999,17 @@ class CookTest(unittest.TestCase):
         num_hosts = len(state['slaves'])
         if num_hosts > 10:
             # Skip this test on large clusters
+            self.logger.info(f"Skipping test due to cluster size of {num_hosts} greater than 10")
             return
         minimum_hosts = num_hosts + 1
         group = {'uuid': str(uuid.uuid4()),
                  'host-placement': {'type': 'balanced',
                                     'parameters': {'attribute': 'HOSTNAME',
                                                    'minimum': minimum_hosts}}}
-        job_spec = {'group': group['uuid'],
-                    'command': 'sleep 600',
-                    'mem': 100,
-                    'cpus': 0.1}
+        job_spec = {'command': 'sleep 600',
+                    'cpus': 0.1,
+                    'group': group['uuid'],
+                    'mem': 100}
         num_jobs = minimum_hosts
         uuids, resp = util.submit_jobs(self.cook_url, job_spec, num_jobs, groups=[group])
         try:
