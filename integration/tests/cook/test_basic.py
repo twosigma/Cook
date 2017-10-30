@@ -997,23 +997,56 @@ class CookTest(unittest.TestCase):
     def test_balanced_host_constraint(self):
         state = util.get_mesos_state(self.mesos_url)
         num_hosts = len(state['slaves'])
-        minimum_hosts = min(num_hosts, 10)
+        # If the cluster is small enough, set minimum jobs larger than the size of the cluster
+        # Otherwise, just pick a reasonable value
+        minimum_hosts = min(num_hosts + 1, 10)
         group = {'uuid': str(uuid.uuid4()),
                  'host-placement': {'type': 'balanced',
                                     'parameters': {'attribute': 'HOSTNAME',
                                                    'minimum': minimum_hosts}}}
         job_spec = {'group': group['uuid'],
-                    'command': 'sleep 600'}
+                    'command': 'sleep 600',
+                    'mem': 100,
+                    'cpus': 0.1}
         max_jobs_per_host = 3
-        num_jobs = minimum_hosts * max_jobs_per_host
+        if minimum_hosts == num_hosts + 1:
+            # If the cluster is small, run one more job than there are hosts available
+            num_jobs = num_hosts + 1
+        else:
+            num_jobs = minimum_hosts * max_jobs_per_host
         uuids, resp = util.submit_jobs(self.cook_url, job_spec, num_jobs, groups=[group])
         self.assertEqual(201, resp.status_code, resp.content)
         try:
-            jobs = util.wait_for_jobs(self.cook_url, uuids, 'running')
-            hosts = [j['instances'][0]['hostname'] for j in jobs]
-            host_count = Counter(hosts)
-            self.assertTrue(len(host_count) >= minimum_hosts)
-            self.assertTrue(max(host_count.values()) <= max_jobs_per_host)
+            # If we're running in the smaller cluster mode, we should not schedule all jobs
+            if minimum_hosts == num_hosts + 1:
+                def query():
+                    return util.query_jobs(self.cook_url, job=uuids).json()
+                def num_running_predicate(response):
+                    num_running = len([j for j in response if j['status'] == 'running'])
+                    num_waiting = len([j for j in response if j['status'] == 'waiting'])
+                    return num_running == num_hosts and num_waiting == 1
+                jobs = util.wait_until(query, num_running_predicate)
+                waiting_jobs = [j for j in jobs if j['status'] == 'waiting']
+                self.assertEqual(1, len(waiting_jobs), waiting_jobs)
+                waiting_job = waiting_jobs[0]
+                def query():
+                    resp = util.unscheduled_jobs(self.cook_url, waiting_job['uuid'])[0]
+                    reasons = [reason for reason in resp['reasons']
+                               if reason['reason'] == "The job couldn't be placed on any available hosts." ]
+                    return reasons
+                reasons = util.wait_until(query, lambda r: len(r) > 0)
+                self.assertEqual(1, len(reasons), reasons)
+                reason = reasons[0]
+                balanced_reasons = [r for r in reason['data']['reasons']
+                                    if r['reason'] == 'balanced-host-placement-group-constraint']
+                self.assertEqual(1, len(balanced_reasons), balanced_reasons)
+            # Otherwise, all jobs should be scheduled. Just check that the distribution is balanced.
+            else:
+                jobs = util.wait_for_jobs(self.cook_url, uuids, 'running')
+                hosts = [j['instances'][0]['hostname'] for j in jobs]
+                host_count = Counter(hosts)
+                self.assertTrue(len(host_count) >= minimum_hosts)
+                self.assertTrue(max(host_count.values()) <= max_jobs_per_host, host_count)
         finally:
             util.kill_jobs(self.cook_url, [uuids])
 
