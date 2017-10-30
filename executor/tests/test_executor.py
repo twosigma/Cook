@@ -522,6 +522,6 @@ class ExecutorTest(unittest.TestCase):
         thread = Thread(target=sleep_and_set_stop_signal, args=())
         thread.start()
 
-        command = 'for i in {1..1000000}; do printf "Hello"; done; echo "World"'
+        command = 'for i in `seq 1000000`; do printf "Hello"; done; echo "World"'
         self.manage_task_runner(command, assertions, stop_signal=stop_signal)
         stop_signal.set()
