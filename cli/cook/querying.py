@@ -4,6 +4,8 @@ import os
 from concurrent import futures
 from operator import itemgetter
 
+import collections
+
 from cook import http, colors, progress, mesos
 from cook.util import wait_until
 
@@ -97,6 +99,11 @@ def query_across_clusters(clusters, query_fn):
     return all_entities
 
 
+def distinct(seq):
+    """Remove duplicate entries from a sequence. Maintains original order."""
+    return collections.OrderedDict(zip(seq, seq)).keys()
+
+
 def query(clusters, uuids, pred_jobs=None, pred_instances=None, pred_groups=None, timeout=None, interval=None):
     """
     Uses query_across_clusters to make the /rawscheduler
@@ -104,8 +111,8 @@ def query(clusters, uuids, pred_jobs=None, pred_instances=None, pred_groups=None
     """
     # Cook will give us back two copies if the user asks for the same UUID twice, e.g.
     # $ cs show d38ea6bd-8a26-4ddf-8a93-5926fa2991ce d38ea6bd-8a26-4ddf-8a93-5926fa2991ce
-    # Prevent this by creating a set:
-    uuids = set(uuids)
+    # Prevent this by calling distinct:
+    uuids = distinct(uuids)
 
     def submit(cluster, executor):
         return executor.submit(query_entities, cluster, uuids, pred_jobs,

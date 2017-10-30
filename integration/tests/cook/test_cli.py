@@ -80,7 +80,7 @@ class CookCliTest(unittest.TestCase):
         self.assertEqual(0, cp.returncode, cp.stderr)
         cp, jobs = cli.show_json(uuids, self.cook_url)
         returned_uuids = [j['uuid'] for j in jobs]
-        self.assertEqual(sorted(uuids), sorted(returned_uuids))
+        self.assertEqual(uuids, returned_uuids)
         self.assertEqual('completed', jobs[0]['status'])
         self.assertEqual('completed', jobs[1]['status'])
         self.assertEqual('completed', jobs[2]['status'])
