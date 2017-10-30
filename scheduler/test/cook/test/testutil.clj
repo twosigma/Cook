@@ -140,7 +140,7 @@
 
 (defn create-dummy-instance
   "Return the entity id for the created instance."
-  [conn job & {:keys [cancelled end-time executor-id exit-code hostname instance-status job-state preempted?
+  [conn job & {:keys [cancelled end-time executor executor-id exit-code hostname instance-status job-state preempted?
                       progress progress-message reason sandbox-directory slave-id start-time task-id ]
                :or  {end-time nil
                      executor-id  (str (UUID/randomUUID))
@@ -168,6 +168,7 @@
                                   :job/_instance job}
                                  cancelled (assoc :instance/cancelled true)
                                  end-time (assoc :instance/end-time end-time)
+                                 executor (assoc :instance/executor executor)
                                  exit-code (assoc :instance/exit-code exit-code)
                                  progress-message (assoc :instance/progress-message progress-message)
                                  reason (assoc :instance/reason [:reason/name reason])

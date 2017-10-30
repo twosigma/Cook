@@ -279,6 +279,19 @@
   (-> (d/entity db [:instance/task-id task-id])
       :db/id))
 
+(defn- task-id->executor
+  "Retrieves the executor given a task-id"
+  [db task-id]
+  (when task-id
+    (-> (d/q '[:find ?executor
+               :in $ ?task-id
+               :where
+               [?i :instance/task-id ?task-id]
+               [?i :instance/executor ?e]
+               [?e :db/ident ?executor]]
+             db task-id)
+        ffirst)))
+
 (meters/defmeter [cook-mesos scheduler progress-aggregator-message-rate])
 (meters/defmeter [cook-mesos scheduler progress-aggregator-drop-rate])
 (counters/defcounter [cook-mesos scheduler progress-aggregator-drop-count])
@@ -411,16 +424,15 @@
 
 (defn handle-framework-message
   "Processes a framework message from Mesos."
-  [conn handle-progress-message message]
+  [conn handle-progress-message
+   {:strs [exit-code progress-message progress-percent progress-sequence sandbox-directory task-id] :as message}]
+  (log/debug "Received framework message:" {:task-id task-id, :message message})
   (timers/time!
     handle-framework-message-duration
     (try
-      (let [db (db conn)
-            {:strs [exit-code progress-message progress-percent progress-sequence sandbox-directory task-id]} message
-            _ (log/debug "Received framework message:" {:task-id task-id, :message message})
-            _ (when (str/blank? task-id)
-                (throw (ex-info "task-id is empty in framework message" {:message message})))
-            instance-id (task-id->instance-id db task-id)]
+      (when (str/blank? task-id)
+        (throw (ex-info "task-id is empty in framework message" {:message message})))
+      (let [instance-id (task-id->instance-id (db conn) task-id)]
         (if (nil? instance-id)
           (throw (ex-info "No instance found!" {:task-id task-id}))
           (do
@@ -1518,17 +1530,17 @@
                      ;; TODO: Rescind the offer in fenzo
                      )
     (framework-message [this driver executor-id slave-id message]
-                       ;; the executor-id is the same as the task-id (see cook.mesos.task/task-info->mesos-message)
-                       (let [task-id (:value executor-id)]
-                         (try
-                           (let [parsed-message (json/read-str (String. ^bytes message "UTF-8"))]
-                             (when (some #(not (contains? #{"task-id" "timestamp"} %)) (keys parsed-message))
-                               (async-in-order-processing
-                                 task-id #(handle-framework-message conn handle-progress-message parsed-message)))
-                             (heartbeat/notify-heartbeat heartbeat-ch executor-id slave-id parsed-message))
-                           (catch Exception e
-                             (log/error e "Unable to parse framework message"
-                                        {:executor-id executor-id, :message message, :slave-id slave-id})))))
+                       (try
+                         (let [{:strs [task-id] :as parsed-message} (json/read-str (String. ^bytes message "UTF-8"))
+                               executor (task-id->executor (d/db conn) task-id)]
+                           (when (some #(not (contains? #{"task-id" "timestamp"} %)) (keys parsed-message))
+                             (async-in-order-processing
+                               task-id #(handle-framework-message conn handle-progress-message parsed-message)))
+                           (when (not= :executor/cook executor)
+                             (heartbeat/notify-heartbeat heartbeat-ch executor-id slave-id parsed-message)))
+                         (catch Exception e
+                           (log/error e "Unable to process framework message"
+                                      {:executor-id executor-id, :message message, :slave-id slave-id}))))
     (disconnected [this driver]
                   (log/error "Disconnected from the previous master"))
     ;; We don't care about losing slaves or executors--only tasks
