@@ -589,7 +589,7 @@
 (deftest test-get-lingering-tasks
   (let [uri "datomic:mem://test-lingering-tasks"
         conn (restore-fresh-database! uri)
-        now (tc/from-date #inst "2015-01-05")
+        now (tc/from-date #inst "2015-01-05T00:00:30")
         job-id-1 (create-dummy-job conn
                                    :user "tsram"
                                    :job-state :job.state/running
@@ -602,11 +602,26 @@
                                    :max-runtime 60000)
         instance-id-2 (create-dummy-instance conn job-id-2
                                              :start-time #inst "2015-01-04")
+
+        job-id-3 (create-dummy-job conn
+                                   :user "tsram"
+                                   :job-state :job.state/running
+                                   ; this timeout is equal to the "now" value
+                                   :max-runtime 30000)
+        instance-id-3 (create-dummy-instance conn job-id-3
+                                             :start-time #inst "2015-01-05")
+
+        job-id-4 (create-dummy-job conn
+                                   :user "tsram"
+                                   :job-state :job.state/running
+                                   :max-runtime 10000)
+        instance-id-4 (create-dummy-instance conn job-id-4
+                                             :start-time #inst "2015-01-05")
+
         test-db (d/db conn)
         task-id-2 (-> (d/entity test-db instance-id-2) :instance/task-id)
-        ]
-    (is (= [task-id-2] (sched/get-lingering-tasks test-db now 120 120))))
-  )
+        task-id-4 (-> (d/entity test-db instance-id-4) :instance/task-id)]
+    (is (= #{task-id-2 task-id-4} (set (sched/get-lingering-tasks test-db now 120 120))))))
 
 (deftest test-virtual-machine-lease-adapter
   ;; ensure that the VirtualMachineLeaseAdapter can successfully handle an offer from Mesomatic.

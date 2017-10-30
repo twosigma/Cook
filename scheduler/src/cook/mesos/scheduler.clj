@@ -50,8 +50,7 @@
                              TaskAssignmentResult TaskRequest TaskScheduler TaskScheduler$Builder
                              VMTaskFitnessCalculator VirtualMachineLease VirtualMachineLease$Range
                              VirtualMachineCurrentState]
-          [com.netflix.fenzo.functions Action1 Func1]
-          java.util.concurrent.TimeUnit))
+          [com.netflix.fenzo.functions Action1 Func1]))
 
 (defn now
   []
@@ -1057,25 +1056,23 @@
 
    A lingering task is a task that runs longer than timeout-hours."
   [db now max-timeout-hours default-timeout-hours]
-  (->> (q '[:find ?task-id ?start-time ?max-runtime
-            :in $ ?default-runtime
-            :where
-            [(ground [:instance.status/unknown :instance.status/running]) [?status ...]]
-            [?i :instance/status ?status]
-            [?i :instance/task-id ?task-id]
-            [?i :instance/start-time ?start-time]
-            [?j :job/instance ?i]
-            [(get-else $ ?j :job/max-runtime ?default-runtime) ?max-runtime]]
-          db (-> default-timeout-hours time/hours time/in-millis))
-       (keep (fn [[task-id start-time max-runtime]]
-               ;; The convertion between random time units is because time doesn't like
-               ;; Long and Integer/MAX_VALUE is too small for milliseconds
-               (let [timeout-minutes (min (.toMinutes TimeUnit/MILLISECONDS max-runtime)
-                                          (.toMinutes TimeUnit/HOURS max-timeout-hours))]
-                 (when (time/before?
-                         (time/plus (tc/from-date start-time) (time/minutes timeout-minutes))
-                         now)
-                   task-id))))))
+  (let [max-allowed-timeout-ms (-> max-timeout-hours time/hours time/in-millis)
+        jobs-with-max-runtime
+        (q '[:find ?task-id ?start-time ?max-runtime
+             :in $ ?default-runtime
+             :where
+             [(ground [:instance.status/unknown :instance.status/running]) [?status ...]]
+             [?i :instance/status ?status]
+             [?i :instance/task-id ?task-id]
+             [?i :instance/start-time ?start-time]
+             [?j :job/instance ?i]
+             [(get-else $ ?j :job/max-runtime ?default-runtime) ?max-runtime]]
+           db (-> default-timeout-hours time/hours time/in-millis))]
+    (for [[task-id start-time max-runtime-ms] jobs-with-max-runtime
+          :let [timeout-ms (time/millis (min max-runtime-ms max-allowed-timeout-ms))
+                timeout-boundary (time/plus (tc/from-date start-time) timeout-ms)]
+          :when (time/after? now timeout-boundary)]
+      task-id)))
 
 (defn kill-lingering-tasks
   [now conn driver config]
