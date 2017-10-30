@@ -266,6 +266,17 @@ def group_some_job_started(group_response):
     return running_count > 0
 
 
+def group_some_job_done(group_response):
+    """
+    Helper method used with the wait_until function.
+    Checks a response from group_detail_query to see if any job in the group has completed.
+    """
+    group = group_response.json()[0]
+    completed_count = group['completed']
+    logger.info(f"Currently {completed_count} jobs completed in group {group['uuid']}")
+    return completed_count > 0
+
+
 def group_detail_query(cook_url, group_uuid, assert_response=True):
     """Get a group with full status details, returning the response object."""
     response = query_groups(cook_url, uuid=[group_uuid], detailed='true')
