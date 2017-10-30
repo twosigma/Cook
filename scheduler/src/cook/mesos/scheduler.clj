@@ -1100,6 +1100,9 @@
         ;; However in the case that we fail to kill a particular task in Mesos,
         ;; we could lose the chances to kill this task again.
         (mesos/kill-task! driver {:value task-id})
+        ;; BUG - the following transaction races with the update that is triggered
+        ;; when the task is actually killed and sends its exit status code.
+        ;; See issue #515 on GitHub.
         @(d/transact
            conn
            [[:instance/update-state [:instance/task-id task-id] :instance.status/failed [:reason/name :max-runtime-exceeded]]

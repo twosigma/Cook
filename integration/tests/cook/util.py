@@ -223,7 +223,7 @@ def wait_until(query, predicate, max_wait_ms=30000, wait_interval_ms=1000):
         return wait_until_inner()
     except:
         final_response = query()
-        logger.info(f"Timeout exceeded waiting for condition. Details: {final_response.json()}")
+        logger.info(f"Timeout exceeded waiting for condition. Details: {final_response}")
         raise
 
 
