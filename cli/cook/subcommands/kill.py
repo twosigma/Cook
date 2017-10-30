@@ -11,13 +11,13 @@ def guard_against_duplicates(uuids, query_result):
         return
 
     uuid_to_entries = {}
-    duplicate_uuids = []
+    duplicate_uuids = set()
 
     def add(uuid, entity_type, cluster):
         entry_map = {'type': entity_type, 'cluster_name': cluster}
         if uuid in uuid_to_entries:
             uuid_to_entries[uuid].append(entry_map)
-            duplicate_uuids.append(uuid)
+            duplicate_uuids.add(uuid)
         else:
             uuid_to_entries[uuid] = [entry_map]
 
