@@ -1362,9 +1362,12 @@
   "Reads a set of job UUIDs from the request, supporting \"job\" in the query,
   and either \"job\" or \"jobs\" in the body, while accommodating some aspects of
   liberator and compojure-api. For example, compojure-api doesn't support
-  applying a schema to a combination of query parameters and body parameters."
+  applying a schema to a combination of query parameters and body parameters.
+  Returns the cached value stored in the context under the ::jobs key if
+  the jobs were previously stored there by an earlier liberator context update."
   [ctx]
-  (or (vectorize (get-in ctx [:request :query-params :job]))
+  (or (::jobs ctx)
+      (vectorize (get-in ctx [:request :query-params :job]))
       ;; if the query params are coerceable, both :job and "job" keys will be
       ;; present, but in that case we only want to read the coerced version
       (when-let [uncoerced-query-params (get-in ctx [:request :query-params "job"])]
@@ -1374,7 +1377,7 @@
 
 (defn check-jobs-exist
   [conn ctx]
-  (let [jobs (or (::jobs ctx) (jobs-from-request ctx))
+  (let [jobs (jobs-from-request ctx)
         jobs-not-existing (remove (partial job-exists? (d/db conn)) jobs)]
     (cond
       ; error case
@@ -1382,9 +1385,11 @@
       [false {::error (->> jobs-not-existing
                            (map #(str "UUID " % " does not correspond to a job."))
                            (str/join \space))}]
+
       ; if the context doesn't already have ::jobs, add it
       (nil? (::jobs ctx))
       [true {::jobs jobs}]
+
       ; otherwise, no update needed
       :else true)))
 
