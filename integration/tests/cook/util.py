@@ -227,21 +227,6 @@ def wait_until(query, predicate, max_wait_ms=30000, wait_interval_ms=1000):
         raise
 
 
-def all_instances_killed(response):
-    """
-    Helper method used with the wait_until function.
-    Checks a response from query_jobs to see if all jobs and instances have been killed.
-    """
-    for job in response.json():
-        if job['state'] != 'failed':
-            return False
-        for inst in job['instances']:
-            if inst['status'] != 'failed':
-                logger.info(f"Job {job['uuid']} instance {inst['task_id']} has non-failure status {inst['status']}.")
-                return False
-    return True
-
-
 def wait_for_job(cook_url, job_id, status, max_delay=120000):
     """Wait for the given job's status to change to the specified value."""
     return wait_for_jobs(cook_url, [job_id], status, max_delay)[0]
