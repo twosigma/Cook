@@ -935,6 +935,25 @@ class CookCliTest(unittest.TestCase):
         self.assertIn('as a job group', cli.decode(cp.stderr))
         self.assertIn('as a job instance', cli.decode(cp.stderr))
 
+        # Duplicate job, instance, and group uuid, with more precise check of the error message
+        cp, uuids = cli.submit('ls', self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        instance_uuid = self.wait_for_instance(uuids[0])
+        cp, uuids = cli.submit('ls', self.cook_url, submit_flags=f'--uuid {instance_uuid} --group {instance_uuid}')
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        cp = cli.kill(uuids, self.cook_url)
+        self.assertEqual(1, cp.returncode, cp.stderr)
+        expected_stdout = \
+            'Refusing to kill due to duplicate UUIDs.\n' \
+            '\n' \
+            f'{instance_uuid} is duplicated:\n' \
+            f'- as a job on {self.cook_url}\n' \
+            f'- as a job instance on {self.cook_url}\n' \
+            f'- as a job group on {self.cook_url}\n' \
+            '\n' \
+            'You might need to explicitly set the cluster where you want to kill by using the --cluster flag.\n'
+        self.assertEqual(expected_stdout, cli.decode(cp.stderr))
+
     def test_kill_job(self):
         cp, uuids = cli.submit('sleep 60', self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
@@ -960,8 +979,7 @@ class CookCliTest(unittest.TestCase):
         self.assertEqual(0, cp.returncode, cp.stderr)
 
         # Wait for an instance to appear, and kill it
-        job = util.wait_until(lambda: cli.show_json(uuids, self.cook_url)[1][0], lambda j: len(j['instances']) == 1)
-        instance_uuid = job['instances'][0]['task_id']
+        instance_uuid = self.wait_for_instance(uuids[0])
         cp = cli.kill([instance_uuid], self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertIn(f'Killed job instance {instance_uuid}', cli.stdout(cp))

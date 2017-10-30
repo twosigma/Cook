@@ -383,3 +383,9 @@ def get_user(cook_url, job_uuid):
 def unscheduled_jobs(cook_url, job_uuid):
     """Retrieves the unscheduled_jobs reasons for the given job_uuid"""
     return session.get('%s/unscheduled_jobs?job=%s' % (cook_url, job_uuid)).json()
+
+def wait_for_instance(cook_url, job_uuid):
+    job = wait_until(lambda: cli.show_json([job_uuid], cook_url)[1][0],
+                          lambda j: len(j['instances']) == 1)
+    instance_uuid = job['instances'][0]['task_id']
+    return instance_uuid
