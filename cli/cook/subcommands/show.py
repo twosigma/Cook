@@ -152,12 +152,9 @@ def show(clusters, args):
         print(json.dumps(query_result))
     else:
         for cluster_name, entities in query_result['clusters'].items():
-            jobs = entities['jobs']
-            instances = [[i, j] for j in entities['instances'] for i in j['instances'] if i['task_id'] in uuids]
-            groups = entities['groups']
-            show_data(cluster_name, jobs, tabulate_job)
-            show_data(cluster_name, instances, tabulate_instance)
-            show_data(cluster_name, groups, tabulate_group)
+            show_data(cluster_name, entities['jobs'], tabulate_job)
+            show_data(cluster_name, entities['instances'], tabulate_instance)
+            show_data(cluster_name, entities['groups'], tabulate_group)
     if query_result['count'] > 0:
         return 0
     else:

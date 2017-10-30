@@ -3,7 +3,7 @@ from cook.querying import query, print_no_data
 from cook.util import strip_all, print_info
 
 
-def guard_against_duplicates(uuids, query_result):
+def guard_against_duplicates(query_result):
     """
     Checks for UUIDs that are duplicated and throws if any are found (unlikely to happen in the wild, but it could)
     """
@@ -22,16 +22,13 @@ def guard_against_duplicates(uuids, query_result):
             uuid_to_entries[uuid] = [entry_map]
 
     for cluster_name, entities in query_result['clusters'].items():
-        jobs = entities['jobs']
-        for job in jobs:
+        for job in entities['jobs']:
             add(job['uuid'], 'job', cluster_name)
 
-        instances = [i for j in entities['instances'] for i in j['instances'] if i['task_id'] in uuids]
-        for instance in instances:
+        for instance, _ in entities['instances']:
             add(instance['task_id'], 'job instance', cluster_name)
 
-        groups = entities['groups']
-        for group in groups:
+        for group in entities['groups']:
             add(group['uuid'], 'job group', cluster_name)
 
     if len(duplicate_uuids) > 0:
@@ -43,46 +40,44 @@ def guard_against_duplicates(uuids, query_result):
             message = f'{duplicate_uuid} is duplicated:\n' + '\n'.join(bullets)
             messages.append(message)
         details = '\n\n'.join(messages)
-        message = f'Unable to kill due to duplicate UUIDs.\n\n{details}'
+        message = f'Refusing to kill due to duplicate UUIDs.\n\n{details}\n\nYou might need to explicitly set the ' \
+                  f'cluster where you want to kill by using the --cluster flag.'
         raise Exception(message)
 
 
-def kill_entities(uuids, query_result, clusters):
+def kill_entities(query_result, clusters):
     """Attempts to kill the jobs / instances / groups with the given UUIDs"""
     exit_code = 0
+    clusters_by_name = {c['name']: c for c in clusters}
     for cluster_name, entities in query_result['clusters'].items():
-        cluster = next(c for c in clusters if c['name'] == cluster_name)
+        cluster = clusters_by_name[cluster_name]
 
-        jobs = entities['jobs']
-        instances = [i for j in entities['instances'] for i in j['instances'] if i['task_id'] in uuids]
-        if len(jobs) > 0 or len(instances) > 0:
-            job_uuids = [j['uuid'] for j in jobs]
-            instance_uuids = [i['task_id'] for i in instances]
+        job_uuids = [j['uuid'] for j in entities['jobs']]
+        instance_uuids = [i['task_id'] for i, _ in entities['instances']]
+        if len(job_uuids) > 0 or len(instance_uuids) > 0:
             resp = http.delete(cluster, 'rawscheduler', params={'job': job_uuids, 'instance': instance_uuids})
             if resp.status_code == 204:
-                for job in jobs:
-                    print_info(f'Killed job {colors.bold(job["uuid"])} on {colors.bold(cluster_name)}.')
-                for instance in instances:
-                    instance_uuid = instance['task_id']
+                for job_uuid in job_uuids:
+                    print_info(f'Killed job {colors.bold(job_uuid)} on {colors.bold(cluster_name)}.')
+                for instance_uuid in instance_uuids:
                     print_info(f'Killed job instance {colors.bold(instance_uuid)} on {colors.bold(cluster_name)}.')
             else:
                 exit_code = 1
-                for job in jobs:
-                    print(colors.failed(f'Failed to kill job {job["uuid"]} on {cluster_name}.'))
-                for instance in instances:
-                    print(colors.failed(f'Failed to kill job instance {instance["task_id"]} on {cluster_name}.'))
+                for job_uuid in job_uuids:
+                    print(colors.failed(f'Failed to kill job {job_uuid} on {cluster_name}.'))
+                for instance_uuid in instance_uuids:
+                    print(colors.failed(f'Failed to kill job instance {instance_uuid} on {cluster_name}.'))
 
-        groups = entities['groups']
-        if len(groups) > 0:
-            group_uuids = [g['uuid'] for g in groups]
+        group_uuids = [g['uuid'] for g in entities['groups']]
+        if len(group_uuids) > 0:
             resp = http.delete(cluster, 'group', params={'uuid': group_uuids})
             if resp.status_code == 204:
-                for group in groups:
-                    print_info(f'Killed job group {colors.bold(group["uuid"])} on {colors.bold(cluster_name)}.')
+                for group_uuid in group_uuids:
+                    print_info(f'Killed job group {colors.bold(group_uuid)} on {colors.bold(cluster_name)}.')
             else:
                 exit_code = 1
-                for group in groups:
-                    print(colors.failed(f'Failed to kill job group {group["uuid"]} on {cluster_name}.'))
+                for group_uuid in group_uuids:
+                    print(colors.failed(f'Failed to kill job group {group_uuid} on {cluster_name}.'))
 
     return exit_code
 
@@ -97,9 +92,9 @@ def kill(clusters, args):
 
     # If the user provides UUIDs that map to more than one entity,
     # we will raise an Exception that contains the details
-    guard_against_duplicates(uuids, query_result)
+    guard_against_duplicates(query_result)
 
-    return kill_entities(uuids, query_result, clusters)
+    return kill_entities(query_result, clusters)
 
 
 def register(add_parser, _):

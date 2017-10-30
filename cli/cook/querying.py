@@ -69,9 +69,17 @@ def query_entities(cluster, uuids, pred_jobs, pred_instances, pred_groups, timeo
                                          interval, make_job_request, 'job')
         count += len(entities['jobs'])
     if include_instances:
-        entities['instances'] = query_cluster(cluster, uuids, pred_instances, timeout,
-                                              interval, make_instance_request, 'instance')
-        count += len(entities['instances'])
+        instance_parent_job_pairs = []
+        parent_jobs = query_cluster(cluster, uuids, pred_instances, timeout,
+                                    interval, make_instance_request, 'instance')
+        for job in parent_jobs:
+            for instance in job['instances']:
+                instance_uuid = instance['task_id']
+                if instance_uuid in uuids:
+                    instance_parent_job_pairs.append((instance, job))
+
+        entities['instances'] = instance_parent_job_pairs
+        count += len(instance_parent_job_pairs)
     if include_groups:
         entities['groups'] = query_cluster(cluster, uuids, pred_groups, timeout,
                                            interval, make_group_request, 'group')
@@ -162,7 +170,7 @@ def query_unique(clusters, uuid):
         return {'type': 'job', 'data': job}
 
     # Check for a job instance
-    instances = [[i, j] for j in entities['instances'] for i in j['instances'] if i['task_id'] == uuid]
+    instances = entities['instances']
     if len(instances) > 0:
         instance, job = instances[0]
         return {'type': 'instance', 'data': (instance, job)}

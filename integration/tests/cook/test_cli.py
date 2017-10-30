@@ -903,7 +903,7 @@ class CookCliTest(unittest.TestCase):
         self.assertEqual(0, cp.returncode, cp.stderr)
         cp = cli.kill(uuids, self.cook_url)
         self.assertEqual(1, cp.returncode, cp.stderr)
-        self.assertIn('Unable to kill due to duplicate UUIDs', cli.decode(cp.stderr))
+        self.assertIn('Refusing to kill due to duplicate UUIDs', cli.decode(cp.stderr))
         self.assertIn('as a job', cli.decode(cp.stderr))
         self.assertIn('as a job group', cli.decode(cp.stderr))
 
@@ -917,7 +917,7 @@ class CookCliTest(unittest.TestCase):
         self.assertEqual(0, cp.returncode, cp.stderr)
         cp = cli.kill(uuids, self.cook_url)
         self.assertEqual(1, cp.returncode, cp.stderr)
-        self.assertIn('Unable to kill due to duplicate UUIDs', cli.decode(cp.stderr))
+        self.assertIn('Refusing to kill due to duplicate UUIDs', cli.decode(cp.stderr))
         self.assertIn('as a job', cli.decode(cp.stderr))
         self.assertIn('as a job instance', cli.decode(cp.stderr))
 
@@ -931,7 +931,7 @@ class CookCliTest(unittest.TestCase):
         self.assertEqual(0, cp.returncode, cp.stderr)
         cp = cli.kill([duplicate_uuid], self.cook_url)
         self.assertEqual(1, cp.returncode, cp.stderr)
-        self.assertIn('Unable to kill due to duplicate UUIDs', cli.decode(cp.stderr))
+        self.assertIn('Refusing to kill due to duplicate UUIDs', cli.decode(cp.stderr))
         self.assertIn('as a job group', cli.decode(cp.stderr))
         self.assertIn('as a job instance', cli.decode(cp.stderr))
 
