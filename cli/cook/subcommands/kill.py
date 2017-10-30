@@ -1,3 +1,5 @@
+from collections import defaultdict
+
 from cook import http, colors
 from cook.querying import query, print_no_data
 from cook.util import strip_all, print_info
@@ -10,16 +12,13 @@ def guard_against_duplicates(query_result):
     if query_result['count'] == 1:
         return
 
-    uuid_to_entries = {}
+    uuid_to_entries = defaultdict(list)
     duplicate_uuids = set()
 
     def add(uuid, entity_type, cluster):
         entry_map = {'type': entity_type, 'cluster_name': cluster}
-        if uuid in uuid_to_entries:
-            uuid_to_entries[uuid].append(entry_map)
-            duplicate_uuids.add(uuid)
-        else:
-            uuid_to_entries[uuid] = [entry_map]
+        uuid_to_entries[uuid].append(entry_map)
+        duplicate_uuids.add(uuid)
 
     for cluster_name, entities in query_result['clusters'].items():
         for job in entities['jobs']:
