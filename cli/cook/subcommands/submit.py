@@ -150,8 +150,8 @@ def submit(clusters, args):
     job = args
     raw = job.pop('raw', None)
     command_from_command_line = job.pop('command', None)
-    application_name = job.pop('application_name', 'cook-scheduler-cli')
-    application_version = job.pop('application_version', version.VERSION)
+    application_name = job.pop('application-name', 'cook-scheduler-cli')
+    application_version = job.pop('application-version', version.VERSION)
     job['application'] = {'name': application_name, 'version': application_version}
 
     if raw:
@@ -208,8 +208,10 @@ def register(add_parser, add_defaults):
     submit_parser.add_argument('--env', '-e', help='environment variable for job (can be repeated)',
                                metavar='KEY=VALUE', action='append')
     submit_parser.add_argument('--ports', help='number of ports to reserve for job', type=int)
-    submit_parser.add_argument('--application-name', '-a', help='name of application submitting the job')
-    submit_parser.add_argument('--application-version', '-v', help='version of application submitting the job')
+    submit_parser.add_argument('--application-name', '-a', help='name of application submitting the job',
+                               dest='application-name')
+    submit_parser.add_argument('--application-version', '-v', help='version of application submitting the job',
+                               dest='application-version')
     submit_parser.add_argument('--executor', '-E', help='executor to use to run the job on the Mesos agent',
                                choices=('cook', 'mesos'))
     submit_parser.add_argument('--raw', '-r', help='raw job spec in json format', dest='raw', action='store_true')

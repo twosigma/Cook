@@ -502,6 +502,15 @@ class CookCliTest(unittest.TestCase):
         self.assertEqual(0, cp.returncode, cp.stderr)
         cp, jobs = cli.show_json(uuids, self.cook_url)
         self.assertEqual('cook-scheduler-cli', jobs[0]['application']['name'])
+        # User-defined defaults
+        config = {'defaults': {'submit': {'application-name': 'bar', 'application-version': '4.5.6'}}}
+        with cli.temp_config_file(config) as path:
+            flags = '--config %s' % path
+            cp, uuids = cli.submit('ls', self.cook_url, flags=flags)
+            self.assertEqual(0, cp.returncode, cp.stderr)
+            cp, jobs = cli.show_json(uuids, self.cook_url)
+            self.assertEqual('bar', jobs[0]['application']['name'])
+            self.assertEqual('4.5.6', jobs[0]['application']['version'])
 
     def test_list_invalid_flags(self):
         error_fragment = 'cannot specify both lookback hours and submitted after / before times'
