@@ -105,6 +105,11 @@ The path is relative to the sandbox directory on the Mesos agent where the insta
 When given a job instance uuid, it will choose the most recently started instance's agent to tail files.
 `tail` also supports "following" a file, meaning that it will output appended data as the file grows.
 
+### `kill`
+
+You can kill jobs, instances, and groups with `kill`. 
+UUIDs are passed as positional arguments. 
+
 ### Examples
 
 Simple job creation:
