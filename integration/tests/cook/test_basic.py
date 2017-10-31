@@ -918,6 +918,9 @@ class CookTest(unittest.TestCase):
             state = util.get_mesos_state(self.mesos_url)
             agent = [agent for agent in state['slaves']
                      if agent['hostname'] == instance['hostname']][0]
+            if agent is None:
+                self.logger.warn(f"Could not find agent for hostname {instance['hostname']}")
+                self.logger.warn(f"slaves: {state['slaves']}")
             # Get the host and port of the agent API.
             # Example pid: "slave(1)@172.17.0.7:5051"
             agent_hostport = agent['pid'].split('@')[1]
@@ -925,6 +928,9 @@ class CookTest(unittest.TestCase):
             # Get container ID from agent
             agent_state = util.session.get('http://%s/state.json' % agent_hostport).json()
             executor = util.get_executor(agent_state, instance['executor_id'])
+            if executor is None:
+                self.logger.warn(f"Could not find executor {instance['executor_id']} in agent state")
+                self.logger.warn(f"agent_state: {agent_state}")
             container_id = 'mesos-%s.%s' % (agent['id'], executor['container'])
             self.logger.debug('container_id: %s' % container_id)
 
