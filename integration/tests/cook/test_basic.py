@@ -1003,16 +1003,61 @@ class CookTest(unittest.TestCase):
         finally:
             util.kill_jobs(self.cook_url, [uuids])
 
+    def test_balanced_host_constraint_cannot_place(self):
+        state = util.get_mesos_state(self.mesos_url)
+        num_hosts = len(state['slaves'])
+        if num_hosts > 10:
+            # Skip this test on large clusters
+            self.logger.info(f"Skipping test due to cluster size of {num_hosts} greater than 10")
+            return
+        minimum_hosts = num_hosts + 1
+        group = {'uuid': str(uuid.uuid4()),
+                 'host-placement': {'type': 'balanced',
+                                    'parameters': {'attribute': 'HOSTNAME',
+                                                   'minimum': minimum_hosts}}}
+        job_spec = {'command': 'sleep 600',
+                    'cpus': 0.1,
+                    'group': group['uuid'],
+                    'mem': 100}
+        num_jobs = minimum_hosts
+        uuids, resp = util.submit_jobs(self.cook_url, job_spec, num_jobs, groups=[group])
+        try:
+            def query_list():
+                return util.query_jobs(self.cook_url, job=uuids).json()
+            def num_running_predicate(response):
+                num_running = len([j for j in response if j['status'] == 'running'])
+                num_waiting = len([j for j in response if j['status'] == 'waiting'])
+                return num_running == num_hosts and num_waiting == 1
+            jobs = util.wait_until(query_list, num_running_predicate)
+            waiting_jobs = [j for j in jobs if j['status'] == 'waiting']
+            self.assertEqual(1, len(waiting_jobs), waiting_jobs)
+            waiting_job = waiting_jobs[0]
+            def query_unscheduled():
+                resp = util.unscheduled_jobs(self.cook_url, waiting_job['uuid'])[0]
+                reasons = [reason for reason in resp['reasons']
+                           if reason['reason'] == "The job couldn't be placed on any available hosts." ]
+                return reasons
+            reasons = util.wait_until(query_unscheduled, lambda r: len(r) > 0)
+            self.assertEqual(1, len(reasons), reasons)
+            reason = reasons[0]
+            balanced_reasons = [r for r in reason['data']['reasons']
+                                if r['reason'] == 'balanced-host-placement-group-constraint']
+            self.assertEqual(1, len(balanced_reasons), balanced_reasons)
+        finally:
+            util.kill_jobs(self.cook_url, [uuids])
+
     def test_balanced_host_constraint(self):
         state = util.get_mesos_state(self.mesos_url)
         num_hosts = len(state['slaves'])
-        minimum_hosts = min(num_hosts, 10)
+        minimum_hosts = min(10, num_hosts)
         group = {'uuid': str(uuid.uuid4()),
                  'host-placement': {'type': 'balanced',
                                     'parameters': {'attribute': 'HOSTNAME',
                                                    'minimum': minimum_hosts}}}
         job_spec = {'group': group['uuid'],
-                    'command': 'sleep 600'}
+                    'command': 'sleep 600',
+                    'mem': 100,
+                    'cpus': 0.1}
         max_jobs_per_host = 3
         num_jobs = minimum_hosts * max_jobs_per_host
         uuids, resp = util.submit_jobs(self.cook_url, job_spec, num_jobs, groups=[group])
@@ -1021,8 +1066,8 @@ class CookTest(unittest.TestCase):
             jobs = util.wait_for_jobs(self.cook_url, uuids, 'running')
             hosts = [j['instances'][0]['hostname'] for j in jobs]
             host_count = Counter(hosts)
-            self.assertTrue(len(host_count) >= minimum_hosts)
-            self.assertTrue(max(host_count.values()) <= max_jobs_per_host)
+            self.assertGreaterEqual(len(host_count), minimum_hosts, hosts)
+            self.assertLessEqual(max(host_count.values()), max_jobs_per_host, host_count)
         finally:
             util.kill_jobs(self.cook_url, [uuids])
 
