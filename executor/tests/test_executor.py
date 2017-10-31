@@ -222,12 +222,12 @@ class ExecutorTest(unittest.TestCase):
     def test_retrieve_process_environment(self):
         self.assertEqual({'EXECUTOR_PROGRESS_OUTPUT_FILE': 'stdout'},
                          ce.retrieve_process_environment(cc.ExecutorConfig(), {}))
-        self.assertEqual({'EXECUTOR_PROGRESS_OUTPUT_FILE': 'stdout',
+        self.assertEqual({'CUSTOM_PROGRESS_OUTPUT_FILE': 'stdout',
                           'FOO': 'BAR',
                           'MESOS_SANDBOX': '/path/to/sandbox',
                           'PROGRESS_OUTPUT_FILE': 'executor.progress'},
                          ce.retrieve_process_environment(
-                             cc.ExecutorConfig(),
+                             cc.ExecutorConfig(progress_output_env_variable='CUSTOM_PROGRESS_OUTPUT_FILE'),
                              {'FOO': 'BAR',
                               'MESOS_SANDBOX': '/path/to/sandbox',
                               'PROGRESS_OUTPUT_FILE': 'executor.progress'}))

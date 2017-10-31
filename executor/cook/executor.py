@@ -315,7 +315,7 @@ def manage_task(driver, task, stop_signal, completed_signal, config):
             cio.print_and_log('Forked command at {}'.format(process.pid))
         else:
             # task launch failed, report an error
-            logging.warning('Error in launching task')
+            logging.error('Error in launching task')
             update_status(driver, task_id, cook.TASK_ERROR)
             return
 

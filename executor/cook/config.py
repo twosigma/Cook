@@ -63,7 +63,7 @@ def initialize_config(environment):
     progress_output_env_variable = environment.get('EXECUTOR_PROGRESS_OUTPUT_FILE_ENV', 'EXECUTOR_PROGRESS_OUTPUT_FILE')
     logging.info('Progress location environment variable is {}'.format(progress_output_env_variable))
     if progress_output_env_variable not in environment:
-        logging.warning('No entry found for {} in the environment'.format(progress_output_env_variable))
+        logging.info('No entry found for {} in the environment'.format(progress_output_env_variable))
 
     max_bytes_read_per_line = max(int(environment.get('EXECUTOR_MAX_BYTES_READ_PER_LINE', 4 * 1024)), 128)
     max_message_length = max(int(environment.get('EXECUTOR_MAX_MESSAGE_LENGTH', 512)), 64)
