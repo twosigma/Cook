@@ -166,3 +166,10 @@ def ls_entry_by_name(entries, name):
     to find, returns the first entry with a matching name
     """
     return next(e for e in entries if os.path.basename(os.path.normpath(e['path'])) == name)
+
+
+def kill(uuids, cook_url):
+    """Invokes the kill subcommand"""
+    args = f'kill {" ".join([str(u) for u in uuids])}'
+    cp = cli(args, cook_url)
+    return cp

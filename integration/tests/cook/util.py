@@ -116,12 +116,14 @@ def submit_jobs(cook_url, job_specs, clones=1, **kwargs):
     """
     if isinstance(job_specs, dict):
         job_specs = [job_specs] * clones
+
     def full_spec(spec):
         if 'uuid' not in spec:
             return minimal_job(**spec)
         else:
             return spec
-    jobs = [ full_spec(j) for j in job_specs ]
+
+    jobs = [full_spec(j) for j in job_specs]
     request_body = {'jobs': jobs}
     request_body.update(kwargs)
     logger.info(request_body)
@@ -190,11 +192,6 @@ def load_job(cook_url, job_uuid, assert_response=True):
     return response.json()[0]
 
 
-def get_job(cook_url, job_uuid):
-    """Loads a job by UUID using GET /rawscheduler"""
-    return query_jobs(cook_url, job=[job_uuid]).json()[0]
-
-
 def multi_cluster_tests_enabled():
     return os.getenv('COOK_MULTI_CLUSTER') is not None
 
@@ -231,14 +228,17 @@ def wait_for_job(cook_url, job_id, status, max_delay=120000):
     """Wait for the given job's status to change to the specified value."""
     return wait_for_jobs(cook_url, [job_id], status, max_delay)[0]
 
+
 def wait_for_jobs(cook_url, job_ids, status, max_delay=120000):
     def query():
         return query_jobs(cook_url, True, job=job_ids)
-    def predicate(response):
-        jobs = response.json()
+
+    def predicate(resp):
+        jobs = resp.json()
         for job in jobs:
             logger.info(f"Job {job['uuid']} has status {job['status']}, expecting {status}.")
         return all([job['status'] == status for job in jobs])
+
     response = wait_until(query, predicate, max_wait_ms=max_delay, wait_interval_ms=2000)
     return response.json()
 
@@ -254,8 +254,9 @@ def wait_for_exit_code(cook_url, job_id, max_delay_ms=2000):
 
     def query():
         return query_jobs(cook_url, True, job=[job_id])
-    def predicate(response):
-        job = response.json()[0]
+
+    def predicate(resp):
+        job = resp.json()[0]
         if not job['instances']:
             logger.info(f"Job {job_id} has no instances.")
         else:
@@ -277,10 +278,12 @@ def wait_for_end_time(cook_url, job_id, max_delay_ms=2000):
     and raises an exception if the max_delay_ms wait time is exceeded.
     """
     job_id = unpack_uuid(job_id)
+
     def query():
         return query_jobs(cook_url, True, job=[job_id])
-    def predicate(response):
-        job = response.json()[0]
+
+    def predicate(resp):
+        job = resp.json()[0]
         if not job['instances']:
             logger.info(f"Job {job_id} has no instances.")
         else:
@@ -290,6 +293,7 @@ def wait_for_end_time(cook_url, job_id, max_delay_ms=2000):
             else:
                 logger.info(f"Job {job_id} instance {inst['task_id']} has end_time {inst['end_time']}.")
                 return True
+
     response = wait_until(query, predicate, max_wait_ms=max_delay_ms, wait_interval_ms=250)
     return response.json()[0]
 
@@ -368,3 +372,10 @@ def get_user(cook_url, job_uuid):
 def unscheduled_jobs(cook_url, job_uuid):
     """Retrieves the unscheduled_jobs reasons for the given job_uuid"""
     return session.get('%s/unscheduled_jobs?job=%s' % (cook_url, job_uuid)).json()
+
+
+def wait_for_instance(cook_url, job_uuid):
+    """Waits for the job with the given job_uuid to have a single instance, and returns the instance uuid"""
+    job = wait_until(lambda: load_job(cook_url, job_uuid), lambda j: len(j['instances']) == 1)
+    instance_uuid = job['instances'][0]['task_id']
+    return instance_uuid

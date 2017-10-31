@@ -12,6 +12,7 @@ from retrying import retry
 from tests.cook import reasons
 from tests.cook import util
 
+
 class CookTest(unittest.TestCase):
     _multiprocess_can_split_ = True
 
@@ -51,8 +52,8 @@ class CookTest(unittest.TestCase):
             pass
         job = util.load_job(self.cook_url, job_uuid)
         message = json.dumps(job, sort_keys=True)
-        job_instances = sorted(job['instances'], key=lambda i: i['end_time'])
-        self.assertTrue(len(job_instances) >= 2, message) # sort job instances
+        job_instances = sorted(job['instances'], key=lambda instance: instance['end_time'])
+        self.assertTrue(len(job_instances) >= 2, message)  # sort job instances
         for i in range(1, len(job_instances)):
             message = 'Index ' + str(i) + json.dumps(job_instances[i], sort_keys=True)
             self.assertEqual('failed', job_instances[i]['status'], message)
@@ -203,7 +204,12 @@ class CookTest(unittest.TestCase):
             self.assertEqual('80%', job['instances'][0]['progress_message'], message)
             self.assertIsNotNone(job['instances'][0]['sandbox_directory'], message)
 
+    @attr('explicit')
     def test_max_runtime_exceeded(self):
+        """
+        Marked as explicit due to:
+        https://github.com/twosigma/Cook/issues/299
+        """
         job_executor_type = util.get_job_executor_type(self.cook_url)
         settings_timeout_interval_minutes = util.get_in(util.settings(self.cook_url), 'task-constraints',
                                                         'timeout-interval-minutes')
@@ -213,11 +219,11 @@ class CookTest(unittest.TestCase):
         job_sleep_ms = job_sleep_seconds * 1000
         max_runtime_ms = 5000
         assert max_runtime_ms < job_sleep_ms
+        # schedule a job that will go over its max_runtime time limit
+        job_uuid, resp = util.submit_job(self.cook_url,
+                                         command=f'sleep {job_sleep_seconds}',
+                                         executor=job_executor_type, max_runtime=max_runtime_ms)
         try:
-            # schedule a job that will go over its max_runtime time limit
-            job_uuid, resp = util.submit_job(self.cook_url,
-                                             command=f'sleep {job_sleep_seconds}',
-                                             executor=job_executor_type, max_runtime=max_runtime_ms)
             self.assertEqual(201, resp.status_code, msg=resp.content)
             # We wait for the job to start running, and only then start waiting for the max-runtime timeout,
             # otherwise we could get a false-negative on wait-for-job 'completed' because of a scheduling delay.
@@ -247,7 +253,6 @@ class CookTest(unittest.TestCase):
                 self.assertTrue(bool(job['instances'][0]['sandbox_directory']), job_details)
         finally:
             util.kill_jobs(self.cook_url, [job_uuid])
-
 
     def test_get_job(self):
         # schedule a job
@@ -288,14 +293,14 @@ class CookTest(unittest.TestCase):
         self.assertTrue('task_id' in instance)
 
     def determine_user(self):
-        uuid, resp = util.submit_job(self.cook_url)
+        job_uuid, resp = util.submit_job(self.cook_url)
         self.assertEqual(resp.status_code, 201)
-        return util.get_user(self.cook_url, uuid)
+        return util.get_user(self.cook_url, job_uuid)
 
     def test_list_jobs_by_state(self):
+        # schedule a bunch of jobs in hopes of getting jobs into different statuses
+        job_specs = [util.minimal_job(command=f"sleep {i}") for i in range(1, 20)]
         try:
-            # schedule a bunch of jobs in hopes of getting jobs into different statuses
-            job_specs = [ util.minimal_job(command=f"sleep {i}") for i in range(1, 20) ]
             _, resp = util.submit_jobs(self.cook_url, job_specs)
             self.assertEqual(resp.status_code, 201)
 
@@ -311,7 +316,7 @@ class CookTest(unittest.TestCase):
                     # print "%s %s" % (job['uuid'], job['status'])
                     self.assertEquals(state, job['status'])
         finally:
-            util.kill_jobs(self.cook_url, jobs)
+            util.kill_jobs(self.cook_url, job_specs)
 
     def test_list_jobs_by_time(self):
         # schedule two jobs with different submit times
@@ -529,19 +534,19 @@ class CookTest(unittest.TestCase):
     def test_cancel_job(self):
         job_uuid, _ = util.submit_job(self.cook_url, command='sleep 300')
         util.wait_for_job(self.cook_url, job_uuid, 'running')
-        resp = util.kill_jobs(self.cook_url, [job_uuid])
-        job = util.get_job(self.cook_url, job_uuid)
+        util.kill_jobs(self.cook_url, [job_uuid])
+        job = util.load_job(self.cook_url, job_uuid)
         self.assertEqual('failed', job['state'])
 
     def test_change_retries(self):
         job_uuid, _ = util.submit_job(self.cook_url, command='sleep 10')
         util.wait_for_job(self.cook_url, job_uuid, 'running')
-        resp = util.kill_jobs(self.cook_url, [job_uuid])
-        job = util.get_job(self.cook_url, job_uuid)
+        util.kill_jobs(self.cook_url, [job_uuid])
+        job = util.load_job(self.cook_url, job_uuid)
         self.assertEqual('failed', job['state'])
         resp = util.session.put('%s/retry' % self.cook_url, json={'retries': 2, 'jobs': [job_uuid]})
         self.assertEqual(201, resp.status_code, resp.text)
-        job = util.get_job(self.cook_url, job_uuid)
+        job = util.load_job(self.cook_url, job_uuid)
         self.assertIn(job['status'], ['waiting', 'running'])
         job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
         self.assertEqual('success', job['state'], 'Job details: %s' % (json.dumps(job, sort_keys=True)))
@@ -805,18 +810,22 @@ class CookTest(unittest.TestCase):
             util.wait_for_job(self.cook_url, job_fast, 'completed')
             # Now try to cancel the group (just the long job)
             util.kill_groups(self.cook_url, [group_uuid])
+
             # Wait for the slow job (and its instance) to die
-            query = lambda: util.query_jobs(self.cook_url, True, job=[job_slow])
+            def query():
+                return util.query_jobs(self.cook_url, True, job=[job_slow])
+
             util.wait_until(query, util.all_instances_killed)
             # The fast job should have Success, slow job Failed (because we killed it)
             jobs = util.query_jobs(self.cook_url, True, job=[job_fast, job_slow]).json()
             self.assertEqual('success', jobs[0]['state'], f"Job details: {json.dumps(jobs[0], sort_keys=True)}")
             slow_job_details = f"Job details: {json.dumps(jobs[1], sort_keys=True)}"
-            self.assertEqual('failed',  jobs[1]['state'], slow_job_details)
-            valid_reasons = [# cook killed the job, so it exits non-zero
-                             reasons.CMD_NON_ZERO_EXIT,
-                             # cook killed the job during setup, so the executor had an error
-                             reasons.EXECUTOR_UNREGISTERED]
+            self.assertEqual('failed', jobs[1]['state'], slow_job_details)
+            valid_reasons = [
+                # cook killed the job, so it exits non-zero
+                reasons.CMD_NON_ZERO_EXIT,
+                # cook killed the job during setup, so the executor had an error
+                reasons.EXECUTOR_UNREGISTERED]
             self.assertIn(jobs[1]['instances'][0]['reason_code'], valid_reasons, slow_job_details)
         finally:
             # Now try to kill the group again
@@ -832,22 +841,28 @@ class CookTest(unittest.TestCase):
         try:
             jobs, resp = util.submit_jobs(self.cook_url, job_spec, 10, groups=[group_spec])
             self.assertEqual(resp.status_code, 201)
+
             # Wait for some job to start
             def some_job_started(group_response):
                 group = group_response.json()[0]
                 running_count = group['running']
                 self.logger.info(f"Currently {running_count} jobs running in group {group_uuid}")
                 return running_count > 0
+
             def group_detail_query():
                 response = util.query_groups(self.cook_url, uuid=[group_uuid], detailed='true')
                 self.assertEqual(200, response.status_code)
                 return response
+
             util.wait_until(group_detail_query, some_job_started)
             # Now try to kill the whole group
             util.kill_groups(self.cook_url, [group_uuid])
+
             # Wait for all the jobs to die
             # Ensure that each job Failed (because we killed it)
-            query = lambda: util.query_jobs(self.cook_url, True, job=jobs)
+            def query():
+                return util.query_jobs(self.cook_url, True, job=jobs)
+
             util.wait_until(query, util.all_instances_killed)
         finally:
             # Now try to kill the group again
@@ -859,9 +874,9 @@ class CookTest(unittest.TestCase):
         self.assertEqual(400, resp.status_code)
 
     def test_queue_endpoint(self):
+        constraints = [["HOSTNAME", "EQUALS", "lol won't get scheduled"]]
+        job_uuid, resp = util.submit_job(self.cook_url, constraints=constraints)
         try:
-            constraints = [["HOSTNAME", "EQUALS", "lol won't get scheduled"]]
-            job_uuid, resp = util.submit_job(self.cook_url, constraints=constraints)
             self.assertEqual(201, resp.status_code, resp.content)
             time.sleep(30)  # Need to wait for a rank cycle
             queue = util.session.get('%s/queue' % self.cook_url)
@@ -935,22 +950,25 @@ class CookTest(unittest.TestCase):
         self.assertEqual(resp.status_code, 201, resp.content)
         try:
             unscheduled_jobs = util.unscheduled_jobs(self.cook_url, job_uuid)[0]
-            # If the job from the test is submitted after another one, unscheduled_jobs will report "There are jobs ahead of this in the queue"
-            # so we cannot assert that there is exactly one failure reason.
+            # If the job from the test is submitted after another one, unscheduled_jobs will report "There are jobs
+            # ahead of this in the queue" so we cannot assert that there is exactly one failure reason.
             self.assertTrue(
-                any(['The job is now under investigation. Check back in a minute for more details!' == reason['reason'] for reason in unscheduled_jobs['reasons']]),
+                any(['The job is now under investigation. Check back in a minute for more details!' == reason['reason']
+                     for reason in unscheduled_jobs['reasons']]),
                 unscheduled_jobs)
             self.assertEqual(job_uuid, unscheduled_jobs['uuid'])
 
             @retry(stop_max_delay=60000, wait_fixed=1000)
             def check_unscheduled_reason():
-                unscheduled_jobs = util.unscheduled_jobs(self.cook_url, job_uuid)[0]
-                # If the job from the test is submitted after another one, unscheduled_jobs will report "There are jobs ahead of this in the queue"
-                # so we cannot assert that there is exactly one failure reason.
+                jobs = util.unscheduled_jobs(self.cook_url, job_uuid)[0]
+                # If the job from the test is submitted after another one, unscheduled_jobs will report "There are
+                # jobs ahead of this in the queue" so we cannot assert that there is exactly one failure reason.
                 self.assertTrue(
-                    any(['The job couldn\'t be placed on any available hosts.' == reason['reason'] for reason in unscheduled_jobs['reasons']]),
-                    unscheduled_jobs)
-                self.assertEqual(job_uuid, unscheduled_jobs['uuid'])
+                    any(['The job couldn\'t be placed on any available hosts.' == reason['reason'] for reason in
+                         jobs['reasons']]),
+                    jobs)
+                self.assertEqual(job_uuid, jobs['uuid'])
+
             check_unscheduled_reason()
         finally:
             util.kill_jobs(self.cook_url, [job_uuid])
@@ -968,16 +986,18 @@ class CookTest(unittest.TestCase):
         try:
             def query():
                 return util.query_jobs(self.cook_url, job=uuids).json()
+
             def num_running_predicate(response):
-                num_jobs = len(response)
+                num_jobs_total = len(response)
                 num_running = len([j for j in response if j['status'] == 'running'])
                 num_waiting = len([j for j in response if j['status'] == 'waiting'])
-                if num_jobs == num_hosts + 1:
+                if num_jobs_total == num_hosts + 1:
                     # One job should not be scheduled
-                    return (num_running == num_jobs - 1) and (num_waiting == 1)
+                    return (num_running == num_jobs_total - 1) and (num_waiting == 1)
                 else:
                     # All of the jobs should be running
-                    return num_running == num_jobs
+                    return num_running == num_jobs_total
+
             jobs = util.wait_until(query, num_running_predicate, max_wait_ms=60000)
             hosts = [job['instances'][0]['hostname'] for job in jobs
                      if job['status'] == 'running']
@@ -988,12 +1008,15 @@ class CookTest(unittest.TestCase):
                 waiting_jobs = [j for j in jobs if j['status'] == 'waiting']
                 self.assertEqual(1, len(waiting_jobs))
                 waiting_job = waiting_jobs[0]
+
                 def query():
                     return util.unscheduled_jobs(self.cook_url, waiting_job['uuid'])[0]
-                def check_unique_constraint(unscheduled_jobs):
-                    self.logger.debug('unscheduled_jobs response: %s' % unscheduled_jobs)
+
+                def check_unique_constraint(response):
+                    self.logger.debug('unscheduled_jobs response: %s' % response)
                     return any([r['reason'] == "The job couldn't be placed on any available hosts."
-                                for r in unscheduled_jobs['reasons']])
+                                for r in response['reasons']])
+
                 unscheduled_jobs = util.wait_until(query, check_unique_constraint)
                 unique_reason = [r for r in unscheduled_jobs['reasons'] if r['reason'] ==
                                  "The job couldn't be placed on any available hosts."][0]
@@ -1098,16 +1121,18 @@ class CookTest(unittest.TestCase):
         uuids, resp = util.submit_jobs(self.cook_url, [canary, big_job], groups=[group])
         self.assertEqual(201, resp.status_code, resp.content)
         try:
-            jobs = util.wait_for_job(self.cook_url, canary['uuid'], 'running')
+            util.wait_for_job(self.cook_url, canary['uuid'], 'running')
+
             def query():
                 unscheduled_jobs = util.unscheduled_jobs(self.cook_url, big_job['uuid'])[0]
                 no_hosts = [r for r in unscheduled_jobs['reasons'] if r['reason'] ==
                             "The job couldn't be placed on any available hosts."]
-                for reason in no_hosts:
-                    for reason in reason['data']['reasons']:
-                        if reason['reason'] == "Host had a different attribute than other jobs in the group.":
-                            return reason
+                for no_hosts_reason in no_hosts:
+                    for sub_reason in no_hosts_reason['data']['reasons']:
+                        if sub_reason['reason'] == "Host had a different attribute than other jobs in the group.":
+                            return sub_reason
                 return None
+
             reason = util.wait_until(query, lambda r: r is not None)
             self.assertEqual(reason['reason'],
                              "Host had a different attribute than other jobs in the group.")

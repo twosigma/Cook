@@ -4,6 +4,8 @@ import os
 from concurrent import futures
 from operator import itemgetter
 
+import collections
+
 from cook import http, colors, progress, mesos
 from cook.util import wait_until
 
@@ -67,9 +69,17 @@ def query_entities(cluster, uuids, pred_jobs, pred_instances, pred_groups, timeo
                                          interval, make_job_request, 'job')
         count += len(entities['jobs'])
     if include_instances:
-        entities['instances'] = query_cluster(cluster, uuids, pred_instances, timeout,
-                                              interval, make_instance_request, 'instance')
-        count += len(entities['instances'])
+        instance_parent_job_pairs = []
+        parent_jobs = query_cluster(cluster, uuids, pred_instances, timeout,
+                                    interval, make_instance_request, 'instance')
+        for job in parent_jobs:
+            for instance in job['instances']:
+                instance_uuid = instance['task_id']
+                if instance_uuid in uuids:
+                    instance_parent_job_pairs.append((instance, job))
+
+        entities['instances'] = instance_parent_job_pairs
+        count += len(instance_parent_job_pairs)
     if include_groups:
         entities['groups'] = query_cluster(cluster, uuids, pred_groups, timeout,
                                            interval, make_group_request, 'group')
@@ -97,11 +107,20 @@ def query_across_clusters(clusters, query_fn):
     return all_entities
 
 
+def distinct(seq):
+    """Remove duplicate entries from a sequence. Maintains original order."""
+    return collections.OrderedDict(zip(seq, seq)).keys()
+
+
 def query(clusters, uuids, pred_jobs=None, pred_instances=None, pred_groups=None, timeout=None, interval=None):
     """
     Uses query_across_clusters to make the /rawscheduler
     requests in parallel across the given clusters
     """
+    # Cook will give us back two copies if the user asks for the same UUID twice, e.g.
+    # $ cs show d38ea6bd-8a26-4ddf-8a93-5926fa2991ce d38ea6bd-8a26-4ddf-8a93-5926fa2991ce
+    # Prevent this by calling distinct:
+    uuids = distinct(uuids)
 
     def submit(cluster, executor):
         return executor.submit(query_entities, cluster, uuids, pred_jobs,
@@ -151,7 +170,7 @@ def query_unique(clusters, uuid):
         return {'type': 'job', 'data': job}
 
     # Check for a job instance
-    instances = [[i, j] for j in entities['instances'] for i in j['instances'] if i['task_id'] == uuid]
+    instances = entities['instances']
     if len(instances) > 0:
         instance, job = instances[0]
         return {'type': 'instance', 'data': (instance, job)}
