@@ -220,9 +220,10 @@ class ExecutorTest(unittest.TestCase):
         self.assertEqual(cook.TASK_KILLED, ce.get_task_state(-1))
 
     def test_retrieve_process_environment(self):
-        self.assertEqual({},
+        self.assertEqual({'EXECUTOR_PROGRESS_OUTPUT_FILE': 'stdout'},
                          ce.retrieve_process_environment(cc.ExecutorConfig(), {}))
-        self.assertEqual({'FOO': 'BAR',
+        self.assertEqual({'EXECUTOR_PROGRESS_OUTPUT_FILE': 'stdout',
+                          'FOO': 'BAR',
                           'MESOS_SANDBOX': '/path/to/sandbox',
                           'PROGRESS_OUTPUT_FILE': 'executor.progress'},
                          ce.retrieve_process_environment(
@@ -233,14 +234,16 @@ class ExecutorTest(unittest.TestCase):
         self.assertEqual({'CUSTOM_PROGRESS_OUTPUT_FILE': 'custom.progress',
                           'EXECUTOR_PROGRESS_OUTPUT_FILE_ENV': 'CUSTOM_PROGRESS_OUTPUT_FILE'},
                          ce.retrieve_process_environment(
-                             cc.ExecutorConfig(progress_output_name='custom.progress'),
+                             cc.ExecutorConfig(progress_output_env_variable='CUSTOM_PROGRESS_OUTPUT_FILE',
+                                               progress_output_name='custom.progress'),
                              {'CUSTOM_PROGRESS_OUTPUT_FILE': 'executor.progress',
                               'EXECUTOR_PROGRESS_OUTPUT_FILE_ENV': 'CUSTOM_PROGRESS_OUTPUT_FILE'}))
         self.assertEqual({'CUSTOM_PROGRESS_OUTPUT_FILE': 'custom.progress',
                           'EXECUTOR_PROGRESS_OUTPUT_FILE_ENV': 'CUSTOM_PROGRESS_OUTPUT_FILE',
                           'PROGRESS_OUTPUT_FILE': 'stdout'},
                          ce.retrieve_process_environment(
-                             cc.ExecutorConfig(progress_output_name='custom.progress'),
+                             cc.ExecutorConfig(progress_output_env_variable='CUSTOM_PROGRESS_OUTPUT_FILE',
+                                               progress_output_name='custom.progress'),
                              {'CUSTOM_PROGRESS_OUTPUT_FILE': 'executor.progress',
                               'EXECUTOR_PROGRESS_OUTPUT_FILE_ENV': 'CUSTOM_PROGRESS_OUTPUT_FILE',
                               'PROGRESS_OUTPUT_FILE': 'stdout'}))

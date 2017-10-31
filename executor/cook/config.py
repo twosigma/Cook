@@ -32,6 +32,7 @@ class ExecutorConfig(object):
     def __init__(self,
                  max_bytes_read_per_line=1024,
                  max_message_length=512,
+                 progress_output_env_variable='EXECUTOR_PROGRESS_OUTPUT_FILE',
                  progress_output_name='stdout',
                  progress_regex_string='',
                  progress_sample_interval_ms=100,
@@ -39,6 +40,7 @@ class ExecutorConfig(object):
                  shutdown_grace_period='1secs'):
         self.max_bytes_read_per_line = max_bytes_read_per_line
         self.max_message_length = max_message_length
+        self.progress_output_env_variable = progress_output_env_variable
         self.progress_output_name = progress_output_name
         self.progress_regex_string = progress_regex_string
         self.progress_sample_interval_ms = progress_sample_interval_ms
@@ -58,14 +60,14 @@ def initialize_config(environment):
     else:
         default_progress_output_file = default_progress_output_name
 
-    progress_output_file_env = environment.get('EXECUTOR_PROGRESS_OUTPUT_FILE_ENV', 'PROGRESS_OUTPUT_FILE')
-    logging.info('Progress location environment variable is {}'.format(progress_output_file_env))
-    if progress_output_file_env not in environment:
-        logging.warning('No entry found for {} in the environment'.format(progress_output_file_env))
+    progress_output_env_variable = environment.get('EXECUTOR_PROGRESS_OUTPUT_FILE_ENV', 'EXECUTOR_PROGRESS_OUTPUT_FILE')
+    logging.info('Progress location environment variable is {}'.format(progress_output_env_variable))
+    if progress_output_env_variable not in environment:
+        logging.warning('No entry found for {} in the environment'.format(progress_output_env_variable))
 
     max_bytes_read_per_line = max(int(environment.get('EXECUTOR_MAX_BYTES_READ_PER_LINE', 4 * 1024)), 128)
     max_message_length = max(int(environment.get('EXECUTOR_MAX_MESSAGE_LENGTH', 512)), 64)
-    progress_output_name = environment.get(progress_output_file_env, default_progress_output_file)
+    progress_output_name = environment.get(progress_output_env_variable, default_progress_output_file)
     progress_regex_string = environment.get('PROGRESS_REGEX_STRING', 'progress: (\d+), (.*)')
     progress_sample_interval_ms = max(int(environment.get('PROGRESS_SAMPLE_INTERVAL_MS', 1000)), 100)
     sandbox_directory = environment.get('MESOS_SANDBOX', '')
@@ -81,6 +83,7 @@ def initialize_config(environment):
 
     return ExecutorConfig(max_bytes_read_per_line=max_bytes_read_per_line,
                           max_message_length=max_message_length,
+                          progress_output_env_variable=progress_output_env_variable,
                           progress_output_name=progress_output_name,
                           progress_regex_string=progress_regex_string,
                           progress_sample_interval_ms=progress_sample_interval_ms,

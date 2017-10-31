@@ -21,6 +21,7 @@ class ConfigTest(unittest.TestCase):
     def test_executor_config(self):
         max_bytes_read_per_line = 16 * 1024
         max_message_length = 300
+        progress_output_env_variable = 'PROGRESS_OUTPUT_ENV_VARIABLE'
         progress_output_name = 'stdout_name'
         progress_regex_string = 'some-regex-string'
         progress_sample_interval_ms = 100
@@ -28,6 +29,7 @@ class ConfigTest(unittest.TestCase):
         shutdown_grace_period_secs = '5secs'
         config = cc.ExecutorConfig(max_bytes_read_per_line=max_bytes_read_per_line,
                                    max_message_length=max_message_length,
+                                   progress_output_env_variable=progress_output_env_variable,
                                    progress_output_name=progress_output_name,
                                    progress_regex_string=progress_regex_string,
                                    progress_sample_interval_ms=progress_sample_interval_ms,
@@ -36,6 +38,7 @@ class ConfigTest(unittest.TestCase):
 
         self.assertEqual(max_bytes_read_per_line, config.max_bytes_read_per_line)
         self.assertEqual(max_message_length, config.max_message_length)
+        self.assertEqual(progress_output_env_variable, config.progress_output_env_variable)
         self.assertEqual(progress_output_name, config.progress_output_name)
         self.assertEqual(progress_regex_string, config.progress_regex_string)
         self.assertEqual(progress_sample_interval_ms, config.progress_sample_interval_ms)
@@ -57,15 +60,16 @@ class ConfigTest(unittest.TestCase):
     def test_initialize_config_custom(self):
         environment = {'EXECUTOR_MAX_BYTES_READ_PER_LINE': '1234',
                        'EXECUTOR_MAX_MESSAGE_LENGTH': '1024',
+                       'EXECUTOR_PROGRESS_OUTPUT_FILE': 'progress_file',
                        'MESOS_EXECUTOR_SHUTDOWN_GRACE_PERIOD': '4secs',
                        'MESOS_SANDBOX': '/sandbox/location',
-                       'PROGRESS_OUTPUT_FILE': 'progress_file',
                        'PROGRESS_REGEX_STRING': 'progress/regex',
                        'PROGRESS_SAMPLE_INTERVAL_MS': '2500'}
         config = cc.initialize_config(environment)
 
         self.assertEqual(1234, config.max_bytes_read_per_line)
         self.assertEqual(1024, config.max_message_length)
+        self.assertEqual('EXECUTOR_PROGRESS_OUTPUT_FILE', config.progress_output_env_variable)
         self.assertEqual('progress_file', config.progress_output_name)
         self.assertEqual('progress/regex', config.progress_regex_string)
         self.assertEqual(2500, config.progress_sample_interval_ms)
@@ -84,6 +88,7 @@ class ConfigTest(unittest.TestCase):
 
         self.assertEqual(1234, config.max_bytes_read_per_line)
         self.assertEqual(1024, config.max_message_length)
+        self.assertEqual('OUTPUT_TARGET_FILE', config.progress_output_env_variable)
         self.assertEqual('progress.out', config.progress_output_name)
         self.assertEqual('progress/regex', config.progress_regex_string)
         self.assertEqual(2500, config.progress_sample_interval_ms)
@@ -103,6 +108,7 @@ class ConfigTest(unittest.TestCase):
 
         self.assertEqual(1234, config.max_bytes_read_per_line)
         self.assertEqual(1024, config.max_message_length)
+        self.assertEqual('OUTPUT_TARGET_FILE', config.progress_output_env_variable)
         self.assertEqual('progress.out', config.progress_output_name)
         self.assertEqual('progress/regex', config.progress_regex_string)
         self.assertEqual(2500, config.progress_sample_interval_ms)
@@ -122,6 +128,7 @@ class ConfigTest(unittest.TestCase):
 
         self.assertEqual(1234, config.max_bytes_read_per_line)
         self.assertEqual(1024, config.max_message_length)
+        self.assertEqual('OUTPUT_TARGET_FILE', config.progress_output_env_variable)
         self.assertEqual('/sandbox/location/e123456.progress', config.progress_output_name)
         self.assertEqual('progress/regex', config.progress_regex_string)
         self.assertEqual(2500, config.progress_sample_interval_ms)

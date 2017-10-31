@@ -284,12 +284,7 @@ def retrieve_process_environment(config, os_environ):
     The environment dictionary for the subprocess.
     """
     environment = dict(os_environ)
-
-    progress_output_name = config.progress_output_name
-    custom_progress_output_file_env = environment.get('EXECUTOR_PROGRESS_OUTPUT_FILE_ENV', '')
-    if custom_progress_output_file_env:
-        set_environment(environment, custom_progress_output_file_env, progress_output_name)
-
+    set_environment(environment, config.progress_output_env_variable, config.progress_output_name)
     return environment
 
 
