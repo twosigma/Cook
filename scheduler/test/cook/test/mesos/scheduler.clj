@@ -1665,27 +1665,21 @@
 
 (deftest test-framework-message-processing-delegation
   (let [handle-framework-message-store (atom [])
-        notify-heartbeat-store (atom [])
-        conn (restore-fresh-database! "datomic:mem://test-framework-message-processing-delegation")]
+        notify-heartbeat-store (atom [])]
     (with-redefs [heartbeat/notify-heartbeat (fn [_ _ _ framework-message]
                                                (swap! notify-heartbeat-store conj framework-message))
                   sched/handle-framework-message (fn [_ _ framework-message]
                                                    (swap! handle-framework-message-store conj framework-message))]
-      (let [s (sched/create-mesos-scheduler nil true conn nil nil nil nil nil)
-            make-message (fn [message] (-> message json/write-str str (.getBytes "UTF-8")))
-            j1 (create-dummy-job conn :user "tu")]
+      (let [s (sched/create-mesos-scheduler nil true nil nil nil nil nil nil)
+            make-message (fn [message] (-> message json/write-str str (.getBytes "UTF-8")))]
 
-        (testing "regular instance"
-          (reset! handle-framework-message-store [])
-          (reset! notify-heartbeat-store [])
+        (testing "message delegation"
           (let [task-id "T1"
                 executor-id (-> task-id mtypes/->ExecutorID mtypes/data->pb)
                 m1 {"task-id" task-id}
-                m2 {"task-id" task-id, "timestamp" 123456}
-                m3 {"sandbox" "/path/to/a/directory", "task-id" task-id}
-                m4 {"exit-code" 0, "task-id" task-id, "timestamp" 123456}]
-
-            (create-dummy-instance conn j1 :task-id task-id)
+                m2 {"task-id" task-id, "timestamp" 123456, "type" "heartbeat"}
+                m3 {"exit-code" 0, "sandbox" "/path/to/a/directory", "task-id" task-id}
+                m4 {"task-id" task-id, "timestamp" 123456, "type" "heartbeat"}]
 
             (.frameworkMessage s nil executor-id nil (make-message m1))
             (.frameworkMessage s nil executor-id nil (make-message m2))
@@ -1696,52 +1690,29 @@
               (sched/async-in-order-processing task-id #(.countDown latch))
               (.await latch))
 
-            (is (= [m3 m4] @handle-framework-message-store))
-            (is (= [m1 m2 m3 m4] @notify-heartbeat-store))))
-
-        (testing "cook executor instance"
-          (reset! handle-framework-message-store [])
-          (reset! notify-heartbeat-store [])
-          (let [task-id "T2"
-                executor-id (-> task-id mtypes/->ExecutorID mtypes/data->pb)
-                m1 {"task-id" task-id}
-                m2 {"task-id" task-id, "timestamp" 123456}
-                m3 {"sandbox" "/path/to/a/directory", "task-id" task-id}
-                m4 {"exit-code" 0, "task-id" task-id, "timestamp" 123456}]
-
-            (create-dummy-instance conn j1 :executor :executor/cook :task-id task-id)
-
-            (.frameworkMessage s nil executor-id nil (make-message m1))
-            (.frameworkMessage s nil executor-id nil (make-message m2))
-            (.frameworkMessage s nil executor-id nil (make-message m3))
-            (.frameworkMessage s nil executor-id nil (make-message m4))
-
-            (let [latch (CountDownLatch. 1)]
-              (sched/async-in-order-processing task-id #(.countDown latch))
-              (.await latch))
-
-            (is (= [m3 m4] @handle-framework-message-store))
-            (is (= [] @notify-heartbeat-store))))))))
+            (is (= [m1 m3] @handle-framework-message-store))
+            (is (= [m2 m4] @notify-heartbeat-store))))))))
 
 (deftest test-in-order-framework-message-processing
-  (let [conn (restore-fresh-database! "datomic:mem://test-in-order-framework-message-processing")
-        messages-store (atom {})
+  (let [messages-store (atom {})
         latch (CountDownLatch. 11)]
     (with-redefs [heartbeat/notify-heartbeat (constantly true)
                   sched/handle-framework-message
                   (fn [_ _ framework-message]
-                    (let [{:strs [index message]} framework-message
-                          task-id (str "T" index)]
+                    (let [{:strs [message task-id]} framework-message]
                       (swap! messages-store update (str task-id) (fn [messages] (conj (or messages []) message))))
                     (Thread/sleep (rand-int 100))
                     (.countDown latch))]
-      (let [s (sched/create-mesos-scheduler nil true conn nil nil nil nil nil)
+      (let [s (sched/create-mesos-scheduler nil true nil nil nil nil nil nil)
             foo 11
             bar 21
             fee 31
             fie 41
             make-message (fn [index message]
-                           (-> {"index" index, "message" message} json/write-str str (.getBytes "UTF-8")))]
+                           (-> {"message" message, "task-id" (str "T" index)}
+                               json/write-str
+                               str
+                               (.getBytes "UTF-8")))]
 
         (.frameworkMessage s nil (-> "" mtypes/->ExecutorID mtypes/data->pb) nil (make-message 0 foo))
         (.frameworkMessage s nil (-> "T1" mtypes/->ExecutorID mtypes/data->pb) nil (make-message 1 foo))

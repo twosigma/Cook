@@ -279,19 +279,6 @@
   (-> (d/entity db [:instance/task-id task-id])
       :db/id))
 
-(defn- task-id->executor
-  "Retrieves the executor given a task-id"
-  [db task-id]
-  (when task-id
-    (-> (d/q '[:find ?executor
-               :in $ ?task-id
-               :where
-               [?i :instance/task-id ?task-id]
-               [?i :instance/executor ?e]
-               [?e :db/ident ?executor]]
-             db task-id)
-        ffirst)))
-
 (meters/defmeter [cook-mesos scheduler progress-aggregator-message-rate])
 (meters/defmeter [cook-mesos scheduler progress-aggregator-drop-rate])
 (counters/defcounter [cook-mesos scheduler progress-aggregator-drop-count])
@@ -1531,13 +1518,11 @@
                      )
     (framework-message [this driver executor-id slave-id message]
                        (try
-                         (let [{:strs [task-id] :as parsed-message} (json/read-str (String. ^bytes message "UTF-8"))
-                               executor (task-id->executor (d/db conn) task-id)]
-                           (when (some #(not (contains? #{"task-id" "timestamp"} %)) (keys parsed-message))
+                         (let [{:strs [task-id type] :as parsed-message} (json/read-str (String. ^bytes message "UTF-8"))]
+                           (if (= "heartbeat" type)
+                             (heartbeat/notify-heartbeat heartbeat-ch executor-id slave-id parsed-message)
                              (async-in-order-processing
-                               task-id #(handle-framework-message conn handle-progress-message parsed-message)))
-                           (when (not= :executor/cook executor)
-                             (heartbeat/notify-heartbeat heartbeat-ch executor-id slave-id parsed-message)))
+                               task-id #(handle-framework-message conn handle-progress-message parsed-message))))
                          (catch Exception e
                            (log/error e "Unable to process framework message"
                                       {:executor-id executor-id, :message message, :slave-id slave-id}))))
