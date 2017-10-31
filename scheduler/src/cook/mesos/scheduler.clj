@@ -411,17 +411,15 @@
 
 (defn handle-framework-message
   "Processes a framework message from Mesos."
-  [conn handle-progress-message framework-message]
+  [conn handle-progress-message
+   {:strs [exit-code progress-message progress-percent progress-sequence sandbox-directory task-id] :as message}]
+  (log/debug "Received framework message:" {:task-id task-id, :message message})
   (timers/time!
     handle-framework-message-duration
     (try
-      (let [db (db conn)
-            {:strs [exit-code progress-message progress-percent progress-sequence sandbox-directory task-id] :as message}
-            (-> (String. ^bytes framework-message "UTF-8") (json/read-str))
-            _ (log/debug "Received framework message:" {:task-id task-id, :message message})
-            _ (when (str/blank? task-id)
-                (throw (ex-info "task-id is empty in framework message" {:message message})))
-            instance-id (task-id->instance-id db task-id)]
+      (when (str/blank? task-id)
+        (throw (ex-info "task-id is empty in framework message" {:message message})))
+      (let [instance-id (task-id->instance-id (db conn) task-id)]
         (if (nil? instance-id)
           (throw (ex-info "No instance found!" {:task-id task-id}))
           (do
@@ -1467,7 +1465,7 @@
                     (body-fn)
                     (catch Exception e
                       (log/error e "Error processing mesos status/message."))))]
-  (defn- async-in-order-processing
+  (defn async-in-order-processing
     "Asynchronously processes the body-fn by queueing the task in an agent to ensure in-order processing."
     [order-id body-fn]
     (counters/inc! in-order-queue-counter)
@@ -1519,10 +1517,15 @@
                      ;; TODO: Rescind the offer in fenzo
                      )
     (framework-message [this driver executor-id slave-id message]
-                       ;; the executor-id is the same as the task-id (see cook.mesos.task/task-info->mesos-message)
-                       (async-in-order-processing (:value executor-id)
-                                                  #(handle-framework-message conn handle-progress-message message))
-                       (heartbeat/notify-heartbeat heartbeat-ch executor-id slave-id message))
+                       (try
+                         (let [{:strs [task-id type] :as parsed-message} (json/read-str (String. ^bytes message "UTF-8"))]
+                           (if (= "heartbeat" type)
+                             (heartbeat/notify-heartbeat heartbeat-ch executor-id slave-id parsed-message)
+                             (async-in-order-processing
+                               task-id #(handle-framework-message conn handle-progress-message parsed-message))))
+                         (catch Exception e
+                           (log/error e "Unable to process framework message"
+                                      {:executor-id executor-id, :message message, :slave-id slave-id}))))
     (disconnected [this driver]
                   (log/error "Disconnected from the previous master"))
     ;; We don't care about losing slaves or executors--only tasks
