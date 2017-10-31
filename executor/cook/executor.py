@@ -119,7 +119,6 @@ def launch_task(task, max_bytes_read_per_line):
             return None
 
         process = subprocess.Popen(command,
-                                   bufsize=10*max_bytes_read_per_line,
                                    shell=True,
                                    stderr=subprocess.PIPE,
                                    stdout=subprocess.PIPE)

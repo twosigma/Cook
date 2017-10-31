@@ -32,8 +32,8 @@ def print_out(string_data, flush=False, newline=True):
         sys.stdout.write(string_data)
         if newline:
             sys.stdout.write(os.linesep)
-    if flush:
-        sys.stdout.flush()
+        if flush:
+            sys.stdout.flush()
 
 
 def print_and_log(string_data, flush=False, newline=True):
@@ -77,8 +77,8 @@ def print_err(string_data, flush=False, newline=True):
         sys.stderr.write(string_data)
         if newline:
             sys.stderr.write(os.linesep)
-    if flush:
-        sys.stderr.flush()
+        if flush:
+            sys.stderr.flush()
 
 
 def process_output(label, out_file, max_bytes_read_per_line, out_fn, flush_fn):
