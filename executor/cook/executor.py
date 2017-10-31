@@ -268,8 +268,8 @@ def set_environment(environment, key, value):
 
 def retrieve_process_environment(config, os_environ):
     """Prepares the environment for the subprocess.
-    The function also ensures that env[EXECUTOR_PROGRESS_OUTPUT_FILE_ENV] is set to config.progress_output_name.
-    This protects against the scenario where the EXECUTOR_PROGRESS_OUTPUT_FILE_ENV was specified
+    The function also ensures that env[config.progress_output_env_variable] is set to config.progress_output_name.
+    This protects against the scenario where the config.progress_output_env_variable was specified
     in the environment, but the progress output file was not specified.
 
     Parameters
