@@ -396,7 +396,7 @@
                             (throw (ex-info "Must set a the :database's :datomic-uri!" {})))
                           datomic-uri)
      :hostname (fnk [[:config {hostname (.getCanonicalHostName (java.net.InetAddress/getLocalHost))}]]
-                    hostname)
+                 hostname)
      :leader-reports-unhealthy (fnk [[:config [:mesos {leader-reports-unhealthy false}]]]
                                  leader-reports-unhealthy)
      :local-zk-port (fnk [[:config [:zookeeper {local-port 3291}]]]
@@ -479,11 +479,11 @@
                            (let [config (merge {:port 2003 :pickled? true} graphite)]
                              ((lazy-load-var 'cook.reporter/graphite-reporter) config))))
      :progress (fnk [[:config {progress nil}]]
-                   (merge {:batch-size 100
-                           :pending-threshold 4000
-                           :publish-interval-ms 2500
-                           :sequence-cache-threshold 1000}
-                          progress))
+                 (merge {:batch-size 100
+                         :pending-threshold 4000
+                         :publish-interval-ms 2500
+                         :sequence-cache-threshold 1000}
+                        progress))
      :riemann (fnk [[:config [:metrics {riemann nil}]]]
                 riemann)
      :riemann-metrics (fnk [[:config [:metrics {riemann nil}]]]
@@ -497,6 +497,9 @@
                                                              (java.net.InetAddress/getLocalHost))}
                                               riemann)]
                             ((lazy-load-var 'cook.reporter/riemann-reporter) config))))
+     :console-metrics (fnk [[:config [:metrics {console false}]]]
+                        (when console
+                          ((lazy-load-var 'cook.reporter/console-reporter))))
 
      :rebalancer (fnk [[:config {rebalancer nil}]]
                    (merge {:interval-seconds 300

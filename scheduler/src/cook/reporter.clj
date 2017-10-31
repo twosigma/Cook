@@ -19,7 +19,8 @@
             [datomic.api :as d :refer (q)]
             [metatransaction.core :as mt :refer (db)]
             [metrics.core :as metrics])
-  (:import [com.codahale.metrics.graphite Graphite GraphiteReporter PickledGraphite]
+  (:import com.codahale.metrics.ConsoleReporter
+           [com.codahale.metrics.graphite Graphite GraphiteReporter PickledGraphite]
            [com.codahale.metrics.riemann Riemann RiemannReporter]
            com.aphyr.riemann.client.RiemannClient
            com.codahale.metrics.MetricFilter
@@ -72,3 +73,12 @@
               (tags tags)
               (build (Riemann. riemann-client)))
       (.start 30 TimeUnit/SECONDS))))
+
+(defn console-reporter
+  "Creates and starts a ConsoleReporter for metrics"
+  []
+  (doto (.. (ConsoleReporter/forRegistry metrics/default-registry)
+            (convertRatesTo TimeUnit/SECONDS)
+            (convertDurationsTo TimeUnit/MILLISECONDS)
+            (build))
+    (.start 30 TimeUnit/SECONDS)))

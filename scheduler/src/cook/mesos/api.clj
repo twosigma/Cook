@@ -39,6 +39,7 @@
             [me.raynes.conch :as sh]
             [mesomatic.scheduler]
             [metatransaction.core :refer (db)]
+            [metrics.histograms :as histograms]
             [metrics.timers :as timers]
             [plumbing.core :refer [map-from-vals map-keys map-vals mapply]]
             [ring.middleware.format-params :as format-params]
@@ -1635,6 +1636,9 @@
 
 (timers/deftimer [cook-scheduler handler fetch-jobs])
 (timers/deftimer [cook-scheduler handler list-endpoint])
+(histograms/defhistogram [cook-mesos api list-request-param-time-range-ms])
+(histograms/defhistogram [cook-mesos api list-request-param-limit])
+(histograms/defhistogram [cook-mesos api list-response-job-count])
 
 (defn normalize-list-states
   "Given a set, states, returns a new set that only contains one of the
@@ -1740,21 +1744,25 @@
                         since-hours-ago ::since-hours-ago
                         limit ::limit
                         name-filter-fn ::name-filter-fn} ctx
-                       start (if start-ms
-                               (Date. start-ms)
-                               (Date. (- end-ms (-> since-hours-ago t/hours t/in-millis))))
-                       end (Date. end-ms)
-                       job-uuids (->> (timers/time!
-                                       fetch-jobs
-                                       ;; Get valid timings
-                                       (util/get-jobs-by-user-and-states db user states start end limit name-filter-fn))
-                                      (sort-by :job/submit-time)
-                                      reverse
-                                      (map :job/uuid))
-                       job-uuids (if (nil? limit)
-                                   job-uuids
-                                   (take limit job-uuids))]
-                    (mapv (partial fetch-job-map db framework-id agent-query-cache) job-uuids))))))
+                        start-ms' (if start-ms
+                                    start-ms
+                                    (- end-ms (-> since-hours-ago t/hours t/in-millis)))
+                        start (Date. start-ms')
+                        end (Date. end-ms)
+                        job-uuids (->> (timers/time!
+                                         fetch-jobs
+                                         (util/get-jobs-by-user-and-states db user states start end limit name-filter-fn))
+                                       (sort-by :job/submit-time)
+                                       reverse
+                                       (map :job/uuid))
+                        job-uuids (if (nil? limit)
+                                    job-uuids
+                                    (take limit job-uuids))
+                        jobs (mapv (partial fetch-job-map db framework-id agent-query-cache) job-uuids)]
+                    (histograms/update! list-request-param-time-range-ms (- end-ms start-ms'))
+                    (histograms/update! list-request-param-limit limit)
+                    (histograms/update! list-response-job-count (count jobs))
+                    jobs)))))
 
 ;;
 ;; /unscheduled_jobs
