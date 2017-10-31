@@ -1636,9 +1636,9 @@
 
 (timers/deftimer [cook-scheduler handler fetch-jobs])
 (timers/deftimer [cook-scheduler handler list-endpoint])
-(histograms/defhistogram [cook-scheduler handler list-endpoint-request-param-time-range-ms])
-(histograms/defhistogram [cook-scheduler handler list-endpoint-request-param-limit])
-(histograms/defhistogram [cook-scheduler handler list-endpoint-response-job-count])
+(histograms/defhistogram [cook-mesos api list-request-param-time-range-ms])
+(histograms/defhistogram [cook-mesos api list-request-param-limit])
+(histograms/defhistogram [cook-mesos api list-response-job-count])
 
 (defn normalize-list-states
   "Given a set, states, returns a new set that only contains one of the
@@ -1759,9 +1759,9 @@
                                     job-uuids
                                     (take limit job-uuids))
                         jobs (mapv (partial fetch-job-map db framework-id agent-query-cache) job-uuids)]
-                    (histograms/update! list-endpoint-request-param-time-range-ms (- end-ms start-ms'))
-                    (histograms/update! list-endpoint-request-param-limit limit)
-                    (histograms/update! list-endpoint-response-job-count (count jobs))
+                    (histograms/update! list-request-param-time-range-ms (- end-ms start-ms'))
+                    (histograms/update! list-request-param-limit limit)
+                    (histograms/update! list-response-job-count (count jobs))
                     jobs)))))
 
 ;;
