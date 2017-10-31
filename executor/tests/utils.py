@@ -47,8 +47,12 @@ def assert_status(testcase, expected_status, actual_status):
     testcase.assertEquals(expected_status, actual_status)
 
 
+def parse_message(encoded_message):
+    return json.loads(decode_data(encoded_message).decode('utf8'))
+
+
 def assert_message(testcase, expected_message, actual_encoded_message):
-    actual_message = json.loads(decode_data(actual_encoded_message).decode('utf8'))
+    actual_message = parse_message(actual_encoded_message)
     testcase.assertEquals(expected_message, actual_message)
 
 

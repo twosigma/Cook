@@ -18,6 +18,7 @@ import encodings.idna
 
 import cook.config as cc
 import cook.executor as ce
+import cook.io_helper as cio
 
 
 def main(args=None):
@@ -27,7 +28,7 @@ def main(args=None):
         print(__version__)
         sys.exit(0)
 
-    print('Cook Executor version {}'.format(__version__))
+    cio.print_out('Cook Executor version {}'.format(__version__))
 
     environment = os.environ
     executor_id = environment.get('MESOS_EXECUTOR_ID', '1')
@@ -36,13 +37,15 @@ def main(args=None):
     logging.basicConfig(level = log_level,
                         filename = 'executor.log',
                         format='%(asctime)s %(levelname)s %(message)s')
-    logging.info('Starting cook executor {} for executor-id={}'.format(__version__, executor_id))
+    logging.info('Starting Cook Executor {} for executor-id={}'.format(__version__, executor_id))
     logging.info('Log level is {}'.format(log_level))
 
     config = cc.initialize_config(environment)
 
     def handle_interrupt(interrupt_code, _):
-        logging.info('Received interrupt code {}, preparing to terminate executor'.format(interrupt_code))
+        logging.info('Executor interrupted with code {}'.format(interrupt_code))
+        cio.print_and_log('Received kill for task {} with grace period of {}'.format(
+            executor_id, config.shutdown_grace_period))
         stop_signal.set()
     signal.signal(signal.SIGINT, handle_interrupt)
     signal.signal(signal.SIGTERM, handle_interrupt)
@@ -57,6 +60,7 @@ def main(args=None):
     exit_code = 1 if stop_signal.isSet() else 0
     logging.info('Executor exiting with code {}'.format(exit_code))
     sys.exit(exit_code)
+
 
 if __name__ == '__main__':
     main()
