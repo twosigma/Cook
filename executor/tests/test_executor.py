@@ -90,20 +90,20 @@ class ExecutorTest(unittest.TestCase):
         try:
             max_bytes_read_per_line = 4096
             process = ce.launch_task(task, max_bytes_read_per_line)
-            cio.track_outputs(task_id, process, max_bytes_read_per_line)
+            stdout_thread, stderr_thread = cio.track_outputs(task_id, process, max_bytes_read_per_line)
+            process_info = process, stdout_thread, stderr_thread
 
             self.assertIsNotNone(process)
 
-            for i in range(100):
-                if process.poll() is None:
+            for _ in range(100):
+                if ce.is_running(process_info):
                     time.sleep(0.01)
 
             if process.poll() is None:
                 process.kill()
+            close_sys_outputs()
 
             self.assertEqual(0, process.poll())
-
-            close_sys_outputs()
 
             with open(stdout_name) as f:
                 stdout_content = f.read()
