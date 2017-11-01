@@ -904,7 +904,7 @@ class CookTest(unittest.TestCase):
             # ensure that we don't leave a bunch of jobs running/waiting
             util.kill_groups(self.cook_url, [group_uuid])
 
-    def test_group_change_completed_retries(self):
+    def test_group_change_retries(self):
         group_spec = self.minimal_group()
         group_uuid = group_spec['uuid']
         job_spec = {'group': group_uuid, 'command': f'sleep 1'}
@@ -923,6 +923,13 @@ class CookTest(unittest.TestCase):
             def group_query():
                 return util.group_detail_query(self.cook_url, group_uuid)
 
+            # When this wait condition succeeds, we expect at least one job to be completed,
+            # a couple of jobs to be running (sleeping for 1 second should be long enough
+            # to dominate any lag in the test code), and some still waiting.
+            # If this is run in a larger mesos cluster with many jobs executing in parallel,
+            # then all of the jobs may complete around the same time. However, we would
+            # expect the behavior described above in our usual scaled-down testing environments
+            # (i.e., Travis-CI VMs and minimesos using local docker instances).
             response = util.wait_until(group_query, util.group_some_job_done)
             job_data = util.query_jobs(self.cook_url, job=jobs).json()
             # retry all jobs in the group
