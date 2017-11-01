@@ -876,11 +876,11 @@ class CookTest(unittest.TestCase):
         try:
             jobs, resp = util.submit_jobs(self.cook_url, job_spec, 10, groups=[group_spec])
             self.assertEqual(resp.status_code, 201)
-            # wait for some job to start
 
             def group_query():
                 return util.group_detail_query(self.cook_url, group_uuid)
 
+            # wait for some job to start
             util.wait_until(group_query, util.group_some_job_started)
             # kill all jobs in the group (and wait for the kill to complete)
             self.logger.info(f'Killing all jobs in group {group_uuid}.')
@@ -913,11 +913,11 @@ class CookTest(unittest.TestCase):
         try:
             jobs, resp = util.submit_jobs(self.cook_url, job_spec, 10, groups=[group_spec])
             self.assertEqual(resp.status_code, 201)
-            # wait for some job to start
 
             def group_query():
                 return util.group_detail_query(self.cook_url, group_uuid)
 
+            # wait for some job to start
             util.wait_until(group_query, util.group_some_job_started)
             # wait for at least one job in the group to complete
             self.logger.info(f'Waiting for some job in group {group_uuid} to complete.')
