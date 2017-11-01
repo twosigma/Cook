@@ -898,10 +898,8 @@ class CookTest(unittest.TestCase):
             job_data = util.query_jobs(self.cook_url, job=jobs)
             self.assertEqual(200, job_data.status_code)
             for job in job_data.json():
-                if job['status'] not in ['waiting', 'running']:
-                    job_details = f'Job details: {json.dumps(job, sort_keys=True)}'
-                    self.assertEqual('completed', job['status'], job_details)
-                    self.assertEqual('success', job['state'], job_details)
+                job_details = f'Job details: {json.dumps(job, sort_keys=True)}'
+                self.assertNotEqual('failed', job['state'], job_details)
         finally:
             # ensure that we don't leave a bunch of jobs running/waiting
             util.kill_groups(self.cook_url, [group_uuid])
