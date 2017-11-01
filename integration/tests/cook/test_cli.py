@@ -1028,31 +1028,31 @@ class CookCliTest(unittest.TestCase):
 
     def test_submit_with_command_prefix(self):
         # Specifying command prefix
-        cp, uuids = cli.submit('"exit ${FOO?1}"', self.cook_url, submit_flags='--command-prefix "FOO=0; "')
+        cp, uuids = cli.submit('"exit ${FOO:-1}"', self.cook_url, submit_flags='--command-prefix "FOO=0; "')
         self.assertEqual(0, cp.returncode, cp.stderr)
         cp = cli.wait(uuids, self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
         cp, jobs = cli.show_json(uuids, self.cook_url)
-        self.assertEqual('FOO=0; exit ${FOO?1}', jobs[0]['command'])
+        self.assertEqual('FOO=0; exit ${FOO:-1}', jobs[0]['command'])
         self.assertEqual('success', jobs[0]['state'])
 
         # Default command prefix (empty)
-        cp, uuids = cli.submit('"exit ${FOO?1}"', self.cook_url)
+        cp, uuids = cli.submit('"exit ${FOO:-1}"', self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
         cp = cli.wait(uuids, self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
         cp, jobs = cli.show_json(uuids, self.cook_url)
-        self.assertEqual('exit ${FOO?1}', jobs[0]['command'])
+        self.assertEqual('exit ${FOO:-1}', jobs[0]['command'])
         self.assertEqual('failed', jobs[0]['state'])
 
         # User-defined default
         config = {'defaults': {'submit': {'command-prefix': 'export FOO=0; '}}}
         with cli.temp_config_file(config) as path:
             flags = '--config %s' % path
-            cp, uuids = cli.submit('"exit ${FOO?1}"', self.cook_url, flags=flags)
+            cp, uuids = cli.submit('"exit ${FOO:-1}"', self.cook_url, flags=flags)
             self.assertEqual(0, cp.returncode, cp.stderr)
             cp = cli.wait(uuids, self.cook_url)
             self.assertEqual(0, cp.returncode, cp.stderr)
             cp, jobs = cli.show_json(uuids, self.cook_url)
-            self.assertEqual('export FOO=0; exit ${FOO?1}', jobs[0]['command'])
+            self.assertEqual('export FOO=0; exit ${FOO:-1}', jobs[0]['command'])
             self.assertEqual('success', jobs[0]['state'])
