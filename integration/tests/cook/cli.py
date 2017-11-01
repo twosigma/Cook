@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import re
 import shlex
 import subprocess
 import tempfile
@@ -173,3 +174,17 @@ def kill(uuids, cook_url):
     args = f'kill {" ".join([str(u) for u in uuids])}'
     cp = cli(args, cook_url)
     return cp
+
+
+def version():
+    """Invokes the CLI with --version and returns the parsed version"""
+    cp = cli('--version')
+    assert cp.returncode == 0
+    string = stdout(cp)
+    match = re.match('^cs version (\d+\.\d+\.\d+)$', string)
+    if match:
+        version_string = match.groups()[0]
+        logging.info(f'parsed version string as {version_string}')
+        return version_string
+    else:
+        raise Exception(f'Unable to parse version from {string}')

@@ -4,7 +4,7 @@ import logging
 import os
 from urllib.parse import urlparse
 
-from cook import util, http, colors, metrics
+from cook import util, http, colors, metrics, version
 from cook.subcommands import submit, show, wait, list, ssh, ls, tail, kill
 from cook.util import deep_merge, load_first_json_file
 
@@ -35,6 +35,7 @@ parser.add_argument('--config', '-C', help='the configuration file to use')
 parser.add_argument('--silent', '-s', help='silent mode', dest='silent', action='store_true')
 parser.add_argument('--verbose', '-v', help='be more verbose/talkative (useful for debugging)',
                     dest='verbose', action='store_true')
+parser.add_argument('--version', help='output version information and exit', dest='version', action='store_true')
 
 subparsers = parser.add_subparsers(dest='action')
 
@@ -94,6 +95,12 @@ def run(args):
     sub-commands (actions) if necessary.
     """
     args = vars(parser.parse_args(args))
+
+    print_version = args.pop('version')
+    if print_version:
+        print(f'cs version {version.VERSION}')
+        return 0
+
     util.silent = args.pop('silent')
     verbose = args.pop('verbose') and not util.silent
 
