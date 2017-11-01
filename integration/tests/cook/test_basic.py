@@ -1065,6 +1065,7 @@ class CookTest(unittest.TestCase):
                 resp = util.unscheduled_jobs(self.cook_url, waiting_job['uuid'])[0]
                 reasons = [reason for reason in resp['reasons']
                            if reason['reason'] == "The job couldn't be placed on any available hosts." ]
+                self.logger.info(f"unscheduled_jobs response: {resp}")
                 return reasons
             reasons = util.wait_until(query_unscheduled, lambda r: len(r) > 0)
             self.assertEqual(1, len(reasons), reasons)
