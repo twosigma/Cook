@@ -944,8 +944,8 @@ class CookTest(unittest.TestCase):
             def all_completed_restarted(response):
                 for job in response.json():
                     instance_count = len(job['instances'])
-                    if instance_count < 2:
-                        self.logger.debug(f"Job {job['uuid']} has fewer than 2 instances: {instance_count}")
+                    if job['status'] == 'completed' and instance_count < 2:
+                        self.logger.debug(f"Completed job {job['uuid']} has fewer than 2 instances: {instance_count}")
                         return False
                 return True
 
@@ -955,9 +955,11 @@ class CookTest(unittest.TestCase):
             self.assertEqual(200, job_data.status_code)
             for job in job_data.json():
                 job_details = f'Job details: {json.dumps(job, sort_keys=True)}'
-                # Jobs that ran once will have 11 retries remaining,
-                # and jobs that ran twice should have 10 retries remaining.
-                self.assertIn(job['retries_remaining'], [10, 11], job_details)
+                # Jobs that ran twice will have 10 retries remaining,
+                # Jobs that ran once will have 11 retries remaining.
+                # Jobs that were running during the reset and are still running
+                # will still have all 12 retries remaining.
+                self.assertIn(job['retries_remaining'], [10, 11, 12], job_details)
         finally:
             # ensure that we don't leave a bunch of jobs running/waiting
             util.kill_groups(self.cook_url, [group_uuid])
