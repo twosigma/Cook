@@ -150,6 +150,7 @@ def submit(clusters, args):
     job = args
     raw = job.pop('raw', None)
     command_from_command_line = job.pop('command', None)
+    command_prefix = job.pop('command-prefix')
     application_name = job.pop('application-name', 'cook-scheduler-cli')
     application_version = job.pop('application-version', version.VERSION)
     job['application'] = {'name': application_name, 'version': application_version}
@@ -177,6 +178,9 @@ def submit(clusters, args):
 
         if not j.get('name'):
             j['name'] = '%s_job' % current_user()
+
+        if command_prefix:
+            j['command'] = f'{command_prefix}{j["command"]}'
 
     logging.debug('jobs: %s' % jobs)
     return submit_federated(clusters, jobs)
@@ -215,8 +219,9 @@ def register(add_parser, add_defaults):
     submit_parser.add_argument('--executor', '-E', help='executor to use to run the job on the Mesos agent',
                                choices=('cook', 'mesos'))
     submit_parser.add_argument('--raw', '-r', help='raw job spec in json format', dest='raw', action='store_true')
+    submit_parser.add_argument('--command-prefix', help='prefix to use for all commands', dest='command-prefix')
     submit_parser.add_argument('command', nargs=argparse.REMAINDER)
 
-    add_defaults('submit', {'cpus': 1, 'max-retries': 1, 'mem': 128})
+    add_defaults('submit', {'cpus': 1, 'max-retries': 1, 'mem': 128, 'command-prefix': ''})
 
     return submit
