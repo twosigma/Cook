@@ -610,8 +610,8 @@
   (testing "job configured values"
     (is (= {"EXECUTOR_LOG_LEVEL" "INFO"
             "EXECUTOR_MAX_MESSAGE_LENGTH" 256
-            "EXECUTOR_PROGRESS_OUTPUT_FILE" "progress.out"
-            "EXECUTOR_PROGRESS_OUTPUT_FILE_ENV" "EXECUTOR_PROGRESS_OUTPUT_FILE"
+            "EXECUTOR_PROGRESS_OUTPUT_FILE_ENV" "EXECUTOR_PROGRESS_OUTPUT_FILE_NAME"
+            "EXECUTOR_PROGRESS_OUTPUT_FILE_NAME" "progress.out"
             "PROGRESS_REGEX_STRING" "custom-regex"
             "PROGRESS_SAMPLE_INTERVAL_MS" 2000}
            (let [executor-config {:default-progress-regex-string "default-regex"
@@ -631,8 +631,8 @@
             "CUSTOM_VAR" "var"
             "EXECUTOR_LOG_LEVEL" "INFO"
             "EXECUTOR_MAX_MESSAGE_LENGTH" 256
-            "EXECUTOR_PROGRESS_OUTPUT_FILE" "progress.out"
-            "EXECUTOR_PROGRESS_OUTPUT_FILE_ENV" "EXECUTOR_PROGRESS_OUTPUT_FILE"
+            "EXECUTOR_PROGRESS_OUTPUT_FILE_ENV" "EXECUTOR_PROGRESS_OUTPUT_FILE_NAME"
+            "EXECUTOR_PROGRESS_OUTPUT_FILE_NAME" "progress.out"
             "PROGRESS_REGEX_STRING" "custom-regex"
             "PROGRESS_SAMPLE_INTERVAL_MS" 2000}
            (let [executor-config {:default-progress-regex-string "default-regex"

@@ -5,6 +5,7 @@ import os
 
 from pymesos.utils import parse_duration
 
+EXECUTOR_PROGRESS_OUTPUT_FILE = 'EXECUTOR_PROGRESS_OUTPUT_FILE'
 
 class ExecutorConfig(object):
     """This class is responsible for storing the executor config."""
@@ -32,7 +33,7 @@ class ExecutorConfig(object):
     def __init__(self,
                  max_bytes_read_per_line=1024,
                  max_message_length=512,
-                 progress_output_env_variable='EXECUTOR_PROGRESS_OUTPUT_FILE',
+                 progress_output_env_variable=EXECUTOR_PROGRESS_OUTPUT_FILE,
                  progress_output_name='stdout',
                  progress_regex_string='',
                  progress_sample_interval_ms=100,
@@ -54,13 +55,14 @@ def initialize_config(environment):
     """
     executor_id = environment.get('MESOS_EXECUTOR_ID', 'executor')
     sandbox_directory = environment.get('MESOS_SANDBOX', '')
-    default_progress_output_name = '{}.progress'.format(executor_id)
+    default_progress_output_name = environment.get('EXECUTOR_DEFAULT_PROGRESS_OUTPUT_NAME',
+                                                   '{}.progress'.format(executor_id))
     if sandbox_directory:
         default_progress_output_file = os.path.join(sandbox_directory, default_progress_output_name)
     else:
         default_progress_output_file = default_progress_output_name
 
-    progress_output_env_variable = environment.get('EXECUTOR_PROGRESS_OUTPUT_FILE_ENV', 'EXECUTOR_PROGRESS_OUTPUT_FILE')
+    progress_output_env_variable = environment.get('EXECUTOR_PROGRESS_OUTPUT_FILE_ENV', EXECUTOR_PROGRESS_OUTPUT_FILE)
     logging.info('Progress location environment variable is {}'.format(progress_output_env_variable))
     if progress_output_env_variable not in environment:
         logging.info('No entry found for {} in the environment'.format(progress_output_env_variable))

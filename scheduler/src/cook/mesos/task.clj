@@ -68,8 +68,8 @@
               "PROGRESS_REGEX_STRING" (:job/progress-regex-string job-ent default-progress-regex-string)
               "PROGRESS_SAMPLE_INTERVAL_MS" progress-sample-interval-ms)
             progress-output-file
-            (assoc "EXECUTOR_PROGRESS_OUTPUT_FILE" progress-output-file
-                   "EXECUTOR_PROGRESS_OUTPUT_FILE_ENV" "EXECUTOR_PROGRESS_OUTPUT_FILE"))))
+            (assoc "EXECUTOR_PROGRESS_OUTPUT_FILE_ENV" "EXECUTOR_PROGRESS_OUTPUT_FILE_NAME"
+                   "EXECUTOR_PROGRESS_OUTPUT_FILE_NAME" progress-output-file))))
 
 (defn job->task-metadata
   "Takes a job entity, returns task metadata"

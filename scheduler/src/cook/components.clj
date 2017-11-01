@@ -375,11 +375,17 @@
                                {:executor-config executor})
                      {})
                    (do
-                     (when (and (:uri executor) (nil? (get-in executor [:uri :value])))
-                       (throw (ex-info "Executor uri value is missing!" {:executor executor})))
+                     (when-let [environment (:environment executor)]
+                       (when-not (and (map? environment)
+                                      (every? string? (keys environment))
+                                      (every? string? (vals environment)))
+                         (throw (ex-info "Executor environment map a string to a string!" {:executor executor}))))
                      (when (and (:portion executor) (not (<= 0 (:portion executor) 1)))
                        (throw (ex-info "Executor portion must be in the range [0, 1]!" {:executor executor})))
+                     (when (and (:uri executor) (nil? (get-in executor [:uri :value])))
+                       (throw (ex-info "Executor uri value is missing!" {:executor executor})))
                      (let [default-executor-config {:default-progress-regex-string "progress: (\\d+)(?: )?(.*)"
+                                                    :environment {}
                                                     :log-level "INFO"
                                                     :max-message-length 512
                                                     :portion 0.0

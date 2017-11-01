@@ -314,8 +314,8 @@ The configuration values are defined as follows:
   Defaults to "progress: (\d*), (.*)".
 
 `:environment`::
-  Additional environment variables passed on to the executor.
-  The default is nil.
+  A map that represents the additional environment variables passed on to the executor.
+  The default is an empty map.
 
 `:log-level`::
   The log level for the executor process.

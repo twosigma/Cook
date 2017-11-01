@@ -79,9 +79,9 @@ class ConfigTest(unittest.TestCase):
     def test_initialize_config_custom_progress_file_without_sandbox(self):
         environment = {'EXECUTOR_MAX_BYTES_READ_PER_LINE': '1234',
                        'EXECUTOR_MAX_MESSAGE_LENGTH': '1024',
+                       'EXECUTOR_PROGRESS_OUTPUT_FILE_ENV': 'OUTPUT_TARGET_FILE',
                        'MESOS_EXECUTOR_SHUTDOWN_GRACE_PERIOD': '4secs',
                        'OUTPUT_TARGET_FILE': 'progress.out',
-                       'EXECUTOR_PROGRESS_OUTPUT_FILE_ENV': 'OUTPUT_TARGET_FILE',
                        'PROGRESS_REGEX_STRING': 'progress/regex',
                        'PROGRESS_SAMPLE_INTERVAL_MS': '2500'}
         config = cc.initialize_config(environment)
@@ -98,10 +98,10 @@ class ConfigTest(unittest.TestCase):
     def test_initialize_config_custom_progress_file_with_sandbox(self):
         environment = {'EXECUTOR_MAX_BYTES_READ_PER_LINE': '1234',
                        'EXECUTOR_MAX_MESSAGE_LENGTH': '1024',
+                       'EXECUTOR_PROGRESS_OUTPUT_FILE_ENV': 'OUTPUT_TARGET_FILE',
                        'MESOS_EXECUTOR_SHUTDOWN_GRACE_PERIOD': '4secs',
                        'MESOS_SANDBOX': '/sandbox/location',
                        'OUTPUT_TARGET_FILE': 'progress.out',
-                       'EXECUTOR_PROGRESS_OUTPUT_FILE_ENV': 'OUTPUT_TARGET_FILE',
                        'PROGRESS_REGEX_STRING': 'progress/regex',
                        'PROGRESS_SAMPLE_INTERVAL_MS': '2500'}
         config = cc.initialize_config(environment)
@@ -118,10 +118,10 @@ class ConfigTest(unittest.TestCase):
     def test_initialize_config_default_progress_file_with_sandbox(self):
         environment = {'EXECUTOR_MAX_BYTES_READ_PER_LINE': '1234',
                        'EXECUTOR_MAX_MESSAGE_LENGTH': '1024',
+                       'EXECUTOR_PROGRESS_OUTPUT_FILE_ENV': 'OUTPUT_TARGET_FILE',
                        'MESOS_EXECUTOR_ID': 'e123456',
                        'MESOS_EXECUTOR_SHUTDOWN_GRACE_PERIOD': '4secs',
                        'MESOS_SANDBOX': '/sandbox/location',
-                       'EXECUTOR_PROGRESS_OUTPUT_FILE_ENV': 'OUTPUT_TARGET_FILE',
                        'PROGRESS_REGEX_STRING': 'progress/regex',
                        'PROGRESS_SAMPLE_INTERVAL_MS': '2500'}
         config = cc.initialize_config(environment)
@@ -130,6 +130,27 @@ class ConfigTest(unittest.TestCase):
         self.assertEqual(1024, config.max_message_length)
         self.assertEqual('OUTPUT_TARGET_FILE', config.progress_output_env_variable)
         self.assertEqual('/sandbox/location/e123456.progress', config.progress_output_name)
+        self.assertEqual('progress/regex', config.progress_regex_string)
+        self.assertEqual(2500, config.progress_sample_interval_ms)
+        self.assertEqual('/sandbox/location', config.sandbox_directory)
+        self.assertEqual(4000, config.shutdown_grace_period_ms)
+
+    def test_initialize_config_configured_progress_file_name(self):
+        environment = {'EXECUTOR_DEFAULT_PROGRESS_OUTPUT_NAME': 'stdout_file',
+                       'EXECUTOR_MAX_BYTES_READ_PER_LINE': '1234',
+                       'EXECUTOR_MAX_MESSAGE_LENGTH': '1024',
+                       'EXECUTOR_PROGRESS_OUTPUT_FILE_ENV': 'OUTPUT_TARGET_FILE',
+                       'MESOS_EXECUTOR_ID': 'e123456',
+                       'MESOS_EXECUTOR_SHUTDOWN_GRACE_PERIOD': '4secs',
+                       'MESOS_SANDBOX': '/sandbox/location',
+                       'PROGRESS_REGEX_STRING': 'progress/regex',
+                       'PROGRESS_SAMPLE_INTERVAL_MS': '2500'}
+        config = cc.initialize_config(environment)
+
+        self.assertEqual(1234, config.max_bytes_read_per_line)
+        self.assertEqual(1024, config.max_message_length)
+        self.assertEqual('OUTPUT_TARGET_FILE', config.progress_output_env_variable)
+        self.assertEqual('/sandbox/location/stdout_file', config.progress_output_name)
         self.assertEqual('progress/regex', config.progress_regex_string)
         self.assertEqual(2500, config.progress_sample_interval_ms)
         self.assertEqual('/sandbox/location', config.sandbox_directory)

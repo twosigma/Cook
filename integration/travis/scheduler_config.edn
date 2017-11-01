@@ -20,6 +20,7 @@
          :role "cook"
          :framework-id #config/env "COOK_FRAMEWORK_ID"}
  :executor {:command #config/env "COOK_EXECUTOR_COMMAND"
+            :environment {"EXECUTOR_DEFAULT_PROGRESS_OUTPUT_NAME" "stdout"}
             :portion 0.25}
  :unhandled-exceptions {:log-level :error}
  :metrics {:jmx true}

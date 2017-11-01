@@ -96,10 +96,10 @@ class CookTest(unittest.TestCase):
 
     def test_progress_update_submit(self):
         job_executor_type = util.get_job_executor_type(self.cook_url)
-        command = 'echo "progress: 25 Twenty-five percent in ${CUSTOM_PROGRESS_OUTPUT_FILE}"; sleep 1; exit 0'
+        command = 'echo "progress: 25 Twenty-five percent in ${PROGRESS_FILE}" >> ${PROGRESS_FILE}; sleep 1; exit 0'
         job_uuid, resp = util.submit_job(self.cook_url, command=command,
-                                         env={'EXECUTOR_PROGRESS_OUTPUT_FILE_ENV': 'CUSTOM_PROGRESS_OUTPUT_FILE',
-                                              'CUSTOM_PROGRESS_OUTPUT_FILE': 'stdout'},
+                                         env={'EXECUTOR_PROGRESS_OUTPUT_FILE_ENV': 'PROGRESS_FILE',
+                                              'PROGRESS_FILE': 'progress.txt'},
                                          executor=job_executor_type, max_runtime=60000)
         self.assertEqual(201, resp.status_code, msg=resp.content)
         job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
@@ -119,7 +119,7 @@ class CookTest(unittest.TestCase):
 
             self.assertEqual(0, instance['exit_code'], message)
             self.assertEqual(25, instance['progress'], message)
-            self.assertEqual('Twenty-five percent in stdout', instance['progress_message'], message)
+            self.assertEqual('Twenty-five percent in progress.txt', instance['progress_message'], message)
             self.assertIsNotNone(instance['sandbox_directory'], message)
 
     def test_configurable_progress_update_submit(self):
@@ -160,10 +160,7 @@ class CookTest(unittest.TestCase):
                   'echo "progress: 75 Seventy-five percent" && sleep 2 && ' \
                   'echo "progress: Eighty percent invalid format" && sleep 2 && ' \
                   'echo "Done" && exit 0'
-        job_uuid, resp = util.submit_job(self.cook_url, command=command,
-                                         env={'EXECUTOR_PROGRESS_OUTPUT_FILE_ENV': 'PROGRESS_OUTPUT_FILE',
-                                              'PROGRESS_OUTPUT_FILE': 'stdout'},
-                                         executor=job_executor_type, max_runtime=60000)
+        job_uuid, resp = util.submit_job(self.cook_url, command=command, executor=job_executor_type, max_runtime=60000)
         self.assertEqual(201, resp.status_code, msg=resp.content)
         job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
         self.assertEqual(1, len(job['instances']))
@@ -190,10 +187,7 @@ class CookTest(unittest.TestCase):
                   ''.join(['echo "progress: {0} {0}%" && '.format(a) for a in range(99, 40, -4)]) + \
                   ''.join(['echo "progress: {0} {0}%" && '.format(a) for a in range(40, 81, 2)]) + \
                   'echo "Done" && exit 0'
-        job_uuid, resp = util.submit_job(self.cook_url, command=command,
-                                         env={'EXECUTOR_PROGRESS_OUTPUT_FILE_ENV': 'PROGRESS_OUTPUT_FILE',
-                                              'PROGRESS_OUTPUT_FILE': 'stdout'},
-                                         executor=job_executor_type, max_runtime=60000)
+        job_uuid, resp = util.submit_job(self.cook_url, command=command, executor=job_executor_type, max_runtime=60000)
         self.assertEqual(201, resp.status_code, msg=resp.content)
         job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
         self.assertEqual(1, len(job['instances']))
