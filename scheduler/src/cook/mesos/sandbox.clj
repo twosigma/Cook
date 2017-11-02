@@ -15,8 +15,10 @@
 ;;
 (ns cook.mesos.sandbox
   (:require [chime :as chime]
+            [clj-http.client :as http]
             [clj-time.core :as time]
             [clj-time.periodic :as periodic]
+            [clojure.core.cache :as cache]
             [clojure.tools.logging :as log]
             [datomic.api :as d]
             [metrics.counters :as counters]
@@ -118,3 +120,47 @@
       (publish-sandbox-to-datomic! datomic-conn publish-batch-size task-id->sandbox-agent))
     {:error-handler (fn sandbox-publisher-error-handler [ex]
                       (log/error ex "instance sandbox directory publish failed"))}))
+
+(defn get-task-id->sandbox-directory-impl
+  "Builds an indexed version of all task-id to sandbox directory on the specified agent. Has no cache; takes
+   100-500ms to run."
+  [framework-id agent-hostname task-id->sandbox-agent]
+  (let [timeout-millis (* 5 1000)
+        ;; Throw SocketTimeoutException or ConnectionTimeoutException when timeout
+        {:strs [completed_frameworks frameworks]} (-> (str "http://" agent-hostname ":5051/state.json")
+                                                      (http/get
+                                                        {:as :json-string-keys
+                                                         :conn-timeout timeout-millis
+                                                         :socket-timeout timeout-millis
+                                                         :spnego-auth true})
+                                                      :body)
+        framework-filter (fn framework-filter [{:strs [id] :as framework}]
+                           (when (= framework-id id) framework))
+        ;; there should be at most one framework entry for a given framework-id
+        target-framework (or (some framework-filter frameworks)
+                             (some framework-filter completed_frameworks))
+        {:strs [completed_executors executors]} target-framework
+        framework-executors (reduce into [] [completed_executors executors])
+        task-id->sandbox-directory (->> framework-executors
+                                        (map (fn executor-state->task-id->sandbox-directory [{:strs [id directory]}]
+                                               [id directory]))
+                                        (into {}))]
+    (send task-id->sandbox-agent aggregate-sandbox task-id->sandbox-directory)
+    task-id->sandbox-directory))
+
+(def task-id->sandbox-agent (agent {})) ;; TODO Shams DI this
+
+(defn get-task-id->sandbox-directory-cache-entry
+  "Builds an indexed version of all task-id to sandbox directory for the specified agent. Cached"
+  [framework-id agent-hostname cache]
+  (let [run (delay (try (get-task-id->sandbox-directory-impl framework-id agent-hostname task-id->sandbox-agent)
+                        (catch Exception e
+                          (log/debug e "Failed to get executor state, purging from cache...")
+                          (swap! cache cache/evict agent-hostname)
+                          nil)))
+        cs (swap! cache (fn [c]
+                          (if (cache/has? c agent-hostname)
+                            (cache/hit c agent-hostname)
+                            (cache/miss c agent-hostname run))))
+        val (cache/lookup cs agent-hostname)]
+    (if val @val @run)))

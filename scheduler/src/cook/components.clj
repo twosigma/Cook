@@ -66,12 +66,11 @@
     (resolve var-sym)))
 
 (def raw-scheduler-routes
-  {:scheduler (fnk [mesos mesos-agent-query-cache mesos-datomic mesos-leadership-atom mesos-pending-jobs-atom framework-id settings]
+  {:scheduler (fnk [mesos mesos-datomic mesos-leadership-atom mesos-pending-jobs-atom framework-id settings]
                 ((lazy-load-var 'cook.mesos.api/main-handler)
                   mesos-datomic
                   framework-id
                   (fn [] @mesos-pending-jobs-atom)
-                  mesos-agent-query-cache
                   settings
                   (get-in mesos [:mesos-scheduler :leader-selector])
                   mesos-leadership-atom))

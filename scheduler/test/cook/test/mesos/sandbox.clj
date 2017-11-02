@@ -15,13 +15,13 @@
 ;;
 (ns cook.test.mesos.sandbox
   (:use clojure.test)
-  (:require [cook.mesos.sandbox :as sandbox]
+  (:require [clj-http.client :as http]
+            [cook.mesos.sandbox :as sandbox]
             [cook.test.testutil :as tu]
             [datomic.api :as d]
             [metrics.counters :as counters]
             [plumbing.core :as pc])
-  (:import (java.util UUID)
-           (java.util.concurrent CountDownLatch)))
+  (:import (java.util.concurrent CountDownLatch)))
 
 (deftest test-agent->task-id->sandbox
   (let [task-id->sandbox-agent (agent {})]
@@ -117,7 +117,7 @@
       (let [num-tasks 20
             batch-size 4
             task-id->sandbox (pc/map-from-keys #(str "/sandbox/for/" %)
-                                               (repeatedly num-tasks #(str "task-" (UUID/randomUUID))))
+                                               (map #(str "exec-" %) (range num-tasks)))
             task-id->sandbox-in-db (pc/map-from-keys #(str "/sandbox/exists/" %)
                                                      (->> (keys task-id->sandbox)
                                                           (take 10)))
@@ -127,7 +127,7 @@
         (doseq [[task-id _] task-id->sandbox-not-in-db]
           (tu/create-dummy-instance db-conn (tu/create-dummy-job db-conn) :task-id task-id))
         (doseq [[task-id sandbox] task-id->sandbox-in-db]
-          (tu/create-dummy-instance db-conn (tu/create-dummy-job db-conn) :sandbox-directory sandbox :task-id task-id))
+          (tu/create-dummy-instance db-conn (tu/create-dummy-job db-conn) :task-id task-id :sandbox-directory sandbox))
 
         (sandbox/publish-sandbox-to-datomic! db-conn batch-size task-id->sandbox-agent)
         (await task-id->sandbox-agent)
@@ -166,3 +166,36 @@
         (is (<= num-publishes (count @task-id->sandbox-publish-history-atom) (inc num-publishes)))
         (is (= task-id->sandbox-state (first @task-id->sandbox-publish-history-atom)))
         (is (every? empty? (rest @task-id->sandbox-publish-history-atom)))))))
+
+(deftest test-get-task-id->sandbox-directory-impl
+  (let [target-framework-id "framework-id-11"
+        agent-hostname "www.mesos-agent-com"
+        task-id->sandbox-agent (agent {})]
+    (with-redefs [http/get (fn [url & [options]]
+                             (is (= (str "http://" agent-hostname ":5051/state.json") url))
+                             (is (= {:as :json-string-keys, :conn-timeout 5000, :socket-timeout 5000, :spnego-auth true} options))
+                             {:body
+                              {"completed_frameworks"
+                               [{"completed_executors" [{"id" "executor-000", "directory" "/path/for/executor-000"}]
+                                 "executors" [{"id" "executor-005", "directory" "/path/for/executor-005"}]
+                                 "id" "framework-id-00"}
+                                {"completed_executors" [{"id" "executor-010", "directory" "/path/for/executor-010"}]
+                                 "executors" [{"id" "executor-015", "directory" "/path/for/executor-015"}]
+                                 "id" "framework-id-01"}]
+                               "frameworks"
+                               [{"completed_executors" [{"id" "executor-101", "directory" "/path/for/executor-101"}
+                                                        {"id" "executor-102", "directory" "/path/for/executor-102"}]
+                                 "executors" [{"id" "executor-111", "directory" "/path/for/executor-111"}]
+                                 "id" target-framework-id}
+                                {"completed_executors" [{"id" "executor-201", "directory" "/path/for/executor-201"}]
+                                 "executors" [{"id" "executor-211", "directory" "/path/for/executor-211"}]
+                                 "id" "framework-id-12"}]}})]
+
+      (testing "get-task-id->sandbox-directory-impl"
+        (let [actual-result (sandbox/get-task-id->sandbox-directory-impl target-framework-id agent-hostname task-id->sandbox-agent)
+              expected-result {"executor-101" "/path/for/executor-101"
+                               "executor-102" "/path/for/executor-102"
+                               "executor-111" "/path/for/executor-111"}]
+          (is (= expected-result actual-result))
+          (await task-id->sandbox-agent)
+          (is (= expected-result @task-id->sandbox-agent)))))))
