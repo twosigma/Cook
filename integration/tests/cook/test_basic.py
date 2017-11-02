@@ -1112,7 +1112,9 @@ class CookTest(unittest.TestCase):
                 waiting_job = waiting_jobs[0]
 
                 def query():
-                    return util.unscheduled_jobs(self.cook_url, waiting_job['uuid'])[0]
+                    unscheduled = util.unscheduled_jobs(self.cook_url, waiting_job['uuid'])[0]
+                    self.logger.info(f"unscheduled_jobs response: {unscheduled}")
+                    return unscheduled
 
                 def check_unique_constraint(response):
                     self.logger.debug('unscheduled_jobs response: %s' % response)
@@ -1161,6 +1163,7 @@ class CookTest(unittest.TestCase):
                 resp = util.unscheduled_jobs(self.cook_url, waiting_job['uuid'])[0]
                 reasons = [reason for reason in resp['reasons']
                            if reason['reason'] == "The job couldn't be placed on any available hosts." ]
+                self.logger.info(f"unscheduled_jobs response: {resp}")
                 return reasons
             reasons = util.wait_until(query_unscheduled, lambda r: len(r) > 0)
             self.assertEqual(1, len(reasons), reasons)
@@ -1227,6 +1230,7 @@ class CookTest(unittest.TestCase):
 
             def query():
                 unscheduled_jobs = util.unscheduled_jobs(self.cook_url, big_job['uuid'])[0]
+                self.logger.info(f"unscheduled_jobs response: {unscheduled_jobs}")
                 no_hosts = [r for r in unscheduled_jobs['reasons'] if r['reason'] ==
                             "The job couldn't be placed on any available hosts."]
                 for no_hosts_reason in no_hosts:
