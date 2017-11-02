@@ -33,6 +33,8 @@
     (is (true? (auth/open-auth {} "foo" :create test-job)))
     (is (true? (auth/open-auth {} "bar" :read test-job)))
     (is (true? (auth/open-auth {} "baz" :update test-job)))
+    (is (true? (auth/open-auth {} "bazz" :get test-job)))
+    (is (true? (auth/open-auth {} "bazzz" :retry test-job)))
     (is (true? (auth/open-auth {} "frob" :destroy test-job)))
 
     (is (true? (auth/open-auth {} test-job-owner :create test-job)))
@@ -44,11 +46,15 @@
     (is (true? (auth/configfile-admins-auth configfile-admins-settings test-job-owner :create test-job)))
     (is (true? (auth/configfile-admins-auth configfile-admins-settings test-job-owner :read test-job)))
     (is (true? (auth/configfile-admins-auth configfile-admins-settings test-job-owner :update test-job)))
+    (is (true? (auth/configfile-admins-auth configfile-admins-settings test-job-owner :get test-job)))
+    (is (true? (auth/configfile-admins-auth configfile-admins-settings test-job-owner :retry test-job)))
     (is (true? (auth/configfile-admins-auth configfile-admins-settings test-job-owner :destroy test-job))))
   (testing "admins can manipulate other users' objects"
     (is (true? (auth/configfile-admins-auth configfile-admins-settings admin-user :create test-job)))
     (is (true? (auth/configfile-admins-auth configfile-admins-settings admin-user :read test-job)))
     (is (true? (auth/configfile-admins-auth configfile-admins-settings admin-user :update test-job)))
+    (is (true? (auth/configfile-admins-auth configfile-admins-settings admin-user :get test-job)))
+    (is (true? (auth/configfile-admins-auth configfile-admins-settings admin-user :retry test-job)))
     (is (true? (auth/configfile-admins-auth configfile-admins-settings admin-user :destroy test-job))))
   (testing "admins can manipulate the Cook system itself"
     (is (true? (auth/configfile-admins-auth configfile-admins-settings admin-user :create {:owner ::system :item ::system})))
@@ -66,6 +72,8 @@
     (is (false? (auth/configfile-admins-auth configfile-admins-settings "unauthorized-user" :create test-job)))
     (is (false? (auth/configfile-admins-auth configfile-admins-settings "unauthorized-user" :read test-job)))
     (is (false? (auth/configfile-admins-auth configfile-admins-settings "unauthorized-user" :update test-job)))
+    (is (false? (auth/configfile-admins-auth configfile-admins-settings "unauthorized-user" :get test-job)))
+    (is (false? (auth/configfile-admins-auth configfile-admins-settings "unauthorized-user" :retry test-job)))
     (is (false? (auth/configfile-admins-auth configfile-admins-settings "unauthorized-user" :destroy test-job)))))
 
 (deftest test-configfile-admins-open-gets-allowed-users-auth
@@ -78,24 +86,31 @@
       (is (true? (authorized? "alice" :create {:owner "alice" :item :job})))
       (is (true? (authorized? "alice" :read {:owner "alice" :item :job})))
       (is (true? (authorized? "alice" :update {:owner "alice" :item :job})))
+      (is (true? (authorized? "alice" :get {:owner "alice" :item :job})))
+      (is (true? (authorized? "alice" :retry {:owner "alice" :item :job})))
       (is (true? (authorized? "alice" :destroy {:owner "alice" :item :job}))))
 
     (testing "non-allowed users cannot manipulate their own objects"
       (is (false? (authorized? "bill" :create {:owner "bill" :item :job})))
       (is (false? (authorized? "bill" :read {:owner "bill" :item :job})))
       (is (false? (authorized? "bill" :update {:owner "bill" :item :job})))
+      (is (false? (authorized? "bill" :get {:owner "bill" :item :job})))
+      (is (false? (authorized? "bill" :retry {:owner "bill" :item :job})))
       (is (false? (authorized? "bill" :destroy {:owner "bill" :item :job}))))
 
     (testing "admins can manipulate other users' objects"
       (is (true? (authorized? "sally" :create {:owner "bill" :item :job})))
       (is (true? (authorized? "sally" :read {:owner "bill" :item :job})))
       (is (true? (authorized? "sally" :update {:owner "bill" :item :job})))
+      (is (true? (authorized? "sally" :get {:owner "bill" :item :job})))
+      (is (true? (authorized? "sally" :retry {:owner "bill" :item :job})))
       (is (true? (authorized? "sally" :destroy {:owner "bill" :item :job}))))
 
     (testing "non-admins cannot manipulate other users' objects"
       (is (false? (authorized? "alice" :create {:owner "bill" :item :job})))
       (is (false? (authorized? "alice" :read {:owner "bill" :item :job})))
       (is (false? (authorized? "alice" :update {:owner "bill" :item :job})))
+      (is (false? (authorized? "alice" :retry {:owner "bill" :item :job})))
       (is (false? (authorized? "alice" :destroy {:owner "bill" :item :job}))))
 
     (testing "admins can manipulate the Cook system itself"
