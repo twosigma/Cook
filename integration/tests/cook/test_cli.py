@@ -878,6 +878,10 @@ class CookCliTest(unittest.TestCase):
         self.assertEqual(1, bar['nlink'])
         self.assertEqual(0, bar['size'])
 
+    def __wait_for_progress_message(self, uuids):
+        return util.wait_until(lambda: cli.show_json(uuids, self.cook_url)[1][0]['instances'][0],
+                               lambda i: 'progress' in i and 'progress_message' in i)
+
     def test_show_progress_message(self):
         executor = util.get_job_executor_type(self.cook_url)
         cp, uuids = cli.submit('echo "progress: 99 We are so close!"', self.cook_url,
@@ -889,8 +893,7 @@ class CookCliTest(unittest.TestCase):
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual(executor, jobs[0]['instances'][0]['executor'])
         if executor == 'cook':
-            instance = util.wait_until(lambda: cli.show_json(uuids, self.cook_url)[1][0]['instances'][0],
-                                       lambda i: 'progress' in i and 'progress_message' in i)
+            instance = self.__wait_for_progress_message(uuids)
             self.assertEqual(99, instance['progress'])
             self.assertEqual("We are so close!", instance['progress_message'])
             cp = cli.show(uuids, self.cook_url)
@@ -907,7 +910,7 @@ class CookCliTest(unittest.TestCase):
         cp, uuids = cli.submit('\'touch progress.txt && '
                                'echo "Hello World" >> progress.txt && '
                                'echo "progress: 99 We are so close!" >> progress.txt && '
-                               'echo "Done" >> progress.txt\' ',
+                               'echo "Done" >> progress.txt\'',
                                self.cook_url,
                                submit_flags=f'--executor {executor} '
                                             '--env EXECUTOR_PROGRESS_OUTPUT_FILE_ENV=PROGRESS_OUTPUT_FILE '
@@ -919,8 +922,7 @@ class CookCliTest(unittest.TestCase):
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual(executor, jobs[0]['instances'][0]['executor'])
         if executor == 'cook':
-            instance = util.wait_until(lambda: cli.show_json(uuids, self.cook_url)[1][0]['instances'][0],
-                                       lambda i: 'progress' in i and 'progress_message' in i)
+            instance = self.__wait_for_progress_message(uuids)
             self.assertEqual(99, instance['progress'])
             self.assertEqual("We are so close!", instance['progress_message'])
             cp = cli.show(uuids, self.cook_url)

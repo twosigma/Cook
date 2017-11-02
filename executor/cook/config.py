@@ -5,7 +5,7 @@ import os
 
 from pymesos.utils import parse_duration
 
-EXECUTOR_PROGRESS_OUTPUT_FILE = 'EXECUTOR_PROGRESS_OUTPUT_FILE'
+DEFAULT_PROGRESS_FILE_ENV_VARIABLE = 'EXECUTOR_PROGRESS_OUTPUT_FILE'
 
 class ExecutorConfig(object):
     """This class is responsible for storing the executor config."""
@@ -33,7 +33,7 @@ class ExecutorConfig(object):
     def __init__(self,
                  max_bytes_read_per_line=1024,
                  max_message_length=512,
-                 progress_output_env_variable=EXECUTOR_PROGRESS_OUTPUT_FILE,
+                 progress_output_env_variable=DEFAULT_PROGRESS_FILE_ENV_VARIABLE,
                  progress_output_name='stdout',
                  progress_regex_string='',
                  progress_sample_interval_ms=100,
@@ -62,7 +62,7 @@ def initialize_config(environment):
     else:
         default_progress_output_file = default_progress_output_name
 
-    progress_output_env_variable = environment.get('EXECUTOR_PROGRESS_OUTPUT_FILE_ENV', EXECUTOR_PROGRESS_OUTPUT_FILE)
+    progress_output_env_variable = environment.get('EXECUTOR_PROGRESS_OUTPUT_FILE_ENV', DEFAULT_PROGRESS_FILE_ENV_VARIABLE)
     logging.info('Progress location environment variable is {}'.format(progress_output_env_variable))
     if progress_output_env_variable not in environment:
         logging.info('No entry found for {} in the environment'.format(progress_output_env_variable))
