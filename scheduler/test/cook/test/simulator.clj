@@ -100,7 +100,6 @@
                                       5)
          task-constraints# (merge default-task-constraints (:task-constraints ~scheduler-config))
          executor-config# {:command "cook-executor"
-                           :default-progress-output-file "stdout"
                            :default-progress-regex-string "regex-string"
                            :log-level "INFO"
                            :max-message-length 512
