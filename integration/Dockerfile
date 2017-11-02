@@ -17,4 +17,4 @@ COPY . /opt/cook/integration
 WORKDIR /opt/cook/integration
 RUN python setup.py install
 
-CMD ["nosetests"]
+CMD ["nosetests", "--attr", "!explicit"]

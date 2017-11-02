@@ -1,6 +1,7 @@
 import importlib
 import logging
 import os
+import time
 import uuid
 from urllib.parse import urlencode
 
@@ -332,6 +333,33 @@ def wait_for_exit_code(cook_url, job_id, max_delay_ms=2000):
     return response.json()[0]
 
 
+def wait_for_sandbox_directory(cook_url, job_id, max_delay_ms=4000):
+    """
+    Wait for the given job's sandbox_directory field to appear.
+    Returns an up-to-date job description object on success,
+    and raises an exception if the max_delay_ms wait time is exceeded.
+    """
+    job_id = unpack_uuid(job_id)
+
+    def query():
+        return query_jobs(cook_url, True, job=[job_id])
+
+    def predicate(resp):
+        job = resp.json()[0]
+        if not job['instances']:
+            logger.info(f"Job {job_id} has no instances.")
+        else:
+            inst = job['instances'][0]
+            if 'sandbox_directory' not in inst:
+                logger.info(f"Job {job_id} instance {inst['task_id']} has no exit code.")
+            else:
+                logger.info(f"Job {job_id} instance {inst['task_id']} has exit code {inst['sandbox_directory']}.")
+                return True
+
+    response = wait_until(query, predicate, max_wait_ms=max_delay_ms, wait_interval_ms=250)
+    return response.json()[0]
+
+
 def wait_for_end_time(cook_url, job_id, max_delay_ms=2000):
     """
     Wait for the given job's end_time field to appear in instance 0.
@@ -440,3 +468,11 @@ def wait_for_instance(cook_url, job_uuid):
     job = wait_until(lambda: load_job(cook_url, job_uuid), lambda j: len(j['instances']) == 1)
     instance_uuid = job['instances'][0]['task_id']
     return instance_uuid
+
+
+def sleep_for_publish_interval(cook_url):
+    # allow enough time for progress and sandbox updates to be submitted
+    cook_settings = settings(cook_url)
+    progress_publish_interval_ms = get_in(cook_settings, 'progress', 'publish-interval-ms')
+    wait_publish_interval_ms = min(3 * progress_publish_interval_ms, 20000)
+    time.sleep(wait_publish_interval_ms / 1000.0)
