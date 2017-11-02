@@ -1268,9 +1268,10 @@
                                            :data (ByteString/copyFrom (.getBytes (pr-str {:percent progress}) "UTF-8"))}]
                                  task))
           job-id (create-dummy-job conn :user "user" :job-state :job.state/running)
-          send-status-update #(async/<!!
-                                (sched/handle-status-update conn driver fenzo
-                                                            (make-status-update "task1" :unknown :task-running %)))
+          sync-agent-sandboxes-fn (constantly true)
+          send-status-update #(->> (make-status-update "task1" :unknown :task-running %)
+                                   (sched/handle-status-update conn driver fenzo sync-agent-sandboxes-fn)
+                                   async/<!!)
           instance-id (create-dummy-instance conn job-id
                                              :instance-status :instance.status/running
                                              :task-id "task1")

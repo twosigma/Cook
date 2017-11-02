@@ -171,7 +171,7 @@
 
 (defn handle-status-update
   "Takes a status update from mesos."
-  [conn driver ^TaskScheduler fenzo status]
+  [conn driver ^TaskScheduler fenzo sync-agent-sandboxes-fn status]
   (log/info "Mesos status is:" status)
   (timers/time!
     handle-status-update-duration
@@ -248,6 +248,8 @@
              (meters/mark! tasks-killed-in-status-update)
              (mesos/kill-task! driver {:value task-id}))
            (when-not (nil? instance)
+             (when (#{:task-starting :task-running} task-state)
+               (sync-agent-sandboxes-fn (:instance/hostname instance-ent)))
              ;; (println "update:" task-id task-state job instance instance-status prior-job-state)
              (log/debug "Transacting updated state for instance" instance "to status" instance-status)
              ;; The database can become inconsistent if we make multiple calls to :instance/update-state in a single
@@ -412,7 +414,7 @@
 (defn handle-framework-message
   "Processes a framework message from Mesos."
   [conn handle-progress-message
-   {:strs [exit-code progress-message progress-percent progress-sequence sandbox-directory task-id] :as message}]
+   {:strs [exit-code progress-message progress-percent progress-sequence task-id] :as message}]
   (log/debug "Received framework message:" {:task-id task-id, :message message})
   (timers/time!
     handle-framework-message-duration
@@ -429,12 +431,9 @@
                                         :progress-message progress-message
                                         :progress-percent progress-percent
                                         :progress-sequence progress-sequence}))
-            (when (or exit-code sandbox-directory)
-              (let [txns (cond-> []
-                                 exit-code (conj [:db/add instance-id :instance/exit-code (int exit-code)])
-                                 sandbox-directory (conj [:db/add instance-id :instance/sandbox-directory (str sandbox-directory)]))]
-                (log/info "Updating instance" instance-id "to" txns)
-                (transact-with-retries conn txns))))))
+            (when exit-code
+              (log/info "Updating instance" instance-id "exit-code to" exit-code)
+              (transact-with-retries conn [[:db/add instance-id :instance/exit-code (int exit-code)]])))))
       (catch Exception e
         (log/error e "Mesos scheduler framework message error")))))
 
@@ -1480,7 +1479,8 @@
 
 (defn create-mesos-scheduler
   "Creates the mesos scheduler which processes status updates asynchronously but in order of receipt."
-  [configured-framework-id gpu-enabled? conn heartbeat-ch fenzo offers-chan match-trigger-chan handle-progress-message]
+  [configured-framework-id gpu-enabled? conn heartbeat-ch fenzo offers-chan match-trigger-chan handle-progress-message
+   sync-agent-sandboxes-fn update-sandbox-fn]
   (mesos/scheduler
     (registered [this driver framework-id master-info]
                 (log/info "Registered with mesos with framework-id " framework-id)
@@ -1519,8 +1519,9 @@
     (framework-message [this driver executor-id slave-id message]
                        (try
                          (let [{:strs [task-id type] :as parsed-message} (json/read-str (String. ^bytes message "UTF-8"))]
-                           (if (= "heartbeat" type)
-                             (heartbeat/notify-heartbeat heartbeat-ch executor-id slave-id parsed-message)
+                           (case type
+                             "directory" (update-sandbox-fn parsed-message)
+                             "heartbeat" (heartbeat/notify-heartbeat heartbeat-ch executor-id slave-id parsed-message)
                              (async-in-order-processing
                                task-id #(handle-framework-message conn handle-progress-message parsed-message))))
                          (catch Exception e
@@ -1538,12 +1539,14 @@
                      (receive-offers offers-chan match-trigger-chan driver offers))
     (status-update [this driver status]
                    (let [task-id (-> status :task-id :value)]
-                     (async-in-order-processing task-id #(handle-status-update conn driver fenzo status))))))
+                     (async-in-order-processing
+                       task-id #(handle-status-update conn driver fenzo sync-agent-sandboxes-fn status))))))
 
 (defn create-datomic-scheduler
   [conn driver-atom pending-jobs-atom offer-cache heartbeat-ch offer-incubate-time-ms mea-culpa-failure-limit
    fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset
-   fenzo-fitness-calculator task-constraints gpu-enabled? good-enough-fitness framework-id
+   fenzo-fitness-calculator task-constraints gpu-enabled? good-enough-fitness framework-id sync-agent-sandboxes-fn
+   update-sandbox-fn
    {:keys [executor-config progress-config]}
    {:keys [match-trigger-chan progress-updater-trigger-chan rank-trigger-chan] :as trigger-chans}]
 
@@ -1559,6 +1562,7 @@
         handle-progress-message (fn handle-progress-message-curried [progress-message-map]
                                  (handle-progress-message! progress-aggregator-chan progress-message-map))]
     (start-jobs-prioritizer! conn pending-jobs-atom task-constraints rank-trigger-chan)
-    {:scheduler (create-mesos-scheduler framework-id gpu-enabled? conn heartbeat-ch
-                                        fenzo offers-chan match-trigger-chan handle-progress-message)
+    {:scheduler (create-mesos-scheduler framework-id gpu-enabled? conn heartbeat-ch fenzo offers-chan
+                                        match-trigger-chan handle-progress-message sync-agent-sandboxes-fn
+                                        update-sandbox-fn)
      :view-incubating-offers (fn get-resources-atom [] @resources-atom)}))

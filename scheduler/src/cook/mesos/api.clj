@@ -723,11 +723,9 @@
 
 (defn retrieve-url-path
   "Constructs a URL to query the sandbox directory of the task.
-   Uses either the provided sandbox-directory or takes the task-id->sandbox-directory from the agent json to
-   determine the sandbox directory.
-   sandbox-directory will be populated in the instance by the cook executor, else it may be nil when the query to
-   the agent needs to me made.
-   Hardcodes fun stuff like the port we run the agent on. Users will need to add the file path & offset to their query.
+   Uses the provided sandbox-directory to determine the sandbox directory.
+   Hardcodes fun stuff like the port we run the agent on.
+   Users will need to add the file path & offset to their query.
    Refer to the 'Using the output_url' section in docs/scheduler-rest-api.adoc for further details."
   [agent-hostname task-id sandbox-directory]
   (try

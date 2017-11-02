@@ -78,7 +78,6 @@
     (meters/mark! sandbox-updater-publish-rate)
     (timers/time!
       sandbox-updater-publish-duration
-      ;; TODO Shams perform leadership check here
       (doseq [task-id->sandbox-partition (partition-all batch-size task-id->sandbox)]
         (try
           (let [datomic-db (d/db datomic-conn)
@@ -113,6 +112,7 @@
   "Launches a timer task that triggers publishing of the task-id->sandbox state to datomic.
    The task is invoked at intervals of publish-interval-ms ms."
   [task-id->sandbox-agent datomic-conn publish-batch-size publish-interval-ms]
+  (log/info "Starting sandbox publisher at intervals of" publish-interval-ms "ms")
   (chime/chime-at
     (periodic/periodic-seq (time/now) (time/millis publish-interval-ms))
     (fn sandbox-publisher-task [_]
@@ -121,10 +121,11 @@
     {:error-handler (fn sandbox-publisher-error-handler [ex]
                       (log/error ex "instance sandbox directory publish failed"))}))
 
-(defn get-task-id->sandbox-directory-impl
-  "Builds an indexed version of all task-id to sandbox directory on the specified agent. Has no cache; takes
-   100-500ms to run."
-  [framework-id agent-hostname task-id->sandbox-agent]
+(defn retrieve-sandbox-directories-on-agent
+  "Builds an indexed version of all task-id to sandbox directory on the specified agent.
+   Usually takes 100-500ms to run."
+  [framework-id agent-hostname]
+  (log/info "Retrieving sandbox directories for tasks on" agent-hostname)
   (let [timeout-millis (* 5 1000)
         ;; Throw SocketTimeoutException or ConnectionTimeoutException when timeout
         {:strs [completed_frameworks frameworks]} (-> (str "http://" agent-hostname ":5051/state.json")
@@ -140,27 +141,59 @@
         target-framework (or (some framework-filter frameworks)
                              (some framework-filter completed_frameworks))
         {:strs [completed_executors executors]} target-framework
-        framework-executors (reduce into [] [completed_executors executors])
-        task-id->sandbox-directory (->> framework-executors
-                                        (map (fn executor-state->task-id->sandbox-directory [{:strs [id directory]}]
-                                               [id directory]))
-                                        (into {}))]
-    (send task-id->sandbox-agent aggregate-sandbox task-id->sandbox-directory)
-    task-id->sandbox-directory))
+        framework-executors (reduce into [] [completed_executors executors])]
+    (->> framework-executors
+         (map (fn executor-state->task-id->sandbox-directory [{:strs [id directory]}]
+                [id directory]))
+         (into {}))))
 
-(def task-id->sandbox-agent (agent {})) ;; TODO Shams DI this
+(defn refresh-agent-cache-entry
+  "If the entry for the specified agent is not cached:
+   - Triggers building an indexed version of all task-id to sandbox directory for the specified agent;
+   - After the indexed version is built, it is synced into the task-id->sandbox-agent.
+   The function call is a no-op if the specified agent already exists in the cache."
+  [framework-id mesos-agent-query-cache task-id->sandbox-agent agent-hostname]
+  (try
+    (let [run (delay
+                (try
+                  (let [task-id->sandbox-directory
+                        (retrieve-sandbox-directories-on-agent framework-id agent-hostname)]
+                    (log/info "Found sandbox directories for" (count task-id->sandbox-directory) "tasks on" agent-hostname)
+                    (send task-id->sandbox-agent aggregate-sandbox task-id->sandbox-directory)
+                    :success)
+                  (catch Exception e
+                    (log/debug e "Failed to get mesos agent state on" agent-hostname)
+                    :error)))
+          cs (swap! mesos-agent-query-cache
+                    (fn mesos-agent-query-cache-swap-fn [c]
+                      (if (cache/has? c agent-hostname)
+                        (cache/hit c agent-hostname)
+                        (cache/miss c agent-hostname run))))
+          val (cache/lookup cs agent-hostname)]
+      (if val @val @run))
+    (catch Exception e
+      (log/error e "Failed to refresh mesos agent state" {:agent agent-hostname}))))
 
-(defn get-task-id->sandbox-directory-cache-entry
-  "Builds an indexed version of all task-id to sandbox directory for the specified agent. Cached"
-  [framework-id agent-hostname cache]
-  (let [run (delay (try (get-task-id->sandbox-directory-impl framework-id agent-hostname task-id->sandbox-agent)
-                        (catch Exception e
-                          (log/debug e "Failed to get executor state, purging from cache...")
-                          (swap! cache cache/evict agent-hostname)
-                          nil)))
-        cs (swap! cache (fn [c]
-                          (if (cache/has? c agent-hostname)
-                            (cache/hit c agent-hostname)
-                            (cache/miss c agent-hostname run))))
-        val (cache/lookup cs agent-hostname)]
-    (if val @val @run)))
+(defn prepare-sandbox-helpers
+  "This function initializes the sandbox publisher as well as helper functions to send individual
+   sandbox entries and trigger sandbox syncing of all tasks on a mesos agent.
+   It returns a map with the following entries:
+   :publisher-cancel-fn - fn that take no arguments and that terminates the publisher.
+   :sync-agent-sandboxes-fn - fn that accepts n agent hostname and triggers syncing of sandbox entries
+                              of all recent tasks run on that agent.
+   :update-sandbox-fn - fn that accepts a framework message map that contains the `task-id` and
+                        `sandbox-directory` strings. These are then synced individually."
+  [datomic-conn publish-batch-size publish-interval-ms framework-id mesos-agent-query-cache]
+  (let [task-id->sandbox-agent (agent {}) ;; stores all the pending task-id->sandbox state
+        publisher-cancel-fn (start-sandbox-publisher
+                              task-id->sandbox-agent datomic-conn publish-batch-size publish-interval-ms)
+        update-sandbox-fn (fn update-sandbox-fn [{:strs [sandbox-directory task-id]}]
+                            (send task-id->sandbox-agent aggregate-sandbox task-id sandbox-directory))
+        sync-agent-sandboxes-fn (fn sync-agent-sandboxes-fn [agent-hostname]
+                                  (when agent-hostname
+                                    (future
+                                      (refresh-agent-cache-entry
+                                        framework-id mesos-agent-query-cache task-id->sandbox-agent agent-hostname))))]
+    {:publisher-cancel-fn publisher-cancel-fn
+     :sync-agent-sandboxes-fn sync-agent-sandboxes-fn
+     :update-sandbox-fn update-sandbox-fn}))

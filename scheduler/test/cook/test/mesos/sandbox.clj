@@ -16,6 +16,8 @@
 (ns cook.test.mesos.sandbox
   (:use clojure.test)
   (:require [clj-http.client :as http]
+            [clojure.core.cache :as cache]
+            [clojure.string :as str]
             [cook.mesos.sandbox :as sandbox]
             [cook.test.testutil :as tu]
             [datomic.api :as d]
@@ -167,10 +169,9 @@
         (is (= task-id->sandbox-state (first @task-id->sandbox-publish-history-atom)))
         (is (every? empty? (rest @task-id->sandbox-publish-history-atom)))))))
 
-(deftest test-get-task-id->sandbox-directory-impl
+(deftest test-retrieve-sandbox-directories-on-agent
   (let [target-framework-id "framework-id-11"
-        agent-hostname "www.mesos-agent-com"
-        task-id->sandbox-agent (agent {})]
+        agent-hostname "www.mesos-agent-com"]
     (with-redefs [http/get (fn [url & [options]]
                              (is (= (str "http://" agent-hostname ":5051/state.json") url))
                              (is (= {:as :json-string-keys, :conn-timeout 5000, :socket-timeout 5000, :spnego-auth true} options))
@@ -191,11 +192,72 @@
                                  "executors" [{"id" "executor-211", "directory" "/path/for/executor-211"}]
                                  "id" "framework-id-12"}]}})]
 
-      (testing "get-task-id->sandbox-directory-impl"
-        (let [actual-result (sandbox/get-task-id->sandbox-directory-impl target-framework-id agent-hostname task-id->sandbox-agent)
+      (testing "retrieve-sandbox-directories-on-agent"
+        (let [actual-result (sandbox/retrieve-sandbox-directories-on-agent target-framework-id agent-hostname)
               expected-result {"executor-101" "/path/for/executor-101"
                                "executor-102" "/path/for/executor-102"
                                "executor-111" "/path/for/executor-111"}]
-          (is (= expected-result actual-result))
-          (await task-id->sandbox-agent)
-          (is (= expected-result @task-id->sandbox-agent)))))))
+          (is (= expected-result actual-result)))))))
+
+(deftest test-refresh-agent-cache-entry
+  (let [framework-id "test-framework-id"
+        mesos-agent-query-cache (atom (cache/fifo-cache-factory {} :threshold 2))
+        task-id->sandbox-agent (agent {})
+        item-unavailable (future :unavailable)]
+    (with-redefs [sandbox/retrieve-sandbox-directories-on-agent
+                  (fn [_ hostname]
+                    (if (str/includes? hostname "badhost")
+                      (throw (Exception. "Exception from test"))
+                      {(str "task." hostname) (str "/path/to/" hostname "/sandbox")}))]
+
+      (sandbox/refresh-agent-cache-entry framework-id mesos-agent-query-cache task-id->sandbox-agent "host1.com")
+      (sandbox/refresh-agent-cache-entry framework-id mesos-agent-query-cache task-id->sandbox-agent "host2.com")
+      (await task-id->sandbox-agent)
+      (is (= :success @(cache/lookup @mesos-agent-query-cache "host1.com" item-unavailable)))
+      (is (= :success @(cache/lookup @mesos-agent-query-cache "host2.com" item-unavailable)))
+      (is (= :unavailable @(cache/lookup @mesos-agent-query-cache "host3.com" item-unavailable)))
+      (is (= :unavailable @(cache/lookup @mesos-agent-query-cache "badhost.com" item-unavailable)))
+      (is (= {"task.host1.com" "/path/to/host1.com/sandbox"
+              "task.host2.com" "/path/to/host2.com/sandbox"}
+             @task-id->sandbox-agent))
+
+      (sandbox/refresh-agent-cache-entry framework-id mesos-agent-query-cache task-id->sandbox-agent "host3.com")
+      (await task-id->sandbox-agent)
+      (is (= :unavailable @(cache/lookup @mesos-agent-query-cache "host1.com" item-unavailable)))
+      (is (= :success @(cache/lookup @mesos-agent-query-cache "host2.com" item-unavailable)))
+      (is (= :success @(cache/lookup @mesos-agent-query-cache "host3.com" item-unavailable)))
+      (is (= :unavailable @(cache/lookup @mesos-agent-query-cache "badhost.com" item-unavailable)))
+      (is (= {"task.host1.com" "/path/to/host1.com/sandbox"
+              "task.host2.com" "/path/to/host2.com/sandbox"
+              "task.host3.com" "/path/to/host3.com/sandbox"}
+             @task-id->sandbox-agent))
+
+      (sandbox/refresh-agent-cache-entry framework-id mesos-agent-query-cache task-id->sandbox-agent "badhost.com")
+      (await task-id->sandbox-agent)
+      (is (= :unavailable @(cache/lookup @mesos-agent-query-cache "host1.com" item-unavailable)))
+      (is (= :unavailable @(cache/lookup @mesos-agent-query-cache "host2.com" item-unavailable)))
+      (is (= :success @(cache/lookup @mesos-agent-query-cache "host3.com" item-unavailable)))
+      (is (= :error @(cache/lookup @mesos-agent-query-cache "badhost.com" item-unavailable)))
+      (is (= {"task.host1.com" "/path/to/host1.com/sandbox"
+              "task.host2.com" "/path/to/host2.com/sandbox"
+              "task.host3.com" "/path/to/host3.com/sandbox"}
+             @task-id->sandbox-agent)))))
+
+(deftest test-prepare-sandbox-helpers
+  (with-redefs [sandbox/retrieve-sandbox-directories-on-agent
+                (fn [_ hostname] {(str "task." hostname) (str "/path/to/" hostname "/sandbox")})]
+    (let [db-conn (tu/restore-fresh-database! "datomic:mem://test-start-sandbox-publisher")
+          publish-batch-size 20
+          publish-interval-ms 10
+          framework-id "test-framework-id"
+          mesos-agent-query-cache (atom (cache/fifo-cache-factory {} :threshold 2))
+          {:keys [publisher-cancel-fn sync-agent-sandboxes-fn update-sandbox-fn]}
+          (sandbox/prepare-sandbox-helpers db-conn publish-batch-size publish-interval-ms framework-id mesos-agent-query-cache)]
+
+      (let [task-id->sandbox-agent
+            (update-sandbox-fn {"sandbox-directory" "/path/to/sandbox", "task-id" "task-1", "type" "directory"})]
+        @(sync-agent-sandboxes-fn "host1")
+        (await task-id->sandbox-agent)
+
+        (is (= {"task-1" "/path/to/sandbox", "task.host1" "/path/to/host1/sandbox"} @task-id->sandbox-agent)))
+      (publisher-cancel-fn))))

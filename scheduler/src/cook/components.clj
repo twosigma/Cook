@@ -90,7 +90,7 @@
                            mesos-gpu-enabled mesos-leader-path mesos-master mesos-master-hosts mesos-principal
                            mesos-role offer-incubate-time-ms progress rebalancer riemann server-port task-constraints]
                           curator-framework framework-id mesos-datomic mesos-datomic-mult mesos-leadership-atom
-                          mesos-offer-cache mesos-pending-jobs-atom]
+                          mesos-offer-cache mesos-pending-jobs-atom sandbox-helper-fns]
                       (log/info "Initializing mesos scheduler")
                       (let [make-mesos-driver-fn (partial (lazy-load-var 'cook.mesos/make-mesos-driver)
                                                           {:mesos-master mesos-master
@@ -113,13 +113,13 @@
                             offer-incubate-time-ms
                             mea-culpa-failure-limit
                             task-constraints
-                            (:host riemann)
-                            (:port riemann)
                             mesos-pending-jobs-atom
                             mesos-offer-cache
                             mesos-gpu-enabled
                             framework-id
                             mesos-leadership-atom
+                            riemann
+                            sandbox-helper-fns
                             {:hostname hostname
                              :server-port server-port}
                             {:executor-config executor
@@ -279,6 +279,11 @@
                                     (cache/lru-cache-factory :threshold max-size)
                                     (cache/ttl-cache-factory :ttl ttl-ms)
                                     atom))
+     :sandbox-helper-fns (fnk [[:settings [:sandbox-syncer publish-batch-size publish-interval-ms]]
+                               framework-id mesos-agent-query-cache mesos-datomic]
+                           (let [prepare-sandbox-helpers (lazy-load-var 'cook.mesos.sandbox/prepare-sandbox-helpers)]
+                             (prepare-sandbox-helpers mesos-datomic publish-batch-size publish-interval-ms
+                                                      framework-id mesos-agent-query-cache)))
      :mesos-leadership-atom (fnk [] (atom false))
      :mesos-pending-jobs-atom (fnk [] (atom {}))
      :mesos-offer-cache (fnk [[:settings [:offer-cache max-size ttl-ms]]]
@@ -336,6 +341,11 @@
                             {:max-size 5000
                              :ttl-ms (* 60 1000)}
                             agent-query-cache))
+     :sandbox-syncer (fnk [[:config {sandbox-syncer nil}]]
+                       (merge
+                         {:publish-batch-size 100
+                          :publish-interval-ms 2500}
+                         sandbox-syncer))
      :server-port (fnk [[:config port]]
                     port)
      :is-authorized-fn (fnk [[:config {authorization-config default-authorization}]]

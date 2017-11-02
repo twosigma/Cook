@@ -879,7 +879,11 @@
                                    (let [task {:task-id {:value task-id}
                                                :reason reason
                                                :state state}]
-                                     task))]
+                                     task))
+        synced-agents-atom (atom [])
+        sync-agent-sandboxes-fn (fn sync-agent-sandboxes-fn [hostname]
+                                  (swap! synced-agents-atom conj hostname))]
+
     (testing "Mesos task death"
       (let [job-id (create-dummy-job conn :user "tsram" :job-state :job.state/running)
             task-id "task1"
@@ -887,8 +891,10 @@
                                                :instance-status :instance.status/running
                                                :task-id task-id)]
         ; Wait for async database transaction inside handle-status-update
-        (async/<!! (sched/handle-status-update conn driver fenzo
-                                               (make-dummy-status-update task-id :reason-gc-error :task-killed)))
+        (->> (make-dummy-status-update task-id :reason-gc-error :task-killed)
+             (sched/handle-status-update conn driver fenzo sync-agent-sandboxes-fn)
+             async/<!!)
+
         (is (= :instance.status/failed
                (ffirst (q '[:find ?status
                             :in $ ?i
@@ -910,9 +916,11 @@
                                              (db conn) instance-id)))
               original-end-time (get-end-time)]
           (Thread/sleep 100)
-          (async/<!! (sched/handle-status-update conn driver fenzo
-                                                 (make-dummy-status-update task-id :reason-gc-error :task-killed)))
+          (->> (make-dummy-status-update task-id :reason-gc-error :task-killed)
+               (sched/handle-status-update conn driver fenzo sync-agent-sandboxes-fn)
+               async/<!!)
           (is (= original-end-time (get-end-time))))))
+
     (testing "Pre-existing reason is not mea-culpa. New reason is. Job still out of retries because non-mea-culpa takes preference"
       (let [job-id (create-dummy-job conn
                                      :user "tsram"
@@ -933,8 +941,9 @@
                                                :task-id task-id
                                                :reason :max-runtime-exceeded)] ; Previous reason is not mea-culpa
         ; Status update says slave got restarted (mea-culpa)
-        (async/<!! (sched/handle-status-update conn driver fenzo
-                                               (make-dummy-status-update task-id :mesos-slave-restarted :task-killed)))
+        (->> (make-dummy-status-update task-id :mesos-slave-restarted :task-killed)
+             (sched/handle-status-update conn driver fenzo sync-agent-sandboxes-fn)
+             async/<!!)
         ; Assert old reason persists
         (is (= :max-runtime-exceeded
                (ffirst (q '[:find ?reason-name
@@ -950,27 +959,30 @@
                             :where
                             [?j :job/state ?s]
                             [?s :db/ident ?state]]
-                          (db conn) job-id))))
-        ))
+                          (db conn) job-id))))))
+
     (testing "Tasks of completed jobs are killed"
       (let [job-id (create-dummy-job conn
                                      :user "tsram"
                                      :job-state :job.state/completed
                                      :retry-count 3)
             task-id-a "taska"
-            task-id-b "taskb"
-            instance-id-a (create-dummy-instance conn job-id
-                                                 :instance-status :instance.status/running
-                                                 :task-id task-id-a
-                                                 :reason :unknown)
-            instance-id-b (create-dummy-instance conn job-id
-                                                 :instance-status :instance.status/success
-                                                 :task-id task-id-b
-                                                 :reason :unknown)]
-        (async/<!! (sched/handle-status-update conn driver fenzo
-                                               (make-dummy-status-update task-id-a :mesos-slave-restarted :task-running)))
+            task-id-b "taskb"]
+        (create-dummy-instance conn job-id
+                               :hostname "www.test-host.com"
+                               :instance-status :instance.status/running
+                               :task-id task-id-a
+                               :reason :unknown)
+        (create-dummy-instance conn job-id
+                               :instance-status :instance.status/success
+                               :task-id task-id-b
+                               :reason :unknown)
+        (reset! synced-agents-atom [])
+        (->> (make-dummy-status-update task-id-a :mesos-slave-restarted :task-running)
+             (sched/handle-status-update conn driver fenzo sync-agent-sandboxes-fn)
+             async/<!!)
         (is (true? (contains? @tasks-killed task-id-a)))
-        ))
+        (is (= ["www.test-host.com"] @synced-agents-atom))))
 
     (testing "instance persists mesos-start-time when task is first known to be starting or running"
       (let [job-id (create-dummy-job conn
@@ -978,24 +990,31 @@
                                      :job-state :job.state/running
                                      :retry-count 3)
             task-id "task-mesos-start-time"
-            instance-id-a (create-dummy-instance conn job-id
-                                                 :instance-status :instance.status/unknown
-                                                 :task-id task-id
-                                                 :reason :unknown)
             mesos-start-time (fn [] (-> conn
                                         d/db
                                         (d/entity [:instance/task-id task-id])
                                         :instance/mesos-start-time))]
+        (create-dummy-instance conn job-id
+                               :hostname "www.test-host.com"
+                               :instance-status :instance.status/unknown
+                               :reason :unknown
+                               :task-id task-id)
         (is (nil? (mesos-start-time)))
-        (async/<!! (sched/handle-status-update conn driver fenzo
-                                               (make-dummy-status-update task-id :unknown :task-staging)))
+        (->> (make-dummy-status-update task-id :unknown :task-staging)
+             (sched/handle-status-update conn driver fenzo sync-agent-sandboxes-fn)
+             async/<!!)
         (is (nil? (mesos-start-time)))
-        (async/<!! (sched/handle-status-update conn driver fenzo
-                                               (make-dummy-status-update task-id :unknown :task-running)))
+        (reset! synced-agents-atom [])
+        (->> (make-dummy-status-update task-id :unknown :task-running)
+             (sched/handle-status-update conn driver fenzo sync-agent-sandboxes-fn)
+             async/<!!)
+        (is (= ["www.test-host.com"] @synced-agents-atom))
+        (is (not (nil? (mesos-start-time))))
         (let [first-observed-start-time (.getTime (mesos-start-time))]
           (is (not (nil? first-observed-start-time)))
-          (async/<!! (sched/handle-status-update conn driver fenzo
-                                                 (make-dummy-status-update task-id :unknown :task-running)))
+          (->> (make-dummy-status-update task-id :unknown :task-running)
+               (sched/handle-status-update conn driver fenzo sync-agent-sandboxes-fn)
+               async/<!!)
           (is (= first-observed-start-time (.getTime (mesos-start-time)))))))))
 
 (deftest test-handle-framework-message
@@ -1029,18 +1048,6 @@
                 handle-progress-message (handle-progress-message-factory progress-aggregator-promise)
                 message (make-message {:task-id task-id})]
             (is (nil? (sched/handle-framework-message conn handle-progress-message message)))
-            (is (nil? (deref progress-aggregator-promise 1000 nil))))))
-
-      (testing "sandbox-directory update"
-        (let [job-id (create-dummy-job conn :user "test-user" :job-state :job.state/running)
-              task-id (str (UUID/randomUUID))
-              instance-id (create-dummy-instance conn job-id :instance-status :instance.status/running :task-id task-id)]
-          (let [progress-aggregator-promise (promise)
-                handle-progress-message (handle-progress-message-factory progress-aggregator-promise)
-                sandbox-directory "/sandbox/location/for/task"
-                message (make-message {:task-id task-id :sandbox-directory sandbox-directory})]
-            (async/<!! (sched/handle-framework-message conn handle-progress-message message))
-            (is (= sandbox-directory (query-instance-field instance-id :instance/sandbox-directory)))
             (is (nil? (deref progress-aggregator-promise 1000 nil))))))
 
       (testing "progress-message update"
@@ -1121,7 +1128,7 @@
                                        :sandbox-directory sandbox-directory})]
             (async/<!! (sched/handle-framework-message conn handle-progress-message message))
             (is (= exit-code (query-instance-field instance-id :instance/exit-code)))
-            (is (= sandbox-directory (query-instance-field instance-id :instance/sandbox-directory)))
+            (is (nil? (query-instance-field instance-id :instance/sandbox-directory)))
             (is (= 0 (query-instance-field instance-id :instance/progress)))
             (is (nil? (query-instance-field instance-id :instance/progress-message)))
             (is (= {:instance-id instance-id
@@ -1633,14 +1640,14 @@
   (let [status-store (atom {})
         latch (CountDownLatch. 11)]
     (with-redefs [sched/handle-status-update
-                  (fn [_ _ _ status]
+                  (fn [_ _ _ _ status]
                     (let [task-id (-> status :task-id :value str)]
                       (swap! status-store update task-id
                              (fn [statuses] (conj (or statuses [])
                                                   (-> status mtypes/pb->data :state)))))
                     (Thread/sleep (rand-int 100))
                     (.countDown latch))]
-      (let [s (sched/create-mesos-scheduler nil true nil nil nil nil nil nil)]
+      (let [s (sched/create-mesos-scheduler nil true nil nil nil nil nil nil nil nil)]
 
         (.statusUpdate s nil (mtypes/->pb :TaskStatus {:task-id {} :state :task-starting}))
         (.statusUpdate s nil (mtypes/->pb :TaskStatus {:task-id {:value "T1"} :state :task-starting}))
@@ -1663,13 +1670,16 @@
         (is (= [:task-starting] (->> "T4" (get @status-store) vec)))))))
 
 (deftest test-framework-message-processing-delegation
-  (let [handle-framework-message-store (atom [])
-        notify-heartbeat-store (atom [])]
+  (let [framework-message-store (atom [])
+        heartbeat-store (atom [])
+        sandbox-store (atom [])
+        update-sandbox-fn (fn [framework-message]
+                            (swap! sandbox-store conj framework-message))]
     (with-redefs [heartbeat/notify-heartbeat (fn [_ _ _ framework-message]
-                                               (swap! notify-heartbeat-store conj framework-message))
+                                               (swap! heartbeat-store conj framework-message))
                   sched/handle-framework-message (fn [_ _ framework-message]
-                                                   (swap! handle-framework-message-store conj framework-message))]
-      (let [s (sched/create-mesos-scheduler nil true nil nil nil nil nil nil)
+                                                   (swap! framework-message-store conj framework-message))]
+      (let [s (sched/create-mesos-scheduler nil true nil nil nil nil nil nil nil update-sandbox-fn)
             make-message (fn [message] (-> message json/write-str str (.getBytes "UTF-8")))]
 
         (testing "message delegation"
@@ -1677,20 +1687,23 @@
                 executor-id (-> task-id mtypes/->ExecutorID mtypes/data->pb)
                 m1 {"task-id" task-id}
                 m2 {"task-id" task-id, "timestamp" 123456, "type" "heartbeat"}
-                m3 {"exit-code" 0, "sandbox" "/path/to/a/directory", "task-id" task-id}
-                m4 {"task-id" task-id, "timestamp" 123456, "type" "heartbeat"}]
+                m3 {"exit-code" 0, "task-id" task-id}
+                m4 {"task-id" task-id, "timestamp" 123456, "type" "heartbeat"}
+                m5 {"sandbox" "/path/to/a/directory", "task-id" task-id, "type" "directory"}]
 
             (.frameworkMessage s nil executor-id nil (make-message m1))
             (.frameworkMessage s nil executor-id nil (make-message m2))
             (.frameworkMessage s nil executor-id nil (make-message m3))
             (.frameworkMessage s nil executor-id nil (make-message m4))
+            (.frameworkMessage s nil executor-id nil (make-message m5))
 
             (let [latch (CountDownLatch. 1)]
               (sched/async-in-order-processing task-id #(.countDown latch))
               (.await latch))
 
-            (is (= [m1 m3] @handle-framework-message-store))
-            (is (= [m2 m4] @notify-heartbeat-store))))))))
+            (is (= [m1 m3] @framework-message-store))
+            (is (= [m2 m4] @heartbeat-store))
+            (is (= [m5] @sandbox-store))))))))
 
 (deftest test-in-order-framework-message-processing
   (let [messages-store (atom {})
@@ -1702,7 +1715,7 @@
                       (swap! messages-store update (str task-id) (fn [messages] (conj (or messages []) message))))
                     (Thread/sleep (rand-int 100))
                     (.countDown latch))]
-      (let [s (sched/create-mesos-scheduler nil true nil nil nil nil nil nil)
+      (let [s (sched/create-mesos-scheduler nil true nil nil nil nil nil nil nil nil)
             foo 11
             bar 21
             fee 31

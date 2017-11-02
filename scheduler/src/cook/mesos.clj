@@ -191,9 +191,9 @@
    framework-id             -- str, the Mesos framework id from the cook settings
    fenzo-config             -- map, config for fenzo, See scheduler/docs/configuration.adoc for more details"
   [make-mesos-driver-fn get-mesos-utilization curator-framework mesos-datomic-conn mesos-datomic-mult zk-prefix
-   offer-incubate-time-ms
-   mea-culpa-failure-limit task-constraints riemann-host riemann-port mesos-pending-jobs-atom
-   offer-cache gpu-enabled? framework-id mesos-leadership-atom
+   offer-incubate-time-ms mea-culpa-failure-limit task-constraints mesos-pending-jobs-atom offer-cache gpu-enabled?
+   framework-id mesos-leadership-atom riemann-config
+   {:keys [sync-agent-sandboxes-fn update-sandbox-fn]}
    {:keys [hostname server-port]}
    {:keys [executor-config rebalancer-config progress-config] :as additional-config}
    {:keys [fenzo-fitness-calculator fenzo-floor-iterations-before-reset fenzo-floor-iterations-before-warn
@@ -201,7 +201,9 @@
     :as fenzo-config}
    {:keys [cancelled-task-trigger-chan lingering-task-trigger-chan rebalancer-trigger-chan straggler-trigger-chan]
     :as trigger-chans}]
-  (let [datomic-report-chan (async/chan (async/sliding-buffer 4096))
+  (let [riemann-host (:host riemann-config)
+        riemann-port (:port riemann-config)
+        datomic-report-chan (async/chan (async/sliding-buffer 4096))
         mesos-heartbeat-chan (async/chan (async/buffer 4096))
         current-driver (atom nil)
         leader-selector (LeaderSelector.
@@ -234,6 +236,8 @@
                                           gpu-enabled?
                                           good-enough-fitness
                                           framework-id
+                                          sync-agent-sandboxes-fn
+                                          update-sandbox-fn
                                           additional-config
                                           trigger-chans)
                                         driver (make-mesos-driver-fn scheduler framework-id)]

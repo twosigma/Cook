@@ -109,8 +109,8 @@
                                  :executable true
                                  :extract false
                                  :value "file:///path/to/cook/executor"}}
-         riemann-host# (:riemann-host ~scheduler-config)
-         riemann-port# (:riemann-port ~scheduler-config)
+         riemann-config# {:host (:riemann-host ~scheduler-config)
+                          :port (:riemann-port ~scheduler-config)}
          gpu-enabled?# (or (:gpus-enabled? ~scheduler-config) false)
          progress-config# {:batch-size 100
                            :pending-threshold 1000
@@ -118,6 +118,8 @@
                            :sequence-cache-threshold 1000}
          rebalancer-config# (merge default-rebalancer-config (:rebalancer-config ~scheduler-config))
          framework-id# "cool-framework-id"
+         sandbox-helper-fns# {:sync-agent-sandboxes-fn (constantly true)
+                              :update-sandbox-fn (constantly true)}
          host-settings# {:server-port 12321 :hostname "localhost"}
          mesos-leadership-atom# (atom false)
          fenzo-config# (merge default-fenzo-config (:fenzo-config ~scheduler-config))
@@ -131,10 +133,12 @@
                                                  curator-framework# ~conn
                                                  mesos-mult# zk-prefix#
                                                  offer-incubate-time-ms# mea-culpa-failure-limit#
-                                                 task-constraints# riemann-host# riemann-port#
+                                                 task-constraints#
                                                  pending-jobs-atom# offer-cache#
                                                  gpu-enabled?# framework-id#
                                                  mesos-leadership-atom#
+                                                 riemann-config#
+                                                 sandbox-helper-fns#
                                                  host-settings#
                                                  additional-config#
                                                  fenzo-config#
