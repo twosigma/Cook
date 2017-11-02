@@ -131,6 +131,14 @@ def submit_jobs(cook_url, job_specs, clones=1, **kwargs):
     return [j['uuid'] for j in jobs], resp
 
 
+def retry_jobs(cook_url, assert_response=True, **kwargs):
+    """Retry one or more jobs and/or groups of jobs"""
+    response = session.put(f'{cook_url}/retry', json=kwargs)
+    if assert_response:
+        assert 201 == response.status_code, response.content
+    return response
+
+
 def kill_jobs(cook_url, jobs, assert_response=True):
     """Kill one or more jobs"""
     params = {'job': [unpack_uuid(j) for j in jobs]}
@@ -222,6 +230,59 @@ def wait_until(query, predicate, max_wait_ms=30000, wait_interval_ms=1000):
         final_response = query()
         logger.info(f"Timeout exceeded waiting for condition. Details: {final_response}")
         raise
+
+
+def all_instances_done(response, accepted_states=['success', 'failed']):
+    """
+    Helper method used with the wait_until function.
+    Checks a response from query_jobs to see if all jobs and instances have completed.
+    """
+    for job in response.json():
+        if job['state'] not in accepted_states:
+            return False
+        for inst in job['instances']:
+            if inst['status'] not in accepted_states:
+                logger.info(f"Job {job['uuid']} instance {inst['task_id']} has unaccepted status {inst['status']}.")
+                return False
+    return True
+
+
+def all_instances_killed(response):
+    """
+    Helper method used with the wait_until function.
+    Checks a response from query_jobs to see if all jobs and instances have been killed.
+    """
+    return all_instances_done(response, accepted_states=['failed'])
+
+
+def group_some_job_started(group_response):
+    """
+    Helper method used with the wait_until function.
+    Checks a response from group_detail_query to see if any job in the group has started.
+    """
+    group = group_response.json()[0]
+    running_count = group['running']
+    logger.info(f"Currently {running_count} jobs running in group {group['uuid']}")
+    return running_count > 0
+
+
+def group_some_job_done(group_response):
+    """
+    Helper method used with the wait_until function.
+    Checks a response from group_detail_query to see if any job in the group has completed.
+    """
+    group = group_response.json()[0]
+    completed_count = group['completed']
+    logger.info(f"Currently {completed_count} jobs completed in group {group['uuid']}")
+    return completed_count > 0
+
+
+def group_detail_query(cook_url, group_uuid, assert_response=True):
+    """Get a group with full status details, returning the response object."""
+    response = query_groups(cook_url, uuid=[group_uuid], detailed='true')
+    if assert_response:
+        assert 200 == response.status_code, response.content
+    return response
 
 
 def wait_for_job(cook_url, job_id, status, max_delay=120000):

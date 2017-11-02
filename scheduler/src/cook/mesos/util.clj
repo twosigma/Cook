@@ -417,6 +417,7 @@
 
 (defn retry-job!
   "Sets :job/max-retries to the given value for the given job UUID.
+   Also resets the job state to 'waiting' if it had completed.
    Throws an exception if there is no job with that UUID."
   [conn uuid retries]
   (try

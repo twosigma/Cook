@@ -544,7 +544,7 @@ class CookTest(unittest.TestCase):
         util.kill_jobs(self.cook_url, [job_uuid])
         job = util.load_job(self.cook_url, job_uuid)
         self.assertEqual('failed', job['state'])
-        resp = util.session.put('%s/retry' % self.cook_url, json={'retries': 2, 'jobs': [job_uuid]})
+        resp = util.retry_jobs(self.cook_url, retries=2, jobs=[job_uuid])
         self.assertEqual(201, resp.status_code, resp.text)
         job = util.load_job(self.cook_url, job_uuid)
         self.assertIn(job['status'], ['waiting', 'running'])
@@ -868,6 +868,101 @@ class CookTest(unittest.TestCase):
         finally:
             # Now try to kill the group again
             # (ensure it still works when there are no live jobs)
+            util.kill_groups(self.cook_url, [group_uuid])
+
+    def test_group_change_killed_retries(self):
+        group_spec = self.minimal_group()
+        group_uuid = group_spec['uuid']
+        job_spec = {'group': group_uuid, 'command': f'sleep 1'}
+        try:
+            jobs, resp = util.submit_jobs(self.cook_url, job_spec, 10, groups=[group_spec])
+            self.assertEqual(resp.status_code, 201)
+
+            def group_query():
+                return util.group_detail_query(self.cook_url, group_uuid)
+
+            # wait for some job to start
+            util.wait_until(group_query, util.group_some_job_started)
+            # kill all jobs in the group (and wait for the kill to complete)
+            self.logger.info(f'Killing all jobs in group {group_uuid}.')
+            util.kill_groups(self.cook_url, [group_uuid])
+
+            def jobs_query():
+                return util.query_jobs(self.cook_url, True, job=jobs)
+
+            util.wait_until(jobs_query, util.all_instances_done)
+            # retry all jobs in the group
+            util.retry_jobs(self.cook_url, retries=2, groups=[group_uuid])
+            # wait for some job to start
+            util.wait_until(group_query, util.group_some_job_started)
+            # ensure none of the jobs are still in a failed state
+            job_data = util.query_jobs(self.cook_url, job=jobs)
+            self.assertEqual(200, job_data.status_code)
+            for job in job_data.json():
+                job_details = f'Job details: {json.dumps(job, sort_keys=True)}'
+                self.assertNotEqual('failed', job['state'], job_details)
+        finally:
+            # ensure that we don't leave a bunch of jobs running/waiting
+            util.kill_groups(self.cook_url, [group_uuid])
+
+    def test_group_change_retries(self):
+        group_spec = self.minimal_group()
+        group_uuid = group_spec['uuid']
+        job_spec = {'group': group_uuid, 'command': f'sleep 1'}
+        try:
+            jobs, resp = util.submit_jobs(self.cook_url, job_spec, 10, groups=[group_spec])
+            self.assertEqual(resp.status_code, 201)
+
+            def group_query():
+                return util.group_detail_query(self.cook_url, group_uuid)
+
+            # wait for some job to start
+            util.wait_until(group_query, util.group_some_job_started)
+            # wait for at least one job in the group to complete
+            self.logger.info(f'Waiting for some job in group {group_uuid} to complete.')
+
+            def group_query():
+                return util.group_detail_query(self.cook_url, group_uuid)
+
+            # When this wait condition succeeds, we expect at least one job to be completed,
+            # a couple of jobs to be running (sleeping for 1 second should be long enough
+            # to dominate any lag in the test code), and some still waiting.
+            # If this is run in a larger mesos cluster with many jobs executing in parallel,
+            # then all of the jobs may complete around the same time. However, we would
+            # expect the behavior described above in our usual scaled-down testing environments
+            # (i.e., Travis-CI VMs and minimesos using local docker instances).
+            response = util.wait_until(group_query, util.group_some_job_done)
+            job_data = util.query_jobs(self.cook_url, job=jobs).json()
+            # retry all jobs in the group
+            util.retry_jobs(self.cook_url, retries=12, groups=[group_uuid])
+            # wait for the previously-completed jobs to restart
+            prev_completed_jobs = [ j for j in job_data if j['status'] == 'completed' ]
+            assert len(prev_completed_jobs) >= 1
+
+            def jobs_query():
+                return util.query_jobs(self.cook_url, True, job=prev_completed_jobs)
+
+            def all_completed_restarted(response):
+                for job in response.json():
+                    instance_count = len(job['instances'])
+                    if job['status'] == 'completed' and instance_count < 2:
+                        self.logger.debug(f"Completed job {job['uuid']} has fewer than 2 instances: {instance_count}")
+                        return False
+                return True
+
+            response = util.wait_until(jobs_query, all_completed_restarted)
+            # ensure that all of the jobs have an updated retries count (set to 12 above)
+            job_data = util.query_jobs(self.cook_url, job=jobs)
+            self.assertEqual(200, job_data.status_code)
+            for job in job_data.json():
+                job_details = f'Job details: {json.dumps(job, sort_keys=True)}'
+                # Jobs that ran twice will have 10 retries remaining,
+                # Jobs that ran once will have 11 retries remaining.
+                # Jobs that were running during the reset and are still running
+                # will still have all 12 retries remaining.
+                self.assertIn(job['retries_remaining'], [10, 11, 12], job_details)
+        finally:
+            # ensure that we don't leave a bunch of jobs running/waiting
             util.kill_groups(self.cook_url, [group_uuid])
 
     def test_400_on_group_query_without_uuid(self):

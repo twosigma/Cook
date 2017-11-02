@@ -1351,6 +1351,7 @@
 (def UpdateRetriesRequest
   {(s/optional-key :job) s/Uuid
    (s/optional-key :jobs) [s/Uuid]
+   (s/optional-key :groups) [s/Uuid]
    (s/optional-key :retries) PosNum
    (s/optional-key :increment) PosNum})
 
@@ -1362,35 +1363,64 @@
   "Reads a set of job UUIDs from the request, supporting \"job\" in the query,
   and either \"job\" or \"jobs\" in the body, while accommodating some aspects of
   liberator and compojure-api. For example, compojure-api doesn't support
-  applying a schema to a combination of query parameters and body parameters."
+  applying a schema to a combination of query parameters and body parameters.
+  Returns the cached value stored in the context under the ::jobs key if
+  the jobs were previously stored there by an earlier liberator context update."
   [ctx]
-  (or (vectorize (get-in ctx [:request :query-params :job]))
+  (or (::jobs ctx)
+      (vectorize (get-in ctx [:request :query-params :job]))
       ;; if the query params are coerceable, both :job and "job" keys will be
       ;; present, but in that case we only want to read the coerced version
       (when-let [uncoerced-query-params (get-in ctx [:request :query-params "job"])]
         (mapv #(UUID/fromString %) (vectorize uncoerced-query-params)))
       (get-in ctx [:request :body-params :jobs])
-      [(get-in ctx [:request :body-params :job])]))
+      (vectorize (get-in ctx [:request :body-params :job]))))
 
 (defn check-jobs-exist
   [conn ctx]
   (let [jobs (jobs-from-request ctx)
         jobs-not-existing (remove (partial job-exists? (d/db conn)) jobs)]
-    (if (seq jobs-not-existing)
+    (cond
+      ; error case
+      (seq jobs-not-existing)
       [false {::error (->> jobs-not-existing
                            (map #(str "UUID " % " does not correspond to a job."))
                            (str/join \space))}]
-      [true {::jobs jobs}])))
+
+      ; if the context doesn't already have ::jobs, add it
+      (nil? (::jobs ctx))
+      [true {::jobs jobs}]
+
+      ; otherwise, no update needed
+      :else true)))
+
+(defn check-groups-exist
+  "Check if all of the group UUIDs provided via ::groups are valid."
+  [conn ctx]
+  (let [guuids (::groups ctx)
+        bad-guuids (remove #(d/entity (d/db conn) [:group/uuid %]) guuids)]
+    (if (seq bad-guuids)
+      [false {::error (->> bad-guuids
+                           (map #(str "UUID " % " does not correspond to a group."))
+                           (str/join \space))}]
+      true)))
+
+(defn check-jobs-and-groups-exist
+  "Check if all of the ::jobs and ::groups in the context are valid."
+  [conn ctx]
+  (and (check-jobs-exist conn ctx)
+       (check-groups-exist conn ctx)))
 
 (defn validate-retries
   [conn task-constraints ctx]
   (let [retries (get-in ctx [:request :body-params :retries])
         increment (get-in ctx [:request :body-params :increment])
         jobs (jobs-from-request ctx)
+        groups (get-in ctx [:request :body-params :groups])
         retry-limit (:retry-limit task-constraints)]
     (cond
-      (empty? jobs)
-      [true {:error "Need to specify at least 1 job."}]
+      (and (empty? jobs) (empty? groups))
+      [true {:error "Need to specify at least 1 job or group."}]
 
       (and (get-in ctx [:request :body-params :job])
            (get-in ctx [:request :body-params :jobs]))
@@ -1422,9 +1452,17 @@
       [true {::error (str "Increment would exceed the maximum retry limit of " retry-limit)}]
 
       :else
-      [false {::retries retries
-              ::increment increment
-              ::jobs jobs}])))
+      (let [db (d/db conn)
+            group-jobs (for [guuid groups
+                             :let [group (d/entity db [:group/uuid guuid])]
+                             job (:group/job group)]
+                         (:job/uuid job))
+            all-jobs (concat jobs group-jobs)]
+        [false {::retries retries
+                ::increment increment
+                ::jobs all-jobs
+                ::non-group-jobs jobs
+                ::groups groups}]))))
 
 (defn user-can-retry-job?
   [conn is-authorized-fn request-user job]
@@ -1434,14 +1472,17 @@
 (defn check-retry-allowed
   [conn is-authorized-fn ctx]
   (let [request-user (get-in ctx [:request :authorization/user])
-        unauthorized-jobs (remove (partial user-can-retry-job?
-                                           conn is-authorized-fn request-user)
-                                  (::jobs ctx))]
-    (if (seq unauthorized-jobs)
-      [false {::error (->> unauthorized-jobs
-                           (map #(str "You are not authorized to retry job " % "."))
-                           (str/join \space))}]
-      true)))
+        unauthorized-job? #(not (user-can-retry-job? conn is-authorized-fn request-user %))]
+    (or (first (for [guuid (::groups ctx)
+                     :let [group (d/entity (db conn) [:group/uuid guuid])
+                           job (-> group :group/job first)]
+                     :when (some-> job unauthorized-job?)]
+                 [false {::error (str "You are not authorized to retry jobs from group " guuid ".")}]))
+        (when-let [unauthorized-jobs (->> ctx ::non-group-jobs (filter unauthorized-job?) seq)]
+          [false {::error (->> unauthorized-jobs
+                               (map #(str "You are not authorized to retry job " % "."))
+                               (str/join \space))}])
+        true)))
 
 (defn base-retries-handler
   [conn is-authorized-fn liberator-attrs]
@@ -1474,7 +1515,7 @@
      ;; we need to check if it's a valid job UUID in malformed? here,
      ;; because this endpoint currently isn't restful (POST used for what is
      ;; actually an idempotent update; it should be PUT).
-     :exists? (partial check-jobs-exist conn)
+     :exists? (partial check-jobs-and-groups-exist conn)
      :malformed? (partial validate-retries conn task-constraints)
      :handle-created (partial display-retries conn)
      :post! (partial retry-jobs! conn)}))
@@ -1484,7 +1525,7 @@
   (base-retries-handler
     conn is-authorized-fn
     {:allowed-methods [:put]
-     :exists? (partial check-jobs-exist conn)
+     :exists? (partial check-jobs-and-groups-exist conn)
      :malformed? (partial validate-retries conn task-constraints)
      :handle-created (partial display-retries conn)
      :put! (partial retry-jobs! conn)}))
