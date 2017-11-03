@@ -190,19 +190,15 @@
    progress-config          -- map, config for progress publishing. See scheduler/docs/configuration.adoc for more details
    framework-id             -- str, the Mesos framework id from the cook settings
    fenzo-config             -- map, config for fenzo, See scheduler/docs/configuration.adoc for more details"
-  [make-mesos-driver-fn get-mesos-utilization curator-framework mesos-datomic-conn mesos-datomic-mult zk-prefix
-   offer-incubate-time-ms mea-culpa-failure-limit task-constraints mesos-pending-jobs-atom offer-cache gpu-enabled?
-   framework-id mesos-leadership-atom riemann-config
-   sandbox-syncer-state
-   {:keys [hostname server-port]}
-   {:keys [executor-config rebalancer-config progress-config] :as additional-config}
-   {:keys [fenzo-fitness-calculator fenzo-floor-iterations-before-reset fenzo-floor-iterations-before-warn
-           fenzo-max-jobs-considered fenzo-scaleback good-enough-fitness]
-    :as fenzo-config}
-   {:keys [cancelled-task-trigger-chan lingering-task-trigger-chan rebalancer-trigger-chan straggler-trigger-chan]
-    :as trigger-chans}]
-  (let [riemann-host (:host riemann-config)
-        riemann-port (:port riemann-config)
+  [{:keys [curator-framework executor-config fenzo-config framework-id get-mesos-utilization gpu-enabled? make-mesos-driver-fn
+           mea-culpa-failure-limit mesos-datomic-conn mesos-datomic-mult mesos-leadership-atom mesos-pending-jobs-atom
+           offer-cache offer-incubate-time-ms progress-config rebalancer-config riemann-host riemann-port
+           sandbox-syncer-state server-config task-constraints trigger-chans zk-prefix]}]
+  (let [{:keys [fenzo-fitness-calculator fenzo-floor-iterations-before-reset fenzo-floor-iterations-before-warn
+                fenzo-max-jobs-considered fenzo-scaleback good-enough-fitness]} fenzo-config
+        {:keys [cancelled-task-trigger-chan lingering-task-trigger-chan rebalancer-trigger-chan
+                straggler-trigger-chan]} trigger-chans
+        {:keys [hostname server-port]} server-config
         datomic-report-chan (async/chan (async/sliding-buffer 4096))
         mesos-heartbeat-chan (async/chan (async/buffer 4096))
         current-driver (atom nil)
@@ -237,7 +233,8 @@
                                           good-enough-fitness
                                           framework-id
                                           sandbox-syncer-state
-                                          additional-config
+                                          executor-config
+                                          progress-config
                                           trigger-chans)
                                         driver (make-mesos-driver-fn scheduler framework-id)]
                                     (mesomatic.scheduler/start! driver)

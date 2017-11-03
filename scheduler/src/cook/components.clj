@@ -104,34 +104,35 @@
                         (try
                           (Class/forName "org.apache.mesos.Scheduler")
                           ((lazy-load-var 'cook.mesos/start-mesos-scheduler)
-                            make-mesos-driver-fn
-                            get-mesos-utilization-fn
-                            curator-framework
-                            mesos-datomic
-                            mesos-datomic-mult
-                            mesos-leader-path
-                            offer-incubate-time-ms
-                            mea-culpa-failure-limit
-                            task-constraints
-                            mesos-pending-jobs-atom
-                            mesos-offer-cache
-                            mesos-gpu-enabled
-                            framework-id
-                            mesos-leadership-atom
-                            riemann
-                            sandbox-syncer-state
-                            {:hostname hostname
-                             :server-port server-port}
-                            {:executor-config executor
+                            {:curator-framework curator-framework
+                             :executor-config executor
+                             :fenzo-config {:fenzo-max-jobs-considered fenzo-max-jobs-considered
+                                            :fenzo-scaleback fenzo-scaleback
+                                            :fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-warn
+                                            :fenzo-floor-iterations-before-reset fenzo-floor-iterations-before-reset
+                                            :fenzo-fitness-calculator fenzo-fitness-calculator
+                                            :good-enough-fitness good-enough-fitness}
+                             :framework-id framework-id
+                             :get-mesos-utilization get-mesos-utilization-fn
+                             :gpu-enabled? mesos-gpu-enabled
+                             :make-mesos-driver-fn make-mesos-driver-fn
+                             :mea-culpa-failure-limit mea-culpa-failure-limit
+                             :mesos-datomic-conn mesos-datomic
+                             :mesos-datomic-mult mesos-datomic-mult
+                             :mesos-leadership-atom mesos-leadership-atom
+                             :mesos-pending-jobs-atom mesos-pending-jobs-atom
+                             :offer-cache mesos-offer-cache
+                             :offer-incubate-time-ms offer-incubate-time-ms
+                             :progress-config progress
                              :rebalancer-config rebalancer
-                             :progress-config progress}
-                            {:fenzo-max-jobs-considered fenzo-max-jobs-considered
-                             :fenzo-scaleback fenzo-scaleback
-                             :fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-warn
-                             :fenzo-floor-iterations-before-reset fenzo-floor-iterations-before-reset
-                             :fenzo-fitness-calculator fenzo-fitness-calculator
-                             :good-enough-fitness good-enough-fitness}
-                            trigger-chans)
+                             :riemann-host (:host riemann)
+                             :riemann-port (:port riemann)
+                             :sandbox-syncer-state sandbox-syncer-state
+                             :server-config {:hostname hostname
+                                             :server-port server-port}
+                             :task-constraints task-constraints
+                             :trigger-chans trigger-chans
+                             :zk-prefix mesos-leader-path})
                           (catch ClassNotFoundException e
                             (log/warn e "Not loading mesos support...")
                             nil))))})

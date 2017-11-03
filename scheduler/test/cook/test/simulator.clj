@@ -109,8 +109,6 @@
                                  :executable true
                                  :extract false
                                  :value "file:///path/to/cook/executor"}}
-         riemann-config# {:host (:riemann-host ~scheduler-config)
-                          :port (:riemann-port ~scheduler-config)}
          gpu-enabled?# (or (:gpus-enabled? ~scheduler-config) false)
          progress-config# {:batch-size 100
                            :pending-threshold 1000
@@ -125,24 +123,31 @@
          trigger-chans# (or (:trigger-chans ~scheduler-config)
                             (c/make-trigger-chans rebalancer-config# progress-config# task-constraints#))]
      (try
-       (let [additional-config# {:executor-config executor-config#
-                                 :rebalancer-config rebalancer-config#
-                                 :progress-config progress-config#}
-             scheduler# (c/start-mesos-scheduler ~make-mesos-driver-fn get-mesos-utilization#
-                                                 curator-framework# ~conn
-                                                 mesos-mult# zk-prefix#
-                                                 offer-incubate-time-ms# mea-culpa-failure-limit#
-                                                 task-constraints#
-                                                 pending-jobs-atom# offer-cache#
-                                                 gpu-enabled?# framework-id#
-                                                 mesos-leadership-atom#
-                                                 riemann-config#
-                                                 sandbox-syncer-state#
-                                                 host-settings#
-                                                 additional-config#
-                                                 fenzo-config#
-                                                 trigger-chans#)]
-         ~@body)
+       (c/start-mesos-scheduler
+         {:curator-framework curator-framework#
+          :executor-config executor-config#
+          :fenzo-config fenzo-config#
+          :framework-id framework-id#
+          :get-mesos-utilization get-mesos-utilization#
+          :gpu-enabled? gpu-enabled?#
+          :make-mesos-driver-fn ~make-mesos-driver-fn
+          :mea-culpa-failure-limit mea-culpa-failure-limit#
+          :mesos-datomic-conn ~conn
+          :mesos-datomic-mult mesos-mult#
+          :mesos-leadership-atom mesos-leadership-atom#
+          :mesos-pending-jobs-atom pending-jobs-atom#
+          :offer-cache offer-cache#
+          :offer-incubate-time-ms offer-incubate-time-ms#
+          :progress-config progress-config#
+          :rebalancer-config rebalancer-config#
+          :riemann-host (:riemann-host ~scheduler-config)
+          :riemann-port (:riemann-port ~scheduler-config)
+          :sandbox-syncer-state sandbox-syncer-state#
+          :server-config host-settings#
+          :task-constraints task-constraints#
+          :trigger-chans trigger-chans#
+          :zk-prefix zk-prefix#})
+       (do ~@body)
        (finally
          (.close curator-framework#)
          (.stop zookeeper-server#)

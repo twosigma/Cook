@@ -1548,12 +1548,12 @@
   [conn driver-atom pending-jobs-atom offer-cache heartbeat-ch offer-incubate-time-ms mea-culpa-failure-limit
    fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset
    fenzo-fitness-calculator task-constraints gpu-enabled? good-enough-fitness framework-id sandbox-syncer-state
-   {:keys [executor-config progress-config]}
-   {:keys [match-trigger-chan progress-updater-trigger-chan rank-trigger-chan] :as trigger-chans}]
+   executor-config progress-config trigger-chans]
 
   (persist-mea-culpa-failure-limit! conn mea-culpa-failure-limit)
 
-  (let [fenzo (make-fenzo-scheduler driver-atom offer-incubate-time-ms fenzo-fitness-calculator good-enough-fitness)
+  (let [{:keys [match-trigger-chan progress-updater-trigger-chan rank-trigger-chan]} trigger-chans
+        fenzo (make-fenzo-scheduler driver-atom offer-incubate-time-ms fenzo-fitness-calculator good-enough-fitness)
         [offers-chan resources-atom]
         (make-offer-handler conn driver-atom fenzo framework-id executor-config pending-jobs-atom offer-cache fenzo-max-jobs-considered
                             fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset match-trigger-chan)
@@ -1561,7 +1561,7 @@
         {:keys [progress-state-chan]} (progress-update-transactor progress-updater-trigger-chan batch-size conn)
         progress-aggregator-chan (progress-update-aggregator progress-config progress-state-chan)
         handle-progress-message (fn handle-progress-message-curried [progress-message-map]
-                                 (handle-progress-message! progress-aggregator-chan progress-message-map))]
+                                  (handle-progress-message! progress-aggregator-chan progress-message-map))]
     (start-jobs-prioritizer! conn pending-jobs-atom task-constraints rank-trigger-chan)
     {:scheduler (create-mesos-scheduler framework-id gpu-enabled? conn heartbeat-ch fenzo offers-chan
                                         match-trigger-chan handle-progress-message sandbox-syncer-state)
