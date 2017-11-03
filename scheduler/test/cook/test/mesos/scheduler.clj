@@ -24,6 +24,7 @@
             [clojure.string :as str]
             [clojure.walk :as walk]
             [cook.mesos.heartbeat :as heartbeat]
+            [cook.mesos.sandbox :as sandbox]
             [cook.mesos.scheduler :as sched]
             [cook.mesos.share :as share]
             [cook.mesos.util :as util]
@@ -1647,7 +1648,7 @@
                                                   (-> status mtypes/pb->data :state)))))
                     (Thread/sleep (rand-int 100))
                     (.countDown latch))]
-      (let [s (sched/create-mesos-scheduler nil true nil nil nil nil nil nil nil nil)]
+      (let [s (sched/create-mesos-scheduler nil true nil nil nil nil nil nil nil)]
 
         (.statusUpdate s nil (mtypes/->pb :TaskStatus {:task-id {} :state :task-starting}))
         (.statusUpdate s nil (mtypes/->pb :TaskStatus {:task-id {:value "T1"} :state :task-starting}))
@@ -1672,14 +1673,14 @@
 (deftest test-framework-message-processing-delegation
   (let [framework-message-store (atom [])
         heartbeat-store (atom [])
-        sandbox-store (atom [])
-        update-sandbox-fn (fn [framework-message]
-                            (swap! sandbox-store conj framework-message))]
+        sandbox-store (atom [])]
     (with-redefs [heartbeat/notify-heartbeat (fn [_ _ _ framework-message]
                                                (swap! heartbeat-store conj framework-message))
+                  sandbox/update-sandbox (fn [_ framework-message]
+                                           (swap! sandbox-store conj framework-message))
                   sched/handle-framework-message (fn [_ _ framework-message]
                                                    (swap! framework-message-store conj framework-message))]
-      (let [s (sched/create-mesos-scheduler nil true nil nil nil nil nil nil nil update-sandbox-fn)
+      (let [s (sched/create-mesos-scheduler nil true nil nil nil nil nil nil nil)
             make-message (fn [message] (-> message json/write-str str (.getBytes "UTF-8")))]
 
         (testing "message delegation"
@@ -1715,7 +1716,7 @@
                       (swap! messages-store update (str task-id) (fn [messages] (conj (or messages []) message))))
                     (Thread/sleep (rand-int 100))
                     (.countDown latch))]
-      (let [s (sched/create-mesos-scheduler nil true nil nil nil nil nil nil nil nil)
+      (let [s (sched/create-mesos-scheduler nil true nil nil nil nil nil nil nil)
             foo 11
             bar 21
             fee 31

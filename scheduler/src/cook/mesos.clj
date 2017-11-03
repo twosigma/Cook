@@ -193,7 +193,7 @@
   [make-mesos-driver-fn get-mesos-utilization curator-framework mesos-datomic-conn mesos-datomic-mult zk-prefix
    offer-incubate-time-ms mea-culpa-failure-limit task-constraints mesos-pending-jobs-atom offer-cache gpu-enabled?
    framework-id mesos-leadership-atom riemann-config
-   {:keys [sync-agent-sandboxes-fn update-sandbox-fn]}
+   sandbox-syncer-state
    {:keys [hostname server-port]}
    {:keys [executor-config rebalancer-config progress-config] :as additional-config}
    {:keys [fenzo-fitness-calculator fenzo-floor-iterations-before-reset fenzo-floor-iterations-before-warn
@@ -236,8 +236,7 @@
                                           gpu-enabled?
                                           good-enough-fitness
                                           framework-id
-                                          sync-agent-sandboxes-fn
-                                          update-sandbox-fn
+                                          sandbox-syncer-state
                                           additional-config
                                           trigger-chans)
                                         driver (make-mesos-driver-fn scheduler framework-id)]

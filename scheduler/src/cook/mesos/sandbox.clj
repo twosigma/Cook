@@ -174,26 +174,31 @@
     (catch Exception e
       (log/error e "Failed to refresh mesos agent state" {:agent agent-hostname}))))
 
+(defn update-sandbox
+  "Sends a message to the agent to update the sandbox information."
+  [{:keys [task-id->sandbox-agent]} {:strs [sandbox-directory task-id]}]
+  (when task-id->sandbox-agent
+    (send task-id->sandbox-agent aggregate-sandbox task-id sandbox-directory)))
+
+(defn sync-agent-sandboxes
+  "Asynchronously triggers state syncing from the mesos agent."
+  [{:keys [mesos-agent-query-cache task-id->sandbox-agent]} framework-id agent-hostname]
+  (when mesos-agent-query-cache task-id->sandbox-agent framework-id agent-hostname
+    (future
+      (refresh-agent-cache-entry
+        framework-id mesos-agent-query-cache task-id->sandbox-agent agent-hostname))))
+
 (defn prepare-sandbox-helpers
   "This function initializes the sandbox publisher as well as helper functions to send individual
    sandbox entries and trigger sandbox syncing of all tasks on a mesos agent.
    It returns a map with the following entries:
+   :mesos-agent-query-cache - the cache that throttles the state sync calls to the mesos agents.
    :publisher-cancel-fn - fn that take no arguments and that terminates the publisher.
-   :sync-agent-sandboxes-fn - fn that accepts n agent hostname and triggers syncing of sandbox entries
-                              of all recent tasks run on that agent.
-   :update-sandbox-fn - fn that accepts a framework message map that contains the `task-id` and
-                        `sandbox-directory` strings. These are then synced individually."
-  [datomic-conn publish-batch-size publish-interval-ms framework-id mesos-agent-query-cache]
+   :task-id->sandbox-agent - The agent that manages the task-id->sandbox aggregation and publishing."
+  [datomic-conn publish-batch-size publish-interval-ms mesos-agent-query-cache]
   (let [task-id->sandbox-agent (agent {}) ;; stores all the pending task-id->sandbox state
         publisher-cancel-fn (start-sandbox-publisher
-                              task-id->sandbox-agent datomic-conn publish-batch-size publish-interval-ms)
-        update-sandbox-fn (fn update-sandbox-fn [{:strs [sandbox-directory task-id]}]
-                            (send task-id->sandbox-agent aggregate-sandbox task-id sandbox-directory))
-        sync-agent-sandboxes-fn (fn sync-agent-sandboxes-fn [agent-hostname]
-                                  (when agent-hostname
-                                    (future
-                                      (refresh-agent-cache-entry
-                                        framework-id mesos-agent-query-cache task-id->sandbox-agent agent-hostname))))]
-    {:publisher-cancel-fn publisher-cancel-fn
-     :sync-agent-sandboxes-fn sync-agent-sandboxes-fn
-     :update-sandbox-fn update-sandbox-fn}))
+                              task-id->sandbox-agent datomic-conn publish-batch-size publish-interval-ms)]
+    {:mesos-agent-query-cache mesos-agent-query-cache
+     :publisher-cancel-fn publisher-cancel-fn
+     :task-id->sandbox-agent task-id->sandbox-agent}))

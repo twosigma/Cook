@@ -251,13 +251,13 @@
           publish-interval-ms 10
           framework-id "test-framework-id"
           mesos-agent-query-cache (atom (cache/fifo-cache-factory {} :threshold 2))
-          {:keys [publisher-cancel-fn sync-agent-sandboxes-fn update-sandbox-fn]}
-          (sandbox/prepare-sandbox-helpers db-conn publish-batch-size publish-interval-ms framework-id mesos-agent-query-cache)]
+          {:keys [publisher-cancel-fn task-id->sandbox-agent] :as sandbox-state}
+          (sandbox/prepare-sandbox-helpers db-conn publish-batch-size publish-interval-ms mesos-agent-query-cache)]
 
-      (let [task-id->sandbox-agent
-            (update-sandbox-fn {"sandbox-directory" "/path/to/sandbox", "task-id" "task-1", "type" "directory"})]
-        @(sync-agent-sandboxes-fn "host1")
-        (await task-id->sandbox-agent)
+      (sandbox/update-sandbox sandbox-state {"sandbox-directory" "/path/to/sandbox", "task-id" "task-1", "type" "directory"})
+      @(sandbox/sync-agent-sandboxes sandbox-state framework-id "host1")
+      (await task-id->sandbox-agent)
 
-        (is (= {"task-1" "/path/to/sandbox", "task.host1" "/path/to/host1/sandbox"} @task-id->sandbox-agent)))
+      (is (= {"task-1" "/path/to/sandbox", "task.host1" "/path/to/host1/sandbox"} @task-id->sandbox-agent))
+
       (publisher-cancel-fn))))

@@ -118,8 +118,7 @@
                            :sequence-cache-threshold 1000}
          rebalancer-config# (merge default-rebalancer-config (:rebalancer-config ~scheduler-config))
          framework-id# "cool-framework-id"
-         sandbox-helper-fns# {:sync-agent-sandboxes-fn (constantly true)
-                              :update-sandbox-fn (constantly true)}
+         sandbox-syncer-state# {:task-id->sandbox-agent (agent {})}
          host-settings# {:server-port 12321 :hostname "localhost"}
          mesos-leadership-atom# (atom false)
          fenzo-config# (merge default-fenzo-config (:fenzo-config ~scheduler-config))
@@ -138,7 +137,7 @@
                                                  gpu-enabled?# framework-id#
                                                  mesos-leadership-atom#
                                                  riemann-config#
-                                                 sandbox-helper-fns#
+                                                 sandbox-syncer-state#
                                                  host-settings#
                                                  additional-config#
                                                  fenzo-config#
