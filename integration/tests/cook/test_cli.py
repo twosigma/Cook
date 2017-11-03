@@ -1056,3 +1056,16 @@ class CookCliTest(unittest.TestCase):
             cp, jobs = cli.show_json(uuids, self.cook_url)
             self.assertEqual('export FOO=0; exit ${FOO:-1}', jobs[0]['command'])
             self.assertEqual('success', jobs[0]['state'])
+
+    def test_config_command(self):
+        config = {'defaults': {'submit': {'command-prefix': 'export FOO=0; '}}}
+        with cli.temp_config_file(config) as path:
+            flags = '--config %s' % path
+            cp = cli.config_get('defaults.submit.command-prefix', flags=flags)
+            self.assertEqual(0, cp.returncode, cp.stderr)
+            self.assertEqual('export FOO=0; \n', cli.decode(cp.stdout))
+            cp = cli.config_set('defaults.submit.command-prefix', '"export FOO=1; "', flags=flags)
+            self.assertEqual(0, cp.returncode, cp.stderr)
+            cp = cli.config_get('defaults.submit.command-prefix', flags=flags)
+            self.assertEqual(0, cp.returncode, cp.stderr)
+            self.assertEqual('export FOO=1; \n', cli.decode(cp.stdout))

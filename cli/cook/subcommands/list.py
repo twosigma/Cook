@@ -9,7 +9,7 @@ from tabulate import tabulate
 from cook import colors, http
 from cook.format import format_job_memory, format_job_attempts, format_job_status
 from cook.querying import query_across_clusters
-from cook.util import current_user, print_info, millis_to_date_string, check_positive
+from cook.util import current_user, print_info, millis_to_date_string, check_positive, guard_no_cluster
 
 MILLIS_PER_HOUR = 60 * 60 * 1000
 DEFAULT_LOOKBACK_HOURS = 6
@@ -99,6 +99,7 @@ def lookback_hours_to_range(lookback_hours):
 
 def list_jobs(clusters, args, _):
     """Prints info for the jobs with the given list criteria"""
+    guard_no_cluster(clusters)
     as_json = args.get('json')
     states = args.get('states')
     user = args.get('user')

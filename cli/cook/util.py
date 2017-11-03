@@ -130,3 +130,9 @@ def check_positive(value):
     if integer <= 0:
         raise argparse.ArgumentTypeError(f'{value} is not a positive integer')
     return integer
+
+
+def guard_no_cluster(clusters):
+    """Throws if no clusters have been specified, either via configuration or via the command line"""
+    if not clusters:
+        raise Exception('You must specify at least one cluster.')

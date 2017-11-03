@@ -46,10 +46,6 @@ def load_target_clusters(config_map, url=None, cluster=None):
         else:
             clusters = [c for c in config_clusters if 'disabled' not in c or not c['disabled']]
 
-    if not clusters:
-        raise Exception('%s\nYour current configuration is:\n%s' %
-                        (colors.failed('You must specify at least one cluster.'), json.dumps(config_map, indent=2)))
-
     return clusters
 
 

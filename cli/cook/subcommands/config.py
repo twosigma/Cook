@@ -4,7 +4,7 @@ from cook import configuration, colors
 from cook.configuration import load_config
 
 
-def get_in(dct, *keys):
+def get_in(dct, keys):
     """Gets the value in dct at the nested path indicated by keys"""
     for key in keys:
         try:
@@ -14,7 +14,7 @@ def get_in(dct, *keys):
     return dct
 
 
-def set_in(dct, value, *keys):
+def set_in(dct, keys, value):
     """Sets the value in dct at the nested path indicated by keys"""
     for key in keys[:-1]:
         try:
@@ -42,6 +42,34 @@ def is_float(s):
         return False
 
 
+def get_config_value(config_map, keys):
+    """Attempts to print the config value at the location specified by keys"""
+    value = get_in(config_map, keys)
+    if value is None:
+        print_info(f'Configuration entry {colors.failed(".".join(keys))} not found.')
+        return 1
+    else:
+        print(value)
+        return 0
+
+
+def set_config_value(config_map, keys, value, config_path):
+    """Attempts to set the config entry at the location specified by keys to value"""
+    if is_int(value):
+        value = int(value)
+    elif is_float(value):
+        value = float(value)
+    elif value.lower() == 'true':
+        value = True
+    elif value.lower() == 'false':
+        value = False
+
+    set_in(config_map, keys, value)
+    print_info(f'Updating configuration in {colors.bold(config_path)}.')
+    configuration.save_config(config_path, config_map)
+    return 0
+
+
 def config(_, args, config_path):
     """
     Gets or sets the value for a given configuration key, where
@@ -64,29 +92,12 @@ def config(_, args, config_path):
     config_path, config_map = load_config(config_path)
 
     if not config_path or not config_map:
-        raise Exception(f'Unable to locate configuration.')
+        raise Exception(f'Unable to locate configuration file.')
 
     if get:
-        value = get_in(config_map, *keys)
-        if value is None:
-            return 1
-        else:
-            print(value)
-            return 0
+        return get_config_value(config_map, keys)
     else:
-        if is_int(value):
-            value = int(value)
-        elif is_float(value):
-            value = float(value)
-        elif value.lower() == "true":
-            value = True
-        elif value.lower() == "false":
-            value = False
-
-        set_in(config_map, value, *keys)
-        print_info(f'Updating configuration in {colors.bold(config_path)}.')
-        configuration.save_config(config_path, config_map)
-        return 0
+        return set_config_value(config_map, keys, value, config_path)
 
 
 def register(add_parser, _):

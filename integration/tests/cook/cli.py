@@ -188,3 +188,15 @@ def version():
         return version_string
     else:
         raise Exception(f'Unable to parse version from {string}')
+
+
+def config_get(key, flags):
+    """Invokes the config subcommand to get a config value"""
+    cp = cli(f'config --get {key}', flags=flags)
+    return cp
+
+
+def config_set(key, value, flags):
+    """Invokes the config subcommand to set a config value"""
+    cp = cli(f'config {key} {value}', flags=flags)
+    return cp
