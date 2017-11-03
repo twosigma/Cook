@@ -183,12 +183,12 @@
 (defn sync-agent-sandboxes
   "Asynchronously triggers state syncing from the mesos agent."
   [{:keys [mesos-agent-query-cache task-id->sandbox-agent]} framework-id agent-hostname]
-  (when mesos-agent-query-cache task-id->sandbox-agent framework-id agent-hostname
+  (when (and mesos-agent-query-cache task-id->sandbox-agent framework-id agent-hostname)
     (future
       (refresh-agent-cache-entry
         framework-id mesos-agent-query-cache task-id->sandbox-agent agent-hostname))))
 
-(defn prepare-sandbox-helpers
+(defn prepare-sandbox-publisher
   "This function initializes the sandbox publisher as well as helper functions to send individual
    sandbox entries and trigger sandbox syncing of all tasks on a mesos agent.
    It returns a map with the following entries:

@@ -282,9 +282,9 @@
                                     atom))
      :sandbox-syncer-state (fnk [[:settings [:sandbox-syncer publish-batch-size publish-interval-ms]]
                                  mesos-agent-query-cache mesos-datomic]
-                             (let [prepare-sandbox-helpers (lazy-load-var 'cook.mesos.sandbox/prepare-sandbox-helpers)]
-                               (prepare-sandbox-helpers mesos-datomic publish-batch-size publish-interval-ms
-                                                        mesos-agent-query-cache)))
+                             (let [prepare-sandbox-publisher (lazy-load-var 'cook.mesos.sandbox/prepare-sandbox-publisher)]
+                               (prepare-sandbox-publisher mesos-datomic publish-batch-size publish-interval-ms
+                                                          mesos-agent-query-cache)))
      :mesos-leadership-atom (fnk [] (atom false))
      :mesos-pending-jobs-atom (fnk [] (atom {}))
      :mesos-offer-cache (fnk [[:settings [:offer-cache max-size ttl-ms]]]

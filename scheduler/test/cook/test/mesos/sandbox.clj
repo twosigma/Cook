@@ -243,7 +243,7 @@
               "task.host3.com" "/path/to/host3.com/sandbox"}
              @task-id->sandbox-agent)))))
 
-(deftest test-prepare-sandbox-helpers
+(deftest test-prepare-sandbox-publisher
   (with-redefs [sandbox/retrieve-sandbox-directories-on-agent
                 (fn [_ hostname] {(str "task." hostname) (str "/path/to/" hostname "/sandbox")})]
     (let [db-conn (tu/restore-fresh-database! "datomic:mem://test-start-sandbox-publisher")
@@ -252,7 +252,7 @@
           framework-id "test-framework-id"
           mesos-agent-query-cache (atom (cache/fifo-cache-factory {} :threshold 2))
           {:keys [publisher-cancel-fn task-id->sandbox-agent] :as sandbox-state}
-          (sandbox/prepare-sandbox-helpers db-conn publish-batch-size publish-interval-ms mesos-agent-query-cache)]
+          (sandbox/prepare-sandbox-publisher db-conn publish-batch-size publish-interval-ms mesos-agent-query-cache)]
 
       (sandbox/update-sandbox sandbox-state {"sandbox-directory" "/path/to/sandbox", "task-id" "task-1", "type" "directory"})
       @(sandbox/sync-agent-sandboxes sandbox-state framework-id "host1")
