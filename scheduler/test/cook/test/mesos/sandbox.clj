@@ -23,7 +23,7 @@
             [datomic.api :as d]
             [metrics.counters :as counters]
             [plumbing.core :as pc])
-  (:import (java.util.concurrent CountDownLatch)))
+  (:import (java.util.concurrent CountDownLatch TimeUnit)))
 
 (deftest test-agent->task-id->sandbox
   (let [task-id->sandbox-agent (agent {})]
@@ -161,7 +161,7 @@
 
       (let [cancel-fn (sandbox/start-sandbox-publisher
                         task-id->sandbox-agent db-conn publish-batch-size publish-interval-ms)]
-        (.await latch)
+        (.await latch 10 TimeUnit/SECONDS)
         (cancel-fn)
 
         (is (= {} @task-id->sandbox-agent))

@@ -342,10 +342,10 @@ def wait_for_sandbox_directory(cook_url, job_id, max_delay_ms=4000):
     job_id = unpack_uuid(job_id)
 
     def query():
-        return query_jobs(cook_url, True, job=[job_id])
+        response = query_jobs(cook_url, True, job=[job_id])
+        return response.json()[0]
 
-    def predicate(resp):
-        job = resp.json()[0]
+    def predicate(job):
         if not job['instances']:
             logger.info(f"Job {job_id} has no instances.")
         else:
@@ -356,8 +356,7 @@ def wait_for_sandbox_directory(cook_url, job_id, max_delay_ms=4000):
                 logger.info(f"Job {job_id} instance {inst['task_id']} has exit code {inst['sandbox_directory']}.")
                 return True
 
-    response = wait_until(query, predicate, max_wait_ms=max_delay_ms, wait_interval_ms=250)
-    return response.json()[0]
+    return wait_until(query, predicate, max_wait_ms=max_delay_ms, wait_interval_ms=250)
 
 
 def wait_for_end_time(cook_url, job_id, max_delay_ms=2000):

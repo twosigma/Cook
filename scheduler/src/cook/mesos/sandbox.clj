@@ -81,7 +81,7 @@
       (doseq [task-id->sandbox-partition (partition-all batch-size task-id->sandbox)]
         (try
           (let [datomic-db (d/db datomic-conn)
-                task-ids-with-sandbox (->> (d/q '[:find ?t ?s
+                task-ids-with-sandbox (->> (d/q '[:find ?t
                                                   :in $ [?t ...]
                                                   :where
                                                   [?e :instance/task-id ?t]
