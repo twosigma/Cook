@@ -97,7 +97,7 @@ def lookback_hours_to_range(lookback_hours):
     return start_ms, end_ms
 
 
-def list_jobs(clusters, args):
+def list_jobs(clusters, args, _):
     """Prints info for the jobs with the given list criteria"""
     as_json = args.get('json')
     states = args.get('states')

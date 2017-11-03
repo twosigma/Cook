@@ -88,7 +88,7 @@ def kill_entities(query_result, clusters):
     return num_failures
 
 
-def kill(clusters, args):
+def kill(clusters, args, _):
     """Attempts to kill the jobs / instances / groups with the given UUIDs."""
     uuids = strip_all(args.get('uuid'))
     query_result = query(clusters, uuids)

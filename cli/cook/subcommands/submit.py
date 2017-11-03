@@ -141,7 +141,7 @@ def acquire_commands(command_args):
     return commands
 
 
-def submit(clusters, args):
+def submit(clusters, args, _):
     """
     Submits a job (or multiple jobs) to cook scheduler. Assembles a list of jobs,
     potentially getting data from configuration, the command line, and stdin.

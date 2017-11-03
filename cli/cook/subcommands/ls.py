@@ -100,7 +100,7 @@ def ls_for_instance(instance, sandbox_dir, path, long_format, as_json):
             logging.info('the directory is empty')
 
 
-def ls(clusters, args):
+def ls(clusters, args, _):
     """Lists contents of the corresponding Mesos sandbox path by job or instance uuid."""
     uuids = strip_all(args.get('uuid'))
     path = args.get('path')

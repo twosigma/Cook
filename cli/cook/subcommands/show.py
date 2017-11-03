@@ -143,7 +143,7 @@ def show_data(cluster_name, data, format_fn):
     return count
 
 
-def show(clusters, args):
+def show(clusters, args, _):
     """Prints info for the jobs / instances / groups with the given UUIDs."""
     as_json = args.get('json')
     uuids = strip_all(args.get('uuid'))

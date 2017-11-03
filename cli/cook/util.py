@@ -1,8 +1,6 @@
 """Module containing utility functions that don't fit nicely anywhere else."""
 
 import argparse
-import json
-import logging
 import os
 import sys
 import time
@@ -31,31 +29,6 @@ def deep_merge(a, b):
 def read_lines():
     """Read lines from stdin."""
     return sys.stdin.read().splitlines()
-
-
-def load_json_file(path):
-    """Decode a JSON formatted file."""
-    content = None
-
-    if os.path.isfile(path):
-        with open(path) as json_file:
-            try:
-                logging.debug('attempting to load json configuration from %s' % path)
-                content = json.load(json_file)
-            except Exception:
-                pass
-    else:
-        logging.info(f'{path} is not a file')
-
-    return content
-
-
-def load_first_json_file(paths):
-    """Returns the contents of the first parseable JSON file in a list of paths."""
-    if paths is None:
-        paths = []
-    contents = (load_json_file(os.path.abspath(p)) for p in paths if p)
-    return next((c for c in contents if c), None)
 
 
 def wait_until(pred, timeout=30, interval=5):

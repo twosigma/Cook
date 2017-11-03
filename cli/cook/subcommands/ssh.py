@@ -16,7 +16,7 @@ def ssh_to_instance(instance, sandbox_dir):
     os.execlp(command, 'ssh', '-t', hostname, f'cd "{sandbox_dir}" ; bash')
 
 
-def ssh(clusters, args):
+def ssh(clusters, args, _):
     """Attempts to ssh (using os.execlp) to the Mesos agent corresponding to the given job or instance uuid."""
     uuids = strip_all(args.get('uuid'))
     if len(uuids) > 1:

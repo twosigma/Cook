@@ -1,32 +1,11 @@
 import argparse
 import json
 import logging
-import os
 from urllib.parse import urlparse
 
-from cook import util, http, colors, metrics, version
-from cook.subcommands import submit, show, wait, list, ssh, ls, tail, kill
-from cook.util import deep_merge, load_first_json_file
-
-# Default locations to check for configuration files if one isn't given on the command line
-DEFAULT_CONFIG_PATHS = ['.cs.json',
-                        os.path.expanduser('~/.cs.json')]
-
-DEFAULT_CONFIG = {'defaults': {},
-                  'http': {'retries': 2,
-                           'connect-timeout': 3.05,
-                           'read-timeout': 20,
-                           'modules': {'session-module': 'requests',
-                                       'adapters-module': 'requests.adapters'}},
-                  'metrics': {'disabled': True,
-                              'timeout': 0.15,
-                              'max-retries': 2}}
-
-
-def add_defaults(action, defaults):
-    """Adds default arguments for the given action to the DEFAULT_CONFIG map"""
-    DEFAULT_CONFIG['defaults'][action] = defaults
-
+from cook import util, http, colors, metrics, version, configuration
+from cook.subcommands import submit, show, wait, list, ssh, ls, tail, kill, config
+from cook.util import deep_merge
 
 parser = argparse.ArgumentParser(description='cs is the Cook Scheduler CLI')
 parser.add_argument('--cluster', '-c', help='the name of the Cook scheduler cluster to use')
@@ -39,23 +18,24 @@ parser.add_argument('--version', help='output version information and exit', des
 
 subparsers = parser.add_subparsers(dest='action')
 
-actions = {'submit': submit.register(subparsers.add_parser, add_defaults),
-           'show': show.register(subparsers.add_parser, add_defaults),
-           'wait': wait.register(subparsers.add_parser, add_defaults),
-           'list': list.register(subparsers.add_parser, add_defaults),
-           'ssh': ssh.register(subparsers.add_parser, add_defaults),
-           'ls': ls.register(subparsers.add_parser, add_defaults),
-           'tail': tail.register(subparsers.add_parser, add_defaults),
-           'kill': kill.register(subparsers.add_parser, add_defaults)}
+actions = {'submit': submit.register(subparsers.add_parser, configuration.add_defaults),
+           'show': show.register(subparsers.add_parser, configuration.add_defaults),
+           'wait': wait.register(subparsers.add_parser, configuration.add_defaults),
+           'list': list.register(subparsers.add_parser, configuration.add_defaults),
+           'ssh': ssh.register(subparsers.add_parser, configuration.add_defaults),
+           'ls': ls.register(subparsers.add_parser, configuration.add_defaults),
+           'tail': tail.register(subparsers.add_parser, configuration.add_defaults),
+           'kill': kill.register(subparsers.add_parser, configuration.add_defaults),
+           'config': config.register(subparsers.add_parser, configuration.add_defaults)}
 
 
-def load_target_clusters(config, url=None, cluster=None):
+def load_target_clusters(config_map, url=None, cluster=None):
     """Given the config and (optional) url and cluster flags, returns the list of clusters to target"""
     if cluster and url:
         raise Exception('You cannot specify both a cluster name and a cluster url at the same time')
 
     clusters = None
-    config_clusters = config.get('clusters')
+    config_clusters = config_map.get('clusters')
     if url:
         if urlparse(url).scheme == '':
             url = 'http://%s' % url
@@ -68,24 +48,9 @@ def load_target_clusters(config, url=None, cluster=None):
 
     if not clusters:
         raise Exception('%s\nYour current configuration is:\n%s' %
-                        (colors.failed('You must specify at least one cluster.'), json.dumps(config, indent=2)))
+                        (colors.failed('You must specify at least one cluster.'), json.dumps(config_map, indent=2)))
 
     return clusters
-
-
-def load_config(config_path=None):
-    """Loads the configuration map to use"""
-    if config_path:
-        if os.path.isfile(config_path):
-            with open(config_path) as json_file:
-                config = json.load(json_file)
-        else:
-            raise Exception('The configuration path specified (%s) is not valid' % config_path)
-    else:
-        config = load_first_json_file(DEFAULT_CONFIG_PATHS) or {}
-    config = deep_merge(DEFAULT_CONFIG, config)
-    logging.debug('using configuration: %s' % config)
-    return config
 
 
 def run(args):
@@ -121,16 +86,16 @@ def run(args):
     if action is None:
         parser.print_help()
     else:
-        config = load_config(config_path)
+        config_map = configuration.load_config_with_defaults(config_path)
         try:
-            metrics.initialize(config)
+            metrics.initialize(config_map)
             metrics.inc('command.%s.runs' % action)
-            clusters = load_target_clusters(config, url, cluster)
-            http.configure(config)
+            clusters = load_target_clusters(config_map, url, cluster)
+            http.configure(config_map)
             args = {k: v for k, v in args.items() if v is not None}
-            defaults = config.get('defaults')
+            defaults = config_map.get('defaults')
             action_defaults = (defaults.get(action) if defaults else None) or {}
-            result = actions[action](clusters, deep_merge(action_defaults, args))
+            result = actions[action](clusters, deep_merge(action_defaults, args), config_path)
             logging.debug('result: %s' % result)
             return result
         finally:

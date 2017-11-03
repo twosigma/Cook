@@ -26,7 +26,7 @@ def all_groups_completed(groups):
         return False
 
 
-def wait(clusters, args):
+def wait(clusters, args, _):
     """Waits for jobs / instances / groups with the given UUIDs to complete."""
     timeout = args.get('timeout')
     interval = args.get('interval')

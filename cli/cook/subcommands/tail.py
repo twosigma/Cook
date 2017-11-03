@@ -138,7 +138,7 @@ def tail_for_instance(instance, sandbox_dir, path, num_lines_to_print, follow, f
         tail_follow(file_size, read, follow_sleep_seconds)
 
 
-def tail(clusters, args):
+def tail(clusters, args, _):
     """Tails the contents of the corresponding Mesos sandbox path by job or instance uuid."""
     uuids = strip_all(args.get('uuid'))
     paths = strip_all(args.get('path'))
