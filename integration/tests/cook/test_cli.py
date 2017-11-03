@@ -899,6 +899,8 @@ class CookCliTest(unittest.TestCase):
             cp = cli.show(uuids, self.cook_url)
             self.assertEqual(0, cp.returncode, cp.stderr)
             self.assertIn("99% We are so close!", cli.stdout(cp))
+
+            time.sleep(1.0) # allow the executor to wrap up
             cp = cli.tail(uuids[0], 'stdout', self.cook_url, '--lines 100')
             self.logger.debug(f'Contents of stdout: {cli.decode(cp.stdout)}')
             self.assertIn("99 We are so close!", cli.decode(cp.stdout))
@@ -927,6 +929,8 @@ class CookCliTest(unittest.TestCase):
             self.assertEqual("We are so close!", instance['progress_message'])
             cp = cli.show(uuids, self.cook_url)
             self.assertEqual(0, cp.returncode, cp.stderr)
+
+            time.sleep(1.0) # allow the executor to wrap up
             cp = cli.tail(uuids[0], 'stdout', self.cook_url, '--lines 100')
             self.logger.debug(f'Contents of stdout: {cli.decode(cp.stdout)}')
             self.assertIn('Command exited with status 0', cli.decode(cp.stdout))
