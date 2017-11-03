@@ -54,7 +54,7 @@ def load_config(config_path):
             with open(config_path) as json_file:
                 config = json.load(json_file)
         else:
-            raise Exception(f'The configuration path specified ({config_path}) is not valid')
+            raise Exception(f'The configuration path specified ({config_path}) is not valid.')
     else:
         config_path, config = __load_first_json_file(DEFAULT_CONFIG_PATHS)
 

@@ -7,6 +7,8 @@ from cook.configuration import load_config
 def get_in(dct, keys):
     """Gets the value in dct at the nested path indicated by keys"""
     for key in keys:
+        if not isinstance(dct, dict):
+            return None
         try:
             dct = dct[key]
         except KeyError:
@@ -17,11 +19,14 @@ def get_in(dct, keys):
 def set_in(dct, keys, value):
     """Sets the value in dct at the nested path indicated by keys"""
     for key in keys[:-1]:
-        try:
-            dct = dct[key]
-        except KeyError:
-            return None
-    dct[keys[-1]] = value
+        if key not in dct:
+            dct[key] = {}
+        dct = dct[key]
+    leaf_key = keys[-1]
+    if leaf_key in dct and isinstance(dct[leaf_key], dict):
+        raise Exception(f'Unable to set value because {".".join(keys)} is a configuration section.')
+    else:
+        dct[leaf_key] = value
 
 
 def is_int(s):
@@ -45,12 +50,15 @@ def is_float(s):
 def get_config_value(config_map, keys):
     """Attempts to print the config value at the location specified by keys"""
     value = get_in(config_map, keys)
+
     if value is None:
-        print_info(f'Configuration entry {colors.failed(".".join(keys))} not found.')
-        return 1
-    else:
-        print(value)
-        return 0
+        raise Exception(f'Configuration entry {".".join(keys)} not found.')
+
+    if isinstance(value, dict):
+        raise Exception(f'Unable to get value because {".".join(keys)} is a configuration section.')
+
+    print(value)
+    return 0
 
 
 def set_config_value(config_map, keys, value, config_path):
@@ -91,7 +99,7 @@ def config(_, args, config_path):
     keys = key[0].split('.')
     config_path, config_map = load_config(config_path)
 
-    if not config_path or not config_map:
+    if not config_path:
         raise Exception(f'Unable to locate configuration file.')
 
     if get:
