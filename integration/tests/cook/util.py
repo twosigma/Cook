@@ -137,7 +137,8 @@ def retry_jobs(cook_url, assert_response=True, **kwargs):
     """Retry one or more jobs and/or groups of jobs"""
     response = session.put(f'{cook_url}/retry', json=kwargs)
     if assert_response:
-        assert 201 == response.status_code, response.content
+        response_info = {'code': response.status_code, 'msg': response.content}
+        assert 201 == response.status_code, response_info
     return response
 
 
@@ -220,7 +221,7 @@ def wait_until(query, predicate, max_wait_ms=30000, wait_interval_ms=1000):
         response = query()
         if not predicate(response):
             error_msg = "wait_until condition not yet met, retrying..."
-            logger.info(error_msg)
+            logger.debug(error_msg)
             raise RuntimeError(error_msg)
         else:
             logger.info("wait_until condition satisfied")
@@ -230,7 +231,7 @@ def wait_until(query, predicate, max_wait_ms=30000, wait_interval_ms=1000):
         return wait_until_inner()
     except:
         final_response = query()
-        logger.info(f"Timeout exceeded waiting for condition. Details: {final_response}")
+        logger.info(f"Timeout exceeded waiting for condition. Details: {final_response.content}")
         raise
 
 

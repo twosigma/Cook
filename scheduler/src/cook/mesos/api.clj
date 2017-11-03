@@ -987,40 +987,6 @@
     x
     [x]))
 
-(def cook-coercer
-  "This coercer adds to compojure-api's default-coercion-matchers by
-  converting keys from snake_case to kebab-case for requests and from
-  kebab-case to snake_case for responses. For example, this allows clients to
-  pass 'max_retries' when submitting a job, even though the job schema has
-  :max-retries (with a dash instead of an underscore). For more information on
-  coercion in compojure-api, see:
-
-    https://github.com/metosin/compojure-api/wiki/Validation-and-coercion"
-  (constantly
-    (-> c-mw/default-coercion-matchers
-      (update :body
-              (fn [their-matchers]
-                (fn [s]
-                  (or (their-matchers s)
-                      (get {;; can't use form->kebab-case because env and label
-                            ;; accept arbitrary kvs
-                            JobRequestMap (partial map-keys ->kebab-case)
-                            Group (partial map-keys ->kebab-case)
-                            HostPlacement (fn [hp]
-                                            (update hp :type keyword))
-                            StragglerHandling (fn [sh]
-                                                (update sh :type keyword))}
-                           s)))))
-      (update :response
-              (fn [their-matchers]
-                (fn [s]
-                  (or (their-matchers s)
-                      (get {JobResponse (partial map-keys ->snake_case)
-                            GroupResponse (partial map-keys ->snake_case)
-                            s/Uuid str}
-                           s))))))))
-
-
 (defn create-jobs!
   "Based on the context, persists the specified jobs, along with their groups,
   to Datomic.
@@ -1306,12 +1272,22 @@
   {(s/optional-key :job) s/Uuid
    (s/optional-key :jobs) [s/Uuid]
    (s/optional-key :groups) [s/Uuid]
+   (s/optional-key :failed-only) s/Bool
    (s/optional-key :retries) PosNum
    (s/optional-key :increment) PosNum})
 
 (defn display-retries
   [conn ctx]
-  (:job/max-retries (d/entity (db conn) [:job/uuid (-> ctx ::jobs first)])))
+  (if-let [first-job (-> ctx ::jobs first)]
+    (:job/max-retries (d/entity (db conn) [:job/uuid first-job]))
+    ; zero indicates that there were no non-failed jobs
+    ; (this can only happen when the failed-only flag is set)
+    0))
+
+(defn job-failed?
+  "Checks if the specified job is in a failed state."
+  [db juuid]
+  (->> [:job/uuid juuid] (d/entity db) util/job-ent->state (= "failed")))
 
 (defn jobs-from-request
   "Reads a set of job UUIDs from the request, supporting \"job\" in the query,
@@ -1332,14 +1308,21 @@
 
 (defn check-jobs-exist
   [conn ctx]
-  (let [jobs (jobs-from-request ctx)
-        jobs-not-existing (remove (partial job-exists? (d/db conn)) jobs)]
+  (let [db (d/db conn)
+        jobs (jobs-from-request ctx)
+        jobs-not-existing (remove (partial job-exists? db) jobs)]
     (cond
       ; error case
       (seq jobs-not-existing)
       [false {::error (->> jobs-not-existing
                            (map #(str "UUID " % " does not correspond to a job."))
                            (str/join \space))}]
+
+      ; remove non-failed jobs if necessary
+      (::failed-only? ctx)
+      [true {::jobs (with-meta
+                      (filterv (partial job-failed? db) (::jobs ctx))
+                      {:replace true})}]
 
       ; if the context doesn't already have ::jobs, add it
       (nil? (::jobs ctx))
@@ -1362,8 +1345,15 @@
 (defn check-jobs-and-groups-exist
   "Check if all of the ::jobs and ::groups in the context are valid."
   [conn ctx]
-  (and (check-jobs-exist conn ctx)
-       (check-groups-exist conn ctx)))
+  (let [[jobs-ok? jobs-ctx' :as jobs-result] (vectorize (check-jobs-exist conn ctx))]
+    (if-not jobs-ok?
+      jobs-result
+      (let [[groups-ok? groups-ctx' :as groups-result] (vectorize (check-groups-exist conn ctx))]
+        (cond
+          (not groups-ok?) groups-result
+          (not (or jobs-ctx' groups-ctx')) true
+          (and jobs-ctx' groups-ctx') [true (combine jobs-ctx' groups-ctx')]
+          :else [true (or jobs-ctx' groups-ctx')])))))
 
 (defn validate-retries
   [conn task-constraints ctx]
@@ -1371,6 +1361,7 @@
         increment (get-in ctx [:request :body-params :increment])
         jobs (jobs-from-request ctx)
         groups (get-in ctx [:request :body-params :groups])
+        failed-only? (get-in ctx [:request :body-params :failed-only])
         retry-limit (:retry-limit task-constraints)]
     (cond
       (and (empty? jobs) (empty? groups))
@@ -1411,12 +1402,14 @@
                              :let [group (d/entity db [:group/uuid guuid])]
                              job (:group/job group)]
                          (:job/uuid job))
-            all-jobs (concat jobs group-jobs)]
-        [false {::retries retries
-                ::increment increment
-                ::jobs all-jobs
-                ::non-group-jobs jobs
-                ::groups groups}]))))
+            all-jobs (vec (concat jobs group-jobs))
+            ctx' {::retries retries
+                  ::increment increment
+                  ::failed-only? failed-only?
+                  ::jobs all-jobs
+                  ::non-group-jobs jobs
+                  ::groups groups}]
+        [false ctx']))))
 
 (defn user-can-retry-job?
   [conn is-authorized-fn request-user job]
@@ -1818,6 +1811,40 @@
         json-response (res/content-type "application/json")
         (and json-response body) (assoc :body (streaming-json-encoder body))))))
 
+(def cook-coercer
+  "This coercer adds to compojure-api's default-coercion-matchers by
+  converting keys from snake_case to kebab-case for requests and from
+  kebab-case to snake_case for responses. For example, this allows clients to
+  pass 'max_retries' when submitting a job, even though the job schema has
+  :max-retries (with a dash instead of an underscore). For more information on
+  coercion in compojure-api, see:
+
+    https://github.com/metosin/compojure-api/wiki/Validation-and-coercion"
+  (constantly
+    (-> c-mw/default-coercion-matchers
+      (update :body
+              (fn [their-matchers]
+                (fn [s]
+                  (or (their-matchers s)
+                      (get {;; can't use form->kebab-case because env and label
+                            ;; accept arbitrary kvs
+                            JobRequestMap (partial map-keys ->kebab-case)
+                            Group (partial map-keys ->kebab-case)
+                            HostPlacement (fn [hp]
+                                            (update hp :type keyword))
+                            UpdateRetriesRequest (partial map-keys ->kebab-case)
+                            StragglerHandling (fn [sh]
+                                                (update sh :type keyword))}
+                           s)))))
+      (update :response
+              (fn [their-matchers]
+                (fn [s]
+                  (or (their-matchers s)
+                      (get {JobResponse (partial map-keys ->snake_case)
+                            GroupResponse (partial map-keys ->snake_case)
+                            s/Uuid str}
+                           s))))))))
+
 ;;
 ;; "main" - the entry point that routes to other handlers
 ;;
@@ -1917,7 +1944,7 @@
         {:summary "Change a job's retry count"
          :parameters {:body-params UpdateRetriesRequest}
          :handler (put-retries-handler conn is-authorized-fn task-constraints)
-         :responses {201 {:schema PosInt
+         :responses {201 {:schema NonNegInt
                           :description "The number of retries for the jobs."}
                      400 {:description "Invalid request format."}
                      401 {:description "Request user not authorized to access those jobs."}

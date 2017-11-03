@@ -618,6 +618,34 @@ class CookTest(unittest.TestCase):
         job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
         self.assertEqual('success', job['state'], 'Job details: %s' % (json.dumps(job, sort_keys=True)))
 
+    def test_change_failed_retries(self):
+        job_specs = util.minimal_jobs(2, max_retries=1, command='sleep 5')
+        try:
+            jobs, resp = util.submit_jobs(self.cook_url, job_specs)
+            self.assertEqual(resp.status_code, 201)
+            # wait for first job to start running, and kill it
+            job_uuid = jobs[0]
+            util.wait_for_job(self.cook_url, job_uuid, 'running')
+            util.kill_jobs(self.cook_url, [job_uuid])
+            job = util.load_job(self.cook_url, job_uuid)
+            self.assertEqual('failed', job['state'])
+            # retry both jobs, but with the failed_only=true flag
+            resp = util.retry_jobs(self.cook_url, retries=4, failed_only=True, jobs=jobs)
+            self.assertEqual(201, resp.status_code, resp.text)
+            job = util.load_job(self.cook_url, job_uuid)
+            self.assertIn(job['status'], ['waiting', 'running'])
+            jobs = util.wait_for_jobs(self.cook_url, jobs, 'completed')
+            # We expect both jobs to be completed successfully now.
+            # The first job (which we killed and retried) should have 2 retries remaining.
+            # The second job (which started with the default 1 retries)
+            # should have 0 remaining since the failed_only flag was set.
+            for job, expected_retries in zip(jobs, [2, 0]):
+                job_details = f"Job details: {json.dumps(job, sort_keys=True)}"
+                self.assertEqual('success', job['state'], job_details)
+                self.assertEqual(expected_retries, job['retries_remaining'], job_details)
+        finally:
+            util.kill_jobs(self.cook_url, job_specs)
+
     def test_cancel_instance(self):
         job_uuid, _ = util.submit_job(self.cook_url, command='sleep 10', max_retries=2)
         job = util.wait_for_job(self.cook_url, job_uuid, 'running')
@@ -935,7 +963,8 @@ class CookTest(unittest.TestCase):
             # (ensure it still works when there are no live jobs)
             util.kill_groups(self.cook_url, [group_uuid])
 
-    def test_group_change_killed_retries(self):
+    def _help_test_group_change_killed_retries(self, failed_only):
+        extra_retry_args = {'failed_only': failed_only}
         group_spec = self.minimal_group()
         group_uuid = group_spec['uuid']
         job_spec = {'group': group_uuid, 'command': f'sleep 1'}
@@ -957,38 +986,38 @@ class CookTest(unittest.TestCase):
 
             util.wait_until(jobs_query, util.all_instances_done)
             # retry all jobs in the group
-            util.retry_jobs(self.cook_url, retries=2, groups=[group_uuid])
+            util.retry_jobs(self.cook_url, retries=2, groups=[group_uuid], **extra_retry_args)
             # wait for some job to start
             util.wait_until(group_query, util.group_some_job_started)
             # ensure none of the jobs are still in a failed state
             job_data = util.query_jobs(self.cook_url, job=jobs)
             self.assertEqual(200, job_data.status_code)
             for job in job_data.json():
-                job_details = f'Job details: {json.dumps(job, sort_keys=True)}'
+                job_details = f'failed_only={failed_only}; Job details: {json.dumps(job, sort_keys=True)}'
                 self.assertNotEqual('failed', job['state'], job_details)
         finally:
             # ensure that we don't leave a bunch of jobs running/waiting
             util.kill_groups(self.cook_url, [group_uuid])
 
+    def test_group_change_killed_retries(self):
+        self._help_test_group_change_killed_retries(failed_only=True)
+
+    def test_group_change_killed_retries_failed_only(self):
+        self._help_test_group_change_killed_retries(failed_only=False)
+
     def test_group_change_retries(self):
         group_spec = self.minimal_group()
         group_uuid = group_spec['uuid']
-        job_spec = {'group': group_uuid, 'command': f'sleep 1'}
+        job_spec = {'group': group_uuid, 'command': 'sleep 1'}
+
+        def group_query():
+            return util.group_detail_query(self.cook_url, group_uuid)
+
         try:
             jobs, resp = util.submit_jobs(self.cook_url, job_spec, 10, groups=[group_spec])
             self.assertEqual(resp.status_code, 201)
-
-            def group_query():
-                return util.group_detail_query(self.cook_url, group_uuid)
-
             # wait for some job to start
             util.wait_until(group_query, util.group_some_job_started)
-            # wait for at least one job in the group to complete
-            self.logger.info(f'Waiting for some job in group {group_uuid} to complete.')
-
-            def group_query():
-                return util.group_detail_query(self.cook_url, group_uuid)
-
             # When this wait condition succeeds, we expect at least one job to be completed,
             # a couple of jobs to be running (sleeping for 1 second should be long enough
             # to dominate any lag in the test code), and some still waiting.
@@ -1029,6 +1058,66 @@ class CookTest(unittest.TestCase):
         finally:
             # ensure that we don't leave a bunch of jobs running/waiting
             util.kill_groups(self.cook_url, [group_uuid])
+
+    def _help_test_group_failed_only_change_retries(self, config):
+        job_count = 5
+        group_spec = self.minimal_group()
+        group_uuid = group_spec['uuid']
+        job_spec = {'group': group_uuid, 'max_retries': 1, 'command': config['command']}
+
+        def group_query():
+            return util.group_detail_query(self.cook_url, group_uuid)
+
+        def config_condition(response):
+            group = response.json()[0]
+            statuses_map = { x: group[x] for x in config['predicate_statuses'] }
+            status_counts = statuses_map.values()
+            # for running & waiting, we want at least one running and one waiting
+            not_all_waiting = group['waiting'] != job_count
+            self.logger.debug(f"Currently {statuses_map} jobs in group {group['uuid']}")
+            return not_all_waiting and sum(status_counts) == job_count
+
+        try:
+            jobs, resp = util.submit_jobs(self.cook_url, job_spec, job_count, groups=[group_spec])
+            self.assertEqual(resp.status_code, 201)
+            # wait for the expected job statuses specified in the config
+            util.wait_until(group_query, config_condition)
+            # retry all failed jobs in the group (if any)
+            util.retry_jobs(self.cook_url, increment=1, failed_only=True, groups=[group_uuid])
+            # wait again for the parameterized condition from the config
+            util.wait_until(group_query, config_condition)
+            # ensure that all of the jobs have the expected final status, instance count and retry count
+            job_data = util.query_jobs(self.cook_url, job=jobs)
+            self.assertEqual(200, job_data.status_code)
+            for job in job_data.json():
+                job_details = f'config={config}; Job details: {json.dumps(job, sort_keys=True)}'
+                self.assertIn(job['status'], config['predicate_statuses'], job_details)
+                self.assertEqual(job['retries_remaining'], config['final_retries'], job_details)
+                self.assertEqual(len(job['instances']), config['final_instances'], job_details)
+        finally:
+            # ensure that we don't leave a bunch of jobs running/waiting
+            util.kill_groups(self.cook_url, [group_uuid])
+
+    def test_group_failed_only_change_retries_all_active(self):
+        config = {'command': 'sleep 10',
+                  'final_instances': 1,
+                  'final_retries': 1,
+                  'predicate_statuses': ['running', 'waiting']}
+        self._help_test_group_failed_only_change_retries(config)
+
+    def test_group_failed_only_change_retries_all_success(self):
+        config = {'command': 'exit 0',
+                  'final_instances': 1,
+                  'final_retries': 0,
+                  'predicate_statuses': ['completed']}
+        self._help_test_group_failed_only_change_retries(config)
+
+    def test_group_failed_only_change_retries_all_failed(self):
+        config = {'command': 'exit 1',
+                  'final_instances': 2,
+                  'final_retries': 0,
+                  'predicate_statuses': ['completed']}
+        self._help_test_group_failed_only_change_retries(config)
 
     def test_400_on_group_query_without_uuid(self):
         resp = util.query_groups(self.cook_url)
