@@ -350,17 +350,23 @@ def manage_task(driver, task, stop_signal, completed_signal, config):
 
         # task either completed successfully or aborted with an error
         task_state = get_task_state(exit_code)
+        output_task_completion(task_id, task_state)
         update_status(driver, task_id, task_state)
 
     except Exception:
         # task aborted with an error
         logging.exception('Error in executing task')
+        output_task_completion(task_id, cook.TASK_FAILED)
         update_status(driver, task_id, cook.TASK_FAILED)
 
     finally:
         # ensure completed_signal is set so driver can stop
         completed_signal.set()
-        cio.print_and_log('Executor completed execution of {}'.format(task_id), flush=True)
+
+
+def output_task_completion(task_id, task_state):
+    """Prints and logs the executor completion message."""
+    cio.print_and_log('Executor completed execution of {} (state={})'.format(task_id, task_state), flush=True)
 
 
 def run_mesos_driver(stop_signal, config):
