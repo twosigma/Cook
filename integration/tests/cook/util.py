@@ -232,11 +232,14 @@ def wait_until(query, predicate, max_wait_ms=30000, wait_interval_ms=1000):
         raise
 
 
-def all_instances_done(response, accepted_states=['success', 'failed']):
+def all_instances_done(response, accepted_states=None):
     """
     Helper method used with the wait_until function.
     Checks a response from query_jobs to see if all jobs and instances have completed.
     """
+    if accepted_states is None:
+        accepted_states = ['success', 'failed']
+
     for job in response.json():
         if job['state'] not in accepted_states:
             return False
@@ -438,5 +441,5 @@ def unscheduled_jobs(cook_url, job_uuid):
 def wait_for_instance(cook_url, job_uuid):
     """Waits for the job with the given job_uuid to have a single instance, and returns the instance uuid"""
     job = wait_until(lambda: load_job(cook_url, job_uuid), lambda j: len(j['instances']) == 1)
-    instance_uuid = job['instances'][0]['task_id']
-    return instance_uuid
+    instance = job['instances'][0]
+    return instance

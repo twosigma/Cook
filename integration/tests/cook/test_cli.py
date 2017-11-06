@@ -615,7 +615,7 @@ class CookCliTest(unittest.TestCase):
     def test_ssh_instance_uuid(self):
         cp, uuids = cli.submit('ls', self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
-        instance = util.wait_for_output_url(self.cook_url, uuids[0])
+        instance = util.wait_for_instance(self.cook_url, uuids[0])
         hostname = instance['hostname']
         env = os.environ
         env['CS_SSH'] = 'echo'
@@ -1005,7 +1005,7 @@ class CookCliTest(unittest.TestCase):
         # Duplicate job, instance, and group uuid, with more precise check of the error message
         cp, uuids = cli.submit('ls', self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
-        instance_uuid = util.wait_for_instance(self.cook_url, uuids[0])
+        instance_uuid = util.wait_for_instance(self.cook_url, uuids[0])['task_id']
         cp, uuids = cli.submit('ls', self.cook_url, submit_flags=f'--uuid {instance_uuid} --group {instance_uuid}')
         self.assertEqual(0, cp.returncode, cp.stderr)
         cp = cli.kill(uuids, self.cook_url)
@@ -1046,7 +1046,7 @@ class CookCliTest(unittest.TestCase):
         self.assertEqual(0, cp.returncode, cp.stderr)
 
         # Wait for an instance to appear, and kill it
-        instance_uuid = util.wait_for_instance(self.cook_url, uuids[0])
+        instance_uuid = util.wait_for_instance(self.cook_url, uuids[0])['task_id']
         cp = cli.kill([instance_uuid], self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertIn(f'Killed job instance {instance_uuid}', cli.stdout(cp))
