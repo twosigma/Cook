@@ -1,5 +1,5 @@
 from cook.querying import query, print_no_data
-from cook.util import strip_all, print_info, seconds_to_timedelta
+from cook.util import strip_all, print_info, seconds_to_timedelta, guard_no_cluster
 
 
 def all_jobs_completed(jobs):
@@ -26,8 +26,9 @@ def all_groups_completed(groups):
         return False
 
 
-def wait(clusters, args):
+def wait(clusters, args, _):
     """Waits for jobs / instances / groups with the given UUIDs to complete."""
+    guard_no_cluster(clusters)
     timeout = args.get('timeout')
     interval = args.get('interval')
     uuids = strip_all(args.get('uuid'))

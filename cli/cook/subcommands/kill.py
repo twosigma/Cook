@@ -2,7 +2,7 @@ from collections import defaultdict
 
 from cook import http, colors
 from cook.querying import query, print_no_data
-from cook.util import strip_all, print_info
+from cook.util import strip_all, print_info, guard_no_cluster
 
 
 def guard_against_duplicates(query_result):
@@ -88,8 +88,9 @@ def kill_entities(query_result, clusters):
     return num_failures
 
 
-def kill(clusters, args):
+def kill(clusters, args, _):
     """Attempts to kill the jobs / instances / groups with the given UUIDs."""
+    guard_no_cluster(clusters)
     uuids = strip_all(args.get('uuid'))
     query_result = query(clusters, uuids)
     if query_result['count'] == 0:

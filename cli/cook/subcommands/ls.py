@@ -8,7 +8,7 @@ from tabulate import tabulate
 
 from cook import http, mesos, colors
 from cook.querying import query_unique_and_run
-from cook.util import strip_all
+from cook.util import strip_all, guard_no_cluster
 
 
 def basename(path):
@@ -100,8 +100,9 @@ def ls_for_instance(instance, sandbox_dir, path, long_format, as_json):
             logging.info('the directory is empty')
 
 
-def ls(clusters, args):
+def ls(clusters, args, _):
     """Lists contents of the corresponding Mesos sandbox path by job or instance uuid."""
+    guard_no_cluster(clusters)
     uuids = strip_all(args.get('uuid'))
     path = args.get('path')
     long_format = args.get('long_format')
