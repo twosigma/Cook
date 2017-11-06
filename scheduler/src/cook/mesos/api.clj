@@ -1322,6 +1322,8 @@
       (::failed-only? ctx)
       [true {::jobs (with-meta
                       (filterv (partial job-failed? db) (::jobs ctx))
+                      ; Liberator will concatenate vectors by default when composing context values,
+                      ; but we want to replace our vector with only the filtered entries.
                       {:replace true})}]
 
       ; if the context doesn't already have ::jobs, add it

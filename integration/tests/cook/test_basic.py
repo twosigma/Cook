@@ -964,7 +964,6 @@ class CookTest(unittest.TestCase):
             util.kill_groups(self.cook_url, [group_uuid])
 
     def _help_test_group_change_killed_retries(self, failed_only):
-        extra_retry_args = {'failed_only': failed_only}
         group_spec = self.minimal_group()
         group_uuid = group_spec['uuid']
         job_spec = {'group': group_uuid, 'command': f'sleep 1'}
@@ -986,7 +985,7 @@ class CookTest(unittest.TestCase):
 
             util.wait_until(jobs_query, util.all_instances_done)
             # retry all jobs in the group
-            util.retry_jobs(self.cook_url, retries=2, groups=[group_uuid], **extra_retry_args)
+            util.retry_jobs(self.cook_url, retries=2, groups=[group_uuid], failed_only=failed_only)
             # wait for some job to start
             util.wait_until(group_query, util.group_some_job_started)
             # ensure none of the jobs are still in a failed state
@@ -1072,7 +1071,7 @@ class CookTest(unittest.TestCase):
             group = response.json()[0]
             statuses_map = { x: group[x] for x in config['predicate_statuses'] }
             status_counts = statuses_map.values()
-            # for running & waiting, we want at least one running and one waiting
+            # for running & waiting, we want at least one running (not all waiting)
             not_all_waiting = group['waiting'] != job_count
             self.logger.debug(f"Currently {statuses_map} jobs in group {group['uuid']}")
             return not_all_waiting and sum(status_counts) == job_count
