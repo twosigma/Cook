@@ -878,9 +878,25 @@ class CookCliTest(unittest.TestCase):
         self.assertEqual(1, bar['nlink'])
         self.assertEqual(0, bar['size'])
 
+    def __wait_for_progress_message(self, uuids):
+        return util.wait_until(lambda: cli.show_json(uuids, self.cook_url)[1][0]['instances'][0],
+                               lambda i: 'progress' in i and 'progress_message' in i)
+
+    def __wait_for_exit_code(self, uuids):
+        return util.wait_until(lambda: cli.show_json(uuids, self.cook_url)[1][0]['instances'][0],
+                               lambda i: 'exit_code' in i)
+
+    def __wait_for_executor_completion_message(self, uuids):
+        def query():
+            cp = cli.tail(uuids[0], 'stdout', self.cook_url, '--lines 100')
+            stdout = cli.decode(cp.stdout)
+            self.logger.info(f'stdout = {stdout}')
+            return stdout
+        return util.wait_until(query, lambda out: 'Executor completed execution' in out)
+
     def test_show_progress_message(self):
         executor = util.get_job_executor_type(self.cook_url)
-        cp, uuids = cli.submit('echo "progress: 99 We\'re so close!"', self.cook_url,
+        cp, uuids = cli.submit('echo "progress: 99 We are so close!"', self.cook_url,
                                submit_flags=f'--executor {executor}')
         self.assertEqual(0, cp.returncode, cp.stderr)
         util.wait_for_job(self.cook_url, uuids[0], 'completed')
@@ -889,13 +905,54 @@ class CookCliTest(unittest.TestCase):
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual(executor, jobs[0]['instances'][0]['executor'])
         if executor == 'cook':
-            instance = util.wait_until(lambda: cli.show_json(uuids, self.cook_url)[1][0]['instances'][0],
-                                       lambda i: 'progress' in i and 'progress_message' in i)
+            instance = self.__wait_for_exit_code(uuids)
+            self.assertEqual(0, instance['exit_code'], sorted(instance))
+
+            instance = self.__wait_for_progress_message(uuids)
             self.assertEqual(99, instance['progress'])
-            self.assertEqual("We're so close!", instance['progress_message'])
+            self.assertEqual("We are so close!", instance['progress_message'], sorted(instance))
+
             cp = cli.show(uuids, self.cook_url)
             self.assertEqual(0, cp.returncode, cp.stderr)
-            self.assertIn("99% We're so close!", cli.stdout(cp))
+            self.assertIn("99% We are so close!", cli.stdout(cp))
+
+            stdout = self.__wait_for_executor_completion_message(uuids)
+            self.logger.debug(f'Contents of stdout: {stdout}')
+            self.assertIn("99 We are so close!", stdout)
+            self.assertIn('Command exited with status 0', stdout)
+            self.assertIn('Executor completed execution', stdout)
+
+    def test_show_progress_message_custom_progress_file(self):
+        executor = util.get_job_executor_type(self.cook_url)
+        cp, uuids = cli.submit('\'touch progress.txt && '
+                               'echo "Hello World" >> progress.txt && '
+                               'echo "progress: 99 We are so close!" >> progress.txt && '
+                               'echo "Done" >> progress.txt\'',
+                               self.cook_url,
+                               submit_flags=f'--executor {executor} '
+                                            '--env EXECUTOR_PROGRESS_OUTPUT_FILE_ENV=PROGRESS_OUTPUT_FILE '
+                                            '--env PROGRESS_OUTPUT_FILE=progress.txt')
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        util.wait_for_job(self.cook_url, uuids[0], 'completed')
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        cp, jobs = cli.show_json(uuids, self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertEqual(executor, jobs[0]['instances'][0]['executor'])
+        if executor == 'cook':
+            instance = self.__wait_for_exit_code(uuids)
+            self.assertEqual(0, instance['exit_code'], sorted(instance))
+
+            instance = self.__wait_for_progress_message(uuids)
+            self.assertEqual(99, instance['progress'])
+            self.assertEqual("We are so close!", instance['progress_message'], sorted(instance))
+
+            cp = cli.show(uuids, self.cook_url)
+            self.assertEqual(0, cp.returncode, cp.stderr)
+
+            stdout = self.__wait_for_executor_completion_message(uuids)
+            self.logger.debug(f'Contents of stdout: {stdout}')
+            self.assertIn('Command exited with status 0', stdout)
+            self.assertIn('Executor completed execution', stdout)
 
     def test_submit_with_executor(self):
         cp, uuids = cli.submit('ls', self.cook_url, submit_flags='--executor cook')

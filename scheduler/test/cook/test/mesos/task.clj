@@ -317,7 +317,6 @@
         executor {:command "./cook-executor"
                   :log-level "INFO"
                   :max-message-length 512
-                  :default-progress-output-file "stdout"
                   :default-progress-regex-string "regex-string"
                   :progress-sample-interval-ms 1000
                   :uri {:cache true
@@ -378,7 +377,6 @@
             task-metadata (task/job->task-metadata db framework-id executor job-ent task-id)]
         (is (= {:command {:environment {"EXECUTOR_LOG_LEVEL" (:log-level executor)
                                         "EXECUTOR_MAX_MESSAGE_LENGTH" (:max-message-length executor)
-                                        "PROGRESS_OUTPUT_FILE" (:default-progress-output-file executor)
                                         "PROGRESS_REGEX_STRING" (:default-progress-regex-string executor)
                                         "PROGRESS_SAMPLE_INTERVAL_MS" (:progress-sample-interval-ms executor)}
                           :uris [(:uri executor)]
@@ -387,7 +385,6 @@
                 :container nil
                 :environment {"EXECUTOR_LOG_LEVEL" (:log-level executor)
                               "EXECUTOR_MAX_MESSAGE_LENGTH" (:max-message-length executor)
-                              "PROGRESS_OUTPUT_FILE" (:default-progress-output-file executor)
                               "PROGRESS_REGEX_STRING" (:default-progress-regex-string executor)
                               "PROGRESS_SAMPLE_INTERVAL_MS" (:progress-sample-interval-ms executor)}
                 :executor :executor/cook
@@ -582,11 +579,28 @@
   (testing "default values"
     (is (= {"EXECUTOR_LOG_LEVEL" "INFO"
             "EXECUTOR_MAX_MESSAGE_LENGTH" 256
-            "PROGRESS_OUTPUT_FILE" "stdout"
             "PROGRESS_REGEX_STRING" "default-regex"
             "PROGRESS_SAMPLE_INTERVAL_MS" 2000}
-           (let [executor-config {:default-progress-output-file "stdout"
-                                  :default-progress-regex-string "default-regex"
+           (let [executor-config {:default-progress-regex-string "default-regex"
+                                  :log-level "INFO"
+                                  :max-message-length 256
+                                  :progress-sample-interval-ms 2000}
+                 job-ent nil]
+             (task/build-executor-environment executor-config job-ent)))))
+
+  (testing "default values with environment"
+    (is (= {"CUSTOM_FOO" "foo"
+            "CUSTOM_VAR" "var"
+            "EXECUTOR_LOG_LEVEL" "INFO"
+            "EXECUTOR_MAX_MESSAGE_LENGTH" 256
+            "EXECUTOR_PROGRESS_OUTPUT_FILE_ENV" "CONFIGURED_PROGRESS_OUTPUT_ENV"
+            "PROGRESS_REGEX_STRING" "default-regex"
+            "PROGRESS_SAMPLE_INTERVAL_MS" 2000}
+           (let [executor-config {:default-progress-regex-string "default-regex"
+                                  :environment {"CUSTOM_FOO" "foo"
+                                                "CUSTOM_VAR" "var"
+                                                "EXECUTOR_LOG_LEVEL" "will-be-overridden"
+                                                "EXECUTOR_PROGRESS_OUTPUT_FILE_ENV" "CONFIGURED_PROGRESS_OUTPUT_ENV"}
                                   :log-level "INFO"
                                   :max-message-length 256
                                   :progress-sample-interval-ms 2000}
@@ -596,11 +610,11 @@
   (testing "job configured values"
     (is (= {"EXECUTOR_LOG_LEVEL" "INFO"
             "EXECUTOR_MAX_MESSAGE_LENGTH" 256
-            "PROGRESS_OUTPUT_FILE" "progress.out"
+            "EXECUTOR_PROGRESS_OUTPUT_FILE_ENV" "EXECUTOR_PROGRESS_OUTPUT_FILE_NAME"
+            "EXECUTOR_PROGRESS_OUTPUT_FILE_NAME" "progress.out"
             "PROGRESS_REGEX_STRING" "custom-regex"
             "PROGRESS_SAMPLE_INTERVAL_MS" 2000}
-           (let [executor-config {:default-progress-output-file "stdout"
-                                  :default-progress-regex-string "default-regex"
+           (let [executor-config {:default-progress-regex-string "default-regex"
                                   :log-level "INFO"
                                   :max-message-length 256
                                   :progress-sample-interval-ms 2000}
@@ -612,13 +626,21 @@
              (task/build-executor-environment executor-config job-ent)))))
 
   (testing "job configured values sanitized"
-    (is (= {"EXECUTOR_LOG_LEVEL" "INFO"
+    (is (= {"CONFIGURED_PROGRESS_OUTPUT_ENV" "progress.conf.out"
+            "CUSTOM_FOO" "foo"
+            "CUSTOM_VAR" "var"
+            "EXECUTOR_LOG_LEVEL" "INFO"
             "EXECUTOR_MAX_MESSAGE_LENGTH" 256
-            "PROGRESS_OUTPUT_FILE" "progress.out"
+            "EXECUTOR_PROGRESS_OUTPUT_FILE_ENV" "EXECUTOR_PROGRESS_OUTPUT_FILE_NAME"
+            "EXECUTOR_PROGRESS_OUTPUT_FILE_NAME" "progress.out"
             "PROGRESS_REGEX_STRING" "custom-regex"
             "PROGRESS_SAMPLE_INTERVAL_MS" 2000}
-           (let [executor-config {:default-progress-output-file "stdout"
-                                  :default-progress-regex-string "default-regex"
+           (let [executor-config {:default-progress-regex-string "default-regex"
+                                  :environment {"CONFIGURED_PROGRESS_OUTPUT_ENV" "progress.conf.out"
+                                                "CUSTOM_FOO" "foo"
+                                                "CUSTOM_VAR" "var"
+                                                "EXECUTOR_LOG_LEVEL" "will-be-overridden"
+                                                "EXECUTOR_PROGRESS_OUTPUT_FILE_ENV" "CONFIGURED_PROGRESS_OUTPUT_ENV"}
                                   :log-level "INFO"
                                   :max-message-length 256
                                   :progress-sample-interval-ms 2000}

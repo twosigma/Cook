@@ -142,8 +142,12 @@ class ProgressWatcher(object):
                 logging.debug('{} has not yet been created, sleeping {} ms'.format(self.target_file, sleep_time_ms))
                 time.sleep(sleep_param)
 
+            if not os.path.isfile(self.target_file):
+                logging.info('Progress output file {} has not been created'.format(self.target_file))
+                return
+
             if self.stop_signal.isSet():
-                logging.info('No output has been read to parse progress messages')
+                logging.info('{} has not been read to parse progress messages'.format(self.target_file))
                 return
 
             logging.info('{} has been created, reading contents'.format(self.target_file))

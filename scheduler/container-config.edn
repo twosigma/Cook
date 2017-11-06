@@ -11,6 +11,7 @@
                                 :retry-limit 15
                                 :cpus 6}}
  :executor {:command "./cook-executor"
+            :environment {"EXECUTOR_DEFAULT_PROGRESS_OUTPUT_NAME" "stdout"}
             :portion 0.25
             :uri {:cache false
                   :executable true

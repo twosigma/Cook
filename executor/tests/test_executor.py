@@ -81,15 +81,15 @@ class ExecutorTest(unittest.TestCase):
         task = {'task_id': {'value': task_id},
                 'data': encode_data(json.dumps({'command': command}).encode('utf8'))}
 
-        stdout_name = ensure_directory('build/stdout.' + str(task_id))
-        stderr_name = ensure_directory('build/stderr.' + str(task_id))
+        stdout_name = ensure_directory('build/stdout.{}'.format(task_id))
+        stderr_name = ensure_directory('build/stderr.{}'.format(task_id))
 
         redirect_stdout_to_file(stdout_name)
         redirect_stderr_to_file(stderr_name)
 
         try:
             max_bytes_read_per_line = 4096
-            process = ce.launch_task(task, max_bytes_read_per_line)
+            process = ce.launch_task(task, os.environ)
             stdout_thread, stderr_thread = cio.track_outputs(task_id, process, max_bytes_read_per_line)
             process_info = process, stdout_thread, stderr_thread
 
@@ -120,7 +120,7 @@ class ExecutorTest(unittest.TestCase):
         task = {'task_id': {'value': task_id},
                 'data': encode_data(json.dumps({'command': ''}).encode('utf8'))}
 
-        process = ce.launch_task(task, 4096)
+        process = ce.launch_task(task, os.environ)
 
         self.assertIsNone(process)
 
@@ -128,15 +128,15 @@ class ExecutorTest(unittest.TestCase):
         task_id = get_random_task_id()
         task = {'task_id': {'value': task_id}}
 
-        process = ce.launch_task(task, 4096)
+        process = ce.launch_task(task, os.environ)
 
         self.assertIsNone(process)
 
     def test_kill_task_terminate(self):
         task_id = get_random_task_id()
 
-        stdout_name = ensure_directory('build/stdout.' + str(task_id))
-        stderr_name = ensure_directory('build/stderr.' + str(task_id))
+        stdout_name = ensure_directory('build/stdout.{}'.format(task_id))
+        stderr_name = ensure_directory('build/stderr.{}'.format(task_id))
 
         redirect_stdout_to_file(stdout_name)
         redirect_stderr_to_file(stderr_name)
@@ -158,8 +158,8 @@ class ExecutorTest(unittest.TestCase):
     def test_await_process_completion_normal(self):
         task_id = get_random_task_id()
 
-        stdout_name = ensure_directory('build/stdout.' + str(task_id))
-        stderr_name = ensure_directory('build/stderr.' + str(task_id))
+        stdout_name = ensure_directory('build/stdout.{}'.format(task_id))
+        stderr_name = ensure_directory('build/stderr.{}'.format(task_id))
 
         redirect_stdout_to_file(stdout_name)
         redirect_stderr_to_file(stderr_name)
@@ -185,8 +185,8 @@ class ExecutorTest(unittest.TestCase):
     def test_await_process_completion_killed(self):
         task_id = get_random_task_id()
 
-        stdout_name = ensure_directory('build/stdout.' + str(task_id))
-        stderr_name = ensure_directory('build/stderr.' + str(task_id))
+        stdout_name = ensure_directory('build/stdout.{}'.format(task_id))
+        stderr_name = ensure_directory('build/stderr.{}'.format(task_id))
 
         redirect_stdout_to_file(stdout_name)
         redirect_stderr_to_file(stderr_name)
@@ -219,14 +219,43 @@ class ExecutorTest(unittest.TestCase):
         self.assertEqual(cook.TASK_FAILED, ce.get_task_state(1))
         self.assertEqual(cook.TASK_KILLED, ce.get_task_state(-1))
 
+    def test_retrieve_process_environment(self):
+        self.assertEqual({'EXECUTOR_PROGRESS_OUTPUT_FILE': 'stdout'},
+                         ce.retrieve_process_environment(cc.ExecutorConfig(), {}))
+        self.assertEqual({'CUSTOM_PROGRESS_OUTPUT_FILE': 'stdout',
+                          'FOO': 'BAR',
+                          'MESOS_SANDBOX': '/path/to/sandbox',
+                          'PROGRESS_OUTPUT_FILE': 'executor.progress'},
+                         ce.retrieve_process_environment(
+                             cc.ExecutorConfig(progress_output_env_variable='CUSTOM_PROGRESS_OUTPUT_FILE'),
+                             {'FOO': 'BAR',
+                              'MESOS_SANDBOX': '/path/to/sandbox',
+                              'PROGRESS_OUTPUT_FILE': 'executor.progress'}))
+        self.assertEqual({'CUSTOM_PROGRESS_OUTPUT_FILE': 'custom.progress',
+                          'EXECUTOR_PROGRESS_OUTPUT_FILE_ENV': 'CUSTOM_PROGRESS_OUTPUT_FILE'},
+                         ce.retrieve_process_environment(
+                             cc.ExecutorConfig(progress_output_env_variable='CUSTOM_PROGRESS_OUTPUT_FILE',
+                                               progress_output_name='custom.progress'),
+                             {'CUSTOM_PROGRESS_OUTPUT_FILE': 'executor.progress',
+                              'EXECUTOR_PROGRESS_OUTPUT_FILE_ENV': 'CUSTOM_PROGRESS_OUTPUT_FILE'}))
+        self.assertEqual({'CUSTOM_PROGRESS_OUTPUT_FILE': 'custom.progress',
+                          'EXECUTOR_PROGRESS_OUTPUT_FILE_ENV': 'CUSTOM_PROGRESS_OUTPUT_FILE',
+                          'PROGRESS_OUTPUT_FILE': 'stdout'},
+                         ce.retrieve_process_environment(
+                             cc.ExecutorConfig(progress_output_env_variable='CUSTOM_PROGRESS_OUTPUT_FILE',
+                                               progress_output_name='custom.progress'),
+                             {'CUSTOM_PROGRESS_OUTPUT_FILE': 'executor.progress',
+                              'EXECUTOR_PROGRESS_OUTPUT_FILE_ENV': 'CUSTOM_PROGRESS_OUTPUT_FILE',
+                              'PROGRESS_OUTPUT_FILE': 'stdout'}))
+
     def manage_task_runner(self, command, assertions_fn, stop_signal=Event()):
         driver = FakeMesosExecutorDriver()
         task_id = get_random_task_id()
         task = {'task_id': {'value': task_id},
                 'data': encode_data(json.dumps({'command': command}).encode('utf8'))}
 
-        stdout_name = ensure_directory('build/stdout.' + str(task_id))
-        stderr_name = ensure_directory('build/stderr.' + str(task_id))
+        stdout_name = ensure_directory('build/stdout.{}'.format(task_id))
+        stderr_name = ensure_directory('build/stderr.{}'.format(task_id))
 
         redirect_stdout_to_file(stdout_name)
         redirect_stderr_to_file(stderr_name)
@@ -253,9 +282,32 @@ class ExecutorTest(unittest.TestCase):
         finally:
             cleanup_output(stdout_name, stderr_name)
 
+    def test_manage_task_environment_output(self):
+        def assertions(driver, task_id, _):
+            logging.info('Statuses: {}'.format(driver.statuses))
+            self.assertEqual(3, len(driver.statuses))
+
+            logging.info('Messages: {}'.format(driver.messages))
+            self.assertEqual(2, len(driver.messages))
+
+            stdout_name = ensure_directory('build/stdout.{}'.format(task_id))
+            with open(stdout_name) as f:
+                file_contents = f.read()
+                self.assertTrue('FEE=FIE' in file_contents)
+                self.assertTrue('FOO=BAR' in file_contents)
+                self.assertTrue('PROGRESS_OUTPUT_FILE=foobar' in file_contents)
+
+        command = 'env | sort'
+        current_environ = os.environ
+        try:
+            os.environ = {'FOO': 'BAR', 'FEE': 'FIE', 'PROGRESS_OUTPUT_FILE': 'foobar'}
+            self.manage_task_runner(command, assertions)
+        finally:
+            os.environ = current_environ
+
     def test_manage_task_successful_exit(self):
         def assertions(driver, task_id, sandbox_directory):
-            
+
             logging.info('Statuses: {}'.format(driver.statuses))
             self.assertEqual(3, len(driver.statuses))
 

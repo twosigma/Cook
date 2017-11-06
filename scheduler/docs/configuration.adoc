@@ -288,8 +288,8 @@ An example configuration looks like:
 ```clojure
 {...
  :executor {:command "cook-executor"
-            :default-progress-output-file "stdout"
             :default-progress-regex-string "progress: (\d+)(?: )?(.*)"
+            :environment {"EXECUTOR_DEFAULT_PROGRESS_OUTPUT_NAME" "stdout"}
             :log-level "INFO"
             :max-message-length 512
             :progress-sample-interval-ms 1000
@@ -306,16 +306,16 @@ The configuration values are defined as follows:
   A string containing the command executed on the mesos agent to launch the Cook executor.
   No default value is provided, when missing the use of the Cook executor is disabled.
 
-`:default-progress-output-file`::
-  The file to track for progress updates.
-  The default is "stdout".
-
 `:default-progress-regex-string`::
   The string representation of the regex used to identify progress update messages.
   The regex should have two capture groups, the first being an integer representing the progress percent.
   The second being a message about the progress.
   The executor will use the `:max-message-length` value to trim the progress message string before sending it to the scheduler.
   Defaults to "progress: (\d*), (.*)".
+
+`:environment`::
+  A map that represents the additional environment variables passed on to the executor.
+  The default is an empty map.
 
 `:log-level`::
   The log level for the executor process.

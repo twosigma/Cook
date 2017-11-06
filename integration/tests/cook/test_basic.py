@@ -96,8 +96,11 @@ class CookTest(unittest.TestCase):
 
     def test_progress_update_submit(self):
         job_executor_type = util.get_job_executor_type(self.cook_url)
-        command = 'echo "progress: 25 Twenty-five percent"; sleep 1; exit 0'
-        job_uuid, resp = util.submit_job(self.cook_url, command=command, executor=job_executor_type, max_runtime=60000)
+        command = 'echo "progress: 25 Twenty-five percent in ${PROGRESS_FILE}" >> ${PROGRESS_FILE}; sleep 1; exit 0'
+        job_uuid, resp = util.submit_job(self.cook_url, command=command,
+                                         env={'EXECUTOR_PROGRESS_OUTPUT_FILE_ENV': 'PROGRESS_FILE',
+                                              'PROGRESS_FILE': 'progress.txt'},
+                                         executor=job_executor_type, max_runtime=60000)
         self.assertEqual(201, resp.status_code, msg=resp.content)
         job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
         self.assertEqual(1, len(job['instances']))
@@ -111,12 +114,13 @@ class CookTest(unittest.TestCase):
             time.sleep(wait_publish_interval_secs)
 
             job = util.load_job(self.cook_url, job_uuid)
-            message = json.dumps(job['instances'][0], sort_keys=True)
+            instance = job['instances'][0]
+            message = json.dumps(instance, sort_keys=True)
 
-            self.assertEqual(0, job['instances'][0]['exit_code'], message)
-            self.assertEqual(25, job['instances'][0]['progress'], message)
-            self.assertEqual('Twenty-five percent', job['instances'][0]['progress_message'], message)
-            self.assertIsNotNone(job['instances'][0]['sandbox_directory'], message)
+            self.assertEqual(0, instance['exit_code'], message)
+            self.assertEqual(25, instance['progress'], message)
+            self.assertEqual('Twenty-five percent in progress.txt', instance['progress_message'], message)
+            self.assertIsNotNone(instance['sandbox_directory'], message)
 
     def test_configurable_progress_update_submit(self):
         job_executor_type = util.get_job_executor_type(self.cook_url)
@@ -1022,11 +1026,18 @@ class CookTest(unittest.TestCase):
             agent_hostport = agent['pid'].split('@')[1]
 
             # Get container ID from agent
-            agent_state = util.session.get('http://%s/state.json' % agent_hostport).json()
+            def agent_query():
+                return util.session.get('http://%s/state.json' % agent_hostport)
+            def contains_executor_predicate(agent_response):
+                agent_state = agent_response.json()
+                executor = util.get_executor(agent_state, instance['executor_id'])
+                if executor is None:
+                    self.logger.warn(f"Could not find executor {instance['executor_id']} in agent state")
+                    self.logger.warn(f"agent_state: {agent_state}")
+                return executor is not None
+            agent_state = util.wait_until(agent_query, contains_executor_predicate).json()
             executor = util.get_executor(agent_state, instance['executor_id'])
-            if executor is None:
-                self.logger.warn(f"Could not find executor {instance['executor_id']} in agent state")
-                self.logger.warn(f"agent_state: {agent_state}")
+
             container_id = 'mesos-%s.%s' % (agent['id'], executor['container'])
             self.logger.debug('container_id: %s' % container_id)
 
