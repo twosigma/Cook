@@ -1119,7 +1119,7 @@
                  (api/create-jobs! conn false {::api/jobs [job]})))
           (is (thrown-with-msg? ExecutionException
                                 (re-pattern (str ".*:job/uuid.*" uuid ".*already exists"))
-                                (api/create-jobs! conn {::api/jobs [job]})))))
+                                (api/create-jobs! conn false {::api/jobs [job]})))))
 
       (testing "should work when the job specifies an application"
         (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
