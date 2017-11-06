@@ -1064,7 +1064,7 @@
   to Datomic.
   Preconditions:  The context must already have been populated with both
   ::jobs and ::groups, which specify the jobs and job groups."
-  [conn {:keys [::groups ::jobs] :as ctx} force-container-user?]
+  [conn force-container-user? {:keys [::groups ::jobs] :as ctx}]
   (try
     (log/info "Submitting jobs through raw api:" jobs)
     (let [group-uuids (set (map :uuid groups))
