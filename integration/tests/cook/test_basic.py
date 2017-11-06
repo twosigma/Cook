@@ -1026,11 +1026,18 @@ class CookTest(unittest.TestCase):
             agent_hostport = agent['pid'].split('@')[1]
 
             # Get container ID from agent
-            agent_state = util.session.get('http://%s/state.json' % agent_hostport).json()
+            def agent_query():
+                return util.session.get('http://%s/state.json' % agent_hostport)
+            def contains_executor_predicate(agent_response):
+                agent_state = agent_response.json()
+                executor = util.get_executor(agent_state, instance['executor_id'])
+                if executor is None:
+                    self.logger.warn(f"Could not find executor {instance['executor_id']} in agent state")
+                    self.logger.warn(f"agent_state: {agent_state}")
+                return executor is not None
+            agent_state = util.wait_until(agent_query, contains_executor_predicate).json()
             executor = util.get_executor(agent_state, instance['executor_id'])
-            if executor is None:
-                self.logger.warn(f"Could not find executor {instance['executor_id']} in agent state")
-                self.logger.warn(f"agent_state: {agent_state}")
+
             container_id = 'mesos-%s.%s' % (agent['id'], executor['container'])
             self.logger.debug('container_id: %s' % container_id)
 
