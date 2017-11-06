@@ -9,9 +9,10 @@ def get_in(dct, keys):
     for key in keys:
         if not isinstance(dct, dict):
             return None
-        try:
+
+        if key in dct:
             dct = dct[key]
-        except KeyError:
+        else:
             return None
     return dct
 
