@@ -108,7 +108,12 @@ When given a job instance uuid, it will choose the most recently started instanc
 ### `kill`
 
 You can kill jobs, instances, and groups with `kill`. 
-UUIDs are passed as positional arguments. 
+UUIDs are passed as positional arguments.
+
+### `config`
+
+You can query and set CLI configuration options with this command. 
+The name is actually the sections and the key, separated by dots.
 
 ### Examples
 
