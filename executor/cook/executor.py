@@ -304,7 +304,9 @@ def manage_task(driver, task, stop_signal, completed_signal, config):
         # not yet started to run the task
         update_status(driver, task_id, cook.TASK_STARTING)
 
-        sandbox_message = json.dumps({'sandbox-directory': config.sandbox_directory, 'task-id': task_id})
+        sandbox_message = json.dumps({'sandbox-directory': config.sandbox_directory,
+                                      'task-id': task_id,
+                                      'type': 'directory'})
         send_message(driver, sandbox_message, config.max_message_length)
 
         environment = retrieve_process_environment(config, os.environ)
