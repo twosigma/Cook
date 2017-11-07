@@ -39,11 +39,30 @@ For example, to build the executable, run the following command from the `execut
 $ pyinstaller -F -n cook-executor -p cook cook/__main__.py
 ```
 
-For development, a docker-compatible version of the cook executor can be built using:
+For development, a version of the cook executor can be built using:
 
 ```bash
-# will create dist/cook-executor
-$ bin/build-cook-executor.sh
+# will create dist/cook-executor-local
+$ bin/build-local.sh
+INFO: PyInstaller: 3.3
+INFO: Python: 3.5.3
+...
+INFO: Appending archive to EXE .../executor/dist/cook-executor-local
+INFO: Fixing EXE for code signing .../executor/dist/cook-executor-local
+INFO: Building EXE from out00-EXE.toc completed successfully.
+```
+
+Also, a docker-compatible version of the cook executor can be built using:
+
+```bash
+# will create dist/cook-executor-docker
+$ bin/build-docker.sh
+...
+INFO: PyInstaller: 3.3
+INFO: Python: 3.5.4
+...
+INFO: Appending archive to ELF section in EXE /opt/cook/dist/cook-executor-docker
+INFO: Building EXE from out00-EXE.toc completed successfully.
 ```
 
 ### Configuration

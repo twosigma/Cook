@@ -26,7 +26,7 @@ COOK_EXECUTOR_COMMAND=""
 if [ "${COOK_EXECUTOR}" = "1" ]
 then
   echo "$(date +%H:%M:%S) Cook executor has been enabled"
-  COOK_EXECUTOR_COMMAND="/home/travis/build/twosigma/Cook/travis/cook-executor"
+  COOK_EXECUTOR_COMMAND="/home/travis/build/twosigma/Cook/travis/cook-executor-docker"
 fi
 
 # Build cook-executor

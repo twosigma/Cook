@@ -10,4 +10,4 @@ RUN pip install -r requirements.txt
 
 COPY . /opt/cook
 
-CMD ["pyinstaller", "-F", "-n", "cook-executor", "-p", "cook", "cook/__main__.py"]
+CMD ["pyinstaller", "-F", "-n", "cook-executor-docker", "-p", "cook", "cook/__main__.py"]
