@@ -103,6 +103,9 @@
    (job-ent->map (d/entity db (:db/id job))))
   ([job]
    (-> (entity->map job)
+       ; Load the group related to the job (if any) but without loading the job entities
+       ; inside the group entity. If someone needs to access them, it's better to query
+       ; at that point instead of relying on the cached data.
        (assoc :group/_job (entity->map (:group/_job job) :skip-keys #{:group/job})))))
 
 (defn remove-datomic-namespacing

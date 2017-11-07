@@ -1006,10 +1006,13 @@ class CookTest(unittest.TestCase):
         job_uuid = uuids[0]
         try:
             self.assertEqual(201, resp.status_code, resp.content)
+
             def query_queue():
                 return util.session.get('%s/queue' % self.cook_url)
+
             def queue_predicate(resp):
                 return any([job['job/uuid'] == job_uuid for job in resp.json()['normal']])
+
             resp = util.wait_until(query_queue, queue_predicate)
             self.assertEqual(200, resp.status_code, resp.content)
             job = [job for job in resp.json()['normal']
