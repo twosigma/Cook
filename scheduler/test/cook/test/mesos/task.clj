@@ -330,7 +330,7 @@
             db (d/db conn)
             job-ent (d/entity db job)
             framework-id {:value "framework-id"}
-            environment {"COOK_JOB_ID" (-> job-ent :job/uuid str)}
+            environment {"COOK_JOB_UUID" (-> job-ent :job/uuid str)}
             task-metadata (task/job->task-metadata db framework-id executor job-ent task-id)]
         (is (= {:command {:value "run-my-command", :environment environment, :user "test-user", :uris []}
                 :container nil
@@ -355,8 +355,8 @@
             job-ent (d/entity db job)
             group-ent (d/entity db group-ent-id)
             framework-id {:value "framework-id"}
-            environment {"COOK_JOB_GROUP_ID" (-> group-ent :group/uuid str)
-                         "COOK_JOB_ID" (-> job-ent :job/uuid str)}
+            environment {"COOK_JOB_GROUP_UUID" (-> group-ent :group/uuid str)
+                         "COOK_JOB_UUID" (-> job-ent :job/uuid str)}
             task-metadata (task/job->task-metadata db framework-id executor job-ent task-id)]
         (is (= {:command {:value "run-my-command", :environment environment, :user "test-user", :uris []}
                 :container nil
@@ -379,7 +379,7 @@
             db (d/db conn)
             job-ent (d/entity db job)
             framework-id {:value "framework-id"}
-            environment {"COOK_JOB_ID" (-> job-ent :job/uuid str)}
+            environment {"COOK_JOB_UUID" (-> job-ent :job/uuid str)}
             task-metadata (task/job->task-metadata db framework-id executor job-ent task-id)]
         (is (= {:command {:value "run-my-command", :environment environment, :user "test-user", :uris []}
                 :container nil
@@ -402,7 +402,7 @@
             db (d/db conn)
             job-ent (d/entity db job)
             framework-id {:value "framework-id"}
-            environment {"COOK_JOB_ID" (-> job-ent :job/uuid str)
+            environment {"COOK_JOB_UUID" (-> job-ent :job/uuid str)
                          "EXECUTOR_LOG_LEVEL" (:log-level executor)
                          "EXECUTOR_MAX_MESSAGE_LENGTH" (:max-message-length executor)
                          "PROGRESS_REGEX_STRING" (:default-progress-regex-string executor)
@@ -435,8 +435,8 @@
             group-ent (d/entity db group-ent-id)
             job-ent (d/entity db job)
             framework-id {:value "framework-id"}
-            environment {"COOK_JOB_GROUP_ID" (-> group-ent :group/uuid str)
-                         "COOK_JOB_ID" (-> job-ent :job/uuid str)
+            environment {"COOK_JOB_GROUP_UUID" (-> group-ent :group/uuid str)
+                         "COOK_JOB_UUID" (-> job-ent :job/uuid str)
                          "EXECUTOR_LOG_LEVEL" (:log-level executor)
                          "EXECUTOR_MAX_MESSAGE_LENGTH" (:max-message-length executor)
                          "PROGRESS_REGEX_STRING" (:default-progress-regex-string executor)
@@ -467,7 +467,7 @@
             db (d/db conn)
             job-ent (d/entity db job)
             framework-id {:value "framework-id"}
-            environment {"COOK_JOB_ID" (-> job-ent :job/uuid str)}
+            environment {"COOK_JOB_UUID" (-> job-ent :job/uuid str)}
             task-metadata (task/job->task-metadata db framework-id {} job-ent task-id)]
         (is (= {:command {:environment environment
                           :uris []
@@ -501,7 +501,7 @@
             db (d/db conn)
             job-ent (d/entity db job)
             framework-id {:value "framework-id"}
-            environment {"COOK_JOB_ID" (-> job-ent :job/uuid str)}
+            environment {"COOK_JOB_UUID" (-> job-ent :job/uuid str)}
             task-metadata (task/job->task-metadata db framework-id {} job-ent task-id)]
         (is (= {:command {:environment environment
                           :uris []
@@ -537,7 +537,7 @@
             db (d/db conn)
             job-ent (d/entity db job)
             framework-id {:value "framework-id"}
-            environment {"COOK_JOB_ID" (-> job-ent :job/uuid str)}
+            environment {"COOK_JOB_UUID" (-> job-ent :job/uuid str)}
             task-metadata (task/job->task-metadata db framework-id {} job-ent task-id)]
         (is (= {:command {:environment environment
                           :uris []

@@ -88,6 +88,33 @@ class CookTest(unittest.TestCase):
         job = util.load_job(self.cook_url, job_uuid)
         self.assertEqual('mesos', job['executor'])
 
+    def test_job_environment_cook_job_uuid_only(self):
+        command = 'echo "Job environment:" && env && echo "Checking environment variables..." && ' \
+                  'if [ ${#COOK_JOB_GROUP_UUID} -ne 0 ]; then echo "COOK_JOB_GROUP_UUID env is present"; exit 1; ' \
+                  'else echo "COOK_JOB_GROUP_UUID env is missing as expected"; fi && ' \
+                  'if [ ${#COOK_JOB_UUID} -eq 0 ]; then echo "COOK_JOB_UUID env is missing"; exit 1; ' \
+                  'else echo "COOK_JOB_UUID env is present as expected"; fi'
+        job_uuid, resp = util.submit_job(self.cook_url, command=command)
+        self.assertEqual(201, resp.status_code, msg=resp.content)
+        job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
+        self.assertEqual(1, len(job['instances']))
+        message = json.dumps(job['instances'][0], sort_keys=True)
+        self.assertEqual('success', job['instances'][0]['status'], message)
+
+    def test_job_environment_cook_job_and_group_uuid(self):
+        command = 'echo "Job environment:" && env && echo "Checking environment variables..." && ' \
+                  'if [ ${#COOK_JOB_GROUP_UUID} -eq 0 ]; then echo "COOK_JOB_GROUP_UUID env is missing"; exit 1; ' \
+                  'else echo "COOK_JOB_GROUP_UUID env is present as expected"; fi && ' \
+                  'if [ ${#COOK_JOB_UUID} -eq 0 ]; then echo "COOK_JOB_UUID env is missing"; exit 1; ' \
+                  'else echo "COOK_JOB_UUID env is present as expected"; fi'
+        group_uuid = str(uuid.uuid4())
+        job_uuid, resp = util.submit_job(self.cook_url, command=command, group=group_uuid)
+        self.assertEqual(201, resp.status_code, msg=resp.content)
+        job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
+        self.assertEqual(1, len(job['instances']))
+        message = json.dumps(job['instances'][0], sort_keys=True)
+        self.assertEqual('success', job['instances'][0]['status'], message)
+
     def test_failing_submit(self):
         job_executor_type = util.get_job_executor_type(self.cook_url)
         job_uuid, resp = util.submit_job(self.cook_url, command='exit 1', executor=job_executor_type)

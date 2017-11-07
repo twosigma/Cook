@@ -83,8 +83,8 @@
                             (use-cook-executor? job-ent executor-config))
         group-uuid (util/job-ent->group-uuid job-ent)
         environment (cond-> (assoc (util/job-ent->env job-ent)
-                              "COOK_JOB_ID" (-> job-ent :job/uuid str))
-                            group-uuid (assoc "COOK_JOB_GROUP_ID" (str group-uuid))
+                              "COOK_JOB_UUID" (-> job-ent :job/uuid str))
+                            group-uuid (assoc "COOK_JOB_GROUP_UUID" (str group-uuid))
                             cook-executor? (merge (build-executor-environment executor-config job-ent)))
         labels (util/job-ent->label job-ent)
         command {:environment environment
