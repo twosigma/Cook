@@ -327,7 +327,7 @@ class ExecutorTest(unittest.TestCase):
             self.assertEqual(2, len(driver.messages))
 
             actual_encoded_message_0 = driver.messages[0]
-            expected_message_0 = {'sandbox-directory': sandbox_directory, 'task-id': task_id}
+            expected_message_0 = {'sandbox-directory': sandbox_directory, 'task-id': task_id, 'type': 'directory'}
             assert_message(self, expected_message_0, actual_encoded_message_0)
 
             actual_encoded_message_1 = driver.messages[1]
@@ -355,7 +355,7 @@ class ExecutorTest(unittest.TestCase):
             self.assertEqual(1, len(driver.messages))
 
             actual_encoded_message_0 = driver.messages[0]
-            expected_message_0 = {'sandbox-directory': sandbox_directory, 'task-id': task_id}
+            expected_message_0 = {'sandbox-directory': sandbox_directory, 'task-id': task_id, 'type': 'directory'}
             assert_message(self, expected_message_0, actual_encoded_message_0)
 
         command = ''
@@ -383,7 +383,7 @@ class ExecutorTest(unittest.TestCase):
             self.assertEqual(3, len(driver.messages))
 
             actual_encoded_message_0 = driver.messages[0]
-            expected_message_0 = {'sandbox-directory': sandbox_directory, 'task-id': task_id}
+            expected_message_0 = {'sandbox-directory': sandbox_directory, 'task-id': task_id, 'type': 'directory'}
             assert_message(self, expected_message_0, actual_encoded_message_0)
 
             expected_exit_messages = [{'exit-code': 0, 'task-id': task_id}]
@@ -431,7 +431,7 @@ class ExecutorTest(unittest.TestCase):
             self.assertEqual(4, len(driver.messages))
 
             actual_encoded_message_0 = driver.messages[0]
-            expected_message_0 = {'sandbox-directory': sandbox_directory, 'task-id': task_id}
+            expected_message_0 = {'sandbox-directory': sandbox_directory, 'task-id': task_id, 'type': 'directory'}
             assert_message(self, expected_message_0, actual_encoded_message_0)
 
             expected_exit_messages = [{'exit-code': 0, 'task-id': task_id}]
@@ -486,7 +486,7 @@ class ExecutorTest(unittest.TestCase):
             self.assertEqual(2, len(driver.messages))
 
             actual_encoded_message_0 = driver.messages[0]
-            expected_message_0 = {'sandbox-directory': sandbox_directory, 'task-id': task_id}
+            expected_message_0 = {'sandbox-directory': sandbox_directory, 'task-id': task_id, 'type': 'directory'}
             assert_message(self, expected_message_0, actual_encoded_message_0)
 
             actual_encoded_message_1 = driver.messages[1]
@@ -518,7 +518,7 @@ class ExecutorTest(unittest.TestCase):
             self.assertEqual(2, len(driver.messages))
 
             actual_encoded_message_0 = driver.messages[0]
-            expected_message_0 = {'sandbox-directory': sandbox_directory, 'task-id': task_id}
+            expected_message_0 = {'sandbox-directory': sandbox_directory, 'task-id': task_id, 'type': 'directory'}
             assert_message(self, expected_message_0, actual_encoded_message_0)
 
             actual_encoded_message_1 = driver.messages[1]
@@ -546,7 +546,7 @@ class ExecutorTest(unittest.TestCase):
             self.assertEqual(2, len(driver.messages))
 
             actual_encoded_message_0 = driver.messages[0]
-            expected_message_0 = {'sandbox-directory': sandbox_directory, 'task-id': task_id}
+            expected_message_0 = {'sandbox-directory': sandbox_directory, 'task-id': task_id, 'type': 'directory'}
             assert_message(self, expected_message_0, actual_encoded_message_0)
 
             actual_encoded_message_1 = driver.messages[1]

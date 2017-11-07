@@ -5,7 +5,7 @@ from functools import partial
 
 from cook import mesos, http
 from cook.querying import query_unique_and_run
-from cook.util import strip_all, check_positive
+from cook.util import strip_all, check_positive, guard_no_cluster
 
 CHUNK_SIZE = 4096
 LINE_DELIMITER = '\n'
@@ -138,8 +138,9 @@ def tail_for_instance(instance, sandbox_dir, path, num_lines_to_print, follow, f
         tail_follow(file_size, read, follow_sleep_seconds)
 
 
-def tail(clusters, args):
+def tail(clusters, args, _):
     """Tails the contents of the corresponding Mesos sandbox path by job or instance uuid."""
+    guard_no_cluster(clusters)
     uuids = strip_all(args.get('uuid'))
     paths = strip_all(args.get('path'))
     lines = args.get('lines')

@@ -8,7 +8,7 @@ import uuid
 import requests
 
 from cook import colors, http, metrics, version
-from cook.util import deep_merge, is_valid_uuid, read_lines, print_info, current_user
+from cook.util import deep_merge, is_valid_uuid, read_lines, print_info, current_user, guard_no_cluster
 
 
 def parse_raw_job_spec(job, r):
@@ -141,11 +141,12 @@ def acquire_commands(command_args):
     return commands
 
 
-def submit(clusters, args):
+def submit(clusters, args, _):
     """
     Submits a job (or multiple jobs) to cook scheduler. Assembles a list of jobs,
     potentially getting data from configuration, the command line, and stdin.
     """
+    guard_no_cluster(clusters)
     logging.debug('submit args: %s' % args)
     job = args
     raw = job.pop('raw', None)
