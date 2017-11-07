@@ -20,7 +20,7 @@
             [clojure.core.async :as async]
             [clojure.core.cache :as cache]
             [cook.mesos.util :as util]
-            [cook.test.testutil :as testutil :refer (create-dummy-instance create-dummy-job restore-fresh-database!)]
+            [cook.test.testutil :as testutil :refer (create-dummy-group create-dummy-instance create-dummy-job restore-fresh-database!)]
             [datomic.api :as d :refer (q db)])
   (:import [java.util Date]))
 
@@ -176,6 +176,19 @@
     (is (instance? datomic.Entity (first (:job/resource job-ent))))
     (is (not (instance? datomic.Entity job-map)))
     (is (not (instance? datomic.Entity (first (:job/resource job-map)))))))
+
+(deftest test-job-ent->map
+  (let [uri "datomic:mem://test-job-ent-map"
+        conn (restore-fresh-database! uri)
+        group-id (create-dummy-group conn)
+        job-id (create-dummy-job conn :group group-id)
+        job-map (util/job-ent->map (d/entity @(d/sync conn) job-id))
+        group (first (:group/_job job-map))]
+    (is (not (instance? datomic.Entity job-map)))
+    (is group)
+    (is (not (instance? datomic.Entity group)))
+    (is (not (nil? (:group/uuid group))))
+    (is (nil? (:group/job group)))))
 
 (deftest test-namespace-datomic
   (testing "Example tests"

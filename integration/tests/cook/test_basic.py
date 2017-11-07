@@ -999,13 +999,26 @@ class CookTest(unittest.TestCase):
 
     def test_queue_endpoint(self):
         constraints = [["HOSTNAME", "EQUALS", "lol won't get scheduled"]]
-        job_uuid, resp = util.submit_job(self.cook_url, constraints=constraints)
+        group = {'uuid': str(uuid.uuid4())}
+        job_spec = {'group' : group['uuid'],
+                    'constraints' : constraints}
+        uuids, resp = util.submit_jobs(self.cook_url, job_spec, 1, groups=[group])
+        job_uuid = uuids[0]
         try:
             self.assertEqual(201, resp.status_code, resp.content)
-            time.sleep(30)  # Need to wait for a rank cycle
-            queue = util.session.get('%s/queue' % self.cook_url)
-            self.assertEqual(200, queue.status_code, queue.content)
-            self.assertTrue(any([job['job/uuid'] == job_uuid for job in queue.json()['normal']]))
+            def query_queue():
+                return util.session.get('%s/queue' % self.cook_url)
+            def queue_predicate(resp):
+                return any([job['job/uuid'] == job_uuid for job in resp.json()['normal']])
+            resp = util.wait_until(query_queue, queue_predicate)
+            self.assertEqual(200, resp.status_code, resp.content)
+            job = [job for job in resp.json()['normal']
+                   if job['job/uuid'] == job_uuid][0]
+            self.assertTrue('group/_job' in job.keys())
+            job_group = job['group/_job'][0]
+            self.assertEqual(group['uuid'], job_group['group/uuid'])
+            self.assertTrue('group/host-placement' in job_group.keys())
+            self.assertFalse('group/job' in job_group.keys())
         finally:
             util.kill_jobs(self.cook_url, [job_uuid])
 
