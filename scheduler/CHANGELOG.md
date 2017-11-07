@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.8.0] - 2017-11-07
+### Added
+- Added support for killing a group of jobs, from @DaoWen
+- Added sysouts to get job output closer to Mesos' CommandExecutor, from @shamsimam
+- Added metrics for usage of /list, from @dposada
+- Added support for retrying a group of jobs, from @DaoWen
+- Added support for configurable environment passed to Cook Executor, from @shamsimam
+### Changed
+- Fixed bug with job group constraints, from @pschorf
+- Fixed bug where Cook Executor jobs were opting in to the heartbeat support, from @shamsimam
+- Changed (simplified) the sandbox directory syncing mechanism for jobs, from @shamsimam
+
 ## [1.7.0] - 2017-10-19
 ### Changed
 - Renamed user whitelist to users allowed, from @dposada
