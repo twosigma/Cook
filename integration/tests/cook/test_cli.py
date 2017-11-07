@@ -563,6 +563,7 @@ class CookCliTest(unittest.TestCase):
         self.assertEqual(1, len(jobs))
         self.assertIn(uuids[0], jobs[0]['uuid'])
 
+    @attr('explicit')
     def test_ssh_job_uuid(self):
         cp, uuids = cli.submit('ls', self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
@@ -612,6 +613,7 @@ class CookCliTest(unittest.TestCase):
         self.assertEqual(1, cp.returncode, cp.stdout)
         self.assertIn('You provided a job group uuid', cli.decode(cp.stderr))
 
+    @attr('explicit')
     def test_ssh_instance_uuid(self):
         cp, uuids = cli.submit('ls', self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
