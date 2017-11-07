@@ -386,20 +386,6 @@ def wait_for_end_time(cook_url, job_id, max_delay_ms=2000):
     return response.json()[0]
 
 
-def all_instances_killed(response):
-    """
-    Helper method used with the wait_until function.
-    Checks a response from query_jobs to see if all jobs and instances have been killed.
-    """
-    for job in response.json():
-        if job['state'] != 'failed':
-            return False
-        for inst in job['instances']:
-            if inst['status'] != 'failed':
-                return False
-    return True
-
-
 def get_mesos_state(mesos_url):
     """
     Queries the state.json from mesos
