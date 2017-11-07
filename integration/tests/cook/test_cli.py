@@ -771,7 +771,7 @@ class CookCliTest(unittest.TestCase):
         self.logger.debug(entries)
         foo = entry('foo')
         self.assertEqual('drwxr-xr-x', foo['mode'])
-        self.assertEqual(2, foo['nlink'])
+        self.assertLessEqual(2, foo['nlink'])
         baz = entry('baz')
         self.assertEqual('-rw-r--r--', baz['mode'])
         self.assertEqual(1, baz['nlink'])
