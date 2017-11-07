@@ -594,6 +594,7 @@ class CookCliTest(unittest.TestCase):
         self.assertEqual(1, cp.returncode, cp.stdout)
         self.assertIn('No matching data found', cli.decode(cp.stderr))
 
+    @attr('explicit')
     def test_ssh_duplicate_uuid(self):
         cp, uuids = cli.submit('ls', self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
