@@ -966,6 +966,18 @@ class CookCliTest(unittest.TestCase):
         self.assertEqual(2, cp.returncode, cp.stderr)
         self.assertIn("invalid choice: 'bogus'", cli.decode(cp.stderr))
 
+    def test_job_environment(self):
+        """Note: This test doesn't directly test the cli. It relies on stdout to test the job environment."""
+        group_uuid = uuid.uuid4()
+        cp, uuids = cli.submit('env', self.cook_url, submit_flags=f'--group {group_uuid}')
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        util.wait_for_job(self.cook_url, uuids[0], 'completed')
+        cp = cli.tail(uuids[0], 'stdout', self.cook_url, '--lines 200')
+        stdout = cli.decode(cp.stdout)
+        self.logger.debug(f'Contents of stdout: {stdout}')
+        self.assertIn('COOK_JOB_GROUP_ID=', stdout)
+        self.assertIn('COOK_JOB_ID=', stdout)
+
     def test_kill_fails_with_duplicate_uuids(self):
         # Duplicate job and group uuid
         duplicate_uuid = uuid.uuid4()

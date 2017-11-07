@@ -132,6 +132,11 @@
   [db job-ent]
   (some-> job-ent :job/container remove-datomic-namespacing))
 
+(defn job-ent->group-uuid
+  "Take a job entity and return its container"
+  [job-ent]
+  (some-> job-ent :group/_job first :group/uuid))
+
 (defn job-ent->env
   "Take a job entity and return the environment variable map"
   [job-ent]
