@@ -91,10 +91,11 @@
 (defn entity->map
   "Takes a datomic entity and converts it along with any nested entities
   into clojure maps"
-  ([entity db]
-   (entity->map (d/entity db (:db/id entity))))
-  ([entity]
-   (deep-transduce-kv (map identity) entity)))
+  ([entity & {:keys [db skip-keys]
+              :or {skip-keys #{}}}]
+   (let [entity' (if db (d/entity db (:db/id entity))
+                     entity)]
+     (deep-transduce-kv (filter (fn [[k _]] (not (contains? skip-keys k)))) entity'))))
 
 (defn job-ent->map
   "Convert a job entity to a map. This also loads the associated group and converts it to a map."
@@ -102,7 +103,10 @@
    (job-ent->map (d/entity db (:db/id job))))
   ([job]
    (-> (entity->map job)
-       (assoc :group/_job (entity->map (:group/_job job))))))
+       ; Load the group related to the job (if any) but without loading the job entities
+       ; inside the group entity. If someone needs to access them, it's better to query
+       ; at that point instead of relying on the cached data.
+       (assoc :group/_job (entity->map (:group/_job job) :skip-keys #{:group/job})))))
 
 (defn remove-datomic-namespacing
   "Takes a map from datomic (pull) and removes the namespace
