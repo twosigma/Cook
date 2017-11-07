@@ -1,9 +1,8 @@
 import argparse
-import json
 import logging
 from urllib.parse import urlparse
 
-from cook import util, http, colors, metrics, version, configuration
+from cook import util, http, metrics, version, configuration
 from cook.subcommands import submit, show, wait, list, ssh, ls, tail, kill, config
 from cook.util import deep_merge
 
@@ -18,15 +17,17 @@ parser.add_argument('--version', help='output version information and exit', des
 
 subparsers = parser.add_subparsers(dest='action')
 
-actions = {'submit': submit.register(subparsers.add_parser, configuration.add_defaults),
-           'show': show.register(subparsers.add_parser, configuration.add_defaults),
-           'wait': wait.register(subparsers.add_parser, configuration.add_defaults),
-           'list': list.register(subparsers.add_parser, configuration.add_defaults),
-           'ssh': ssh.register(subparsers.add_parser, configuration.add_defaults),
-           'ls': ls.register(subparsers.add_parser, configuration.add_defaults),
-           'tail': tail.register(subparsers.add_parser, configuration.add_defaults),
-           'kill': kill.register(subparsers.add_parser, configuration.add_defaults),
-           'config': config.register(subparsers.add_parser, configuration.add_defaults)}
+actions = {
+    'config': config.register(subparsers.add_parser, configuration.add_defaults),
+    'kill': kill.register(subparsers.add_parser, configuration.add_defaults),
+    'list': list.register(subparsers.add_parser, configuration.add_defaults),
+    'ls': ls.register(subparsers.add_parser, configuration.add_defaults),
+    'show': show.register(subparsers.add_parser, configuration.add_defaults),
+    'ssh': ssh.register(subparsers.add_parser, configuration.add_defaults),
+    'submit': submit.register(subparsers.add_parser, configuration.add_defaults),
+    'tail': tail.register(subparsers.add_parser, configuration.add_defaults),
+    'wait': wait.register(subparsers.add_parser, configuration.add_defaults)
+}
 
 
 def load_target_clusters(config_map, url=None, cluster=None):
