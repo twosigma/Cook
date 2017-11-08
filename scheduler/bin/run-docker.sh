@@ -30,7 +30,7 @@ fi
 
 SCHEDULER_DIR="$( dirname ${DIR} )"
 SCHEDULER_EXECUTOR_DIR=${SCHEDULER_DIR}/resources/public
-EXECUTOR_NAME=cook-executor-docker
+EXECUTOR_NAME=cook-executor
 
 if [ -z "$(docker network ls -q -f name=cook_nw)" ];
 then

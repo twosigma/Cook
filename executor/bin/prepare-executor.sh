@@ -11,7 +11,7 @@ EXECUTOR_DIR="$(dirname ${DIR})"
 MODE=${1}
 TARGET_DIR=${2}
 
-set +e
+set -e
 
 if [ -z "${MODE}" ]; then
     echo "ERROR: mode has not been specified!"
@@ -29,6 +29,10 @@ if [ -z "${TARGET_DIR}" ]; then
 fi
 
 COOK_EXECUTOR_NAME="cook-executor-${MODE}"
+if [[ ! "${MODE}" =~ ^(docker)$ ]]; then
+    COOK_EXECUTOR_NAME="cook-executor"
+fi
+
 COOK_EXECUTOR_PATH="${EXECUTOR_DIR}/dist/${COOK_EXECUTOR_NAME}"
 if [ ! -f ${COOK_EXECUTOR_PATH} ]; then
     echo "${COOK_EXECUTOR_NAME} not found at ${COOK_EXECUTOR_PATH}"

@@ -6,7 +6,7 @@
 # matches the source version, and 1 (false) otherwise.
 #
 # When using the quiet flag (-q|--quiet), no additional output is printed.
-# You can override the default binary name (cook-executor-docker) using
+# You can override the default binary name (cook-executor) using
 # the optional EXECUTOR_NAME argument.
 #
 # Note: versions containing the case-insensitive string "dev" never match
@@ -29,7 +29,7 @@ case "$1" in
         exit -1
 esac
 
-EXECUTOR_NAME="${1:-cook-executor-docker}"
+EXECUTOR_NAME="${1:-cook-executor}"
 
 #
 # Switch to executor directory

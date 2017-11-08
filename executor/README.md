@@ -55,13 +55,13 @@ INFO: Building EXE from out00-EXE.toc completed successfully.
 Also, a docker-compatible version of the cook executor can be built using:
 
 ```bash
-# will create dist/cook-executor-docker
+# will create dist/cook-executor
 $ bin/build-docker.sh
 ...
 INFO: PyInstaller: 3.3
 INFO: Python: 3.5.4
 ...
-INFO: Appending archive to ELF section in EXE /opt/cook/dist/cook-executor-docker
+INFO: Appending archive to ELF section in EXE /opt/cook/dist/cook-executor
 INFO: Building EXE from out00-EXE.toc completed successfully.
 ```
 
