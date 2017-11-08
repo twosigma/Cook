@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.8.1] - 2017-11-08
+### Added
+- Added COOK_JOB_UUID and COOK_JOB_GROUP_UUID to the job environment, from @shamsimam
+
 ## [1.8.0] - 2017-11-07
 ### Added
 - Added support for killing a group of jobs, from @DaoWen
