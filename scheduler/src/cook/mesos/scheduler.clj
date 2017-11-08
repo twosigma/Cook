@@ -1051,6 +1051,14 @@
                 (reconcile-jobs conn)
                 (reconcile-tasks (db conn) driver framework-id fenzo)))))
 
+;; Unfortunately, clj-time.core/millis only accepts ints, not longs.
+;; The Period class has a constructor that accepts "long milliseconds",
+;; but since that isn't exposed through the clj-time API, we have to call it directly.
+(defn millis->period
+  "Create a time period (duration) from a number of milliseconds."
+  [millis]
+  (org.joda.time.Period. (long millis)))
+
 (defn get-lingering-tasks
   "Return a list of lingering tasks.
 
@@ -1069,7 +1077,7 @@
              [(get-else $ ?j :job/max-runtime ?default-runtime) ?max-runtime]]
            db (-> default-timeout-hours time/hours time/in-millis))]
     (for [[task-id start-time max-runtime-ms] jobs-with-max-runtime
-          :let [timeout-ms (time/millis (min max-runtime-ms max-allowed-timeout-ms))
+          :let [timeout-ms (millis->period (min max-runtime-ms max-allowed-timeout-ms))
                 timeout-boundary (time/plus (tc/from-date start-time) timeout-ms)]
           :when (time/after? now timeout-boundary)]
       task-id)))
