@@ -30,6 +30,7 @@ fi
 
 SCHEDULER_DIR="$( dirname ${DIR} )"
 SCHEDULER_EXECUTOR_DIR=${SCHEDULER_DIR}/resources/public
+EXECUTOR_NAME=cook-executor-docker
 
 if [ -z "$(docker network ls -q -f name=cook_nw)" ];
 then
@@ -63,8 +64,8 @@ docker create \
     --name=${NAME} \
     --publish=${COOK_NREPL_PORT}:${COOK_NREPL_PORT} \
     --publish=${COOK_PORT}:${COOK_PORT} \
-    -e "COOK_EXECUTOR=file://${SCHEDULER_EXECUTOR_DIR}/cook-executor-docker" \
-    -e "COOK_EXECUTOR_COMMAND=./cook-executor-docker" \
+    -e "COOK_EXECUTOR=file://${SCHEDULER_EXECUTOR_DIR}/${EXECUTOR_NAME}" \
+    -e "COOK_EXECUTOR_COMMAND=./${EXECUTOR_NAME}" \
     -e "COOK_PORT=${COOK_PORT}" \
     -e "COOK_NREPL_PORT=${COOK_NREPL_PORT}" \
     -e "COOK_FRAMEWORK_ID=${COOK_FRAMEWORK_ID}" \

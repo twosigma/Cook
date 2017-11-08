@@ -297,7 +297,7 @@ An example configuration looks like:
 
 ```clojure
 {...
- :executor {:command "cook-executor"
+ :executor {:command "./cook-executor-binary"
             :default-progress-regex-string "progress: (\d+)(?: )?(.*)"
             :environment {"EXECUTOR_DEFAULT_PROGRESS_OUTPUT_NAME" "stdout"}
             :log-level "INFO"
@@ -306,7 +306,7 @@ An example configuration looks like:
             :uri {:cache true
                   :executable true
                   :extract false
-                  :value "file:///path/to/cook-executor"}}
+                  :value "file:///path/to/cook-executor-binary"}}
  ...}
 ```
 

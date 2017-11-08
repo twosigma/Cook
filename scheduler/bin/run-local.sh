@@ -23,8 +23,9 @@ SCHEDULER_DIR="$( dirname ${DIR} )"
 SCHEDULER_EXECUTOR_DIR=${SCHEDULER_DIR}/resources/public
 
 EXECUTOR_DIR="$(dirname ${SCHEDULER_DIR})/executor"
+EXECUTOR_NAME=cook-executor-local
 SCHEDULER_EXECUTOR_DIR=${SCHEDULER_DIR}/resources/public
-SCHEDULER_EXECUTOR_FILE=${EXECUTOR_DIR}/cook-executor-local
+SCHEDULER_EXECUTOR_FILE=${SCHEDULER_EXECUTOR_DIR}/${EXECUTOR_NAME}
 
 ${EXECUTOR_DIR}/bin/prepare-executor.sh local ${SCHEDULER_EXECUTOR_DIR}
 
@@ -43,7 +44,7 @@ echo "Creating environment variables..."
 export COOK_DATOMIC_URI="${COOK_DATOMIC_URI}"
 export COOK_FRAMEWORK_ID="${COOK_FRAMEWORK_ID}"
 export COOK_EXECUTOR="file://${SCHEDULER_EXECUTOR_FILE}"
-export COOK_EXECUTOR_COMMAND="./cook-executor-local"
+export COOK_EXECUTOR_COMMAND="./${EXECUTOR_NAME}"
 export COOK_HOSTNAME="cook-scheduler-${COOK_PORT}"
 export COOK_LOG_FILE="log/cook-${COOK_PORT}.log"
 export COOK_NREPL_PORT="${COOK_NREPL_PORT}"

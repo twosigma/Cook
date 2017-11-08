@@ -28,27 +28,25 @@ if [ -z "${TARGET_DIR}" ]; then
     exit 1
 fi
 
-COOK_EXECUTOR_FILE="${EXECUTOR_DIR}/dist/cook-executor-${MODE}"
-if [ ! -f ${COOK_EXECUTOR_FILE} ]; then
-    echo "cook-executor not found at ${COOK_EXECUTOR_FILE}"
+COOK_EXECUTOR_NAME="cook-executor-${MODE}"
+COOK_EXECUTOR_PATH="${EXECUTOR_DIR}/dist/${COOK_EXECUTOR_NAME}"
+if [ ! -f ${COOK_EXECUTOR_PATH} ]; then
+    echo "${COOK_EXECUTOR_NAME} not found at ${COOK_EXECUTOR_PATH}"
     DO_EXECUTOR_REBUILD=true
-elif ! ${EXECUTOR_DIR}/bin/check-version.sh -q; then
-    echo "cook-executor appears to be out of date"
+elif ! ${EXECUTOR_DIR}/bin/check-version.sh -q ${COOK_EXECUTOR_NAME}; then
+    echo "${COOK_EXECUTOR_NAME} appears to be out of date"
     DO_EXECUTOR_REBUILD=true
 else
     DO_EXECUTOR_REBUILD=false
 fi
 
 if $DO_EXECUTOR_REBUILD; then
-    echo "Triggering build of cook-executor before proceeding."
+    echo "Triggering build of ${COOK_EXECUTOR_NAME} before proceeding."
     ${EXECUTOR_DIR}/bin/build-${MODE}.sh
 fi
 
-if [ "$COOK_EXECUTOR_FILE" -nt "$TARGET_FILE" ]; then
-    echo "Copying cook-executor from ${COOK_EXECUTOR_FILE} to ${TARGET_DIR}"
+if [ "$COOK_EXECUTOR_PATH" -nt "${TARGET_DIR}/${COOK_EXECUTOR_NAME}" ]; then
+    echo "Copying ${COOK_EXECUTOR_NAME} from ${COOK_EXECUTOR_PATH} to ${TARGET_DIR}"
     mkdir -p ${TARGET_DIR}
-    cp -f ${COOK_EXECUTOR_FILE} ${TARGET_DIR}
-else
-    echo "ERROR: cook-executor file ${COOK_EXECUTOR_FILE} does not exist!"
-    exit 1
+    cp -f ${COOK_EXECUTOR_PATH} ${TARGET_DIR}
 fi
