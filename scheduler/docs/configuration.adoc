@@ -297,7 +297,7 @@ An example configuration looks like:
 
 ```clojure
 {...
- :executor {:command "cook-executor"
+ :executor {:command "./cook-executor"
             :default-progress-regex-string "progress: (\d+)(?: )?(.*)"
             :environment {"EXECUTOR_DEFAULT_PROGRESS_OUTPUT_NAME" "stdout"}
             :log-level "INFO"
