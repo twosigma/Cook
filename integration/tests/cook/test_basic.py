@@ -958,45 +958,14 @@ class CookTest(unittest.TestCase):
             # (ensure it still works when there are no live jobs)
             util.kill_groups(self.cook_url, [group_uuid])
 
-    def _help_test_group_change_killed_retries(self, failed_only):
-        group_spec = self.minimal_group()
-        group_uuid = group_spec['uuid']
-        job_spec = {'group': group_uuid, 'command': f'sleep 1'}
-        try:
-            jobs, resp = util.submit_jobs(self.cook_url, job_spec, 10, groups=[group_spec])
-            self.assertEqual(resp.status_code, 201)
-
-            def group_query():
-                return util.group_detail_query(self.cook_url, group_uuid)
-
-            # wait for some job to start
-            util.wait_until(group_query, util.group_some_job_started)
-            # kill all jobs in the group (and wait for the kill to complete)
-            self.logger.info(f'Killing all jobs in group {group_uuid}.')
-            util.kill_groups(self.cook_url, [group_uuid])
-
-            def jobs_query():
-                return util.query_jobs(self.cook_url, True, job=jobs)
-
-            util.wait_until(jobs_query, util.all_instances_done)
-            # retry all jobs in the group
-            util.retry_jobs(self.cook_url, retries=2, groups=[group_uuid], failed_only=failed_only)
-            # wait for some job to start
-            util.wait_until(group_query, util.group_some_job_started)
-            # return final job details to caller for assertion checks
-            return util.query_jobs(self.cook_url, assert_response=True, job=jobs).json()
-        finally:
-            # ensure that we don't leave a bunch of jobs running/waiting
-            util.kill_groups(self.cook_url, [group_uuid])
-
     def test_group_change_killed_retries(self):
-        jobs = self._help_test_group_change_killed_retries(failed_only=False)
+        jobs = util.group_submit_kill_retry(self.cook_url, failed_only=False)
         # ensure none of the jobs are still in a failed state
         for job in jobs:
             self.assertNotEqual('failed', job['state'], f'Job details: {json.dumps(job, sort_keys=True)}')
 
     def test_group_change_killed_retries_failed_only(self):
-        jobs = self._help_test_group_change_killed_retries(failed_only=True)
+        jobs = util.group_submit_kill_retry(self.cook_url, failed_only=True)
         # ensure none of the jobs are still in a failed state
         for job in jobs:
             self.assertNotEqual('failed', job['state'], f'Job details: {json.dumps(job, sort_keys=True)}')

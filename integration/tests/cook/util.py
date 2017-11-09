@@ -488,6 +488,7 @@ def sleep_for_publish_interval(cook_url):
     wait_publish_interval_ms = min(3 * progress_publish_interval_ms, 20000)
     time.sleep(wait_publish_interval_ms / 1000.0)
 
+
 def progress_line(cook_url, percent, message):
     """Simple text replacement of regex string using expected patterns of (\d+), (?: )? and (.*)."""
     cook_settings = settings(cook_url)
@@ -499,3 +500,44 @@ def progress_line(cook_url, percent, message):
     if not '(.*)' in regex_string:
         raise Exception('{} not present in {} regex string'.format('(.*)', regex_string))
     return regex_string.replace('(\d+)', str(percent)).replace('(.*)', str(message)).replace('(?: )?', ' ')
+
+
+def group_submit_kill_retry(cook_url, failed_only):
+    """
+    Helper method for integration tests on groups, following these steps:
+    1) Creates a group of 10 jobs
+    2) Waits for at least one job to start
+    3) Kills all the jobs
+    4) Retries the jobs
+    5) Waits for at least one job to start (again)
+    6) Finally kills all the jobs again (clean up)
+    """
+    group_spec = minimal_group()
+    group_uuid = group_spec['uuid']
+    job_spec = {'group': group_uuid, 'command': f'sleep 1'}
+    try:
+        jobs, resp = submit_jobs(cook_url, job_spec, 10, groups=[group_spec])
+        assert resp.status_code == 201, resp
+
+        def group_query():
+            return group_detail_query(cook_url, group_uuid)
+
+        # wait for some job to start
+        wait_until(group_query, group_some_job_started)
+        # kill all jobs in the group (and wait for the kill to complete)
+        logger.info(f'Killing all jobs in group {group_uuid}.')
+        kill_groups(cook_url, [group_uuid])
+
+        def jobs_query():
+            return query_jobs(cook_url, True, job=jobs)
+
+        wait_until(jobs_query, all_instances_done)
+        # retry all jobs in the group
+        retry_jobs(cook_url, retries=2, groups=[group_uuid], failed_only=failed_only)
+        # wait for some job to start
+        wait_until(group_query, group_some_job_started)
+        # return final job details to caller for assertion checks
+        return query_jobs(cook_url, assert_response=True, job=jobs).json()
+    finally:
+        # ensure that we don't leave a bunch of jobs running/waiting
+        kill_groups(cook_url, [group_uuid])
