@@ -16,12 +16,9 @@
 (ns cook.util
   (:refer-clojure :exclude [cast merge empty split replace])
   (:require [clj-http.client :as client]
-            [clj-time.core :as time]
             [clojure.core.memoize :as memo]
-            [clojure.data.json :as json]
             [clojure.java.io :as io :refer [reader file]]
             [clojure.tools.logging :as log]
-            [instaparse.core :as insta]
             [postal.core :as postal]
             [postal.core :as postal])
   (:use [clojure-miniprofiler :as miniprofiler]

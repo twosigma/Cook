@@ -563,6 +563,7 @@ class CookCliTest(unittest.TestCase):
         self.assertEqual(1, len(jobs))
         self.assertIn(uuids[0], jobs[0]['uuid'])
 
+    @attr('explicit')
     def test_ssh_job_uuid(self):
         cp, uuids = cli.submit('ls', self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
@@ -593,6 +594,7 @@ class CookCliTest(unittest.TestCase):
         self.assertEqual(1, cp.returncode, cp.stdout)
         self.assertIn('No matching data found', cli.decode(cp.stderr))
 
+    @attr('explicit')
     def test_ssh_duplicate_uuid(self):
         cp, uuids = cli.submit('ls', self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
@@ -612,6 +614,7 @@ class CookCliTest(unittest.TestCase):
         self.assertEqual(1, cp.returncode, cp.stdout)
         self.assertIn('You provided a job group uuid', cli.decode(cp.stderr))
 
+    @attr('explicit')
     def test_ssh_instance_uuid(self):
         cp, uuids = cli.submit('ls', self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
@@ -771,7 +774,7 @@ class CookCliTest(unittest.TestCase):
         self.logger.debug(entries)
         foo = entry('foo')
         self.assertEqual('drwxr-xr-x', foo['mode'])
-        self.assertEqual(2, foo['nlink'])
+        self.assertLessEqual(2, foo['nlink'])
         baz = entry('baz')
         self.assertEqual('-rw-r--r--', baz['mode'])
         self.assertEqual(1, baz['nlink'])
@@ -1113,3 +1116,87 @@ class CookCliTest(unittest.TestCase):
             cp, jobs = cli.show_json(uuids, self.cook_url)
             self.assertEqual('export FOO=0; exit ${FOO:-1}', jobs[0]['command'])
             self.assertEqual('success', jobs[0]['state'])
+
+    def test_config_command_basics(self):
+        config = {'defaults': {'submit': {'command-prefix': 'export FOO=0; '}}}
+        with cli.temp_config_file(config) as path:
+            flags = '--config %s' % path
+
+            # Get and set a valid entry
+            cp = cli.config_get('defaults.submit.command-prefix', flags=flags)
+            self.assertEqual(0, cp.returncode, cp.stderr)
+            self.assertEqual('export FOO=0; \n', cli.decode(cp.stdout))
+            cp = cli.config_set('defaults.submit.command-prefix', '"export FOO=1; "', flags=flags)
+            self.assertEqual(0, cp.returncode, cp.stderr)
+            cp = cli.config_get('defaults.submit.command-prefix', flags=flags)
+            self.assertEqual(0, cp.returncode, cp.stderr)
+            self.assertEqual('export FOO=1; \n', cli.decode(cp.stdout))
+
+            # Get invalid entries
+            cp = cli.config_get('this.is.not.present', flags=flags)
+            self.assertEqual(1, cp.returncode, cp.stderr)
+            self.assertIn('Configuration entry this.is.not.present not found.', cli.decode(cp.stderr))
+            cp = cli.config_get('defaults.submit.command-prefix.bogus', flags=flags)
+            self.assertEqual(1, cp.returncode, cp.stderr)
+            self.assertIn('Configuration entry defaults.submit.command-prefix.bogus not found.', cli.decode(cp.stderr))
+            cp = cli.config_get('defaults.submit', flags=flags)
+            self.assertEqual(1, cp.returncode, cp.stderr)
+            self.assertIn('Unable to get value because defaults.submit is a configuration section.',
+                          cli.decode(cp.stderr))
+
+            # Set on a section (invalid)
+            cp = cli.config_set('defaults.submit', 'bogus', flags=flags)
+            self.assertEqual(1, cp.returncode, cp.stderr)
+            self.assertIn('Unable to set value because defaults.submit is a configuration section.',
+                          cli.decode(cp.stderr))
+
+    def test_config_command_advanced(self):
+        config = {}
+        with cli.temp_config_file(config) as path:
+            flags = '--config %s' % path
+
+            # Set an entry that doesn't exist
+            cp = cli.config_get('defaults.submit.command-prefix', flags=flags)
+            self.assertEqual(1, cp.returncode, cp.stderr)
+            self.assertIn('Configuration entry defaults.submit.command-prefix not found.', cli.decode(cp.stderr))
+            cp = cli.config_set('defaults.submit.command-prefix', '"export FOO=1; "', flags=flags)
+            self.assertEqual(0, cp.returncode, cp.stderr)
+            cp = cli.config_get('defaults.submit.command-prefix', flags=flags)
+            self.assertEqual(0, cp.returncode, cp.stderr)
+            self.assertEqual('export FOO=1; \n', cli.decode(cp.stdout))
+
+            # Set at the top level
+            cp = cli.config_get('foo', flags=flags)
+            self.assertEqual(1, cp.returncode, cp.stderr)
+            self.assertIn('Configuration entry foo not found.', cli.decode(cp.stderr))
+            cp = cli.config_set('foo', 'bar', flags=flags)
+            self.assertEqual(0, cp.returncode, cp.stderr)
+            cp = cli.config_get('foo', flags=flags)
+            self.assertEqual(0, cp.returncode, cp.stderr)
+            self.assertEqual('bar\n', cli.decode(cp.stdout))
+            cp = cli.config_set('foo', 'baz', flags=flags)
+            self.assertEqual(0, cp.returncode, cp.stderr)
+            cp = cli.config_get('foo', flags=flags)
+            self.assertEqual(0, cp.returncode, cp.stderr)
+            self.assertEqual('baz\n', cli.decode(cp.stdout))
+
+            # Set non-string types
+            cp = cli.config_set('int', '12345', flags=flags)
+            self.assertEqual(0, cp.returncode, cp.stderr)
+            with open(path) as json_file:
+                self.assertEqual(12345, json.load(json_file)['int'])
+
+            cp = cli.config_set('float', '67.89', flags=flags)
+            self.assertEqual(0, cp.returncode, cp.stderr)
+            with open(path) as json_file:
+                self.assertEqual(67.89, json.load(json_file)['float'])
+
+            cp = cli.config_set('bool', 'true', flags=flags)
+            self.assertEqual(0, cp.returncode, cp.stderr)
+            with open(path) as json_file:
+                self.assertEqual(True, json.load(json_file)['bool'])
+
+            cp = cli.config_set('bool', 'false', flags=flags)
+            self.assertEqual(0, cp.returncode, cp.stderr)
+            with open(path) as json_file:
+                self.assertEqual(False, json.load(json_file)['bool'])

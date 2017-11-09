@@ -3,7 +3,7 @@ import os
 
 from cook import colors
 from cook.querying import query_unique_and_run
-from cook.util import print_info, strip_all
+from cook.util import print_info, strip_all, guard_no_cluster
 
 
 def ssh_to_instance(instance, sandbox_dir):
@@ -16,8 +16,9 @@ def ssh_to_instance(instance, sandbox_dir):
     os.execlp(command, 'ssh', '-t', hostname, f'cd "{sandbox_dir}" ; bash')
 
 
-def ssh(clusters, args):
+def ssh(clusters, args, _):
     """Attempts to ssh (using os.execlp) to the Mesos agent corresponding to the given job or instance uuid."""
+    guard_no_cluster(clusters)
     uuids = strip_all(args.get('uuid'))
     if len(uuids) > 1:
         # argparse should prevent this, but we'll be defensive anyway

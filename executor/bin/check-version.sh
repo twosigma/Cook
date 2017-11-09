@@ -1,11 +1,13 @@
 #!/bin/bash
 
-# USAGE: ./bin/check-version.sh [-q|--quiet]
+# USAGE: ./bin/check-version.sh [-q|--quiet] [EXECUTOR_NAME]
 #
 # Returns 0 (true) if the currently-installed cook executor version
 # matches the source version, and 1 (false) otherwise.
 #
 # When using the quiet flag (-q|--quiet), no additional output is printed.
+# You can override the default binary name (cook-executor) using
+# the optional EXECUTOR_NAME argument.
 #
 # Note: versions containing the case-insensitive string "dev" never match
 # (i.e., they're considered "unstable", and should always require a rebuild).
@@ -23,9 +25,11 @@ case "$1" in
         verbose=true
         ;;
     *)
-        echo "USAGE: $0 [-q|--quiet]"
+        echo "USAGE: $0 [-q|--quiet] [EXECUTOR_NAME]"
         exit -1
 esac
+
+EXECUTOR_NAME="${1:-cook-executor}"
 
 #
 # Switch to executor directory
@@ -58,7 +62,7 @@ fi
 # Get installed binary's version
 #
 
-binary_app=./dist/cook-executor
+binary_app=./dist/${EXECUTOR_NAME}
 
 if [ -e $binary_app ]; then
     installed_version="$(docker run -v $(pwd):/opt/cook python:3.5 /opt/cook/$binary_app --version)"

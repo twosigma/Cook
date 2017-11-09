@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 
+# Usage: ./bin/build-docker.sh
+# Builds the version of cook executor that can execute inside a docker container.
+
 set -e
 
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"

@@ -16,9 +16,7 @@
 (ns cook.mesos.api
   (:require [camel-snake-kebab.core :refer [->snake_case ->kebab-case]]
             [cheshire.core :as cheshire]
-            [clj-http.client :as http]
             [clj-time.core :as t]
-            [clojure.core.cache :as cache]
             [clojure.set :as set]
             [clojure.string :as str]
             [clojure.tools.logging :as log]
@@ -723,73 +721,29 @@
       (throw (ex-info (str "Group UUID " (:uuid group) " already used") {:uuid group})))
     group))
 
-(defn get-executor-id->sandbox-directory-impl
-  "Builds an indexed version of all executor-id to sandbox directory on the specified agent. Has no cache; takes
-   100-500ms to run."
-  [framework-id agent-hostname]
-  (let [timeout-millis (* 5 1000)
-        ;; Throw SocketTimeoutException or ConnectionTimeoutException when timeout
-        {:strs [completed_frameworks frameworks]} (-> (str "http://" agent-hostname ":5051/state.json")
-                                                      (http/get
-                                                        {:as :json-string-keys
-                                                         :conn-timeout timeout-millis
-                                                         :socket-timeout timeout-millis
-                                                         :spnego-auth true})
-                                                      :body)
-        framework-filter (fn framework-filter [{:strs [id] :as framework}]
-                           (when (= framework-id id) framework))
-        ;; there should be at most one framework entry for a given framework-id
-        target-framework (or (some framework-filter frameworks)
-                             (some framework-filter completed_frameworks))
-        {:strs [completed_executors executors]} target-framework
-        framework-executors (reduce into [] [completed_executors executors])]
-    (->> framework-executors
-         (map (fn executor-state->executor-id->sandbox-directory [{:strs [id directory]}]
-                [id directory]))
-         (into {}))))
-
-(defn get-executor-id->sandbox-directory-cache-entry
-  "Builds an indexed version of all executor-id to sandbox directory for the specified agent. Cached"
-  [framework-id agent-hostname cache]
-  (let [run (delay (try (get-executor-id->sandbox-directory-impl framework-id agent-hostname)
-                        (catch Exception e
-                          (log/debug e "Failed to get executor state, purging from cache...")
-                          (swap! cache cache/evict agent-hostname)
-                          nil)))
-        cs (swap! cache (fn [c]
-                          (if (cache/has? c agent-hostname)
-                            (cache/hit c agent-hostname)
-                            (cache/miss c agent-hostname run))))
-        val (cache/lookup cs agent-hostname)]
-    (if val @val @run)))
-
 (defn retrieve-url-path
   "Constructs a URL to query the sandbox directory of the task.
-   Uses either the provided sandbox-directory or takes the executor-id->sandbox-directory from the agent json to
-   determine the sandbox directory.
-   sandbox-directory will be populated in the instance by the cook executor, else it may be nil when the query to
-   the agent needs to me made.
-   Hardcodes fun stuff like the port we run the agent on. Users will need to add the file path & offset to their query.
+   Uses the provided sandbox-directory to determine the sandbox directory.
+   Hardcodes fun stuff like the port we run the agent on.
+   Users will need to add the file path & offset to their query.
    Refer to the 'Using the output_url' section in docs/scheduler-rest-api.adoc for further details."
-  [framework-id agent-hostname executor-id agent-query-cache sandbox-directory]
+  [agent-hostname task-id sandbox-directory]
   (try
-    (when-let [directory (or sandbox-directory
-                             (get (get-executor-id->sandbox-directory-cache-entry framework-id agent-hostname agent-query-cache)
-                                  executor-id))]
+    (when sandbox-directory
       (str "http://" agent-hostname ":5051" "/files/read.json?path="
-           (URLEncoder/encode directory "UTF-8")))
+           (URLEncoder/encode sandbox-directory "UTF-8")))
     (catch Exception e
-      (log/debug e "Unable to retrieve directory path for" executor-id "on agent" agent-hostname)
+      (log/debug e "Unable to retrieve directory path for" task-id "on agent" agent-hostname)
       nil)))
 
 (defn fetch-instance-map
   "Converts the instance entity to a map representing the instance fields."
-  [db framework-id agent-query-cache instance]
+  [db instance]
   (let [hostname (:instance/hostname instance)
-        executor-id (:instance/executor-id instance)
+        task-id (:instance/task-id instance)
         executor (:instance/executor instance)
         sandbox-directory (:instance/sandbox-directory instance)
-        url-path (retrieve-url-path framework-id hostname executor-id agent-query-cache sandbox-directory)
+        url-path (retrieve-url-path hostname task-id sandbox-directory)
         start (:instance/start-time instance)
         mesos-start (:instance/mesos-start-time instance)
         end (:instance/end-time instance)
@@ -799,13 +753,13 @@
         progress (:instance/progress instance)
         progress-message (:instance/progress-message instance)]
     (cond-> {:backfilled false ;; Backfill has been deprecated
-             :executor_id executor-id
+             :executor_id (:instance/executor-id instance)
              :hostname hostname
              :ports (vec (sort (:instance/ports instance)))
              :preempted (:instance/preempted? instance false)
              :slave_id (:instance/slave-id instance)
              :status (name (:instance/status instance))
-             :task_id (:instance/task-id instance)}
+             :task_id task-id}
             executor (assoc :executor (name executor))
             start (assoc :start_time (.getTime start))
             mesos-start (assoc :mesos_start_time (.getTime mesos-start))
@@ -820,7 +774,7 @@
             sandbox-directory (assoc :sandbox_directory sandbox-directory))))
 
 (defn fetch-job-map
-  [db framework-id agent-query-cache job-uuid]
+  [db framework-id job-uuid]
   (let [job (d/entity db [:job/uuid job-uuid])
         resources (util/job-ent->resources job)
         groups (:group/_job job)
@@ -836,7 +790,7 @@
                          (map (fn [{:keys [attribute operator pattern]}]
                                 (->> [attribute (str/upper-case (name operator)) pattern]
                                      (map str)))))
-        instances (map #(fetch-instance-map db framework-id agent-query-cache %1) (:job/instance job))
+        instances (map #(fetch-instance-map db %1) (:job/instance job))
         submit-time (when (:job/submit-time job) ; due to a bug, submit time may not exist for some jobs
                 (.getTime (:job/submit-time job)))
         job-map {:command (:job/command job)
@@ -998,24 +952,24 @@
                            (str/join \space (remove authorized? uuids)))}])))
 
 (defn render-jobs-for-response
-  [conn framework-id agent-query-cache ctx]
-  (mapv (partial fetch-job-map (db conn) framework-id agent-query-cache) (::jobs ctx)))
+  [conn framework-id ctx]
+  (mapv (partial fetch-job-map (db conn) framework-id) (::jobs ctx)))
 
 
 ;;; On GET; use repeated job argument
 (defn read-jobs-handler
-  [conn framework-id task-constraints gpu-enabled? is-authorized-fn agent-query-cache]
+  [conn framework-id is-authorized-fn]
   (base-cook-handler
     {:allowed-methods [:get]
      :malformed? check-job-params-present
      :allowed? (partial job-request-allowed? conn is-authorized-fn)
      :exists? (partial retrieve-jobs conn)
-     :handle-ok (partial render-jobs-for-response conn framework-id agent-query-cache)}))
+     :handle-ok (partial render-jobs-for-response conn framework-id)}))
 
 
 ;;; On DELETE; use repeated job argument
 (defn destroy-jobs-handler
-  [conn framework-id is-authorized-fn agent-query-cache]
+  [conn is-authorized-fn]
   (base-cook-handler
     {:allowed-methods [:delete]
      :malformed? check-job-params-present
@@ -1024,7 +978,7 @@
      :delete! (fn [ctx]
                 (cook.mesos/kill-job conn (::jobs-requested ctx))
                 (cook.mesos/kill-instances conn (::instances-requested ctx)))
-     :handle-ok (partial render-jobs-for-response conn framework-id agent-query-cache)}))
+     :handle-ok (partial render-jobs-for-response conn)}))
 
 (defn vectorize
   "If x is not a vector (or nil), turns it into a vector"
@@ -1714,7 +1668,7 @@
     nil))
 
 (defn list-resource
-  [db framework-id is-authorized-fn agent-query-cache]
+  [db framework-id is-authorized-fn]
   (liberator/resource
     :available-media-types ["application/json"]
     :allowed-methods [:get]
@@ -1799,7 +1753,7 @@
                         job-uuids (if (nil? limit)
                                     job-uuids
                                     (take limit job-uuids))
-                        jobs (mapv (partial fetch-job-map db framework-id agent-query-cache) job-uuids)]
+                        jobs (mapv (partial fetch-job-map db framework-id) job-uuids)]
                     (histograms/update! list-request-param-time-range-ms (- end-ms start-ms'))
                     (histograms/update! list-request-param-limit limit)
                     (histograms/update! list-response-job-count (count jobs))
@@ -1862,7 +1816,7 @@
 ;; "main" - the entry point that routes to other handlers
 ;;
 (defn main-handler
-  [conn framework-id mesos-pending-jobs-fn mesos-agent-query-cache
+  [conn framework-id mesos-pending-jobs-fn
    {:keys [is-authorized-fn task-constraints]
     gpu-enabled? :mesos-gpu-enabled
     :as settings}
@@ -1888,7 +1842,7 @@
                                :description "The jobs and their instances were returned."}
                           400 {:description "Non-UUID values were passed as jobs."}
                           403 {:description "The supplied UUIDs don't correspond to valid jobs."}}
-              :handler (read-jobs-handler conn framework-id task-constraints gpu-enabled? is-authorized-fn mesos-agent-query-cache)}
+              :handler (read-jobs-handler conn framework-id is-authorized-fn)}
         :post {:summary "Schedules one or more jobs."
                :parameters {:body-params RawSchedulerRequest}
                :responses {201 {:description "The jobs were successfully scheduled."}
@@ -1900,7 +1854,7 @@
                              400 {:description "Non-UUID values were passed as jobs."}
                              403 {:description "The supplied UUIDs don't correspond to valid jobs."}}
                  :parameters {:query-params JobOrInstanceIds}
-                 :handler (destroy-jobs-handler conn framework-id is-authorized-fn mesos-agent-query-cache)}}))
+                 :handler (destroy-jobs-handler conn is-authorized-fn)}}))
 
      (c-api/context
       "/share" []
@@ -2019,7 +1973,7 @@
     (ANY "/running" []
          (running-jobs conn is-authorized-fn))
     (ANY "/list" []
-         (list-resource (db conn) framework-id is-authorized-fn mesos-agent-query-cache)))
+         (list-resource (db conn) framework-id is-authorized-fn)))
    (format-params/wrap-restful-params {:formats [:json-kw]
                                        :handle-error c-mw/handle-req-error})
    (streaming-json-middleware)))

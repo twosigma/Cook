@@ -66,12 +66,11 @@
     (resolve var-sym)))
 
 (def raw-scheduler-routes
-  {:scheduler (fnk [mesos mesos-agent-query-cache mesos-datomic mesos-leadership-atom mesos-pending-jobs-atom framework-id settings]
+  {:scheduler (fnk [mesos mesos-datomic mesos-leadership-atom mesos-pending-jobs-atom framework-id settings]
                 ((lazy-load-var 'cook.mesos.api/main-handler)
                   mesos-datomic
                   framework-id
                   (fn [] @mesos-pending-jobs-atom)
-                  mesos-agent-query-cache
                   settings
                   (get-in mesos [:mesos-scheduler :leader-selector])
                   mesos-leadership-atom))
@@ -91,7 +90,7 @@
                            mesos-gpu-enabled mesos-leader-path mesos-master mesos-master-hosts mesos-principal
                            mesos-role offer-incubate-time-ms progress rebalancer riemann server-port task-constraints]
                           curator-framework framework-id mesos-datomic mesos-datomic-mult mesos-leadership-atom
-                          mesos-offer-cache mesos-pending-jobs-atom]
+                          mesos-offer-cache mesos-pending-jobs-atom sandbox-syncer-state]
                       (log/info "Initializing mesos scheduler")
                       (let [make-mesos-driver-fn (partial (lazy-load-var 'cook.mesos/make-mesos-driver)
                                                           {:mesos-master mesos-master
@@ -105,34 +104,35 @@
                         (try
                           (Class/forName "org.apache.mesos.Scheduler")
                           ((lazy-load-var 'cook.mesos/start-mesos-scheduler)
-                            make-mesos-driver-fn
-                            get-mesos-utilization-fn
-                            curator-framework
-                            mesos-datomic
-                            mesos-datomic-mult
-                            mesos-leader-path
-                            offer-incubate-time-ms
-                            mea-culpa-failure-limit
-                            task-constraints
-                            (:host riemann)
-                            (:port riemann)
-                            mesos-pending-jobs-atom
-                            mesos-offer-cache
-                            mesos-gpu-enabled
-                            framework-id
-                            mesos-leadership-atom
-                            {:hostname hostname
-                             :server-port server-port}
-                            {:executor-config executor
+                            {:curator-framework curator-framework
+                             :executor-config executor
+                             :fenzo-config {:fenzo-max-jobs-considered fenzo-max-jobs-considered
+                                            :fenzo-scaleback fenzo-scaleback
+                                            :fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-warn
+                                            :fenzo-floor-iterations-before-reset fenzo-floor-iterations-before-reset
+                                            :fenzo-fitness-calculator fenzo-fitness-calculator
+                                            :good-enough-fitness good-enough-fitness}
+                             :framework-id framework-id
+                             :get-mesos-utilization get-mesos-utilization-fn
+                             :gpu-enabled? mesos-gpu-enabled
+                             :make-mesos-driver-fn make-mesos-driver-fn
+                             :mea-culpa-failure-limit mea-culpa-failure-limit
+                             :mesos-datomic-conn mesos-datomic
+                             :mesos-datomic-mult mesos-datomic-mult
+                             :mesos-leadership-atom mesos-leadership-atom
+                             :mesos-pending-jobs-atom mesos-pending-jobs-atom
+                             :offer-cache mesos-offer-cache
+                             :offer-incubate-time-ms offer-incubate-time-ms
+                             :progress-config progress
                              :rebalancer-config rebalancer
-                             :progress-config progress}
-                            {:fenzo-max-jobs-considered fenzo-max-jobs-considered
-                             :fenzo-scaleback fenzo-scaleback
-                             :fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-warn
-                             :fenzo-floor-iterations-before-reset fenzo-floor-iterations-before-reset
-                             :fenzo-fitness-calculator fenzo-fitness-calculator
-                             :good-enough-fitness good-enough-fitness}
-                            trigger-chans)
+                             :riemann-host (:host riemann)
+                             :riemann-port (:port riemann)
+                             :sandbox-syncer-state sandbox-syncer-state
+                             :server-config {:hostname hostname
+                                             :server-port server-port}
+                             :task-constraints task-constraints
+                             :trigger-chans trigger-chans
+                             :zk-prefix mesos-leader-path})
                           (catch ClassNotFoundException e
                             (log/warn e "Not loading mesos support...")
                             nil))))})
@@ -280,6 +280,11 @@
                                     (cache/lru-cache-factory :threshold max-size)
                                     (cache/ttl-cache-factory :ttl ttl-ms)
                                     atom))
+     :sandbox-syncer-state (fnk [[:settings [:sandbox-syncer publish-batch-size publish-interval-ms]]
+                                 mesos-agent-query-cache mesos-datomic]
+                             (let [prepare-sandbox-publisher (lazy-load-var 'cook.mesos.sandbox/prepare-sandbox-publisher)]
+                               (prepare-sandbox-publisher mesos-datomic publish-batch-size publish-interval-ms
+                                                          mesos-agent-query-cache)))
      :mesos-leadership-atom (fnk [] (atom false))
      :mesos-pending-jobs-atom (fnk [] (atom {}))
      :mesos-offer-cache (fnk [[:settings [:offer-cache max-size ttl-ms]]]
@@ -337,6 +342,11 @@
                             {:max-size 5000
                              :ttl-ms (* 60 1000)}
                             agent-query-cache))
+     :sandbox-syncer (fnk [[:config {sandbox-syncer nil}]]
+                       (merge
+                         {:publish-batch-size 100
+                          :publish-interval-ms 2500}
+                         sandbox-syncer))
      :server-port (fnk [[:config port]]
                     port)
      :is-authorized-fn (fnk [[:config {authorization-config default-authorization}]]

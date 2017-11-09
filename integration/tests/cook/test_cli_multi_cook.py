@@ -46,6 +46,7 @@ class MultiCookCliTest(unittest.TestCase):
             self.assertEqual('completed', jobs[0]['status'])
             self.assertEqual('completed', jobs[1]['status'])
 
+    @attr('explicit')
     def test_ssh(self):
         # Submit to cluster #2
         cp, uuids = cli.submit('ls', self.cook_url_2)

@@ -304,7 +304,9 @@ def manage_task(driver, task, stop_signal, completed_signal, config):
         # not yet started to run the task
         update_status(driver, task_id, cook.TASK_STARTING)
 
-        sandbox_message = json.dumps({'sandbox-directory': config.sandbox_directory, 'task-id': task_id})
+        sandbox_message = json.dumps({'sandbox-directory': config.sandbox_directory,
+                                      'task-id': task_id,
+                                      'type': 'directory'})
         send_message(driver, sandbox_message, config.max_message_length)
 
         environment = retrieve_process_environment(config, os.environ)
@@ -378,9 +380,7 @@ def run_mesos_driver(stop_signal, config):
     # check the status of the executor and bail if it has crashed
     while not executor.has_task_completed():
         time.sleep(1)
-    else:
-        logging.info('Executor thread has completed')
-
+    logging.info('Executor thread has completed, stopping driver')
     driver.stop()
 
 
@@ -418,6 +418,10 @@ class CookExecutor(Executor):
     def shutdown(self, driver):
         logging.info('Mesos requested executor to shutdown!')
         self.stop_signal.set()
+
+    def error(self, driver, message):
+        logging.error(message)
+        super().error(driver, message)
 
     def has_task_completed(self):
         """

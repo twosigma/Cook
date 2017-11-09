@@ -17,7 +17,7 @@ setup(
         'nose>=1.0'
     ],
     setup_requires=['nose>=1.0'],
-    install_requires=['pymesos==0.2.12'],
+    install_requires=['pymesos==0.2.15'],
     entry_points={
         'console_scripts': [
             'cook-executor = cook.__main__:main'

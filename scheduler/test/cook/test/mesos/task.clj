@@ -330,10 +330,37 @@
             db (d/db conn)
             job-ent (d/entity db job)
             framework-id {:value "framework-id"}
+            environment {"COOK_JOB_UUID" (-> job-ent :job/uuid str)}
             task-metadata (task/job->task-metadata db framework-id executor job-ent task-id)]
-        (is (= {:command {:value "run-my-command", :environment {}, :user "test-user", :uris []}
+        (is (= {:command {:value "run-my-command", :environment environment, :user "test-user", :uris []}
                 :container nil
-                :environment {}
+                :environment environment
+                :executor :executor/custom
+                :executor-key :custom-executor
+                :framework-id framework-id
+                :labels {}
+                :name (format "dummy_job_%s_%s" (:job/user job-ent) task-id)
+                :num-ports 0
+                :resources {:cpus 1.0, :mem 10.0}
+                :task-id task-id}
+               (dissoc task-metadata :data)))
+        (is (= (pr-str {:instance "0"}) (-> task-metadata :data (String. "UTF-8"))))))
+
+    (testing "custom-executor with simple job in a group"
+      (let [task-id (str (UUID/randomUUID))
+            group-ent-id (tu/create-dummy-group conn)
+            job (tu/create-dummy-job conn :command "run-my-command" :group group-ent-id
+                                     :job-state :job.state/running :user "test-user")
+            db (d/db conn)
+            job-ent (d/entity db job)
+            group-ent (d/entity db group-ent-id)
+            framework-id {:value "framework-id"}
+            environment {"COOK_JOB_GROUP_UUID" (-> group-ent :group/uuid str)
+                         "COOK_JOB_UUID" (-> job-ent :job/uuid str)}
+            task-metadata (task/job->task-metadata db framework-id executor job-ent task-id)]
+        (is (= {:command {:value "run-my-command", :environment environment, :user "test-user", :uris []}
+                :container nil
+                :environment environment
                 :executor :executor/custom
                 :executor-key :custom-executor
                 :framework-id framework-id
@@ -352,10 +379,11 @@
             db (d/db conn)
             job-ent (d/entity db job)
             framework-id {:value "framework-id"}
+            environment {"COOK_JOB_UUID" (-> job-ent :job/uuid str)}
             task-metadata (task/job->task-metadata db framework-id executor job-ent task-id)]
-        (is (= {:command {:value "run-my-command", :environment {}, :user "test-user", :uris []}
+        (is (= {:command {:value "run-my-command", :environment environment, :user "test-user", :uris []}
                 :container nil
-                :environment {}
+                :environment environment
                 :executor :executor/custom
                 :executor-key :custom-executor
                 :framework-id framework-id
@@ -374,19 +402,52 @@
             db (d/db conn)
             job-ent (d/entity db job)
             framework-id {:value "framework-id"}
+            environment {"COOK_JOB_UUID" (-> job-ent :job/uuid str)
+                         "EXECUTOR_LOG_LEVEL" (:log-level executor)
+                         "EXECUTOR_MAX_MESSAGE_LENGTH" (:max-message-length executor)
+                         "PROGRESS_REGEX_STRING" (:default-progress-regex-string executor)
+                         "PROGRESS_SAMPLE_INTERVAL_MS" (:progress-sample-interval-ms executor)}
             task-metadata (task/job->task-metadata db framework-id executor job-ent task-id)]
-        (is (= {:command {:environment {"EXECUTOR_LOG_LEVEL" (:log-level executor)
-                                        "EXECUTOR_MAX_MESSAGE_LENGTH" (:max-message-length executor)
-                                        "PROGRESS_REGEX_STRING" (:default-progress-regex-string executor)
-                                        "PROGRESS_SAMPLE_INTERVAL_MS" (:progress-sample-interval-ms executor)}
+        (is (= {:command {:environment environment
                           :uris [(:uri executor)]
                           :user "test-user"
                           :value (:command executor)}
                 :container nil
-                :environment {"EXECUTOR_LOG_LEVEL" (:log-level executor)
-                              "EXECUTOR_MAX_MESSAGE_LENGTH" (:max-message-length executor)
-                              "PROGRESS_REGEX_STRING" (:default-progress-regex-string executor)
-                              "PROGRESS_SAMPLE_INTERVAL_MS" (:progress-sample-interval-ms executor)}
+                :environment environment
+                :executor :executor/cook
+                :executor-key :cook-executor
+                :framework-id framework-id
+                :labels {}
+                :name (format "dummy_job_%s_%s" (:job/user job-ent) task-id)
+                :num-ports 0
+                :resources {:cpus 1.0, :mem 10.0}
+                :task-id task-id}
+               (dissoc task-metadata :data)))
+        (is (= (json/write-str {"command" "run-my-command"})
+               (-> task-metadata :data (String. "UTF-8"))))))
+
+    (testing "cook-executor with simple job in a group"
+      (let [task-id (str (UUID/randomUUID))
+            group-ent-id (tu/create-dummy-group conn)
+            job (tu/create-dummy-job conn :command "run-my-command" :custom-executor? false :executor :executor/cook
+                                     :group group-ent-id :job-state :job.state/running :user "test-user" )
+            db (d/db conn)
+            group-ent (d/entity db group-ent-id)
+            job-ent (d/entity db job)
+            framework-id {:value "framework-id"}
+            environment {"COOK_JOB_GROUP_UUID" (-> group-ent :group/uuid str)
+                         "COOK_JOB_UUID" (-> job-ent :job/uuid str)
+                         "EXECUTOR_LOG_LEVEL" (:log-level executor)
+                         "EXECUTOR_MAX_MESSAGE_LENGTH" (:max-message-length executor)
+                         "PROGRESS_REGEX_STRING" (:default-progress-regex-string executor)
+                         "PROGRESS_SAMPLE_INTERVAL_MS" (:progress-sample-interval-ms executor)}
+            task-metadata (task/job->task-metadata db framework-id executor job-ent task-id)]
+        (is (= {:command {:environment environment
+                          :uris [(:uri executor)]
+                          :user "test-user"
+                          :value (:command executor)}
+                :container nil
+                :environment environment
                 :executor :executor/cook
                 :executor-key :cook-executor
                 :framework-id framework-id
@@ -406,13 +467,14 @@
             db (d/db conn)
             job-ent (d/entity db job)
             framework-id {:value "framework-id"}
+            environment {"COOK_JOB_UUID" (-> job-ent :job/uuid str)}
             task-metadata (task/job->task-metadata db framework-id {} job-ent task-id)]
-        (is (= {:command {:environment {}
+        (is (= {:command {:environment environment
                           :uris []
                           :user "test-user"
                           :value "run-my-command"}
                 :container nil
-                :environment {}
+                :environment environment
                 :executor :executor/mesos
                 :executor-key :command-executor
                 :framework-id framework-id
@@ -439,15 +501,16 @@
             db (d/db conn)
             job-ent (d/entity db job)
             framework-id {:value "framework-id"}
+            environment {"COOK_JOB_UUID" (-> job-ent :job/uuid str)}
             task-metadata (task/job->task-metadata db framework-id {} job-ent task-id)]
-        (is (= {:command {:environment {}
+        (is (= {:command {:environment environment
                           :uris []
                           :user "test-user"
                           :value "run-my-command"}
                 :container {:docker {:image "a-docker-image"
                                      :network "HOST"}
                             :type "DOCKER"}
-                :environment {}
+                :environment environment
                 :executor :executor/custom
                 :executor-key :container-executor
                 :framework-id framework-id
@@ -474,15 +537,16 @@
             db (d/db conn)
             job-ent (d/entity db job)
             framework-id {:value "framework-id"}
+            environment {"COOK_JOB_UUID" (-> job-ent :job/uuid str)}
             task-metadata (task/job->task-metadata db framework-id {} job-ent task-id)]
-        (is (= {:command {:environment {}
+        (is (= {:command {:environment environment
                           :uris []
                           :user "test-user"
                           :value "run-my-command"}
                 :container {:docker {:image "a-docker-image"
                                      :network "HOST"}
                             :type "DOCKER"}
-                :environment {}
+                :environment environment
                 :executor :executor/mesos
                 :executor-key :container-command-executor
                 :framework-id framework-id

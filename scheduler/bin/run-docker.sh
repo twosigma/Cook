@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 
+# Usage: ./bin/run-docker.sh
+# Runs the cook scheduler inside a docker container.
+
 # Defaults (overridable via environment)
 : ${COOK_PORT:=${1:-12321}}
 : ${COOK_NREPL_PORT:=${2:-8888}}
@@ -27,6 +30,7 @@ fi
 
 SCHEDULER_DIR="$( dirname ${DIR} )"
 SCHEDULER_EXECUTOR_DIR=${SCHEDULER_DIR}/resources/public
+EXECUTOR_NAME=cook-executor
 
 if [ -z "$(docker network ls -q -f name=cook_nw)" ];
 then
@@ -60,7 +64,8 @@ docker create \
     --name=${NAME} \
     --publish=${COOK_NREPL_PORT}:${COOK_NREPL_PORT} \
     --publish=${COOK_PORT}:${COOK_PORT} \
-    -e "COOK_EXECUTOR=file://${SCHEDULER_EXECUTOR_DIR}/cook-executor" \
+    -e "COOK_EXECUTOR=file://${SCHEDULER_EXECUTOR_DIR}/${EXECUTOR_NAME}" \
+    -e "COOK_EXECUTOR_COMMAND=./${EXECUTOR_NAME}" \
     -e "COOK_PORT=${COOK_PORT}" \
     -e "COOK_NREPL_PORT=${COOK_NREPL_PORT}" \
     -e "COOK_FRAMEWORK_ID=${COOK_FRAMEWORK_ID}" \

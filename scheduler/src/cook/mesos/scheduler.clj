@@ -34,6 +34,7 @@
             [cook.mesos.heartbeat :as heartbeat]
             [cook.mesos.quota :as quota]
             [cook.mesos.reason :as reason]
+            [cook.mesos.sandbox :as sandbox]
             [cook.mesos.share :as share]
             [cook.mesos.task :as task]
             [cook.mesos.util :as util]
@@ -171,7 +172,7 @@
 
 (defn handle-status-update
   "Takes a status update from mesos."
-  [conn driver ^TaskScheduler fenzo status]
+  [conn driver ^TaskScheduler fenzo sync-agent-sandboxes-fn status]
   (log/info "Mesos status is:" status)
   (timers/time!
     handle-status-update-duration
@@ -248,6 +249,8 @@
              (meters/mark! tasks-killed-in-status-update)
              (mesos/kill-task! driver {:value task-id}))
            (when-not (nil? instance)
+             (when (#{:task-starting :task-running} task-state)
+               (sync-agent-sandboxes-fn (:instance/hostname instance-ent)))
              ;; (println "update:" task-id task-state job instance instance-status prior-job-state)
              (log/debug "Transacting updated state for instance" instance "to status" instance-status)
              ;; The database can become inconsistent if we make multiple calls to :instance/update-state in a single
@@ -412,7 +415,7 @@
 (defn handle-framework-message
   "Processes a framework message from Mesos."
   [conn handle-progress-message
-   {:strs [exit-code progress-message progress-percent progress-sequence sandbox-directory task-id] :as message}]
+   {:strs [exit-code progress-message progress-percent progress-sequence task-id] :as message}]
   (log/debug "Received framework message:" {:task-id task-id, :message message})
   (timers/time!
     handle-framework-message-duration
@@ -429,12 +432,9 @@
                                         :progress-message progress-message
                                         :progress-percent progress-percent
                                         :progress-sequence progress-sequence}))
-            (when (or exit-code sandbox-directory)
-              (let [txns (cond-> []
-                                 exit-code (conj [:db/add instance-id :instance/exit-code (int exit-code)])
-                                 sandbox-directory (conj [:db/add instance-id :instance/sandbox-directory (str sandbox-directory)]))]
-                (log/info "Updating instance" instance-id "to" txns)
-                (transact-with-retries conn txns))))))
+            (when exit-code
+              (log/info "Updating instance" instance-id "exit-code to" exit-code)
+              (transact-with-retries conn [[:db/add instance-id :instance/exit-code (int exit-code)]])))))
       (catch Exception e
         (log/error e "Mesos scheduler framework message error")))))
 
@@ -1480,76 +1480,80 @@
 
 (defn create-mesos-scheduler
   "Creates the mesos scheduler which processes status updates asynchronously but in order of receipt."
-  [configured-framework-id gpu-enabled? conn heartbeat-ch fenzo offers-chan match-trigger-chan handle-progress-message]
-  (mesos/scheduler
-    (registered [this driver framework-id master-info]
-                (log/info "Registered with mesos with framework-id " framework-id)
-                (let [value (-> framework-id mesomatic.types/pb->data :value)]
-                  (when (not= configured-framework-id value)
-                    (let [message (str "The framework-id provided by Mesos (" value ") "
-                                       "does not match the one Cook is configured with (" configured-framework-id ")")]
-                      (log/error message)
-                      (throw (ex-info message {:framework-id-mesos value :framework-id-cook configured-framework-id})))))
-                (when (and gpu-enabled? (not (re-matches #"1\.\d+\.\d+" (:version master-info))))
-                  (binding [*out* *err*]
-                    (println "Cannot enable GPU support on pre-mesos 1.0. The version we found was " (:version master-info)))
-                  (log/error "Cannot enable GPU support on pre-mesos 1.0. The version we found was " (:version master-info))
-                  (Thread/sleep 1000)
-                  (System/exit 1))
-                ;; Use future because the thread that runs mesos/scheduler doesn't load classes correctly. for reasons.
-                ;; As Sophie says, you want to future proof your code.
-                (future
-                  (try
-                    (reconcile-jobs conn)
-                    (reconcile-tasks (db conn) driver configured-framework-id fenzo)
-                    (catch Exception e
-                      (log/error e "Reconciliation error")))))
-    (reregistered [this driver master-info]
-                  (log/info "Reregistered with new master")
+  [configured-framework-id gpu-enabled? conn heartbeat-ch fenzo offers-chan match-trigger-chan handle-progress-message
+   sandbox-syncer-state]
+  (let [sync-agent-sandboxes-fn #(sandbox/sync-agent-sandboxes sandbox-syncer-state configured-framework-id %)]
+    (mesos/scheduler
+      (registered [this driver framework-id master-info]
+                  (log/info "Registered with mesos with framework-id " framework-id)
+                  (let [value (-> framework-id mesomatic.types/pb->data :value)]
+                    (when (not= configured-framework-id value)
+                      (let [message (str "The framework-id provided by Mesos (" value ") "
+                                         "does not match the one Cook is configured with (" configured-framework-id ")")]
+                        (log/error message)
+                        (throw (ex-info message {:framework-id-mesos value :framework-id-cook configured-framework-id})))))
+                  (when (and gpu-enabled? (not (re-matches #"1\.\d+\.\d+" (:version master-info))))
+                    (binding [*out* *err*]
+                      (println "Cannot enable GPU support on pre-mesos 1.0. The version we found was " (:version master-info)))
+                    (log/error "Cannot enable GPU support on pre-mesos 1.0. The version we found was " (:version master-info))
+                    (Thread/sleep 1000)
+                    (System/exit 1))
+                  ;; Use future because the thread that runs mesos/scheduler doesn't load classes correctly. for reasons.
+                  ;; As Sophie says, you want to future proof your code.
                   (future
                     (try
                       (reconcile-jobs conn)
                       (reconcile-tasks (db conn) driver configured-framework-id fenzo)
                       (catch Exception e
                         (log/error e "Reconciliation error")))))
-    ;; Ignore this--we can just wait for new offers
-    (offer-rescinded [this driver offer-id]
-                     ;; TODO: Rescind the offer in fenzo
-                     )
-    (framework-message [this driver executor-id slave-id message]
-                       (try
-                         (let [{:strs [task-id type] :as parsed-message} (json/read-str (String. ^bytes message "UTF-8"))]
-                           (if (= "heartbeat" type)
-                             (heartbeat/notify-heartbeat heartbeat-ch executor-id slave-id parsed-message)
-                             (async-in-order-processing
-                               task-id #(handle-framework-message conn handle-progress-message parsed-message))))
-                         (catch Exception e
-                           (log/error e "Unable to process framework message"
-                                      {:executor-id executor-id, :message message, :slave-id slave-id}))))
-    (disconnected [this driver]
-                  (log/error "Disconnected from the previous master"))
-    ;; We don't care about losing slaves or executors--only tasks
-    (slave-lost [this driver slave-id])
-    (executor-lost [this driver executor-id slave-id status])
-    (error [this driver message]
-           (meters/mark! mesos-error)
-           (log/error "Got a mesos error!!!!" message))
-    (resource-offers [this driver offers]
-                     (receive-offers offers-chan match-trigger-chan driver offers))
-    (status-update [this driver status]
-                   (let [task-id (-> status :task-id :value)]
-                     (async-in-order-processing task-id #(handle-status-update conn driver fenzo status))))))
+      (reregistered [this driver master-info]
+                    (log/info "Reregistered with new master")
+                    (future
+                      (try
+                        (reconcile-jobs conn)
+                        (reconcile-tasks (db conn) driver configured-framework-id fenzo)
+                        (catch Exception e
+                          (log/error e "Reconciliation error")))))
+      ;; Ignore this--we can just wait for new offers
+      (offer-rescinded [this driver offer-id]
+                       ;; TODO: Rescind the offer in fenzo
+                       )
+      (framework-message [this driver executor-id slave-id message]
+                         (try
+                           (let [{:strs [task-id type] :as parsed-message} (json/read-str (String. ^bytes message "UTF-8"))]
+                             (case type
+                               "directory" (sandbox/update-sandbox sandbox-syncer-state parsed-message)
+                               "heartbeat" (heartbeat/notify-heartbeat heartbeat-ch executor-id slave-id parsed-message)
+                               (async-in-order-processing
+                                 task-id #(handle-framework-message conn handle-progress-message parsed-message))))
+                           (catch Exception e
+                             (log/error e "Unable to process framework message"
+                                        {:executor-id executor-id, :message message, :slave-id slave-id}))))
+      (disconnected [this driver]
+                    (log/error "Disconnected from the previous master"))
+      ;; We don't care about losing slaves or executors--only tasks
+      (slave-lost [this driver slave-id])
+      (executor-lost [this driver executor-id slave-id status])
+      (error [this driver message]
+             (meters/mark! mesos-error)
+             (log/error "Got a mesos error!!!!" message))
+      (resource-offers [this driver offers]
+                       (receive-offers offers-chan match-trigger-chan driver offers))
+      (status-update [this driver status]
+                     (let [task-id (-> status :task-id :value)]
+                       (async-in-order-processing
+                         task-id #(handle-status-update conn driver fenzo sync-agent-sandboxes-fn status)))))))
 
 (defn create-datomic-scheduler
   [conn driver-atom pending-jobs-atom offer-cache heartbeat-ch offer-incubate-time-ms mea-culpa-failure-limit
    fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset
-   fenzo-fitness-calculator task-constraints gpu-enabled? good-enough-fitness framework-id
-   {:keys [executor-config progress-config]}
-   {:keys [match-trigger-chan progress-updater-trigger-chan rank-trigger-chan] :as trigger-chans}]
+   fenzo-fitness-calculator task-constraints gpu-enabled? good-enough-fitness framework-id sandbox-syncer-state
+   executor-config progress-config trigger-chans]
 
   (persist-mea-culpa-failure-limit! conn mea-culpa-failure-limit)
 
-  (let [fenzo (make-fenzo-scheduler driver-atom offer-incubate-time-ms fenzo-fitness-calculator good-enough-fitness)
+  (let [{:keys [match-trigger-chan progress-updater-trigger-chan rank-trigger-chan]} trigger-chans
+        fenzo (make-fenzo-scheduler driver-atom offer-incubate-time-ms fenzo-fitness-calculator good-enough-fitness)
         [offers-chan resources-atom]
         (make-offer-handler conn driver-atom fenzo framework-id executor-config pending-jobs-atom offer-cache fenzo-max-jobs-considered
                             fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset match-trigger-chan)
@@ -1557,8 +1561,8 @@
         {:keys [progress-state-chan]} (progress-update-transactor progress-updater-trigger-chan batch-size conn)
         progress-aggregator-chan (progress-update-aggregator progress-config progress-state-chan)
         handle-progress-message (fn handle-progress-message-curried [progress-message-map]
-                                 (handle-progress-message! progress-aggregator-chan progress-message-map))]
+                                  (handle-progress-message! progress-aggregator-chan progress-message-map))]
     (start-jobs-prioritizer! conn pending-jobs-atom task-constraints rank-trigger-chan)
-    {:scheduler (create-mesos-scheduler framework-id gpu-enabled? conn heartbeat-ch
-                                        fenzo offers-chan match-trigger-chan handle-progress-message)
+    {:scheduler (create-mesos-scheduler framework-id gpu-enabled? conn heartbeat-ch fenzo offers-chan
+                                        match-trigger-chan handle-progress-message sandbox-syncer-state)
      :view-incubating-offers (fn get-resources-atom [] @resources-atom)}))
