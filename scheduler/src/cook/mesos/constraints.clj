@@ -311,9 +311,9 @@
 
 (defn make-fenzo-group-constraint
   "Returns a Fenzo-compatible group host placement constraint for tasks that belong to 'group'. The
-   'cycle-task-ids' parameters is a sequence to pass the ids of tasks within 'group' that will be
-   considered in the cycle where this constraint will be used."
-  [db group cycle-task-ids]
+   'cycle-task-ids-fn' parameters is a 0-arity function which will return the sequence of task
+   ids that will be considered in the cycle where this constraint will be used."
+  [db group cycle-task-ids-fn]
   (let [constraint-type (or (-> group :group/host-placement :host-placement/type) :host-placement.type/all)
         constraint-constructor (constraint-type-to-constraint-constructor constraint-type)
         constraint (when constraint-constructor (constraint-constructor group))]
@@ -325,7 +325,7 @@
                 target-attr-map (-> target-vm
                                     .getCurrAvailableResources
                                     (get-vm-lease-attr-map))
-                cotasks (get-fenzo-cotasks db group task-id cycle-task-ids task-tracker-state)
+                cotasks (get-fenzo-cotasks db group task-id (cycle-task-ids-fn) task-tracker-state)
                 cotask-attr-maps (->> cotasks
                                       (map #(.getTotalLease %))
                                       (map get-vm-lease-attr-map))
