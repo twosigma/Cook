@@ -221,7 +221,7 @@
         (let [{:keys [framework-id host->consecutive-failures pending-sync-hosts]} @pending-sync-agent
               num-pending-sync-hosts (count pending-sync-hosts)]
           (log/info num-pending-sync-hosts "hosts have pending syncs")
-          (loop [[hostname & remaining-hostnames] (vec pending-sync-hosts)
+          (loop [[hostname & remaining-hostnames] (seq pending-sync-hosts)
                  pending-sync-agent-send-performed false]
             (let [consecutive-failures (get host->consecutive-failures hostname 0)]
               (cond

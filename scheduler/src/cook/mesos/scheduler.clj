@@ -195,7 +195,6 @@
                                                               db task-id))
                job-ent (d/entity db job)
                instance-ent (d/entity db instance)
-               retries-so-far (count (:job/instance job-ent))
                previous-reason (reason/instance-entity->reason-entity db instance-ent)
                instance-status (condp contains? task-state
                                  #{:task-staging} :instance.status/unknown
@@ -416,7 +415,7 @@
   "Processes a framework message from Mesos."
   [conn handle-progress-message
    {:strs [exit-code progress-message progress-percent progress-sequence task-id] :as message}]
-  (log/debug "Received framework message:" {:task-id task-id, :message message})
+  (log/info "Received framework message:" {:task-id task-id, :message message})
   (timers/time!
     handle-framework-message-duration
     (try
