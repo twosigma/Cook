@@ -212,7 +212,7 @@ def multi_cluster_tests_enabled():
     return os.getenv('COOK_MULTI_CLUSTER') is not None
 
 
-def wait_until(query, predicate, max_wait_ms=30000, wait_interval_ms=1000):
+def wait_until(query, predicate, max_wait_ms=60000, wait_interval_ms=1000):
     """
     Block until the predicate is true for the result of the provided query.
     `query` is a thunk (nullary callable) that may be called multiple times.
