@@ -995,13 +995,13 @@ class CookTest(unittest.TestCase):
             util.kill_groups(self.cook_url, [group_uuid])
 
     def test_group_change_killed_retries(self):
-        jobs = self._help_test_group_change_killed_retries(failed_only=True)
+        jobs = self._help_test_group_change_killed_retries(failed_only=False)
         # ensure none of the jobs are still in a failed state
         for job in jobs:
             self.assertNotEqual('failed', job['state'], f'Job details: {json.dumps(job, sort_keys=True)}')
 
     def test_group_change_killed_retries_failed_only(self):
-        jobs = self._help_test_group_change_killed_retries(failed_only=False)
+        jobs = self._help_test_group_change_killed_retries(failed_only=True)
         # ensure none of the jobs are still in a failed state
         for job in jobs:
             self.assertNotEqual('failed', job['state'], f'Job details: {json.dumps(job, sort_keys=True)}')
