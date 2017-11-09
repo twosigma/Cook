@@ -16,12 +16,6 @@ from tests.cook import util
 class CookTest(unittest.TestCase):
     _multiprocess_can_split_ = True
 
-    @staticmethod
-    def minimal_group(**kwargs):
-        group = {"uuid": str(uuid.uuid4())}
-        group.update(kwargs)
-        return group
-
     def setUp(self):
         self.cook_url = util.retrieve_cook_url()
         self.mesos_url = util.retrieve_mesos_url()
@@ -670,7 +664,7 @@ class CookTest(unittest.TestCase):
         util.wait_for_job(self.cook_url, jobs[1], 'completed')
 
     def test_explicit_group(self):
-        group_spec = self.minimal_group()
+        group_spec = util.minimal_group()
         group_uuid = group_spec['uuid']
         job_spec = {'group': group_uuid}
         jobs, resp = util.submit_jobs(self.cook_url, job_spec, 2, groups=[group_spec])
@@ -692,7 +686,7 @@ class CookTest(unittest.TestCase):
             }
         }
         slow_job_wait_seconds = 1200
-        group_spec = self.minimal_group(straggler_handling=straggler_handling)
+        group_spec = util.minimal_group(straggler_handling=straggler_handling)
         job_fast = util.minimal_job(group=group_spec["uuid"])
         job_slow = util.minimal_job(group=group_spec["uuid"],
                                     command='sleep %d' % slow_job_wait_seconds)
@@ -893,7 +887,7 @@ class CookTest(unittest.TestCase):
     def test_group_kill_simple(self):
         # Create and submit jobs in group
         slow_job_wait_seconds = 1200
-        group_spec = self.minimal_group()
+        group_spec = util.minimal_group()
         group_uuid = group_spec['uuid']
         try:
             job_fast = util.minimal_job(group=group_uuid, priority=99)
@@ -930,7 +924,7 @@ class CookTest(unittest.TestCase):
     def test_group_kill_multi(self):
         # Create and submit jobs in group
         slow_job_wait_seconds = 1200
-        group_spec = self.minimal_group()
+        group_spec = util.minimal_group()
         group_uuid = group_spec['uuid']
         job_spec = {'group': group_uuid, 'command': f'sleep {slow_job_wait_seconds}'}
         try:
@@ -1008,7 +1002,7 @@ class CookTest(unittest.TestCase):
             self.assertNotEqual('failed', job['state'], f'Job details: {json.dumps(job, sort_keys=True)}')
 
     def test_group_change_retries(self):
-        group_spec = self.minimal_group()
+        group_spec = util.minimal_group()
         group_uuid = group_spec['uuid']
         job_spec = {'group': group_uuid, 'command': 'sleep 1'}
 
@@ -1063,7 +1057,7 @@ class CookTest(unittest.TestCase):
 
     def _help_test_group_failed_only_change_retries(self, config):
         job_count = 5
-        group_spec = self.minimal_group()
+        group_spec = util.minimal_group()
         group_uuid = group_spec['uuid']
         job_spec = {'group': group_uuid, 'max_retries': 1, 'command': config['command']}
 

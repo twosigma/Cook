@@ -110,6 +110,11 @@ def minimal_jobs(job_count, **kwargs):
     return [minimal_job(**kwargs) for _ in range(job_count)]
 
 
+def minimal_group(**kwargs):
+    """Build a minimal group spec"""
+    return dict(uuid=str(uuid.uuid4()), **kwargs)
+
+
 def submit_jobs(cook_url, job_specs, clones=1, **kwargs):
     """
     Create and submit multiple jobs, either cloned from a single job spec,
