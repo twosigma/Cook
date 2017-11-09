@@ -101,7 +101,7 @@
                  [ring/ring-json "0.2.0"]
                  [ring-edn "0.1.0"]
                  [com.duelinmarkers/ring-request-logging "0.2.0"]
-                 [liberator "0.14.1"]
+                 [liberator "0.15.0"]
 
                  ;;Databases
                  [com.datomic/datomic-free "0.9.5206"
