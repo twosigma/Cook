@@ -632,12 +632,14 @@ class CookTest(unittest.TestCase):
             # We expect both jobs to be completed successfully now.
             # The first job (which we killed and retried) should have 2 retries remaining
             # (the attempt before resetting the total retries count is still included).
+            job_details = f"Job details: {json.dumps(jobs[0], sort_keys=True)}"
+            self.assertEqual('success', jobs[0]['state'], job_details)
+            self.assertEqual(2, jobs[0]['retries_remaining'], job_details)
             # The second job (which started with the default 1 retries)
             # should have 0 remaining since the failed_only flag was set.
-            for job, expected_retries in zip(jobs, [2, 0]):
-                job_details = f"Job details: {json.dumps(job, sort_keys=True)}"
-                self.assertEqual('success', job['state'], job_details)
-                self.assertEqual(expected_retries, job['retries_remaining'], job_details)
+            job_details = f"Job details: {json.dumps(jobs[1], sort_keys=True)}"
+            self.assertEqual('success', jobs[1]['state'], job_details)
+            self.assertEqual(0, jobs[1]['retries_remaining'], job_details)
         finally:
             util.kill_jobs(self.cook_url, job_specs)
 
