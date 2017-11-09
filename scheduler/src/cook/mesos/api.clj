@@ -54,6 +54,11 @@
            org.joda.time.Minutes
            schema.core.OptionalKey))
 
+
+;; We use Liberator to handle requests on our REST endpoints.
+;; The control flow among Liberator's handler functions is described here:
+;; https://clojure-liberator.github.io/liberator/doc/decisions.html
+
 ;; This is necessary to prevent a user from requesting a uid:gid
 ;; pair other than their own (for example, root)
 (sh/let-programs
@@ -97,6 +102,9 @@
                 (update k :k ->snake_case)
                 (->snake_case k)))
             schema))
+
+(def ZeroInt
+  (s/both s/Int (s/pred zero? 'zero?)))
 
 (def PosNum
   (s/both s/Num (s/pred pos? 'pos?)))
@@ -1475,10 +1483,15 @@
   (base-retries-handler
     conn is-authorized-fn
     {:allowed-methods [:put]
-     :exists? (partial check-jobs-and-groups-exist conn)
      :malformed? (partial validate-retries conn task-constraints)
-     :handle-created (partial display-retries conn)
-     :put! (partial retry-jobs! conn)}))
+     :exists? (partial check-jobs-and-groups-exist conn)
+     :put! (partial retry-jobs! conn)
+     ;; :put-enacted? decides whether to respond with Accepted (false) or Created (true).
+     :put-enacted? (comp seq ::jobs)
+     ;; :handle-created and :handle-accepted both return the number of jobs to be retried,
+     ;; but :handle-accepted is only triggered when there are no failed jobs to retry.
+     :handle-accepted (constantly 0)
+     :handle-created (partial display-retries conn)}))
 
 ;; /share and /quota
 (def UserParam {:user s/Str})
@@ -1949,6 +1962,8 @@
          :handler (put-retries-handler conn is-authorized-fn task-constraints)
          :responses {201 {:schema PosInt
                           :description "The number of retries for the jobs."}
+                     202 {:schema ZeroInt
+                          :description "No failed jobs provided to retry."}
                      400 {:description "Invalid request format."}
                      401 {:description "Request user not authorized to access those jobs."}
                      404 {:description "Unrecognized job UUID."}}}
