@@ -360,7 +360,6 @@
 (deftest test-prepare-sandbox-publisher
   (with-redefs [sandbox/retrieve-sandbox-directories-on-agent
                 (fn [_ hostname]
-                  (println "retrieve-sandbox-directories-on-agent:" hostname)
                   {(str "task." hostname) (str "/path/to/" hostname "/sandbox")})]
     (let [db-conn (tu/restore-fresh-database! "datomic:mem://test-start-sandbox-publisher")
           publish-batch-size 20
