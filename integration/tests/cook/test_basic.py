@@ -986,12 +986,12 @@ class CookTest(unittest.TestCase):
             # then all of the jobs may complete around the same time. However, we would
             # expect the behavior described above in our usual scaled-down testing environments
             # (i.e., Travis-CI VMs and minimesos using local docker instances).
-            response = util.wait_until(group_query, util.group_some_job_done)
+            util.wait_until(group_query, util.group_some_job_done)
             job_data = util.query_jobs(self.cook_url, job=jobs).json()
             # retry all jobs in the group
             util.retry_jobs(self.cook_url, retries=12, groups=[group_uuid])
             # wait for the previously-completed jobs to restart
-            prev_completed_jobs = [ j for j in job_data if j['status'] == 'completed' ]
+            prev_completed_jobs = [j for j in job_data if j['status'] == 'completed']
             assert len(prev_completed_jobs) >= 1
 
             def jobs_query():
@@ -1005,7 +1005,7 @@ class CookTest(unittest.TestCase):
                         return False
                 return True
 
-            response = util.wait_until(jobs_query, all_completed_restarted)
+            util.wait_until(jobs_query, all_completed_restarted)
             # ensure that all of the jobs have an updated retries count (set to 12 above)
             job_data = util.query_jobs(self.cook_url, job=jobs)
             self.assertEqual(200, job_data.status_code)
@@ -1027,8 +1027,8 @@ class CookTest(unittest.TestCase):
     def test_queue_endpoint(self):
         constraints = [["HOSTNAME", "EQUALS", "lol won't get scheduled"]]
         group = {'uuid': str(uuid.uuid4())}
-        job_spec = {'group' : group['uuid'],
-                    'constraints' : constraints}
+        job_spec = {'group': group['uuid'],
+                    'constraints': constraints}
         uuids, resp = util.submit_jobs(self.cook_url, job_spec, 1, groups=[group])
         job_uuid = uuids[0]
         try:
@@ -1086,8 +1086,8 @@ class CookTest(unittest.TestCase):
             agent = [agent for agent in state['slaves']
                      if agent['hostname'] == instance['hostname']][0]
             if agent is None:
-                self.logger.warn(f"Could not find agent for hostname {instance['hostname']}")
-                self.logger.warn(f"slaves: {state['slaves']}")
+                self.logger.warning(f"Could not find agent for hostname {instance['hostname']}")
+                self.logger.warning(f"slaves: {state['slaves']}")
             # Get the host and port of the agent API.
             # Example pid: "slave(1)@172.17.0.7:5051"
             agent_hostport = agent['pid'].split('@')[1]
@@ -1095,13 +1095,15 @@ class CookTest(unittest.TestCase):
             # Get container ID from agent
             def agent_query():
                 return util.session.get('http://%s/state.json' % agent_hostport)
+
             def contains_executor_predicate(agent_response):
                 agent_state = agent_response.json()
                 executor = util.get_executor(agent_state, instance['executor_id'])
                 if executor is None:
-                    self.logger.warn(f"Could not find executor {instance['executor_id']} in agent state")
-                    self.logger.warn(f"agent_state: {agent_state}")
+                    self.logger.warning(f"Could not find executor {instance['executor_id']} in agent state")
+                    self.logger.warning(f"agent_state: {agent_state}")
                 return executor is not None
+
             agent_state = util.wait_until(agent_query, contains_executor_predicate).json()
             executor = util.get_executor(agent_state, instance['executor_id'])
 
@@ -1124,34 +1126,37 @@ class CookTest(unittest.TestCase):
             util.session.delete('%s/rawscheduler?job=%s' % (self.cook_url, job_uuid))
 
     def test_unscheduled_jobs(self):
-        job_uuid, resp = util.submit_job(self.cook_url,
-                                         command='ls',
-                                         constraints=[['HOSTNAME', 'EQUALS', 'fakehost']])
+        under_investigation = 'The job is now under investigation. Check back in a minute for more details!'
+        could_not_place_job = 'The job couldn\'t be placed on any available hosts.'
+
+        unsatisfiable_constraint = ['HOSTNAME', 'EQUALS', 'fakehost']
+        job_uuid_1, resp = util.submit_job(self.cook_url, command='ls', constraints=[unsatisfiable_constraint])
+        self.assertEqual(resp.status_code, 201, resp.content)
+        job_uuid_2, resp = util.submit_job(self.cook_url, command='ls', constraints=[unsatisfiable_constraint])
         self.assertEqual(resp.status_code, 201, resp.content)
         try:
-            unscheduled_jobs = util.unscheduled_jobs(self.cook_url, job_uuid)[0]
+            unscheduled_jobs = util.unscheduled_jobs(self.cook_url, job_uuid_1, job_uuid_2)
+            self.logger.info(f'Unscheduled jobs: {unscheduled_jobs}')
             # If the job from the test is submitted after another one, unscheduled_jobs will report "There are jobs
             # ahead of this in the queue" so we cannot assert that there is exactly one failure reason.
-            self.assertTrue(
-                any(['The job is now under investigation. Check back in a minute for more details!' == reason['reason']
-                     for reason in unscheduled_jobs['reasons']]),
-                unscheduled_jobs)
-            self.assertEqual(job_uuid, unscheduled_jobs['uuid'])
+            self.assertTrue(any([under_investigation == reason['reason'] for reason in unscheduled_jobs[0]['reasons']]))
+            self.assertTrue(any([under_investigation == reason['reason'] for reason in unscheduled_jobs[1]['reasons']]))
+            self.assertEqual(job_uuid_1, unscheduled_jobs[0]['uuid'])
+            self.assertEqual(job_uuid_2, unscheduled_jobs[1]['uuid'])
 
             @retry(stop_max_delay=60000, wait_fixed=1000)
             def check_unscheduled_reason():
-                jobs = util.unscheduled_jobs(self.cook_url, job_uuid)[0]
+                jobs = util.unscheduled_jobs(self.cook_url, job_uuid_1, job_uuid_2)
                 # If the job from the test is submitted after another one, unscheduled_jobs will report "There are
                 # jobs ahead of this in the queue" so we cannot assert that there is exactly one failure reason.
-                self.assertTrue(
-                    any(['The job couldn\'t be placed on any available hosts.' == reason['reason'] for reason in
-                         jobs['reasons']]),
-                    jobs)
-                self.assertEqual(job_uuid, jobs['uuid'])
+                self.assertTrue(any([could_not_place_job == reason['reason'] for reason in jobs[0]['reasons']]), jobs)
+                self.assertTrue(any([could_not_place_job == reason['reason'] for reason in jobs[1]['reasons']]), jobs)
+                self.assertEqual(job_uuid_1, jobs[0]['uuid'])
+                self.assertEqual(job_uuid_2, jobs[1]['uuid'])
 
             check_unscheduled_reason()
         finally:
-            util.kill_jobs(self.cook_url, [job_uuid])
+            util.kill_jobs(self.cook_url, [job_uuid_1, job_uuid_2])
 
     def test_unique_host_constraint(self):
         state = util.get_mesos_state(self.mesos_url)
@@ -1229,20 +1234,24 @@ class CookTest(unittest.TestCase):
         try:
             def query_list():
                 return util.query_jobs(self.cook_url, job=uuids).json()
+
             def num_running_predicate(response):
                 num_running = len([j for j in response if j['status'] == 'running'])
                 num_waiting = len([j for j in response if j['status'] == 'waiting'])
                 return num_running == num_hosts and num_waiting == 1
+
             jobs = util.wait_until(query_list, num_running_predicate)
             waiting_jobs = [j for j in jobs if j['status'] == 'waiting']
             self.assertEqual(1, len(waiting_jobs), waiting_jobs)
             waiting_job = waiting_jobs[0]
+
             def query_unscheduled():
                 resp = util.unscheduled_jobs(self.cook_url, waiting_job['uuid'])[0]
                 reasons = [reason for reason in resp['reasons']
-                           if reason['reason'] == "The job couldn't be placed on any available hosts." ]
+                           if reason['reason'] == "The job couldn't be placed on any available hosts."]
                 self.logger.info(f"unscheduled_jobs response: {resp}")
                 return reasons
+
             reasons = util.wait_until(query_unscheduled, lambda r: len(r) > 0)
             self.assertEqual(1, len(reasons), reasons)
             reason = reasons[0]
