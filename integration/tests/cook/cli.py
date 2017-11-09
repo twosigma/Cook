@@ -36,11 +36,13 @@ def sh(command, stdin=None, env=None, wait_for_exit=True):
         return cp
     else:
         proc = subprocess.Popen(command_args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        # Get the current stdout flags
-        flags = fcntl(proc.stdout, F_GETFL)
-        # Set the O_NONBLOCK flag of the stdout file descriptor
+        # Get the current stdout, stderr flags
+        stdout_flags = fcntl(proc.stdout, F_GETFL)
+        stderr_flags = fcntl(proc.stderr, F_GETFL)
+        # Set the O_NONBLOCK flag of the stdout, stderr file descriptors
         # (if we don't set this, calls to readlines() will block)
-        fcntl(proc.stdout, F_SETFL, flags | os.O_NONBLOCK)
+        fcntl(proc.stdout, F_SETFL, stdout_flags | os.O_NONBLOCK)
+        fcntl(proc.stderr, F_SETFL, stderr_flags | os.O_NONBLOCK)
         return proc
 
 

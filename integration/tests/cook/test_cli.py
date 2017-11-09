@@ -710,9 +710,11 @@ class CookCliTest(unittest.TestCase):
                         wait_for_exit=False)
         try:
             def readlines():
-                lines_read = proc.stdout.readlines()
-                self.logger.info(f'lines read: {lines_read}')
-                return lines_read
+                stdout_lines = proc.stdout.readlines()
+                self.logger.info(f'stdout lines: {stdout_lines}')
+                stderr_lines = proc.stderr.readlines()
+                self.logger.info(f'stderr lines: {stderr_lines}')
+                return stdout_lines
 
             # Wait until the tail prints some lines and then check the output
             lines = util.wait_until(readlines, lambda l: len(l) > 0)

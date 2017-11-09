@@ -986,12 +986,12 @@ class CookTest(unittest.TestCase):
             # then all of the jobs may complete around the same time. However, we would
             # expect the behavior described above in our usual scaled-down testing environments
             # (i.e., Travis-CI VMs and minimesos using local docker instances).
-            response = util.wait_until(group_query, util.group_some_job_done)
+            util.wait_until(group_query, util.group_some_job_done)
             job_data = util.query_jobs(self.cook_url, job=jobs).json()
             # retry all jobs in the group
             util.retry_jobs(self.cook_url, retries=12, groups=[group_uuid])
             # wait for the previously-completed jobs to restart
-            prev_completed_jobs = [ j for j in job_data if j['status'] == 'completed' ]
+            prev_completed_jobs = [j for j in job_data if j['status'] == 'completed']
             assert len(prev_completed_jobs) >= 1
 
             def jobs_query():
@@ -1005,7 +1005,7 @@ class CookTest(unittest.TestCase):
                         return False
                 return True
 
-            response = util.wait_until(jobs_query, all_completed_restarted)
+            util.wait_until(jobs_query, all_completed_restarted)
             # ensure that all of the jobs have an updated retries count (set to 12 above)
             job_data = util.query_jobs(self.cook_url, job=jobs)
             self.assertEqual(200, job_data.status_code)
@@ -1027,8 +1027,8 @@ class CookTest(unittest.TestCase):
     def test_queue_endpoint(self):
         constraints = [["HOSTNAME", "EQUALS", "lol won't get scheduled"]]
         group = {'uuid': str(uuid.uuid4())}
-        job_spec = {'group' : group['uuid'],
-                    'constraints' : constraints}
+        job_spec = {'group': group['uuid'],
+                    'constraints': constraints}
         uuids, resp = util.submit_jobs(self.cook_url, job_spec, 1, groups=[group])
         job_uuid = uuids[0]
         try:
@@ -1086,8 +1086,8 @@ class CookTest(unittest.TestCase):
             agent = [agent for agent in state['slaves']
                      if agent['hostname'] == instance['hostname']][0]
             if agent is None:
-                self.logger.warn(f"Could not find agent for hostname {instance['hostname']}")
-                self.logger.warn(f"slaves: {state['slaves']}")
+                self.logger.warning(f"Could not find agent for hostname {instance['hostname']}")
+                self.logger.warning(f"slaves: {state['slaves']}")
             # Get the host and port of the agent API.
             # Example pid: "slave(1)@172.17.0.7:5051"
             agent_hostport = agent['pid'].split('@')[1]
@@ -1095,13 +1095,15 @@ class CookTest(unittest.TestCase):
             # Get container ID from agent
             def agent_query():
                 return util.session.get('http://%s/state.json' % agent_hostport)
+
             def contains_executor_predicate(agent_response):
                 agent_state = agent_response.json()
                 executor = util.get_executor(agent_state, instance['executor_id'])
                 if executor is None:
-                    self.logger.warn(f"Could not find executor {instance['executor_id']} in agent state")
-                    self.logger.warn(f"agent_state: {agent_state}")
+                    self.logger.warning(f"Could not find executor {instance['executor_id']} in agent state")
+                    self.logger.warning(f"agent_state: {agent_state}")
                 return executor is not None
+
             agent_state = util.wait_until(agent_query, contains_executor_predicate).json()
             executor = util.get_executor(agent_state, instance['executor_id'])
 
@@ -1229,20 +1231,24 @@ class CookTest(unittest.TestCase):
         try:
             def query_list():
                 return util.query_jobs(self.cook_url, job=uuids).json()
+
             def num_running_predicate(response):
                 num_running = len([j for j in response if j['status'] == 'running'])
                 num_waiting = len([j for j in response if j['status'] == 'waiting'])
                 return num_running == num_hosts and num_waiting == 1
+
             jobs = util.wait_until(query_list, num_running_predicate)
             waiting_jobs = [j for j in jobs if j['status'] == 'waiting']
             self.assertEqual(1, len(waiting_jobs), waiting_jobs)
             waiting_job = waiting_jobs[0]
+
             def query_unscheduled():
                 resp = util.unscheduled_jobs(self.cook_url, waiting_job['uuid'])[0]
                 reasons = [reason for reason in resp['reasons']
-                           if reason['reason'] == "The job couldn't be placed on any available hosts." ]
+                           if reason['reason'] == "The job couldn't be placed on any available hosts."]
                 self.logger.info(f"unscheduled_jobs response: {resp}")
                 return reasons
+
             reasons = util.wait_until(query_unscheduled, lambda r: len(r) > 0)
             self.assertEqual(1, len(reasons), reasons)
             reason = reasons[0]
