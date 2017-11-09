@@ -1026,63 +1026,30 @@ class CookTest(unittest.TestCase):
             # ensure that we don't leave a bunch of jobs running/waiting
             util.kill_groups(self.cook_url, [group_uuid])
 
-    def _help_test_group_failed_only_change_retries(self, config):
-        job_count = 5
-        group_spec = util.minimal_group()
-        group_uuid = group_spec['uuid']
-        job_spec = {'group': group_uuid, 'max_retries': 1, 'command': config['command']}
-
-        def group_query():
-            return util.group_detail_query(self.cook_url, group_uuid)
-
-        def config_condition(response):
-            group = response.json()[0]
-            statuses_map = { x: group[x] for x in config['predicate_statuses'] }
-            status_counts = statuses_map.values()
-            # for running & waiting, we want at least one running (not all waiting)
-            not_all_waiting = group['waiting'] != job_count
-            self.logger.debug(f"Currently {statuses_map} jobs in group {group['uuid']}")
-            return not_all_waiting and sum(status_counts) == job_count
-
-        try:
-            jobs, resp = util.submit_jobs(self.cook_url, job_spec, job_count, groups=[group_spec])
-            self.assertEqual(resp.status_code, 201)
-            # wait for the expected job statuses specified in the config
-            util.wait_until(group_query, config_condition)
-            # retry all failed jobs in the group (if any)
-            util.retry_jobs(self.cook_url, increment=1, failed_only=True, groups=[group_uuid])
-            # wait again for the parameterized condition from the config
-            util.wait_until(group_query, config_condition)
-            # return final job details to caller for assertion checks
-            return util.query_jobs(self.cook_url, assert_response=True, job=jobs).json()
-        finally:
-            # ensure that we don't leave a bunch of jobs running/waiting
-            util.kill_groups(self.cook_url, [group_uuid])
-
     def test_group_failed_only_change_retries_all_active(self):
-        config = {'command': 'sleep 10', 'predicate_statuses': ['running', 'waiting']}
-        jobs = self._help_test_group_failed_only_change_retries(config)
+        statuses = ['running', 'waiting']
+        jobs = util.group_submit_retry(self.cook_url, command='sleep 10', predicate_statuses=statuses)
         for job in jobs:
-            job_details = f'config={config}; Job details: {json.dumps(job, sort_keys=True)}'
-            self.assertIn(job['status'], config['predicate_statuses'], job_details)
+            job_details = f'Job details: {json.dumps(job, sort_keys=True)}'
+            self.assertIn(job['status'], statuses, job_details)
             self.assertEqual(job['retries_remaining'], 1, job_details)
             self.assertLessEqual(len(job['instances']), 1, job_details)
 
     def test_group_failed_only_change_retries_all_success(self):
-        config = {'command': 'exit 0', 'predicate_statuses': ['completed']}
-        jobs = self._help_test_group_failed_only_change_retries(config)
+        statuses = ['completed']
+        jobs = util.group_submit_retry(self.cook_url, command='exit 0', predicate_statuses=statuses)
         for job in jobs:
-            job_details = f'config={config}; Job details: {json.dumps(job, sort_keys=True)}'
-            self.assertIn(job['status'], config['predicate_statuses'], job_details)
+            job_details = f'Job details: {json.dumps(job, sort_keys=True)}'
+            self.assertIn(job['status'], statuses, job_details)
             self.assertEqual(job['retries_remaining'], 0, job_details)
             self.assertEqual(len(job['instances']), 1, job_details)
 
     def test_group_failed_only_change_retries_all_failed(self):
-        config = {'command': 'exit 1', 'predicate_statuses': ['completed']}
-        jobs = self._help_test_group_failed_only_change_retries(config)
+        statuses = ['completed']
+        jobs = util.group_submit_retry(self.cook_url, command='exit 1', predicate_statuses=statuses)
         for job in jobs:
-            job_details = f'config={config}; Job details: {json.dumps(job, sort_keys=True)}'
-            self.assertIn(job['status'], config['predicate_statuses'], job_details)
+            job_details = f'Job details: {json.dumps(job, sort_keys=True)}'
+            self.assertIn(job['status'], statuses, job_details)
             self.assertEqual(job['retries_remaining'], 0, job_details)
             self.assertEqual(len(job['instances']), 2, job_details)
 
