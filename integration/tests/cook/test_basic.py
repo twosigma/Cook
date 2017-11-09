@@ -636,7 +636,8 @@ class CookTest(unittest.TestCase):
             self.assertIn(job['status'], ['waiting', 'running'])
             jobs = util.wait_for_jobs(self.cook_url, jobs, 'completed')
             # We expect both jobs to be completed successfully now.
-            # The first job (which we killed and retried) should have 2 retries remaining.
+            # The first job (which we killed and retried) should have 2 retries remaining
+            # (the attempt before resetting the total retries count is still included).
             # The second job (which started with the default 1 retries)
             # should have 0 remaining since the failed_only flag was set.
             for job, expected_retries in zip(jobs, [2, 0]):
