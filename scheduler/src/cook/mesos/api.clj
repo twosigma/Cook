@@ -1278,11 +1278,7 @@
 
 (defn display-retries
   [conn ctx]
-  (if-let [first-job (-> ctx ::jobs first)]
-    (:job/max-retries (d/entity (db conn) [:job/uuid first-job]))
-    ; zero indicates that there were no non-failed jobs
-    ; (this can only happen when the failed-only flag is set)
-    0))
+  (:job/max-retries (d/entity (db conn) [:job/uuid (-> ctx ::jobs first)])))
 
 (defn job-failed?
   "Checks if the specified job is in a failed state."
@@ -1951,7 +1947,7 @@
         {:summary "Change a job's retry count"
          :parameters {:body-params UpdateRetriesRequest}
          :handler (put-retries-handler conn is-authorized-fn task-constraints)
-         :responses {201 {:schema NonNegInt
+         :responses {201 {:schema PosInt
                           :description "The number of retries for the jobs."}
                      400 {:description "Invalid request format."}
                      401 {:description "Request user not authorized to access those jobs."}
