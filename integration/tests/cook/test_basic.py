@@ -619,7 +619,7 @@ class CookTest(unittest.TestCase):
         self.assertEqual('success', job['state'], 'Job details: %s' % (json.dumps(job, sort_keys=True)))
 
     def test_change_failed_retries(self):
-        job_specs = util.minimal_jobs(2, max_retries=1, command='sleep 5')
+        job_specs = util.minimal_jobs(2, max_retries=1, command='sleep 10')
         try:
             jobs, resp = util.submit_jobs(self.cook_url, job_specs)
             self.assertEqual(resp.status_code, 201)
