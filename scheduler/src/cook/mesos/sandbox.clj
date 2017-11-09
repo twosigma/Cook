@@ -135,18 +135,20 @@
          (into {}))))
 
 (defn- aggregate-pending-sync-hostname
-  "Aggregates the hostname as a pending sync item into pending-sync-state."
-  [pending-sync-state agent-hostname reason]
-  (cond-> (update pending-sync-state :pending-sync-hosts conj agent-hostname)
+  "Aggregates the hostname as a pending sync item into pending-sync-state.
+   It also updates host->consecutive-failures if the reason is :error."
+  [pending-sync-state hostname reason]
+  (cond-> (update pending-sync-state :pending-sync-hosts conj hostname)
           (= :error reason)
-          (update-in [:host->consecutive-failures agent-hostname] (fnil inc 0))))
+          (update-in [:host->consecutive-failures hostname] (fnil inc 0))))
 
 (defn- clear-pending-sync-hostname
-  "Clears the hostname as a pending sync item from pending-sync-state."
-  [pending-sync-state agent-hostname reason]
-  (cond-> (update pending-sync-state :pending-sync-hosts disj agent-hostname)
+  "Clears the hostname as a pending sync item from pending-sync-state.
+   It also clears the entry from host->consecutive-failures if the reason is :success or :threshold."
+  [pending-sync-state hostname reason]
+  (cond-> (update pending-sync-state :pending-sync-hosts disj hostname)
           (contains? #{:success :threshold} reason)
-          (update :host->consecutive-failures dissoc agent-hostname)))
+          (update :host->consecutive-failures dissoc hostname)))
 
 (defn refresh-agent-cache-entry
   "If the entry for the specified agent is not cached:
@@ -216,20 +218,33 @@
     (chime/chime-at
       (periodic/periodic-seq (time/now) (time/millis sync-interval-ms))
       (fn host-sandbox-syncer-task [_]
-        (let [{:keys [framework-id host->consecutive-failures pending-sync-hosts]} @pending-sync-agent]
-          (log/info (count pending-sync-hosts) "hosts have pending syncs")
-          (doseq [agent-hostname pending-sync-hosts]
-            (let [consecutive-failures (get host->consecutive-failures agent-hostname 0)]
+        (let [{:keys [framework-id host->consecutive-failures pending-sync-hosts]} @pending-sync-agent
+              num-pending-sync-hosts (count pending-sync-hosts)]
+          (log/info num-pending-sync-hosts "hosts have pending syncs")
+          (loop [[hostname & remaining-hostnames] (vec pending-sync-hosts)
+                 pending-sync-agent-send-performed false]
+            (let [consecutive-failures (get host->consecutive-failures hostname 0)]
               (cond
+                (nil? hostname)
+                (when pending-sync-agent-send-performed
+                  (log/debug "Awaiting to ensure agent sends in this chime iteration complete")
+                  (await pending-sync-agent))
+
                 (>= consecutive-failures max-consecutive-sync-failure)
                 (do
-                  (log/info "Removing entry for" agent-hostname "with" consecutive-failures "consecutive failures")
-                  (send pending-sync-agent clear-pending-sync-hostname agent-hostname :threshold))
-                (not (cache/has? @mesos-agent-query-cache agent-hostname))
+                  (log/info "Removing entry for" hostname "with" consecutive-failures "consecutive failures")
+                  (send pending-sync-agent clear-pending-sync-hostname hostname :threshold)
+                  (recur remaining-hostnames true))
+
+                (not (cache/has? @mesos-agent-query-cache hostname))
                 (do
-                  (log/info "Triggering pending sandbox sync of" agent-hostname)
-                  (send pending-sync-agent clear-pending-sync-hostname agent-hostname :sync)
-                  (sync-agent-sandboxes syncer-state framework-id agent-hostname)))))))
+                  (log/info "Triggering pending sandbox sync of" hostname)
+                  (send pending-sync-agent clear-pending-sync-hostname hostname :sync)
+                  (sync-agent-sandboxes syncer-state framework-id hostname)
+                  (recur remaining-hostnames true))
+
+                :else
+                (recur remaining-hostnames pending-sync-agent-send-performed))))))
       {:error-handler (fn sandbox-publisher-error-handler [ex]
                         (log/error ex "Sync of sandbox directories on pending hosts failed"))})))
 
