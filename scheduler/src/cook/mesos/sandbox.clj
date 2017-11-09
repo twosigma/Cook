@@ -137,16 +137,16 @@
 (defn- aggregate-pending-sync-hostname
   "Aggregates the hostname as a pending sync item into pending-sync-state."
   [pending-sync-state agent-hostname reason]
-  ;; TODO Shams use reason to track consecutive failures
-  (-> pending-sync-state
-      (update :pending-sync-hosts conj agent-hostname)))
+  (cond-> (update pending-sync-state :pending-sync-hosts conj agent-hostname)
+          (= :error reason)
+          (update-in [:host->consecutive-failures agent-hostname] (fnil inc 0))))
 
 (defn- clear-pending-sync-hostname
   "Clears the hostname as a pending sync item from pending-sync-state."
   [pending-sync-state agent-hostname reason]
-  ;; TODO Shams use reason to track consecutive failures
-  (-> pending-sync-state
-      (update :pending-sync-hosts disj agent-hostname)))
+  (cond-> (update pending-sync-state :pending-sync-hosts disj agent-hostname)
+          (contains? #{:success :threshold} reason)
+          (update :host->consecutive-failures dissoc agent-hostname)))
 
 (defn refresh-agent-cache-entry
   "If the entry for the specified agent is not cached:
@@ -208,7 +208,7 @@
 
 (defn start-host-sandbox-syncer
   "Launches a timer task that triggers syncing of sandbox directories of any pending hosts."
-  [mesos-agent-query-cache pending-sync-agent task-id->sandbox-agent sync-interval-ms]
+  [mesos-agent-query-cache pending-sync-agent task-id->sandbox-agent sync-interval-ms max-consecutive-sync-failure]
   (log/info "Starting sandbox syncer at intervals of" sync-interval-ms "ms")
   (let [syncer-state {:mesos-agent-query-cache mesos-agent-query-cache
                       :pending-sync-agent pending-sync-agent
@@ -216,13 +216,20 @@
     (chime/chime-at
       (periodic/periodic-seq (time/now) (time/millis sync-interval-ms))
       (fn host-sandbox-syncer-task [_]
-        (let [{:keys [framework-id pending-sync-hosts]} @pending-sync-agent]
+        (let [{:keys [framework-id host->consecutive-failures pending-sync-hosts]} @pending-sync-agent]
           (log/info (count pending-sync-hosts) "hosts have pending syncs")
           (doseq [agent-hostname pending-sync-hosts]
-            (when-not (cache/has? @mesos-agent-query-cache agent-hostname)
-              (log/info "Triggering pending sandbox sync of" agent-hostname)
-              (send pending-sync-agent clear-pending-sync-hostname agent-hostname :sync)
-              (sync-agent-sandboxes syncer-state framework-id agent-hostname)))))
+            (let [consecutive-failures (get host->consecutive-failures agent-hostname 0)]
+              (cond
+                (>= consecutive-failures max-consecutive-sync-failure)
+                (do
+                  (log/info "Removing entry for" agent-hostname "with" consecutive-failures "consecutive failures")
+                  (send pending-sync-agent clear-pending-sync-hostname agent-hostname :threshold))
+                (not (cache/has? @mesos-agent-query-cache agent-hostname))
+                (do
+                  (log/info "Triggering pending sandbox sync of" agent-hostname)
+                  (send pending-sync-agent clear-pending-sync-hostname agent-hostname :sync)
+                  (sync-agent-sandboxes syncer-state framework-id agent-hostname)))))))
       {:error-handler (fn sandbox-publisher-error-handler [ex]
                         (log/error ex "Sync of sandbox directories on pending hosts failed"))})))
 
@@ -233,14 +240,17 @@
    :mesos-agent-query-cache - the cache that throttles the state sync calls to the mesos agents.
    :publisher-cancel-fn - fn that take no arguments and that terminates the publisher.
    :task-id->sandbox-agent - The agent that manages the task-id->sandbox aggregation and publishing."
-  [framework-id datomic-conn publish-batch-size publish-interval-ms sync-interval-ms mesos-agent-query-cache]
+  [framework-id datomic-conn publish-batch-size publish-interval-ms sync-interval-ms max-consecutive-sync-failure
+   mesos-agent-query-cache]
   (let [pending-sync-agent (agent {:framework-id framework-id
+                                   :host->consecutive-failures {}
                                    :pending-sync-hosts #{}}) ;; stores the names of hosts pending sync
         task-id->sandbox-agent (agent {}) ;; stores all the pending task-id->sandbox state
         publisher-cancel-fn (start-sandbox-publisher
                               task-id->sandbox-agent datomic-conn publish-batch-size publish-interval-ms)
         syncer-cancel-fn (start-host-sandbox-syncer
-                           mesos-agent-query-cache pending-sync-agent task-id->sandbox-agent sync-interval-ms)]
+                           mesos-agent-query-cache pending-sync-agent task-id->sandbox-agent sync-interval-ms
+                           max-consecutive-sync-failure)]
     {:mesos-agent-query-cache mesos-agent-query-cache
      :pending-sync-agent pending-sync-agent
      :publisher-cancel-fn publisher-cancel-fn
