@@ -1029,7 +1029,7 @@ class CookTest(unittest.TestCase):
             util.wait_until(group_query, util.group_some_job_done)
             job_data = util.query_jobs(self.cook_url, job=jobs).json()
             # retry all jobs in the group
-            util.retry_jobs(self.cook_url, retries=12, groups=[group_uuid])
+            util.retry_jobs(self.cook_url, retries=12, groups=[group_uuid], failed_only=False)
             # wait for the previously-completed jobs to restart
             prev_completed_jobs = [j for j in job_data if j['status'] == 'completed']
             assert len(prev_completed_jobs) >= 1
