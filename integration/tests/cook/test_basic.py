@@ -1126,34 +1126,37 @@ class CookTest(unittest.TestCase):
             util.session.delete('%s/rawscheduler?job=%s' % (self.cook_url, job_uuid))
 
     def test_unscheduled_jobs(self):
-        job_uuid, resp = util.submit_job(self.cook_url,
-                                         command='ls',
-                                         constraints=[['HOSTNAME', 'EQUALS', 'fakehost']])
+        under_investigation = 'The job is now under investigation. Check back in a minute for more details!'
+        could_not_place_job = 'The job couldn\'t be placed on any available hosts.'
+
+        unsatisfiable_constraint = ['HOSTNAME', 'EQUALS', 'fakehost']
+        job_uuid_1, resp = util.submit_job(self.cook_url, command='ls', constraints=[unsatisfiable_constraint])
+        self.assertEqual(resp.status_code, 201, resp.content)
+        job_uuid_2, resp = util.submit_job(self.cook_url, command='ls', constraints=[unsatisfiable_constraint])
         self.assertEqual(resp.status_code, 201, resp.content)
         try:
-            unscheduled_jobs = util.unscheduled_jobs(self.cook_url, job_uuid)[0]
+            unscheduled_jobs = util.unscheduled_jobs(self.cook_url, job_uuid_1, job_uuid_2)
+            self.logger.info(f'Unscheduled jobs: {unscheduled_jobs}')
             # If the job from the test is submitted after another one, unscheduled_jobs will report "There are jobs
             # ahead of this in the queue" so we cannot assert that there is exactly one failure reason.
-            self.assertTrue(
-                any(['The job is now under investigation. Check back in a minute for more details!' == reason['reason']
-                     for reason in unscheduled_jobs['reasons']]),
-                unscheduled_jobs)
-            self.assertEqual(job_uuid, unscheduled_jobs['uuid'])
+            self.assertTrue(any([under_investigation == reason['reason'] for reason in unscheduled_jobs[0]['reasons']]))
+            self.assertTrue(any([under_investigation == reason['reason'] for reason in unscheduled_jobs[1]['reasons']]))
+            self.assertEqual(job_uuid_1, unscheduled_jobs[0]['uuid'])
+            self.assertEqual(job_uuid_2, unscheduled_jobs[1]['uuid'])
 
             @retry(stop_max_delay=60000, wait_fixed=1000)
             def check_unscheduled_reason():
-                jobs = util.unscheduled_jobs(self.cook_url, job_uuid)[0]
+                jobs = util.unscheduled_jobs(self.cook_url, job_uuid_1, job_uuid_2)
                 # If the job from the test is submitted after another one, unscheduled_jobs will report "There are
                 # jobs ahead of this in the queue" so we cannot assert that there is exactly one failure reason.
-                self.assertTrue(
-                    any(['The job couldn\'t be placed on any available hosts.' == reason['reason'] for reason in
-                         jobs['reasons']]),
-                    jobs)
-                self.assertEqual(job_uuid, jobs['uuid'])
+                self.assertTrue(any([could_not_place_job == reason['reason'] for reason in jobs[0]['reasons']]), jobs)
+                self.assertTrue(any([could_not_place_job == reason['reason'] for reason in jobs[1]['reasons']]), jobs)
+                self.assertEqual(job_uuid_1, jobs[0]['uuid'])
+                self.assertEqual(job_uuid_2, jobs[1]['uuid'])
 
             check_unscheduled_reason()
         finally:
-            util.kill_jobs(self.cook_url, [job_uuid])
+            util.kill_jobs(self.cook_url, [job_uuid_1, job_uuid_2])
 
     def test_unique_host_constraint(self):
         state = util.get_mesos_state(self.mesos_url)

@@ -233,7 +233,7 @@ def wait_until(query, predicate, max_wait_ms=30000, wait_interval_ms=1000):
         raise
 
 
-def all_instances_done(response, accepted_states=['success', 'failed']):
+def all_instances_done(response, accepted_states=('success', 'failed')):
     """
     Helper method used with the wait_until function.
     Checks a response from query_jobs to see if all jobs and instances have completed.
@@ -443,9 +443,10 @@ def get_user(cook_url, job_uuid):
     return load_job(cook_url, job_uuid)['user']
 
 
-def unscheduled_jobs(cook_url, job_uuid):
+def unscheduled_jobs(cook_url, *job_uuids):
     """Retrieves the unscheduled_jobs reasons for the given job_uuid"""
-    return session.get('%s/unscheduled_jobs?job=%s' % (cook_url, job_uuid)).json()
+    query_params = urlencode([('job', u) for u in job_uuids])
+    return session.get(f'{cook_url}/unscheduled_jobs?{query_params}').json()
 
 
 def wait_for_instance(cook_url, job_uuid):
