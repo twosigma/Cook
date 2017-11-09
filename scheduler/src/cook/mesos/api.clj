@@ -1363,7 +1363,12 @@
         increment (get-in ctx [:request :body-params :increment])
         jobs (jobs-from-request ctx)
         groups (get-in ctx [:request :body-params :groups])
-        failed-only? (get-in ctx [:request :body-params :failed-only])
+        has-groups? (-> groups seq boolean)
+        failed-only? (let [fo? (get-in ctx [:request :body-params :failed-only])]
+                       ;; Default to true if there are groups, false if only jobs.
+                       ;; This maintains backwards-compatibility for old code,
+                       ;; but gives a more sane default for code where groups are used.
+                       (if (nil? fo?) has-groups? fo?))
         retry-limit (:retry-limit task-constraints)]
     (cond
       (and (empty? jobs) (empty? groups))
