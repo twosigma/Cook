@@ -163,6 +163,19 @@ def ls(uuid, cook_url, path=None, parse_json=True):
     return cp, entries
 
 
+def tail_with_logging(uuid, path, cook_url, num_lines):
+    """Invokes tail and performs some extra logging if the tail fails"""
+    tail_cp = tail(uuid, path, cook_url, f'--lines {num_lines}')
+    if tail_cp.returncode != 0:
+        logging.error(f'tail exited {tail_cp.returncode}: {tail_cp.stderr}')
+        ls_cp, entries = ls(uuid, cook_url)
+        if ls_cp.returncode != 0:
+            logging.error(f'ls exited {ls_cp.returncode}: {ls_cp.stderr}')
+        else:
+            logging.info(f'ls results: {json.dumps(entries, indent=2)}')
+    return tail_cp
+
+
 def ls_entry_by_name(entries, name):
     """
     Given a collection of entries returned by ls, and a name

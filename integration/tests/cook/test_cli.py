@@ -640,19 +640,19 @@ class CookCliTest(unittest.TestCase):
         self.assertEqual(2, cp.returncode, cp.stderr)
         self.assertIn('0 is not a positive integer', cli.decode(cp.stderr))
         # Ask for 1 line
-        cp = cli.tail(uuids[0], 'foo', self.cook_url, '--lines 1')
+        cp = cli.tail_with_logging(uuids[0], 'foo', self.cook_url, 1)
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual('100\n', cli.decode(cp.stdout))
         # Ask for 10 lines
-        cp = cli.tail(uuids[0], 'foo', self.cook_url, '--lines 10')
+        cp = cli.tail_with_logging(uuids[0], 'foo', self.cook_url, 10)
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual('\n'.join([str(i) for i in range(91, 101)]) + '\n', cli.decode(cp.stdout))
         # Ask for 100 lines
-        cp = cli.tail(uuids[0], 'foo', self.cook_url, '--lines 100')
+        cp = cli.tail_with_logging(uuids[0], 'foo', self.cook_url, 100)
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual('\n'.join([str(i) for i in range(1, 101)]) + '\n', cli.decode(cp.stdout))
         # Ask for 1000 lines
-        cp = cli.tail(uuids[0], 'foo', self.cook_url, '--lines 1000')
+        cp = cli.tail_with_logging(uuids[0], 'foo', self.cook_url, 1000)
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual('\n'.join([str(i) for i in range(1, 101)]) + '\n', cli.decode(cp.stdout))
         # Ask for a file that doesn't exist
