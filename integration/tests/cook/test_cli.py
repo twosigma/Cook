@@ -563,11 +563,10 @@ class CookCliTest(unittest.TestCase):
         self.assertEqual(1, len(jobs))
         self.assertIn(uuids[0], jobs[0]['uuid'])
 
-    @attr('explicit')
     def test_ssh_job_uuid(self):
         cp, uuids = cli.submit('ls', self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
-        instance = util.wait_for_output_url(self.cook_url, uuids[0])
+        instance = util.wait_for_instance(self.cook_url, uuids[0])
         hostname = instance['hostname']
         env = os.environ
         env['CS_SSH'] = 'echo'
@@ -594,12 +593,11 @@ class CookCliTest(unittest.TestCase):
         self.assertEqual(1, cp.returncode, cp.stdout)
         self.assertIn('No matching data found', cli.decode(cp.stderr))
 
-    @attr('explicit')
     def test_ssh_duplicate_uuid(self):
         cp, uuids = cli.submit('ls', self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
-        instance = util.wait_for_output_url(self.cook_url, uuids[0])
-        instance_uuid = instance["task_id"]
+        instance = util.wait_for_instance(self.cook_url, uuids[0])
+        instance_uuid = instance['task_id']
         cp, uuids = cli.submit('ls', self.cook_url, submit_flags=f'--uuid {instance_uuid}')
         self.assertEqual(0, cp.returncode, cp.stderr)
         cp = cli.ssh(instance_uuid, self.cook_url)
@@ -614,7 +612,6 @@ class CookCliTest(unittest.TestCase):
         self.assertEqual(1, cp.returncode, cp.stdout)
         self.assertIn('You provided a job group uuid', cli.decode(cp.stderr))
 
-    @attr('explicit')
     def test_ssh_instance_uuid(self):
         cp, uuids = cli.submit('ls', self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
