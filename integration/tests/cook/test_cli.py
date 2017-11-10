@@ -901,8 +901,8 @@ class CookCliTest(unittest.TestCase):
 
     def test_show_progress_message(self):
         executor = util.get_job_executor_type(self.cook_url)
-        cp, uuids = cli.submit('echo "progress: 99 We are so close!"', self.cook_url,
-                               submit_flags=f'--executor {executor}')
+        message = util.output_progress_string(self.cook_url, 99, 'We are so close!')
+        cp, uuids = cli.submit(f'echo "{message}"', self.cook_url, submit_flags=f'--executor {executor}')
         self.assertEqual(0, cp.returncode, cp.stderr)
         util.wait_for_job(self.cook_url, uuids[0], 'completed')
         self.assertEqual(0, cp.returncode, cp.stderr)
@@ -929,9 +929,10 @@ class CookCliTest(unittest.TestCase):
 
     def test_show_progress_message_custom_progress_file(self):
         executor = util.get_job_executor_type(self.cook_url)
+        message = util.output_progress_string(self.cook_url, 99, 'We are so close!')
         cp, uuids = cli.submit('\'touch progress.txt && '
                                'echo "Hello World" >> progress.txt && '
-                               'echo "progress: 99 We are so close!" >> progress.txt && '
+                               f'echo "{message}" >> progress.txt && '
                                'echo "Done" >> progress.txt\'',
                                self.cook_url,
                                submit_flags=f'--executor {executor} '

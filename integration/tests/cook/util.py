@@ -467,3 +467,13 @@ def sleep_for_publish_interval(cook_url):
     progress_publish_interval_ms = get_in(cook_settings, 'progress', 'publish-interval-ms')
     wait_publish_interval_ms = min(3 * progress_publish_interval_ms, 20000)
     time.sleep(wait_publish_interval_ms / 1000.0)
+
+def output_progress_string(cook_url, percent, message):
+    """Simple text replacement of regex string using expected patterns of (\d+), (?: )? and (.*)."""
+    cook_settings = settings(cook_url)
+    regex_string = get_in(cook_settings, 'executor', 'default-progress-regex-string')
+    if not '(\d+)' in regex_string:
+        raise Exception('{} not present in {} regex string'.format('(\d+)', regex_string))
+    if not '(.*)' in regex_string:
+        raise Exception('{} not present in {} regex string'.format('(.*)', regex_string))
+    return regex_string.replace('(\d+)', str(percent)).replace('(.*)', str(message)).replace('(?: )?', ' ')
