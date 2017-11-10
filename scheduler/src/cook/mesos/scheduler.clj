@@ -1054,7 +1054,7 @@
 ;; Unfortunately, clj-time.core/millis only accepts ints, not longs.
 ;; The Period class has a constructor that accepts "long milliseconds",
 ;; but since that isn't exposed through the clj-time API, we have to call it directly.
-(defn millis->period
+(defn- millis->period
   "Create a time period (duration) from a number of milliseconds."
   [millis]
   (org.joda.time.Period. (long millis)))
@@ -1064,8 +1064,7 @@
 
    A lingering task is a task that runs longer than timeout-hours."
   [db now max-timeout-hours default-timeout-hours]
-  (let [max-allowed-timeout-ms (-> max-timeout-hours time/hours time/in-millis)
-        jobs-with-max-runtime
+  (let [jobs-with-max-runtime
         (q '[:find ?task-id ?start-time ?max-runtime
              :in $ ?default-runtime
              :where
@@ -1075,10 +1074,11 @@
              [?i :instance/start-time ?start-time]
              [?j :job/instance ?i]
              [(get-else $ ?j :job/max-runtime ?default-runtime) ?max-runtime]]
-           db (-> default-timeout-hours time/hours time/in-millis))]
+           db (-> default-timeout-hours time/hours time/in-millis))
+        max-allowed-timeout-ms (-> max-timeout-hours time/hours time/in-millis)]
     (for [[task-id start-time max-runtime-ms] jobs-with-max-runtime
-          :let [timeout-ms (millis->period (min max-runtime-ms max-allowed-timeout-ms))
-                timeout-boundary (time/plus (tc/from-date start-time) timeout-ms)]
+          :let [timeout-period (millis->period (min max-runtime-ms max-allowed-timeout-ms))
+                timeout-boundary (time/plus (tc/from-date start-time) timeout-period)]
           :when (time/after? now timeout-boundary)]
       task-id)))
 
