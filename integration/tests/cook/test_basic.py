@@ -612,6 +612,19 @@ class CookTest(unittest.TestCase):
         job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
         self.assertEqual('success', job['state'], 'Job details: %s' % (json.dumps(job, sort_keys=True)))
 
+    def test_change_retries_deprecated(self):
+        job_uuid, _ = util.submit_job(self.cook_url, command='sleep 10')
+        util.wait_for_job(self.cook_url, job_uuid, 'running')
+        util.kill_jobs(self.cook_url, [job_uuid])
+        job = util.load_job(self.cook_url, job_uuid)
+        self.assertEqual('failed', job['state'])
+        resp = util.retry_jobs(self.cook_url, use_deprecated_post=True, retries=2, jobs=[job_uuid])
+        self.assertEqual(201, resp.status_code, resp.text)
+        job = util.load_job(self.cook_url, job_uuid)
+        self.assertIn(job['status'], ['waiting', 'running'])
+        job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
+        self.assertEqual('success', job['state'], 'Job details: %s' % (json.dumps(job, sort_keys=True)))
+
     def test_change_failed_retries(self):
         job_specs = util.minimal_jobs(2, max_retries=1, command='sleep 10')
         try:

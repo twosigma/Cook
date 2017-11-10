@@ -138,9 +138,10 @@ def submit_jobs(cook_url, job_specs, clones=1, **kwargs):
     return [j['uuid'] for j in jobs], resp
 
 
-def retry_jobs(cook_url, assert_response=True, **kwargs):
+def retry_jobs(cook_url, assert_response=True, use_deprecated_post=False, **kwargs):
     """Retry one or more jobs and/or groups of jobs"""
-    response = session.put(f'{cook_url}/retry', json=kwargs)
+    request_verb = session.post if use_deprecated_post else session.put
+    response = request_verb(f'{cook_url}/retry', json=kwargs)
     if assert_response:
         response_info = {'code': response.status_code, 'msg': response.content}
         assert response.status_code in (201, 202), response_info
