@@ -347,7 +347,8 @@
                          {:max-consecutive-sync-failure 15
                           :publish-batch-size 100
                           :publish-interval-ms 2500
-                          :sync-interval-ms (t/in-millis (t/minutes 15))}
+                          ;; The default should ideally be lower than the agent-query-cache ttl-ms
+                          :sync-interval-ms (* 15 1000)}
                          sandbox-syncer))
      :server-port (fnk [[:config port]]
                     port)
