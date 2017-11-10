@@ -4,6 +4,7 @@ import json
 import logging
 import time
 
+import sys
 from tabulate import tabulate
 
 from cook import colors, http
@@ -56,19 +57,22 @@ def show_data(cluster_job_pairs):
     Given a collection of (cluster, job) pairs,
     formats a table showing the most relevant job fields
     """
-    rows = [collections.OrderedDict([("Cluster", cluster),
-                                     ("UUID", job['uuid']),
-                                     ("Name", job['name']),
-                                     ("Memory", format_job_memory(job)),
-                                     ("CPUs", job['cpus']),
-                                     ("Priority", job['priority']),
-                                     ("Attempts", format_job_attempts(job)),
-                                     ("Submitted", millis_to_date_string(job['submit_time'])),
-                                     ("Command", format_job_command(job)),
-                                     ("Job Status", format_job_status(job))])
-            for (cluster, job) in cluster_job_pairs]
-    job_table = tabulate(rows, headers='keys', tablefmt='plain')
-    print_info(job_table)
+    if sys.stdout.isatty():
+        rows = [collections.OrderedDict([("Cluster", cluster),
+                                         ("UUID", job['uuid']),
+                                         ("Name", job['name']),
+                                         ("Memory", format_job_memory(job)),
+                                         ("CPUs", job['cpus']),
+                                         ("Priority", job['priority']),
+                                         ("Attempts", format_job_attempts(job)),
+                                         ("Submitted", millis_to_date_string(job['submit_time'])),
+                                         ("Command", format_job_command(job)),
+                                         ("Job Status", format_job_status(job))])
+                for (cluster, job) in cluster_job_pairs]
+        job_table = tabulate(rows, headers='keys', tablefmt='plain')
+        print_info(job_table)
+    else:
+        print_info('\n'.join(j['uuid'] for _, j in cluster_job_pairs))
 
 
 def date_time_string_to_ms_since_epoch(date_time_string):

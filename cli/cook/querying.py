@@ -20,18 +20,20 @@ def query_cluster(cluster, uuids, pred, timeout, interval, make_request_fn, enti
         return pred(http.make_data_request(cluster, lambda: make_request_fn(cluster, uuids)))
 
     entities = http.make_data_request(cluster, lambda: make_request_fn(cluster, uuids))
-    if pred and len(entities) > 0:
+    num_entities = len(entities)
+    if pred and num_entities > 0:
+        s = 's' if num_entities > 1 else ''
+        num_string = colors.bold(str(num_entities))
         if entity_type == 'job':
-            wait_text = 'Waiting for the following jobs'
+            wait_text = f'Waiting for {num_string} job{s}'
         elif entity_type == 'instance':
-            wait_text = 'Waiting for instances of the following jobs'
+            wait_text = f'Waiting for instances of {num_string} job{s}'
         elif entity_type == 'group':
-            wait_text = 'Waiting for the following job groups'
+            wait_text = f'Waiting for {num_string} job group{s}'
         else:
-            raise Exception('Invalid entity type %s.' % entity_type)
+            raise Exception(f'Invalid entity type {entity_type}.')
 
-        uuid_text = ', '.join([e['uuid'] for e in entities])
-        wait_text = '%s on %s: %s' % (wait_text, colors.bold(cluster['name']), uuid_text)
+        wait_text = f'{wait_text} on {colors.bold(cluster["name"])}'
         index = progress.add(wait_text)
         if pred(entities):
             progress.update(index, colors.bold('Done'))

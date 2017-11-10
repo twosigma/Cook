@@ -1,5 +1,7 @@
+import sys
+
 from cook.querying import query, print_no_data
-from cook.util import strip_all, print_info, seconds_to_timedelta, guard_no_cluster
+from cook.util import strip_all, print_info, seconds_to_timedelta, guard_no_cluster, read_lines
 
 
 def all_jobs_completed(jobs):
@@ -32,6 +34,17 @@ def wait(clusters, args, _):
     timeout = args.get('timeout')
     interval = args.get('interval')
     uuids = strip_all(args.get('uuid'))
+    stdin_from_pipe = not sys.stdin.isatty()
+
+    if uuids and stdin_from_pipe:
+        raise Exception('When piping to wait, you cannot also supply UUIDs as arguments.')
+
+    if stdin_from_pipe:
+        uuids = read_lines()
+
+    if not uuids:
+        raise Exception('You must specify at least one UUID on which to wait.')
+
     timeout_text = ('up to %s' % seconds_to_timedelta(timeout)) if timeout else 'indefinitely'
     print_info('Will wait %s.' % timeout_text)
     query_result = query(clusters, uuids, all_jobs_completed, all_instances_completed,
@@ -49,7 +62,7 @@ def register(add_parser, add_defaults):
     default_timeout_text = 'wait indefinitely'
     default_interval = 5
     wait_parser = add_parser('wait', help='wait for jobs / instances / groups to complete by uuid')
-    wait_parser.add_argument('uuid', nargs='+')
+    wait_parser.add_argument('uuid', nargs='*')
     wait_parser.add_argument('--timeout', '-t',
                              help=f'maximum time (in seconds) to wait (default = {default_timeout_text})', type=int)
     wait_parser.add_argument('--interval', '-i',
