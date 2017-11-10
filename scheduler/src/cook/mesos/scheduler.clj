@@ -583,8 +583,10 @@
                guuid->considerable-cotask-ids (constantly #{})}}]
   (let [constraints (into (constraints/make-fenzo-job-constraints job)
                           (remove nil?
-                                  (mapv #(constraints/make-fenzo-group-constraint db
-                                           % (guuid->considerable-cotask-ids (:group/uuid %))) (:group/_job job))))
+                                  (mapv (fn make-group-constraints [group]
+                                          (constraints/make-fenzo-group-constraint
+                                           db group #(guuid->considerable-cotask-ids (:group/uuid group))))
+                                        (:group/_job job))))
         needs-gpus? (constraints/job-needs-gpus? job)
         scalar-requests (reduce (fn [result resource]
                                   (if-let [value (:resource/amount resource)]
