@@ -29,7 +29,7 @@ if [ -z "${TARGET_DIR}" ]; then
 fi
 
 COOK_EXECUTOR_NAME="cook-executor-${MODE}"
-if [[ "${MODE}" =~ ^(docker)$ ]]; then
+if [[ "${MODE}" == docker ]]; then
     COOK_EXECUTOR_NAME="cook-executor"
 fi
 
