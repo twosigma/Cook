@@ -1276,16 +1276,16 @@
 (def ReadRetriesRequest
   {:job [s/Uuid]})
 
-(def UpdateRetriesBaseRequest
+(def UpdateRetriesRequestBase
   {(s/optional-key :job) s/Uuid
    (s/optional-key :jobs) [s/Uuid]
    (s/optional-key :retries) PosNum
    (s/optional-key :increment) PosNum})
 
-(def UpdateRetriesRequestDeprecated UpdateRetriesBaseRequest)
+(def UpdateRetriesRequestDeprecated UpdateRetriesRequestBase)
 
 (def UpdateRetriesRequest
-  (merge UpdateRetriesBaseRequest
+  (merge UpdateRetriesRequestBase
          {(s/optional-key :groups) [s/Uuid]
           (s/optional-key :failed-only) s/Bool}))
 

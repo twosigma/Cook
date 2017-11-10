@@ -511,6 +511,7 @@ def group_submit_kill_retry(cook_url, failed_only):
     4) Retries the jobs
     5) Waits for at least one job to start (again)
     6) Finally kills all the jobs again (clean up)
+    Returns the job info (json response) for the group's jobs after step 5.
     """
     group_spec = minimal_group()
     group_uuid = group_spec['uuid']
@@ -544,6 +545,15 @@ def group_submit_kill_retry(cook_url, failed_only):
 
 
 def group_submit_retry(cook_url, command, predicate_statuses, failed_only=True):
+    """
+    Helper method for integration tests on groups, following these steps:
+    1) Creates a group of 5 jobs
+    2) Waits for the job statuses to match those in predicate_statuses
+    3) Retries the jobs
+    4) Waits for the job statuses to match those in predicate_statuses (again)
+    5) Finally kills all the jobs again (clean up)
+    Returns the job info (json response) for the group's jobs after step 4.
+    """
     job_count = 5
     group_spec = minimal_group()
     group_uuid = group_spec['uuid']
