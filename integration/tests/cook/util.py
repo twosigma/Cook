@@ -233,14 +233,11 @@ def wait_until(query, predicate, max_wait_ms=30000, wait_interval_ms=1000):
         raise
 
 
-def all_instances_done(response, accepted_states=None):
+def all_instances_done(response, accepted_states=('success', 'failed')):
     """
     Helper method used with the wait_until function.
     Checks a response from query_jobs to see if all jobs and instances have completed.
     """
-    if accepted_states is None:
-        accepted_states = ['success', 'failed']
-
     for job in response.json():
         if job['state'] not in accepted_states:
             return False
@@ -336,13 +333,18 @@ def wait_for_exit_code(cook_url, job_id, max_delay_ms=2000):
     return response.json()[0]
 
 
-def wait_for_sandbox_directory(cook_url, job_id, max_delay_ms=4000):
+def wait_for_sandbox_directory(cook_url, job_id):
     """
     Wait for the given job's sandbox_directory field to appear.
     Returns an up-to-date job description object on success,
     and raises an exception if the max_delay_ms wait time is exceeded.
     """
     job_id = unpack_uuid(job_id)
+
+    cook_settings = settings(cook_url)
+    cache_ttl_ms = get_in(cook_settings, 'agent-query-cache', 'ttl-ms')
+    sync_interval_ms = get_in(cook_settings, 'sandbox-syncer', 'sync-interval-ms')
+    max_delay_ms = min(4 * max(cache_ttl_ms, sync_interval_ms), 4 * 60 * 1000)
 
     def query():
         response = query_jobs(cook_url, True, job=[job_id])
@@ -446,9 +448,10 @@ def get_user(cook_url, job_uuid):
     return load_job(cook_url, job_uuid)['user']
 
 
-def unscheduled_jobs(cook_url, job_uuid):
+def unscheduled_jobs(cook_url, *job_uuids):
     """Retrieves the unscheduled_jobs reasons for the given job_uuid"""
-    return session.get('%s/unscheduled_jobs?job=%s' % (cook_url, job_uuid)).json()
+    query_params = urlencode([('job', u) for u in job_uuids])
+    return session.get(f'{cook_url}/unscheduled_jobs?{query_params}').json()
 
 
 def wait_for_instance(cook_url, job_uuid):

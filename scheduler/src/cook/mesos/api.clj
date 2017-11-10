@@ -1960,14 +1960,14 @@
      (c-api/context
       "/unscheduled_jobs" []
       (c-api/resource
-       {:produces ["application/json"],
-        :get {:summary "Read reasons why a job isn't being scheduled."
-              :parameters {:query-params {:job s/Uuid}}
-              :handler (read-unscheduled-handler conn is-authorized-fn)
-              :responses {200 {:schema UnscheduledJobResponse
-                               :description "Reasons the job isn't being scheduled."}
-                          400 {:description "Invalid request format."}
-                          404 {:description "The UUID doesn't correspond to a job."}}}})))
+        {:produces ["application/json"],
+         :get {:summary "Read reasons why a job isn't being scheduled."
+               :parameters {:query-params {:job [s/Uuid]}}
+               :handler (read-unscheduled-handler conn is-authorized-fn)
+               :responses {200 {:schema UnscheduledJobResponse
+                                :description "Reasons the job isn't being scheduled."}
+                           400 {:description "Invalid request format."}
+                           404 {:description "The UUID doesn't correspond to a job."}}}})))
     (ANY "/queue" []
          (waiting-jobs mesos-pending-jobs-fn is-authorized-fn mesos-leadership-atom leader-selector))
     (ANY "/running" []

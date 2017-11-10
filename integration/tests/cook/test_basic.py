@@ -37,14 +37,15 @@ class CookTest(unittest.TestCase):
         self.assertEqual(False, job['disable_mea_culpa_retries'])
         self.assertTrue(len(util.wait_for_output_url(self.cook_url, job_uuid)['output_url']) > 0)
 
+        job = util.wait_for_sandbox_directory(self.cook_url, job_uuid)
+        message = json.dumps(job['instances'][0], sort_keys=True)
+        self.assertIsNotNone(job['instances'][0]['output_url'], message)
+        self.assertIsNotNone(job['instances'][0]['sandbox_directory'], message)
+
         if job_executor_type == 'cook':
             job = util.wait_for_exit_code(self.cook_url, job_uuid)
             message = json.dumps(job['instances'][0], sort_keys=True)
             self.assertEqual(0, job['instances'][0]['exit_code'], message)
-
-            job = util.wait_for_sandbox_directory(self.cook_url, job_uuid)
-            message = json.dumps(job['instances'][0], sort_keys=True)
-            self.assertIsNotNone(job['instances'][0]['sandbox_directory'], message)
 
     def test_no_cook_executor_on_subsequent_instances(self):
         job_uuid, resp = util.submit_job(self.cook_url, command='exit 1', max_retries=10)
@@ -124,14 +125,15 @@ class CookTest(unittest.TestCase):
         message = json.dumps(job['instances'][0], sort_keys=True)
         self.assertEqual('failed', job['instances'][0]['status'], message)
 
+        job = util.wait_for_sandbox_directory(self.cook_url, job_uuid)
+        message = json.dumps(job['instances'][0], sort_keys=True)
+        self.assertIsNotNone(job['instances'][0]['output_url'], message)
+        self.assertIsNotNone(job['instances'][0]['sandbox_directory'], message)
+
         if job_executor_type == 'cook':
             job = util.wait_for_exit_code(self.cook_url, job_uuid)
             message = json.dumps(job['instances'][0], sort_keys=True)
             self.assertEqual(1, job['instances'][0]['exit_code'], message)
-
-            job = util.wait_for_sandbox_directory(self.cook_url, job_uuid)
-            message = json.dumps(job['instances'][0], sort_keys=True)
-            self.assertIsNotNone(job['instances'][0]['sandbox_directory'], message)
 
     def test_progress_update_submit(self):
         job_executor_type = util.get_job_executor_type(self.cook_url)
@@ -146,16 +148,17 @@ class CookTest(unittest.TestCase):
         message = json.dumps(job['instances'][0], sort_keys=True)
         self.assertEqual('success', job['instances'][0]['status'], message)
 
+        job = util.wait_for_sandbox_directory(self.cook_url, job_uuid)
+        message = json.dumps(job['instances'][0], sort_keys=True)
+        self.assertIsNotNone(job['instances'][0]['output_url'], message)
+        self.assertIsNotNone(job['instances'][0]['sandbox_directory'], message)
+
         if job_executor_type == 'cook':
             util.sleep_for_publish_interval(self.cook_url)
 
             job = util.wait_for_exit_code(self.cook_url, job_uuid)
             message = json.dumps(job['instances'][0], sort_keys=True)
             self.assertEqual(0, job['instances'][0]['exit_code'], message)
-
-            job = util.wait_for_sandbox_directory(self.cook_url, job_uuid)
-            message = json.dumps(job['instances'][0], sort_keys=True)
-            self.assertIsNotNone(job['instances'][0]['sandbox_directory'], message)
 
             job = util.load_job(self.cook_url, job_uuid)
             message = json.dumps(job['instances'][0], sort_keys=True)
@@ -178,16 +181,17 @@ class CookTest(unittest.TestCase):
         self.assertEqual('success', job['instances'][0]['status'], message)
         self.assertEqual('success', job['instances'][0]['status'], message)
 
+        job = util.wait_for_sandbox_directory(self.cook_url, job_uuid)
+        message = json.dumps(job['instances'][0], sort_keys=True)
+        self.assertIsNotNone(job['instances'][0]['output_url'], message)
+        self.assertIsNotNone(job['instances'][0]['sandbox_directory'], message)
+
         if job_executor_type == 'cook':
             util.sleep_for_publish_interval(self.cook_url)
 
             job = util.wait_for_exit_code(self.cook_url, job_uuid)
             message = json.dumps(job['instances'][0], sort_keys=True)
             self.assertEqual(0, job['instances'][0]['exit_code'], message)
-
-            job = util.wait_for_sandbox_directory(self.cook_url, job_uuid)
-            message = json.dumps(job['instances'][0], sort_keys=True)
-            self.assertIsNotNone(job['instances'][0]['sandbox_directory'], message)
 
             job = util.load_job(self.cook_url, job_uuid)
             message = json.dumps(job['instances'][0], sort_keys=True)
@@ -209,16 +213,17 @@ class CookTest(unittest.TestCase):
         message = json.dumps(job['instances'][0], sort_keys=True)
         self.assertEqual('success', job['instances'][0]['status'], message)
 
+        job = util.wait_for_sandbox_directory(self.cook_url, job_uuid)
+        message = json.dumps(job['instances'][0], sort_keys=True)
+        self.assertIsNotNone(job['instances'][0]['output_url'], message)
+        self.assertIsNotNone(job['instances'][0]['sandbox_directory'], message)
+
         if job_executor_type == 'cook':
             util.sleep_for_publish_interval(self.cook_url)
 
             job = util.wait_for_exit_code(self.cook_url, job_uuid)
             message = json.dumps(job['instances'][0], sort_keys=True)
             self.assertEqual(0, job['instances'][0]['exit_code'], message)
-
-            job = util.wait_for_sandbox_directory(self.cook_url, job_uuid)
-            message = json.dumps(job['instances'][0], sort_keys=True)
-            self.assertIsNotNone(job['instances'][0]['sandbox_directory'], message)
 
             job = util.load_job(self.cook_url, job_uuid)
             message = json.dumps(job['instances'][0], sort_keys=True)
@@ -238,16 +243,17 @@ class CookTest(unittest.TestCase):
         message = json.dumps(job['instances'][0], sort_keys=True)
         self.assertEqual('success', job['instances'][0]['status'], message)
 
+        job = util.wait_for_sandbox_directory(self.cook_url, job_uuid)
+        message = json.dumps(job['instances'][0], sort_keys=True)
+        self.assertIsNotNone(job['instances'][0]['output_url'], message)
+        self.assertIsNotNone(job['instances'][0]['sandbox_directory'], message)
+
         if job_executor_type == 'cook':
             util.sleep_for_publish_interval(self.cook_url)
 
             job = util.wait_for_exit_code(self.cook_url, job_uuid)
             message = json.dumps(job['instances'][0], sort_keys=True)
             self.assertEqual(0, job['instances'][0]['exit_code'], message)
-
-            job = util.wait_for_sandbox_directory(self.cook_url, job_uuid)
-            message = json.dumps(job['instances'][0], sort_keys=True)
-            self.assertIsNotNone(job['instances'][0]['sandbox_directory'], message)
 
             job = util.load_job(self.cook_url, job_uuid)
             message = json.dumps(job['instances'][0], sort_keys=True)
@@ -297,15 +303,16 @@ class CookTest(unittest.TestCase):
             self.assertGreater(actual_running_time_ms, max_runtime_ms, job_details)
             self.assertGreater(job_sleep_ms, actual_running_time_ms, job_details)
 
+            job = util.wait_for_sandbox_directory(self.cook_url, job_uuid)
+            message = json.dumps(job['instances'][0], sort_keys=True)
+            self.assertIsNotNone(job['instances'][0]['output_url'], message)
+            self.assertIsNotNone(job['instances'][0]['sandbox_directory'], message)
+
             # verify additional fields set when the cook executor is used
             if job_executor_type == 'cook':
                 job = util.wait_for_exit_code(self.cook_url, job_uuid)
                 message = json.dumps(job['instances'][0], sort_keys=True)
                 self.assertNotEqual(0, job['instances'][0]['exit_code'], message)
-
-                job = util.wait_for_sandbox_directory(self.cook_url, job_uuid)
-                message = json.dumps(job['instances'][0], sort_keys=True)
-                self.assertIsNotNone(job['instances'][0]['sandbox_directory'], message)
         finally:
             util.kill_jobs(self.cook_url, [job_uuid])
 
@@ -1124,34 +1131,35 @@ class CookTest(unittest.TestCase):
             util.session.delete('%s/rawscheduler?job=%s' % (self.cook_url, job_uuid))
 
     def test_unscheduled_jobs(self):
-        job_uuid, resp = util.submit_job(self.cook_url,
-                                         command='ls',
-                                         constraints=[['HOSTNAME', 'EQUALS', 'fakehost']])
+        unsatisfiable_constraint = ['HOSTNAME', 'EQUALS', 'fakehost']
+        job_uuid_1, resp = util.submit_job(self.cook_url, command='ls', constraints=[unsatisfiable_constraint])
+        self.assertEqual(resp.status_code, 201, resp.content)
+        job_uuid_2, resp = util.submit_job(self.cook_url, command='ls', constraints=[unsatisfiable_constraint])
         self.assertEqual(resp.status_code, 201, resp.content)
         try:
-            unscheduled_jobs = util.unscheduled_jobs(self.cook_url, job_uuid)[0]
+            jobs = util.unscheduled_jobs(self.cook_url, job_uuid_1, job_uuid_2)
+            self.logger.info(f'Unscheduled jobs: {jobs}')
             # If the job from the test is submitted after another one, unscheduled_jobs will report "There are jobs
             # ahead of this in the queue" so we cannot assert that there is exactly one failure reason.
-            self.assertTrue(
-                any(['The job is now under investigation. Check back in a minute for more details!' == reason['reason']
-                     for reason in unscheduled_jobs['reasons']]),
-                unscheduled_jobs)
-            self.assertEqual(job_uuid, unscheduled_jobs['uuid'])
+            self.assertTrue(any([reasons.UNDER_INVESTIGATION == reason['reason'] for reason in jobs[0]['reasons']]))
+            self.assertTrue(any([reasons.UNDER_INVESTIGATION == reason['reason'] for reason in jobs[1]['reasons']]))
+            self.assertEqual(job_uuid_1, jobs[0]['uuid'])
+            self.assertEqual(job_uuid_2, jobs[1]['uuid'])
 
             @retry(stop_max_delay=60000, wait_fixed=1000)
             def check_unscheduled_reason():
-                jobs = util.unscheduled_jobs(self.cook_url, job_uuid)[0]
+                jobs = util.unscheduled_jobs(self.cook_url, job_uuid_1, job_uuid_2)
+                self.logger.info(f'Unscheduled jobs: {jobs}')
                 # If the job from the test is submitted after another one, unscheduled_jobs will report "There are
                 # jobs ahead of this in the queue" so we cannot assert that there is exactly one failure reason.
-                self.assertTrue(
-                    any(['The job couldn\'t be placed on any available hosts.' == reason['reason'] for reason in
-                         jobs['reasons']]),
-                    jobs)
-                self.assertEqual(job_uuid, jobs['uuid'])
+                self.assertTrue(any([reasons.COULD_NOT_PLACE_JOB == reason['reason'] for reason in jobs[0]['reasons']]))
+                self.assertTrue(any([reasons.COULD_NOT_PLACE_JOB == reason['reason'] for reason in jobs[1]['reasons']]))
+                self.assertEqual(job_uuid_1, jobs[0]['uuid'])
+                self.assertEqual(job_uuid_2, jobs[1]['uuid'])
 
             check_unscheduled_reason()
         finally:
-            util.kill_jobs(self.cook_url, [job_uuid])
+            util.kill_jobs(self.cook_url, [job_uuid_1, job_uuid_2])
 
     def test_unique_host_constraint(self):
         state = util.get_mesos_state(self.mesos_url)
@@ -1196,12 +1204,11 @@ class CookTest(unittest.TestCase):
 
                 def check_unique_constraint(response):
                     self.logger.debug('unscheduled_jobs response: %s' % response)
-                    return any([r['reason'] == "The job couldn't be placed on any available hosts."
-                                for r in response['reasons']])
+                    return any([r['reason'] == reasons.COULD_NOT_PLACE_JOB for r in response['reasons']])
 
                 unscheduled_jobs = util.wait_until(query, check_unique_constraint)
                 unique_reason = [r for r in unscheduled_jobs['reasons'] if r['reason'] ==
-                                 "The job couldn't be placed on any available hosts."][0]
+                                 reasons.COULD_NOT_PLACE_JOB][0]
                 self.assertEqual("unique-host-placement-group-constraint",
                                  unique_reason['data']['reasons'][0]['reason'],
                                  unique_reason)
@@ -1242,14 +1249,14 @@ class CookTest(unittest.TestCase):
 
             def query_unscheduled():
                 resp = util.unscheduled_jobs(self.cook_url, waiting_job['uuid'])[0]
-                reasons = [reason for reason in resp['reasons']
-                           if reason['reason'] == "The job couldn't be placed on any available hosts."]
+                placement_reasons = [reason for reason in resp['reasons']
+                                     if reason['reason'] == reasons.COULD_NOT_PLACE_JOB]
                 self.logger.info(f"unscheduled_jobs response: {resp}")
-                return reasons
+                return placement_reasons
 
-            reasons = util.wait_until(query_unscheduled, lambda r: len(r) > 0)
-            self.assertEqual(1, len(reasons), reasons)
-            reason = reasons[0]
+            placement_reasons = util.wait_until(query_unscheduled, lambda r: len(r) > 0)
+            self.assertEqual(1, len(placement_reasons), placement_reasons)
+            reason = placement_reasons[0]
             balanced_reasons = [r for r in reason['data']['reasons']
                                 if r['reason'] == 'balanced-host-placement-group-constraint']
             self.assertEqual(1, len(balanced_reasons), balanced_reasons)

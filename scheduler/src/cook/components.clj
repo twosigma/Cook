@@ -280,11 +280,11 @@
                                     (cache/lru-cache-factory :threshold max-size)
                                     (cache/ttl-cache-factory :ttl ttl-ms)
                                     atom))
-     :sandbox-syncer-state (fnk [[:settings [:sandbox-syncer publish-batch-size publish-interval-ms]]
-                                 mesos-agent-query-cache mesos-datomic]
+     :sandbox-syncer-state (fnk [[:settings [:sandbox-syncer max-consecutive-sync-failure publish-batch-size publish-interval-ms sync-interval-ms]]
+                                 framework-id mesos-agent-query-cache mesos-datomic]
                              (let [prepare-sandbox-publisher (lazy-load-var 'cook.mesos.sandbox/prepare-sandbox-publisher)]
-                               (prepare-sandbox-publisher mesos-datomic publish-batch-size publish-interval-ms
-                                                          mesos-agent-query-cache)))
+                               (prepare-sandbox-publisher framework-id mesos-datomic publish-batch-size publish-interval-ms
+                                                          sync-interval-ms max-consecutive-sync-failure mesos-agent-query-cache)))
      :mesos-leadership-atom (fnk [] (atom false))
      :mesos-pending-jobs-atom (fnk [] (atom {}))
      :mesos-offer-cache (fnk [[:settings [:offer-cache max-size ttl-ms]]]
@@ -344,8 +344,10 @@
                             agent-query-cache))
      :sandbox-syncer (fnk [[:config {sandbox-syncer nil}]]
                        (merge
-                         {:publish-batch-size 100
-                          :publish-interval-ms 2500}
+                         {:max-consecutive-sync-failure 15
+                          :publish-batch-size 100
+                          :publish-interval-ms 2500
+                          :sync-interval-ms (t/in-millis (t/minutes 15))}
                          sandbox-syncer))
      :server-port (fnk [[:config port]]
                     port)
