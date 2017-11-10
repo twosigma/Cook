@@ -1276,13 +1276,18 @@
 (def ReadRetriesRequest
   {:job [s/Uuid]})
 
-(def UpdateRetriesRequest
+(def UpdateRetriesBaseRequest
   {(s/optional-key :job) s/Uuid
    (s/optional-key :jobs) [s/Uuid]
-   (s/optional-key :groups) [s/Uuid]
-   (s/optional-key :failed-only) s/Bool
    (s/optional-key :retries) PosNum
    (s/optional-key :increment) PosNum})
+
+(def UpdateRetriesRequestDeprecated UpdateRetriesBaseRequest)
+
+(def UpdateRetriesRequest
+  (merge UpdateRetriesBaseRequest
+         {(s/optional-key :groups) [s/Uuid]
+          (s/optional-key :failed-only) s/Bool}))
 
 (defn display-retries
   [conn ctx]
@@ -1969,7 +1974,7 @@
                      404 {:description "Unrecognized job UUID."}}}
         :post
         {:summary "Change a job's retry count (deprecated)"
-         :parameters {:body-params UpdateRetriesRequest}
+         :parameters {:body-params UpdateRetriesRequestDeprecated}
          :handler (post-retries-handler conn is-authorized-fn task-constraints)
          :responses {201 {:schema PosInt
                           :description "The number of retries for the job"}
