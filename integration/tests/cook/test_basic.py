@@ -1139,7 +1139,7 @@ class CookTest(unittest.TestCase):
         job_uuid_2, resp = util.submit_job(self.cook_url, command='ls', constraints=[unsatisfiable_constraint])
         self.assertEqual(resp.status_code, 201, resp.content)
         try:
-            jobs = util.unscheduled_jobs(self.cook_url, job_uuid_1, job_uuid_2)
+            jobs, _ = util.unscheduled_jobs(self.cook_url, job_uuid_1, job_uuid_2)
             self.logger.info(f'Unscheduled jobs: {jobs}')
             # If the job from the test is submitted after another one, unscheduled_jobs will report "There are jobs
             # ahead of this in the queue" so we cannot assert that there is exactly one failure reason.
@@ -1150,7 +1150,7 @@ class CookTest(unittest.TestCase):
 
             @retry(stop_max_delay=60000, wait_fixed=1000)
             def check_unscheduled_reason():
-                jobs = util.unscheduled_jobs(self.cook_url, job_uuid_1, job_uuid_2)
+                jobs, _ = util.unscheduled_jobs(self.cook_url, job_uuid_1, job_uuid_2)
                 self.logger.info(f'Unscheduled jobs: {jobs}')
                 # If the job from the test is submitted after another one, unscheduled_jobs will report "There are
                 # jobs ahead of this in the queue" so we cannot assert that there is exactly one failure reason.
@@ -1162,6 +1162,23 @@ class CookTest(unittest.TestCase):
             check_unscheduled_reason()
         finally:
             util.kill_jobs(self.cook_url, [job_uuid_1, job_uuid_2])
+
+    def test_unscheduled_jobs_partial(self):
+        unsatisfiable_constraint = ['HOSTNAME', 'EQUALS', 'fakehost']
+        job_uuid_1, resp = util.submit_job(self.cook_url, command='ls', constraints=[unsatisfiable_constraint])
+        self.assertEqual(resp.status_code, 201, resp.content)
+        try:
+            job_uuid_2 = uuid.uuid4()
+            _, resp = util.unscheduled_jobs(self.cook_url, job_uuid_1, job_uuid_2, partial=None)
+            self.assertEqual(404, resp.status_code)
+            _, resp = util.unscheduled_jobs(self.cook_url, job_uuid_1, job_uuid_2, partial='false')
+            self.assertEqual(404, resp.status_code)
+            jobs, resp = util.unscheduled_jobs(self.cook_url, job_uuid_1, job_uuid_2, partial='true')
+            self.assertEqual(200, resp.status_code)
+            self.assertEqual(1, len(jobs))
+            self.assertEqual(job_uuid_1, jobs[0]['uuid'])
+        finally:
+            util.kill_jobs(self.cook_url, [job_uuid_1])
 
     def test_unique_host_constraint(self):
         state = util.get_mesos_state(self.mesos_url)
@@ -1200,7 +1217,7 @@ class CookTest(unittest.TestCase):
                 waiting_job = waiting_jobs[0]
 
                 def query():
-                    unscheduled = util.unscheduled_jobs(self.cook_url, waiting_job['uuid'])[0]
+                    unscheduled = util.unscheduled_jobs(self.cook_url, waiting_job['uuid'])[0][0]
                     self.logger.info(f"unscheduled_jobs response: {unscheduled}")
                     return unscheduled
 
@@ -1250,7 +1267,7 @@ class CookTest(unittest.TestCase):
             waiting_job = waiting_jobs[0]
 
             def query_unscheduled():
-                resp = util.unscheduled_jobs(self.cook_url, waiting_job['uuid'])[0]
+                resp = util.unscheduled_jobs(self.cook_url, waiting_job['uuid'])[0][0]
                 placement_reasons = [reason for reason in resp['reasons']
                                      if reason['reason'] == reasons.COULD_NOT_PLACE_JOB]
                 self.logger.info(f"unscheduled_jobs response: {resp}")
@@ -1320,7 +1337,7 @@ class CookTest(unittest.TestCase):
             util.wait_for_job(self.cook_url, canary['uuid'], 'running')
 
             def query():
-                unscheduled_jobs = util.unscheduled_jobs(self.cook_url, big_job['uuid'])[0]
+                unscheduled_jobs = util.unscheduled_jobs(self.cook_url, big_job['uuid'])[0][0]
                 self.logger.info(f"unscheduled_jobs response: {unscheduled_jobs}")
                 no_hosts = [r for r in unscheduled_jobs['reasons'] if r['reason'] ==
                             "The job couldn't be placed on any available hosts."]
