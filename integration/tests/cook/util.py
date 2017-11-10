@@ -448,10 +448,14 @@ def get_user(cook_url, job_uuid):
     return load_job(cook_url, job_uuid)['user']
 
 
-def unscheduled_jobs(cook_url, *job_uuids):
+def unscheduled_jobs(cook_url, *job_uuids, partial=None):
     """Retrieves the unscheduled_jobs reasons for the given job_uuid"""
-    query_params = urlencode([('job', u) for u in job_uuids])
-    return session.get(f'{cook_url}/unscheduled_jobs?{query_params}').json()
+    query_params = [('job', u) for u in job_uuids]
+    if partial is not None:
+        query_params.append(('partial', partial))
+    resp = session.get(f'{cook_url}/unscheduled_jobs?{urlencode(query_params)}')
+    job_reasons = resp.json() if resp.status_code == 200 else []
+    return job_reasons, resp
 
 
 def wait_for_instance(cook_url, job_uuid):
