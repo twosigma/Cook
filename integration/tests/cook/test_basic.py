@@ -137,8 +137,8 @@ class CookTest(unittest.TestCase):
 
     def test_progress_update_submit(self):
         job_executor_type = util.get_job_executor_type(self.cook_url)
-        m1 = util.output_progress_string(self.cook_url, 25, 'Twenty-five percent in ${PROGRESS_FILE}')
-        command = f'echo "{m1}" >> ${{PROGRESS_FILE}}; sleep 1; exit 0'
+        line = util.progress_line(self.cook_url, 25, 'Twenty-five percent in ${PROGRESS_FILE}')
+        command = f'echo "{line}" >> ${{PROGRESS_FILE}}; sleep 1; exit 0'
         job_uuid, resp = util.submit_job(self.cook_url, command=command,
                                          env={'EXECUTOR_PROGRESS_OUTPUT_FILE_ENV': 'PROGRESS_FILE',
                                               'PROGRESS_FILE': 'progress.txt'},
@@ -201,14 +201,14 @@ class CookTest(unittest.TestCase):
 
     def test_multiple_progress_updates_submit(self):
         job_executor_type = util.get_job_executor_type(self.cook_url)
-        m1 = util.output_progress_string(self.cook_url, 25, 'Twenty-five percent')
-        m2 = util.output_progress_string(self.cook_url, 50, 'Fifty percent')
-        m3 = util.output_progress_string(self.cook_url, '', 'Sixty percent invalid format')
-        m4 = util.output_progress_string(self.cook_url, 75, 'Seventy-five percent')
-        m5 = util.output_progress_string(self.cook_url, '', 'Eighty percent invalid format')
-        command = f'echo "{m1}" && sleep 2 && echo "{m2}" && sleep 2 && ' \
-                  f'echo "{m3}" && sleep 2 && echo "{m4}" && sleep 2 && ' \
-                  f'echo "{m5}" && sleep 2 && echo "Done" && exit 0'
+        line_1 = util.progress_line(self.cook_url, 25, 'Twenty-five percent')
+        line_2 = util.progress_line(self.cook_url, 50, 'Fifty percent')
+        line_3 = util.progress_line(self.cook_url, '', 'Sixty percent invalid format')
+        line_4 = util.progress_line(self.cook_url, 75, 'Seventy-five percent')
+        line_5 = util.progress_line(self.cook_url, '', 'Eighty percent invalid format')
+        command = f'echo "{line_1}" && sleep 2 && echo "{line_2}" && sleep 2 && ' \
+                  f'echo "{line_3}" && sleep 2 && echo "{line_4}" && sleep 2 && ' \
+                  f'echo "{line_5}" && sleep 2 && echo "Done" && exit 0'
         job_uuid, resp = util.submit_job(self.cook_url, command=command, executor=job_executor_type, max_runtime=60000)
         self.assertEqual(201, resp.status_code, msg=resp.content)
         job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
@@ -235,8 +235,10 @@ class CookTest(unittest.TestCase):
 
     def test_multiple_rapid_progress_updates_submit(self):
         job_executor_type = util.get_job_executor_type(self.cook_url)
+
         def progress_string(a):
-            return util.output_progress_string(self.cook_url, a, f'{a}%')
+            return util.progress_line(self.cook_url, a, f'{a}%')
+
         items = list(range(1, 100, 4)) + list(range(99, 40, -4)) + list(range(40, 81, 2))
         command = ''.join([f'echo "{progress_string(a)}" && ' for a in items]) + 'echo "Done" && exit 0'
         job_uuid, resp = util.submit_job(self.cook_url, command=command, executor=job_executor_type, max_runtime=60000)
