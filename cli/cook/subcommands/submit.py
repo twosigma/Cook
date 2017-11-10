@@ -75,7 +75,7 @@ def print_submit_result(cluster, response):
         print_info(submit_failed_message(cluster_name, reason))
 
 
-def submit_federated(clusters, jobs):
+def submit_federated(clusters, jobs, group):
     """
     Attempts to submit the provided jobs to each cluster in clusters, until a cluster
     returns a "created" status code. If no cluster returns "created" status, throws.
@@ -85,7 +85,12 @@ def submit_federated(clusters, jobs):
         cluster_url = cluster['url']
         try:
             print_info('Attempting to submit on %s cluster...' % colors.bold(cluster_name))
-            resp = http.post(cluster, 'rawscheduler', {'jobs': jobs})
+
+            json_body = {'jobs': jobs}
+            if group:
+                json_body['groups'] = [group]
+
+            resp = http.post(cluster, 'rawscheduler', json_body)
             print_submit_result(cluster, resp)
             if resp.status_code == 201:
                 metrics.inc('command.submit.jobs', len(jobs))
@@ -156,6 +161,16 @@ def submit(clusters, args, _):
     application_version = job.pop('application-version', version.VERSION)
     job['application'] = {'name': application_name, 'version': application_version}
 
+    group = None
+    if 'group-name' in job:
+        # If the user did not also specify a group uuid, generate
+        # one for them, and place the job(s) into the group
+        if 'group' not in job:
+            job['group'] = str(uuid.uuid4())
+
+        # The group name is specified on the group object
+        group = {'name': job.pop('group-name'), 'uuid': job['group']}
+
     if raw:
         if command_from_command_line:
             raise Exception('You cannot specify a command at the command line when using --raw/-r.')
@@ -184,7 +199,7 @@ def submit(clusters, args, _):
             j['command'] = f'{command_prefix}{j["command"]}'
 
     logging.debug('jobs: %s' % jobs)
-    return submit_federated(clusters, jobs)
+    return submit_federated(clusters, jobs, group)
 
 
 def valid_uuid(s):
@@ -210,6 +225,8 @@ def register(add_parser, add_defaults):
     submit_parser.add_argument('--cpus', '-c', help='cpus to reserve for job', type=float)
     submit_parser.add_argument('--mem', '-m', help='memory to reserve for job', type=int)
     submit_parser.add_argument('--group', '-g', help='group uuid for job', type=str, metavar='UUID')
+    submit_parser.add_argument('--group-name', '-G', help='group name for job',
+                               type=str, metavar='NAME', dest='group-name')
     submit_parser.add_argument('--env', '-e', help='environment variable for job (can be repeated)',
                                metavar='KEY=VALUE', action='append')
     submit_parser.add_argument('--ports', help='number of ports to reserve for job', type=int)
