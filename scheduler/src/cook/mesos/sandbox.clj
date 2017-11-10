@@ -98,14 +98,14 @@
                           [[:db/add instance-id :instance/sandbox-directory sandbox]])))]
               (let [txns (mapcat build-sandbox-txns task-id->sandbox-partition)]
                 (when (seq txns)
-                  (log/info "Performing" (count txns) "in sandbox state update")
+                  (log/info "Inserting" (count txns) "facts in sandbox state update")
                   (meters/mark! sandbox-updater-tx-rate)
                   (timers/time!
                     sandbox-updater-tx-duration
                     @(d/transact datomic-conn txns)))))
             (send task-id->sandbox-agent clear-agent-state task-id->sandbox-partition))
           (catch Exception e
-            (log/error e "sandbox batch update error")))))
+            (log/error e "Sandbox batch update error")))))
     {}))
 
 (defn retrieve-sandbox-directories-on-agent
@@ -166,7 +166,7 @@
                     (send pending-sync-agent clear-pending-sync-hostname agent-hostname :success)
                     :success)
                   (catch Exception e
-                    (log/debug e "Failed to get mesos agent state on" agent-hostname)
+                    (log/error e "Failed to get mesos agent state on" agent-hostname)
                     (send pending-sync-agent aggregate-pending-sync-hostname agent-hostname :error)
                     :error)))
           cs (swap! mesos-agent-query-cache
