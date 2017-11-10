@@ -5,6 +5,8 @@ from urllib.parse import urljoin
 
 import requests
 
+import cook
+
 session = None
 timeouts = None
 
@@ -29,6 +31,7 @@ def configure(config):
     http_adapter = adapters_module.HTTPAdapter(max_retries=retries)
     session = session_module.Session()
     session.mount('http://', http_adapter)
+    session.headers['User-Agent'] = f"cs/{cook.version.VERSION} ({session.headers['User-Agent']})"
 
 
 def __post(url, json_body):
