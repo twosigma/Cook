@@ -461,8 +461,8 @@ def unscheduled_jobs(cook_url, *job_uuids, partial=None):
 def wait_for_instance(cook_url, job_uuid):
     """Waits for the job with the given job_uuid to have a single instance, and returns the instance uuid"""
     job = wait_until(lambda: load_job(cook_url, job_uuid), lambda j: len(j['instances']) == 1)
-    instance_uuid = job['instances'][0]['task_id']
-    return instance_uuid
+    instance = job['instances'][0]
+    return instance
 
 
 def sleep_for_publish_interval(cook_url):

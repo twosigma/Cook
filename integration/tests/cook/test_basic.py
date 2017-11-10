@@ -695,9 +695,7 @@ class CookTest(unittest.TestCase):
         application = {'name': 'foo-app', 'version': '0.1.0'}
         job_uuid, resp = util.submit_job(self.cook_url, application=application)
         self.assertEqual(resp.status_code, 201)
-        job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
-        instance = job['instances'][0]
-        self.assertEqual('success', instance['status'], 'Instance details: %s' % (json.dumps(instance, sort_keys=True)))
+        job = util.load_job(self.cook_url, job_uuid)
         self.assertEqual(application, job['application'])
 
         # Should require application name
