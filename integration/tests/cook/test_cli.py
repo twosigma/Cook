@@ -1202,3 +1202,26 @@ class CookCliTest(unittest.TestCase):
             self.assertEqual(0, cp.returncode, cp.stderr)
             with open(path) as json_file:
                 self.assertEqual(False, json.load(json_file)['bool'])
+
+    def test_submit_with_group_name(self):
+        # Group name, no group uuid
+        cp, uuids = cli.submit_stdin(['ls', 'ls'], self.cook_url, submit_flags='--group-name foo')
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        _, jobs = cli.show_json(uuids, self.cook_url)
+        group_uuid = jobs[0]['groups'][0]
+        self.assertEqual(group_uuid, jobs[1]['groups'][0])
+        _, groups = cli.show_groups([group_uuid], self.cook_url)
+        self.assertEqual('foo', groups[0]['name'])
+        self.assertEqual(group_uuid, groups[0]['uuid'])
+        self.assertIn(uuids[0], groups[0]['jobs'])
+        self.assertIn(uuids[1], groups[0]['jobs'])
+
+        # Group name and group uuid
+        group_uuid = str(uuid.uuid4())
+        cp, uuids = cli.submit_stdin(['ls', 'ls'], self.cook_url, submit_flags=f'--group-name bar --group {group_uuid}')
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        _, groups = cli.show_groups([group_uuid], self.cook_url)
+        self.assertEqual('bar', groups[0]['name'])
+        self.assertEqual(group_uuid, groups[0]['uuid'])
+        self.assertIn(uuids[0], groups[0]['jobs'])
+        self.assertIn(uuids[1], groups[0]['jobs'])

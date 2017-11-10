@@ -82,13 +82,26 @@ def show(uuids=None, cook_url=None, flags=None, show_flags=None):
     return cp
 
 
+def __show_json(uuids, cook_url=None, flags=None):
+    """Invokes show on the given UUIDs with --silent and --json, and returns the parsed JSON"""
+    flags = (flags + ' ') if flags else ''
+    cp = show(uuids, cook_url, f'{flags}--silent', '--json')
+    data = json.loads(stdout(cp))
+    return cp, data
+
+
 def show_json(uuids, cook_url=None, flags=None):
     """Shows the job JSON corresponding to the given UUID(s)"""
-    flags = (flags + ' ') if flags else ''
-    cp = show(uuids, cook_url, '%s--silent' % flags, '--json')
-    response = json.loads(stdout(cp))
-    jobs = [job for entities in response['clusters'].values() for job in entities['jobs']]
+    cp, data = __show_json(uuids, cook_url, flags)
+    jobs = [job for entities in data['clusters'].values() for job in entities['jobs']]
     return cp, jobs
+
+
+def show_groups(uuids, cook_url=None, flags=None):
+    """Shows the group JSON corresponding to the given UUID(s)"""
+    cp, data = __show_json(uuids, cook_url, flags)
+    groups = [job for entities in data['clusters'].values() for job in entities['groups']]
+    return cp, groups
 
 
 def wait(uuids=None, cook_url=None, flags=None, wait_flags=None):
