@@ -424,38 +424,55 @@
   (java.util.Date. (tc/to-long datetime)))
 
 (deftest test-get-lingering-tasks
-  (let [uri "datomic:mem://test-get-lingering-tasks"
+  (let [uri "datomic:mem://test-lingering-tasks"
         conn (restore-fresh-database! uri)
-        ;; a job has been timeout
-        job-id-1 (create-dummy-job conn :user "tsram" :job-state :job.state/running)
-        ;; a job has been timeout
-        job-id-2 (create-dummy-job conn :user "tsram" :job-state :job.state/running)
-        ;; a job is not timeout
-        job-id-3 (create-dummy-job conn :user "tsram" :job-state :job.state/running)
-        task-id-1 "task-1"
-        task-id-2 "task-2"
-        task-id-3 "task-3"
-        timeout-hours 4
-        start-time-1 (joda-datetime->java-date
-                       (t/minus (t/now) (t/hours (+ timeout-hours 1))))
-        start-time-2 (joda-datetime->java-date
-                       (t/minus (t/now) (t/hours (+ timeout-hours 1))))
-        start-time-3 (joda-datetime->java-date
-                       (t/minus (t/now) (t/hours (- timeout-hours 1))))
+        now (tc/from-date #inst "2015-01-05T00:00:30")
+        next-month (t/plus now (t/months 1))
+        next-year (t/plus now (t/years 1))
+        long-timeout (-> 64 t/days t/in-millis)
+        job-id-1 (create-dummy-job conn
+                                   :user "tsram"
+                                   :job-state :job.state/running
+                                   :max-runtime Long/MAX_VALUE)
         instance-id-1 (create-dummy-instance conn job-id-1
-                                             :instance-status :instance.status/unknown
-                                             :task-id task-id-1
-                                             :start-time start-time-1)
+                                             :start-time #inst "2015-01-01")
+        job-id-2 (create-dummy-job conn
+                                   :user "tsram"
+                                   :job-state :job.state/running
+                                   :max-runtime 60000)
         instance-id-2 (create-dummy-instance conn job-id-2
-                                             :instance-status :instance.status/running
-                                             :task-id task-id-2
-                                             :start-time start-time-2)
+                                             :start-time #inst "2015-01-04")
+
+        job-id-3 (create-dummy-job conn
+                                   :user "tsram"
+                                   :job-state :job.state/running
+                                   ; this timeout is equal to the "now" value
+                                   :max-runtime 30000)
         instance-id-3 (create-dummy-instance conn job-id-3
-                                             :instance-status :instance.status/running
-                                             :task-id task-id-3
-                                             :start-time start-time-3)
-        test-db (d/db conn)]
-    (is (= #{task-id-1 task-id-2} (set (sched/get-lingering-tasks test-db (t/now) timeout-hours timeout-hours))))))
+                                             :start-time #inst "2015-01-05")
+
+        job-id-4 (create-dummy-job conn
+                                   :user "tsram"
+                                   :job-state :job.state/running
+                                   :max-runtime 10000)
+        instance-id-4 (create-dummy-instance conn job-id-4
+                                             :start-time #inst "2015-01-05")
+
+        job-id-5 (create-dummy-job conn
+                                   :user "tsram"
+                                   :job-state :job.state/running
+                                   ; timeout value exceeds Integer/MAX_VALUE millis
+                                   :max-runtime long-timeout)
+        instance-id-5 (create-dummy-instance conn job-id-5
+                                             :start-time #inst "2015-01-01")
+
+        test-db (d/db conn)
+        task-id-2 (-> (d/entity test-db instance-id-2) :instance/task-id)
+        task-id-4 (-> (d/entity test-db instance-id-4) :instance/task-id)
+        task-id-5 (-> (d/entity test-db instance-id-5) :instance/task-id)]
+    (is (= #{task-id-2 task-id-4} (set (sched/get-lingering-tasks test-db now 120 120))))
+    (is (not (contains? (set (sched/get-lingering-tasks test-db next-month 1e4 1e4)) task-id-5)))
+    (is (contains? (set (sched/get-lingering-tasks test-db next-year 1e5 1e5)) task-id-5))))
 
 (deftest test-kill-lingering-tasks
   ;; Ensure that lingering tasks are killed properly
@@ -586,28 +603,6 @@
     (is (= {:normal (list (util/job-ent->map job-entity-2))
             :gpu ()}
            (sched/rank-jobs test-db offensive-job-filter)))))
-
-(deftest test-get-lingering-tasks
-  (let [uri "datomic:mem://test-lingering-tasks"
-        conn (restore-fresh-database! uri)
-        now (tc/from-date #inst "2015-01-05")
-        job-id-1 (create-dummy-job conn
-                                   :user "tsram"
-                                   :job-state :job.state/running
-                                   :max-runtime Long/MAX_VALUE)
-        instance-id-1 (create-dummy-instance conn job-id-1
-                                             :start-time #inst "2015-01-01")
-        job-id-2 (create-dummy-job conn
-                                   :user "tsram"
-                                   :job-state :job.state/running
-                                   :max-runtime 60000)
-        instance-id-2 (create-dummy-instance conn job-id-2
-                                             :start-time #inst "2015-01-04")
-        test-db (d/db conn)
-        task-id-2 (-> (d/entity test-db instance-id-2) :instance/task-id)
-        ]
-    (is (= [task-id-2] (sched/get-lingering-tasks test-db now 120 120))))
-  )
 
 (deftest test-virtual-machine-lease-adapter
   ;; ensure that the VirtualMachineLeaseAdapter can successfully handle an offer from Mesomatic.
