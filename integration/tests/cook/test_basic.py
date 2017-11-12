@@ -137,7 +137,8 @@ class CookTest(unittest.TestCase):
 
     def test_progress_update_submit(self):
         job_executor_type = util.get_job_executor_type(self.cook_url)
-        command = 'echo "progress: 25 Twenty-five percent in ${PROGRESS_FILE}" >> ${PROGRESS_FILE}; sleep 1; exit 0'
+        line = util.progress_line(self.cook_url, 25, 'Twenty-five percent in ${PROGRESS_FILE}')
+        command = f'echo "{line}" >> ${{PROGRESS_FILE}}; sleep 1; exit 0'
         job_uuid, resp = util.submit_job(self.cook_url, command=command,
                                          env={'EXECUTOR_PROGRESS_OUTPUT_FILE_ENV': 'PROGRESS_FILE',
                                               'PROGRESS_FILE': 'progress.txt'},
@@ -200,12 +201,14 @@ class CookTest(unittest.TestCase):
 
     def test_multiple_progress_updates_submit(self):
         job_executor_type = util.get_job_executor_type(self.cook_url)
-        command = 'echo "progress: 25 Twenty-five percent" && sleep 2 && ' \
-                  'echo "progress: 50 Fifty percent" && sleep 2 && ' \
-                  'echo "progress: Sixty percent invalid format" && sleep 2 && ' \
-                  'echo "progress: 75 Seventy-five percent" && sleep 2 && ' \
-                  'echo "progress: Eighty percent invalid format" && sleep 2 && ' \
-                  'echo "Done" && exit 0'
+        line_1 = util.progress_line(self.cook_url, 25, 'Twenty-five percent')
+        line_2 = util.progress_line(self.cook_url, 50, 'Fifty percent')
+        line_3 = util.progress_line(self.cook_url, '', 'Sixty percent invalid format')
+        line_4 = util.progress_line(self.cook_url, 75, 'Seventy-five percent')
+        line_5 = util.progress_line(self.cook_url, '', 'Eighty percent invalid format')
+        command = f'echo "{line_1}" && sleep 2 && echo "{line_2}" && sleep 2 && ' \
+                  f'echo "{line_3}" && sleep 2 && echo "{line_4}" && sleep 2 && ' \
+                  f'echo "{line_5}" && sleep 2 && echo "Done" && exit 0'
         job_uuid, resp = util.submit_job(self.cook_url, command=command, executor=job_executor_type, max_runtime=60000)
         self.assertEqual(201, resp.status_code, msg=resp.content)
         job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
@@ -232,10 +235,12 @@ class CookTest(unittest.TestCase):
 
     def test_multiple_rapid_progress_updates_submit(self):
         job_executor_type = util.get_job_executor_type(self.cook_url)
-        command = ''.join(['echo "progress: {0} {0}%" && '.format(a) for a in range(1, 100, 4)]) + \
-                  ''.join(['echo "progress: {0} {0}%" && '.format(a) for a in range(99, 40, -4)]) + \
-                  ''.join(['echo "progress: {0} {0}%" && '.format(a) for a in range(40, 81, 2)]) + \
-                  'echo "Done" && exit 0'
+
+        def progress_string(a):
+            return util.progress_line(self.cook_url, a, f'{a}%')
+
+        items = list(range(1, 100, 4)) + list(range(99, 40, -4)) + list(range(40, 81, 2))
+        command = ''.join([f'echo "{progress_string(a)}" && ' for a in items]) + 'echo "Done" && exit 0'
         job_uuid, resp = util.submit_job(self.cook_url, command=command, executor=job_executor_type, max_runtime=60000)
         self.assertEqual(201, resp.status_code, msg=resp.content)
         job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
@@ -695,9 +700,7 @@ class CookTest(unittest.TestCase):
         application = {'name': 'foo-app', 'version': '0.1.0'}
         job_uuid, resp = util.submit_job(self.cook_url, application=application)
         self.assertEqual(resp.status_code, 201)
-        job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
-        instance = job['instances'][0]
-        self.assertEqual('success', instance['status'], 'Instance details: %s' % (json.dumps(instance, sort_keys=True)))
+        job = util.load_job(self.cook_url, job_uuid)
         self.assertEqual(application, job['application'])
 
         # Should require application name
@@ -1139,7 +1142,7 @@ class CookTest(unittest.TestCase):
         job_uuid_2, resp = util.submit_job(self.cook_url, command='ls', constraints=[unsatisfiable_constraint])
         self.assertEqual(resp.status_code, 201, resp.content)
         try:
-            jobs = util.unscheduled_jobs(self.cook_url, job_uuid_1, job_uuid_2)
+            jobs, _ = util.unscheduled_jobs(self.cook_url, job_uuid_1, job_uuid_2)
             self.logger.info(f'Unscheduled jobs: {jobs}')
             # If the job from the test is submitted after another one, unscheduled_jobs will report "There are jobs
             # ahead of this in the queue" so we cannot assert that there is exactly one failure reason.
@@ -1150,7 +1153,7 @@ class CookTest(unittest.TestCase):
 
             @retry(stop_max_delay=60000, wait_fixed=1000)
             def check_unscheduled_reason():
-                jobs = util.unscheduled_jobs(self.cook_url, job_uuid_1, job_uuid_2)
+                jobs, _ = util.unscheduled_jobs(self.cook_url, job_uuid_1, job_uuid_2)
                 self.logger.info(f'Unscheduled jobs: {jobs}')
                 # If the job from the test is submitted after another one, unscheduled_jobs will report "There are
                 # jobs ahead of this in the queue" so we cannot assert that there is exactly one failure reason.
@@ -1162,6 +1165,23 @@ class CookTest(unittest.TestCase):
             check_unscheduled_reason()
         finally:
             util.kill_jobs(self.cook_url, [job_uuid_1, job_uuid_2])
+
+    def test_unscheduled_jobs_partial(self):
+        unsatisfiable_constraint = ['HOSTNAME', 'EQUALS', 'fakehost']
+        job_uuid_1, resp = util.submit_job(self.cook_url, command='ls', constraints=[unsatisfiable_constraint])
+        self.assertEqual(resp.status_code, 201, resp.content)
+        try:
+            job_uuid_2 = uuid.uuid4()
+            _, resp = util.unscheduled_jobs(self.cook_url, job_uuid_1, job_uuid_2, partial=None)
+            self.assertEqual(404, resp.status_code)
+            _, resp = util.unscheduled_jobs(self.cook_url, job_uuid_1, job_uuid_2, partial='false')
+            self.assertEqual(404, resp.status_code)
+            jobs, resp = util.unscheduled_jobs(self.cook_url, job_uuid_1, job_uuid_2, partial='true')
+            self.assertEqual(200, resp.status_code)
+            self.assertEqual(1, len(jobs))
+            self.assertEqual(job_uuid_1, jobs[0]['uuid'])
+        finally:
+            util.kill_jobs(self.cook_url, [job_uuid_1])
 
     def test_unique_host_constraint(self):
         state = util.get_mesos_state(self.mesos_url)
@@ -1200,7 +1220,7 @@ class CookTest(unittest.TestCase):
                 waiting_job = waiting_jobs[0]
 
                 def query():
-                    unscheduled = util.unscheduled_jobs(self.cook_url, waiting_job['uuid'])[0]
+                    unscheduled = util.unscheduled_jobs(self.cook_url, waiting_job['uuid'])[0][0]
                     self.logger.info(f"unscheduled_jobs response: {unscheduled}")
                     return unscheduled
 
@@ -1250,7 +1270,7 @@ class CookTest(unittest.TestCase):
             waiting_job = waiting_jobs[0]
 
             def query_unscheduled():
-                resp = util.unscheduled_jobs(self.cook_url, waiting_job['uuid'])[0]
+                resp = util.unscheduled_jobs(self.cook_url, waiting_job['uuid'])[0][0]
                 placement_reasons = [reason for reason in resp['reasons']
                                      if reason['reason'] == reasons.COULD_NOT_PLACE_JOB]
                 self.logger.info(f"unscheduled_jobs response: {resp}")
@@ -1320,7 +1340,7 @@ class CookTest(unittest.TestCase):
             util.wait_for_job(self.cook_url, canary['uuid'], 'running')
 
             def query():
-                unscheduled_jobs = util.unscheduled_jobs(self.cook_url, big_job['uuid'])[0]
+                unscheduled_jobs = util.unscheduled_jobs(self.cook_url, big_job['uuid'])[0][0]
                 self.logger.info(f"unscheduled_jobs response: {unscheduled_jobs}")
                 no_hosts = [r for r in unscheduled_jobs['reasons'] if r['reason'] ==
                             "The job couldn't be placed on any available hosts."]

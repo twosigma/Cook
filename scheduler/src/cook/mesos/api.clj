@@ -1763,6 +1763,12 @@
 ;; /unscheduled_jobs
 ;;
 
+(def UnscheduledJobParams
+  "Schema for getting the reason(s) for job(s) not being scheduled, allowing optionally
+  for 'partial' results, meaning that some uuids can be valid and others not"
+  {:job [s/Uuid]
+   (s/optional-key :partial) s/Bool})
+
 (s/defschema UnscheduledJobResponse [{:uuid s/Uuid
                                       :reasons [{:reason s/Str
                                                  :data {s/Any s/Any}}]}])
@@ -1784,7 +1790,7 @@
   [conn is-authorized-fn]
   (base-cook-handler
     {:allowed-methods [:get]
-     :exists? (partial check-jobs-exist conn)
+     :exists? (partial retrieve-jobs conn)
      :allowed? (partial job-request-allowed? conn is-authorized-fn)
      :handle-ok (fn [ctx]
                   (map (fn [job] {:uuid job
@@ -1962,7 +1968,7 @@
       (c-api/resource
         {:produces ["application/json"],
          :get {:summary "Read reasons why a job isn't being scheduled."
-               :parameters {:query-params {:job [s/Uuid]}}
+               :parameters {:query-params UnscheduledJobParams}
                :handler (read-unscheduled-handler conn is-authorized-fn)
                :responses {200 {:schema UnscheduledJobResponse
                                 :description "Reasons the job isn't being scheduled."}

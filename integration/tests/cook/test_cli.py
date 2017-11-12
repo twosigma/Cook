@@ -563,11 +563,10 @@ class CookCliTest(unittest.TestCase):
         self.assertEqual(1, len(jobs))
         self.assertIn(uuids[0], jobs[0]['uuid'])
 
-    @attr('explicit')
     def test_ssh_job_uuid(self):
         cp, uuids = cli.submit('ls', self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
-        instance = util.wait_for_output_url(self.cook_url, uuids[0])
+        instance = util.wait_for_instance(self.cook_url, uuids[0])
         hostname = instance['hostname']
         env = os.environ
         env['CS_SSH'] = 'echo'
@@ -594,12 +593,11 @@ class CookCliTest(unittest.TestCase):
         self.assertEqual(1, cp.returncode, cp.stdout)
         self.assertIn('No matching data found', cli.decode(cp.stderr))
 
-    @attr('explicit')
     def test_ssh_duplicate_uuid(self):
         cp, uuids = cli.submit('ls', self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
-        instance = util.wait_for_output_url(self.cook_url, uuids[0])
-        instance_uuid = instance["task_id"]
+        instance = util.wait_for_instance(self.cook_url, uuids[0])
+        instance_uuid = instance['task_id']
         cp, uuids = cli.submit('ls', self.cook_url, submit_flags=f'--uuid {instance_uuid}')
         self.assertEqual(0, cp.returncode, cp.stderr)
         cp = cli.ssh(instance_uuid, self.cook_url)
@@ -614,11 +612,10 @@ class CookCliTest(unittest.TestCase):
         self.assertEqual(1, cp.returncode, cp.stdout)
         self.assertIn('You provided a job group uuid', cli.decode(cp.stderr))
 
-    @attr('explicit')
     def test_ssh_instance_uuid(self):
         cp, uuids = cli.submit('ls', self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
-        instance = util.wait_for_output_url(self.cook_url, uuids[0])
+        instance = util.wait_for_instance(self.cook_url, uuids[0])
         hostname = instance['hostname']
         env = os.environ
         env['CS_SSH'] = 'echo'
@@ -901,8 +898,8 @@ class CookCliTest(unittest.TestCase):
 
     def test_show_progress_message(self):
         executor = util.get_job_executor_type(self.cook_url)
-        cp, uuids = cli.submit('echo "progress: 99 We are so close!"', self.cook_url,
-                               submit_flags=f'--executor {executor}')
+        line = util.progress_line(self.cook_url, 99, 'We are so close!')
+        cp, uuids = cli.submit(f'echo "{line}"', self.cook_url, submit_flags=f'--executor {executor}')
         self.assertEqual(0, cp.returncode, cp.stderr)
         util.wait_for_job(self.cook_url, uuids[0], 'completed')
         self.assertEqual(0, cp.returncode, cp.stderr)
@@ -929,9 +926,10 @@ class CookCliTest(unittest.TestCase):
 
     def test_show_progress_message_custom_progress_file(self):
         executor = util.get_job_executor_type(self.cook_url)
+        line = util.progress_line(self.cook_url, 99, 'We are so close!')
         cp, uuids = cli.submit('\'touch progress.txt && '
                                'echo "Hello World" >> progress.txt && '
-                               'echo "progress: 99 We are so close!" >> progress.txt && '
+                               f'echo "{line}" >> progress.txt && '
                                'echo "Done" >> progress.txt\'',
                                self.cook_url,
                                submit_flags=f'--executor {executor} '
@@ -1010,7 +1008,7 @@ class CookCliTest(unittest.TestCase):
         # Duplicate job, instance, and group uuid, with more precise check of the error message
         cp, uuids = cli.submit('ls', self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
-        instance_uuid = util.wait_for_instance(self.cook_url, uuids[0])
+        instance_uuid = util.wait_for_instance(self.cook_url, uuids[0])['task_id']
         cp, uuids = cli.submit('ls', self.cook_url, submit_flags=f'--uuid {instance_uuid} --group {instance_uuid}')
         self.assertEqual(0, cp.returncode, cp.stderr)
         cp = cli.kill(uuids, self.cook_url)
@@ -1051,7 +1049,7 @@ class CookCliTest(unittest.TestCase):
         self.assertEqual(0, cp.returncode, cp.stderr)
 
         # Wait for an instance to appear, and kill it
-        instance_uuid = util.wait_for_instance(self.cook_url, uuids[0])
+        instance_uuid = util.wait_for_instance(self.cook_url, uuids[0])['task_id']
         cp = cli.kill([instance_uuid], self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertIn(f'Killed job instance {instance_uuid}', cli.stdout(cp))
