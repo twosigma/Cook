@@ -144,12 +144,12 @@ def retry_jobs(cook_url, assert_response=True, use_deprecated_post=False, **kwar
     response = request_verb(f'{cook_url}/retry', json=kwargs)
     if assert_response:
         response_info = {'code': response.status_code, 'msg': response.content}
-        assert response.status_code in (201, 202), response_info
+        assert response.status_code in (200, 201), response_info
         retried_job_count = int(response.text)
-        # response code 201 implies non-zero retried jobs
+        # response code 200 OK implies zero retried jobs
+        assert response.status_code != 200 or retried_job_count == 0, response_info
+        # response code 201 Created implies non-zero retried jobs
         assert response.status_code != 201 or retried_job_count > 0, response_info
-        # response code 202 implies zero retried jobs
-        assert response.status_code != 202 or retried_job_count == 0, response_info
     return response
 
 

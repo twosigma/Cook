@@ -611,6 +611,7 @@ class CookTest(unittest.TestCase):
             job = util.load_job(self.cook_url, job_uuid)
             details = f"Job details: {json.dumps(job, sort_keys=True)}"
             self.assertIn(job['status'], ['waiting', 'running'], details)
+            self.assertEqual(2, job['retries_remaining'], details)
         finally:
             util.kill_jobs(self.cook_url, [job_uuid])
 
@@ -627,6 +628,7 @@ class CookTest(unittest.TestCase):
             job = util.load_job(self.cook_url, job_uuid)
             details = f"Job details: {json.dumps(job, sort_keys=True)}"
             self.assertIn(job['status'], ['waiting', 'running'], details)
+            self.assertEqual(2, job['retries_remaining'], details)
         finally:
             util.kill_jobs(self.cook_url, [job_uuid])
 
@@ -639,6 +641,12 @@ class CookTest(unittest.TestCase):
             job_uuid = jobs[0]
             util.wait_for_job(self.cook_url, job_uuid, 'running')
             util.kill_jobs(self.cook_url, [job_uuid])
+
+            def instance_query():
+                return util.query_jobs(self.cook_url, True, job=[job_uuid])
+
+            # Wait for the job (and its instances) to die
+            util.wait_until(instance_query, util.all_instances_killed)
             job = util.load_job(self.cook_url, job_uuid)
             self.assertEqual('failed', job['state'])
             # retry both jobs, but with the failed_only=true flag
@@ -648,14 +656,14 @@ class CookTest(unittest.TestCase):
             # We expect both jobs to be running now.
             # The first job (which we killed and retried) should have 3 retries remaining
             # (the attempt before resetting the total retries count is still included).
-            job_details = f"Job details: {json.dumps(job, sort_keys=True)}"
+            job_details = f"Job details: {json.dumps(jobs[0], sort_keys=True)}"
             self.assertIn(jobs[0]['status'], ['waiting', 'running'], job_details)
-            self.assertEqual(2, jobs[0]['retries_remaining'], job_details)
+            self.assertEqual(3, jobs[0]['retries_remaining'], job_details)
             # The second job (which started with the default 1 retries)
             # should have 1 remaining since the failed_only flag was set.
             job_details = f"Job details: {json.dumps(jobs[1], sort_keys=True)}"
             self.assertIn(jobs[1]['status'], ['waiting', 'running'], job_details)
-            self.assertEqual(0, jobs[1]['retries_remaining'], job_details)
+            self.assertEqual(1, jobs[1]['retries_remaining'], job_details)
         finally:
             util.kill_jobs(self.cook_url, job_specs)
 
