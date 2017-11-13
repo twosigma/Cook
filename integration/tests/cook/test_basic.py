@@ -604,14 +604,19 @@ class CookTest(unittest.TestCase):
         try:
             util.wait_for_job(self.cook_url, job_uuid, 'running')
             util.kill_jobs(self.cook_url, [job_uuid])
-            job = util.load_job(self.cook_url, job_uuid)
-            self.assertEqual('failed', job['state'])
+
+            def instance_query():
+                return util.query_jobs(self.cook_url, True, job=[job_uuid])
+
+            # wait for the job (and its instances) to die
+            util.wait_until(instance_query, util.all_instances_killed)
+            # retry the job
             resp = util.retry_jobs(self.cook_url, retries=2, jobs=[job_uuid])
             self.assertEqual(201, resp.status_code, resp.text)
             job = util.load_job(self.cook_url, job_uuid)
             details = f"Job details: {json.dumps(job, sort_keys=True)}"
             self.assertIn(job['status'], ['waiting', 'running'], details)
-            self.assertEqual(2, job['retries_remaining'], details)
+            self.assertEqual(1, job['retries_remaining'], details)
         finally:
             util.kill_jobs(self.cook_url, [job_uuid])
 
@@ -621,14 +626,19 @@ class CookTest(unittest.TestCase):
         try:
             util.wait_for_job(self.cook_url, job_uuid, 'running')
             util.kill_jobs(self.cook_url, [job_uuid])
-            job = util.load_job(self.cook_url, job_uuid)
-            self.assertEqual('failed', job['state'])
+
+            def instance_query():
+                return util.query_jobs(self.cook_url, True, job=[job_uuid])
+
+            # wait for the job (and its instances) to die
+            util.wait_until(instance_query, util.all_instances_killed)
+            # retry the job
             resp = util.retry_jobs(self.cook_url, use_deprecated_post=True, retries=2, jobs=[job_uuid])
             self.assertEqual(201, resp.status_code, resp.text)
             job = util.load_job(self.cook_url, job_uuid)
             details = f"Job details: {json.dumps(job, sort_keys=True)}"
             self.assertIn(job['status'], ['waiting', 'running'], details)
-            self.assertEqual(2, job['retries_remaining'], details)
+            self.assertEqual(1, job['retries_remaining'], details)
         finally:
             util.kill_jobs(self.cook_url, [job_uuid])
 
