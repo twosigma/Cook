@@ -1328,18 +1328,18 @@ class CookTest(unittest.TestCase):
         # Based on the priority, canary should be scheduled ahead of big_job, but because
         # of the host-placement constraint they have to be scheduled on the same host.
         # The canary should be able to be scheduled, but big_job should never be scheduled.
-        big_jobs = [util.minimal_job(group=group['uuid'],
-                                   priority=1,
-                                   cpus=max_cpus)
-                    for i in range(num_big_jobs)]
-        big_jobs.append(canary)
-        uuids, resp = util.submit_jobs(self.cook_url, big_jobs, groups=[group])
+        jobs = [util.minimal_job(group=group['uuid'],
+                                 priority=1,
+                                 cpus=max_cpus)
+                    for _ in range(num_big_jobs)]
+        jobs.append(canary)
+        uuids, resp = util.submit_jobs(self.cook_url, jobs, groups=[group])
         self.assertEqual(201, resp.status_code, resp.content)
         try:
             util.wait_for_job(self.cook_url, canary['uuid'], 'running')
 
             def query():
-                unscheduled_jobs, _ = util.unscheduled_jobs(self.cook_url, *[j['uuid'] for j in big_jobs])
+                unscheduled_jobs, _ = util.unscheduled_jobs(self.cook_url, *[j['uuid'] for j in jobs])
                 self.logger.info(f"unscheduled_jobs response: {unscheduled_jobs}")
                 no_hosts = [reason for job in unscheduled_jobs for reason in job['reasons']
                             if reason['reason'] == "The job couldn't be placed on any available hosts."]
