@@ -100,7 +100,7 @@ def show_json(uuids, cook_url=None, flags=None):
 def show_groups(uuids, cook_url=None, flags=None):
     """Shows the group JSON corresponding to the given UUID(s)"""
     cp, data = __show_json(uuids, cook_url, flags)
-    groups = [job for entities in data['clusters'].values() for job in entities['groups']]
+    groups = [group for entities in data['clusters'].values() for group in entities['groups']]
     return cp, groups
 
 

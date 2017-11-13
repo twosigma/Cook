@@ -1213,8 +1213,7 @@ class CookCliTest(unittest.TestCase):
         _, groups = cli.show_groups([group_uuid], self.cook_url)
         self.assertEqual('foo', groups[0]['name'])
         self.assertEqual(group_uuid, groups[0]['uuid'])
-        self.assertIn(uuids[0], groups[0]['jobs'])
-        self.assertIn(uuids[1], groups[0]['jobs'])
+        self.assertEqual(sorted(uuids), sorted(groups[0]['jobs']))
 
         # Group name and group uuid
         group_uuid = str(uuid.uuid4())
@@ -1223,5 +1222,4 @@ class CookCliTest(unittest.TestCase):
         _, groups = cli.show_groups([group_uuid], self.cook_url)
         self.assertEqual('bar', groups[0]['name'])
         self.assertEqual(group_uuid, groups[0]['uuid'])
-        self.assertIn(uuids[0], groups[0]['jobs'])
-        self.assertIn(uuids[1], groups[0]['jobs'])
+        self.assertEqual(sorted(uuids), sorted(groups[0]['jobs']))
