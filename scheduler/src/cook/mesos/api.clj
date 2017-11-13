@@ -412,21 +412,26 @@
 
 (defn- build-container
   "Helper for submit-jobs, deal with container structure."
-  [user id container]
+  [user id container force-container-user?]
   (let [container-id (d/tempid :db.part/user)
         docker-id (d/tempid :db.part/user)
         ctype (:type container)
         volumes (or (:volumes container) [])]
     (if (= (clojure.string/lower-case ctype) "docker")
       (let [docker (:docker container)
-            params (or (:parameters docker) [])
+            container-params (or (:parameters docker) [])
             port-mappings (or (:port-mapping docker) [])
-            user-params (filter #(= (:key %) "user") params)
-            expected-user-param (str (uid user) ":" (gid user))]
-        (when (some #(not= expected-user-param (:value %)) user-params)
+            expected-user-params {:key "user" :value (str (uid user) ":" (gid user))}
+            defined-user-params (first (filter #(= (:key %) "user") container-params))
+            params (if defined-user-params
+                     container-params
+                     (cons expected-user-params container-params))]
+        (when (and (force-container-user? (or (= (uid user) "") (= (gid user) ""))))
+          (throw (ex-info "failed to look up uid/gid of user submitting." {:user user})))
+        (when (not= (:value expected-user-params) (:value defined-user-params))
           (throw (ex-info "user parameter must match uid and gid of user submitting."
-                          {:expected-user-param expected-user-param
-                           :user-params-submitted user-params})))
+                          {:expected-user-params expected-user-params
+                           :defined-user-params defined-user-params})))
         [[:db/add id :job/container container-id]
          (merge {:db/id container-id
                  :container/type "DOCKER"}
@@ -452,7 +457,7 @@
 
 (s/defn make-job-txn
   "Creates the necessary txn data to insert a job into the database"
-  [job :- Job]
+  [job :- Job force-container-user? :- Boolean]
   (let [{:keys [uuid command max-retries max-runtime expected-runtime priority cpus mem gpus
                 user name ports uris env labels container group application disable-mea-culpa-retries
                 constraints executor progress-output-file progress-regex-string]
@@ -501,7 +506,7 @@
                                                                 (str/lower-case operator))
                                   :constraint/pattern pattern}]))
                             constraints)
-        container (if (nil? container) [] (build-container user db-id container))
+        container (if (nil? container) [] (build-container user db-id container force-container-user?))
         executor (str->executor-enum executor)
         ;; These are optionally set datoms w/ default values
         maybe-datoms (reduce into
@@ -1026,7 +1031,7 @@
   to Datomic.
   Preconditions:  The context must already have been populated with both
   ::jobs and ::groups, which specify the jobs and job groups."
-  [conn {:keys [::groups ::jobs] :as ctx}]
+  [conn force-container-user? {:keys [::groups ::jobs] :as ctx}]
   (try
     (log/info "Submitting jobs through raw api:" jobs)
     (let [group-uuids (set (map :uuid groups))
@@ -1041,7 +1046,7 @@
                                (map make-default-group))
           groups (into (vec implicit-groups) groups)
           job-asserts (map (fn [j] [:entity/ensure-not-exists [:job/uuid (:uuid j)]]) jobs)
-          job-txns (mapcat #(make-job-txn %) jobs)
+          job-txns (mapcat #(make-job-txn % force-container-user?) jobs)
           job-uuids->dbids (->> job-txns
                                 ;; Not all txns are for the top level job
                                 (filter :job/uuid)
@@ -1089,7 +1094,7 @@
 ;;;            "mem": 1000}]}
 ;;;
 (defn create-jobs-handler
-  [conn task-constraints gpu-enabled? is-authorized-fn]
+  [conn task-constraints gpu-enabled? force-container-user? is-authorized-fn]
   (base-cook-handler
     {:allowed-methods [:post]
      :malformed? (fn [ctx]
@@ -1139,9 +1144,9 @@
      ;; Implementing put! doesn't mean that PUT requests are actually supported
      ;; (see :allowed-methods above). It is simply what liberator eventually calls to persist
      ;; resource changes when conflict? has returned false.
-     :put! (partial create-jobs! conn)
+     :put! (partial create-jobs! conn force-container-user?)
 
-     :post! (partial create-jobs! conn)
+     :post! (partial create-jobs! conn force-container-user?)
      :handle-exception (fn [{:keys [exception]}]
                          {:error (str "Exception occurred while creating job - " (.getMessage exception))})
      :handle-created (fn [ctx] (::results ctx))}))
@@ -1825,6 +1830,7 @@
   [conn framework-id mesos-pending-jobs-fn
    {:keys [is-authorized-fn task-constraints]
     gpu-enabled? :mesos-gpu-enabled
+    force-container-user? :force-container-user
     :as settings}
    leader-selector
    mesos-leadership-atom]
@@ -1854,7 +1860,7 @@
                :responses {201 {:description "The jobs were successfully scheduled."}
                            400 {:description "One or more of the jobs were incorrectly specified."}
                            409 {:description "One or more of the jobs UUIDs are already in use."}}
-               :handler (create-jobs-handler conn task-constraints gpu-enabled? is-authorized-fn)}
+               :handler (create-jobs-handler conn task-constraints gpu-enabled? force-container-user? is-authorized-fn)}
         :delete {:summary "Cancels jobs, halting execution when possible."
                  :responses {204 {:description "The jobs have been marked for termination."}
                              400 {:description "Non-UUID values were passed as jobs."}

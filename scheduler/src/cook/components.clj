@@ -528,7 +528,9 @@
                      (when enabled?
                        (when (zero? port)
                          (throw (ex-info "You enabled nrepl but didn't configure a port. Please configure a port in your config file." {})))
-                       ((lazy-load-var 'clojure.tools.nrepl.server/start-server) :port port)))}))
+                       ((lazy-load-var 'clojure.tools.nrepl.server/start-server) :port port)))
+     :force-container-user (fnk [[:config {force-container-user false}]]
+                          (boolean force-container-user))}))
 
 (defn init-logger
   ([] (init-logger {:levels {"datomic.db" :warn
