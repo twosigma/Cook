@@ -1,7 +1,6 @@
-import sys
-
-from cook.querying import query, print_no_data
-from cook.util import strip_all, print_info, seconds_to_timedelta, guard_no_cluster, read_lines
+from cook import colors
+from cook.querying import print_no_data, query_with_pipe_support
+from cook.util import strip_all, print_info, seconds_to_timedelta, guard_no_cluster
 
 
 def all_jobs_completed(jobs):
@@ -34,21 +33,13 @@ def wait(clusters, args, _):
     timeout = args.get('timeout')
     interval = args.get('interval')
     uuids = strip_all(args.get('uuid'))
-    stdin_from_pipe = not sys.stdin.isatty()
 
-    if uuids and stdin_from_pipe:
-        raise Exception('When piping to wait, you cannot also supply UUIDs as arguments.')
+    timeout_text = f'up to {seconds_to_timedelta(timeout)}' if timeout else 'indefinitely'
+    print_info(f'Will wait {colors.bold(timeout_text)}.')
+    query_result = query_with_pipe_support(clusters, uuids, 'wait', pred_jobs=all_jobs_completed,
+                                           pred_instances=all_instances_completed, pred_groups=all_groups_completed,
+                                           timeout=timeout, interval=interval)
 
-    if stdin_from_pipe:
-        uuids = read_lines()
-
-    if not uuids:
-        raise Exception('You must specify at least one UUID on which to wait.')
-
-    timeout_text = ('up to %s' % seconds_to_timedelta(timeout)) if timeout else 'indefinitely'
-    print_info('Will wait %s.' % timeout_text)
-    query_result = query(clusters, uuids, all_jobs_completed, all_instances_completed,
-                         all_groups_completed, timeout, interval)
     if query_result['count'] > 0:
         return 0
     else:

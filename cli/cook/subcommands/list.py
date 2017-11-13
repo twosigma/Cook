@@ -72,7 +72,8 @@ def show_data(cluster_job_pairs):
         job_table = tabulate(rows, headers='keys', tablefmt='plain')
         print_info(job_table)
     else:
-        print_info('\n'.join(j['uuid'] for _, j in cluster_job_pairs))
+        jobs = [{'cluster': c, 'type': 'job', 'uuid': j['uuid']} for c, j in cluster_job_pairs]
+        print(json.dumps(jobs))
 
 
 def date_time_string_to_ms_since_epoch(date_time_string):

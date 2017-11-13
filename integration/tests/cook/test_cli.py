@@ -235,8 +235,8 @@ class CookCliTest(unittest.TestCase):
 
     def test_wait_requires_at_least_one_uuid(self):
         cp = cli.wait([], self.cook_url)
-        self.assertEqual(2, cp.returncode, cp.stderr)
-        self.assertIn('the following arguments are required: uuid', cli.decode(cp.stderr))
+        self.assertEqual(1, cp.returncode, cp.stderr)
+        self.assertIn('You must specify at least one UUID', cli.decode(cp.stderr))
 
     def test_wait_specify_timeout_and_interval(self):
         cp, uuids = cli.submit('"sleep 60"', self.cook_url)

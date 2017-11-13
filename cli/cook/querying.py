@@ -1,10 +1,13 @@
 import concurrent
+import json
 import logging
 import os
 from concurrent import futures
 from operator import itemgetter
 
 import collections
+
+import sys
 
 from cook import http, colors, progress, mesos
 from cook.util import wait_until
@@ -66,10 +69,12 @@ def query_entities(cluster, uuids, pred_jobs, pred_instances, pred_groups, timeo
     """Queries cluster for the given uuids, searching (by default) for jobs, instances, and groups."""
     count = 0
     entities = {}
+
     if include_jobs:
         entities['jobs'] = query_cluster(cluster, uuids, pred_jobs, timeout,
                                          interval, make_job_request, 'job')
         count += len(entities['jobs'])
+
     if include_instances:
         instance_parent_job_pairs = []
         parent_jobs = query_cluster(cluster, uuids, pred_instances, timeout,
@@ -82,10 +87,12 @@ def query_entities(cluster, uuids, pred_jobs, pred_instances, pred_groups, timeo
 
         entities['instances'] = instance_parent_job_pairs
         count += len(instance_parent_job_pairs)
+
     if include_groups:
         entities['groups'] = query_cluster(cluster, uuids, pred_groups, timeout,
                                            interval, make_group_request, 'group')
         count += len(entities['groups'])
+
     entities['count'] = count
     return entities
 
@@ -114,7 +121,8 @@ def distinct(seq):
     return collections.OrderedDict(zip(seq, seq)).keys()
 
 
-def query(clusters, uuids, pred_jobs=None, pred_instances=None, pred_groups=None, timeout=None, interval=None):
+def query(clusters, uuids, pred_jobs=None, pred_instances=None, pred_groups=None, timeout=None,
+          interval=None, include_jobs=True, include_instances=True, include_groups=True):
     """
     Uses query_across_clusters to make the /rawscheduler
     requests in parallel across the given clusters
@@ -125,8 +133,8 @@ def query(clusters, uuids, pred_jobs=None, pred_instances=None, pred_groups=None
     uuids = distinct(uuids)
 
     def submit(cluster, executor):
-        return executor.submit(query_entities, cluster, uuids, pred_jobs,
-                               pred_instances, pred_groups, timeout, interval)
+        return executor.submit(query_entities, cluster, uuids, pred_jobs, pred_instances, pred_groups,
+                               timeout, interval, include_jobs, include_instances, include_groups)
 
     return query_across_clusters(clusters, submit)
 
@@ -208,3 +216,57 @@ def query_unique_and_run(clusters, job_or_instance_uuid, command_fn):
         # This should not happen, because query_unique should
         # only return a map with type "job" or type "instance"
         raise Exception(f'Encountered error when querying for {job_or_instance_uuid}.')
+
+
+def query_with_pipe_support(clusters, uuids, command, pred_jobs=None, pred_instances=None,
+                            pred_groups=None, timeout=None, interval=None):
+    """
+    Queries for UUIDs across clusters, supporting input being passed via a pipe from another command, e.g.:
+
+      $ cs list --user sally --running --waiting | cs wait
+
+    The above example would wait for all of sally's running and waiting jobs to complete.
+    """
+    stdin_from_pipe = not sys.stdin.isatty()
+
+    if uuids and stdin_from_pipe:
+        raise Exception(f'When piping to {command}, you cannot also supply UUIDs as arguments.')
+
+    include_jobs = True
+    include_instances = True
+    include_groups = True
+
+    if stdin_from_pipe:
+        s = sys.stdin.read()
+        if not s:
+            raise Exception('No data received.')
+
+        try:
+            piped_data = json.loads(s)
+        except:
+            raise Exception('Unable to parse data.')
+
+        piped_cluster_names = set()
+        piped_types = set()
+        uuids = []
+        for datum in piped_data:
+            piped_cluster_names.add(datum['cluster'])
+            piped_types.add(datum['type'])
+            uuids.append(datum['uuid'])
+
+        configured_cluster_names = set(c['name'] for c in clusters)
+        if not piped_cluster_names.issubset(configured_cluster_names):
+            raise Exception(f'You piped data from:\n\n{", ".join(piped_cluster_names)}\n\n' 
+                            f'But \'{command}\' is only querying against:\n\n{", ".join(configured_cluster_names)}')
+
+        clusters = (c for c in clusters if c['name'] in piped_cluster_names)
+        include_jobs = 'job' in piped_types
+        include_instances = 'instance' in piped_types
+        include_groups = 'group' in piped_types
+
+    if not uuids:
+        raise Exception('You must specify at least one UUID.')
+
+    query_result = query(clusters, uuids, pred_jobs, pred_instances, pred_groups, timeout,
+                         interval, include_jobs, include_instances, include_groups)
+    return query_result
