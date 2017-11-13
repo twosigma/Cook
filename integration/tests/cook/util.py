@@ -503,7 +503,7 @@ def progress_line(cook_url, percent, message):
     return regex_string.replace('(\d+)', str(percent)).replace('(.*)', str(message)).replace('(?: )?', ' ')
 
 
-def group_submit_kill_retry(cook_url, failed_only):
+def group_submit_kill_retry(cook_url, retry_failed_jobs_only):
     """
     Helper method for integration tests on groups, following these steps:
     1) Creates a group of 10 jobs
@@ -535,7 +535,7 @@ def group_submit_kill_retry(cook_url, failed_only):
 
         wait_until(jobs_query, all_instances_done)
         # retry all jobs in the group
-        retry_jobs(cook_url, retries=2, groups=[group_uuid], failed_only=failed_only)
+        retry_jobs(cook_url, retries=2, groups=[group_uuid], failed_only=retry_failed_jobs_only)
         # wait for some job to start
         wait_until(group_query, group_some_job_started)
         # return final job details to caller for assertion checks
@@ -545,7 +545,7 @@ def group_submit_kill_retry(cook_url, failed_only):
         kill_groups(cook_url, [group_uuid])
 
 
-def group_submit_retry(cook_url, command, predicate_statuses, failed_only=True):
+def group_submit_retry(cook_url, command, predicate_statuses, retry_failed_jobs_only=True):
     """
     Helper method for integration tests on groups, following these steps:
     1) Creates a group of 5 jobs
@@ -563,7 +563,7 @@ def group_submit_retry(cook_url, command, predicate_statuses, failed_only=True):
     def group_query():
         return group_detail_query(cook_url, group_uuid)
 
-    def config_condition(response):
+    def status_condition(response):
         group = response.json()[0]
         statuses_map = { x: group[x] for x in predicate_statuses }
         status_counts = statuses_map.values()
@@ -576,11 +576,11 @@ def group_submit_retry(cook_url, command, predicate_statuses, failed_only=True):
         jobs, resp = submit_jobs(cook_url, job_spec, job_count, groups=[group_spec])
         assert resp.status_code == 201, resp
         # wait for the expected job statuses specified in predicate_statuses
-        wait_until(group_query, config_condition)
+        wait_until(group_query, status_condition)
         # retry all failed jobs in the group (if any)
-        retry_jobs(cook_url, increment=1, failed_only=failed_only, groups=[group_uuid])
+        retry_jobs(cook_url, increment=1, failed_only=retry_failed_jobs_only, groups=[group_uuid])
         # wait again for the expected job statuses specified in predicate_statuses
-        wait_until(group_query, config_condition)
+        wait_until(group_query, status_condition)
         # return final job details to caller for assertion checks
         return query_jobs(cook_url, assert_response=True, job=jobs).json()
     finally:
