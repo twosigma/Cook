@@ -1276,14 +1276,18 @@
 (def ReadRetriesRequest
   {:job [s/Uuid]})
 
+;; Base retry options (used for both PUT and POST).
 (def UpdateRetriesRequestBase
   {(s/optional-key :job) s/Uuid
    (s/optional-key :jobs) [s/Uuid]
    (s/optional-key :retries) PosNum
    (s/optional-key :increment) PosNum})
 
+;; Since POST is deprecated, we don't want to add any more features
+;; (just continue supporting the base options for a retry)
 (def UpdateRetriesRequestDeprecated UpdateRetriesRequestBase)
 
+;; The PUT verb is able to support newer options on the retry endpoint.
 (def UpdateRetriesRequest
   (merge UpdateRetriesRequestBase
          {(s/optional-key :groups) [s/Uuid]
