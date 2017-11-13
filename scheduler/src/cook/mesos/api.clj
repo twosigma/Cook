@@ -54,6 +54,11 @@
            org.joda.time.Minutes
            schema.core.OptionalKey))
 
+
+;; We use Liberator to handle requests on our REST endpoints.
+;; The control flow among Liberator's handler functions is described here:
+;; https://clojure-liberator.github.io/liberator/doc/decisions.html
+
 ;; This is necessary to prevent a user from requesting a uid:gid
 ;; pair other than their own (for example, root)
 (sh/let-programs
@@ -97,6 +102,9 @@
                 (update k :k ->snake_case)
                 (->snake_case k)))
             schema))
+
+(def ZeroInt
+  (s/both s/Int (s/pred zero? 'zero?)))
 
 (def PosNum
   (s/both s/Num (s/pred pos? 'pos?)))
@@ -987,40 +995,6 @@
     x
     [x]))
 
-(def cook-coercer
-  "This coercer adds to compojure-api's default-coercion-matchers by
-  converting keys from snake_case to kebab-case for requests and from
-  kebab-case to snake_case for responses. For example, this allows clients to
-  pass 'max_retries' when submitting a job, even though the job schema has
-  :max-retries (with a dash instead of an underscore). For more information on
-  coercion in compojure-api, see:
-
-    https://github.com/metosin/compojure-api/wiki/Validation-and-coercion"
-  (constantly
-    (-> c-mw/default-coercion-matchers
-      (update :body
-              (fn [their-matchers]
-                (fn [s]
-                  (or (their-matchers s)
-                      (get {;; can't use form->kebab-case because env and label
-                            ;; accept arbitrary kvs
-                            JobRequestMap (partial map-keys ->kebab-case)
-                            Group (partial map-keys ->kebab-case)
-                            HostPlacement (fn [hp]
-                                            (update hp :type keyword))
-                            StragglerHandling (fn [sh]
-                                                (update sh :type keyword))}
-                           s)))))
-      (update :response
-              (fn [their-matchers]
-                (fn [s]
-                  (or (their-matchers s)
-                      (get {JobResponse (partial map-keys ->snake_case)
-                            GroupResponse (partial map-keys ->snake_case)
-                            s/Uuid str}
-                           s))))))))
-
-
 (defn create-jobs!
   "Based on the context, persists the specified jobs, along with their groups,
   to Datomic.
@@ -1302,16 +1276,31 @@
 (def ReadRetriesRequest
   {:job [s/Uuid]})
 
-(def UpdateRetriesRequest
+;; Base retry options (used for both PUT and POST).
+(def UpdateRetriesRequestBase
   {(s/optional-key :job) s/Uuid
    (s/optional-key :jobs) [s/Uuid]
-   (s/optional-key :groups) [s/Uuid]
    (s/optional-key :retries) PosNum
    (s/optional-key :increment) PosNum})
+
+;; Since POST is deprecated, we don't want to add any more features
+;; (just continue supporting the base options for a retry)
+(def UpdateRetriesRequestDeprecated UpdateRetriesRequestBase)
+
+;; The PUT verb is able to support newer options on the retry endpoint.
+(def UpdateRetriesRequest
+  (merge UpdateRetriesRequestBase
+         {(s/optional-key :groups) [s/Uuid]
+          (s/optional-key :failed-only) s/Bool}))
 
 (defn display-retries
   [conn ctx]
   (:job/max-retries (d/entity (db conn) [:job/uuid (-> ctx ::jobs first)])))
+
+(defn job-failed?
+  "Checks if the specified job is in a failed state."
+  [db juuid]
+  (->> [:job/uuid juuid] (d/entity db) util/job-ent->state (= "failed")))
 
 (defn jobs-from-request
   "Reads a set of job UUIDs from the request, supporting \"job\" in the query,
@@ -1332,14 +1321,23 @@
 
 (defn check-jobs-exist
   [conn ctx]
-  (let [jobs (jobs-from-request ctx)
-        jobs-not-existing (remove (partial job-exists? (d/db conn)) jobs)]
+  (let [db (d/db conn)
+        jobs (jobs-from-request ctx)
+        jobs-not-existing (remove (partial job-exists? db) jobs)]
     (cond
       ; error case
       (seq jobs-not-existing)
       [false {::error (->> jobs-not-existing
                            (map #(str "UUID " % " does not correspond to a job."))
                            (str/join \space))}]
+
+      ; remove non-failed jobs if necessary
+      (::failed-only? ctx)
+      [true {::jobs (with-meta
+                      (filterv (partial job-failed? db) (::jobs ctx))
+                      ; Liberator will concatenate vectors by default when composing context values,
+                      ; but we want to replace our vector with only the filtered entries.
+                      {:replace true})}]
 
       ; if the context doesn't already have ::jobs, add it
       (nil? (::jobs ctx))
@@ -1362,8 +1360,15 @@
 (defn check-jobs-and-groups-exist
   "Check if all of the ::jobs and ::groups in the context are valid."
   [conn ctx]
-  (and (check-jobs-exist conn ctx)
-       (check-groups-exist conn ctx)))
+  (let [[jobs-ok? jobs-ctx' :as jobs-result] (vectorize (check-jobs-exist conn ctx))]
+    (if-not jobs-ok?
+      jobs-result
+      (let [[groups-ok? groups-ctx' :as groups-result] (vectorize (check-groups-exist conn ctx))]
+        (cond
+          (not groups-ok?) groups-result
+          (not (or jobs-ctx' groups-ctx')) true
+          (and jobs-ctx' groups-ctx') [true (combine jobs-ctx' groups-ctx')]
+          :else [true (or jobs-ctx' groups-ctx')])))))
 
 (defn validate-retries
   [conn task-constraints ctx]
@@ -1371,6 +1376,12 @@
         increment (get-in ctx [:request :body-params :increment])
         jobs (jobs-from-request ctx)
         groups (get-in ctx [:request :body-params :groups])
+        has-groups? (-> groups seq boolean)
+        failed-only? (let [fo? (get-in ctx [:request :body-params :failed-only])]
+                       ;; Default to true if there are groups, false if only jobs.
+                       ;; This maintains backwards-compatibility for old code,
+                       ;; but gives a more sane default for code where groups are used.
+                       (if (nil? fo?) has-groups? fo?))
         retry-limit (:retry-limit task-constraints)]
     (cond
       (and (empty? jobs) (empty? groups))
@@ -1411,12 +1422,14 @@
                              :let [group (d/entity db [:group/uuid guuid])]
                              job (:group/job group)]
                          (:job/uuid job))
-            all-jobs (concat jobs group-jobs)]
-        [false {::retries retries
-                ::increment increment
-                ::jobs all-jobs
-                ::non-group-jobs jobs
-                ::groups groups}]))))
+            all-jobs (vec (concat jobs group-jobs))
+            ctx' {::retries retries
+                  ::increment increment
+                  ::failed-only? failed-only?
+                  ::jobs all-jobs
+                  ::non-group-jobs jobs
+                  ::groups groups}]
+        [false ctx']))))
 
 (defn user-can-retry-job?
   [conn is-authorized-fn request-user job]
@@ -1479,10 +1492,16 @@
   (base-retries-handler
     conn is-authorized-fn
     {:allowed-methods [:put]
-     :exists? (partial check-jobs-and-groups-exist conn)
      :malformed? (partial validate-retries conn task-constraints)
+     :exists? (partial check-jobs-and-groups-exist conn)
+     :put! (partial retry-jobs! conn)
+     ;; :new? decides whether to respond with Created (true) or OK (false).
+     :new? (comp seq ::jobs)
+     :respond-with-entity? (constantly true)
+     ;; :handle-ok and :handle-accepted both return the number of jobs to be retried,
+     ;; but :handle-ok is only triggered when there are no failed jobs to retry.
      :handle-created (partial display-retries conn)
-     :put! (partial retry-jobs! conn)}))
+     :handle-ok (constantly 0)}))
 
 ;; /share and /quota
 (def UserParam {:user s/Str})
@@ -1818,6 +1837,40 @@
         json-response (res/content-type "application/json")
         (and json-response body) (assoc :body (streaming-json-encoder body))))))
 
+(def cook-coercer
+  "This coercer adds to compojure-api's default-coercion-matchers by
+  converting keys from snake_case to kebab-case for requests and from
+  kebab-case to snake_case for responses. For example, this allows clients to
+  pass 'max_retries' when submitting a job, even though the job schema has
+  :max-retries (with a dash instead of an underscore). For more information on
+  coercion in compojure-api, see:
+
+    https://github.com/metosin/compojure-api/wiki/Validation-and-coercion"
+  (constantly
+    (-> c-mw/default-coercion-matchers
+      (update :body
+              (fn [their-matchers]
+                (fn [s]
+                  (or (their-matchers s)
+                      (get {;; can't use form->kebab-case because env and label
+                            ;; accept arbitrary kvs
+                            JobRequestMap (partial map-keys ->kebab-case)
+                            Group (partial map-keys ->kebab-case)
+                            HostPlacement (fn [hp]
+                                            (update hp :type keyword))
+                            UpdateRetriesRequest (partial map-keys ->kebab-case)
+                            StragglerHandling (fn [sh]
+                                                (update sh :type keyword))}
+                           s)))))
+      (update :response
+              (fn [their-matchers]
+                (fn [s]
+                  (or (their-matchers s)
+                      (get {JobResponse (partial map-keys ->snake_case)
+                            GroupResponse (partial map-keys ->snake_case)
+                            s/Uuid str}
+                           s))))))))
+
 ;;
 ;; "main" - the entry point that routes to other handlers
 ;;
@@ -1917,14 +1970,16 @@
         {:summary "Change a job's retry count"
          :parameters {:body-params UpdateRetriesRequest}
          :handler (put-retries-handler conn is-authorized-fn task-constraints)
-         :responses {201 {:schema PosInt
+         :responses {200 {:schema ZeroInt
+                          :description "No failed jobs provided to retry."}
+                     201 {:schema PosInt
                           :description "The number of retries for the jobs."}
                      400 {:description "Invalid request format."}
                      401 {:description "Request user not authorized to access those jobs."}
                      404 {:description "Unrecognized job UUID."}}}
         :post
         {:summary "Change a job's retry count (deprecated)"
-         :parameters {:body-params UpdateRetriesRequest}
+         :parameters {:body-params UpdateRetriesRequestDeprecated}
          :handler (post-retries-handler conn is-authorized-fn task-constraints)
          :responses {201 {:schema PosInt
                           :description "The number of retries for the job"}

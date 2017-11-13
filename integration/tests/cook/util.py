@@ -110,6 +110,11 @@ def minimal_jobs(job_count, **kwargs):
     return [minimal_job(**kwargs) for _ in range(job_count)]
 
 
+def minimal_group(**kwargs):
+    """Build a minimal group spec"""
+    return dict(uuid=str(uuid.uuid4()), **kwargs)
+
+
 def submit_jobs(cook_url, job_specs, clones=1, **kwargs):
     """
     Create and submit multiple jobs, either cloned from a single job spec,
@@ -133,11 +138,18 @@ def submit_jobs(cook_url, job_specs, clones=1, **kwargs):
     return [j['uuid'] for j in jobs], resp
 
 
-def retry_jobs(cook_url, assert_response=True, **kwargs):
+def retry_jobs(cook_url, assert_response=True, use_deprecated_post=False, **kwargs):
     """Retry one or more jobs and/or groups of jobs"""
-    response = session.put(f'{cook_url}/retry', json=kwargs)
+    request_verb = session.post if use_deprecated_post else session.put
+    response = request_verb(f'{cook_url}/retry', json=kwargs)
     if assert_response:
-        assert 201 == response.status_code, response.content
+        response_info = {'code': response.status_code, 'msg': response.content}
+        assert response.status_code in (200, 201), response_info
+        retried_job_count = int(response.text)
+        # response code 200 OK implies zero retried jobs
+        assert response.status_code != 200 or retried_job_count == 0, response_info
+        # response code 201 Created implies non-zero retried jobs
+        assert response.status_code != 201 or retried_job_count > 0, response_info
     return response
 
 
@@ -206,7 +218,7 @@ def multi_cluster_tests_enabled():
     return os.getenv('COOK_MULTI_CLUSTER') is not None
 
 
-def wait_until(query, predicate, max_wait_ms=30000, wait_interval_ms=1000):
+def wait_until(query, predicate, max_wait_ms=60000, wait_interval_ms=1000):
     """
     Block until the predicate is true for the result of the provided query.
     `query` is a thunk (nullary callable) that may be called multiple times.
@@ -220,7 +232,7 @@ def wait_until(query, predicate, max_wait_ms=30000, wait_interval_ms=1000):
         response = query()
         if not predicate(response):
             error_msg = "wait_until condition not yet met, retrying..."
-            logger.info(error_msg)
+            logger.debug(error_msg)
             raise RuntimeError(error_msg)
         else:
             logger.info("wait_until condition satisfied")
@@ -230,7 +242,11 @@ def wait_until(query, predicate, max_wait_ms=30000, wait_interval_ms=1000):
         return wait_until_inner()
     except:
         final_response = query()
-        logger.info(f"Timeout exceeded waiting for condition. Details: {final_response}")
+        try:
+            details = final_response.content
+        except AttributeError:
+            details = str(final_response)
+        logger.info(f"Timeout exceeded waiting for condition. Details: {details}")
         raise
 
 
@@ -473,6 +489,7 @@ def sleep_for_publish_interval(cook_url):
     wait_publish_interval_ms = min(3 * progress_publish_interval_ms, 20000)
     time.sleep(wait_publish_interval_ms / 1000.0)
 
+
 def progress_line(cook_url, percent, message):
     """Simple text replacement of regex string using expected patterns of (\d+), (?: )? and (.*)."""
     cook_settings = settings(cook_url)
@@ -484,3 +501,88 @@ def progress_line(cook_url, percent, message):
     if not '(.*)' in regex_string:
         raise Exception('{} not present in {} regex string'.format('(.*)', regex_string))
     return regex_string.replace('(\d+)', str(percent)).replace('(.*)', str(message)).replace('(?: )?', ' ')
+
+
+def group_submit_kill_retry(cook_url, retry_failed_jobs_only):
+    """
+    Helper method for integration tests on groups, following these steps:
+    1) Creates a group of 10 jobs
+    2) Waits for at least one job to start
+    3) Kills all the jobs
+    4) Retries the jobs
+    5) Waits for at least one job to start (again)
+    6) Finally kills all the jobs again (clean up)
+    Returns the job info (json response) for the group's jobs after step 5.
+    """
+    group_spec = minimal_group()
+    group_uuid = group_spec['uuid']
+    job_spec = {'group': group_uuid, 'command': f'sleep 1'}
+    try:
+        jobs, resp = submit_jobs(cook_url, job_spec, 10, groups=[group_spec])
+        assert resp.status_code == 201, resp
+
+        def group_query():
+            return group_detail_query(cook_url, group_uuid)
+
+        # wait for some job to start
+        wait_until(group_query, group_some_job_started)
+        # kill all jobs in the group (and wait for the kill to complete)
+        logger.info(f'Killing all jobs in group {group_uuid}.')
+        kill_groups(cook_url, [group_uuid])
+
+        def jobs_query():
+            return query_jobs(cook_url, True, job=jobs)
+
+        wait_until(jobs_query, all_instances_done)
+        # retry all jobs in the group
+        retry_jobs(cook_url, retries=2, groups=[group_uuid], failed_only=retry_failed_jobs_only)
+        # wait for some job to start
+        wait_until(group_query, group_some_job_started)
+        # return final job details to caller for assertion checks
+        return query_jobs(cook_url, assert_response=True, job=jobs).json()
+    finally:
+        # ensure that we don't leave a bunch of jobs running/waiting
+        kill_groups(cook_url, [group_uuid])
+
+
+def group_submit_retry(cook_url, command, predicate_statuses, retry_failed_jobs_only=True):
+    """
+    Helper method for integration tests on groups, following these steps:
+    1) Creates a group of 5 jobs
+    2) Waits for the job statuses to match those in predicate_statuses
+    3) Retries the jobs
+    4) Waits for the job statuses to match those in predicate_statuses (again)
+    5) Finally kills all the jobs again (clean up)
+    Returns the job info (json response) for the group's jobs after step 4.
+    """
+    job_count = 5
+    group_spec = minimal_group()
+    group_uuid = group_spec['uuid']
+    job_spec = {'group': group_uuid, 'max_retries': 1, 'command': command}
+
+    def group_query():
+        return group_detail_query(cook_url, group_uuid)
+
+    def status_condition(response):
+        group = response.json()[0]
+        statuses_map = { x: group[x] for x in predicate_statuses }
+        status_counts = statuses_map.values()
+        # for running & waiting, we want at least one running (not all waiting)
+        not_all_waiting = group['waiting'] != job_count
+        logger.debug(f"Currently {statuses_map} jobs in group {group['uuid']}")
+        return not_all_waiting and sum(status_counts) == job_count
+
+    try:
+        jobs, resp = submit_jobs(cook_url, job_spec, job_count, groups=[group_spec])
+        assert resp.status_code == 201, resp
+        # wait for the expected job statuses specified in predicate_statuses
+        wait_until(group_query, status_condition)
+        # retry all failed jobs in the group (if any)
+        retry_jobs(cook_url, increment=1, failed_only=retry_failed_jobs_only, groups=[group_uuid])
+        # wait again for the expected job statuses specified in predicate_statuses
+        wait_until(group_query, status_condition)
+        # return final job details to caller for assertion checks
+        return query_jobs(cook_url, assert_response=True, job=jobs).json()
+    finally:
+        # ensure that we don't leave a bunch of jobs running/waiting
+        kill_groups(cook_url, [group_uuid])

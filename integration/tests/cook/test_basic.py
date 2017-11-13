@@ -16,12 +16,6 @@ from tests.cook import util
 class CookTest(unittest.TestCase):
     _multiprocess_can_split_ = True
 
-    @staticmethod
-    def minimal_group(**kwargs):
-        group = {"uuid": str(uuid.uuid4())}
-        group.update(kwargs)
-        return group
-
     def setUp(self):
         self.cook_url = util.retrieve_cook_url()
         self.mesos_url = util.retrieve_mesos_url()
@@ -601,17 +595,82 @@ class CookTest(unittest.TestCase):
         self.assertEqual('failed', job['state'])
 
     def test_change_retries(self):
-        job_uuid, _ = util.submit_job(self.cook_url, command='sleep 10')
-        util.wait_for_job(self.cook_url, job_uuid, 'running')
-        util.kill_jobs(self.cook_url, [job_uuid])
-        job = util.load_job(self.cook_url, job_uuid)
-        self.assertEqual('failed', job['state'])
-        resp = util.retry_jobs(self.cook_url, retries=2, jobs=[job_uuid])
-        self.assertEqual(201, resp.status_code, resp.text)
-        job = util.load_job(self.cook_url, job_uuid)
-        self.assertIn(job['status'], ['waiting', 'running'])
-        job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
-        self.assertEqual('success', job['state'], 'Job details: %s' % (json.dumps(job, sort_keys=True)))
+        job_uuid, _ = util.submit_job(self.cook_url, command='sleep 60')
+        try:
+            util.wait_for_job(self.cook_url, job_uuid, 'running')
+            util.kill_jobs(self.cook_url, [job_uuid])
+
+            def instance_query():
+                return util.query_jobs(self.cook_url, True, job=[job_uuid])
+
+            # wait for the job (and its instances) to die
+            util.wait_until(instance_query, util.all_instances_killed)
+            # retry the job
+            resp = util.retry_jobs(self.cook_url, retries=2, jobs=[job_uuid])
+            self.assertEqual(201, resp.status_code, resp.text)
+            job = util.load_job(self.cook_url, job_uuid)
+            details = f"Job details: {json.dumps(job, sort_keys=True)}"
+            self.assertIn(job['status'], ['waiting', 'running'], details)
+            self.assertEqual(1, job['retries_remaining'], details)
+        finally:
+            util.kill_jobs(self.cook_url, [job_uuid])
+
+
+    def test_change_retries_deprecated_post(self):
+        job_uuid, _ = util.submit_job(self.cook_url, command='sleep 60')
+        try:
+            util.wait_for_job(self.cook_url, job_uuid, 'running')
+            util.kill_jobs(self.cook_url, [job_uuid])
+
+            def instance_query():
+                return util.query_jobs(self.cook_url, True, job=[job_uuid])
+
+            # wait for the job (and its instances) to die
+            util.wait_until(instance_query, util.all_instances_killed)
+            # retry the job
+            resp = util.retry_jobs(self.cook_url, use_deprecated_post=True, retries=2, jobs=[job_uuid])
+            self.assertEqual(201, resp.status_code, resp.text)
+            job = util.load_job(self.cook_url, job_uuid)
+            details = f"Job details: {json.dumps(job, sort_keys=True)}"
+            self.assertIn(job['status'], ['waiting', 'running'], details)
+            self.assertEqual(1, job['retries_remaining'], details)
+        finally:
+            util.kill_jobs(self.cook_url, [job_uuid])
+
+    def test_change_failed_retries(self):
+        job_specs = util.minimal_jobs(2, max_retries=1, command='sleep 60')
+        try:
+            jobs, resp = util.submit_jobs(self.cook_url, job_specs)
+            self.assertEqual(resp.status_code, 201)
+            # wait for first job to start running, and kill it
+            job_uuid = jobs[0]
+            util.wait_for_job(self.cook_url, job_uuid, 'running')
+            util.kill_jobs(self.cook_url, [job_uuid])
+
+            def instance_query():
+                return util.query_jobs(self.cook_url, True, job=[job_uuid])
+
+            # Wait for the job (and its instances) to die
+            util.wait_until(instance_query, util.all_instances_killed)
+            job = util.load_job(self.cook_url, job_uuid)
+            self.assertEqual('failed', job['state'])
+            # retry both jobs, but with the failed_only=true flag
+            resp = util.retry_jobs(self.cook_url, retries=4, failed_only=True, jobs=jobs)
+            self.assertEqual(201, resp.status_code, resp.text)
+            jobs = util.query_jobs(self.cook_url, True, job=jobs).json()
+            # We expect both jobs to be running now.
+            # The first job (which we killed and retried) should have 3 retries remaining
+            # (the attempt before resetting the total retries count is still included).
+            job_details = f"Job details: {json.dumps(jobs[0], sort_keys=True)}"
+            self.assertIn(jobs[0]['status'], ['waiting', 'running'], job_details)
+            self.assertEqual(3, jobs[0]['retries_remaining'], job_details)
+            # The second job (which started with the default 1 retries)
+            # should have 1 remaining since the failed_only flag was set.
+            job_details = f"Job details: {json.dumps(jobs[1], sort_keys=True)}"
+            self.assertIn(jobs[1]['status'], ['waiting', 'running'], job_details)
+            self.assertEqual(1, jobs[1]['retries_remaining'], job_details)
+        finally:
+            util.kill_jobs(self.cook_url, job_specs)
 
     def test_cancel_instance(self):
         job_uuid, _ = util.submit_job(self.cook_url, command='sleep 10', max_retries=2)
@@ -636,7 +695,7 @@ class CookTest(unittest.TestCase):
         util.wait_for_job(self.cook_url, jobs[1], 'completed')
 
     def test_explicit_group(self):
-        group_spec = self.minimal_group()
+        group_spec = util.minimal_group()
         group_uuid = group_spec['uuid']
         job_spec = {'group': group_uuid}
         jobs, resp = util.submit_jobs(self.cook_url, job_spec, 2, groups=[group_spec])
@@ -658,7 +717,7 @@ class CookTest(unittest.TestCase):
             }
         }
         slow_job_wait_seconds = 1200
-        group_spec = self.minimal_group(straggler_handling=straggler_handling)
+        group_spec = util.minimal_group(straggler_handling=straggler_handling)
         job_fast = util.minimal_job(group=group_spec["uuid"])
         job_slow = util.minimal_job(group=group_spec["uuid"],
                                     command='sleep %d' % slow_job_wait_seconds)
@@ -859,7 +918,7 @@ class CookTest(unittest.TestCase):
     def test_group_kill_simple(self):
         # Create and submit jobs in group
         slow_job_wait_seconds = 1200
-        group_spec = self.minimal_group()
+        group_spec = util.minimal_group()
         group_uuid = group_spec['uuid']
         try:
             job_fast = util.minimal_job(group=group_uuid, priority=99)
@@ -896,7 +955,7 @@ class CookTest(unittest.TestCase):
     def test_group_kill_multi(self):
         # Create and submit jobs in group
         slow_job_wait_seconds = 1200
-        group_spec = self.minimal_group()
+        group_spec = util.minimal_group()
         group_uuid = group_spec['uuid']
         job_spec = {'group': group_uuid, 'command': f'sleep {slow_job_wait_seconds}'}
         try:
@@ -931,59 +990,30 @@ class CookTest(unittest.TestCase):
             util.kill_groups(self.cook_url, [group_uuid])
 
     def test_group_change_killed_retries(self):
-        group_spec = self.minimal_group()
-        group_uuid = group_spec['uuid']
-        job_spec = {'group': group_uuid, 'command': f'sleep 1'}
-        try:
-            jobs, resp = util.submit_jobs(self.cook_url, job_spec, 10, groups=[group_spec])
-            self.assertEqual(resp.status_code, 201)
+        jobs = util.group_submit_kill_retry(self.cook_url, retry_failed_jobs_only=False)
+        # ensure none of the jobs are still in a failed state
+        for job in jobs:
+            self.assertNotEqual('failed', job['state'], f'Job details: {json.dumps(job, sort_keys=True)}')
 
-            def group_query():
-                return util.group_detail_query(self.cook_url, group_uuid)
-
-            # wait for some job to start
-            util.wait_until(group_query, util.group_some_job_started)
-            # kill all jobs in the group (and wait for the kill to complete)
-            self.logger.info(f'Killing all jobs in group {group_uuid}.')
-            util.kill_groups(self.cook_url, [group_uuid])
-
-            def jobs_query():
-                return util.query_jobs(self.cook_url, True, job=jobs)
-
-            util.wait_until(jobs_query, util.all_instances_done)
-            # retry all jobs in the group
-            util.retry_jobs(self.cook_url, retries=2, groups=[group_uuid])
-            # wait for some job to start
-            util.wait_until(group_query, util.group_some_job_started)
-            # ensure none of the jobs are still in a failed state
-            job_data = util.query_jobs(self.cook_url, job=jobs)
-            self.assertEqual(200, job_data.status_code)
-            for job in job_data.json():
-                job_details = f'Job details: {json.dumps(job, sort_keys=True)}'
-                self.assertNotEqual('failed', job['state'], job_details)
-        finally:
-            # ensure that we don't leave a bunch of jobs running/waiting
-            util.kill_groups(self.cook_url, [group_uuid])
+    def test_group_change_killed_retries_failed_only(self):
+        jobs = util.group_submit_kill_retry(self.cook_url, retry_failed_jobs_only=True)
+        # ensure none of the jobs are still in a failed state
+        for job in jobs:
+            self.assertNotEqual('failed', job['state'], f'Job details: {json.dumps(job, sort_keys=True)}')
 
     def test_group_change_retries(self):
-        group_spec = self.minimal_group()
+        group_spec = util.minimal_group()
         group_uuid = group_spec['uuid']
-        job_spec = {'group': group_uuid, 'command': f'sleep 1'}
+        job_spec = {'group': group_uuid, 'command': 'sleep 1'}
+
+        def group_query():
+            return util.group_detail_query(self.cook_url, group_uuid)
+
         try:
             jobs, resp = util.submit_jobs(self.cook_url, job_spec, 10, groups=[group_spec])
             self.assertEqual(resp.status_code, 201)
-
-            def group_query():
-                return util.group_detail_query(self.cook_url, group_uuid)
-
             # wait for some job to start
             util.wait_until(group_query, util.group_some_job_started)
-            # wait for at least one job in the group to complete
-            self.logger.info(f'Waiting for some job in group {group_uuid} to complete.')
-
-            def group_query():
-                return util.group_detail_query(self.cook_url, group_uuid)
-
             # When this wait condition succeeds, we expect at least one job to be completed,
             # a couple of jobs to be running (sleeping for 1 second should be long enough
             # to dominate any lag in the test code), and some still waiting.
@@ -994,7 +1024,7 @@ class CookTest(unittest.TestCase):
             util.wait_until(group_query, util.group_some_job_done)
             job_data = util.query_jobs(self.cook_url, job=jobs).json()
             # retry all jobs in the group
-            util.retry_jobs(self.cook_url, retries=12, groups=[group_uuid])
+            util.retry_jobs(self.cook_url, retries=12, groups=[group_uuid], failed_only=False)
             # wait for the previously-completed jobs to restart
             prev_completed_jobs = [j for j in job_data if j['status'] == 'completed']
             assert len(prev_completed_jobs) >= 1
@@ -1024,6 +1054,33 @@ class CookTest(unittest.TestCase):
         finally:
             # ensure that we don't leave a bunch of jobs running/waiting
             util.kill_groups(self.cook_url, [group_uuid])
+
+    def test_group_failed_only_change_retries_all_active(self):
+        statuses = ['running', 'waiting']
+        jobs = util.group_submit_retry(self.cook_url, command='sleep 10', predicate_statuses=statuses)
+        for job in jobs:
+            job_details = f'Job details: {json.dumps(job, sort_keys=True)}'
+            self.assertIn(job['status'], statuses, job_details)
+            self.assertEqual(job['retries_remaining'], 1, job_details)
+            self.assertLessEqual(len(job['instances']), 1, job_details)
+
+    def test_group_failed_only_change_retries_all_success(self):
+        statuses = ['completed']
+        jobs = util.group_submit_retry(self.cook_url, command='exit 0', predicate_statuses=statuses)
+        for job in jobs:
+            job_details = f'Job details: {json.dumps(job, sort_keys=True)}'
+            self.assertIn(job['status'], statuses, job_details)
+            self.assertEqual(job['retries_remaining'], 0, job_details)
+            self.assertEqual(len(job['instances']), 1, job_details)
+
+    def test_group_failed_only_change_retries_all_failed(self):
+        statuses = ['completed']
+        jobs = util.group_submit_retry(self.cook_url, command='exit 1', predicate_statuses=statuses)
+        for job in jobs:
+            job_details = f'Job details: {json.dumps(job, sort_keys=True)}'
+            self.assertIn(job['status'], statuses, job_details)
+            self.assertEqual(job['retries_remaining'], 0, job_details)
+            self.assertEqual(len(job['instances']), 2, job_details)
 
     def test_400_on_group_query_without_uuid(self):
         resp = util.query_groups(self.cook_url)
@@ -1230,7 +1287,7 @@ class CookTest(unittest.TestCase):
                                  unique_reason['data']['reasons'][0]['reason'],
                                  unique_reason)
         finally:
-            util.kill_jobs(self.cook_url, [uuids])
+            util.kill_jobs(self.cook_url, uuids)
 
     def test_balanced_host_constraint_cannot_place(self):
         state = util.get_mesos_state(self.mesos_url)
@@ -1278,7 +1335,7 @@ class CookTest(unittest.TestCase):
                                 if r['reason'] == 'balanced-host-placement-group-constraint']
             self.assertEqual(1, len(balanced_reasons), balanced_reasons)
         finally:
-            util.kill_jobs(self.cook_url, [uuids])
+            util.kill_jobs(self.cook_url, uuids)
 
     def test_balanced_host_constraint(self):
         state = util.get_mesos_state(self.mesos_url)
@@ -1303,7 +1360,7 @@ class CookTest(unittest.TestCase):
             self.assertGreaterEqual(len(host_count), minimum_hosts, hosts)
             self.assertLessEqual(max(host_count.values()), max_jobs_per_host, host_count)
         finally:
-            util.kill_jobs(self.cook_url, [uuids])
+            util.kill_jobs(self.cook_url, uuids)
 
     def test_attribute_equals_hostname_constraint(self):
         slaves = util.get_mesos_state(self.mesos_url)['slaves']
@@ -1349,4 +1406,4 @@ class CookTest(unittest.TestCase):
             self.assertEqual(reason['reason'],
                              "Host had a different attribute than other jobs in the group.")
         finally:
-            util.kill_jobs(self.cook_url, [uuids])
+            util.kill_jobs(self.cook_url, uuids)
