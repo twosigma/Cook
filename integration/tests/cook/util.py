@@ -10,6 +10,7 @@ from retrying import retry
 
 logger = logging.getLogger(__name__)
 session = importlib.import_module(os.getenv('COOK_SESSION_MODULE', 'requests')).Session()
+session.headers['User-Agent'] = f"Cook-Scheduler-Integration-Tests ({session.headers['User-Agent']})"
 
 
 def get_in(dct, *keys):
@@ -448,17 +449,21 @@ def get_user(cook_url, job_uuid):
     return load_job(cook_url, job_uuid)['user']
 
 
-def unscheduled_jobs(cook_url, *job_uuids):
+def unscheduled_jobs(cook_url, *job_uuids, partial=None):
     """Retrieves the unscheduled_jobs reasons for the given job_uuid"""
-    query_params = urlencode([('job', u) for u in job_uuids])
-    return session.get(f'{cook_url}/unscheduled_jobs?{query_params}').json()
+    query_params = [('job', u) for u in job_uuids]
+    if partial is not None:
+        query_params.append(('partial', partial))
+    resp = session.get(f'{cook_url}/unscheduled_jobs?{urlencode(query_params)}')
+    job_reasons = resp.json() if resp.status_code == 200 else []
+    return job_reasons, resp
 
 
 def wait_for_instance(cook_url, job_uuid):
     """Waits for the job with the given job_uuid to have a single instance, and returns the instance uuid"""
     job = wait_until(lambda: load_job(cook_url, job_uuid), lambda j: len(j['instances']) == 1)
-    instance_uuid = job['instances'][0]['task_id']
-    return instance_uuid
+    instance = job['instances'][0]
+    return instance
 
 
 def sleep_for_publish_interval(cook_url):
@@ -467,3 +472,15 @@ def sleep_for_publish_interval(cook_url):
     progress_publish_interval_ms = get_in(cook_settings, 'progress', 'publish-interval-ms')
     wait_publish_interval_ms = min(3 * progress_publish_interval_ms, 20000)
     time.sleep(wait_publish_interval_ms / 1000.0)
+
+def progress_line(cook_url, percent, message):
+    """Simple text replacement of regex string using expected patterns of (\d+), (?: )? and (.*)."""
+    cook_settings = settings(cook_url)
+    regex_string = get_in(cook_settings, 'executor', 'default-progress-regex-string')
+    if not regex_string:
+        regex_string = 'progress: (\d+) (.*)'
+    if not '(\d+)' in regex_string:
+        raise Exception('{} not present in {} regex string'.format('(\d+)', regex_string))
+    if not '(.*)' in regex_string:
+        raise Exception('{} not present in {} regex string'.format('(.*)', regex_string))
+    return regex_string.replace('(\d+)', str(percent)).replace('(.*)', str(message)).replace('(?: )?', ' ')
