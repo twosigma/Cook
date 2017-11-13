@@ -265,12 +265,7 @@ class CookTest(unittest.TestCase):
             self.assertEqual(80, job['instances'][0]['progress'], message)
             self.assertEqual('80%', job['instances'][0]['progress_message'], message)
 
-    @attr('explicit')
     def test_max_runtime_exceeded(self):
-        """
-        Marked as explicit due to:
-        https://github.com/twosigma/Cook/issues/299
-        """
         job_executor_type = util.get_job_executor_type(self.cook_url)
         settings_timeout_interval_minutes = util.get_in(util.settings(self.cook_url), 'task-constraints',
                                                         'timeout-interval-minutes')
