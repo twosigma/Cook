@@ -265,8 +265,8 @@ class CookCliTest(unittest.TestCase):
 
     def test_show_requires_at_least_one_uuid(self):
         cp = cli.show([], self.cook_url)
-        self.assertEqual(2, cp.returncode, cp.stderr)
-        self.assertIn('the following arguments are required: uuid', cli.decode(cp.stderr))
+        self.assertEqual(1, cp.returncode, cp.stderr)
+        self.assertIn('You must specify at least one UUID', cli.decode(cp.stderr))
 
     def test_assume_http_if_elided(self):
         url = urlparse(self.cook_url)
@@ -406,7 +406,7 @@ class CookCliTest(unittest.TestCase):
     def test_list_no_matching_jobs(self):
         cp = cli.list_jobs(self.cook_url, '--name %s' % uuid.uuid4())
         self.assertEqual(0, cp.returncode, cp.stderr)
-        self.assertEqual('No jobs found in %s.' % self.cook_url, cli.stdout(cp))
+        self.assertEqual('', cli.stdout(cp))
 
     def list_jobs(self, name, user, *states):
         """Invokes the list subcommand with the given name, user, and state filters"""

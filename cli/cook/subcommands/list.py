@@ -17,10 +17,16 @@ DEFAULT_LOOKBACK_HOURS = 6
 DEFAULT_LIMIT = 150
 
 
+def piping_stdout():
+    """Returns true if stdout is being piped to another process"""
+    return not sys.stdout.isatty()
+
+
 def print_no_data(clusters):
     """Prints a message indicating that no data was found in the given clusters"""
-    clusters_text = ' / '.join([c['name'] for c in clusters])
-    print(colors.failed('No jobs found in %s.' % clusters_text))
+    if not piping_stdout():
+        clusters_text = ' / '.join([c['name'] for c in clusters])
+        print(colors.failed('No jobs found in %s.' % clusters_text))
 
 
 def list_jobs_on_cluster(cluster, state, user, start_ms, end_ms, name, limit):
@@ -54,10 +60,13 @@ def format_job_command(job):
 
 def show_data(cluster_job_pairs):
     """
-    Given a collection of (cluster, job) pairs,
-    formats a table showing the most relevant job fields
+    Given a collection of (cluster, job) pairs, formats a table showing the most relevant job
+    fields. If the output is being piped, JSON is printed instead of a formatted table.
     """
-    if sys.stdout.isatty():
+    if piping_stdout():
+        jobs = [{'cluster': c, 'type': 'job', 'uuid': j['uuid']} for c, j in cluster_job_pairs]
+        print(json.dumps(jobs))
+    else:
         rows = [collections.OrderedDict([("Cluster", cluster),
                                          ("UUID", job['uuid']),
                                          ("Name", job['name']),
@@ -71,9 +80,6 @@ def show_data(cluster_job_pairs):
                 for (cluster, job) in cluster_job_pairs]
         job_table = tabulate(rows, headers='keys', tablefmt='plain')
         print_info(job_table)
-    else:
-        jobs = [{'cluster': c, 'type': 'job', 'uuid': j['uuid']} for c, j in cluster_job_pairs]
-        print(json.dumps(jobs))
 
 
 def date_time_string_to_ms_since_epoch(date_time_string):
