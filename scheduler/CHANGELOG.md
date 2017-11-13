@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.8.2] - 2017-11-13
+### Changed
+- Retries sandbox syncing of hosts when cache entries expire, from @shamsimam
+- Allow partial results from /unscheduled_jobs, from @dposada
+- Improve performance by defering calculation of group components, from @pschorf
+- Support millisecond time resolution for lingering tasks, from @DaoWen
+
 ## [1.8.1] - 2017-11-08
 ### Added
 - Added COOK_JOB_UUID and COOK_JOB_GROUP_UUID to the job environment, from @shamsimam
