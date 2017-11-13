@@ -1491,12 +1491,13 @@
      :malformed? (partial validate-retries conn task-constraints)
      :exists? (partial check-jobs-and-groups-exist conn)
      :put! (partial retry-jobs! conn)
-     ;; :put-enacted? decides whether to respond with Accepted (false) or Created (true).
-     :put-enacted? (comp seq ::jobs)
-     ;; :handle-created and :handle-accepted both return the number of jobs to be retried,
-     ;; but :handle-accepted is only triggered when there are no failed jobs to retry.
-     :handle-accepted (constantly 0)
-     :handle-created (partial display-retries conn)}))
+     ;; :new? decides whether to respond with Created (true) or OK (false).
+     :new? (comp seq ::jobs)
+     :respond-with-entity? (constantly true)
+     ;; :handle-ok and :handle-accepted both return the number of jobs to be retried,
+     ;; but :handle-ok is only triggered when there are no failed jobs to retry.
+     :handle-created (partial display-retries conn)
+     :handle-ok (constantly 0)}))
 
 ;; /share and /quota
 (def UserParam {:user s/Str})
@@ -1965,10 +1966,10 @@
         {:summary "Change a job's retry count"
          :parameters {:body-params UpdateRetriesRequest}
          :handler (put-retries-handler conn is-authorized-fn task-constraints)
-         :responses {201 {:schema PosInt
-                          :description "The number of retries for the jobs."}
-                     202 {:schema ZeroInt
+         :responses {200 {:schema ZeroInt
                           :description "No failed jobs provided to retry."}
+                     201 {:schema PosInt
+                          :description "The number of retries for the jobs."}
                      400 {:description "Invalid request format."}
                      401 {:description "Request user not authorized to access those jobs."}
                      404 {:description "Unrecognized job UUID."}}}
