@@ -497,11 +497,14 @@ def progress_line(cook_url, percent, message):
     if not regex_string:
         regex_string = 'progress: (\d+) (.*)'
     if not '(\d+)' in regex_string:
-        raise Exception('{} not present in {} regex string'.format('(\d+)', regex_string))
+        raise Exception(f'(\d+) not present in {regex_string} regex string')
     if not '(.*)' in regex_string:
-        raise Exception('{} not present in {} regex string'.format('(.*)', regex_string))
-    simplified_regex_string = regex_string.replace('(?: )?', ' ').replace('\\', '')
-    return simplified_regex_string.replace('(\d+)', str(percent)).replace('(.*)', str(message))
+        raise Exception(f'(.*) not present in {regex_string} regex string')
+    return (regex_string
+            .replace('(\d+)', str(percent))
+            .replace('(.*)', str(message))
+            .replace('(?: )?', ' ')
+            .replace('\\', ''))
 
 
 def group_submit_kill_retry(cook_url, retry_failed_jobs_only):
