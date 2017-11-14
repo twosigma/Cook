@@ -289,9 +289,15 @@ class CookTest(unittest.TestCase):
             instance = job['instances'][0]
             # did the job fail as expected?
             self.assertEqual('failed', instance['status'], job_details)
-            # We currently have two possible reason codes that we can observe
+            # We currently have three possible reason codes that we can observe
             # due to a race in the scheduler. See issue #515 on GitHub for more details.
-            allowed_reasons = [reasons.MAX_RUNTIME_EXCEEDED, reasons.CMD_NON_ZERO_EXIT]
+            allowed_reasons = [
+                # observed status update from when Cook killed the job
+                reasons.MAX_RUNTIME_EXCEEDED,
+                # observed status update received when exit code appears
+                reasons.CMD_NON_ZERO_EXIT,
+                # cook killed the job during setup, so the executor had an error
+                reasons.EXECUTOR_UNREGISTERED]
             self.assertIn(instance['reason_code'], allowed_reasons, job_details)
             # was the actual running time consistent with running over time and being killed?
             actual_running_time_ms = instance['end_time'] - instance['start_time']
