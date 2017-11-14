@@ -732,7 +732,7 @@
 (defn retrieve-url-path
   "Constructs a URL to query the sandbox directory of the task.
    Uses the provided sandbox-directory to determine the sandbox directory.
-   Hardcodes fun stuff like the port we run the agent on.
+   Hard codes fun stuff like the port we run the agent on.
    Users will need to add the file path & offset to their query.
    Refer to the 'Using the output_url' section in docs/scheduler-rest-api.adoc for further details."
   [agent-hostname task-id sandbox-directory]
@@ -746,11 +746,12 @@
 
 (defn fetch-instance-map
   "Converts the instance entity to a map representing the instance fields."
-  [db instance]
+  [db instance hostname->task-id->sandbox-directory-fn]
   (let [hostname (:instance/hostname instance)
         task-id (:instance/task-id instance)
         executor (:instance/executor instance)
-        sandbox-directory (:instance/sandbox-directory instance)
+        sandbox-directory (or (:instance/sandbox-directory instance)
+                              (hostname->task-id->sandbox-directory-fn hostname task-id))
         url-path (retrieve-url-path hostname task-id sandbox-directory)
         start (:instance/start-time instance)
         mesos-start (:instance/mesos-start-time instance)
@@ -782,7 +783,7 @@
             sandbox-directory (assoc :sandbox_directory sandbox-directory))))
 
 (defn fetch-job-map
-  [db framework-id job-uuid]
+  [db framework-id hostname->task-id->sandbox-directory-fn job-uuid]
   (let [job (d/entity db [:job/uuid job-uuid])
         resources (util/job-ent->resources job)
         groups (:group/_job job)
@@ -798,7 +799,7 @@
                          (map (fn [{:keys [attribute operator pattern]}]
                                 (->> [attribute (str/upper-case (name operator)) pattern]
                                      (map str)))))
-        instances (map #(fetch-instance-map db %1) (:job/instance job))
+        instances (map #(fetch-instance-map db %1 hostname->task-id->sandbox-directory-fn) (:job/instance job))
         submit-time (when (:job/submit-time job) ; due to a bug, submit time may not exist for some jobs
                 (.getTime (:job/submit-time job)))
         job-map {:command (:job/command job)
@@ -960,24 +961,24 @@
                            (str/join \space (remove authorized? uuids)))}])))
 
 (defn render-jobs-for-response
-  [conn framework-id ctx]
-  (mapv (partial fetch-job-map (db conn) framework-id) (::jobs ctx)))
+  [conn framework-id hostname->task-id->sandbox-directory-fn ctx]
+  (mapv (partial fetch-job-map (db conn) framework-id hostname->task-id->sandbox-directory-fn) (::jobs ctx)))
 
 
 ;;; On GET; use repeated job argument
 (defn read-jobs-handler
-  [conn framework-id is-authorized-fn]
+  [conn framework-id is-authorized-fn hostname->task-id->sandbox-directory-fn]
   (base-cook-handler
     {:allowed-methods [:get]
      :malformed? check-job-params-present
      :allowed? (partial job-request-allowed? conn is-authorized-fn)
      :exists? (partial retrieve-jobs conn)
-     :handle-ok (fn [ctx] (render-jobs-for-response conn framework-id ctx))}))
+     :handle-ok (fn [ctx] (render-jobs-for-response conn framework-id hostname->task-id->sandbox-directory-fn ctx))}))
 
 
 ;;; On DELETE; use repeated job argument
 (defn destroy-jobs-handler
-  [conn is-authorized-fn]
+  [conn framework-id is-authorized-fn hostname->task-id->sandbox-directory-fn]
   (base-cook-handler
     {:allowed-methods [:delete]
      :malformed? check-job-params-present
@@ -1686,7 +1687,7 @@
     nil))
 
 (defn list-resource
-  [db framework-id is-authorized-fn]
+  [db framework-id is-authorized-fn hostname->task-id->sandbox-directory-fn]
   (liberator/resource
     :available-media-types ["application/json"]
     :allowed-methods [:get]
@@ -1771,7 +1772,7 @@
                         job-uuids (if (nil? limit)
                                     job-uuids
                                     (take limit job-uuids))
-                        jobs (mapv (partial fetch-job-map db framework-id) job-uuids)]
+                        jobs (mapv (partial fetch-job-map db framework-id hostname->task-id->sandbox-directory-fn) job-uuids)]
                     (histograms/update! list-request-param-time-range-ms (- end-ms start-ms'))
                     (histograms/update! list-request-param-limit limit)
                     (histograms/update! list-response-job-count (count jobs))
@@ -1879,7 +1880,8 @@
     gpu-enabled? :mesos-gpu-enabled
     :as settings}
    leader-selector
-   mesos-leadership-atom]
+   mesos-leadership-atom
+   hostname->task-id->sandbox-directory-fn]
   (->
     (routes
       (c-api/api
@@ -1900,7 +1902,7 @@
                                     :description "The jobs and their instances were returned."}
                                400 {:description "Non-UUID values were passed as jobs."}
                                403 {:description "The supplied UUIDs don't correspond to valid jobs."}}
-                   :handler (read-jobs-handler conn framework-id is-authorized-fn)}
+                   :handler (read-jobs-handler conn framework-id is-authorized-fn hostname->task-id->sandbox-directory-fn)}
              :post {:summary "Schedules one or more jobs."
                     :parameters {:body-params RawSchedulerRequest}
                     :responses {201 {:description "The jobs were successfully scheduled."}
@@ -1912,7 +1914,7 @@
                                   400 {:description "Non-UUID values were passed as jobs."}
                                   403 {:description "The supplied UUIDs don't correspond to valid jobs."}}
                       :parameters {:query-params JobOrInstanceIds}
-                      :handler (destroy-jobs-handler conn is-authorized-fn)}}))
+                      :handler (destroy-jobs-handler conn framework-id is-authorized-fn hostname->task-id->sandbox-directory-fn)}}))
 
         (c-api/context
           "/share" []
@@ -2033,7 +2035,7 @@
       (ANY "/running" []
         (running-jobs conn is-authorized-fn))
       (ANY "/list" []
-        (list-resource (db conn) framework-id is-authorized-fn)))
+        (list-resource (db conn) framework-id is-authorized-fn hostname->task-id->sandbox-directory-fn)))
     (format-params/wrap-restful-params {:formats [:json-kw]
                                         :handle-error c-mw/handle-req-error})
     (streaming-json-middleware)))

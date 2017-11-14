@@ -66,14 +66,16 @@
     (resolve var-sym)))
 
 (def raw-scheduler-routes
-  {:scheduler (fnk [mesos mesos-datomic mesos-leadership-atom mesos-pending-jobs-atom framework-id settings]
+  {:scheduler (fnk [mesos mesos-datomic mesos-leadership-atom mesos-pending-jobs-atom framework-id
+                    sandbox-syncer-state settings]
                 ((lazy-load-var 'cook.mesos.api/main-handler)
                   mesos-datomic
                   framework-id
                   (fn [] @mesos-pending-jobs-atom)
                   settings
                   (get-in mesos [:mesos-scheduler :leader-selector])
-                  mesos-leadership-atom))
+                  mesos-leadership-atom
+                  (:hostname->task-id->sandbox-directory-fn sandbox-syncer-state)))
    :view (fnk [scheduler]
            scheduler)})
 
