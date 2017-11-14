@@ -66,14 +66,16 @@
     (resolve var-sym)))
 
 (def raw-scheduler-routes
-  {:scheduler (fnk [mesos mesos-datomic mesos-leadership-atom mesos-pending-jobs-atom framework-id settings]
+  {:scheduler (fnk [mesos mesos-datomic mesos-leadership-atom mesos-pending-jobs-atom framework-id
+                    sandbox-syncer-state settings]
                 ((lazy-load-var 'cook.mesos.api/main-handler)
                   mesos-datomic
                   framework-id
                   (fn [] @mesos-pending-jobs-atom)
                   settings
                   (get-in mesos [:mesos-scheduler :leader-selector])
-                  mesos-leadership-atom))
+                  mesos-leadership-atom
+                  (:hostname->task-id->sandbox-directory-fn sandbox-syncer-state)))
    :view (fnk [scheduler]
            scheduler)})
 
@@ -280,11 +282,11 @@
                                     (cache/lru-cache-factory :threshold max-size)
                                     (cache/ttl-cache-factory :ttl ttl-ms)
                                     atom))
-     :sandbox-syncer-state (fnk [[:settings [:sandbox-syncer max-consecutive-sync-failure publish-batch-size publish-interval-ms sync-interval-ms]]
+     :sandbox-syncer-state (fnk [[:settings [:sandbox-syncer publish-batch-size publish-interval-ms]]
                                  framework-id mesos-agent-query-cache mesos-datomic]
                              (let [prepare-sandbox-publisher (lazy-load-var 'cook.mesos.sandbox/prepare-sandbox-publisher)]
                                (prepare-sandbox-publisher framework-id mesos-datomic publish-batch-size publish-interval-ms
-                                                          sync-interval-ms max-consecutive-sync-failure mesos-agent-query-cache)))
+                                                          mesos-agent-query-cache)))
      :mesos-leadership-atom (fnk [] (atom false))
      :mesos-pending-jobs-atom (fnk [] (atom {}))
      :mesos-offer-cache (fnk [[:settings [:offer-cache max-size ttl-ms]]]
@@ -344,11 +346,8 @@
                             agent-query-cache))
      :sandbox-syncer (fnk [[:config {sandbox-syncer nil}]]
                        (merge
-                         {:max-consecutive-sync-failure 15
-                          :publish-batch-size 100
-                          :publish-interval-ms 2500
-                          ;; The default should ideally be lower than the agent-query-cache ttl-ms
-                          :sync-interval-ms (* 15 1000)}
+                         {:publish-batch-size 100
+                          :publish-interval-ms 2500}
                          sandbox-syncer))
      :server-port (fnk [[:config port]]
                     port)
