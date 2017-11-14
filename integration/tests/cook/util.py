@@ -373,9 +373,9 @@ def wait_for_sandbox_directory(cook_url, job_id):
         else:
             inst = job['instances'][0]
             if 'sandbox_directory' not in inst:
-                logger.info(f"Job {job_id} instance {inst['task_id']} has no exit code.")
+                logger.info(f"Job {job_id} instance {inst['task_id']} has no sandbox directory.")
             else:
-                logger.info(f"Job {job_id} instance {inst['task_id']} has exit code {inst['sandbox_directory']}.")
+                logger.info(f"Job {job_id} instance {inst['task_id']} has sandbox directory {inst['sandbox_directory']}.")
                 return True
 
     return wait_until(query, predicate, max_wait_ms=max_delay_ms, wait_interval_ms=250)
@@ -497,10 +497,14 @@ def progress_line(cook_url, percent, message):
     if not regex_string:
         regex_string = 'progress: (\d+) (.*)'
     if not '(\d+)' in regex_string:
-        raise Exception('{} not present in {} regex string'.format('(\d+)', regex_string))
+        raise Exception(f'(\d+) not present in {regex_string} regex string')
     if not '(.*)' in regex_string:
-        raise Exception('{} not present in {} regex string'.format('(.*)', regex_string))
-    return regex_string.replace('(\d+)', str(percent)).replace('(.*)', str(message)).replace('(?: )?', ' ')
+        raise Exception(f'(.*) not present in {regex_string} regex string')
+    return (regex_string
+            .replace('(\d+)', str(percent))
+            .replace('(.*)', str(message))
+            .replace('(?: )?', ' ')
+            .replace('\\', ''))
 
 
 def group_submit_kill_retry(cook_url, retry_failed_jobs_only):

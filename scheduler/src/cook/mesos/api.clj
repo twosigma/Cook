@@ -20,23 +20,23 @@
             [clojure.set :as set]
             [clojure.string :as str]
             [clojure.tools.logging :as log]
-            [clojure.walk :as walk :refer (keywordize-keys)]
+            [clojure.walk :as walk :refer [keywordize-keys]]
             [compojure.api.middleware :as c-mw]
             [compojure.api.sweet :as c-api]
-            [compojure.core :refer (ANY GET POST routes)]
+            [compojure.core :refer [ANY GET POST routes]]
             [cook.mesos.quota :as quota]
             [cook.mesos.reason :as reason]
-            [cook.mesos.schema :refer (constraint-operators host-placement-types straggler-handling-types)]
+            [cook.mesos.schema :refer [constraint-operators host-placement-types straggler-handling-types]]
             [cook.mesos.share :as share]
             [cook.mesos.unscheduled :as unscheduled]
             [cook.mesos.util :as util]
             [cook.mesos]
-            [datomic.api :as d :refer (q)]
+            [datomic.api :as d :refer [q]]
             [liberator.core :as liberator]
             [liberator.util :refer [combine]]
             [me.raynes.conch :as sh]
             [mesomatic.scheduler]
-            [metatransaction.core :refer (db)]
+            [metatransaction.core :refer [db]]
             [metrics.histograms :as histograms]
             [metrics.timers :as timers]
             [plumbing.core :refer [map-from-vals map-keys map-vals mapply]]
@@ -1882,160 +1882,160 @@
    leader-selector
    mesos-leadership-atom]
   (->
-   (routes
-    (c-api/api
-     {:swagger {:ui "/swagger-ui"
-                :spec "/swagger-docs"
-                :data {:info {:title "Cook API"
-                              :description "How to Cook things"}
-                       :tags [{:name "api", :description "some apis"}]}}
-      :format nil
-      :coercion cook-coercer}
+    (routes
+      (c-api/api
+        {:swagger {:ui "/swagger-ui"
+                   :spec "/swagger-docs"
+                   :data {:info {:title "Cook API"
+                                 :description "How to Cook things"}
+                          :tags [{:name "api", :description "some apis"}]}}
+         :format nil
+         :coercion cook-coercer}
 
-     (c-api/context
-      "/rawscheduler" []
-      (c-api/resource
-       {:get {:summary "Returns info about a set of Jobs"
-              :parameters {:query-params QueryJobsParams}
-              :responses {200 {:schema [JobResponse]
-                               :description "The jobs and their instances were returned."}
-                          400 {:description "Non-UUID values were passed as jobs."}
-                          403 {:description "The supplied UUIDs don't correspond to valid jobs."}}
-              :handler (read-jobs-handler conn framework-id is-authorized-fn)}
-        :post {:summary "Schedules one or more jobs."
-               :parameters {:body-params RawSchedulerRequest}
-               :responses {201 {:description "The jobs were successfully scheduled."}
-                           400 {:description "One or more of the jobs were incorrectly specified."}
-                           409 {:description "One or more of the jobs UUIDs are already in use."}}
-               :handler (create-jobs-handler conn task-constraints gpu-enabled? is-authorized-fn)}
-        :delete {:summary "Cancels jobs, halting execution when possible."
-                 :responses {204 {:description "The jobs have been marked for termination."}
-                             400 {:description "Non-UUID values were passed as jobs."}
-                             403 {:description "The supplied UUIDs don't correspond to valid jobs."}}
-                 :parameters {:query-params JobOrInstanceIds}
-                 :handler (destroy-jobs-handler conn is-authorized-fn)}}))
+        (c-api/context
+          "/rawscheduler" []
+          (c-api/resource
+            {:get {:summary "Returns info about a set of Jobs"
+                   :parameters {:query-params QueryJobsParams}
+                   :responses {200 {:schema [JobResponse]
+                                    :description "The jobs and their instances were returned."}
+                               400 {:description "Non-UUID values were passed as jobs."}
+                               403 {:description "The supplied UUIDs don't correspond to valid jobs."}}
+                   :handler (read-jobs-handler conn framework-id is-authorized-fn)}
+             :post {:summary "Schedules one or more jobs."
+                    :parameters {:body-params RawSchedulerRequest}
+                    :responses {201 {:description "The jobs were successfully scheduled."}
+                                400 {:description "One or more of the jobs were incorrectly specified."}
+                                409 {:description "One or more of the jobs UUIDs are already in use."}}
+                    :handler (create-jobs-handler conn task-constraints gpu-enabled? is-authorized-fn)}
+             :delete {:summary "Cancels jobs, halting execution when possible."
+                      :responses {204 {:description "The jobs have been marked for termination."}
+                                  400 {:description "Non-UUID values were passed as jobs."}
+                                  403 {:description "The supplied UUIDs don't correspond to valid jobs."}}
+                      :parameters {:query-params JobOrInstanceIds}
+                      :handler (destroy-jobs-handler conn is-authorized-fn)}}))
 
-     (c-api/context
-      "/share" []
-      (c-api/resource
-       {:produces ["application/json"],
-        :responses {200 {:schema UserLimitsResponse
-                         :description "User's share found"}
-                    401 {:description "Not authorized to read shares."}
-                    403 {:description "Invalid request format."}}
-        :get {:summary "Read a user's share"
-              :parameters {:query-params UserParam}
-              :handler (read-limit-handler :share share/get-share conn is-authorized-fn)}
-        :post {:summary "Change a user's share"
-               :parameters (set-limit-params :share)
-               :handler (update-limit-handler :share []
-                                              share/get-share share/set-share!
-                                              conn is-authorized-fn)}
-        :delete {:summary "Reset a user's share to the default"
-                 :parameters {:query-params UserParam}
-                 :handler (destroy-limit-handler :share share/retract-share! conn is-authorized-fn)}}))
+        (c-api/context
+          "/share" []
+          (c-api/resource
+            {:produces ["application/json"],
+             :responses {200 {:schema UserLimitsResponse
+                              :description "User's share found"}
+                         401 {:description "Not authorized to read shares."}
+                         403 {:description "Invalid request format."}}
+             :get {:summary "Read a user's share"
+                   :parameters {:query-params UserParam}
+                   :handler (read-limit-handler :share share/get-share conn is-authorized-fn)}
+             :post {:summary "Change a user's share"
+                    :parameters (set-limit-params :share)
+                    :handler (update-limit-handler :share []
+                                                   share/get-share share/set-share!
+                                                   conn is-authorized-fn)}
+             :delete {:summary "Reset a user's share to the default"
+                      :parameters {:query-params UserParam}
+                      :handler (destroy-limit-handler :share share/retract-share! conn is-authorized-fn)}}))
 
-     (c-api/context
-      "/quota" []
-      (c-api/resource
-       {:produces ["application/json"],
-        :responses {200 {:schema UserLimitsResponse
-                         :description "User's quota found"}
-                    401 {:description "Not authorized to read quota."}
-                    403 {:description "Invalid request format."}}
-        :get {:summary "Read a user's quota"
-              :parameters {:query-params UserParam}
-              :handler (read-limit-handler :quota quota/get-quota conn is-authorized-fn)}
-        :post {:summary "Change a user's quota"
-               :parameters (set-limit-params :quota)
-               :handler (update-limit-handler :quota [:count]
-                                              quota/get-quota quota/set-quota!
-                                              conn is-authorized-fn)}
-        :delete {:summary "Reset a user's quota to the default"
-                 :parameters {:query-params UserParam}
-                 :handler (destroy-limit-handler :delete quota/retract-quota! conn is-authorized-fn)}}))
+        (c-api/context
+          "/quota" []
+          (c-api/resource
+            {:produces ["application/json"],
+             :responses {200 {:schema UserLimitsResponse
+                              :description "User's quota found"}
+                         401 {:description "Not authorized to read quota."}
+                         403 {:description "Invalid request format."}}
+             :get {:summary "Read a user's quota"
+                   :parameters {:query-params UserParam}
+                   :handler (read-limit-handler :quota quota/get-quota conn is-authorized-fn)}
+             :post {:summary "Change a user's quota"
+                    :parameters (set-limit-params :quota)
+                    :handler (update-limit-handler :quota [:count]
+                                                   quota/get-quota quota/set-quota!
+                                                   conn is-authorized-fn)}
+             :delete {:summary "Reset a user's quota to the default"
+                      :parameters {:query-params UserParam}
+                      :handler (destroy-limit-handler :delete quota/retract-quota! conn is-authorized-fn)}}))
 
-     (c-api/context
-      "/retry" []
-      (c-api/resource
-       {:produces ["application/json"],
-        :get {:summary "Read a job's retry count"
-              :parameters {:query-params ReadRetriesRequest}
-              :handler (read-retries-handler conn is-authorized-fn)
-              :responses {200 {:schema PosInt
-                               :description "The number of retries for the job"}
-                          400 {:description "Invalid request format."}
-                          404 {:description "The UUID doesn't correspond to a job."}}}
-        :put
-        {:summary "Change a job's retry count"
-         :parameters {:body-params UpdateRetriesRequest}
-         :handler (put-retries-handler conn is-authorized-fn task-constraints)
-         :responses {200 {:schema ZeroInt
+        (c-api/context
+          "/retry" []
+          (c-api/resource
+            {:produces ["application/json"],
+             :get {:summary "Read a job's retry count"
+                   :parameters {:query-params ReadRetriesRequest}
+                   :handler (read-retries-handler conn is-authorized-fn)
+                   :responses {200 {:schema PosInt
+                                    :description "The number of retries for the job"}
+                               400 {:description "Invalid request format."}
+                               404 {:description "The UUID doesn't correspond to a job."}}}
+             :put
+             {:summary "Change a job's retry count"
+              :parameters {:body-params UpdateRetriesRequest}
+              :handler (put-retries-handler conn is-authorized-fn task-constraints)
+              :responses {200 {:schema ZeroInt
                           :description "No failed jobs provided to retry."}
                      201 {:schema PosInt
-                          :description "The number of retries for the jobs."}
-                     400 {:description "Invalid request format."}
-                     401 {:description "Request user not authorized to access those jobs."}
-                     404 {:description "Unrecognized job UUID."}}}
-        :post
-        {:summary "Change a job's retry count (deprecated)"
-         :parameters {:body-params UpdateRetriesRequestDeprecated}
-         :handler (post-retries-handler conn is-authorized-fn task-constraints)
-         :responses {201 {:schema PosInt
-                          :description "The number of retries for the job"}
-                     400 {:description "Invalid request format or bad job UUID."}
-                     401 {:description "Request user not authorized to access that job."}}}}))
-     (c-api/context
-      "/group" []
-      (c-api/resource
-       {:get {:summary "Returns info about a set of groups"
-              :parameters {:query-params QueryGroupsParams}
-              :responses {200 {:schema [GroupResponse]
-                               :description "The groups were returned."}
+                               :description "The number of retries for the jobs."}
+                          400 {:description "Invalid request format."}
+                          401 {:description "Request user not authorized to access those jobs."}
+                          404 {:description "Unrecognized job UUID."}}}
+             :post
+             {:summary "Change a job's retry count (deprecated)"
+              :parameters {:body-params UpdateRetriesRequestDeprecated}
+              :handler (post-retries-handler conn is-authorized-fn task-constraints)
+              :responses {201 {:schema PosInt
+                               :description "The number of retries for the job"}
+                          400 {:description "Invalid request format or bad job UUID."}
+                          401 {:description "Request user not authorized to access that job."}}}}))
+        (c-api/context
+          "/group" []
+          (c-api/resource
+            {:get {:summary "Returns info about a set of groups"
+                   :parameters {:query-params QueryGroupsParams}
+                   :responses {200 {:schema [GroupResponse]
+                                    :description "The groups were returned."}
+                               400 {:description "Non-UUID values were passed."}
+                               403 {:description "The supplied UUIDs don't correspond to valid groups."}}
+                   :handler (groups-action-handler conn task-constraints is-authorized-fn)}
+             :delete
+             {:summary "Kill all jobs within a set of groups"
+              :parameters {:query-params KillGroupsParams}
+              :responses {204 {:description "The groups' jobs have been marked for termination."}
                           400 {:description "Non-UUID values were passed."}
                           403 {:description "The supplied UUIDs don't correspond to valid groups."}}
-              :handler (groups-action-handler conn task-constraints is-authorized-fn)}
-        :delete
-        {:summary "Kill all jobs within a set of groups"
-         :parameters {:query-params KillGroupsParams}
-         :responses {204 {:description "The groups' jobs have been marked for termination."}
-                     400 {:description "Non-UUID values were passed."}
-                     403 {:description "The supplied UUIDs don't correspond to valid groups."}}
-         :handler (groups-action-handler conn task-constraints is-authorized-fn)}}))
+              :handler (groups-action-handler conn task-constraints is-authorized-fn)}}))
 
-     (c-api/context
-      "/failure_reasons" []
-      (c-api/resource
-       {:get {:summary "Returns a description of all possible task failure reasons"
-              :responses {200 {:schema FailureReasonsResponse
-                               :description "The failure reasons were returned."}}
-              :handler (failure-reasons-handler conn is-authorized-fn)}}))
+        (c-api/context
+          "/failure_reasons" []
+          (c-api/resource
+            {:get {:summary "Returns a description of all possible task failure reasons"
+                   :responses {200 {:schema FailureReasonsResponse
+                                    :description "The failure reasons were returned."}}
+                   :handler (failure-reasons-handler conn is-authorized-fn)}}))
 
-     (c-api/context
-      "/settings" []
-      (c-api/resource
-       {:get {:summary "Returns the settings that cook is configured with"
-              :responses {200 {:description "The settings were returned."}}
-              :handler (settings-handler settings)}}))
+        (c-api/context
+          "/settings" []
+          (c-api/resource
+            {:get {:summary "Returns the settings that cook is configured with"
+                   :responses {200 {:description "The settings were returned."}}
+                   :handler (settings-handler settings)}}))
 
-     (c-api/context
-      "/unscheduled_jobs" []
-      (c-api/resource
-        {:produces ["application/json"],
-         :get {:summary "Read reasons why a job isn't being scheduled."
-               :parameters {:query-params UnscheduledJobParams}
-               :handler (read-unscheduled-handler conn is-authorized-fn)
-               :responses {200 {:schema UnscheduledJobResponse
-                                :description "Reasons the job isn't being scheduled."}
-                           400 {:description "Invalid request format."}
-                           404 {:description "The UUID doesn't correspond to a job."}}}})))
-    (ANY "/queue" []
-         (waiting-jobs mesos-pending-jobs-fn is-authorized-fn mesos-leadership-atom leader-selector))
-    (ANY "/running" []
-         (running-jobs conn is-authorized-fn))
-    (ANY "/list" []
-         (list-resource (db conn) framework-id is-authorized-fn)))
-   (format-params/wrap-restful-params {:formats [:json-kw]
-                                       :handle-error c-mw/handle-req-error})
-   (streaming-json-middleware)))
+        (c-api/context
+          "/unscheduled_jobs" []
+          (c-api/resource
+            {:produces ["application/json"],
+             :get {:summary "Read reasons why a job isn't being scheduled."
+                   :parameters {:query-params UnscheduledJobParams}
+                   :handler (read-unscheduled-handler conn is-authorized-fn)
+                   :responses {200 {:schema UnscheduledJobResponse
+                                    :description "Reasons the job isn't being scheduled."}
+                               400 {:description "Invalid request format."}
+                               404 {:description "The UUID doesn't correspond to a job."}}}})))
+      (ANY "/queue" []
+        (waiting-jobs mesos-pending-jobs-fn is-authorized-fn mesos-leadership-atom leader-selector))
+      (ANY "/running" []
+        (running-jobs conn is-authorized-fn))
+      (ANY "/list" []
+        (list-resource (db conn) framework-id is-authorized-fn)))
+    (format-params/wrap-restful-params {:formats [:json-kw]
+                                        :handle-error c-mw/handle-req-error})
+    (streaming-json-middleware)))
 
