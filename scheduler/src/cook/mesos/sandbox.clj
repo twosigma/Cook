@@ -159,30 +159,31 @@
    - After the indexed version is built, the tasks which have sandbox directories are removed;
    - The filtered version of tasks without sandbox directories is then synced into the task-id->sandbox-agent.
    The function call is a no-op if the specified agent already exists in the cache."
-  [{:keys [datomic-conn mesos-agent-query-cache pending-sync-agent task-id->sandbox-agent]} framework-id agent-hostname]
+  [{:keys [datomic-conn mesos-agent-query-cache pending-sync-agent sandbox-sync-enabled task-id->sandbox-agent]} 
+   framework-id agent-hostname]
   (try
     (let [run (delay
                 (try
                   (let [task-id->sandbox-directory (retrieve-sandbox-directories-on-agent framework-id agent-hostname)]
-                    ;; TODO Shams wrap this inside a configurable boolean flag
-                    (let [filtered-task-id->sandbox-directory (remove-task-ids-with-sandbox datomic-conn task-id->sandbox-directory)]
-                      (log/info "Found" (count filtered-task-id->sandbox-directory) "tasks without sandbox directories on"
-                                agent-hostname "after retrieving" (count task-id->sandbox-directory) "tasks")
-                      (send task-id->sandbox-agent aggregate-sandbox filtered-task-id->sandbox-directory)
-                      (send pending-sync-agent clear-pending-sync-hostname agent-hostname :success))
+                    (when sandbox-sync-enabled
+                      (let [filtered-task-id->sandbox-directory (remove-task-ids-with-sandbox datomic-conn task-id->sandbox-directory)]
+                        (log/info "Found" (count filtered-task-id->sandbox-directory) "tasks without sandbox directories on"
+                                  agent-hostname "after retrieving" (count task-id->sandbox-directory) "tasks")
+                        (send task-id->sandbox-agent aggregate-sandbox filtered-task-id->sandbox-directory)
+                        (send pending-sync-agent clear-pending-sync-hostname agent-hostname :success)))
                     {:result :success
                      :data task-id->sandbox-directory})
                   (catch Exception e
                     (log/error e "Failed to get mesos agent state on" agent-hostname)
-                    ;; TODO Shams wrap this inside a configurable boolean flag
-                    (send pending-sync-agent aggregate-pending-sync-hostname agent-hostname :error)
+                    (when sandbox-sync-enabled
+                      (send pending-sync-agent aggregate-pending-sync-hostname agent-hostname :error))
                     {:result :error})))
           cs (swap! mesos-agent-query-cache
                     (fn mesos-agent-query-cache-swap-fn [c]
                       (if (cache/has? c agent-hostname)
                         (do
-                          ;; TODO Shams wrap this inside a configurable boolean flag
-                          (send pending-sync-agent aggregate-pending-sync-hostname agent-hostname :pending)
+                          (when sandbox-sync-enabled
+                            (send pending-sync-agent aggregate-pending-sync-hostname agent-hostname :pending))
                           (cache/hit c agent-hostname))
                         (cache/miss c agent-hostname run))))
           val (cache/lookup cs agent-hostname)]
@@ -267,7 +268,7 @@
    :publisher-cancel-fn - fn that take no arguments and that terminates the publisher.
    :task-id->sandbox-agent - The agent that manages the task-id->sandbox aggregation and publishing."
   [framework-id datomic-conn publish-batch-size publish-interval-ms sync-interval-ms max-consecutive-sync-failure
-   mesos-agent-query-cache]
+   mesos-agent-query-cache sandbox-sync-enabled]
   (let [pending-sync-agent (agent {:framework-id framework-id
                                    :host->consecutive-failures {}
                                    :pending-sync-hosts #{}}) ;; stores the names of hosts pending sync
@@ -275,10 +276,15 @@
         publisher-state {:datomic-conn datomic-conn
                          :mesos-agent-query-cache mesos-agent-query-cache
                          :pending-sync-agent pending-sync-agent
+                         :sandbox-sync-enabled sandbox-sync-enabled
                          :task-id->sandbox-agent task-id->sandbox-agent}
         publisher-cancel-fn (start-sandbox-publisher
                               task-id->sandbox-agent datomic-conn publish-batch-size publish-interval-ms)
-        syncer-cancel-fn (start-host-sandbox-syncer publisher-state sync-interval-ms max-consecutive-sync-failure)
+        syncer-cancel-fn (if sandbox-sync-enabled
+                           (start-host-sandbox-syncer publisher-state sync-interval-ms max-consecutive-sync-failure)
+                           (do
+                             (log/info "Not starting sandbox syncer as it has been disabled")
+                             (constantly nil)))
         hostname->task-id->sandbox-directory-fn (fn hostname->task-id->sandbox-directory-fn [agent-hostname task-id]
                                                   (hostname->task-id->sandbox-directory
                                                     publisher-state framework-id agent-hostname task-id))]

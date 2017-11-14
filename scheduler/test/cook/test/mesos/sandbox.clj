@@ -199,7 +199,7 @@
                                "executor-111" "/path/for/executor-111"}]
           (is (= expected-result actual-result)))))))
 
-(deftest test-refresh-agent-cache-entry
+(deftest test-refresh-agent-cache-entry-sandbox-sync-enabled
   (let [db-conn (tu/restore-fresh-database! "datomic:mem://test-refresh-agent-cache-entry")
         framework-id "test-framework-id"
         mesos-agent-query-cache (atom (cache/fifo-cache-factory {} :threshold 2))
@@ -212,14 +212,20 @@
         publisher-state {:datomic-conn db-conn
                          :mesos-agent-query-cache mesos-agent-query-cache
                          :pending-sync-agent pending-sync-agent
+                         :sandbox-sync-enabled true
                          :task-id->sandbox-agent task-id->sandbox-agent}
         refresh-agent-cache-helper #(sandbox/refresh-agent-cache-entry publisher-state framework-id %)
         task-ids-with-sandbox-in-db ["task2.host1" "task2.host2" "task2.host3" "task3.host3"]
-        lookup-host-state-result (fn [hostname]
-                                   (-> @mesos-agent-query-cache
-                                       (cache/lookup hostname item-unavailable)
-                                       deref
-                                       :result))]
+        lookup-host-state (fn [hostname]
+                            (-> @mesos-agent-query-cache
+                                (cache/lookup hostname item-unavailable)
+                                deref))
+        lookup-host-state-result (fn [hostname] (:result (lookup-host-state hostname)))
+        lookup-host-state-data (fn [hostname] (:data (lookup-host-state hostname)))
+        hostname->task-id->sandbox-directory (fn [hostname]
+                                               {(str "task1." hostname) (str "/path/to/1/" hostname "/sandbox")
+                                                (str "task2." hostname) (str "/path/to/2/" hostname "/sandbox")
+                                                (str "task3." hostname) (str "/path/to/3/" hostname "/sandbox")})]
 
     (doseq [task-id task-ids-with-sandbox-in-db]
       (tu/create-dummy-instance db-conn (tu/create-dummy-job db-conn)
@@ -230,9 +236,7 @@
                   (fn [_ hostname]
                     (if (str/includes? hostname "badhost")
                       (throw (Exception. "Exception from test"))
-                      {(str "task1." hostname) (str "/path/to/1/" hostname "/sandbox")
-                       (str "task2." hostname) (str "/path/to/2/" hostname "/sandbox")
-                       (str "task3." hostname) (str "/path/to/3/" hostname "/sandbox")}))]
+                      (hostname->task-id->sandbox-directory hostname)))]
 
       (testing "cache population on good hosts"
         (refresh-agent-cache-helper "host1")
@@ -240,7 +244,9 @@
         (await task-id->sandbox-agent)
         (await pending-sync-agent)
         (is (= :success (lookup-host-state-result "host1")))
+        (is (= (hostname->task-id->sandbox-directory "host1") (lookup-host-state-data "host1")))
         (is (= :success (lookup-host-state-result "host2")))
+        (is (= (hostname->task-id->sandbox-directory "host2") (lookup-host-state-data "host2")))
         (is (= :unavailable (lookup-host-state-result "host3")))
         (is (= :unavailable (lookup-host-state-result "badhost")))
         (is (= {"task1.host1" "/path/to/1/host1/sandbox"
@@ -259,7 +265,9 @@
         (await pending-sync-agent)
         (is (= :unavailable (lookup-host-state-result "host1")))
         (is (= :success (lookup-host-state-result "host2")))
+        (is (= (hostname->task-id->sandbox-directory "host2") (lookup-host-state-data "host2")))
         (is (= :success (lookup-host-state-result "host3")))
+        (is (= (hostname->task-id->sandbox-directory "host3") (lookup-host-state-data "host3")))
         (is (= :unavailable (lookup-host-state-result "badhost")))
         (is (= {"task1.host1" "/path/to/1/host1/sandbox"
                 "task1.host2" "/path/to/1/host2/sandbox"
@@ -279,6 +287,7 @@
         (is (= :unavailable (lookup-host-state-result "host1")))
         (is (= :unavailable (lookup-host-state-result "host2")))
         (is (= :success (lookup-host-state-result "host3")))
+        (is (= (hostname->task-id->sandbox-directory "host3") (lookup-host-state-data "host3")))
         (is (= :error (lookup-host-state-result "badhost")))
         (is (= {"task1.host1" "/path/to/1/host1/sandbox"
                 "task1.host2" "/path/to/1/host2/sandbox"
@@ -300,6 +309,7 @@
         (is (= :unavailable (lookup-host-state-result "host1")))
         (is (= :unavailable (lookup-host-state-result "host2")))
         (is (= :success (lookup-host-state-result "host3")))
+        (is (= (hostname->task-id->sandbox-directory "host3") (lookup-host-state-data "host3")))
         (is (= :error (lookup-host-state-result "badhost")))
         (is (= {"task1.host1" "/path/to/1/host1/sandbox"
                 "task1.host2" "/path/to/1/host2/sandbox"
@@ -313,6 +323,96 @@
                    (update :host->consecutive-failures dissoc "host3")
                    (update :host->consecutive-failures assoc "badhost" 1))
                @pending-sync-agent))))))
+
+(deftest test-refresh-agent-cache-entry-sandbox-sync-disabled
+  (let [db-conn (tu/restore-fresh-database! "datomic:mem://test-refresh-agent-cache-entry")
+        framework-id "test-framework-id"
+        mesos-agent-query-cache (atom (cache/fifo-cache-factory {} :threshold 2))
+        pending-sync-initial-state {:framework-id framework-id
+                                    :host->consecutive-failures {"host3" 4, "host5" 8}
+                                    :pending-sync-hosts #{"host2"}}
+        pending-sync-agent (agent pending-sync-initial-state)
+        task-id->sandbox-agent (agent {})
+        item-unavailable (future {:result :unavailable})
+        publisher-state {:datomic-conn db-conn
+                         :mesos-agent-query-cache mesos-agent-query-cache
+                         :pending-sync-agent pending-sync-agent
+                         :sandbox-sync-enabled false
+                         :task-id->sandbox-agent task-id->sandbox-agent}
+        refresh-agent-cache-helper #(sandbox/refresh-agent-cache-entry publisher-state framework-id %)
+        task-ids-with-sandbox-in-db ["task2.host1" "task2.host2" "task2.host3" "task3.host3"]
+        lookup-host-state (fn [hostname]
+                            (-> @mesos-agent-query-cache
+                                (cache/lookup hostname item-unavailable)
+                                deref))
+        lookup-host-state-result (fn [hostname] (:result (lookup-host-state hostname)))
+        lookup-host-state-data (fn [hostname] (:data (lookup-host-state hostname)))
+        hostname->task-id->sandbox-directory (fn [hostname]
+                                               {(str "task1." hostname) (str "/path/to/1/" hostname "/sandbox")
+                                                (str "task2." hostname) (str "/path/to/2/" hostname "/sandbox")
+                                                (str "task3." hostname) (str "/path/to/3/" hostname "/sandbox")})]
+
+    (doseq [task-id task-ids-with-sandbox-in-db]
+      (tu/create-dummy-instance db-conn (tu/create-dummy-job db-conn)
+                                :sandbox-directory (str "path/to/" task-id "/directory")
+                                :task-id task-id))
+
+    (with-redefs [sandbox/retrieve-sandbox-directories-on-agent
+                  (fn [_ hostname]
+                    (if (str/includes? hostname "badhost")
+                      (throw (Exception. "Exception from test"))
+                      (hostname->task-id->sandbox-directory hostname)))]
+
+      (testing "cache population on good hosts"
+        (refresh-agent-cache-helper "host1")
+        (refresh-agent-cache-helper "host2")
+        (await task-id->sandbox-agent)
+        (await pending-sync-agent)
+        (is (= :success (lookup-host-state-result "host1")))
+        (is (= (hostname->task-id->sandbox-directory "host1") (lookup-host-state-data "host1")))
+        (is (= :success (lookup-host-state-result "host2")))
+        (is (= (hostname->task-id->sandbox-directory "host2") (lookup-host-state-data "host2")))
+        (is (= :unavailable (lookup-host-state-result "host3")))
+        (is (= :unavailable (lookup-host-state-result "badhost")))
+        (is (= {} @task-id->sandbox-agent))
+        (is (= pending-sync-initial-state @pending-sync-agent)))
+
+      (testing "cache eviction on good host"
+        (refresh-agent-cache-helper "host3")
+        (await task-id->sandbox-agent)
+        (await pending-sync-agent)
+        (is (= :unavailable (lookup-host-state-result "host1")))
+        (is (= :success (lookup-host-state-result "host2")))
+        (is (= (hostname->task-id->sandbox-directory "host2") (lookup-host-state-data "host2")))
+        (is (= :success (lookup-host-state-result "host3")))
+        (is (= (hostname->task-id->sandbox-directory "host3") (lookup-host-state-data "host3")))
+        (is (= :unavailable (lookup-host-state-result "badhost")))
+        (is (= {} @task-id->sandbox-agent))
+        (is (= pending-sync-initial-state @pending-sync-agent)))
+
+      (testing "cache eviction on bad host"
+        (refresh-agent-cache-helper "badhost")
+        (await task-id->sandbox-agent)
+        (await pending-sync-agent)
+        (is (= :unavailable (lookup-host-state-result "host1")))
+        (is (= :unavailable (lookup-host-state-result "host2")))
+        (is (= :success (lookup-host-state-result "host3")))
+        (is (= (hostname->task-id->sandbox-directory "host3") (lookup-host-state-data "host3")))
+        (is (= :error (lookup-host-state-result "badhost")))
+        (is (= {} @task-id->sandbox-agent))
+        (is (= pending-sync-initial-state @pending-sync-agent)))
+
+      (testing "syncing of cached host"
+        (refresh-agent-cache-helper "host3")
+        (await task-id->sandbox-agent)
+        (await pending-sync-agent)
+        (is (= :unavailable (lookup-host-state-result "host1")))
+        (is (= :unavailable (lookup-host-state-result "host2")))
+        (is (= :success (lookup-host-state-result "host3")))
+        (is (= (hostname->task-id->sandbox-directory "host3") (lookup-host-state-data "host3")))
+        (is (= :error (lookup-host-state-result "badhost")))
+        (is (= {} @task-id->sandbox-agent))
+        (is (= pending-sync-initial-state @pending-sync-agent))))))
 
 (deftest test-start-host-sandbox-syncer
   (let [db-conn (tu/restore-fresh-database! "datomic:mem://test-start-host-sandbox-syncer")
@@ -353,6 +453,7 @@
       (let [publisher-state {:datomic-conn db-conn
                              :mesos-agent-query-cache mesos-agent-query-cache
                              :pending-sync-agent pending-sync-agent
+                             :sandbox-sync-enabled true
                              :task-id->sandbox-agent task-id->sandbox-agent}
             syncer-cancel-fn (sandbox/start-host-sandbox-syncer
                                publisher-state sync-interval-ms max-consecutive-sync-failure)]
@@ -403,9 +504,11 @@
           max-consecutive-sync-failure 10
           framework-id "test-framework-id"
           mesos-agent-query-cache (atom (cache/fifo-cache-factory {} :threshold 2))
+          sandbox-sync-enabled true
           {:keys [publisher-cancel-fn syncer-cancel-fn task-id->sandbox-agent] :as sandbox-state}
           (sandbox/prepare-sandbox-publisher framework-id db-conn publish-batch-size publish-interval-ms
-                                             sync-interval-ms max-consecutive-sync-failure mesos-agent-query-cache)]
+                                             sync-interval-ms max-consecutive-sync-failure mesos-agent-query-cache
+                                             sandbox-sync-enabled)]
 
       (try
         (->> {"sandbox-directory" "/path/to/sandbox", "task-id" "task-1", "type" "directory"}

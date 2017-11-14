@@ -2009,8 +2009,10 @@
             publish-interval-ms 20
             sync-interval-ms 20
             agent-query-cache (-> {} (cache/ttl-cache-factory :ttl cache-timeout-ms) atom)
+            sandbox-sync-enabled true
             {:keys [pending-sync-agent publisher-cancel-fn syncer-cancel-fn task-id->sandbox-agent] :as sandbox-syncer-state}
-            (sandbox/prepare-sandbox-publisher framework-id db-conn 10 publish-interval-ms sync-interval-ms 5 agent-query-cache)
+            (sandbox/prepare-sandbox-publisher framework-id db-conn 10 publish-interval-ms sync-interval-ms 5
+                                               agent-query-cache sandbox-sync-enabled)
             sync-agent-sandboxes-fn
             (fn [hostname]
               (sandbox/sync-agent-sandboxes sandbox-syncer-state framework-id hostname))]
