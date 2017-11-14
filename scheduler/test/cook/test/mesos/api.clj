@@ -1171,8 +1171,9 @@
 
 (deftest test-destroy-jobs
   (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
+        framework-id #mesomatic.types.FrameworkID{:value "framework-id"}
         is-authorized-fn (partial auth/is-authorized? {:authorization-fn 'cook.authorization/configfile-admins-auth-open-gets})
-        handler (api/destroy-jobs-handler conn is-authorized-fn)]
+        handler (api/destroy-jobs-handler conn framework-id is-authorized-fn)]
     (testing "should be able to destroy own jobs"
       (let [{:keys [uuid user] :as job} (minimal-job)
             _ (api/create-jobs! conn {::api/jobs [job]})

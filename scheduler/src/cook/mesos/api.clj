@@ -977,7 +977,7 @@
 
 ;;; On DELETE; use repeated job argument
 (defn destroy-jobs-handler
-  [conn is-authorized-fn]
+  [conn framework-id is-authorized-fn]
   (base-cook-handler
     {:allowed-methods [:delete]
      :malformed? check-job-params-present
@@ -986,7 +986,7 @@
      :delete! (fn [ctx]
                 (cook.mesos/kill-job conn (::jobs-requested ctx))
                 (cook.mesos/kill-instances conn (::instances-requested ctx)))
-     :handle-ok (partial render-jobs-for-response conn)}))
+     :handle-ok (partial render-jobs-for-response conn framework-id)}))
 
 (defn vectorize
   "If x is not a vector (or nil), turns it into a vector"
@@ -1913,7 +1913,7 @@
                                   400 {:description "Non-UUID values were passed as jobs."}
                                   403 {:description "The supplied UUIDs don't correspond to valid jobs."}}
                       :parameters {:query-params JobOrInstanceIds}
-                      :handler (destroy-jobs-handler conn is-authorized-fn)}}))
+                      :handler (destroy-jobs-handler conn framework-id is-authorized-fn)}}))
 
         (c-api/context
           "/share" []
