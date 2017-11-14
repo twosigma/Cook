@@ -81,8 +81,8 @@
       (doseq [task-id->sandbox-partition (partition-all batch-size task-id->sandbox)]
         (try
           (letfn [(build-sandbox-txns [[task-id sandbox]]
-                    [[:db/add [:instance/task-id task-id] :instance/sandbox-directory sandbox]])]
-            (let [txns (mapcat build-sandbox-txns task-id->sandbox-partition)]
+                    [:db/add [:instance/task-id task-id] :instance/sandbox-directory sandbox])]
+            (let [txns (map build-sandbox-txns task-id->sandbox-partition)]
               (when (seq txns)
                 (log/info "Inserting" (count txns) "facts in sandbox state update")
                 (meters/mark! sandbox-updater-tx-rate)
@@ -136,7 +136,7 @@
           (contains? #{:success :threshold} reason)
           (update :host->consecutive-failures dissoc hostname)))
 
-(defn- filter-task-ids-with-sandbox
+(defn- remove-task-ids-with-sandbox
   "Filters the task-ids which have a sandbox directory from task-id->sandbox."
   [datomic-conn task-id->sandbox]
   (letfn [(retrieve-task-ids-with-sandbox [datomic-db task-ids]
@@ -164,7 +164,7 @@
     (let [run (delay
                 (try
                   (let [task-id->sandbox-directory (retrieve-sandbox-directories-on-agent framework-id agent-hostname)
-                        filtered-task-id->sandbox-directory (filter-task-ids-with-sandbox datomic-conn task-id->sandbox-directory)]
+                        filtered-task-id->sandbox-directory (remove-task-ids-with-sandbox datomic-conn task-id->sandbox-directory)]
                     (log/info "Found" (count filtered-task-id->sandbox-directory) "tasks without sandbox directories on"
                               agent-hostname "after retrieving" (count task-id->sandbox-directory) "tasks")
                     (send task-id->sandbox-agent aggregate-sandbox filtered-task-id->sandbox-directory)
