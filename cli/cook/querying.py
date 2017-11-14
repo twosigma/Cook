@@ -1,13 +1,11 @@
+import collections
 import concurrent
-import json
 import logging
 import os
+import sys
 from concurrent import futures
 from operator import itemgetter
-
-import collections
-
-import sys
+from urllib.parse import unquote_plus
 
 from cook import http, colors, progress, mesos
 from cook.util import wait_until
@@ -218,12 +216,26 @@ def query_unique_and_run(clusters, job_or_instance_uuid, command_fn):
         raise Exception(f'Encountered error when querying for {job_or_instance_uuid}.')
 
 
+def parse_entity_refs(entity_refs):
+    """TODO(DPO)"""
+    for ref in entity_refs:
+        logging.debug(f'parsing entity ref {ref}')
+        ref_parts = ref.split('/')
+        if len(ref_parts) != 3:
+            raise Exception(f'Encountered invalid entity ref: {ref}')
+
+        cluster_name = ref_parts[0]
+        entity_type = ref_parts[1]
+        uuid = ref_parts[2]
+        yield {'cluster': unquote_plus(cluster_name), 'type': entity_type, 'uuid': uuid}
+
+
 def query_with_pipe_support(clusters, uuids, command, pred_jobs=None, pred_instances=None,
                             pred_groups=None, timeout=None, interval=None):
     """
     Queries for UUIDs across clusters, supporting input being passed via a pipe from another command, e.g.:
 
-      $ cs list --user sally --running --waiting | cs wait
+      $ cs list --user sally --running --waiting -1 | cs wait
 
     The above example would wait for all of sally's running and waiting jobs to complete.
     """
@@ -241,8 +253,10 @@ def query_with_pipe_support(clusters, uuids, command, pred_jobs=None, pred_insta
         if not s:
             raise Exception('No data received.')
 
+        entity_refs = s.splitlines()
+
         try:
-            piped_data = json.loads(s)
+            piped_data = parse_entity_refs(entity_refs)
         except:
             raise Exception('Unable to parse data.')
 

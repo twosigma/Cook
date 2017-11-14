@@ -3,8 +3,8 @@ import datetime
 import json
 import logging
 import time
+from urllib.parse import quote_plus
 
-import sys
 from tabulate import tabulate
 
 from cook import colors, http
@@ -17,16 +17,10 @@ DEFAULT_LOOKBACK_HOURS = 6
 DEFAULT_LIMIT = 150
 
 
-def piping_stdout():
-    """Returns true if stdout is being piped to another process"""
-    return not sys.stdout.isatty()
-
-
 def print_no_data(clusters):
     """Prints a message indicating that no data was found in the given clusters"""
-    if not piping_stdout():
-        clusters_text = ' / '.join([c['name'] for c in clusters])
-        print(colors.failed('No jobs found in %s.' % clusters_text))
+    clusters_text = ' / '.join([c['name'] for c in clusters])
+    print(colors.failed('No jobs found in %s.' % clusters_text))
 
 
 def list_jobs_on_cluster(cluster, state, user, start_ms, end_ms, name, limit):
@@ -58,28 +52,43 @@ def format_job_command(job):
     return job['command'] if len(job['command']) <= 50 else ('%s...' % job['command'][:47])
 
 
-def show_data(cluster_job_pairs):
+def query_result_to_cluster_job_pairs(query_result):
+    """TODO(DPO)"""
+    cluster_job_pairs = ((c, j) for c, e in query_result['clusters'].items() for j in e['jobs'])
+    return cluster_job_pairs
+
+
+def print_as_one_per_line(query_result):
+    """TODO(DPO)"""
+    cluster_job_pairs = query_result_to_cluster_job_pairs(query_result)
+    lines = (f'{quote_plus(c)}/job/{j["uuid"]}' for c, j in cluster_job_pairs)
+    print('\n'.join(lines))
+
+
+def print_as_table(query_result):
     """
     Given a collection of (cluster, job) pairs, formats a table showing the most relevant job
     fields. If the output is being piped, JSON is printed instead of a formatted table.
     """
-    if piping_stdout():
-        jobs = [{'cluster': c, 'type': 'job', 'uuid': j['uuid']} for c, j in cluster_job_pairs]
-        print(json.dumps(jobs))
-    else:
-        rows = [collections.OrderedDict([("Cluster", cluster),
-                                         ("UUID", job['uuid']),
-                                         ("Name", job['name']),
-                                         ("Memory", format_job_memory(job)),
-                                         ("CPUs", job['cpus']),
-                                         ("Priority", job['priority']),
-                                         ("Attempts", format_job_attempts(job)),
-                                         ("Submitted", millis_to_date_string(job['submit_time'])),
-                                         ("Command", format_job_command(job)),
-                                         ("Job Status", format_job_status(job))])
-                for (cluster, job) in cluster_job_pairs]
-        job_table = tabulate(rows, headers='keys', tablefmt='plain')
-        print_info(job_table)
+    cluster_job_pairs = query_result_to_cluster_job_pairs(query_result)
+    rows = [collections.OrderedDict([("Cluster", cluster),
+                                     ("UUID", job['uuid']),
+                                     ("Name", job['name']),
+                                     ("Memory", format_job_memory(job)),
+                                     ("CPUs", job['cpus']),
+                                     ("Priority", job['priority']),
+                                     ("Attempts", format_job_attempts(job)),
+                                     ("Submitted", millis_to_date_string(job['submit_time'])),
+                                     ("Command", format_job_command(job)),
+                                     ("Job Status", format_job_status(job))])
+            for (cluster, job) in cluster_job_pairs]
+    job_table = tabulate(rows, headers='keys', tablefmt='plain')
+    print_info(job_table)
+
+
+def print_as_json(query_result):
+    """TODO(DPO)"""
+    print(json.dumps(query_result))
 
 
 def date_time_string_to_ms_since_epoch(date_time_string):
@@ -112,6 +121,7 @@ def list_jobs(clusters, args, _):
     """Prints info for the jobs with the given list criteria"""
     guard_no_cluster(clusters)
     as_json = args.get('json')
+    one_per_line = args.get('one-per-line')
     states = args.get('states')
     user = args.get('user')
     lookback_hours = args.get('lookback')
@@ -132,11 +142,13 @@ def list_jobs(clusters, args, _):
         start_ms, end_ms = lookback_hours_to_range(lookback_hours or DEFAULT_LOOKBACK_HOURS)
 
     query_result = query(clusters, states, user, start_ms, end_ms, name, limit)
+    found_jobs = query_result['count'] > 0
     if as_json:
-        print(json.dumps(query_result))
-    elif query_result['count'] > 0:
-        cluster_job_pairs = [(c, j) for c, e in query_result['clusters'].items() for j in e['jobs']]
-        show_data(cluster_job_pairs)
+        print_as_json(query_result)
+    elif one_per_line:
+        print_as_one_per_line(query_result)
+    elif found_jobs:
+        print_as_table(query_result)
     else:
         print_no_data(clusters)
     return 0
@@ -144,32 +156,35 @@ def list_jobs(clusters, args, _):
 
 def register(add_parser, add_defaults):
     """Adds this sub-command's parser and returns the action function"""
-    list_parser = add_parser('list', help='list jobs by state / user / time / name')
-    list_parser.add_argument('--waiting', '-w', help='include waiting jobs', dest='states',
-                             action='append_const', const='waiting')
-    list_parser.add_argument('--running', '-r', help='include running jobs', dest='states',
-                             action='append_const', const='running')
-    list_parser.add_argument('--completed', '-c', help='include completed jobs', dest='states',
-                             action='append_const', const='completed')
-    list_parser.add_argument('--failed', '-f', help='include failed jobs', dest='states',
-                             action='append_const', const='failed')
-    list_parser.add_argument('--success', '-s', help='include successful jobs', dest='states',
-                             action='append_const', const='success')
-    list_parser.add_argument('--all', '-a', help='include all jobs, regardless of status', dest='states',
-                             action='append_const', const='all')
-    list_parser.add_argument('--user', '-u', help='list jobs for a user')
-    list_parser.add_argument('--lookback', '-t',
-                             help=f'list jobs submitted in the last HOURS hours (default = {DEFAULT_LOOKBACK_HOURS})',
-                             type=float, metavar='HOURS')
-    list_parser.add_argument('--submitted-after', '-A',
-                             help=f'list jobs submitted after the given time')
-    list_parser.add_argument('--submitted-before', '-B',
-                             help=f'list jobs submitted before the given time')
-    list_parser.add_argument('--name', '-n', help="list jobs with a particular name pattern (name filters can contain "
-                                                  "alphanumeric characters, '.', '-', '_', and '*' as a wildcard)")
-    list_parser.add_argument('--limit', '-l', help=f'limit the number of results (default = {DEFAULT_LIMIT})',
-                             type=check_positive)
-    list_parser.add_argument('--json', help='show the data in JSON format', dest='json', action='store_true')
+    parser = add_parser('list', help='list jobs by state / user / time / name')
+    parser.add_argument('--waiting', '-w', help='include waiting jobs', dest='states',
+                        action='append_const', const='waiting')
+    parser.add_argument('--running', '-r', help='include running jobs', dest='states',
+                        action='append_const', const='running')
+    parser.add_argument('--completed', '-c', help='include completed jobs', dest='states',
+                        action='append_const', const='completed')
+    parser.add_argument('--failed', '-f', help='include failed jobs', dest='states',
+                        action='append_const', const='failed')
+    parser.add_argument('--success', '-s', help='include successful jobs', dest='states',
+                        action='append_const', const='success')
+    parser.add_argument('--all', '-a', help='include all jobs, regardless of status', dest='states',
+                        action='append_const', const='all')
+    parser.add_argument('--user', '-u', help='list jobs for a user')
+    parser.add_argument('--lookback', '-t',
+                        help=f'list jobs submitted in the last HOURS hours (default = {DEFAULT_LOOKBACK_HOURS})',
+                        type=float, metavar='HOURS')
+    parser.add_argument('--submitted-after', '-A',
+                        help=f'list jobs submitted after the given time')
+    parser.add_argument('--submitted-before', '-B',
+                        help=f'list jobs submitted before the given time')
+    parser.add_argument('--name', '-n', help="list jobs with a particular name pattern (name filters can contain "
+                                             "alphanumeric characters, '.', '-', '_', and '*' as a wildcard)")
+    parser.add_argument('--limit', '-l', help=f'limit the number of results (default = {DEFAULT_LIMIT})',
+                        type=check_positive)
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument('--json', help='show the data in JSON format', dest='json', action='store_true')
+    group.add_argument('-1', help='list one job per line, without table formatting',
+                       dest='one-per-line', action='store_true')
 
     add_defaults('list', {'states': ['running'],
                           'user': current_user(),
