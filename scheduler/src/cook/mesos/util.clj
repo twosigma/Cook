@@ -104,7 +104,7 @@
                       (filter #(= "group" (namespace %)))
                       ; Do not load the nested job entities for a group. These should be queried on-demand
                       ; as required.
-                      (filter #(not= :group/job %)))]
+                      (remove (partial = :group/job)))]
   (defn job-ent->map
     "Convert a job entity to a map. This also loads the associated group and converts it to a map."
     ([job db]
@@ -115,7 +115,7 @@
            group (when group-ent
                    (->> group-keys
                         (map (fn [k] [k (entity->map (get group-ent k))]))
-                        (filter (fn [[k v]] (not (nil? v))))
+                        (remove (fn [[k v]] (nil? v)))
                         (into {})
                         hash-set))]
        (cond-> job
