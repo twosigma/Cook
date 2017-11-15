@@ -16,10 +16,10 @@ def guard_against_duplicates(query_result):
     duplicate_uuids = set()
 
     def add(uuid, entity_type, cluster):
+        if uuid in uuid_to_entries:
+            duplicate_uuids.add(uuid)
         entry_map = {'type': entity_type, 'cluster_name': cluster}
         uuid_to_entries[uuid].append(entry_map)
-        if len(uuid_to_entries[uuid]) > 1:
-            duplicate_uuids.add(uuid)
 
     for cluster_name, entities in query_result['clusters'].items():
         for job in entities['jobs']:
