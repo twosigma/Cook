@@ -894,6 +894,7 @@ class CookCliTest(unittest.TestCase):
             stdout = cli.decode(cp.stdout)
             self.logger.info(f'stdout = {stdout}')
             return stdout
+
         return util.wait_until(query, lambda out: 'Executor completed execution' in out)
 
     def test_show_progress_message(self):
@@ -1221,3 +1222,25 @@ class CookCliTest(unittest.TestCase):
         self.assertEqual('bar', groups[0]['name'])
         self.assertEqual(group_uuid, groups[0]['uuid'])
         self.assertEqual(sorted(uuids), sorted(groups[0]['jobs']))
+
+    def test_show_duplicate_uuid(self):
+        cp, uuids = cli.submit('ls', self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        _, jobs = cli.show_json(uuids + uuids, self.cook_url)
+        self.assertEqual(1, len(jobs))
+        self.assertEqual(uuids[0], jobs[0]['uuid'])
+
+    def test_entity_ref_support(self):
+        cp, uuids = cli.submit('ls', self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        # cluster = *, type = job, uuid = job
+        _, jobs = cli.show_json([f'*/job/{uuids[0]}'], self.cook_url)
+        self.assertEqual(1, len(jobs))
+        self.assertEqual(uuids[0], jobs[0]['uuid'])
+        # cluster = *, type = instance, uuid = job
+        _, instance_job_pairs = cli.show_instances([f'*/instance/{uuids[0]}'], self.cook_url)
+        self.assertEqual(0, len(instance_job_pairs))
+        # cluster = *, type = group, uuid = job
+        _, groups = cli.show_groups([f'*/group/{uuids[0]}'], self.cook_url)
+        self.assertEqual(0, len(groups))
+        # TODO Continue to build out this test

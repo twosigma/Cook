@@ -97,6 +97,13 @@ def show_json(uuids, cook_url=None, flags=None):
     return cp, jobs
 
 
+def show_instances(uuids, cook_url=None, flags=None):
+    """Shows the instance JSON corresponding to the given UUID(s)"""
+    cp, data = __show_json(uuids, cook_url, flags)
+    instance_job_pairs = [pair for entities in data['clusters'].values() for pair in entities['instances']]
+    return cp, instance_job_pairs
+
+
 def show_groups(uuids, cook_url=None, flags=None):
     """Shows the group JSON corresponding to the given UUID(s)"""
     cp, data = __show_json(uuids, cook_url, flags)
