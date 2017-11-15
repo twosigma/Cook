@@ -6,8 +6,8 @@ from tabulate import tabulate
 
 from cook.format import format_instance_run_time, format_instance_status, format_job_memory, format_list, format_dict, \
     format_job_attempts, format_job_status
-from cook.querying import query, print_no_data
-from cook.util import strip_all, millis_to_timedelta, millis_to_date_string, guard_no_cluster
+from cook.querying import query, print_no_data, parse_entity_refs
+from cook.util import millis_to_timedelta, millis_to_date_string, guard_no_cluster
 
 DEFAULT_MAX_RUNTIME = 2 ** 63 - 1
 
@@ -147,7 +147,7 @@ def show(clusters, args, _):
     """Prints info for the jobs / instances / groups with the given UUIDs."""
     guard_no_cluster(clusters)
     as_json = args.get('json')
-    uuids = strip_all(args.get('uuid'))
+    uuids = parse_entity_refs(args.get('uuid'))
     query_result = query(clusters, uuids)
     if as_json:
         print(json.dumps(query_result))

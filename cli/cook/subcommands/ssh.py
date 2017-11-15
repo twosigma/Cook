@@ -2,8 +2,8 @@ import logging
 import os
 
 from cook import colors
-from cook.querying import query_unique_and_run
-from cook.util import print_info, strip_all, guard_no_cluster
+from cook.querying import query_unique_and_run, parse_entity_refs
+from cook.util import print_info, guard_no_cluster
 
 
 def ssh_to_instance(instance, sandbox_dir):
@@ -19,7 +19,7 @@ def ssh_to_instance(instance, sandbox_dir):
 def ssh(clusters, args, _):
     """Attempts to ssh (using os.execlp) to the Mesos agent corresponding to the given job or instance uuid."""
     guard_no_cluster(clusters)
-    uuids = strip_all(args.get('uuid'))
+    uuids = parse_entity_refs(args.get('uuid'))
     if len(uuids) > 1:
         # argparse should prevent this, but we'll be defensive anyway
         raise Exception(f'You can only provide a single uuid.')
