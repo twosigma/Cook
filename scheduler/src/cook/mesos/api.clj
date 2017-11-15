@@ -978,7 +978,7 @@
 
 ;;; On DELETE; use repeated job argument
 (defn destroy-jobs-handler
-  [conn framework-id is-authorized-fn hostname->task-id->sandbox-directory-fn]
+  [conn is-authorized-fn]
   (base-cook-handler
     {:allowed-methods [:delete]
      :malformed? check-job-params-present
@@ -1914,7 +1914,7 @@
                                   400 {:description "Non-UUID values were passed as jobs."}
                                   403 {:description "The supplied UUIDs don't correspond to valid jobs."}}
                       :parameters {:query-params JobOrInstanceIds}
-                      :handler (destroy-jobs-handler conn framework-id is-authorized-fn hostname->task-id->sandbox-directory-fn)}}))
+                      :handler (destroy-jobs-handler conn is-authorized-fn)}}))
 
         (c-api/context
           "/share" []
