@@ -1086,6 +1086,15 @@ class CookCliTest(unittest.TestCase):
         self.assertEqual(1, cp.returncode, cp.stderr)
         self.assertIn(f'No matching data found', cli.stdout(cp))
 
+    def test_kill_multiple(self):
+        cp, uuids = cli.submit_stdin(['ls', 'ls', 'ls'], self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        cp = cli.kill(uuids, self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertIn(f'Killed job {uuids[0]}', cli.stdout(cp))
+        self.assertIn(f'Killed job {uuids[1]}', cli.stdout(cp))
+        self.assertIn(f'Killed job {uuids[2]}', cli.stdout(cp))
+
     def test_submit_with_command_prefix(self):
         # Specifying command prefix
         cp, uuids = cli.submit('"exit ${FOO:-1}"', self.cook_url, submit_flags='--command-prefix "FOO=0; "')
