@@ -16,20 +16,19 @@
 (ns cook.test.mesos.api
   (:use clojure.test)
   (:require [cheshire.core :as cheshire]
-            [clj-http.client :as http]
             [clj-time.core :as t]
             [clojure.core.async :as async]
-            [clojure.core.cache :as cache]
             [clojure.data.json :as json]
-            [clojure.walk :refer (keywordize-keys)]
+            [clojure.string :as str]
+            [clojure.walk :refer [keywordize-keys]]
             [cook.authorization :as auth]
             [cook.components :as components]
             [cook.mesos.api :as api]
             [cook.mesos.reason :as reason]
             [cook.mesos.scheduler :as sched]
             [cook.mesos.util :as util]
-            [cook.test.testutil :refer (restore-fresh-database! create-dummy-job create-dummy-instance)]
-            [datomic.api :as d :refer (q db)]
+            [cook.test.testutil :refer [restore-fresh-database! create-dummy-job create-dummy-instance]]
+            [datomic.api :as d :refer [q db]]
             [mesomatic.scheduler :as msched]
             [schema.core :as s])
   (:import com.fasterxml.jackson.core.JsonGenerationException
@@ -162,20 +161,31 @@
       (is (zero? (get body "gpus")))
       (is (= (dissoc job "uris") (dissoc trimmed-body "uris")))
       (is (compare-uris uris (get trimmed-body "uris"))))
-    (is (<= 400
-            (:status (h {:request-method :delete
-                         :scheme :http
-                         :uri "/rawscheduler"
-                         :authorization/user "dgrnbrg"
-                         :query-params {"job" (str (UUID/randomUUID))}}))
-            499))
-    (is (<= 200
-            (:status (h {:request-method :delete
-                         :scheme :http
-                         :uri "/rawscheduler"
-                         :authorization/user "dgrnbrg"
-                         :query-params {"job" (str uuid)}}))
-            299))))
+
+    (testing "delete of invalid instance"
+      (let [delete-response (h {:request-method :delete
+                      :scheme :http
+                      :uri "/rawscheduler"
+                      :authorization/user "dgrnbrg"
+                      :query-params {"job" (str (UUID/randomUUID))}})]
+        (is (<= 400 (:status delete-response) 499))
+        (is (str/includes? (response->body-data delete-response) "didn't correspond to a job"))))
+
+    (testing "delete of valid instance"
+      (let [req-attrs {:scheme :http
+                       :uri "/rawscheduler"
+                       :authorization/user "dgrnbrg"
+                       :query-params {"job" (str uuid)}}
+            initial-read-resp (h (assoc req-attrs :request-method :get))
+            initial-read-body (response->body-data initial-read-resp)
+            delete-response (h (assoc req-attrs :request-method :delete))
+            followup-read-resp (h (assoc req-attrs :request-method :get))
+            followup-read-body (response->body-data followup-read-resp)]
+        (is (= (-> (first initial-read-body)
+                   (assoc "state" "failed" "status" "completed"))
+               (first followup-read-body)))
+        (is (<= 200 (:status delete-response) 299))
+        (is (= "No content." (response->body-data delete-response)))))))
 
 (deftest descriptive-state
   (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
@@ -411,28 +421,54 @@
         (is (= read-body2 33))))))
 
 (deftest instance-cancelling
-  (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
-        job (create-dummy-job conn :user "mforsyth")
-        instance (create-dummy-instance conn job
-                                        :instance-status :instance.status/running)
-        task-id (-> conn d/db (d/entity instance) :instance/task-id)
-        h (basic-handler conn)
-        req-attrs {:scheme :http
-                   :uri "/rawscheduler"
-                   :authorization/user "mforsyth"
-                   :query-params {"instance" task-id}}
-        initial-read-resp (h (merge req-attrs {:request-method :get}))
-        initial-read-body (response->body-data initial-read-resp)
-        initial-instance-cancelled? (-> initial-read-body keywordize-keys
-                                        first :instances first :cancelled boolean)
-        cancel-resp (h (merge req-attrs {:request-method :delete}))
-        followup-read-resp (h (merge req-attrs {:request-method :get}))
-        followup-read-body (response->body-data followup-read-resp)
-        followup-instance-cancelled? (-> followup-read-body keywordize-keys
-                                         first :instances first :cancelled boolean)]
-    (is (not initial-instance-cancelled?))
-    (is (<= 200 (:status cancel-resp) 299))
-    (is followup-instance-cancelled?)))
+  (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")]
+    (testing "set cancelled on running instance"
+      (let [job (create-dummy-job conn :user "test-user")
+            instance (create-dummy-instance conn job :instance-status :instance.status/running)
+            task-id (-> conn d/db (d/entity instance) :instance/task-id)
+            h (basic-handler conn)
+            req-attrs {:scheme :http
+                       :uri "/rawscheduler"
+                       :authorization/user "test-user"
+                       :query-params {"instance" task-id}}
+            initial-read-resp (h (merge req-attrs {:request-method :get}))
+            initial-read-body (response->body-data initial-read-resp)
+            initial-instance-cancelled? (-> initial-read-body keywordize-keys
+                                            first :instances first :cancelled boolean)
+            cancel-resp (h (merge req-attrs {:request-method :delete}))
+            followup-read-resp (h (merge req-attrs {:request-method :get}))
+            followup-read-body (response->body-data followup-read-resp)
+            followup-instance-cancelled? (-> followup-read-body keywordize-keys
+                                             first :instances first :cancelled boolean)]
+        (is (not initial-instance-cancelled?))
+        (is (<= 200 (:status cancel-resp) 299))
+        (is (= "application/json" (get-in cancel-resp [:headers "Content-Type"])))
+        (is (= "No content." (response->body-data cancel-resp)))
+        (is followup-instance-cancelled?)))
+
+    (testing "set cancelled on completed instance"
+      (let [job (create-dummy-job conn :user "test-user")
+            instance (create-dummy-instance conn job :instance-status :instance.status/success)
+            task-id (-> conn d/db (d/entity instance) :instance/task-id)
+            h (basic-handler conn)
+            req-attrs {:scheme :http
+                       :uri "/rawscheduler"
+                       :authorization/user "test-user"
+                       :query-params {"instance" task-id}}
+            initial-read-resp (h (merge req-attrs {:request-method :get}))
+            initial-read-body (response->body-data initial-read-resp)
+            initial-instance-cancelled? (-> initial-read-body keywordize-keys
+                                            first :instances first :cancelled boolean)
+            cancel-resp (h (merge req-attrs {:request-method :delete}))
+            followup-read-resp (h (merge req-attrs {:request-method :get}))
+            followup-read-body (response->body-data followup-read-resp)
+            followup-instance-cancelled? (-> followup-read-body keywordize-keys
+                                             first :instances first :cancelled boolean)]
+        (is (not initial-instance-cancelled?))
+        (is (<= 200 (:status cancel-resp) 299))
+        (is (= "application/json" (get-in cancel-resp [:headers "Content-Type"])))
+        (is (= "No content." (response->body-data cancel-resp)))
+        (is followup-instance-cancelled?)))))
 
 
 (deftest quota-api
