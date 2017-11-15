@@ -106,7 +106,8 @@
                       ; as required.
                       (remove (partial = :group/job)))]
   (defn job-ent->map
-    "Convert a job entity to a map. This also loads the associated group and converts it to a map."
+    "Convert a job entity to a map.
+     This also loads the associated group without the nested jobs in the group and converts it to a map."
     ([job db]
      (job-ent->map (d/entity db (:db/id job))))
     ([job]
@@ -117,6 +118,7 @@
                         (map (fn [k] [k (entity->map (get group-ent k))]))
                         (remove (fn [[k v]] (nil? v)))
                         (into {})
+                        ; The :group/job key normally returns a set, so let's do the same for compatibility
                         hash-set))]
        (cond-> job
          group (assoc :group/_job group))))))
