@@ -1230,17 +1230,44 @@ class CookCliTest(unittest.TestCase):
         self.assertEqual(1, len(jobs))
         self.assertEqual(uuids[0], jobs[0]['uuid'])
 
-    def test_entity_ref_support(self):
-        cp, uuids = cli.submit('ls', self.cook_url)
+    def test_entity_ref_support_basic(self):
+        # Submit a job, then query using various entity ref strings
+        cp, uuids = cli.submit('ls', self.cook_url, submit_flags='--group-name foo')
         self.assertEqual(0, cp.returncode, cp.stderr)
-        # cluster = *, type = job, uuid = job
+        # cluster = *, type = job
         _, jobs = cli.show_json([f'*/job/{uuids[0]}'], self.cook_url)
+        group_uuid = jobs[0]['groups'][0]
         self.assertEqual(1, len(jobs))
         self.assertEqual(uuids[0], jobs[0]['uuid'])
-        # cluster = *, type = instance, uuid = job
+        # cluster = *, type = instance
         _, instance_job_pairs = cli.show_instances([f'*/instance/{uuids[0]}'], self.cook_url)
         self.assertEqual(0, len(instance_job_pairs))
-        # cluster = *, type = group, uuid = job
+        # cluster = *, type = group
         _, groups = cli.show_groups([f'*/group/{uuids[0]}'], self.cook_url)
         self.assertEqual(0, len(groups))
-        # TODO Continue to build out this test
+
+        # Wait for an instance to appear, then query using various entity ref strings
+        instance_uuid = util.wait_for_instance(self.cook_url, uuids[0])['task_id']
+        # cluster = *, type = job
+        _, jobs = cli.show_json([f'*/job/{instance_uuid}'], self.cook_url)
+        self.assertEqual(0, len(jobs))
+        # cluster = *, type = instance
+        _, instance_job_pairs = cli.show_instances([f'*/instance/{instance_uuid}'], self.cook_url)
+        instance, _ = instance_job_pairs[0]
+        self.assertEqual(1, len(instance_job_pairs))
+        self.assertEqual(instance_uuid, instance['task_id'])
+        # cluster = *, type = group
+        _, groups = cli.show_groups([f'*/group/{instance_uuid}'], self.cook_url)
+        self.assertEqual(0, len(groups))
+
+        # Query for the job group using various entity ref strings
+        # cluster = *, type = job
+        _, jobs = cli.show_json([f'*/job/{group_uuid}'], self.cook_url)
+        self.assertEqual(0, len(jobs))
+        # cluster = *, type = instance
+        _, instance_job_pairs = cli.show_instances([f'*/instance/{group_uuid}'], self.cook_url)
+        self.assertEqual(0, len(instance_job_pairs))
+        # cluster = *, type = group
+        _, groups = cli.show_groups([f'*/group/{group_uuid}'], self.cook_url)
+        self.assertEqual(1, len(groups))
+        self.assertEqual(group_uuid, groups[0]['uuid'])
