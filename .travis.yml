@@ -8,9 +8,9 @@ before_install:
   - echo "deb https://repos.mesosphere.io/ubuntu/ trusty main" | sudo tee /etc/apt/sources.list.d/mesosphere.list
   - sudo apt-get update -qq
   - sudo apt-get install mesos -y </dev/null
-  - eval "$(pyenv init -)"
-  - pyenv install --skip-existing 3.6.2
-  - pyenv global 3.6.2
+  - eval "$(pyenv init -)"  # ensure pyenv sees our customized $PYENV_ROOT value
+  - pyenv install --skip-existing 3.6.2  # we can skip this installation step if the target version is cached
+  - pyenv global 3.6.2  # the cli and integration tests use features from python 3.6
 branches:
   only:
     - master
@@ -24,7 +24,7 @@ env:
   global:
     - MESOS_NATIVE_JAVA_LIBRARY=/usr/lib/libmesos.so
     - CLJ_HTTP_ASYNC_POOL_TEST_DURATION_MULTIPLIER=5
-    - PYENV_ROOT=$HOME/.pyenv
+    - PYENV_ROOT=$HOME/.pyenv  # ensure that pyenv is using our local cache for its install root
   matrix:
     - COOK_EXECUTOR='1' TEST_DIR=executor DEPS_CMD='travis/setup.sh' TEST_CMD='travis/run_tests.sh'
     - COOK_EXECUTOR='1' TEST_DIR=scheduler DEPS_CMD='travis/setup.sh' TEST_CMD='lein test :all-but-benchmark'
