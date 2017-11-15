@@ -120,8 +120,7 @@ def query_entities(cluster, entity_refs, pred_jobs, pred_instances, pred_groups,
                                 interval, make_instance_request, Types.INSTANCE)
     for job in parent_jobs:
         for instance in job['instances']:
-            instance_uuid = instance['task_id']
-            if instance_uuid in instance_uuids:
+            if instance['task_id'] in instance_uuids:
                 instance_parent_job_pairs.append((instance, job))
 
     entities['instances'] = instance_parent_job_pairs
