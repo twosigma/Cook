@@ -98,7 +98,8 @@
    (deep-transduce-kv (map identity) entity)))
 
 ; During testing, we found that calling (keys) on a group entity with a large number of jobs was
-; quite slow. As an optimization, load the group keys ahead of time from the schema.
+; quite slow (12ms just to list keys vs 200 microseconds for job-ent->map.)
+; As an optimization, load the group keys ahead of time from the schema.
 (let [group-keys (->> schema/schema-attributes
                       (map :db/ident)
                       (filter #(= "group" (namespace %)))
@@ -115,9 +116,7 @@
            job (entity->map job)
            group (when group-ent
                    (->> group-keys
-                        (map (fn [k] [k (entity->map (get group-ent k))]))
-                        (remove (fn [[k v]] (nil? v)))
-                        (into {})
+                        (pc/map-from-keys (fn [k] (entity->map (get group-ent k))))
                         ; The :group/job key normally returns a set, so let's do the same for compatibility
                         hash-set))]
        (cond-> job
