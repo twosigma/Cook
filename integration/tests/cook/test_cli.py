@@ -246,7 +246,7 @@ class CookCliTest(unittest.TestCase):
         elapsed_time = time.time() - start_time
         self.assertEqual(1, cp.returncode, cp.stderr)
         self.assertIn('Timeout waiting', cli.decode(cp.stderr))
-        self.assertLess(elapsed_time, 15)
+        self.assertLess(elapsed_time, 20)
         self.assertGreater(elapsed_time, 3)
         start_time = time.time()
         cp = cli.wait(uuids, self.cook_url, wait_flags='--timeout 1 --interval 1')
@@ -1086,6 +1086,15 @@ class CookCliTest(unittest.TestCase):
         cp = cli.kill([uuid.uuid4()], self.cook_url)
         self.assertEqual(1, cp.returncode, cp.stderr)
         self.assertIn(f'No matching data found', cli.stdout(cp))
+
+    def test_kill_multiple(self):
+        cp, uuids = cli.submit_stdin(['ls', 'ls', 'ls'], self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        cp = cli.kill(uuids, self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertIn(f'Killed job {uuids[0]}', cli.stdout(cp))
+        self.assertIn(f'Killed job {uuids[1]}', cli.stdout(cp))
+        self.assertIn(f'Killed job {uuids[2]}', cli.stdout(cp))
 
     def test_submit_with_command_prefix(self):
         # Specifying command prefix

@@ -972,7 +972,7 @@
      :malformed? check-job-params-present
      :allowed? (partial job-request-allowed? conn is-authorized-fn)
      :exists? (partial retrieve-jobs conn)
-     :handle-ok (partial render-jobs-for-response conn framework-id)}))
+     :handle-ok (fn [ctx] (render-jobs-for-response conn framework-id ctx))}))
 
 
 ;;; On DELETE; use repeated job argument
@@ -985,8 +985,7 @@
      :exists? (partial retrieve-jobs conn)
      :delete! (fn [ctx]
                 (cook.mesos/kill-job conn (::jobs-requested ctx))
-                (cook.mesos/kill-instances conn (::instances-requested ctx)))
-     :handle-ok (partial render-jobs-for-response conn)}))
+                (cook.mesos/kill-instances conn (::instances-requested ctx)))}))
 
 (defn vectorize
   "If x is not a vector (or nil), turns it into a vector"
@@ -1821,7 +1820,7 @@
   and returns a function which takes a ServletResponse and writes the JSON
   encoded response data. This is suitable for use with jet's server API."
   [data]
-  (fn [^ServletResponse resp]
+  (fn streaming-json-encoder-fn [^ServletResponse resp]
     (cheshire/generate-stream data
                               (OutputStreamWriter. (.getOutputStream resp)))))
 
