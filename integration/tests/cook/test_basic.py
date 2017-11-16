@@ -1315,6 +1315,7 @@ class CookTest(unittest.TestCase):
         num_jobs = minimum_hosts
         uuids, resp = util.submit_jobs(self.cook_url, job_spec, num_jobs, groups=[group])
 
+
         try:
             def query_list():
                 return util.query_jobs(self.cook_url, job=uuids).json()
