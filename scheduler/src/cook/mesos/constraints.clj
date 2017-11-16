@@ -329,8 +329,9 @@
                 cotask-attr-maps (->> cotasks
                                       (map #(.getTotalLease %))
                                       (map get-vm-lease-attr-map))
+                cotask-ids (map #(.getId (.getTaskRequest %)) cotasks)
                 [passes? reason] (group-constraint-evaluate constraint target-attr-map cotask-attr-maps)]
-            (log/warn (format "Found cotasks for task %s - %s" task-id cotasks))
+            (log/warn (format "Found cotasks for task %s - %s" task-id cotask-ids))
             (com.netflix.fenzo.ConstraintEvaluator$Result. (boolean passes?) reason)))))))
 
 (defn make-rebalancer-group-constraint
