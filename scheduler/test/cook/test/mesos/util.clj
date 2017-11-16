@@ -188,6 +188,8 @@
     (is group)
     (is (not (instance? datomic.Entity group)))
     (is (not (nil? (:group/uuid group))))
+    (is (not (nil? (:group/host-placement group))))
+    (is (not (instance? datomic.Entity (:group/host-placement group))))
     (is (nil? (:group/job group)))))
 
 (deftest test-namespace-datomic
