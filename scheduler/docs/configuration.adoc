@@ -89,17 +89,17 @@ If need it to bind to another port, you can specify that with the `:local-port` 
 `:sandbox-syncer`::
   The Cook scheduler throttles the rate at which it publishes task sandbox directories.
   This allows us to handle high rate of incoming progress messages in a graceful manner.
-  `sandbox-syncer` is a map with the following possible keys, `max-consecutive-sync-failure`, ``publish-batch-size`, `publish-interval-ms`, `sandbox-sync-enabled` and `sync-interval-ms`.
+  `sandbox-syncer` is a map with the following possible keys: `agent-state-sandbox-sync`, `max-consecutive-sync-failure`, ``publish-batch-size`, `publish-interval-ms`, and `sync-interval-ms`.
+  The `agent-state-sandbox-sync` configured whether to sync sandbox directories from mesos agent state for tasks in the background.
+  The default value is false.
+  The `max-consecutive-sync-failure` is an integer representing the number of consecutive failures before which the syncer stops querying the mesos agent for its state.
+  The default value is 15.
   The `publish-batch-size` is an integer representing the number of facts that are updated in individual datomic instance sandbox directory update transactions.
   The default value is 100.
   The `publish-interval-ms` is an integer representing the number of millisecond intervals at which sandbox directories updates will be published to datomic.
   The default value is 2500.
-  The `sandbox-sync-enabled` configured whether to sync sandbox directories for instance in the background.
-  The default value is false.
   The `sync-interval-ms` is an integer representing the number of millisecond intervals at which the sandbox syncer will trigger state queries on pending mesos agents.
   The default value is 15000.
-  The `max-consecutive-sync-failure` is an integer representing the number of consecutive failures before which the syncer stops querying the mesos agent for its state.
-  The default value is 15.
 
 
 [[mesos_config]]

@@ -199,7 +199,7 @@
                                "executor-111" "/path/for/executor-111"}]
           (is (= expected-result actual-result)))))))
 
-(deftest test-refresh-agent-cache-entry-sandbox-sync-enabled
+(deftest test-refresh-agent-cache-entry-agent-state-sandbox-sync-enabled
   (let [db-conn (tu/restore-fresh-database! "datomic:mem://test-refresh-agent-cache-entry")
         framework-id "test-framework-id"
         mesos-agent-query-cache (atom (cache/fifo-cache-factory {} :threshold 2))
@@ -209,10 +209,10 @@
         pending-sync-agent (agent pending-sync-initial-state)
         task-id->sandbox-agent (agent {})
         item-unavailable (future {:result :unavailable})
-        publisher-state {:datomic-conn db-conn
+        publisher-state {:agent-state-sandbox-sync true
+                         :datomic-conn db-conn
                          :mesos-agent-query-cache mesos-agent-query-cache
                          :pending-sync-agent pending-sync-agent
-                         :sandbox-sync-enabled true
                          :task-id->sandbox-agent task-id->sandbox-agent}
         refresh-agent-cache-helper #(sandbox/refresh-agent-cache-entry publisher-state framework-id %)
         task-ids-with-sandbox-in-db ["task2.host1" "task2.host2" "task2.host3" "task3.host3"]
@@ -324,7 +324,7 @@
                    (update :host->consecutive-failures assoc "badhost" 1))
                @pending-sync-agent))))))
 
-(deftest test-refresh-agent-cache-entry-sandbox-sync-disabled
+(deftest test-refresh-agent-cache-entry-agent-state-sandbox-sync-disabled
   (let [db-conn (tu/restore-fresh-database! "datomic:mem://test-refresh-agent-cache-entry")
         framework-id "test-framework-id"
         mesos-agent-query-cache (atom (cache/fifo-cache-factory {} :threshold 2))
@@ -334,10 +334,10 @@
         pending-sync-agent (agent pending-sync-initial-state)
         task-id->sandbox-agent (agent {})
         item-unavailable (future {:result :unavailable})
-        publisher-state {:datomic-conn db-conn
+        publisher-state {:agent-state-sandbox-sync false
+                         :datomic-conn db-conn
                          :mesos-agent-query-cache mesos-agent-query-cache
                          :pending-sync-agent pending-sync-agent
-                         :sandbox-sync-enabled false
                          :task-id->sandbox-agent task-id->sandbox-agent}
         refresh-agent-cache-helper #(sandbox/refresh-agent-cache-entry publisher-state framework-id %)
         task-ids-with-sandbox-in-db ["task2.host1" "task2.host2" "task2.host3" "task3.host3"]
@@ -450,10 +450,10 @@
                     (if (str/includes? hostname "badhost")
                       (throw (Exception. "Exception from test"))
                       {(str "task." hostname) (str "/path/to/" hostname "/sandbox")}))]
-      (let [publisher-state {:datomic-conn db-conn
+      (let [publisher-state {:agent-state-sandbox-sync true
+                             :datomic-conn db-conn
                              :mesos-agent-query-cache mesos-agent-query-cache
                              :pending-sync-agent pending-sync-agent
-                             :sandbox-sync-enabled true
                              :task-id->sandbox-agent task-id->sandbox-agent}
             syncer-cancel-fn (sandbox/start-host-sandbox-syncer
                                publisher-state sync-interval-ms max-consecutive-sync-failure)]
@@ -504,11 +504,11 @@
           max-consecutive-sync-failure 10
           framework-id "test-framework-id"
           mesos-agent-query-cache (atom (cache/fifo-cache-factory {} :threshold 2))
-          sandbox-sync-enabled true
+          agent-state-sandbox-sync true
           {:keys [publisher-cancel-fn syncer-cancel-fn task-id->sandbox-agent] :as sandbox-state}
           (sandbox/prepare-sandbox-publisher framework-id db-conn publish-batch-size publish-interval-ms
                                              sync-interval-ms max-consecutive-sync-failure mesos-agent-query-cache
-                                             sandbox-sync-enabled)]
+                                             agent-state-sandbox-sync)]
 
       (try
         (->> {"sandbox-directory" "/path/to/sandbox", "task-id" "task-1", "type" "directory"}
