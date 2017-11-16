@@ -326,6 +326,7 @@
                                     .getCurrAvailableResources
                                     (get-vm-lease-attr-map))
                 cotasks (get-fenzo-cotasks db group task-id (cycle-task-ids-fn) task-tracker-state)
+                _ (log/debug (format "Found cotasks for task %s - %s" task-id cotasks))
                 cotask-attr-maps (->> cotasks
                                       (map #(.getTotalLease %))
                                       (map get-vm-lease-attr-map))
