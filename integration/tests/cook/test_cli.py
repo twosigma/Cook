@@ -4,7 +4,7 @@ import os
 import time
 import unittest
 import uuid
-from urllib.parse import urlparse
+from urllib.parse import urlparse, quote
 
 from nose.plugins.attrib import attr
 
@@ -1325,6 +1325,46 @@ class CookCliTest(unittest.TestCase):
             self.assertEqual(1, len(jobs))
             self.assertEqual(uuid, jobs[0]['uuid'])
             _, jobs = cli.show_jobs([f'Foo/job/{uuid.upper()}'], flags=flags)
+            self.assertEqual(0, cp.returncode, cp.stderr)
+            self.assertEqual(1, len(jobs))
+            self.assertEqual(uuid, jobs[0]['uuid'])
+
+    def test_entity_refs_complex_cluster_names(self):
+        config = \
+            {'clusters': [
+                {'name': 'foo / bar', 'url': self.cook_url},
+                {'name': 'foo + bar', 'url': self.cook_url},
+                {'name': 'foo : bar', 'url': self.cook_url},
+                {'name': 'foo ? bar', 'url': self.cook_url},
+                {'name': 'foo = bar', 'url': self.cook_url},
+                {'name': 'foo & bar', 'url': self.cook_url}
+            ]}
+        with cli.temp_config_file(config) as path:
+            flags = f'--config {path}'
+            cp, uuids = cli.submit('ls', flags=flags)
+            self.assertEqual(0, cp.returncode, cp.stderr)
+            uuid = uuids[0]
+            _, jobs = cli.show_jobs([f'{quote("foo / bar", safe="")}/job/{uuid}'], flags=flags)
+            self.assertEqual(0, cp.returncode, cp.stderr)
+            self.assertEqual(1, len(jobs))
+            self.assertEqual(uuid, jobs[0]['uuid'])
+            _, jobs = cli.show_jobs([f'{quote("foo + bar", safe="")}/job/{uuid}'], flags=flags)
+            self.assertEqual(0, cp.returncode, cp.stderr)
+            self.assertEqual(1, len(jobs))
+            self.assertEqual(uuid, jobs[0]['uuid'])
+            _, jobs = cli.show_jobs([f'{quote("foo : bar", safe="")}/job/{uuid}'], flags=flags)
+            self.assertEqual(0, cp.returncode, cp.stderr)
+            self.assertEqual(1, len(jobs))
+            self.assertEqual(uuid, jobs[0]['uuid'])
+            _, jobs = cli.show_jobs([f'{quote("foo ? bar", safe="")}/job/{uuid}'], flags=flags)
+            self.assertEqual(0, cp.returncode, cp.stderr)
+            self.assertEqual(1, len(jobs))
+            self.assertEqual(uuid, jobs[0]['uuid'])
+            _, jobs = cli.show_jobs([f'{quote("foo = bar", safe="")}/job/{uuid}'], flags=flags)
+            self.assertEqual(0, cp.returncode, cp.stderr)
+            self.assertEqual(1, len(jobs))
+            self.assertEqual(uuid, jobs[0]['uuid'])
+            _, jobs = cli.show_jobs([f'{quote("foo & bar", safe="")}/job/{uuid}'], flags=flags)
             self.assertEqual(0, cp.returncode, cp.stderr)
             self.assertEqual(1, len(jobs))
             self.assertEqual(uuid, jobs[0]['uuid'])
