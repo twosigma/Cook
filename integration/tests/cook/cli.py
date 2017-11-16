@@ -90,7 +90,7 @@ def __show_json(uuids, cook_url=None, flags=None):
     return cp, data
 
 
-def show_json(uuids, cook_url=None, flags=None):
+def show_jobs(uuids, cook_url=None, flags=None):
     """Shows the job JSON corresponding to the given UUID(s)"""
     cp, data = __show_json(uuids, cook_url, flags)
     jobs = [job for entities in data['clusters'].values() for job in entities['jobs']]
@@ -109,6 +109,15 @@ def show_groups(uuids, cook_url=None, flags=None):
     cp, data = __show_json(uuids, cook_url, flags)
     groups = [group for entities in data['clusters'].values() for group in entities['groups']]
     return cp, groups
+
+
+def show_all(uuids, cook_url=None, flags=None):
+    """Shows the job, instance, and group JSON corresponding to the given UUID(s)"""
+    cp, data = __show_json(uuids, cook_url, flags)
+    jobs = [job for entities in data['clusters'].values() for job in entities['jobs']]
+    instance_job_pairs = [pair for entities in data['clusters'].values() for pair in entities['instances']]
+    groups = [group for entities in data['clusters'].values() for group in entities['groups']]
+    return cp, jobs, instance_job_pairs, groups
 
 
 def wait(uuids=None, cook_url=None, flags=None, wait_flags=None):

@@ -1,13 +1,11 @@
+import collections
 import concurrent
 import logging
 import os
+from collections import defaultdict
 from concurrent import futures
 from operator import itemgetter
-
-import collections
-
-from collections import defaultdict
-from urllib.parse import unquote_plus
+from urllib.parse import unquote
 
 from cook import http, colors, progress, mesos
 from cook.util import wait_until
@@ -89,7 +87,7 @@ def entity_refs_to_uuids(cluster, entity_refs):
     """Given a cluster and list of entity ref maps, returns a map of type -> list of uuid"""
     uuids = defaultdict(list)
     for ref in entity_refs:
-        if ref['cluster'] in (cluster, Clusters.ALL):
+        if ref['cluster'] in (cluster['name'].lower(), Clusters.ALL):
             ref_type = ref['type']
             ref_uuid = ref['uuid']
             if ref_type == Types.ALL:
@@ -276,13 +274,12 @@ def parse_entity_refs(ref_strings):
     """
     entity_refs = []
     for ref_string in ref_strings:
-        ref_string = ref_string.strip()
-        ref_parts = ref_string.split('/')
+        ref_parts = ref_string.lower().split('/')
         num_parts = len(ref_parts)
         if num_parts == 1:
             entity_refs.append({'cluster': Clusters.ALL, 'type': Types.ALL, 'uuid': ref_parts[0]})
         elif num_parts == 3:
-            entity_refs.append({'cluster': unquote_plus(ref_parts[0]), 'type': ref_parts[1], 'uuid': ref_parts[2]})
+            entity_refs.append({'cluster': unquote(ref_parts[0]), 'type': ref_parts[1], 'uuid': ref_parts[2]})
         else:
             raise Exception(f'{ref_string} is not a valid entity reference.')
     return entity_refs

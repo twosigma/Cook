@@ -24,7 +24,7 @@ class CookCliTest(unittest.TestCase):
         self.assertEqual(0, cp.returncode, cp.stderr)
         cp = cli.wait(uuids, self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
-        cp, jobs = cli.show_json(uuids, self.cook_url)
+        cp, jobs = cli.show_jobs(uuids, self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual('completed', jobs[0]['status'])
 
@@ -40,7 +40,7 @@ class CookCliTest(unittest.TestCase):
             self.assertEqual(0, cp.returncode, cp.stderr)
 
         # Assert that the job was submitted with the defaults from the file
-        cp, jobs = cli.show_json(uuids, self.cook_url)
+        cp, jobs = cli.show_jobs(uuids, self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual(1, len(jobs))
         job = jobs[0]
@@ -55,7 +55,7 @@ class CookCliTest(unittest.TestCase):
         cp, uuids = cli.submit(cook_url=self.cook_url, stdin=cli.encode('ls'))
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual(1, len(uuids), uuids)
-        cp, jobs = cli.show_json(uuids, self.cook_url)
+        cp, jobs = cli.show_jobs(uuids, self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual(1, len(jobs))
         cp, uuids = cli.submit(cook_url=self.cook_url, stdin=cli.encode(''))
@@ -66,7 +66,7 @@ class CookCliTest(unittest.TestCase):
         cp, uuids = cli.submit_stdin(['ls', 'ls', 'ls'], self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual(3, len(uuids))
-        cp, jobs = cli.show_json(uuids, self.cook_url)
+        cp, jobs = cli.show_jobs(uuids, self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual(3, len(jobs))
         cp, uuids = cli.submit_stdin(['ls', 'ls', 'ls'], self.cook_url, submit_flags='--uuid %s' % uuid.uuid4())
@@ -78,7 +78,7 @@ class CookCliTest(unittest.TestCase):
         self.assertEqual(0, cp.returncode, cp.stderr)
         cp = cli.wait(uuids, self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
-        cp, jobs = cli.show_json(uuids, self.cook_url)
+        cp, jobs = cli.show_jobs(uuids, self.cook_url)
         returned_uuids = [j['uuid'] for j in jobs]
         self.assertEqual(uuids, returned_uuids)
         self.assertEqual('completed', jobs[0]['status'])
@@ -97,13 +97,13 @@ class CookCliTest(unittest.TestCase):
             flags = f'--config {path} --cluster {cluster_name}'
             cp, uuids = cli.submit('ls', flags=flags)
             self.assertEqual(0, cp.returncode, cp.stderr)
-            cp, jobs = cli.show_json(uuids, flags=flags)
+            cp, jobs = cli.show_jobs(uuids, flags=flags)
             self.assertEqual(0, cp.returncode, cp.stderr)
             # Cluster names are case insensitive
             uppercase_cluster_name = cluster_name.upper()
             self.assertNotEqual(cluster_name, uppercase_cluster_name)
             flags = f'--config {path} --cluster {uppercase_cluster_name}'
-            cp, jobs = cli.show_json(uuids, flags=flags)
+            cp, jobs = cli.show_jobs(uuids, flags=flags)
             self.assertEqual(0, cp.returncode, cp.stderr)
 
     def test_verbose_flag(self):
@@ -150,7 +150,7 @@ class CookCliTest(unittest.TestCase):
         cp, uuids = cli.submit('ls', self.cook_url, submit_flags=submit_flags)
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual(str(juuid), uuids[0], uuids)
-        cp, jobs = cli.show_json(uuids, self.cook_url)
+        cp, jobs = cli.show_jobs(uuids, self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual(name, jobs[0]['name'])
         self.assertEqual(priority, jobs[0]['priority'])
@@ -179,7 +179,7 @@ class CookCliTest(unittest.TestCase):
         cp, uuids = cli.submit(stdin=cli.encode(json.dumps(raw_job)), cook_url=self.cook_url, submit_flags='--raw')
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual(str(juuid), uuids[0], uuids)
-        cp, jobs = cli.show_json(uuids, self.cook_url)
+        cp, jobs = cli.show_jobs(uuids, self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual(command, jobs[0]['command'])
         self.assertEqual(name, jobs[0]['name'])
@@ -208,7 +208,7 @@ class CookCliTest(unittest.TestCase):
                                cook_url=self.cook_url, submit_flags='--raw')
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual(3, len(uuids), uuids)
-        cp, jobs = cli.show_json(uuids, self.cook_url)
+        cp, jobs = cli.show_jobs(uuids, self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual(3, len(jobs), jobs)
         for job in jobs:
@@ -229,7 +229,7 @@ class CookCliTest(unittest.TestCase):
     def test_name_default(self):
         cp, uuids = cli.submit('ls', self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
-        cp, jobs = cli.show_json(uuids, self.cook_url)
+        cp, jobs = cli.show_jobs(uuids, self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual('%s_job' % os.environ['USER'], jobs[0]['name'])
 
@@ -278,13 +278,13 @@ class CookCliTest(unittest.TestCase):
         # Double-dash for 'end of options'
         cp, uuids = cli.submit('-- ls -al', self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
-        cp, jobs = cli.show_json(uuids, self.cook_url)
+        cp, jobs = cli.show_jobs(uuids, self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual('ls -al', jobs[0]['command'])
         # Double-dash along with other flags
         cp, uuids = cli.submit('-- ls -al', self.cook_url, submit_flags='--name foo --priority 12')
         self.assertEqual(0, cp.returncode, cp.stderr)
-        cp, jobs = cli.show_json(uuids, self.cook_url)
+        cp, jobs = cli.show_jobs(uuids, self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual('ls -al', jobs[0]['command'])
         self.assertEqual('foo', jobs[0]['name'])
@@ -323,12 +323,12 @@ class CookCliTest(unittest.TestCase):
     def test_submit_priority(self):
         cp, uuids = cli.submit('ls', self.cook_url, submit_flags='--priority 0')
         self.assertEqual(0, cp.returncode, cp.stderr)
-        cp, jobs = cli.show_json(uuids, self.cook_url)
+        cp, jobs = cli.show_jobs(uuids, self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual(0, jobs[0]['priority'])
         cp, uuids = cli.submit('ls', self.cook_url, submit_flags='--priority 100')
         self.assertEqual(0, cp.returncode, cp.stderr)
-        cp, jobs = cli.show_json(uuids, self.cook_url)
+        cp, jobs = cli.show_jobs(uuids, self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual(100, jobs[0]['priority'])
         cp, uuids = cli.submit('ls', self.cook_url, submit_flags='--priority -1')
@@ -365,7 +365,7 @@ class CookCliTest(unittest.TestCase):
         self.assertEqual(0, cp.returncode, cp.stderr)
         cp = cli.wait(uuids, self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
-        cp, jobs = cli.show_json(uuids, self.cook_url)
+        cp, jobs = cli.show_jobs(uuids, self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual('completed', jobs[0]['status'])
         self.assertEqual('success', jobs[0]['state'])
@@ -376,14 +376,14 @@ class CookCliTest(unittest.TestCase):
         command = '"(foo -x \'def bar = "baz"\')"'
         cp, uuids = cli.submit(command, self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
-        cp, jobs = cli.show_json(uuids, self.cook_url)
+        cp, jobs = cli.show_jobs(uuids, self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual(desired_command.replace('"', ''), jobs[0]['command'])
         # Correctly submitted command
         command = '"(foo -x \'def bar = \\"baz\\"\')"'
         cp, uuids = cli.submit(command, self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
-        cp, jobs = cli.show_json(uuids, self.cook_url)
+        cp, jobs = cli.show_jobs(uuids, self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual(desired_command, jobs[0]['command'])
 
@@ -392,14 +392,14 @@ class CookCliTest(unittest.TestCase):
         command = "'export HOME=$MESOS_DIRECTORY; export LOGNAME=$(whoami); JAVA_OPTS='-Xmx15000m' foo'"
         cp, uuids = cli.submit(command, self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
-        cp, jobs = cli.show_json(uuids, self.cook_url)
+        cp, jobs = cli.show_jobs(uuids, self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual(desired_command.replace("'", ''), jobs[0]['command'])
         # Correctly submitted command
         command = "'export HOME=$MESOS_DIRECTORY; export LOGNAME=$(whoami); JAVA_OPTS='\"'\"'-Xmx15000m'\"'\"' foo'"
         cp, uuids = cli.submit(command, self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
-        cp, jobs = cli.show_json(uuids, self.cook_url)
+        cp, jobs = cli.show_jobs(uuids, self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual(desired_command, jobs[0]['command'])
 
@@ -494,13 +494,13 @@ class CookCliTest(unittest.TestCase):
         cp, uuids = cli.submit('ls', self.cook_url,
                                submit_flags='--application-name %s --application-version %s' % ('foo', '1.2.3'))
         self.assertEqual(0, cp.returncode, cp.stderr)
-        cp, jobs = cli.show_json(uuids, self.cook_url)
+        cp, jobs = cli.show_jobs(uuids, self.cook_url)
         self.assertEqual('foo', jobs[0]['application']['name'])
         self.assertEqual('1.2.3', jobs[0]['application']['version'])
         # Default application name
         cp, uuids = cli.submit('ls', self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
-        cp, jobs = cli.show_json(uuids, self.cook_url)
+        cp, jobs = cli.show_jobs(uuids, self.cook_url)
         self.assertEqual('cook-scheduler-cli', jobs[0]['application']['name'])
         self.assertEqual(cli.version(), jobs[0]['application']['version'])
         # User-defined defaults
@@ -509,7 +509,7 @@ class CookCliTest(unittest.TestCase):
             flags = '--config %s' % path
             cp, uuids = cli.submit('ls', self.cook_url, flags=flags)
             self.assertEqual(0, cp.returncode, cp.stderr)
-            cp, jobs = cli.show_json(uuids, self.cook_url)
+            cp, jobs = cli.show_jobs(uuids, self.cook_url)
             self.assertEqual('bar', jobs[0]['application']['name'])
             self.assertEqual('4.5.6', jobs[0]['application']['version'])
 
@@ -881,11 +881,11 @@ class CookCliTest(unittest.TestCase):
         self.assertEqual(0, bar['size'])
 
     def __wait_for_progress_message(self, uuids):
-        return util.wait_until(lambda: cli.show_json(uuids, self.cook_url)[1][0]['instances'][0],
+        return util.wait_until(lambda: cli.show_jobs(uuids, self.cook_url)[1][0]['instances'][0],
                                lambda i: 'progress' in i and 'progress_message' in i)
 
     def __wait_for_exit_code(self, uuids):
-        return util.wait_until(lambda: cli.show_json(uuids, self.cook_url)[1][0]['instances'][0],
+        return util.wait_until(lambda: cli.show_jobs(uuids, self.cook_url)[1][0]['instances'][0],
                                lambda i: 'exit_code' in i)
 
     def __wait_for_executor_completion_message(self, uuids):
@@ -904,7 +904,7 @@ class CookCliTest(unittest.TestCase):
         self.assertEqual(0, cp.returncode, cp.stderr)
         util.wait_for_job(self.cook_url, uuids[0], 'completed')
         self.assertEqual(0, cp.returncode, cp.stderr)
-        cp, jobs = cli.show_json(uuids, self.cook_url)
+        cp, jobs = cli.show_jobs(uuids, self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual(executor, jobs[0]['instances'][0]['executor'])
         if executor == 'cook':
@@ -939,7 +939,7 @@ class CookCliTest(unittest.TestCase):
         self.assertEqual(0, cp.returncode, cp.stderr)
         util.wait_for_job(self.cook_url, uuids[0], 'completed')
         self.assertEqual(0, cp.returncode, cp.stderr)
-        cp, jobs = cli.show_json(uuids, self.cook_url)
+        cp, jobs = cli.show_jobs(uuids, self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual(executor, jobs[0]['instances'][0]['executor'])
         if executor == 'cook':
@@ -981,7 +981,7 @@ class CookCliTest(unittest.TestCase):
         # Duplicate job and instance uuid
         cp = cli.wait(uuids, self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
-        cp, jobs = cli.show_json(uuids, self.cook_url)
+        cp, jobs = cli.show_jobs(uuids, self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
         duplicate_uuid = jobs[0]['instances'][0]['task_id']
         cp, uuids = cli.submit('ls', self.cook_url, submit_flags=f'--uuid {duplicate_uuid}')
@@ -995,7 +995,7 @@ class CookCliTest(unittest.TestCase):
         # Duplicate instance and group uuid
         cp = cli.wait(uuids, self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
-        cp, jobs = cli.show_json(uuids, self.cook_url)
+        cp, jobs = cli.show_jobs(uuids, self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
         duplicate_uuid = jobs[0]['instances'][0]['task_id']
         cp, uuids = cli.submit('ls', self.cook_url, submit_flags=f'--group {duplicate_uuid}')
@@ -1030,7 +1030,7 @@ class CookCliTest(unittest.TestCase):
         self.assertEqual(0, cp.returncode, cp.stderr)
 
         # Job should not be completed
-        cp, jobs = cli.show_json(uuids, self.cook_url)
+        cp, jobs = cli.show_jobs(uuids, self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertNotEqual('completed', jobs[0]['status'])
 
@@ -1040,7 +1040,7 @@ class CookCliTest(unittest.TestCase):
         self.assertIn(f'Killed job {uuids[0]}', cli.stdout(cp))
 
         # Job should now be completed
-        cp, jobs = cli.show_json(uuids, self.cook_url)
+        cp, jobs = cli.show_jobs(uuids, self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual('completed', jobs[0]['status'])
 
@@ -1056,7 +1056,7 @@ class CookCliTest(unittest.TestCase):
         self.assertIn(f'Killed job instance {instance_uuid}', cli.stdout(cp))
 
         # Wait for the second instance to appear and check their statuses
-        job = util.wait_until(lambda: cli.show_json(uuids, self.cook_url)[1][0], lambda j: len(j['instances']) == 2)
+        job = util.wait_until(lambda: cli.show_jobs(uuids, self.cook_url)[1][0], lambda j: len(j['instances']) == 2)
         self.assertEqual('failed', next(i['status'] for i in job['instances'] if i['task_id'] == instance_uuid))
         self.assertIn(next(i['status'] for i in job['instances'] if i['task_id'] != instance_uuid),
                       ['running', 'unknown'])
@@ -1068,7 +1068,7 @@ class CookCliTest(unittest.TestCase):
         self.assertEqual(0, cp.returncode, cp.stderr)
 
         # Job should not be completed
-        cp, jobs = cli.show_json(uuids, self.cook_url)
+        cp, jobs = cli.show_jobs(uuids, self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertNotEqual('completed', jobs[0]['status'])
 
@@ -1078,7 +1078,7 @@ class CookCliTest(unittest.TestCase):
         self.assertIn(f'Killed job group {group_uuid}', cli.stdout(cp))
 
         # Job should now be completed
-        cp, jobs = cli.show_json(uuids, self.cook_url)
+        cp, jobs = cli.show_jobs(uuids, self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual('completed', jobs[0]['status'])
 
@@ -1093,7 +1093,7 @@ class CookCliTest(unittest.TestCase):
         self.assertEqual(0, cp.returncode, cp.stderr)
         cp = cli.wait(uuids, self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
-        cp, jobs = cli.show_json(uuids, self.cook_url)
+        cp, jobs = cli.show_jobs(uuids, self.cook_url)
         self.assertEqual('FOO=0; exit ${FOO:-1}', jobs[0]['command'])
         self.assertEqual('success', jobs[0]['state'])
 
@@ -1102,7 +1102,7 @@ class CookCliTest(unittest.TestCase):
         self.assertEqual(0, cp.returncode, cp.stderr)
         cp = cli.wait(uuids, self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
-        cp, jobs = cli.show_json(uuids, self.cook_url)
+        cp, jobs = cli.show_jobs(uuids, self.cook_url)
         self.assertEqual('exit ${FOO:-1}', jobs[0]['command'])
         self.assertEqual('failed', jobs[0]['state'])
 
@@ -1114,7 +1114,7 @@ class CookCliTest(unittest.TestCase):
             self.assertEqual(0, cp.returncode, cp.stderr)
             cp = cli.wait(uuids, self.cook_url)
             self.assertEqual(0, cp.returncode, cp.stderr)
-            cp, jobs = cli.show_json(uuids, self.cook_url)
+            cp, jobs = cli.show_jobs(uuids, self.cook_url)
             self.assertEqual('export FOO=0; exit ${FOO:-1}', jobs[0]['command'])
             self.assertEqual('success', jobs[0]['state'])
 
@@ -1206,7 +1206,7 @@ class CookCliTest(unittest.TestCase):
         # Group name, no group uuid
         cp, uuids = cli.submit_stdin(['ls', 'ls'], self.cook_url, submit_flags='--group-name foo')
         self.assertEqual(0, cp.returncode, cp.stderr)
-        _, jobs = cli.show_json(uuids, self.cook_url)
+        _, jobs = cli.show_jobs(uuids, self.cook_url)
         group_uuid = jobs[0]['groups'][0]
         self.assertEqual(group_uuid, jobs[1]['groups'][0])
         _, groups = cli.show_groups([group_uuid], self.cook_url)
@@ -1226,16 +1226,16 @@ class CookCliTest(unittest.TestCase):
     def test_show_duplicate_uuid(self):
         cp, uuids = cli.submit('ls', self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
-        _, jobs = cli.show_json(uuids + uuids, self.cook_url)
+        _, jobs = cli.show_jobs(uuids + uuids, self.cook_url)
         self.assertEqual(1, len(jobs))
         self.assertEqual(uuids[0], jobs[0]['uuid'])
 
-    def test_entity_ref_support_basic(self):
+    def test_entity_refs_distinct_uuids(self):
         # Submit a job, then query using various entity ref strings
         cp, uuids = cli.submit('ls', self.cook_url, submit_flags='--group-name foo')
         self.assertEqual(0, cp.returncode, cp.stderr)
         # cluster = *, type = job
-        _, jobs = cli.show_json([f'*/job/{uuids[0]}'], self.cook_url)
+        _, jobs = cli.show_jobs([f'*/job/{uuids[0]}'], self.cook_url)
         group_uuid = jobs[0]['groups'][0]
         self.assertEqual(1, len(jobs))
         self.assertEqual(uuids[0], jobs[0]['uuid'])
@@ -1249,7 +1249,7 @@ class CookCliTest(unittest.TestCase):
         # Wait for an instance to appear, then query using various entity ref strings
         instance_uuid = util.wait_for_instance(self.cook_url, uuids[0])['task_id']
         # cluster = *, type = job
-        _, jobs = cli.show_json([f'*/job/{instance_uuid}'], self.cook_url)
+        _, jobs = cli.show_jobs([f'*/job/{instance_uuid}'], self.cook_url)
         self.assertEqual(0, len(jobs))
         # cluster = *, type = instance
         _, instance_job_pairs = cli.show_instances([f'*/instance/{instance_uuid}'], self.cook_url)
@@ -1262,7 +1262,7 @@ class CookCliTest(unittest.TestCase):
 
         # Query for the job group using various entity ref strings
         # cluster = *, type = job
-        _, jobs = cli.show_json([f'*/job/{group_uuid}'], self.cook_url)
+        _, jobs = cli.show_jobs([f'*/job/{group_uuid}'], self.cook_url)
         self.assertEqual(0, len(jobs))
         # cluster = *, type = instance
         _, instance_job_pairs = cli.show_instances([f'*/instance/{group_uuid}'], self.cook_url)
@@ -1271,3 +1271,60 @@ class CookCliTest(unittest.TestCase):
         _, groups = cli.show_groups([f'*/group/{group_uuid}'], self.cook_url)
         self.assertEqual(1, len(groups))
         self.assertEqual(group_uuid, groups[0]['uuid'])
+
+    def test_entity_refs_duplicate_uuid(self):
+        # Create a job, instance, and group that share the same uuid
+        cp, uuids = cli.submit('ls', self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        uuid = util.wait_for_instance(self.cook_url, uuids[0])['task_id']
+        cp, uuids = cli.submit('ls', self.cook_url, submit_flags=f'--uuid {uuid} --group {uuid}')
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        # Query with just the uuid
+        _, jobs, instance_job_pairs, groups = cli.show_all([uuid], self.cook_url)
+        self.assertEqual(1, len(jobs))
+        self.assertEqual(1, len(instance_job_pairs))
+        self.assertEqual(1, len(groups))
+        # cluster = *, type = *
+        _, jobs, instance_job_pairs, groups = cli.show_all([f'*/*/{uuid}'], self.cook_url)
+        self.assertEqual(1, len(jobs))
+        self.assertEqual(1, len(instance_job_pairs))
+        self.assertEqual(1, len(groups))
+        # cluster = *, type = job
+        _, jobs, instance_job_pairs, groups = cli.show_all([f'*/job/{uuid}'], self.cook_url)
+        self.assertEqual(1, len(jobs))
+        self.assertEqual(0, len(instance_job_pairs))
+        self.assertEqual(0, len(groups))
+        # cluster = *, type = instance
+        _, jobs, instance_job_pairs, groups = cli.show_all([f'*/instance/{uuid}'], self.cook_url)
+        self.assertEqual(0, len(jobs))
+        self.assertEqual(1, len(instance_job_pairs))
+        self.assertEqual(0, len(groups))
+        # cluster = *, type = group
+        _, jobs, instance_job_pairs, groups = cli.show_all([f'*/group/{uuid}'], self.cook_url)
+        self.assertEqual(0, len(jobs))
+        self.assertEqual(0, len(instance_job_pairs))
+        self.assertEqual(1, len(groups))
+
+    def test_entity_refs_case_insensitive(self):
+        config = {'clusters': [{'name': 'Foo', 'url': self.cook_url}]}
+        with cli.temp_config_file(config) as path:
+            flags = f'--config {path}'
+            cp, uuids = cli.submit('ls', flags=flags)
+            self.assertEqual(0, cp.returncode, cp.stderr)
+            uuid = uuids[0]
+            _, jobs = cli.show_jobs([f'foo/job/{uuid}'], flags=flags)
+            self.assertEqual(0, cp.returncode, cp.stderr)
+            self.assertEqual(1, len(jobs))
+            self.assertEqual(uuid, jobs[0]['uuid'])
+            _, jobs = cli.show_jobs([f'FOO/job/{uuid}'], flags=flags)
+            self.assertEqual(0, cp.returncode, cp.stderr)
+            self.assertEqual(1, len(jobs))
+            self.assertEqual(uuid, jobs[0]['uuid'])
+            _, jobs = cli.show_jobs([f'Foo/JOB/{uuid}'], flags=flags)
+            self.assertEqual(0, cp.returncode, cp.stderr)
+            self.assertEqual(1, len(jobs))
+            self.assertEqual(uuid, jobs[0]['uuid'])
+            _, jobs = cli.show_jobs([f'Foo/job/{uuid.upper()}'], flags=flags)
+            self.assertEqual(0, cp.returncode, cp.stderr)
+            self.assertEqual(1, len(jobs))
+            self.assertEqual(uuid, jobs[0]['uuid'])

@@ -20,6 +20,10 @@ class MultiCookCliTest(unittest.TestCase):
         util.wait_for_cook(self.cook_url_1)
         util.wait_for_cook(self.cook_url_2)
 
+    def __two_cluster_config(self):
+        return {'clusters': [{'name': 'cook1', 'url': self.cook_url_1},
+                             {'name': 'cook2', 'url': self.cook_url_2}]}
+
     def test_federated_query(self):
         # Submit to cluster #1
         cp, uuids = cli.submit('ls', self.cook_url_1)
@@ -32,12 +36,11 @@ class MultiCookCliTest(unittest.TestCase):
         uuid_2 = uuids[0]
 
         # Single query for both jobs, federated across clusters
-        config = {'clusters': [{'name': 'cook1', 'url': self.cook_url_1},
-                               {'name': 'cook2', 'url': self.cook_url_2}]}
+        config = self.__two_cluster_config()
         with cli.temp_config_file(config) as path:
             cp = cli.wait([uuid_1, uuid_2], flags='--config %s' % path)
             self.assertEqual(0, cp.returncode, cp.stderr)
-            cp, jobs = cli.show_json([uuid_1, uuid_2], flags='--config %s' % path)
+            cp, jobs = cli.show_jobs([uuid_1, uuid_2], flags='--config %s' % path)
             uuids = [job['uuid'] for job in jobs]
             self.assertEqual(0, cp.returncode, cp.stderr)
             self.assertEqual(2, len(jobs), jobs)
@@ -53,8 +56,7 @@ class MultiCookCliTest(unittest.TestCase):
         instance = util.wait_for_instance(self.cook_url_2, uuids[0])
 
         # Run ssh for the submitted job, with both clusters configured
-        config = {'clusters': [{'name': 'cook1', 'url': self.cook_url_1},
-                               {'name': 'cook2', 'url': self.cook_url_2}]}
+        config = self.__two_cluster_config()
         with cli.temp_config_file(config) as path:
             hostname = instance['hostname']
             env = os.environ
@@ -67,3 +69,41 @@ class MultiCookCliTest(unittest.TestCase):
             self.assertIn(hostname, stdout)
             self.assertIn(f'-t {hostname} cd', stdout)
             self.assertIn('; bash', stdout)
+
+    def test_entity_ref_support(self):
+        # Submit to cluster #1
+        cp, uuids = cli.submit('job1', self.cook_url_1)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        uuid = uuids[0]
+
+        # Submit to cluster #2 with the same uuid
+        cp, uuids = cli.submit('job2', self.cook_url_2, submit_flags=f'--uuid {uuid}')
+        self.assertEqual(0, cp.returncode, cp.stderr)
+
+        config = self.__two_cluster_config()
+        with cli.temp_config_file(config) as path:
+            flags = f'--config {path}'
+            # Query for both jobs with uuid
+            cp, jobs = cli.show_jobs([uuid], flags=flags)
+            self.assertEqual(0, cp.returncode, cp.stderr)
+            self.assertEqual(2, len(jobs), jobs)
+            self.assertEqual(uuid, jobs[0]['uuid'])
+            self.assertEqual(uuid, jobs[1]['uuid'])
+            # Query for both jobs with entity ref
+            cp, jobs = cli.show_jobs([f'*/job/{uuid}'], flags=flags)
+            self.assertEqual(0, cp.returncode, cp.stderr)
+            self.assertEqual(2, len(jobs), jobs)
+            self.assertEqual(uuid, jobs[0]['uuid'])
+            self.assertEqual(uuid, jobs[1]['uuid'])
+            # Query cook1 with entity ref
+            cp, jobs = cli.show_jobs([f'cook1/job/{uuid}'], flags=flags)
+            self.assertEqual(0, cp.returncode, cp.stderr)
+            self.assertEqual(1, len(jobs), jobs)
+            self.assertEqual(uuid, jobs[0]['uuid'])
+            self.assertEqual('job1', jobs[0]['command'])
+            # Query cook2 with entity ref
+            cp, jobs = cli.show_jobs([f'cook2/job/{uuid}'], flags=flags)
+            self.assertEqual(0, cp.returncode, cp.stderr)
+            self.assertEqual(1, len(jobs), jobs)
+            self.assertEqual(uuid, jobs[0]['uuid'])
+            self.assertEqual('job2', jobs[0]['command'])
