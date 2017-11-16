@@ -1296,6 +1296,7 @@ class CookTest(unittest.TestCase):
         finally:
             util.kill_jobs(self.cook_url, uuids)
 
+    @attr('explicit')
     def test_balanced_host_constraint_cannot_place(self):
         state = util.get_mesos_state(self.mesos_url)
         num_hosts = len(state['slaves'])
