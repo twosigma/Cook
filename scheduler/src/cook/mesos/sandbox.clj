@@ -200,8 +200,8 @@
 
 (defn hostname->task-id->sandbox-directory
   "Retrieves the sandbox directory of a task on a specific mesos agent."
-  [publisher-state framework-id agent-hostname task-id]
-  (let [{:keys [data]} (refresh-agent-cache-entry publisher-state framework-id agent-hostname)]
+  [publisher-state framework-id hostname task-id]
+  (let [{:keys [data]} (refresh-agent-cache-entry publisher-state framework-id hostname)]
     (get data task-id)))
 
 (defn update-sandbox

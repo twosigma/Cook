@@ -24,7 +24,8 @@
             :environment {"EXECUTOR_DEFAULT_PROGRESS_OUTPUT_NAME" "stdout"}
             :portion 0.25}
  :agent-query-cache {:ttl-ms 1000}
- :sandbox-syncer {:sync-interval-ms 1000}
+ :sandbox-syncer {:agent-state-sandbox-sync true
+                  :sync-interval-ms 1000}
  :unhandled-exceptions {:log-level :error}
  :metrics {:jmx true}
  :nrepl {:enabled? false}
