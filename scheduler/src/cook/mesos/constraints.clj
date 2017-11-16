@@ -278,6 +278,9 @@
                                         attr-name
                                         target-attr-val
                                         (:group/uuid group)))]
+      (when passes?
+        (log/warn (format "Passing balanced-host-constraint. Min: %s Max %s Attr-freqs: %s Target: %s"
+                          minim maxim attr-freq-map target-attr-map)))
       [passes? reason])))
 
 (defrecord attribute-equals-host-placement-group-constraint [group]
