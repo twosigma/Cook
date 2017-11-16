@@ -1332,7 +1332,6 @@ class CookTest(unittest.TestCase):
                 resp = util.unscheduled_jobs(self.cook_url, waiting_job['uuid'])[0][0]
                 placement_reasons = [reason for reason in resp['reasons']
                                      if reason['reason'] == reasons.COULD_NOT_PLACE_JOB]
-                jobs = util.query_jobs(self.cook_url, job=uuids).json()
                 self.logger.info(f"unscheduled_jobs response: {resp}")
                 return placement_reasons
 
