@@ -880,6 +880,15 @@ class CookCliTest(unittest.TestCase):
         self.assertEqual(1, bar['nlink'])
         self.assertEqual(0, bar['size'])
 
+    def test_ls_empty_root_directory(self):
+        cp, uuids = cli.submit("'rm *'", self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        util.wait_for_job(self.cook_url, uuids[0], 'completed')
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        cp, entries = cli.ls(uuids[0], self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertEqual(0, len(entries))
+
     def __wait_for_progress_message(self, uuids):
         return util.wait_until(lambda: cli.show_json(uuids, self.cook_url)[1][0]['instances'][0],
                                lambda i: 'progress' in i and 'progress_message' in i)
