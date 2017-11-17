@@ -116,7 +116,7 @@
                            :sequence-cache-threshold 1000}
          rebalancer-config# (merge default-rebalancer-config (:rebalancer-config ~scheduler-config))
          framework-id# "cool-framework-id"
-         sandbox-syncer-state# {:task-id->sandbox-agent (agent {})}
+         sandbox-publisher-state# {:task-id->sandbox-agent (agent {})}
          host-settings# {:server-port 12321 :hostname "localhost"}
          mesos-leadership-atom# (atom false)
          fenzo-config# (merge default-fenzo-config (:fenzo-config ~scheduler-config))
@@ -142,7 +142,7 @@
           :rebalancer-config rebalancer-config#
           :riemann-host (:riemann-host ~scheduler-config)
           :riemann-port (:riemann-port ~scheduler-config)
-          :sandbox-syncer-state sandbox-syncer-state#
+          :sandbox-publisher-state sandbox-publisher-state#
           :server-config host-settings#
           :task-constraints task-constraints#
           :trigger-chans trigger-chans#
