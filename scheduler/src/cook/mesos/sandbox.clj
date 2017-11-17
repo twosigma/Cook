@@ -122,9 +122,7 @@
 
 (defn refresh-agent-cache-entry
   "If the entry for the specified agent is not cached:
-   - Triggers building an indexed version of all task-id to sandbox directory for the specified agent;
-   - After the indexed version is built, the tasks which have sandbox directories are removed;
-   - The filtered version of tasks without sandbox directories is then synced into the task-id->sandbox-agent.
+   triggers building an indexed version of all task-id to sandbox directory for the specified agent.
    The function call is a no-op if the specified agent already exists in the cache."
   [{:keys [mesos-agent-query-cache]} framework-id hostname]
   (try
@@ -182,9 +180,9 @@
   "This function initializes the sandbox publisher as well as helper functions to send individual
    sandbox entries and trigger sandbox syncing of all tasks on a mesos agent.
    It returns a map with the following entries:
-   :hostname->task-id->sandbox-directory-fn - fn that returns the sandbox directory given the hostname and task-id.
    :mesos-agent-query-cache - the cache that throttles the state sync calls to the mesos agents.
    :publisher-cancel-fn - fn that take no arguments and that terminates the publisher.
+   :retrieve-sandbox-directory-from-agent - fn that returns the sandbox directory given the hostname and task-id.
    :task-id->sandbox-agent - The agent that manages the task-id->sandbox aggregation and publishing."
   [framework-id datomic-conn publish-batch-size publish-interval-ms mesos-agent-query-cache]
   (let [task-id->sandbox-agent (agent {}) ;; stores all the pending task-id->sandbox state
@@ -192,9 +190,9 @@
                          :task-id->sandbox-agent task-id->sandbox-agent}
         publisher-cancel-fn (start-sandbox-publisher
                               task-id->sandbox-agent datomic-conn publish-batch-size publish-interval-ms)
-        hostname->task-id->sandbox-directory-fn (fn hostname->task-id->sandbox-directory-fn [agent-hostname task-id]
-                                                  (hostname->task-id->sandbox-directory
-                                                    publisher-state framework-id agent-hostname task-id))]
+        retrieve-sandbox-directory-from-agent (fn retrieve-sandbox-directory-from-agent [agent-hostname task-id]
+                                                (hostname->task-id->sandbox-directory
+                                                  publisher-state framework-id agent-hostname task-id))]
     (assoc publisher-state
-      :hostname->task-id->sandbox-directory-fn hostname->task-id->sandbox-directory-fn
-      :publisher-cancel-fn publisher-cancel-fn)))
+      :publisher-cancel-fn publisher-cancel-fn
+      :retrieve-sandbox-directory-from-agent retrieve-sandbox-directory-from-agent)))

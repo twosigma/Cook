@@ -1485,7 +1485,7 @@
 (defn create-mesos-scheduler
   "Creates the mesos scheduler which processes status updates asynchronously but in order of receipt."
   [configured-framework-id gpu-enabled? conn heartbeat-ch fenzo offers-chan match-trigger-chan handle-progress-message
-   sandbox-syncer-state]
+   sandbox-publisher-state]
   (mesos/scheduler
     (registered [this driver framework-id master-info]
                 (log/info "Registered with mesos with framework-id " framework-id)
@@ -1525,7 +1525,7 @@
                        (try
                          (let [{:strs [task-id type] :as parsed-message} (json/read-str (String. ^bytes message "UTF-8"))]
                            (case type
-                             "directory" (sandbox/update-sandbox sandbox-syncer-state parsed-message)
+                             "directory" (sandbox/update-sandbox sandbox-publisher-state parsed-message)
                              "heartbeat" (heartbeat/notify-heartbeat heartbeat-ch executor-id slave-id parsed-message)
                              (async-in-order-processing
                                task-id #(handle-framework-message conn handle-progress-message parsed-message))))
@@ -1550,7 +1550,7 @@
 (defn create-datomic-scheduler
   [conn driver-atom pending-jobs-atom offer-cache heartbeat-ch offer-incubate-time-ms mea-culpa-failure-limit
    fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset
-   fenzo-fitness-calculator task-constraints gpu-enabled? good-enough-fitness framework-id sandbox-syncer-state
+   fenzo-fitness-calculator task-constraints gpu-enabled? good-enough-fitness framework-id sandbox-publisher-state
    executor-config progress-config trigger-chans]
 
   (persist-mea-culpa-failure-limit! conn mea-culpa-failure-limit)
@@ -1567,5 +1567,5 @@
                                   (handle-progress-message! progress-aggregator-chan progress-message-map))]
     (start-jobs-prioritizer! conn pending-jobs-atom task-constraints rank-trigger-chan)
     {:scheduler (create-mesos-scheduler framework-id gpu-enabled? conn heartbeat-ch fenzo offers-chan
-                                        match-trigger-chan handle-progress-message sandbox-syncer-state)
+                                        match-trigger-chan handle-progress-message sandbox-publisher-state)
      :view-incubating-offers (fn get-resources-atom [] @resources-atom)}))

@@ -1074,7 +1074,7 @@
         (is (thrown? Exception (s/validate api/Job (assoc min-job :expected-runtime 3 :max-runtime 2))))))))
 
 (deftest test-create-jobs!
-  (let [hostname->task-id->sandbox-directory-fn (constantly nil)
+  (let [retrieve-sandbox-directory-from-agent (constantly nil)
         expected-job-map
         (fn
           ; Converts the provided job and framework-id (framework-id) to the job-map we expect to get back from
@@ -1132,7 +1132,7 @@
                                       {:resource/type :resource.type/mem
                                        :resource/amount (:mem job)}]}
               _ @(d/transact conn [job-ent])
-              job-resp (api/fetch-job-map (db conn) framework-id hostname->task-id->sandbox-directory-fn uuid)]
+              job-resp (api/fetch-job-map (db conn) framework-id retrieve-sandbox-directory-from-agent uuid)]
           (is (= (expected-job-map job framework-id)
                  (dissoc job-resp :submit_time)))
           (s/validate api/JobResponse
@@ -1146,7 +1146,7 @@
           (is (= {::api/results (str "submitted jobs " uuid)}
                  (api/create-jobs! conn {::api/jobs [job]})))
           (is (= (expected-job-map job framework-id)
-                 (-> (api/fetch-job-map (db conn) framework-id hostname->task-id->sandbox-directory-fn uuid)
+                 (-> (api/fetch-job-map (db conn) framework-id retrieve-sandbox-directory-from-agent uuid)
                      (dissoc :submit_time))))))
 
       (testing "should fail on a duplicate uuid"
@@ -1166,7 +1166,7 @@
           (is (= {::api/results (str "submitted jobs " uuid)}
                  (api/create-jobs! conn {::api/jobs [job]})))
           (is (= (expected-job-map job framework-id)
-                 (-> (api/fetch-job-map (db conn) framework-id hostname->task-id->sandbox-directory-fn uuid)
+                 (-> (api/fetch-job-map (db conn) framework-id retrieve-sandbox-directory-from-agent uuid)
                      (dissoc :submit_time))))))
 
       (testing "should work when the job specifies the expected runtime"
@@ -1176,7 +1176,7 @@
           (is (= {::api/results (str "submitted jobs " uuid)}
                  (api/create-jobs! conn {::api/jobs [job]})))
           (is (= (expected-job-map job framework-id)
-                 (-> (api/fetch-job-map (db conn) framework-id hostname->task-id->sandbox-directory-fn uuid)
+                 (-> (api/fetch-job-map (db conn) framework-id retrieve-sandbox-directory-from-agent uuid)
                      (dissoc :submit_time))))))
 
       (testing "should work when the job specifies disable-mea-culpa-retries"
@@ -1186,7 +1186,7 @@
           (is (= {::api/results (str "submitted jobs " uuid)}
                  (api/create-jobs! conn {::api/jobs [job]})))
           (is (= (expected-job-map job framework-id)
-                 (-> (api/fetch-job-map (db conn) framework-id hostname->task-id->sandbox-directory-fn uuid)
+                 (-> (api/fetch-job-map (db conn) framework-id retrieve-sandbox-directory-from-agent uuid)
                      (dissoc :submit_time))))))
 
       (testing "should work when the job specifies cook-executor"
@@ -1196,7 +1196,7 @@
           (is (= {::api/results (str "submitted jobs " uuid)}
                  (api/create-jobs! conn {::api/jobs [job]})))
           (is (= (expected-job-map job framework-id)
-                 (-> (api/fetch-job-map (db conn) framework-id hostname->task-id->sandbox-directory-fn uuid)
+                 (-> (api/fetch-job-map (db conn) framework-id retrieve-sandbox-directory-from-agent uuid)
                      (dissoc :submit_time)
                      (update :executor name))))))
 
@@ -1207,7 +1207,7 @@
           (is (= {::api/results (str "submitted jobs " uuid)}
                  (api/create-jobs! conn {::api/jobs [job]})))
           (is (= (expected-job-map job framework-id)
-                 (-> (api/fetch-job-map (db conn) framework-id hostname->task-id->sandbox-directory-fn uuid)
+                 (-> (api/fetch-job-map (db conn) framework-id retrieve-sandbox-directory-from-agent uuid)
                      (dissoc :submit_time)
                      (update :executor name)))))))))
 
@@ -1388,8 +1388,8 @@
                                         :instance-status :instance.status/success
                                         (mapcat seq (basic-instance-properties job-entity-id)))
               instance-entity (d/entity (db conn) instance-entity-id)
-              hostname->task-id->sandbox-directory-fn (constantly "/sandbox/directory")
-              instance-map (api/fetch-instance-map (db conn) instance-entity hostname->task-id->sandbox-directory-fn)
+              retrieve-sandbox-directory-from-agent (constantly "/sandbox/directory")
+              instance-map (api/fetch-instance-map (db conn) instance-entity retrieve-sandbox-directory-from-agent)
               expected-map (assoc (basic-instance-map job-entity-id)
                              :backfilled false
                              :hostname "localhost"

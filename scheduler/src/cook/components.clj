@@ -67,7 +67,7 @@
 
 (def raw-scheduler-routes
   {:scheduler (fnk [mesos mesos-datomic mesos-leadership-atom mesos-pending-jobs-atom framework-id
-                    sandbox-syncer-state settings]
+                    sandbox-publisher-state settings]
                 ((lazy-load-var 'cook.mesos.api/main-handler)
                   mesos-datomic
                   framework-id
@@ -75,7 +75,7 @@
                   settings
                   (get-in mesos [:mesos-scheduler :leader-selector])
                   mesos-leadership-atom
-                  (:hostname->task-id->sandbox-directory-fn sandbox-syncer-state)))
+                  (:retrieve-sandbox-directory-from-agent sandbox-publisher-state)))
    :view (fnk [scheduler]
            scheduler)})
 
@@ -92,7 +92,7 @@
                            mesos-gpu-enabled mesos-leader-path mesos-master mesos-master-hosts mesos-principal
                            mesos-role offer-incubate-time-ms progress rebalancer riemann server-port task-constraints]
                           curator-framework framework-id mesos-datomic mesos-datomic-mult mesos-leadership-atom
-                          mesos-offer-cache mesos-pending-jobs-atom sandbox-syncer-state]
+                          mesos-offer-cache mesos-pending-jobs-atom sandbox-publisher-state]
                       (log/info "Initializing mesos scheduler")
                       (let [make-mesos-driver-fn (partial (lazy-load-var 'cook.mesos/make-mesos-driver)
                                                           {:mesos-master mesos-master
@@ -129,7 +129,7 @@
                              :rebalancer-config rebalancer
                              :riemann-host (:host riemann)
                              :riemann-port (:port riemann)
-                             :sandbox-syncer-state sandbox-syncer-state
+                             :sandbox-publisher-state sandbox-publisher-state
                              :server-config {:hostname hostname
                                              :server-port server-port}
                              :task-constraints task-constraints
@@ -282,11 +282,11 @@
                                     (cache/lru-cache-factory :threshold max-size)
                                     (cache/ttl-cache-factory :ttl ttl-ms)
                                     atom))
-     :sandbox-syncer-state (fnk [[:settings [:sandbox-syncer publish-batch-size publish-interval-ms]]
-                                 framework-id mesos-agent-query-cache mesos-datomic]
-                             (let [prepare-sandbox-publisher (lazy-load-var 'cook.mesos.sandbox/prepare-sandbox-publisher)]
-                               (prepare-sandbox-publisher framework-id mesos-datomic publish-batch-size publish-interval-ms
-                                                          mesos-agent-query-cache)))
+     :sandbox-publisher-state (fnk [[:settings [:sandbox-publisher publish-batch-size publish-interval-ms]]
+                                    framework-id mesos-agent-query-cache mesos-datomic]
+                                (let [prepare-sandbox-publisher (lazy-load-var 'cook.mesos.sandbox/prepare-sandbox-publisher)]
+                                  (prepare-sandbox-publisher framework-id mesos-datomic publish-batch-size publish-interval-ms
+                                                             mesos-agent-query-cache)))
      :mesos-leadership-atom (fnk [] (atom false))
      :mesos-pending-jobs-atom (fnk [] (atom {}))
      :mesos-offer-cache (fnk [[:settings [:offer-cache max-size ttl-ms]]]
@@ -344,11 +344,11 @@
                             {:max-size 5000
                              :ttl-ms (* 60 1000)}
                             agent-query-cache))
-     :sandbox-syncer (fnk [[:config {sandbox-syncer nil}]]
+     :sandbox-publisher (fnk [[:config {sandbox-publisher nil}]]
                        (merge
                          {:publish-batch-size 100
                           :publish-interval-ms 2500}
-                         sandbox-syncer))
+                         sandbox-publisher))
      :server-port (fnk [[:config port]]
                     port)
      :is-authorized-fn (fnk [[:config {authorization-config default-authorization}]]
