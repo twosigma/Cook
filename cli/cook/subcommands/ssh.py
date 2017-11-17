@@ -19,7 +19,7 @@ def ssh_to_instance(instance, sandbox_dir):
 def ssh(clusters, args, _):
     """Attempts to ssh (using os.execlp) to the Mesos agent corresponding to the given job or instance uuid."""
     guard_no_cluster(clusters)
-    uuids = parse_entity_refs(args.get('uuid'))
+    uuids = parse_entity_refs(clusters, args.get('uuid'))
     if len(uuids) > 1:
         # argparse should prevent this, but we'll be defensive anyway
         raise Exception(f'You can only provide a single uuid.')

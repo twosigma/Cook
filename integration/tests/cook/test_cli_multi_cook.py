@@ -89,20 +89,14 @@ class MultiCookCliTest(unittest.TestCase):
             self.assertEqual(2, len(jobs), jobs)
             self.assertEqual(uuid, jobs[0]['uuid'])
             self.assertEqual(uuid, jobs[1]['uuid'])
-            # Query for both jobs with entity ref
-            cp, jobs = cli.show_jobs([f'*/job/{uuid}'], flags=flags)
-            self.assertEqual(0, cp.returncode, cp.stderr)
-            self.assertEqual(2, len(jobs), jobs)
-            self.assertEqual(uuid, jobs[0]['uuid'])
-            self.assertEqual(uuid, jobs[1]['uuid'])
             # Query cook1 with entity ref
-            cp, jobs = cli.show_jobs([f'cook1/job/{uuid}'], flags=flags)
+            cp, jobs = cli.show_jobs([f'{self.cook_url_1}/jobs/{uuid}'], flags=flags)
             self.assertEqual(0, cp.returncode, cp.stderr)
             self.assertEqual(1, len(jobs), jobs)
             self.assertEqual(uuid, jobs[0]['uuid'])
             self.assertEqual('job1', jobs[0]['command'])
             # Query cook2 with entity ref
-            cp, jobs = cli.show_jobs([f'cook2/job/{uuid}'], flags=flags)
+            cp, jobs = cli.show_jobs([f'{self.cook_url_2}/jobs/{uuid}'], flags=flags)
             self.assertEqual(0, cp.returncode, cp.stderr)
             self.assertEqual(1, len(jobs), jobs)
             self.assertEqual(uuid, jobs[0]['uuid'])

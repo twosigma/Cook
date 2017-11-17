@@ -103,7 +103,7 @@ def ls_for_instance(instance, sandbox_dir, path, long_format, as_json):
 def ls(clusters, args, _):
     """Lists contents of the corresponding Mesos sandbox path by job or instance uuid."""
     guard_no_cluster(clusters)
-    uuids = parse_entity_refs(args.get('uuid'))
+    uuids = parse_entity_refs(clusters, args.get('uuid'))
     path = args.get('path')
     long_format = args.get('long_format')
     as_json = args.get('json')

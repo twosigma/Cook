@@ -4,7 +4,7 @@ import os
 import time
 import unittest
 import uuid
-from urllib.parse import urlparse, quote
+from urllib.parse import urlparse
 
 from nose.plugins.attrib import attr
 
@@ -1244,40 +1244,40 @@ class CookCliTest(unittest.TestCase):
         cp, uuids = cli.submit('ls', self.cook_url, submit_flags='--group-name foo')
         self.assertEqual(0, cp.returncode, cp.stderr)
         # cluster = *, type = job
-        _, jobs = cli.show_jobs([f'*/job/{uuids[0]}'], self.cook_url)
+        _, jobs = cli.show_jobs([f'{self.cook_url}/jobs/{uuids[0]}'], self.cook_url)
         group_uuid = jobs[0]['groups'][0]
         self.assertEqual(1, len(jobs))
         self.assertEqual(uuids[0], jobs[0]['uuid'])
         # cluster = *, type = instance
-        _, instance_job_pairs = cli.show_instances([f'*/instance/{uuids[0]}'], self.cook_url)
+        _, instance_job_pairs = cli.show_instances([f'{self.cook_url}/instances/{uuids[0]}'], self.cook_url)
         self.assertEqual(0, len(instance_job_pairs))
         # cluster = *, type = group
-        _, groups = cli.show_groups([f'*/group/{uuids[0]}'], self.cook_url)
+        _, groups = cli.show_groups([f'{self.cook_url}/groups/{uuids[0]}'], self.cook_url)
         self.assertEqual(0, len(groups))
 
         # Wait for an instance to appear, then query using various entity ref strings
         instance_uuid = util.wait_for_instance(self.cook_url, uuids[0])['task_id']
         # cluster = *, type = job
-        _, jobs = cli.show_jobs([f'*/job/{instance_uuid}'], self.cook_url)
+        _, jobs = cli.show_jobs([f'{self.cook_url}/jobs/{instance_uuid}'], self.cook_url)
         self.assertEqual(0, len(jobs))
         # cluster = *, type = instance
-        _, instance_job_pairs = cli.show_instances([f'*/instance/{instance_uuid}'], self.cook_url)
+        _, instance_job_pairs = cli.show_instances([f'{self.cook_url}/instances/{instance_uuid}'], self.cook_url)
         instance, _ = instance_job_pairs[0]
         self.assertEqual(1, len(instance_job_pairs))
         self.assertEqual(instance_uuid, instance['task_id'])
         # cluster = *, type = group
-        _, groups = cli.show_groups([f'*/group/{instance_uuid}'], self.cook_url)
+        _, groups = cli.show_groups([f'{self.cook_url}/groups/{instance_uuid}'], self.cook_url)
         self.assertEqual(0, len(groups))
 
         # Query for the job group using various entity ref strings
         # cluster = *, type = job
-        _, jobs = cli.show_jobs([f'*/job/{group_uuid}'], self.cook_url)
+        _, jobs = cli.show_jobs([f'{self.cook_url}/jobs/{group_uuid}'], self.cook_url)
         self.assertEqual(0, len(jobs))
         # cluster = *, type = instance
-        _, instance_job_pairs = cli.show_instances([f'*/instance/{group_uuid}'], self.cook_url)
+        _, instance_job_pairs = cli.show_instances([f'{self.cook_url}/instances/{group_uuid}'], self.cook_url)
         self.assertEqual(0, len(instance_job_pairs))
         # cluster = *, type = group
-        _, groups = cli.show_groups([f'*/group/{group_uuid}'], self.cook_url)
+        _, groups = cli.show_groups([f'{self.cook_url}/groups/{group_uuid}'], self.cook_url)
         self.assertEqual(1, len(groups))
         self.assertEqual(group_uuid, groups[0]['uuid'])
 
@@ -1293,23 +1293,18 @@ class CookCliTest(unittest.TestCase):
         self.assertEqual(1, len(jobs))
         self.assertEqual(1, len(instance_job_pairs))
         self.assertEqual(1, len(groups))
-        # cluster = *, type = *
-        _, jobs, instance_job_pairs, groups = cli.show_all([f'*/*/{uuid}'], self.cook_url)
-        self.assertEqual(1, len(jobs))
-        self.assertEqual(1, len(instance_job_pairs))
-        self.assertEqual(1, len(groups))
         # cluster = *, type = job
-        _, jobs, instance_job_pairs, groups = cli.show_all([f'*/job/{uuid}'], self.cook_url)
+        _, jobs, instance_job_pairs, groups = cli.show_all([f'{self.cook_url}/jobs/{uuid}'], self.cook_url)
         self.assertEqual(1, len(jobs))
         self.assertEqual(0, len(instance_job_pairs))
         self.assertEqual(0, len(groups))
         # cluster = *, type = instance
-        _, jobs, instance_job_pairs, groups = cli.show_all([f'*/instance/{uuid}'], self.cook_url)
+        _, jobs, instance_job_pairs, groups = cli.show_all([f'{self.cook_url}/instances/{uuid}'], self.cook_url)
         self.assertEqual(0, len(jobs))
         self.assertEqual(1, len(instance_job_pairs))
         self.assertEqual(0, len(groups))
         # cluster = *, type = group
-        _, jobs, instance_job_pairs, groups = cli.show_all([f'*/group/{uuid}'], self.cook_url)
+        _, jobs, instance_job_pairs, groups = cli.show_all([f'{self.cook_url}/groups/{uuid}'], self.cook_url)
         self.assertEqual(0, len(jobs))
         self.assertEqual(0, len(instance_job_pairs))
         self.assertEqual(1, len(groups))
@@ -1321,59 +1316,41 @@ class CookCliTest(unittest.TestCase):
             cp, uuids = cli.submit('ls', flags=flags)
             self.assertEqual(0, cp.returncode, cp.stderr)
             uuid = uuids[0]
-            _, jobs = cli.show_jobs([f'foo/job/{uuid}'], flags=flags)
+            _, jobs = cli.show_jobs([f'{self.cook_url.lower()}/jobs/{uuid}'], flags=flags)
             self.assertEqual(0, cp.returncode, cp.stderr)
             self.assertEqual(1, len(jobs))
             self.assertEqual(uuid, jobs[0]['uuid'])
-            _, jobs = cli.show_jobs([f'FOO/job/{uuid}'], flags=flags)
+            _, jobs = cli.show_jobs([f'{self.cook_url.upper()}/jobs/{uuid}'], flags=flags)
             self.assertEqual(0, cp.returncode, cp.stderr)
             self.assertEqual(1, len(jobs))
             self.assertEqual(uuid, jobs[0]['uuid'])
-            _, jobs = cli.show_jobs([f'Foo/JOB/{uuid}'], flags=flags)
+            _, jobs = cli.show_jobs([f'{self.cook_url}/JOBS/{uuid}'], flags=flags)
             self.assertEqual(0, cp.returncode, cp.stderr)
             self.assertEqual(1, len(jobs))
             self.assertEqual(uuid, jobs[0]['uuid'])
-            _, jobs = cli.show_jobs([f'Foo/job/{uuid.upper()}'], flags=flags)
+            _, jobs = cli.show_jobs([f'{self.cook_url}/jobs/{uuid.upper()}'], flags=flags)
             self.assertEqual(0, cp.returncode, cp.stderr)
             self.assertEqual(1, len(jobs))
             self.assertEqual(uuid, jobs[0]['uuid'])
 
-    def test_entity_refs_complex_cluster_names(self):
-        config = \
-            {'clusters': [
-                {'name': 'foo / bar', 'url': self.cook_url},
-                {'name': 'foo + bar', 'url': self.cook_url},
-                {'name': 'foo : bar', 'url': self.cook_url},
-                {'name': 'foo ? bar', 'url': self.cook_url},
-                {'name': 'foo = bar', 'url': self.cook_url},
-                {'name': 'foo & bar', 'url': self.cook_url}
-            ]}
-        with cli.temp_config_file(config) as path:
-            flags = f'--config {path}'
-            cp, uuids = cli.submit('ls', flags=flags)
-            self.assertEqual(0, cp.returncode, cp.stderr)
-            uuid = uuids[0]
-            _, jobs = cli.show_jobs([f'{quote("foo / bar", safe="")}/job/{uuid}'], flags=flags)
-            self.assertEqual(0, cp.returncode, cp.stderr)
-            self.assertEqual(1, len(jobs))
-            self.assertEqual(uuid, jobs[0]['uuid'])
-            _, jobs = cli.show_jobs([f'{quote("foo + bar", safe="")}/job/{uuid}'], flags=flags)
-            self.assertEqual(0, cp.returncode, cp.stderr)
-            self.assertEqual(1, len(jobs))
-            self.assertEqual(uuid, jobs[0]['uuid'])
-            _, jobs = cli.show_jobs([f'{quote("foo : bar", safe="")}/job/{uuid}'], flags=flags)
-            self.assertEqual(0, cp.returncode, cp.stderr)
-            self.assertEqual(1, len(jobs))
-            self.assertEqual(uuid, jobs[0]['uuid'])
-            _, jobs = cli.show_jobs([f'{quote("foo ? bar", safe="")}/job/{uuid}'], flags=flags)
-            self.assertEqual(0, cp.returncode, cp.stderr)
-            self.assertEqual(1, len(jobs))
-            self.assertEqual(uuid, jobs[0]['uuid'])
-            _, jobs = cli.show_jobs([f'{quote("foo = bar", safe="")}/job/{uuid}'], flags=flags)
-            self.assertEqual(0, cp.returncode, cp.stderr)
-            self.assertEqual(1, len(jobs))
-            self.assertEqual(uuid, jobs[0]['uuid'])
-            _, jobs = cli.show_jobs([f'{quote("foo & bar", safe="")}/job/{uuid}'], flags=flags)
-            self.assertEqual(0, cp.returncode, cp.stderr)
-            self.assertEqual(1, len(jobs))
-            self.assertEqual(uuid, jobs[0]['uuid'])
+    def test_entity_refs_query_string_format(self):
+        cp, uuids = cli.submit_stdin(['ls', 'ls'], self.cook_url, submit_flags='--group-name foo')
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        _, jobs = cli.show_jobs(uuids, self.cook_url)
+        group_uuid = jobs[0]['groups'][0]
+        # Query for group with UUID
+        _, groups = cli.show_groups([group_uuid], self.cook_url)
+        self.assertEqual(sorted(uuids), sorted(groups[0]['jobs']))
+        # Query for group with URL using query string argument
+        _, groups = cli.show_groups([f'{self.cook_url}/groups?uuid={group_uuid}'], self.cook_url)
+        self.assertEqual(sorted(uuids), sorted(groups[0]['jobs']))
+        # Query for jobs with URL using query string argument
+        _, jobs = cli.show_jobs([f'{self.cook_url}/jobs?uuid={uuids[0]}&uuid={uuids[1]}'], self.cook_url)
+        self.assertEqual(sorted(uuids), sorted(j['uuid'] for j in jobs))
+        # Query for instances with URL using query string argument
+        instance_uuid_1 = util.wait_for_instance(self.cook_url, uuids[0])['task_id']
+        instance_uuid_2 = util.wait_for_instance(self.cook_url, uuids[1])['task_id']
+        instance_url = f'{self.cook_url}/instances?uuid={instance_uuid_1}&uuid={instance_uuid_2}'
+        _, instance_job_pairs = cli.show_instances([instance_url], self.cook_url)
+        self.assertIn(instance_uuid_1, (i['task_id'] for i, _ in instance_job_pairs))
+        self.assertIn(instance_uuid_2, (i['task_id'] for i, _ in instance_job_pairs))

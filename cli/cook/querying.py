@@ -5,10 +5,10 @@ import os
 from collections import defaultdict
 from concurrent import futures
 from operator import itemgetter
-from urllib.parse import unquote
+from urllib.parse import urlparse, parse_qs
 
 from cook import http, colors, progress, mesos
-from cook.util import wait_until
+from cook.util import wait_until, is_valid_uuid
 
 
 class Types:
@@ -87,7 +87,7 @@ def entity_refs_to_uuids(cluster, entity_refs):
     """Given a cluster and list of entity ref maps, returns a map of type -> list of uuid"""
     uuids = defaultdict(list)
     for ref in entity_refs:
-        if ref['cluster'] in (cluster['name'].lower(), Clusters.ALL):
+        if ref['cluster'].lower() in (cluster['name'].lower(), Clusters.ALL):
             ref_type = ref['type']
             ref_uuid = ref['uuid']
             if ref_type == Types.ALL:
@@ -245,7 +245,7 @@ def query_unique_and_run(clusters, entity_ref, command_fn):
         raise Exception(f'Encountered error when querying for {entity_ref}.')
 
 
-def parse_entity_refs(ref_strings):
+def parse_entity_refs(clusters, ref_strings):
     """
     Given a collection of entity ref strings, returns a list of entity ref maps, where each map has
     the following shape:
@@ -253,33 +253,65 @@ def parse_entity_refs(ref_strings):
       {'cluster': ..., 'type': ..., 'uuid': ...}
 
     The cluster field is the name of a cluster, the type field can be either job, instance, or group,
-    and the uuid field is the uuid of the entity in question. An entity ref string can either be
-    simply a UUID, in which case all configured clusters and all three types will be queried, or it
-    can be a /-delimited triple (cluster/type/uuid). The cluster and type portions can each be
-    specified as *, which means "all".
+    and the uuid field is the uuid of the entity in question.
+
+    An entity ref string can either be simply a UUID, in which case all configured clusters and all
+    three types will be queried, or it can be a Cook Scheduler URL that represents the way to retrieve
+    that specific entity.
 
     Some examples of valid entity ref strings follow:
 
       5ab383b1-5b8b-4483-b2b2-45126923f4df
-      */*/5ab383b1-5b8b-4483-b2b2-45126923f4df
-      cluster1/*/5ab383b1-5b8b-4483-b2b2-45126923f4df
-      */job/5ab383b1-5b8b-4483-b2b2-45126923f4df
-      */instance/5ab383b1-5b8b-4483-b2b2-45126923f4df
-      */group/5ab383b1-5b8b-4483-b2b2-45126923f4df
-      cluster2/job/5ab383b1-5b8b-4483-b2b2-45126923f4df
-      cluster3/instance/5ab383b1-5b8b-4483-b2b2-45126923f4df
-      cluster4/group/5ab383b1-5b8b-4483-b2b2-45126923f4df
+      http://cluster2.example.com/jobs/5ab383b1-5b8b-4483-b2b2-45126923f4df
+      http://cluster2.example.com/jobs?uuid=5ab383b1-5b8b-4483-b2b2-45126923f4df
+      http://cluster3.example.com/instances/5ab383b1-5b8b-4483-b2b2-45126923f4df
+      http://cluster3.example.com/instances?uuid=5ab383b1-5b8b-4483-b2b2-45126923f4df
+      http://cluster4.example.com/groups/5ab383b1-5b8b-4483-b2b2-45126923f4df
+      http://cluster4.example.com/groups?uuid=5ab383b1-5b8b-4483-b2b2-45126923f4df
 
     Throws if an invalid entity ref string is encountered.
     """
     entity_refs = []
     for ref_string in ref_strings:
-        ref_parts = ref_string.lower().split('/')
-        num_parts = len(ref_parts)
-        if num_parts == 1:
-            entity_refs.append({'cluster': Clusters.ALL, 'type': Types.ALL, 'uuid': ref_parts[0]})
-        elif num_parts == 3:
-            entity_refs.append({'cluster': unquote(ref_parts[0]), 'type': ref_parts[1], 'uuid': ref_parts[2]})
+        result = urlparse(ref_string)
+        if result.path and not result.netloc:
+            if is_valid_uuid(result.path):
+                entity_refs.append({'cluster': Clusters.ALL, 'type': Types.ALL, 'uuid': result.path})
+            else:
+                raise Exception(f'{result.path} is not a valid UUID.')
+        elif result.path and result.netloc:
+            path_parts = result.path.split('/')
+            num_path_parts = len(path_parts)
+            if num_path_parts >= 2:
+                cluster_url = (f'{result.scheme}://' if result.scheme else '') + result.netloc
+                cluster_names = [c['name'] for c in clusters if c['url'].lower() == cluster_url.lower()]
+                if len(cluster_names) >= 1:
+                    resource = path_parts[1].lower()
+                    if resource == 'jobs':
+                        entity_type = Types.JOB
+                    elif resource == 'instances':
+                        entity_type = Types.INSTANCE
+                    elif resource == 'groups':
+                        entity_type = Types.GROUP
+                    else:
+                        raise Exception(f'{ref_string} refers to an unsupported resource.')
+
+                    cluster_name = cluster_names[0]
+                    if num_path_parts > 2:
+                        entity_refs.append({'cluster': cluster_name, 'type': entity_type, 'uuid': path_parts[2]})
+                    elif result.query:
+                        query_args = parse_qs(result.query)
+                        if 'uuid' in query_args:
+                            for uuid in query_args['uuid']:
+                                entity_refs.append({'cluster': cluster_name, 'type': entity_type, 'uuid': uuid})
+                        else:
+                            raise Exception(f'Unable to determine UUID from {ref_string}.')
+                    else:
+                        raise Exception(f'Unable to determine UUID from {ref_string}.')
+                else:
+                    raise Exception(f'There is no configured cluster that matches {ref_string}.')
+            else:
+                raise Exception(f'Unable to determine entity type and UUID from {ref_string}.')
         else:
             raise Exception(f'{ref_string} is not a valid entity reference.')
     return entity_refs
