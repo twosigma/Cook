@@ -13,4 +13,4 @@ EXECUTOR_DIR="$(dirname ${DIR})"
 mkdir -p ${EXECUTOR_DIR}/dist
 
 cd ${EXECUTOR_DIR}
-pyinstaller -F -n cook-executor-local -p cook cook/__main__.py
+pyinstaller --runtime-tmpdir .cook-executor -F -n cook-executor-local -p cook cook/__main__.py
