@@ -621,10 +621,10 @@
         ;; task assigner can not be called at the same time.
         ;; task assigner may be called when reconciling
         result (locking fenzo
-                 (for [state (.getVmCurrentStates fenzo)]
-                   (log/debug (format "VM state for %s - Tasks assigned: %s Tasks running: %s Resources: %s"
-                                      (.getHostname state) (.getTasksCurrentlyAssigned state)
-                                      (.getRunningTasks state) (.getCurrAvailableResources state))))
+                 (doall (for [state (.getVmCurrentStates fenzo)]
+                         (log/debug (format "VM state for %s - Tasks assigned: %s Tasks running: %s Resources: %s"
+                                            (.getHostname state) (.getTasksCurrentlyAssigned state)
+                                            (.getRunningTasks state) (.getCurrAvailableResources state)))))
                  (.scheduleOnce fenzo requests leases))
         failure-results (.. result getFailures values)
         assignments (.. result getResultMap values)]
