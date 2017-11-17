@@ -76,7 +76,7 @@ def browse_files(instance, sandbox_dir, path):
 def ls_for_instance(instance, sandbox_dir, path, long_format, as_json):
     """Lists contents of the Mesos sandbox path for the given instance"""
     entries = browse_files(instance, sandbox_dir, path)
-    if len(entries) == 0:
+    if len(entries) == 0 and path:
         # Mesos will return 200 with an empty list in two cases:
         # - the provided path is a file (this is odd)
         # - the provided path is an empty directory (this one makes sense)
