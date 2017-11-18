@@ -73,7 +73,7 @@ For example:
 
 ```clojure
 {...
- :executor {:command "cook-executor"
+ :executor {:command "mkdir .cook-executor && cook-executor"
             :default-progress-output-file "stdout"
             :default-progress-regex-string "progress: (\d*)(?: )?(.*)"
             :log-level "INFO"
@@ -86,6 +86,7 @@ For example:
  ...}
 ```
 
+The command needs to create the `.cook-executor` directory (where we extract libraries and support files) before launching the cook executor.
 For more detailed information about the executor configuration, see the Cook Executor section in [configuration documentation](../scheduler/docs/configuration.adoc).
 Some of the executor configurations are sent to the Cook executor as the following environment variables:
 
