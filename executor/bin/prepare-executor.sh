@@ -44,13 +44,24 @@ else
     DO_EXECUTOR_REBUILD=false
 fi
 
+COOK_EXECUTOR_ZIP_NAME="${COOK_EXECUTOR_NAME}.tar.gz"
+COOK_EXECUTOR_ZIP_FILE="${EXECUTOR_DIR}/dist/${COOK_EXECUTOR_ZIP_NAME}"
 if $DO_EXECUTOR_REBUILD; then
     echo "Triggering build of ${COOK_EXECUTOR_NAME} before proceeding."
     ${EXECUTOR_DIR}/bin/build-${MODE}.sh
+    echo "Zipping contents of ${COOK_EXECUTOR_PATH}"
+    pushd ${EXECUTOR_DIR}/dist
+    tar -cvzf ${COOK_EXECUTOR_ZIP_FILE} ${COOK_EXECUTOR_NAME}
+    popd
+else
+    echo "Not triggering build of ${COOK_EXECUTOR_NAME}"
 fi
 
-if [ "$COOK_EXECUTOR_PATH" -nt "${TARGET_DIR}/${COOK_EXECUTOR_NAME}" ]; then
-    echo "Copying ${COOK_EXECUTOR_NAME} from ${COOK_EXECUTOR_PATH} to ${TARGET_DIR}"
+
+if [ "${COOK_EXECUTOR_ZIP_FILE}" -nt "${TARGET_DIR}/${COOK_EXECUTOR_ZIP_NAME}" ]; then
+    echo "Copying ${COOK_EXECUTOR_ZIP_NAME} from ${COOK_EXECUTOR_ZIP_FILE} to ${TARGET_DIR}"
     mkdir -p ${TARGET_DIR}
-    cp -f ${COOK_EXECUTOR_PATH} ${TARGET_DIR}
+    cp -f ${COOK_EXECUTOR_ZIP_FILE} ${TARGET_DIR}
+else
+    echo "Not copying ${COOK_EXECUTOR_ZIP_NAME} to ${TARGET_DIR}"
 fi

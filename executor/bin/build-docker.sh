@@ -16,5 +16,6 @@ mkdir -p ${EXECUTOR_DIR}/dist
 cd ${EXECUTOR_DIR}
 docker build -t ${NAME} -f ${EXECUTOR_DIR}/Dockerfile.build .
 docker run --name ${NAME} ${NAME}
+rm -rf ${EXECUTOR_DIR}/dist/cook-executor
 docker cp ${NAME}:/opt/cook/dist/cook-executor ${EXECUTOR_DIR}/dist/cook-executor
 docker rm ${NAME}

@@ -1,6 +1,6 @@
 FROM python:3.5
 
-RUN pip install pyinstaller
+RUN pip install pyinstaller==3.3
 
 RUN mkdir /opt/cook
 WORKDIR /opt/cook
@@ -10,4 +10,4 @@ RUN pip install -r requirements.txt
 
 COPY . /opt/cook
 
-CMD ["pyinstaller", "--runtime-tmpdir", ".cook-executor", "-F", "-n", "cook-executor", "-p", "cook", "cook/__main__.py"]
+CMD ["pyinstaller", "--onedir", "--name", "cook-executor", "--paths", "cook", "cook/__main__.py"]
