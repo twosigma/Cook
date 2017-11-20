@@ -19,6 +19,7 @@ import encodings.idna
 import cook.config as cc
 import cook.executor as ce
 import cook.io_helper as cio
+import pymesos as pm
 
 
 def main(args=None):
@@ -51,11 +52,24 @@ def main(args=None):
     signal.signal(signal.SIGTERM, handle_interrupt)
 
     stop_signal = Event()
-    driver_thread = Thread(target=ce.run_mesos_driver, args=(stop_signal, config))
-    driver_thread.start()
-    logging.info('Driver thread has started')
-    driver_thread.join()
-    logging.info('Driver thread has completed')
+    try:
+        executor = ce.CookExecutor(stop_signal, config)
+        driver = pm.MesosExecutorDriver(executor)
+
+        logging.info('MesosExecutorDriver is starting...')
+        driver.start()
+
+        executor.await_completion()
+
+        logging.info('MesosExecutorDriver requested to stop')
+        driver.stop()
+        logging.info('MesosExecutorDriver has been stopped')
+
+        executor.await_disconnect()
+
+    except Exception:
+        logging.exception('Error in __main__')
+        stop_signal.set()
 
     exit_code = 1 if stop_signal.isSet() else 0
     logging.info('Executor exiting with code {}'.format(exit_code))
