@@ -345,10 +345,10 @@
                              :ttl-ms (* 60 1000)}
                             agent-query-cache))
      :sandbox-publisher (fnk [[:config {sandbox-publisher nil}]]
-                       (merge
-                         {:publish-batch-size 100
-                          :publish-interval-ms 2500}
-                         sandbox-publisher))
+                          (merge
+                            {:publish-batch-size 100
+                             :publish-interval-ms 2500}
+                            sandbox-publisher))
      :server-port (fnk [[:config port]]
                     port)
      :is-authorized-fn (fnk [[:config {authorization-config default-authorization}]]
@@ -394,8 +394,6 @@
                          (throw (ex-info "Executor environment must be a map from string to string!" {:executor executor}))))
                      (when (and (:portion executor) (not (<= 0 (:portion executor) 1)))
                        (throw (ex-info "Executor portion must be in the range [0, 1]!" {:executor executor})))
-                     (when (and (:uri executor) (nil? (get-in executor [:uri :value])))
-                       (throw (ex-info "Executor uri value is missing!" {:executor executor})))
                      (let [default-executor-config {:default-progress-regex-string "progress: (\\d+)(?: )?(.*)"
                                                     :environment {}
                                                     :log-level "INFO"
@@ -404,10 +402,15 @@
                                                     :progress-sample-interval-ms (* 1000 60 5)}
                            default-uri-config {:cache true
                                                :executable true
-                                               :extract false}]
+                                               :extract false}
+                           executor-uri-configured (and (:uri executor) (not (str/blank? (get-in executor [:uri :value]))))]
+                       (when executor-uri-configured
+                         (log/warn "Executor uri value is missing, the uri config will be disabled" {:executor executor}))
                        (cond-> (merge default-executor-config executor)
-                               (:uri executor)
-                               (update :uri #(merge default-uri-config %1)))))))
+                               executor-uri-configured
+                               (update :uri #(merge default-uri-config %1))
+                               (not executor-uri-configured)
+                               (dissoc :uri))))))
      :mesos-datomic-uri (fnk [[:config [:database datomic-uri]]]
                           (when-not datomic-uri
                             (throw (ex-info "Must set a the :database's :datomic-uri!" {})))
