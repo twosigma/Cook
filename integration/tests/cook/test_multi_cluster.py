@@ -28,13 +28,13 @@ class MultiClusterTest(unittest.TestCase):
         self.assertEqual(resp.status_code, 201)
 
         # Ask for both jobs from cluster #1, expect to get the first
-        resp = util.query_jobs(self.cook_url_1, job=[job_uuid_1, job_uuid_2], partial='true')
+        resp = util.query_jobs(self.cook_url_1, uuid=[job_uuid_1, job_uuid_2], partial='true')
         self.assertEqual(200, resp.status_code, resp.json())
         self.assertEqual(1, len(resp.json()))
         self.assertEqual([job_uuid_1], [job['uuid'] for job in resp.json()])
 
         # Ask for both jobs from cluster #2, expect to get the second
-        resp = util.query_jobs(self.cook_url_2, job=[job_uuid_1, job_uuid_2], partial='true')
+        resp = util.query_jobs(self.cook_url_2, uuid=[job_uuid_1, job_uuid_2], partial='true')
         self.assertEqual(200, resp.status_code, resp.json())
         self.assertEqual(1, len(resp.json()))
         self.assertEqual([job_uuid_2], [job['uuid'] for job in resp.json()])

@@ -303,11 +303,17 @@
   {(s/optional-key :job) [s/Uuid]
    (s/optional-key :instance) [s/Uuid]})
 
-(def QueryJobsParams
+(def QueryJobsParamsDeprecated
   "Schema for querying for jobs by job and/or instance uuid, allowing optionally
   for 'partial' results, meaning that some uuids can be valid and others not"
   (-> JobOrInstanceIds
       (assoc (s/optional-key :partial) s/Bool)))
+
+(def QueryJobsParams
+  "Schema for querying for jobs by job uuid, allowing optionally for
+  'partial' results, meaning that some uuids can be valid and others not"
+  {:uuid [s/Uuid]
+   (s/optional-key :partial) s/Bool})
 
 (def Attribute-Equals-Parameters
   "A schema for the parameters of a host placement with type attribute-equals"
@@ -901,39 +907,74 @@
   [conn ctx]
   (let [jobs (wrap-seq (get-in ctx [:request :query-params :job]))
         instances (wrap-seq (get-in ctx [:request :query-params :instance]))
-        allow-partial-results (get-in ctx [:request :query-params :partial])]
-    (let [instance-uuid->job-uuid #(instance-uuid->job-uuid (d/db conn) %)
-          instance-jobs (mapv instance-uuid->job-uuid instances)
-          exists? #(job-exists? (db conn) %)
-          existing-jobs (filter exists? jobs)]
-      (cond
-        (and (= (count existing-jobs) (count jobs))
-             (every? some? instance-jobs))
-        [true {::jobs (into jobs instance-jobs)
-               ::jobs-requested jobs
-               ::instances-requested instances}]
+        allow-partial-results (get-in ctx [:request :query-params :partial])
+        instance-uuid->job-uuid #(instance-uuid->job-uuid (d/db conn) %)
+        instance-jobs (mapv instance-uuid->job-uuid instances)
+        exists? #(job-exists? (db conn) %)
+        existing-jobs (filter exists? jobs)]
+    (cond
+      (and (= (count existing-jobs) (count jobs))
+           (every? some? instance-jobs))
+      [true {::jobs (into jobs instance-jobs)
+             ::jobs-requested jobs
+             ::instances-requested instances}]
 
-        (and allow-partial-results
-             (or (pos? (count existing-jobs))
-                 (some some? instance-jobs)))
-        [true {::jobs (into existing-jobs (filter some? instance-jobs))
-               ::jobs-requested jobs
-               ::instances-requested instances}]
+      (and allow-partial-results
+           (or (pos? (count existing-jobs))
+               (some some? instance-jobs)))
+      [true {::jobs (into existing-jobs (filter some? instance-jobs))
+             ::jobs-requested jobs
+             ::instances-requested instances}]
 
-        (some nil? instance-jobs)
-        [false {::error (str "UUID "
-                             (str/join
-                               \space
-                               (filter (comp nil? instance-uuid->job-uuid)
-                                       instances))
-                             " didn't correspond to an instance")}]
+      (some nil? instance-jobs)
+      [false {::error (str "UUID "
+                           (str/join
+                             \space
+                             (filter (comp nil? instance-uuid->job-uuid)
+                                     instances))
+                           " didn't correspond to an instance")}]
 
-        :else
-        [false {::error (str "UUID "
-                             (str/join
-                               \space
-                               (set/difference (set jobs) (set existing-jobs)))
-                             " didn't correspond to a job")}]))))
+      :else
+      [false {::error (str "UUID "
+                           (str/join
+                             \space
+                             (set/difference (set jobs) (set existing-jobs)))
+                           " didn't correspond to a job")}])))
+
+(defn jobs-exist?
+  "Returns a tuple that either has the shape:
+
+    [true {::jobs ...}]
+
+  or:
+
+    [false {::error ...}]
+
+  Given a collection of job uuids, attempts to return the corresponding set of *existing*
+  job uuids. By default (or if the 'partial' query parameter is false), the function
+  returns an ::error if any of the provided job or instance uuids cannot be found. If
+  'partial' is true, the function will return the subset of job uuids that were found,
+  assuming at least one was found. This 'partial' flag allows a client to query a
+  particular cook cluster for a set of uuids, where some of them may not belong to that
+  cluster, and get back the data for those that do match."
+  [conn ctx]
+  (let [uuids (::jobs ctx)
+        allow-partial-results? (::allow-partial-results? ctx)
+        exists? #(job-exists? (db conn) %)
+        existing-uuids (filter exists? uuids)]
+    (cond
+      (= (count existing-uuids) (count uuids))
+      [true {::jobs uuids}]
+
+      (and allow-partial-results? (pos? (count existing-uuids)))
+      [true {::jobs existing-uuids}]
+
+      :else
+      (let [non-existing-uuids (set/difference (set uuids) (set existing-uuids))
+            plural? (> (count non-existing-uuids) 1)
+            message (str "The following UUID" (if plural? "s don't " " doesn't ")
+                         "correspond to a job:\n" (str/join \newline non-existing-uuids))]
+        [false {::error message}]))))
 
 (defn check-job-params-present
   [ctx]
@@ -942,6 +983,15 @@
     (if (or jobs instances)
       false
       [true {::error "must supply at least one job or instance query param"}])))
+
+(defn job-request-malformed?
+  [ctx]
+  (let [uuids (get-in ctx [:request :params :uuid])
+        allow-partial-results? (get-in ctx [:request :query-params :partial])]
+    (if uuids
+      [false {::jobs (map #(UUID/fromString %) (wrap-seq uuids))
+              ::allow-partial-results? allow-partial-results?}]
+      [true {::error "You must pass at least one job UUID."}])))
 
 (defn user-authorized-for-job?
   [conn is-authorized-fn ctx job-uuid]
@@ -966,7 +1016,7 @@
 
 
 ;;; On GET; use repeated job argument
-(defn read-jobs-handler
+(defn read-jobs-handler-deprecated
   [conn framework-id is-authorized-fn retrieve-sandbox-directory-from-agent]
   (base-cook-handler
     {:allowed-methods [:get]
@@ -975,6 +1025,25 @@
      :exists? (partial retrieve-jobs conn)
      :handle-ok (fn [ctx] (render-jobs-for-response conn framework-id retrieve-sandbox-directory-from-agent ctx))}))
 
+(defn read-jobs-handler
+  [conn framework-id is-authorized-fn retrieve-sandbox-directory-from-agent handle-ok-fn]
+  (base-cook-handler
+    {:allowed-methods [:get]
+     :malformed? job-request-malformed?
+     :allowed? (partial job-request-allowed? conn is-authorized-fn)
+     :exists? (partial jobs-exist? conn)
+     :handle-ok handle-ok-fn}))
+
+(defn read-jobs-handler-multiple
+  [conn framework-id is-authorized-fn retrieve-sandbox-directory-from-agent]
+  (read-jobs-handler conn framework-id is-authorized-fn retrieve-sandbox-directory-from-agent
+                     (partial render-jobs-for-response conn framework-id retrieve-sandbox-directory-from-agent)))
+
+(defn read-jobs-handler-single
+  [conn framework-id is-authorized-fn retrieve-sandbox-directory-from-agent]
+  (let [handle-ok-fn (fn [ctx]
+                       (first (render-jobs-for-response conn framework-id retrieve-sandbox-directory-from-agent ctx)))]
+    (read-jobs-handler conn framework-id is-authorized-fn retrieve-sandbox-directory-from-agent handle-ok-fn)))
 
 ;;; On DELETE; use repeated job argument
 (defn destroy-jobs-handler
@@ -1896,13 +1965,14 @@
         (c-api/context
           "/rawscheduler" []
           (c-api/resource
-            {:get {:summary "Returns info about a set of Jobs"
-                   :parameters {:query-params QueryJobsParams}
+            {:get {:summary "Returns info about a set of Jobs (deprecated)"
+                   :parameters {:query-params QueryJobsParamsDeprecated}
                    :responses {200 {:schema [JobResponse]
                                     :description "The jobs and their instances were returned."}
                                400 {:description "Non-UUID values were passed as jobs."}
                                403 {:description "The supplied UUIDs don't correspond to valid jobs."}}
-                   :handler (read-jobs-handler conn framework-id is-authorized-fn retrieve-sandbox-directory-from-agent)}
+                   :handler (read-jobs-handler-deprecated conn framework-id is-authorized-fn
+                                                          retrieve-sandbox-directory-from-agent)}
              :post {:summary "Schedules one or more jobs."
                     :parameters {:body-params RawSchedulerRequest}
                     :responses {201 {:description "The jobs were successfully scheduled."}
@@ -1915,6 +1985,30 @@
                                   403 {:description "The supplied UUIDs don't correspond to valid jobs."}}
                       :parameters {:query-params JobOrInstanceIds}
                       :handler (destroy-jobs-handler conn is-authorized-fn)}}))
+
+        (c-api/context
+          "/jobs/:uuid" [uuid]
+          :path-params [uuid :- s/Uuid]
+          (c-api/resource
+            {:get {:summary "Returns info about a single Job"
+                   :responses {200 {:schema JobResponse
+                                    :description "The job was returned."}
+                               400 {:description "A non-UUID value was passed."}
+                               403 {:description "The supplied UUID doesn't correspond to a valid job."}}
+                   :handler (read-jobs-handler-single conn framework-id is-authorized-fn
+                                                      retrieve-sandbox-directory-from-agent)}}))
+
+        (c-api/context
+          "/jobs" []
+          (c-api/resource
+            {:get {:summary "Returns info about a set of Jobs"
+                   :parameters {:query-params QueryJobsParams}
+                   :responses {200 {:schema [JobResponse]
+                                    :description "The jobs were returned."}
+                               400 {:description "Non-UUID values were passed."}
+                               403 {:description "The supplied UUIDs don't correspond to valid jobs."}}
+                   :handler (read-jobs-handler-multiple conn framework-id is-authorized-fn
+                                                        retrieve-sandbox-directory-from-agent)}}))
 
         (c-api/context
           "/share" []
@@ -1972,8 +2066,8 @@
               :parameters {:body-params UpdateRetriesRequest}
               :handler (put-retries-handler conn is-authorized-fn task-constraints)
               :responses {200 {:schema ZeroInt
-                          :description "No failed jobs provided to retry."}
-                     201 {:schema PosInt
+                               :description "No failed jobs provided to retry."}
+                          201 {:schema PosInt
                                :description "The number of retries for the jobs."}
                           400 {:description "Invalid request format."}
                           401 {:description "Request user not authorized to access those jobs."}

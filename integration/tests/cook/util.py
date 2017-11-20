@@ -182,7 +182,7 @@ def unpack_uuid(entity):
     return entity['uuid'] if isinstance(entity, dict) else entity
 
 
-def query_jobs(cook_url, assert_response=False, **kwargs):
+def query_jobs_via_rawscheduler_endpoint(cook_url, assert_response=False, **kwargs):
     """
     Queries cook for a set of jobs, by job and/or instance uuid. The kwargs
     passed to this function are sent straight through as query parameters on
@@ -199,6 +199,21 @@ def query_jobs(cook_url, assert_response=False, **kwargs):
     return response
 
 
+def query_jobs(cook_url, assert_response=False, **kwargs):
+    """
+    Queries cook for a set of jobs by job uuid. The kwargs
+    passed to this function are sent straight through as
+    query parameters on the request. If the uuid values are
+    dictionaries (e.g., job_specs), then they are
+    automatically unpacked to get their UUIDs.
+    """
+    kwargs['uuid'] = [unpack_uuid(u) for u in kwargs['uuid']]
+    response = session.get(f'{cook_url}/jobs', params=kwargs)
+    if assert_response:
+        assert 200 == response.status_code
+    return response
+
+
 def query_groups(cook_url, **kwargs):
     """
     Queries cook for a set of groups, by groups uuid. The kwargs
@@ -209,9 +224,11 @@ def query_groups(cook_url, **kwargs):
 
 
 def load_job(cook_url, job_uuid, assert_response=True):
-    """Loads a job by UUID using GET /rawscheduler"""
-    response = query_jobs(cook_url, assert_response, job=[job_uuid])
-    return response.json()[0]
+    """Loads a job by UUID using GET /jobs/UUID"""
+    response = session.get(f'{cook_url}/jobs/{job_uuid}')
+    if assert_response:
+        assert 200 == response.status_code
+    return response.json()
 
 
 def multi_cluster_tests_enabled():
@@ -310,7 +327,7 @@ def wait_for_job(cook_url, job_id, status, max_delay=120000):
 
 def wait_for_jobs(cook_url, job_ids, status, max_delay=120000):
     def query():
-        return query_jobs(cook_url, True, job=job_ids)
+        return query_jobs(cook_url, True, uuid=job_ids)
 
     def predicate(resp):
         jobs = resp.json()
@@ -332,7 +349,7 @@ def wait_for_exit_code(cook_url, job_id, max_delay_ms=2000):
     job_id = unpack_uuid(job_id)
 
     def query():
-        return query_jobs(cook_url, True, job=[job_id])
+        return query_jobs(cook_url, True, uuid=[job_id])
 
     def predicate(resp):
         job = resp.json()[0]
@@ -363,7 +380,7 @@ def wait_for_sandbox_directory(cook_url, job_id):
     max_delay_ms = min(4 * cache_ttl_ms, 4 * 60 * 1000)
 
     def query():
-        response = query_jobs(cook_url, True, job=[job_id])
+        response = query_jobs(cook_url, True, uuid=[job_id])
         return response.json()[0]
 
     def predicate(job):
@@ -374,7 +391,8 @@ def wait_for_sandbox_directory(cook_url, job_id):
             if 'sandbox_directory' not in inst:
                 logger.info(f"Job {job_id} instance {inst['task_id']} has no sandbox directory.")
             else:
-                logger.info(f"Job {job_id} instance {inst['task_id']} has sandbox directory {inst['sandbox_directory']}.")
+                logger.info(
+                    f"Job {job_id} instance {inst['task_id']} has sandbox directory {inst['sandbox_directory']}.")
                 return True
 
     return wait_until(query, predicate, max_wait_ms=max_delay_ms, wait_interval_ms=250)
@@ -389,7 +407,7 @@ def wait_for_end_time(cook_url, job_id, max_delay_ms=2000):
     job_id = unpack_uuid(job_id)
 
     def query():
-        return query_jobs(cook_url, True, job=[job_id])
+        return query_jobs(cook_url, True, uuid=[job_id])
 
     def predicate(resp):
         job = resp.json()[0]
@@ -495,9 +513,9 @@ def progress_line(cook_url, percent, message):
     regex_string = get_in(cook_settings, 'executor', 'default-progress-regex-string')
     if not regex_string:
         regex_string = 'progress: (\d+) (.*)'
-    if not '(\d+)' in regex_string:
+    if '(\d+)' not in regex_string:
         raise Exception(f'(\d+) not present in {regex_string} regex string')
-    if not '(.*)' in regex_string:
+    if '(.*)' not in regex_string:
         raise Exception(f'(.*) not present in {regex_string} regex string')
     return (regex_string
             .replace('(\d+)', str(percent))
@@ -534,7 +552,7 @@ def group_submit_kill_retry(cook_url, retry_failed_jobs_only):
         kill_groups(cook_url, [group_uuid])
 
         def jobs_query():
-            return query_jobs(cook_url, True, job=jobs)
+            return query_jobs(cook_url, True, uuid=jobs)
 
         wait_until(jobs_query, all_instances_done)
         # retry all jobs in the group
@@ -542,7 +560,7 @@ def group_submit_kill_retry(cook_url, retry_failed_jobs_only):
         # wait for some job to start
         wait_until(group_query, group_some_job_started)
         # return final job details to caller for assertion checks
-        return query_jobs(cook_url, assert_response=True, job=jobs).json()
+        return query_jobs(cook_url, assert_response=True, uuid=jobs).json()
     finally:
         # ensure that we don't leave a bunch of jobs running/waiting
         kill_groups(cook_url, [group_uuid])
@@ -568,7 +586,7 @@ def group_submit_retry(cook_url, command, predicate_statuses, retry_failed_jobs_
 
     def status_condition(response):
         group = response.json()[0]
-        statuses_map = { x: group[x] for x in predicate_statuses }
+        statuses_map = {x: group[x] for x in predicate_statuses}
         status_counts = statuses_map.values()
         # for running & waiting, we want at least one running (not all waiting)
         not_all_waiting = group['waiting'] != job_count
@@ -585,7 +603,7 @@ def group_submit_retry(cook_url, command, predicate_statuses, retry_failed_jobs_
         # wait again for the expected job statuses specified in predicate_statuses
         wait_until(group_query, status_condition)
         # return final job details to caller for assertion checks
-        return query_jobs(cook_url, assert_response=True, job=jobs).json()
+        return query_jobs(cook_url, assert_response=True, uuid=jobs).json()
     finally:
         # ensure that we don't leave a bunch of jobs running/waiting
         kill_groups(cook_url, [group_uuid])

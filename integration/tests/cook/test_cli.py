@@ -881,7 +881,7 @@ class CookCliTest(unittest.TestCase):
         self.assertEqual(0, bar['size'])
 
     def test_ls_empty_root_directory(self):
-        cp, uuids = cli.submit("'rm *'", self.cook_url)
+        cp, uuids = cli.submit("'rm -r * && rm -r .*'", self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
         util.wait_for_job(self.cook_url, uuids[0], 'completed')
         self.assertEqual(0, cp.returncode, cp.stderr)
