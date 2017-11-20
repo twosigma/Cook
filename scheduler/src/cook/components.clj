@@ -403,14 +403,14 @@
                            default-uri-config {:cache true
                                                :executable true
                                                :extract false}
-                           executor-uri-configured (and (:uri executor) (not (str/blank? (get-in executor [:uri :value]))))]
-                       (when executor-uri-configured
-                         (log/warn "Executor uri value is missing, the uri config will be disabled" {:executor executor}))
-                       (cond-> (merge default-executor-config executor)
-                               executor-uri-configured
-                               (update :uri #(merge default-uri-config %1))
-                               (not executor-uri-configured)
-                               (dissoc :uri))))))
+                           executor-uri-configured (and (:uri executor)
+                                                        (-> executor (get-in [:uri :value]) str/blank? not))]
+                       (when-not executor-uri-configured
+                         (log/info "Executor uri value is missing, the uri config will be disabled" {:executor executor}))
+                       (let [base-executor-config (merge default-executor-config executor)]
+                         (if executor-uri-configured
+                           (update base-executor-config :uri #(merge default-uri-config %1))
+                           (dissoc base-executor-config :uri)))))))
      :mesos-datomic-uri (fnk [[:config [:database datomic-uri]]]
                           (when-not datomic-uri
                             (throw (ex-info "Must set a the :database's :datomic-uri!" {})))
