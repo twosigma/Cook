@@ -404,14 +404,14 @@ class CookCliTest(unittest.TestCase):
         self.assertEqual(desired_command, jobs[0]['command'])
 
     def test_list_no_matching_jobs(self):
-        cp = cli.list_jobs(self.cook_url, '--name %s' % uuid.uuid4())
+        cp = cli.jobs(self.cook_url, '--name %s' % uuid.uuid4())
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual('No jobs found in %s.' % self.cook_url, cli.stdout(cp))
 
     def list_jobs(self, name, user, *states):
-        """Invokes the list subcommand with the given name, user, and state filters"""
+        """Invokes the jobs subcommand with the given name, user, and state filters"""
         state_flags = ' '.join([f'--{state}' for state in states])
-        cp, jobs = cli.list_jobs_json(self.cook_url, '--name %s --user %s %s' % (name, user, state_flags))
+        cp, jobs = cli.jobs_json(self.cook_url, '--name %s --user %s %s' % (name, user, state_flags))
         return cp, jobs
 
     def test_list_by_state(self):
@@ -485,7 +485,7 @@ class CookCliTest(unittest.TestCase):
         self.assertIn(failed_uuid, uuids)
 
     def test_list_invalid_state(self):
-        cp = cli.list_jobs(self.cook_url, '--foo')
+        cp = cli.jobs(self.cook_url, '--foo')
         self.assertEqual(2, cp.returncode, cp.stderr)
         self.assertIn('error: unrecognized arguments: --foo', cli.decode(cp.stderr))
 
@@ -515,19 +515,19 @@ class CookCliTest(unittest.TestCase):
 
     def test_list_invalid_flags(self):
         error_fragment = 'cannot specify both lookback hours and submitted after / before times'
-        cp = cli.list_jobs(self.cook_url, '--lookback 1 --submitted-after "yesterday" --submitted-before "now"')
+        cp = cli.jobs(self.cook_url, '--lookback 1 --submitted-after "yesterday" --submitted-before "now"')
         self.assertEqual(1, cp.returncode, cp.stderr)
         self.assertIn(error_fragment, cli.decode(cp.stderr))
-        cp = cli.list_jobs(self.cook_url, '--lookback 1 --submitted-after "yesterday"')
+        cp = cli.jobs(self.cook_url, '--lookback 1 --submitted-after "yesterday"')
         self.assertEqual(1, cp.returncode, cp.stderr)
         self.assertIn(error_fragment, cli.decode(cp.stderr))
-        cp = cli.list_jobs(self.cook_url, '--lookback 1 --submitted-before "now"')
+        cp = cli.jobs(self.cook_url, '--lookback 1 --submitted-before "now"')
         self.assertEqual(1, cp.returncode, cp.stderr)
         self.assertIn(error_fragment, cli.decode(cp.stderr))
-        cp = cli.list_jobs(self.cook_url, '--submitted-after ""')
+        cp = cli.jobs(self.cook_url, '--submitted-after ""')
         self.assertEqual(1, cp.returncode, cp.stderr)
         self.assertIn('"" is not a valid date / time string', cli.decode(cp.stderr))
-        cp = cli.list_jobs(self.cook_url, '--submitted-before ""')
+        cp = cli.jobs(self.cook_url, '--submitted-before ""')
         self.assertEqual(1, cp.returncode, cp.stderr)
         self.assertIn('"" is not a valid date / time string', cli.decode(cp.stderr))
 
@@ -539,26 +539,26 @@ class CookCliTest(unittest.TestCase):
         # Time range that should be empty
         list_flags = f'--submitted-after "30 minutes ago" --submitted-before "15 minutes ago" ' \
                      f'--user {user} --all --name {name}'
-        cp, jobs = cli.list_jobs_json(self.cook_url, list_flags)
+        cp, jobs = cli.jobs_json(self.cook_url, list_flags)
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual(0, len(jobs))
         # Time range that should contain our job (wait for job to complete to avoid racing with the "now" query)
         cp = cli.wait(uuids, self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
         list_flags = f'--submitted-after "30 minutes ago" --submitted-before "now" --user {user} --all --name {name}'
-        cp, jobs = cli.list_jobs_json(self.cook_url, list_flags)
+        cp, jobs = cli.jobs_json(self.cook_url, list_flags)
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual(1, len(jobs))
         self.assertIn(uuids[0], jobs[0]['uuid'])
         # --submitted-after is not required
         list_flags = f'--submitted-before "now" --user {user} --all --name {name}'
-        cp, jobs = cli.list_jobs_json(self.cook_url, list_flags)
+        cp, jobs = cli.jobs_json(self.cook_url, list_flags)
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual(1, len(jobs))
         self.assertIn(uuids[0], jobs[0]['uuid'])
         # --submitted-before is not required
         list_flags = f'--submitted-after "15 minutes ago" --user {user} --all --name {name}'
-        cp, jobs = cli.list_jobs_json(self.cook_url, list_flags)
+        cp, jobs = cli.jobs_json(self.cook_url, list_flags)
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual(1, len(jobs))
         self.assertIn(uuids[0], jobs[0]['uuid'])
