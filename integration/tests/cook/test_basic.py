@@ -829,12 +829,12 @@ class CookTest(unittest.TestCase):
         resp = util.query_jobs(self.cook_url, uuid=[job_uuid_1, job_uuid_2, bogus_uuid])
         self.assertEqual(404, resp.status_code, msg=resp.content)
         self.assertEqual([bogus_uuid], absent_uuids(resp))
-        resp = util.query_jobs(self.cook_url, uuid=[job_uuid_1, job_uuid_2, bogus_uuid], partial='false')
+        resp = util.query_jobs(self.cook_url, uuid=[job_uuid_1, job_uuid_2, bogus_uuid], partial=False)
         self.assertEqual(404, resp.status_code, resp.json())
         self.assertEqual([bogus_uuid], absent_uuids(resp))
 
         # Partial results with mixed valid, invalid job uuids
-        resp = util.query_jobs(self.cook_url, uuid=[job_uuid_1, job_uuid_2, bogus_uuid], partial='true')
+        resp = util.query_jobs(self.cook_url, uuid=[job_uuid_1, job_uuid_2, bogus_uuid], partial=True)
         self.assertEqual(200, resp.status_code, resp.json())
         self.assertEqual(2, len(resp.json()))
         self.assertEqual([job_uuid_1, job_uuid_2].sort(), [job['uuid'] for job in resp.json()].sort())
@@ -852,12 +852,12 @@ class CookTest(unittest.TestCase):
         resp = util.query_jobs_via_rawscheduler_endpoint(self.cook_url, instance=instance_uuids)
         self.assertEqual(404, resp.status_code, msg=resp.content)
         self.assertEqual([bogus_uuid], absent_uuids(resp))
-        resp = util.query_jobs_via_rawscheduler_endpoint(self.cook_url, instance=instance_uuids, partial='false')
+        resp = util.query_jobs_via_rawscheduler_endpoint(self.cook_url, instance=instance_uuids, partial=False)
         self.assertEqual(404, resp.status_code, msg=resp.content)
         self.assertEqual([bogus_uuid], absent_uuids(resp))
 
         # Partial results with mixed valid, invalid instance uuids
-        resp = util.query_jobs_via_rawscheduler_endpoint(self.cook_url, instance=instance_uuids, partial='true')
+        resp = util.query_jobs_via_rawscheduler_endpoint(self.cook_url, instance=instance_uuids, partial=True)
         self.assertEqual(200, resp.status_code, msg=resp.content)
         self.assertEqual(2, len(resp.json()))
         self.assertEqual([job_uuid_1, job_uuid_2].sort(), [job['uuid'] for job in resp.json()].sort())
@@ -1417,3 +1417,27 @@ class CookTest(unittest.TestCase):
                              "Host had a different attribute than other jobs in the group.")
         finally:
             util.kill_jobs(self.cook_url, uuids)
+
+    def test_retrieve_jobs_with_deprecated_api(self):
+        job_uuid_1, resp = util.submit_job(self.cook_url)
+        self.assertEqual(201, resp.status_code, msg=resp.content)
+        job_uuid_2, resp = util.submit_job(self.cook_url)
+        self.assertEqual(201, resp.status_code, msg=resp.content)
+
+        # Query by job uuid
+        resp = util.query_jobs_via_rawscheduler_endpoint(self.cook_url, job=[job_uuid_1, job_uuid_2])
+        self.assertEqual(200, resp.status_code, msg=resp.content)
+        self.assertEqual(2, len(resp.json()))
+        self.assertEqual(job_uuid_1, resp.json()[0]['uuid'])
+        self.assertEqual(job_uuid_2, resp.json()[1]['uuid'])
+
+        # Query by instance uuid
+        instance_uuid_1 = util.wait_for_instance(self.cook_url, job_uuid_1)['task_id']
+        instance_uuid_2 = util.wait_for_instance(self.cook_url, job_uuid_2)['task_id']
+        resp = util.query_jobs_via_rawscheduler_endpoint(self.cook_url, instance=[instance_uuid_1, instance_uuid_2])
+        instance_uuids = [i['task_id'] for j in resp.json() for i in j['instances']]
+        self.assertEqual(200, resp.status_code, msg=resp.content)
+        self.assertEqual(2, len(resp.json()))
+        self.assertEqual(2, len(instance_uuids))
+        self.assertIn(instance_uuid_1, instance_uuids)
+        self.assertIn(instance_uuid_2, instance_uuids)

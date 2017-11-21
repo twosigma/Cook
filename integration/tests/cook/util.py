@@ -193,6 +193,8 @@ def query_jobs_via_rawscheduler_endpoint(cook_url, assert_response=False, **kwar
     for key in ('job', 'instance'):
         if key in kwargs:
             kwargs[key] = map(unpack_uuid, kwargs[key])
+    if 'partial' in kwargs:
+        kwargs['partial'] = 'true' if (kwargs['partial'] in [True, 'true', '1']) else 'false'
     response = session.get(f'{cook_url}/rawscheduler', params=kwargs)
     if assert_response:
         assert 200 == response.status_code
@@ -208,6 +210,8 @@ def query_jobs(cook_url, assert_response=False, **kwargs):
     automatically unpacked to get their UUIDs.
     """
     kwargs['uuid'] = [unpack_uuid(u) for u in kwargs['uuid']]
+    if 'partial' in kwargs:
+        kwargs['partial'] = 'true' if (kwargs['partial'] in [True, 'true', '1']) else 'false'
     response = session.get(f'{cook_url}/jobs', params=kwargs)
     if assert_response:
         assert 200 == response.status_code

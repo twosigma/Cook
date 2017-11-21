@@ -980,10 +980,8 @@
       [true {::jobs existing-uuids}]
 
       :else
-      (let [non-existing-uuids (set/difference (set uuids) (set existing-uuids))
-            plural? (> (count non-existing-uuids) 1)
-            message (str "The following UUID" (if plural? "s don't " " doesn't ")
-                         "correspond to a job:\n" (str/join \newline non-existing-uuids))]
+      (let [non-existing-uuids (apply disj (set uuids) existing-uuids)
+            message (str "The following UUIDs don't correspond to a job:\n" (str/join \newline non-existing-uuids))]
         [false {::error message}]))))
 
 (defn check-job-params-present
@@ -996,12 +994,10 @@
 
 (defn job-request-malformed?
   [ctx]
-  (let [uuids (get-in ctx [:request :params :uuid])
+  (let [uuids (wrap-seq (get-in ctx [:request :params :uuid]))
         allow-partial-results? (get-in ctx [:request :query-params :partial])]
-    (if uuids
-      [false {::jobs (map #(UUID/fromString %) (wrap-seq uuids))
-              ::allow-partial-results? allow-partial-results?}]
-      [true {::error "You must pass at least one job UUID."}])))
+    [false {::jobs (map #(UUID/fromString %) uuids)
+            ::allow-partial-results? allow-partial-results?}]))
 
 (defn user-authorized-for-job?
   [conn is-authorized-fn ctx job-uuid]
@@ -1054,26 +1050,26 @@
      :handle-ok (fn [ctx] (render-jobs-for-response-deprecated conn framework-id retrieve-sandbox-directory-from-agent ctx))}))
 
 (defn read-jobs-handler
-  [conn framework-id is-authorized-fn retrieve-sandbox-directory-from-agent handle-ok-fn]
+  [conn is-authorized-fn resource-attrs]
   (base-cook-handler
-    {:allowed-methods [:get]
-     :malformed? job-request-malformed?
-     :allowed? (partial job-request-allowed? conn is-authorized-fn)
-     :exists? (partial jobs-exist? conn)
-     :handle-ok handle-ok-fn}))
+    (merge {:allowed-methods [:get]
+            :malformed? job-request-malformed?
+            :allowed? (partial job-request-allowed? conn is-authorized-fn)
+            :exists? (partial jobs-exist? conn)}
+           resource-attrs)))
 
 (defn read-jobs-handler-multiple
   [conn framework-id is-authorized-fn retrieve-sandbox-directory-from-agent]
-  (read-jobs-handler conn framework-id is-authorized-fn retrieve-sandbox-directory-from-agent
-                     (partial render-jobs-for-response conn framework-id retrieve-sandbox-directory-from-agent)))
+  (let [handle-ok (partial render-jobs-for-response conn framework-id retrieve-sandbox-directory-from-agent)]
+    (read-jobs-handler conn is-authorized-fn {:handle-ok handle-ok})))
 
 (defn read-jobs-handler-single
   [conn framework-id is-authorized-fn retrieve-sandbox-directory-from-agent]
-  (let [handle-ok-fn
-        (fn [ctx]
+  (let [handle-ok
+        (fn handle-ok [ctx]
           (first
             (render-jobs-for-response conn framework-id retrieve-sandbox-directory-from-agent ctx)))]
-    (read-jobs-handler conn framework-id is-authorized-fn retrieve-sandbox-directory-from-agent handle-ok-fn)))
+    (read-jobs-handler conn is-authorized-fn {:handle-ok handle-ok})))
 
 ;;; On DELETE; use repeated job argument
 (defn destroy-jobs-handler
