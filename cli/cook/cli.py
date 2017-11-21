@@ -3,7 +3,7 @@ import logging
 from urllib.parse import urlparse
 
 from cook import util, http, metrics, version, configuration
-from cook.subcommands import submit, show, wait, list, ssh, ls, tail, kill, config
+from cook.subcommands import submit, show, wait, jobs, ssh, ls, tail, kill, config
 from cook.util import deep_merge
 
 parser = argparse.ArgumentParser(description='cs is the Cook Scheduler CLI')
@@ -19,8 +19,8 @@ subparsers = parser.add_subparsers(dest='action')
 
 actions = {
     'config': config.register(subparsers.add_parser, configuration.add_defaults),
+    'jobs': jobs.register(subparsers.add_parser, configuration.add_defaults),
     'kill': kill.register(subparsers.add_parser, configuration.add_defaults),
-    'list': list.register(subparsers.add_parser, configuration.add_defaults),
     'ls': ls.register(subparsers.add_parser, configuration.add_defaults),
     'show': show.register(subparsers.add_parser, configuration.add_defaults),
     'ssh': ssh.register(subparsers.add_parser, configuration.add_defaults),

@@ -97,7 +97,7 @@ def lookback_hours_to_range(lookback_hours):
     return start_ms, end_ms
 
 
-def list_jobs(clusters, args, _):
+def jobs(clusters, args, _):
     """Prints info for the jobs with the given list criteria"""
     guard_no_cluster(clusters)
     as_json = args.get('json')
@@ -133,35 +133,35 @@ def list_jobs(clusters, args, _):
 
 def register(add_parser, add_defaults):
     """Adds this sub-command's parser and returns the action function"""
-    list_parser = add_parser('list', help='list jobs by state / user / time / name')
-    list_parser.add_argument('--waiting', '-w', help='include waiting jobs', dest='states',
-                             action='append_const', const='waiting')
-    list_parser.add_argument('--running', '-r', help='include running jobs', dest='states',
-                             action='append_const', const='running')
-    list_parser.add_argument('--completed', '-c', help='include completed jobs', dest='states',
-                             action='append_const', const='completed')
-    list_parser.add_argument('--failed', '-f', help='include failed jobs', dest='states',
-                             action='append_const', const='failed')
-    list_parser.add_argument('--success', '-s', help='include successful jobs', dest='states',
-                             action='append_const', const='success')
-    list_parser.add_argument('--all', '-a', help='include all jobs, regardless of status', dest='states',
-                             action='append_const', const='all')
-    list_parser.add_argument('--user', '-u', help='list jobs for a user')
-    list_parser.add_argument('--lookback', '-t',
-                             help=f'list jobs submitted in the last HOURS hours (default = {DEFAULT_LOOKBACK_HOURS})',
-                             type=float, metavar='HOURS')
-    list_parser.add_argument('--submitted-after', '-A',
-                             help=f'list jobs submitted after the given time')
-    list_parser.add_argument('--submitted-before', '-B',
-                             help=f'list jobs submitted before the given time')
-    list_parser.add_argument('--name', '-n', help="list jobs with a particular name pattern (name filters can contain "
-                                                  "alphanumeric characters, '.', '-', '_', and '*' as a wildcard)")
-    list_parser.add_argument('--limit', '-l', help=f'limit the number of results (default = {DEFAULT_LIMIT})',
-                             type=check_positive)
-    list_parser.add_argument('--json', help='show the data in JSON format', dest='json', action='store_true')
+    parser = add_parser('jobs', help='list jobs by state / user / time / name')
+    parser.add_argument('--waiting', '-w', help='include waiting jobs', dest='states',
+                        action='append_const', const='waiting')
+    parser.add_argument('--running', '-r', help='include running jobs', dest='states',
+                        action='append_const', const='running')
+    parser.add_argument('--completed', '-c', help='include completed jobs', dest='states',
+                        action='append_const', const='completed')
+    parser.add_argument('--failed', '-f', help='include failed jobs', dest='states',
+                        action='append_const', const='failed')
+    parser.add_argument('--success', '-s', help='include successful jobs', dest='states',
+                        action='append_const', const='success')
+    parser.add_argument('--all', '-a', help='include all jobs, regardless of status', dest='states',
+                        action='append_const', const='all')
+    parser.add_argument('--user', '-u', help='list jobs for a user')
+    parser.add_argument('--lookback', '-t',
+                        help=f'list jobs submitted in the last HOURS hours (default = {DEFAULT_LOOKBACK_HOURS})',
+                        type=float, metavar='HOURS')
+    parser.add_argument('--submitted-after', '-A',
+                        help=f'list jobs submitted after the given time')
+    parser.add_argument('--submitted-before', '-B',
+                        help=f'list jobs submitted before the given time')
+    parser.add_argument('--name', '-n', help="list jobs with a particular name pattern (name filters can contain "
+                                             "alphanumeric characters, '.', '-', '_', and '*' as a wildcard)")
+    parser.add_argument('--limit', '-l', help=f'limit the number of results (default = {DEFAULT_LIMIT})',
+                        type=check_positive)
+    parser.add_argument('--json', help='show the data in JSON format', dest='json', action='store_true')
 
-    add_defaults('list', {'states': ['running'],
+    add_defaults('jobs', {'states': ['running'],
                           'user': current_user(),
                           'limit': DEFAULT_LIMIT})
 
-    return list_jobs
+    return jobs
