@@ -35,8 +35,7 @@ class ExecutorTest(unittest.TestCase):
     def test_create_status_running(self):
         task_id = get_random_task_id()
         actual_status = ce.create_status(task_id, cook.TASK_RUNNING)
-        expected_status = {'task_id': {'value': task_id},
-                           'state': cook.TASK_RUNNING}
+        expected_status = {'source': 'cook', 'state': cook.TASK_RUNNING, 'task_id': {'value': task_id}}
         assert_status(self, expected_status, actual_status)
 
     def test_update_status(self):
@@ -48,8 +47,7 @@ class ExecutorTest(unittest.TestCase):
 
         self.assertEqual(1, len(driver.statuses))
         actual_status = driver.statuses[0]
-        expected_status = {'task_id': {'value': task_id},
-                           'state': task_state}
+        expected_status = {'source': 'cook', 'state': task_state, 'task_id': {'value': task_id}}
         assert_status(self, expected_status, actual_status)
 
     def test_send_message(self):
@@ -312,15 +310,15 @@ class ExecutorTest(unittest.TestCase):
             self.assertEqual(3, len(driver.statuses))
 
             actual_status_0 = driver.statuses[0]
-            expected_status_0 = {'task_id': {'value': task_id}, 'state': cook.TASK_STARTING}
+            expected_status_0 = ce.create_status(task_id, cook.TASK_STARTING)
             assert_status(self, expected_status_0, actual_status_0)
 
             actual_status_1 = driver.statuses[1]
-            expected_status_1 = {'task_id': {'value': task_id}, 'state': cook.TASK_RUNNING}
+            expected_status_1 = ce.create_status(task_id, cook.TASK_RUNNING)
             assert_status(self, expected_status_1, actual_status_1)
 
             actual_status_2 = driver.statuses[2]
-            expected_status_2 = {'task_id': {'value': task_id}, 'state': cook.TASK_FINISHED}
+            expected_status_2 = ce.create_status(task_id, cook.TASK_FINISHED)
             assert_status(self, expected_status_2, actual_status_2)
 
             logging.info('Messages: {}'.format(driver.messages))
@@ -344,11 +342,11 @@ class ExecutorTest(unittest.TestCase):
             self.assertEqual(2, len(driver.statuses))
 
             actual_status_0 = driver.statuses[0]
-            expected_status_0 = {'task_id': {'value': task_id}, 'state': cook.TASK_STARTING}
+            expected_status_0 = ce.create_status(task_id, cook.TASK_STARTING)
             assert_status(self, expected_status_0, actual_status_0)
 
             actual_status_1 = driver.statuses[1]
-            expected_status_1 = {'task_id': {'value': task_id}, 'state': cook.TASK_ERROR}
+            expected_status_1 = ce.create_status(task_id, cook.TASK_ERROR)
             assert_status(self, expected_status_1, actual_status_1)
 
             logging.info('Messages: {}'.format(driver.messages))
@@ -368,15 +366,15 @@ class ExecutorTest(unittest.TestCase):
             self.assertEqual(3, len(driver.statuses))
 
             actual_status_0 = driver.statuses[0]
-            expected_status_0 = {'task_id': {'value': task_id}, 'state': cook.TASK_STARTING}
+            expected_status_0 = ce.create_status(task_id, cook.TASK_STARTING)
             assert_status(self, expected_status_0, actual_status_0)
 
             actual_status_1 = driver.statuses[1]
-            expected_status_1 = {'task_id': {'value': task_id}, 'state': cook.TASK_RUNNING}
+            expected_status_1 = ce.create_status(task_id, cook.TASK_RUNNING)
             assert_status(self, expected_status_1, actual_status_1)
 
             actual_status_2 = driver.statuses[2]
-            expected_status_2 = {'task_id': {'value': task_id}, 'state': cook.TASK_FINISHED}
+            expected_status_2 = ce.create_status(task_id, cook.TASK_FINISHED)
             assert_status(self, expected_status_2, actual_status_2)
 
             logging.info('Messages: {}'.format(driver.messages))
@@ -416,15 +414,15 @@ class ExecutorTest(unittest.TestCase):
             self.assertEqual(3, len(driver.statuses))
 
             actual_status_0 = driver.statuses[0]
-            expected_status_0 = {'task_id': {'value': task_id}, 'state': cook.TASK_STARTING}
+            expected_status_0 = ce.create_status(task_id, cook.TASK_STARTING)
             assert_status(self, expected_status_0, actual_status_0)
 
             actual_status_1 = driver.statuses[1]
-            expected_status_1 = {'task_id': {'value': task_id}, 'state': cook.TASK_RUNNING}
+            expected_status_1 = ce.create_status(task_id, cook.TASK_RUNNING)
             assert_status(self, expected_status_1, actual_status_1)
 
             actual_status_2 = driver.statuses[2]
-            expected_status_2 = {'task_id': {'value': task_id}, 'state': cook.TASK_FINISHED}
+            expected_status_2 = ce.create_status(task_id, cook.TASK_FINISHED)
             assert_status(self, expected_status_2, actual_status_2)
 
             logging.info('Messages: {}'.format(driver.messages))
@@ -471,15 +469,15 @@ class ExecutorTest(unittest.TestCase):
             self.assertEqual(3, len(driver.statuses))
 
             actual_status_0 = driver.statuses[0]
-            expected_status_0 = {'task_id': {'value': task_id}, 'state': cook.TASK_STARTING}
+            expected_status_0 = ce.create_status(task_id, cook.TASK_STARTING)
             assert_status(self, expected_status_0, actual_status_0)
 
             actual_status_1 = driver.statuses[1]
-            expected_status_1 = {'task_id': {'value': task_id}, 'state': cook.TASK_RUNNING}
+            expected_status_1 = ce.create_status(task_id, cook.TASK_RUNNING)
             assert_status(self, expected_status_1, actual_status_1)
 
             actual_status_2 = driver.statuses[2]
-            expected_status_2 = {'task_id': {'value': task_id}, 'state': cook.TASK_FAILED}
+            expected_status_2 = ce.create_status(task_id, cook.TASK_FAILED)
             assert_status(self, expected_status_2, actual_status_2)
 
             logging.info('Messages: {}'.format(driver.messages))
@@ -503,15 +501,15 @@ class ExecutorTest(unittest.TestCase):
             self.assertEqual(3, len(driver.statuses))
 
             actual_status_0 = driver.statuses[0]
-            expected_status_0 = {'task_id': {'value': task_id}, 'state': cook.TASK_STARTING}
+            expected_status_0 = ce.create_status(task_id, cook.TASK_STARTING)
             assert_status(self, expected_status_0, actual_status_0)
 
             actual_status_1 = driver.statuses[1]
-            expected_status_1 = {'task_id': {'value': task_id}, 'state': cook.TASK_RUNNING}
+            expected_status_1 = ce.create_status(task_id, cook.TASK_RUNNING)
             assert_status(self, expected_status_1, actual_status_1)
 
             actual_status_2 = driver.statuses[2]
-            expected_status_2 = {'task_id': {'value': task_id}, 'state': cook.TASK_KILLED}
+            expected_status_2 = ce.create_status(task_id, cook.TASK_KILLED)
             assert_status(self, expected_status_2, actual_status_2)
 
             logging.info('Messages: {}'.format(driver.messages))

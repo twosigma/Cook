@@ -42,6 +42,7 @@ def create_status(task_id, task_state):
     a status dictionary that can be sent to the driver.
     """
     return {'task_id': {'value': task_id},
+            'source': 'cook',
             'state': task_state,
             'timestamp': time.time()}
 
