@@ -1,3 +1,4 @@
+import collections
 import json
 import logging
 import os
@@ -16,6 +17,24 @@ import cook.executor as ce
 import cook.io_helper as cio
 from tests.utils import assert_message, assert_status, cleanup_output, close_sys_outputs, ensure_directory, \
     get_random_task_id, parse_message, redirect_stderr_to_file, redirect_stdout_to_file, FakeMesosExecutorDriver
+
+
+def find_process_ids_in_group(group_id):
+    group_id_to_process_ids = collections.defaultdict(set)
+
+    p = subprocess.Popen('ps -eo pid,pgid',
+                         close_fds=True, shell=True,
+                         stderr=subprocess.STDOUT, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+    ps_output = p.stdout.read().decode('utf8')
+
+    for line in ps_output.splitlines():
+        (pid, pgid) = line.split()
+        group_id_to_process_ids[pgid].add(pid)
+
+    group_id_str = str(group_id)
+    logging.info("group_id_to_process_ids: {}".format(group_id_to_process_ids))
+    logging.info("group_id_to_process_ids[{}]: {}".format(group_id, group_id_to_process_ids[group_id_str]))
+    return group_id_to_process_ids[group_id_str]
 
 
 class ExecutorTest(unittest.TestCase):
@@ -74,6 +93,31 @@ class ExecutorTest(unittest.TestCase):
 
         result = ce.send_message(driver, message, max_message_length)
         self.assertFalse(result)
+
+    def test_progress_group_assignment_and_killing(self):
+
+        start_time = time.time()
+
+        task_id = get_random_task_id()
+        command = 'echo "A.$(sleep 30)" & echo "B.$(sleep 30)" & echo "C.$(sleep 30)" &'
+        task = {'task_id': {'value': task_id},
+                'data': encode_data(json.dumps({'command': command}).encode('utf8'))}
+        environment = {}
+        process = ce.launch_task(task, environment)
+
+        group_id = ce.find_process_group(process.pid)
+        self.assertGreater(group_id, 0)
+
+        child_process_ids = find_process_ids_in_group(group_id)
+        self.assertGreaterEqual(len(child_process_ids), 7)
+
+        ce.kill_process_group(group_id)
+        time.sleep(1)
+
+        child_process_ids = find_process_ids_in_group(group_id)
+        self.assertLessEqual(len(child_process_ids), 1)
+
+        self.assertLess(time.time() - start_time, 30)
 
     def test_launch_task(self):
         task_id = get_random_task_id()

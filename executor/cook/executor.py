@@ -102,8 +102,8 @@ def launch_task(task, environment):
     ----------
     task: dictionary
         The task to execute.
-    max_bytes_read_per_line: int
-        The maximum number of bytes to read per call to readline().
+    environment: dictionary
+        The task environment.
 
     Returns
     -------
@@ -294,7 +294,9 @@ def find_process_group(process_id):
     """Return the process group id of the process with process id process_id.
     :param process_id: int
         The process id.
-    :return: the process group id of the process with process id process_id or None.
+    Returns
+    -------
+    The process group id of the process with process id process_id or None.
     """
     try:
         group_id = os.getpgid(process_id)
@@ -310,7 +312,9 @@ def kill_process_group(group_id):
     """Send the SIGKILL signal to the process group with group_id.
     :param group_id: int
         The group id.
-    :return: Nothing
+    Returns
+    -------
+    Nothing
     """
     try:
         if group_id:

@@ -42,16 +42,17 @@ def main(args=None):
     logging.info('Log level is {}'.format(log_level))
 
     config = cc.initialize_config(environment)
+    stop_signal = Event()
 
     def handle_interrupt(interrupt_code, _):
         logging.info('Executor interrupted with code {}'.format(interrupt_code))
         cio.print_and_log('Received kill for task {} with grace period of {}'.format(
             executor_id, config.shutdown_grace_period))
         stop_signal.set()
+
     signal.signal(signal.SIGINT, handle_interrupt)
     signal.signal(signal.SIGTERM, handle_interrupt)
 
-    stop_signal = Event()
     try:
         executor = ce.CookExecutor(stop_signal, config)
         driver = pm.MesosExecutorDriver(executor)
@@ -66,7 +67,6 @@ def main(args=None):
         logging.info('MesosExecutorDriver has been stopped')
 
         executor.await_disconnect()
-
     except Exception:
         logging.exception('Error in __main__')
         stop_signal.set()
