@@ -281,7 +281,7 @@
   "Schema for the part of a request that launches a single job."
   (s/constrained JobRequestMap valid-runtimes?))
 
-(def JobResponse
+(def JobResponseBase
   "Schema for a description of a job (as returned by the API).
   The structure is similar to JobRequest, but has some differences.
   For example, it can include descriptions of instances for the job."
@@ -297,6 +297,16 @@
               (s/optional-key :groups) [s/Uuid]
               (s/optional-key :instances) [Instance]})
       prepare-schema-response))
+
+(def JobResponseDeprecated
+  "Deprecated. New fields should be added only to the JobResponse schema."
+  JobResponseBase)
+
+(def JobResponse
+  "Schema for a description of a job (as returned by the API)."
+  (let [ParentGroup {:uuid s/Uuid, :name s/Str}]
+    (-> JobResponseBase
+        (assoc (s/optional-key :groups) [ParentGroup]))))
 
 (def JobOrInstanceIds
   "Schema for any number of job and/or instance uuids"
@@ -1010,9 +1020,27 @@
       [false {::error (str "You are not authorized to view access the following jobs "
                            (str/join \space (remove authorized? uuids)))}])))
 
-(defn render-jobs-for-response
+(defn render-jobs-for-response-deprecated
   [conn framework-id retrieve-sandbox-directory-from-agent ctx]
   (mapv (partial fetch-job-map (db conn) framework-id retrieve-sandbox-directory-from-agent) (::jobs ctx)))
+
+(defn render-jobs-for-response
+  [conn framework-id retrieve-sandbox-directory-from-agent ctx]
+  (let [db (db conn)
+
+        fetch-group
+        (fn fetch-group [group-uuid]
+          (let [group (d/entity db [:group/uuid (UUID/fromString group-uuid)])]
+            {:uuid group-uuid
+             :name (:group/name group)}))
+
+        fetch-job
+        (fn fetch-job [job-uuid]
+          (let [job (fetch-job-map db framework-id retrieve-sandbox-directory-from-agent job-uuid)
+                groups (mapv fetch-group (:groups job))]
+            (assoc job :groups groups)))]
+
+    (mapv fetch-job (::jobs ctx))))
 
 
 ;;; On GET; use repeated job argument
@@ -1023,7 +1051,7 @@
      :malformed? check-job-params-present
      :allowed? (partial job-request-allowed? conn is-authorized-fn)
      :exists? (partial retrieve-jobs conn)
-     :handle-ok (fn [ctx] (render-jobs-for-response conn framework-id retrieve-sandbox-directory-from-agent ctx))}))
+     :handle-ok (fn [ctx] (render-jobs-for-response-deprecated conn framework-id retrieve-sandbox-directory-from-agent ctx))}))
 
 (defn read-jobs-handler
   [conn framework-id is-authorized-fn retrieve-sandbox-directory-from-agent handle-ok-fn]
@@ -1041,8 +1069,10 @@
 
 (defn read-jobs-handler-single
   [conn framework-id is-authorized-fn retrieve-sandbox-directory-from-agent]
-  (let [handle-ok-fn (fn [ctx]
-                       (first (render-jobs-for-response conn framework-id retrieve-sandbox-directory-from-agent ctx)))]
+  (let [handle-ok-fn
+        (fn [ctx]
+          (first
+            (render-jobs-for-response conn framework-id retrieve-sandbox-directory-from-agent ctx)))]
     (read-jobs-handler conn framework-id is-authorized-fn retrieve-sandbox-directory-from-agent handle-ok-fn)))
 
 ;;; On DELETE; use repeated job argument
@@ -1935,7 +1965,8 @@
               (fn [their-matchers]
                 (fn [s]
                   (or (their-matchers s)
-                      (get {JobResponse (partial map-keys ->snake_case)
+                      (get {JobResponseDeprecated (partial map-keys ->snake_case)
+                            JobResponse (partial map-keys ->snake_case)
                             GroupResponse (partial map-keys ->snake_case)
                             s/Uuid str}
                            s))))))))
@@ -1967,7 +1998,7 @@
           (c-api/resource
             {:get {:summary "Returns info about a set of Jobs (deprecated)"
                    :parameters {:query-params QueryJobsParamsDeprecated}
-                   :responses {200 {:schema [JobResponse]
+                   :responses {200 {:schema [JobResponseDeprecated]
                                     :description "The jobs and their instances were returned."}
                                400 {:description "Non-UUID values were passed as jobs."}
                                403 {:description "The supplied UUIDs don't correspond to valid jobs."}}

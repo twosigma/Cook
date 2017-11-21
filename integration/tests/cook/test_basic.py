@@ -695,8 +695,8 @@ class CookTest(unittest.TestCase):
         job_data = util.query_jobs(self.cook_url, uuid=jobs)
         self.assertEqual(200, job_data.status_code)
         job_data = job_data.json()
-        self.assertEqual(group_uuid, job_data[0]['groups'][0])
-        self.assertEqual(group_uuid, job_data[1]['groups'][0])
+        self.assertEqual(group_uuid, job_data[0]['groups'][0]['uuid'])
+        self.assertEqual(group_uuid, job_data[1]['groups'][0]['uuid'])
         util.wait_for_job(self.cook_url, jobs[0], 'completed')
         util.wait_for_job(self.cook_url, jobs[1], 'completed')
 
@@ -709,8 +709,8 @@ class CookTest(unittest.TestCase):
         job_data = util.query_jobs(self.cook_url, uuid=jobs)
         self.assertEqual(200, job_data.status_code)
         job_data = job_data.json()
-        self.assertEqual(group_uuid, job_data[0]['groups'][0])
-        self.assertEqual(group_uuid, job_data[1]['groups'][0])
+        self.assertEqual(group_uuid, job_data[0]['groups'][0]['uuid'])
+        self.assertEqual(group_uuid, job_data[1]['groups'][0]['uuid'])
         util.wait_for_job(self.cook_url, jobs[0], 'completed')
         util.wait_for_job(self.cook_url, jobs[1], 'completed')
 
