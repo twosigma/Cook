@@ -44,6 +44,7 @@ def redirect_stderr_to_file(output_filename):
 def assert_status(testcase, expected_status, actual_status):
     assert actual_status['timestamp'] is not None
     if 'timestamp' in actual_status: del actual_status['timestamp']
+    if 'timestamp' in expected_status: del expected_status['timestamp']
     testcase.assertEquals(expected_status, actual_status)
 
 
