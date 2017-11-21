@@ -1135,7 +1135,7 @@
               job-resp (api/fetch-job-map (db conn) framework-id retrieve-sandbox-directory-from-agent uuid)]
           (is (= (expected-job-map job framework-id)
                  (dissoc job-resp :submit_time)))
-          (s/validate api/JobResponse
+          (s/validate api/JobResponseDeprecated
                       ; fetch-job-map returns a FrameworkID object instead of a string
                       (assoc job-resp :framework_id (str (:framework_id job-resp))))))
 
