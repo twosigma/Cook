@@ -16,18 +16,17 @@
 # Parse options
 #
 
-case "$1" in
-    -q|--quiet)
-        shift
-        verbose=false
-        ;;
-    '')
-        verbose=true
-        ;;
-    *)
-        echo "USAGE: $0 [-q|--quiet] [EXECUTOR_NAME]"
-        exit -1
-esac
+if [[ "$1" =~ ^(-q|--quiet)$ ]]; then
+    shift
+    verbose=false
+else
+    verbose=true
+fi
+
+if [[ $# > 1 ]]; then
+    echo "USAGE: $0 [-q|--quiet] [EXECUTOR_NAME]"
+    exit -1
+fi
 
 EXECUTOR_NAME="${1:-cook-executor}"
 
@@ -62,12 +61,25 @@ fi
 # Get installed binary's version
 #
 
-binary_app=./dist/${EXECUTOR_NAME}
+binary_app=./dist/${EXECUTOR_NAME}/${EXECUTOR_NAME}
 
-if [ -e $binary_app ]; then
-    installed_version="$(docker run -v $(pwd):/opt/cook python:3.5 /opt/cook/$binary_app --version)"
-else
+host-libc-matches-container-libc() {
+    # Check if it's safe to locally run the pyinstaller binaries from docker.
+    # To get the expected libc version: ldd $binary_app | awk '/libc/ { print $3 }'
+    libc_path_generic='/lib64/libc.so.6'
+    libc_path_multiarch='/lib/x86_64-linux-gnu/libc.so.6'
+    [[ "$(uname -s -p)" == 'Linux x86_64' ]] && [[ -e $libc_path_generic || -e $libc_path_multiarch ]]
+}
+
+if ! [ -e "$binary_app" ]; then
+    # Executor binary not found
     installed_version=none
+elif host-libc-matches-container-libc; then
+    # We can run the executor directly on x64 Linux (same as docker platform)
+    installed_version="$(${binary_app} --version)"
+else
+    # Run the executor directly on all other platforms
+    installed_version="$(docker run --rm -v $(pwd):/opt/cook python:3.5 /opt/cook/${binary_app} --version)"
 fi
 
 #
