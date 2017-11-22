@@ -217,7 +217,7 @@ final public class Job {
          * @param attribute The constraint attribute
          * @param operator  The constraint operator
          * @param value     The constraint value
-         * @return
+         * @return this builder.
          */
         public Builder addConstraint(String attribute, TaskConstraint.Operator operator, String value) {
             return addConstraint(new TaskConstraint.Constraint(attribute, operator, value));
@@ -226,10 +226,8 @@ final public class Job {
         /**
          * Adds a task constraint.
          *
-         * @param attribute The constraint attribute
-         * @param operator  The constraint operator
-         * @param value     The constraint value
-         * @return
+         * @param constraint The constraint to add
+         * @return this builder.
          */
         public Builder addConstraint(TaskConstraint.Constraint constraint) {
             _constraints.add(constraint);
