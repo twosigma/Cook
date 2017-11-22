@@ -28,11 +28,11 @@ final class TaskConstraint {
         }
 
         /**
-         * @param name specifies a string representation of status.
+         * @param op specifies a string representation of operator.
          * @return a constant for the specified name.
          */
-        public static TaskConstraint.Operator fromString(String name) {
-            return Enum.valueOf(TaskConstraint.Operator.class, name.trim().toUpperCase());
+        public static TaskConstraint.Operator fromString(String op) {
+            return Enum.valueOf(TaskConstraint.Operator.class, op.trim().toUpperCase());
         }
     }
 
