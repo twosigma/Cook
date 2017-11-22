@@ -169,6 +169,49 @@ def is_running(process_info):
     return is_process_running(process) or stdout_thread.isAlive() or stderr_thread.isAlive()
 
 
+def find_process_group(process_id):
+    """Return the process group id of the process with process id process_id.
+    Parameters
+    ----------
+    process_id: int
+        The process id.
+    Returns
+    -------
+    The process group id of the process with process id process_id or None.
+    """
+    try:
+        group_id = os.getpgid(process_id)
+        logging.info('Process (pid: {}) belongs to group (id: {})'.format(process_id, group_id))
+        return group_id
+    except ProcessLookupError:
+        logging.info('Unable to find group for process (pid: {})'.format(process_id))
+    except Exception:
+        logging.exception('Error in finding group for process (pid: {})'.format(process_id))
+
+
+def kill_process_group(group_id, signal_to_send):
+    """Send the SIGKILL signal to the process group with group_id.
+    Parameters
+    ----------
+    group_id: int
+        The id of the process group.
+    signal_to_send: signal.Signals enum
+        The signal to send to the process group.
+    Returns
+    -------
+    Nothing
+    """
+    signal_name = signal_to_send.name
+    try:
+        if group_id:
+            logging.info('Sending signal {} to group (id: {})'.format(signal_name, group_id))
+            os.killpg(group_id, signal_to_send)
+    except ProcessLookupError:
+        logging.info('Unable to send signal {} as could not find group (id: {})'.format(signal_name, group_id))
+    except Exception:
+        logging.exception('Error in sending signal {} to group (id: {})'.format(signal_name, group_id))
+
+
 def kill_task(process, shutdown_grace_period_ms):
     """Attempts to kill a process.
      First attempt is made by sending the process a SIGTERM.
@@ -189,7 +232,9 @@ def kill_task(process, shutdown_grace_period_ms):
     shutdown_grace_period_ms = max(shutdown_grace_period_ms - (1000 * cook.TERMINATE_GRACE_SECS), 0)
     if is_process_running(process):
         logging.info('Waiting up to {} ms for process to terminate'.format(shutdown_grace_period_ms))
-        process.terminate()
+        group_id = find_process_group(process.pid)
+        kill_process_group(group_id, signal.SIGTERM)
+
         loop_limit = int(shutdown_grace_period_ms / 10)
         for i in range(loop_limit):
             time.sleep(0.01)
@@ -199,7 +244,7 @@ def kill_task(process, shutdown_grace_period_ms):
                 break
         if is_process_running(process):
             logging.info('Process did not terminate, forcefully killing it')
-            process.kill()
+            kill_process_group(group_id, signal.SIGKILL)
             cio.print_and_log('Command terminated with signal Killed (pid: {})'.format(process.pid),
                               flush=True)
 
@@ -290,42 +335,6 @@ def retrieve_process_environment(config, os_environ):
     return environment
 
 
-def find_process_group(process_id):
-    """Return the process group id of the process with process id process_id.
-    :param process_id: int
-        The process id.
-    Returns
-    -------
-    The process group id of the process with process id process_id or None.
-    """
-    try:
-        group_id = os.getpgid(process_id)
-        logging.info('Process (pid: {}) belongs to group (id: {})'.format(process_id, group_id))
-        return group_id
-    except ProcessLookupError:
-        logging.info('Unable to find group for process (pid: {})'.format(process_id))
-    except Exception:
-        logging.exception('Error in finding group for process (pid: {})'.format(process_id))
-
-
-def kill_process_group(group_id):
-    """Send the SIGKILL signal to the process group with group_id.
-    :param group_id: int
-        The group id.
-    Returns
-    -------
-    Nothing
-    """
-    try:
-        if group_id:
-            logging.info('Sending kill signal to group (id: {})'.format(group_id))
-            os.killpg(group_id, signal.SIGKILL)
-    except ProcessLookupError:
-        logging.info('Unable to find group (id: {}) to send kill signal'.format(group_id))
-    except Exception:
-        logging.exception('Error in sending kill signal to group (id: {})'.format(group_id))
-
-
 def output_task_completion(task_id, task_state):
     """Prints and logs the executor completion message."""
     cio.print_and_log('Executor completed execution of {} (state={})'.format(task_id, task_state), flush=True)
@@ -410,7 +419,7 @@ def manage_task(driver, task, stop_signal, completed_signal, config):
     finally:
         # ensure completed_signal is set so driver can stop
         completed_signal.set()
-        kill_process_group(group_id)
+        kill_process_group(group_id, signal.SIGKILL)
 
 
 class CookExecutor(pm.Executor):

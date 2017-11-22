@@ -38,7 +38,6 @@ def find_process_ids_in_group(group_id):
         process_id_to_command[pid] = command
 
     group_id_str = str(group_id)
-    logging.info("group_id_to_process_ids: {}".format(group_id_to_process_ids))
     logging.info("group_id_to_process_ids[{}]: {}".format(group_id, group_id_to_process_ids[group_id_str]))
     for pid in group_id_to_process_ids[group_id_str]:
         logging.info("process (pid: {}) command is {}".format(pid, process_id_to_command[pid]))
@@ -122,7 +121,7 @@ class ExecutorTest(unittest.TestCase):
         self.assertGreaterEqual(len(child_process_ids), 7)
         self.assertLessEqual(len(child_process_ids), 10)
 
-        ce.kill_process_group(group_id)
+        ce.kill_process_group(group_id, signal.SIGKILL)
 
         child_process_ids = wait_for(lambda: find_process_ids_in_group(group_id),
                                      lambda data: len(data) == 1,
@@ -188,8 +187,9 @@ class ExecutorTest(unittest.TestCase):
 
         self.assertIsNone(process)
 
-    def test_kill_task_terminate(self):
+    def test_kill_task_terminate_with_sigterm(self):
         task_id = get_random_task_id()
+        max_bytes_read_per_line = 4096
 
         stdout_name = ensure_directory('build/stdout.{}'.format(task_id))
         stderr_name = ensure_directory('build/stderr.{}'.format(task_id))
@@ -198,15 +198,65 @@ class ExecutorTest(unittest.TestCase):
         redirect_stderr_to_file(stderr_name)
 
         try:
-            command = 'sleep 100'
-            process = subprocess.Popen(command, shell=True)
-            shutdown_grace_period_ms = 2000
+            command = "bash -c 'function handle_term { echo GOT TERM; }; trap handle_term SIGTERM TERM; sleep 100'"
+            process = subprocess.Popen(command, preexec_fn=os.setpgrp, shell=True,
+                                       stderr=subprocess.PIPE, stdout=subprocess.PIPE)
+            stdout_thread, stderr_thread = cio.track_outputs(task_id, process, max_bytes_read_per_line)
+            shutdown_grace_period_ms = 1000
+
+            group_id = ce.find_process_group(process.pid)
+            self.assertGreater(len(find_process_ids_in_group(group_id)), 0)
+
             ce.kill_task(process, shutdown_grace_period_ms)
 
             # await process termination
             while process.poll() is None:
                 time.sleep(0.01)
-            self.assertEqual(-1 * signal.SIGTERM, process.poll())
+            stderr_thread.join()
+            stdout_thread.join()
+
+            self.assertTrue(((-1 * signal.SIGTERM) == process.poll()) or ((128 + signal.SIGTERM) == process.poll()),
+                            'Process exited with code {}'.format(process.poll()))
+            self.assertEqual(0, len(find_process_ids_in_group(group_id)))
+
+            with open(stdout_name) as f:
+                file_contents = f.read()
+                self.assertTrue('GOT TERM' in file_contents)
+
+        finally:
+            cleanup_output(stdout_name, stderr_name)
+
+    def test_kill_task_terminate_with_sigkill(self):
+        task_id = get_random_task_id()
+        max_bytes_read_per_line = 4096
+
+        stdout_name = ensure_directory('build/stdout.{}'.format(task_id))
+        stderr_name = ensure_directory('build/stderr.{}'.format(task_id))
+
+        redirect_stdout_to_file(stdout_name)
+        redirect_stderr_to_file(stderr_name)
+
+        try:
+            command = "trap '' TERM SIGTERM; sleep 100"
+            process = subprocess.Popen(command, preexec_fn=os.setpgrp, shell=True,
+                                       stderr=subprocess.PIPE, stdout=subprocess.PIPE)
+            stdout_thread, stderr_thread = cio.track_outputs(task_id, process, max_bytes_read_per_line)
+            shutdown_grace_period_ms = 1000
+
+            group_id = ce.find_process_group(process.pid)
+            self.assertGreater(len(find_process_ids_in_group(group_id)), 0)
+
+            ce.kill_task(process, shutdown_grace_period_ms)
+
+            # await process termination
+            while process.poll() is None:
+                time.sleep(0.01)
+            stderr_thread.join()
+            stdout_thread.join()
+
+            self.assertTrue(((-1 * signal.SIGKILL) == process.poll()) or ((128 + signal.SIGKILL) == process.poll()),
+                            'Process exited with code {}'.format(process.poll()))
+            self.assertEqual(len(find_process_ids_in_group(group_id)), 0)
 
         finally:
             cleanup_output(stdout_name, stderr_name)
@@ -222,7 +272,7 @@ class ExecutorTest(unittest.TestCase):
 
         try:
             command = 'sleep 2'
-            process = subprocess.Popen(command, shell=True)
+            process = subprocess.Popen(command, preexec_fn=os.setpgrp, shell=True)
             stdout_thread = Thread()
             stderr_thread = Thread()
             process_info = process, stdout_thread, stderr_thread
@@ -249,7 +299,7 @@ class ExecutorTest(unittest.TestCase):
 
         try:
             command = 'sleep 100'
-            process = subprocess.Popen(command, shell=True)
+            process = subprocess.Popen(command, preexec_fn=os.setpgrp, shell=True)
             stdout_thread = Thread()
             stderr_thread = Thread()
             process_info = process, stdout_thread, stderr_thread
