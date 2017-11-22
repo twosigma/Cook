@@ -36,7 +36,7 @@ final class TaskConstraint {
         }
     }
 
-    static class Constraint {
+    public static class Constraint {
         private String _attribute;
         private Operator _operator;
         private String _value;

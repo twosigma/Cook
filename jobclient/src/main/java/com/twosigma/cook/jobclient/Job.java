@@ -921,7 +921,6 @@ final public class Job {
             }
             if (json.has("constraints")) {
                 JSONArray constraintsJson = json.getJSONArray("constraints");
-                List<TaskConstraint.Constraint> constraintsList = new ArrayList<>();
                 if (constraintsJson.length() > 0) {
                     for (int j = 0; j < constraintsJson.length(); j++) {
                         JSONArray constraintJson = constraintsJson.getJSONArray(j);
