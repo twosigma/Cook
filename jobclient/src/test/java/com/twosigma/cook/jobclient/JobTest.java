@@ -19,7 +19,6 @@ package com.twosigma.cook.jobclient;
 import java.util.List;
 import java.util.UUID;
 
-import javafx.concurrent.Task;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -42,7 +41,7 @@ public class JobTest {
     /**
      * A constraint will be applied to the job.
      */
-    private TaskConstraint.Constraint _JobConstraint;
+    private Constraint _constraint;
 
     @Before
     public void setup() {
@@ -58,8 +57,8 @@ public class JobTest {
         jobBuilder.addUri(new FetchableURI.Builder().setValue("http://example.com/my_resource").build());
         jobBuilder.setApplication(new Application("baz-app", "1.2.3"));
         jobBuilder.setExpectedRuntime(500L);
-        _JobConstraint = TaskConstraint.Operator.EQUALS.apply("bar", "foo");
-        jobBuilder.addConstraint(_JobConstraint);
+        _constraint = Constraint.EQUALS.apply("bar", "foo");
+        jobBuilder.addConstraint(_constraint);
         _initializedJob = jobBuilder.build();
     }
 
@@ -74,7 +73,7 @@ public class JobTest {
         Assert.assertEquals(true, jsonJob.getBoolean("disable_mea_culpa_retries"));
         JSONArray constraints = jsonJob.getJSONArray("constraints");
         Assert.assertEquals(constraints.length(), 1);
-        Assert.assertEquals(constraints.getJSONArray(0).toString(), _JobConstraint.toJson().toString());
+        Assert.assertEquals(constraints.getJSONArray(0).toString(), _constraint.toJson().toString());
     }
 
     @Test
@@ -91,9 +90,9 @@ public class JobTest {
         Assert.assertEquals(jobs.get(0).getApplication().getVersion(), "1.2.3");
         Assert.assertEquals(jobs.get(0).getExpectedRuntime(), new Long(500L));
 
-        final List<TaskConstraint.Constraint> constraints = jobs.get(0).getConstraints();
+        final List<Constraint> constraints = jobs.get(0).getConstraints();
         Assert.assertEquals(constraints.size(), 1);
-        TaskConstraint.Constraint constraint = constraints.get(0);
-        Assert.assertEquals(constraint, _JobConstraint);
+        Constraint constraint = constraints.get(0);
+        Assert.assertEquals(constraint, _constraint);
     }
 }

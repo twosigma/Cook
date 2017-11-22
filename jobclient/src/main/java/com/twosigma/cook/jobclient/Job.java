@@ -25,6 +25,7 @@ import java.util.List;
 import java.util.UUID;
 import java.util.regex.Pattern;
 
+import javafx.concurrent.Task;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -97,7 +98,7 @@ final public class Job {
         private JSONObject _container;
         private Map<String, String> _labels = new HashMap<>();
         private List<UUID> _groups = new ArrayList<>();
-        private List<TaskConstraint.Constraint> _constraints = new ArrayList<>();
+        private List<Constraint> _constraints = new ArrayList<>();
         private Application _application;
 
         /**
@@ -219,9 +220,11 @@ final public class Job {
          * @param value     The constraint value
          * @return this builder.
          */
+        /*
         Builder addConstraint(String attribute, TaskConstraint.Operator operator, String value) {
             return addConstraint(new TaskConstraint.Constraint(attribute, operator, value));
         }
+        */
 
         /**
          * Adds a task constraint.
@@ -229,7 +232,7 @@ final public class Job {
          * @param constraint The constraint to add
          * @return this builder.
          */
-        public Builder addConstraint(TaskConstraint.Constraint constraint) {
+        public Builder addConstraint(Constraint constraint) {
             _constraints.add(constraint);
             return this;
         }
@@ -526,7 +529,7 @@ final public class Job {
     final private List<FetchableURI> _uris;
     final private JSONObject _container;
     final private Map<String, String> _labels;
-    final private List<TaskConstraint.Constraint> _constraints;
+    final private List<Constraint> _constraints;
     // This is a list although for now each job is only allowed to belong to one group (see setGroup and getGroup). In
     // the future, jobs will be allowed to belong to multiple groups.
     final private List<UUID> _groups;
@@ -535,8 +538,7 @@ final public class Job {
     private Job(UUID uuid, String name, String command, Double memory, Double cpus, Integer retries, Long maxRuntime,
                 Long expectedRuntime, Status status, Integer priority, Boolean isMeaCulpaRetriesDisabled,
                 List<Instance> instances, Map<String, String> env, List<FetchableURI> uris, JSONObject container,
-                Map<String, String> labels, List<TaskConstraint.Constraint> constraints,
-                List<UUID> groups, Application application) {
+                Map<String, String> labels, List<Constraint> constraints, List<UUID> groups, Application application) {
         _uuid = uuid;
         _name = name;
         _command = command;
@@ -632,7 +634,7 @@ final public class Job {
     }
 
 
-    public List<TaskConstraint.Constraint> getConstraints() {
+    public List<Constraint> getConstraints() {
         return _constraints;
     }
 
@@ -775,7 +777,7 @@ final public class Job {
         if (group != null) {
             object.put("group", job.getGroup().toString());
         }
-        for (TaskConstraint.Constraint constraint : job.getConstraints()) {
+        for (Constraint constraint : job.getConstraints()) {
             object.append("constraints", constraint.toJson());
         }
         if (container != null) {
@@ -923,11 +925,7 @@ final public class Job {
                 JSONArray constraintsJson = json.getJSONArray("constraints");
                 if (constraintsJson.length() > 0) {
                     for (int j = 0; j < constraintsJson.length(); j++) {
-                        JSONArray constraintJson = constraintsJson.getJSONArray(j);
-                        jobBuilder.addConstraint(new TaskConstraint.Constraint(
-                                constraintJson.getString(0),
-                                constraintJson.getString(1),
-                                constraintJson.getString(2)));
+                        jobBuilder.addConstraint(Constraint.parseFrom(constraintsJson.getJSONArray(j)));
                     }
                 }
             }
