@@ -58,7 +58,7 @@ public class JobTest {
         jobBuilder.addUri(new FetchableURI.Builder().setValue("http://example.com/my_resource").build());
         jobBuilder.setApplication(new Application("baz-app", "1.2.3"));
         jobBuilder.setExpectedRuntime(500L);
-        _JobConstraint = new TaskConstraint.Constraint("bar", TaskConstraint.Operator.EQUALS, "foo");
+        _JobConstraint = TaskConstraint.Operator.EQUALS.apply("bar", "foo");
         jobBuilder.addConstraint(_JobConstraint);
         _initializedJob = jobBuilder.build();
     }

@@ -219,7 +219,7 @@ final public class Job {
          * @param value     The constraint value
          * @return this builder.
          */
-        public Builder addConstraint(String attribute, TaskConstraint.Operator operator, String value) {
+        Builder addConstraint(String attribute, TaskConstraint.Operator operator, String value) {
             return addConstraint(new TaskConstraint.Constraint(attribute, operator, value));
         }
 

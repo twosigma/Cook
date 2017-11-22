@@ -27,6 +27,10 @@ final class TaskConstraint {
         private Operator(String name) {
         }
 
+        public Constraint apply(String attribute, String value) {
+            return new Constraint(attribute, this, value);
+        }
+
         /**
          * @param op specifies a string representation of operator.
          * @return a constant for the specified name.
