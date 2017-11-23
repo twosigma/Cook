@@ -19,6 +19,19 @@ package com.twosigma.cook.jobclient;
 import com.google.common.base.Preconditions;
 import org.json.JSONArray;
 
+/**
+ * A simple class to represent a constraint.
+ *
+ * A constraint has 3 fields: an attribute, an operator, and a value.
+ * An example of constraints could be: "host","EQUALS", "foo.bar.com".
+ *
+ * For now, only "EQUALS" operator is supported by Cook. One could construct
+ * a constraint with an "EQUALS" operator by
+ *
+ * <pre>
+ *  Constraint c = Constraint.EQUALS.apply("host", "foo.bar.com");
+ * </pre>
+ */
 final public class Constraint {
 
     public enum Operator {
@@ -27,13 +40,22 @@ final public class Constraint {
         Operator(String name) {
         }
 
+        /**
+         * Returns a constraint by "applying" this operator to the given attribute and value.
+         *
+         * @param attribute The constraint attribute
+         * @param value     The constraint value
+         * @return a constraint.
+         */
         public Constraint apply(String attribute, String value) {
             return new Constraint(attribute, this, value);
         }
 
         /**
+         * Parse an operator from its string representation.
+         *
          * @param op specifies a string representation of operator.
-         * @return a constant for the specified name.
+         * @return an operator for the specified name.
          */
         public static Constraint.Operator fromString(String op) {
             return Enum.valueOf(Constraint.Operator.class, op.trim().toUpperCase());
@@ -62,6 +84,14 @@ final public class Constraint {
         _value = value;
     }
 
+    /**
+     * Construct a constraint from a {@link JSONArray}.
+     *
+     * The given {@link JSONArray} is assumed to have three strings that
+     * represent attribute, operator, and value of a constraint respectively.
+     *
+     * @param constraint The constraint in {@link JSONArray} representation.
+     */
     Constraint(JSONArray constraint) {
         Preconditions.checkNotNull(constraint);
         Preconditions.checkArgument(constraint.length() == 3);
@@ -70,14 +100,23 @@ final public class Constraint {
         _value = constraint.getString(2);
     }
 
+    /**
+     * @return the attribute of this constraint.
+     */
     public String getAttribute() {
         return _attribute;
     }
 
+    /**
+     * @return the operator of this constraint.
+     */
     public Operator getOperator() {
         return _operator;
     }
 
+    /**
+     * @return the value of this constraint.
+     */
     public String getValue() {
         return _value;
     }
@@ -113,7 +152,11 @@ final public class Constraint {
         return jsonArray;
     }
 
+    // Supported operators
+
     final public static Operator EQUALS = Operator.EQUALS;
+
+    // Static methods.
 
     /**
      * Parse a constraint from its {@link JSONArray} representation.

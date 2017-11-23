@@ -213,21 +213,7 @@ final public class Job {
         }
 
         /**
-         * Adds a task constraint.
-         *
-         * @param attribute The constraint attribute
-         * @param operator  The constraint operator
-         * @param value     The constraint value
-         * @return this builder.
-         */
-        /*
-        Builder addConstraint(String attribute, TaskConstraint.Operator operator, String value) {
-            return addConstraint(new TaskConstraint.Constraint(attribute, operator, value));
-        }
-        */
-
-        /**
-         * Adds a task constraint.
+         * Adds a constraint.
          *
          * @param constraint The constraint to add
          * @return this builder.
@@ -923,10 +909,8 @@ final public class Job {
             }
             if (json.has("constraints")) {
                 JSONArray constraintsJson = json.getJSONArray("constraints");
-                if (constraintsJson.length() > 0) {
-                    for (int j = 0; j < constraintsJson.length(); j++) {
-                        jobBuilder.addConstraint(Constraint.parseFrom(constraintsJson.getJSONArray(j)));
-                    }
+                for (int j = 0; j < constraintsJson.length(); j++) {
+                    jobBuilder.addConstraint(Constraint.parseFrom(constraintsJson.getJSONArray(j)));
                 }
             }
             JSONArray groupsJson = json.optJSONArray("groups");
