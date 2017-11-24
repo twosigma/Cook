@@ -110,7 +110,11 @@ class ProgressWatcher(object):
         return matches[0] if len(matches) >= 1 else None
 
     def __init__(self, config, stop_signal, task_completed_signal):
-        self.target_file = config.progress_output_name
+        if config.progress_output_name != '/dev/null':
+            self.target_file = config.progress_output_name
+        else:
+            logging.info('Progress target file will be {} instead of /dev/null'.format(config.stdout_file()))
+            self.target_file = config.stdout_file()
         self.progress_regex_string = config.progress_regex_string
         self.progress = None
         self.stop_signal = stop_signal

@@ -6,12 +6,13 @@ from threading import Event, Thread
 
 import os
 from nose.tools import *
-from nose.plugins.attrib import attr
 
 import cook.config as cc
 import cook.executor as ce
 import cook.progress as cp
-from tests.utils import assert_message, ensure_directory, get_random_task_id, FakeMesosExecutorDriver
+from tests.utils import assert_message, ensure_directory, get_random_task_id, FakeExecutorConfig, \
+    FakeMesosExecutorDriver
+
 
 
 class ProgressTest(unittest.TestCase):
@@ -378,6 +379,42 @@ class ProgressTest(unittest.TestCase):
             file.flush()
             time.sleep(0.10)
             self.assertEqual({'progress-message': '75% percent', 'progress-percent': 75, 'progress-sequence': 1},
+                             progress_watcher.current_progress())
+
+        finally:
+            completed_signal.set()
+            file.close()
+            if os.path.isfile(file_name):
+                os.remove(file_name)
+
+    def test_collect_progress_updates_dev_null(self):
+        file_name = ensure_directory('build/collect_progress_test.' + get_random_task_id())
+        progress_regex_string = '\^\^\^\^JOB-PROGRESS: (\d*)(?: )?(.*)'
+        config = FakeExecutorConfig({'max_bytes_read_per_line': 1024,
+                                     'progress_output_name': '/dev/null',
+                                     'progress_regex_string': progress_regex_string,
+                                     'stdout_file': file_name})
+        stop_signal = Event()
+        completed_signal = Event()
+
+        file = open(file_name, 'w+')
+        file.flush()
+        progress_watcher = cp.ProgressWatcher(config, stop_signal, completed_signal)
+
+        try:
+            def read_progress_states():
+                for _ in progress_watcher.retrieve_progress_states():
+                    pass
+
+            Thread(target=read_progress_states, args=()).start()
+
+            file.write("Stage One complete\n")
+            file.flush()
+            file.write("^^^^JOB-PROGRESS: 100 Hundred percent\n")
+            file.flush()
+
+            time.sleep(0.10)
+            self.assertEqual({'progress-message': 'Hundred percent', 'progress-percent': 100, 'progress-sequence': 1},
                              progress_watcher.current_progress())
 
         finally:
