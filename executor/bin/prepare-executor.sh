@@ -34,7 +34,7 @@ if [[ "${MODE}" == docker ]]; then
 fi
 
 COOK_EXECUTOR_PATH="${EXECUTOR_DIR}/dist/${COOK_EXECUTOR_NAME}"
-if [ ! -f ${COOK_EXECUTOR_PATH} ]; then
+if [ ! -d ${COOK_EXECUTOR_PATH} ]; then
     echo "${COOK_EXECUTOR_NAME} not found at ${COOK_EXECUTOR_PATH}"
     DO_EXECUTOR_REBUILD=true
 elif ! ${EXECUTOR_DIR}/bin/check-version.sh -q ${COOK_EXECUTOR_NAME}; then
