@@ -1,7 +1,5 @@
-from collections import Counter
 import json
 import logging
-import math
 import subprocess
 import time
 import unittest
