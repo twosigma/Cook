@@ -245,6 +245,21 @@ def query_unique_and_run(clusters, entity_ref, command_fn):
         raise Exception(f'Encountered error when querying for {entity_ref}.')
 
 
+def resource_to_entity_type(resource):
+    """Maps the given resource to the corresponding entity type"""
+    resource = resource.lower()
+    if resource == 'jobs':
+        entity_type = Types.JOB
+    elif resource == 'instances':
+        entity_type = Types.INSTANCE
+    elif resource == 'groups':
+        entity_type = Types.GROUP
+    else:
+        raise Exception(f'{resource} refers to an unsupported resource.')
+
+    return entity_type
+
+
 def parse_entity_refs(clusters, ref_strings):
     """
     Given a collection of entity ref strings, returns a list of entity ref maps, where each map has
@@ -274,44 +289,42 @@ def parse_entity_refs(clusters, ref_strings):
     entity_refs = []
     for ref_string in ref_strings:
         result = urlparse(ref_string)
-        if result.path and not result.netloc:
-            if is_valid_uuid(result.path):
-                entity_refs.append({'cluster': Clusters.ALL, 'type': Types.ALL, 'uuid': result.path})
-            else:
+
+        if not result.path:
+            raise Exception(f'{ref_string} is not a valid entity reference.')
+
+        if not result.netloc:
+            if not is_valid_uuid(result.path):
                 raise Exception(f'{result.path} is not a valid UUID.')
-        elif result.path and result.netloc:
+
+            entity_refs.append({'cluster': Clusters.ALL, 'type': Types.ALL, 'uuid': result.path})
+        else:
             path_parts = result.path.split('/')
             num_path_parts = len(path_parts)
-            if num_path_parts >= 2:
-                cluster_url = (f'{result.scheme}://' if result.scheme else '') + result.netloc
-                cluster_names = [c['name'] for c in clusters if c['url'].lower() == cluster_url.lower()]
-                if len(cluster_names) >= 1:
-                    resource = path_parts[1].lower()
-                    if resource == 'jobs':
-                        entity_type = Types.JOB
-                    elif resource == 'instances':
-                        entity_type = Types.INSTANCE
-                    elif resource == 'groups':
-                        entity_type = Types.GROUP
-                    else:
-                        raise Exception(f'{ref_string} refers to an unsupported resource.')
+            cluster_url = (f'{result.scheme}://' if result.scheme else '') + result.netloc
+            cluster_names = [c['name'] for c in clusters if c['url'].lower() == cluster_url.lower()]
 
-                    cluster_name = cluster_names[0]
-                    if num_path_parts > 2:
-                        entity_refs.append({'cluster': cluster_name, 'type': entity_type, 'uuid': path_parts[2]})
-                    elif result.query:
-                        query_args = parse_qs(result.query)
-                        if 'uuid' in query_args:
-                            for uuid in query_args['uuid']:
-                                entity_refs.append({'cluster': cluster_name, 'type': entity_type, 'uuid': uuid})
-                        else:
-                            raise Exception(f'Unable to determine UUID from {ref_string}.')
-                    else:
-                        raise Exception(f'Unable to determine UUID from {ref_string}.')
-                else:
-                    raise Exception(f'There is no configured cluster that matches {ref_string}.')
-            else:
+            if num_path_parts < 2:
                 raise Exception(f'Unable to determine entity type and UUID from {ref_string}.')
-        else:
-            raise Exception(f'{ref_string} is not a valid entity reference.')
+
+            if num_path_parts == 2 and not result.query:
+                raise Exception(f'Unable to determine UUID from {ref_string}.')
+
+            if len(cluster_names) == 0:
+                raise Exception(f'There is no configured cluster that matches {ref_string}.')
+
+            cluster_name = cluster_names[0]
+            entity_type = resource_to_entity_type(path_parts[1])
+
+            if num_path_parts > 2:
+                entity_refs.append({'cluster': cluster_name, 'type': entity_type, 'uuid': path_parts[2]})
+            else:
+                query_args = parse_qs(result.query)
+
+                if 'uuid' not in query_args:
+                    raise Exception(f'Unable to determine UUID from {ref_string}.')
+
+                for uuid in query_args['uuid']:
+                    entity_refs.append({'cluster': cluster_name, 'type': entity_type, 'uuid': uuid})
+
     return entity_refs
