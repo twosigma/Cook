@@ -192,17 +192,22 @@ class ProgressWatcher(object):
             sequence = 0
             for line in self.tail(sleep_time_ms):
                 progress_report = ProgressWatcher.match_progress_update(self.progress_regex_string, line)
-                if progress_report is not None:
-                    percent, message = progress_report
-                    if not percent or not percent.isdigit():
-                        logging.info('Skipping "{}" as the percent entry is not an int'.format(progress_report))
-                        continue
-                    logging.info('Updating progress to {} percent, message: {}'.format(percent, message))
-                    sequence += 1
-                    self.progress = {'progress-message': message.strip(),
-                                     'progress-percent': int(percent),
-                                     'progress-sequence': sequence}
-                    yield self.progress
+                if progress_report is None:
+                    continue
+                percent_str, message = progress_report
+                if not percent_str or not percent_str.isdigit():
+                    logging.info('Skipping "{}" as the percent entry is not an int'.format(progress_report))
+                    continue
+                percent_int = int(percent_str, 10)
+                if percent_int < 0 or percent_int > 100:
+                    logging.info('Skipping "{}" as the percent is not in [0, 100]'.format(progress_report))
+                    continue
+                logging.info('Updating progress to {} percent, message: {}'.format(percent_str, message))
+                sequence += 1
+                self.progress = {'progress-message': message.strip(),
+                                 'progress-percent': percent_int,
+                                 'progress-sequence': sequence}
+                yield self.progress
 
 
 def track_progress(progress_watcher, progress_complete_event, send_progress_update):
