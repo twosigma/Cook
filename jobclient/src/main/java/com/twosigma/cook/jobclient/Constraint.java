@@ -29,7 +29,8 @@ import org.json.JSONArray;
  * a constraint with an "EQUALS" operator by
  *
  * <pre>
- *  Constraint c = Constraint.EQUALS.apply("host", "foo.bar.com");
+ *  Constraint c1 = Constraint.EQUALS.apply("host", "foo.bar.com");
+ *  Constraint c2 = new Constraint("host", Constraint.EQUALS, "foo.bar.org");
  * </pre>
  */
 final public class Constraint {
@@ -72,15 +73,6 @@ final public class Constraint {
         Preconditions.checkNotNull(value);
         _attribute = attribute;
         _operator = operator;
-        _value = value;
-    }
-
-    Constraint(String attribute, String operator, String value) {
-        Preconditions.checkNotNull(attribute);
-        Preconditions.checkNotNull(operator);
-        Preconditions.checkNotNull(value);
-        _attribute = attribute;
-        _operator = Operator.fromString(operator);
         _value = value;
     }
 
