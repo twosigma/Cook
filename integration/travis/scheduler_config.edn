@@ -13,7 +13,6 @@
                                 :cpus 6}}
  :rate-limit {:user-limit-per-m 1000000}
  :rebalancer {:dru-scale 1}
-
  :mesos {:master #config/env "MINIMESOS_ZOOKEEPER"
          :master-hosts [#config/env "MINIMESOS_MASTER_IP"]
          :failover-timeout-ms nil
@@ -24,7 +23,6 @@
             :environment {"EXECUTOR_DEFAULT_PROGRESS_OUTPUT_NAME" "stdout"}
             :portion 0.25}
  :agent-query-cache {:ttl-ms 1000}
- :sandbox-syncer {:sync-interval-ms 1000}
  :unhandled-exceptions {:log-level :error}
  :metrics {:jmx true}
  :nrepl {:enabled? false}

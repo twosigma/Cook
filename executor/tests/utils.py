@@ -3,8 +3,19 @@ import logging
 import os
 import random
 import sys
+import time
 
 from pymesos import decode_data
+
+
+def wait_for(query_fn, predicate_fn, default_value=None, max_delay_ms=1000, wait_interval_ms=100):
+    iterations = max(1, int(max_delay_ms / wait_interval_ms))
+    for _ in range(iterations):
+        data = query_fn()
+        if predicate_fn(data):
+            return data
+        time.sleep(wait_interval_ms / 1000.0)
+    return default_value
 
 
 def get_random_task_id():

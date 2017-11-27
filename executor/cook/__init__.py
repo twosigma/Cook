@@ -8,6 +8,8 @@ section at http://mesos.apache.org/documentation/latest/app-framework-developmen
 """
 
 RUNNING_POLL_INTERVAL_SECS = 1
+DAEMON_GRACE_SECS = 1
+TERMINATE_GRACE_SECS = 0.1
 
 TASK_ERROR = 'TASK_ERROR'
 TASK_FAILED = 'TASK_FAILED'

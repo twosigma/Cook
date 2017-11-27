@@ -3,15 +3,15 @@
 import json
 import logging
 import os
+import signal
 import subprocess
 import time
 from threading import Event, Thread
 
-from pymesos import Executor, MesosExecutorDriver, decode_data, encode_data
-
 import cook
 import cook.io_helper as cio
 import cook.progress as cp
+import pymesos as pm
 
 
 def get_task_id(task):
@@ -86,7 +86,7 @@ def send_message(driver, message, max_message_length):
     logging.info('Sending framework message {}'.format(message))
     message_string = str(message).encode('utf8')
     if len(message_string) < max_message_length:
-        encoded_message = encode_data(message_string)
+        encoded_message = pm.encode_data(message_string)
         driver.sendFrameworkMessage(encoded_message)
         return True
     else:
@@ -102,8 +102,8 @@ def launch_task(task, environment):
     ----------
     task: dictionary
         The task to execute.
-    max_bytes_read_per_line: int
-        The maximum number of bytes to read per call to readline().
+    environment: dictionary
+        The task environment.
 
     Returns
     -------
@@ -111,7 +111,7 @@ def launch_task(task, environment):
     Else it logs the reason and returns None.
     """
     try:
-        data_string = decode_data(task['data']).decode('utf8')
+        data_string = pm.decode_data(task['data']).decode('utf8')
         data_json = json.loads(data_string)
         command = str(data_json['command']).strip()
         logging.info('Command: {}'.format(command))
@@ -119,8 +119,10 @@ def launch_task(task, environment):
             logging.warning('No command provided!')
             return None
 
+        # The preexec_fn is run after the fork() but before exec() to run the shell.
         process = subprocess.Popen(command,
                                    env=environment,
+                                   preexec_fn=os.setpgrp,
                                    shell=True,
                                    stderr=subprocess.PIPE,
                                    stdout=subprocess.PIPE)
@@ -167,6 +169,49 @@ def is_running(process_info):
     return is_process_running(process) or stdout_thread.isAlive() or stderr_thread.isAlive()
 
 
+def find_process_group(process_id):
+    """Return the process group id of the process with process id process_id.
+    Parameters
+    ----------
+    process_id: int
+        The process id.
+    Returns
+    -------
+    The process group id of the process with process id process_id or None.
+    """
+    try:
+        group_id = os.getpgid(process_id)
+        logging.info('Process (pid: {}) belongs to group (id: {})'.format(process_id, group_id))
+        return group_id
+    except ProcessLookupError:
+        logging.info('Unable to find group for process (pid: {})'.format(process_id))
+    except Exception:
+        logging.exception('Error in finding group for process (pid: {})'.format(process_id))
+
+
+def kill_process_group(group_id, signal_to_send):
+    """Send the SIGKILL signal to the process group with group_id.
+    Parameters
+    ----------
+    group_id: int
+        The id of the process group.
+    signal_to_send: signal.Signals enum
+        The signal to send to the process group.
+    Returns
+    -------
+    Nothing
+    """
+    signal_name = signal_to_send.name
+    try:
+        if group_id:
+            logging.info('Sending signal {} to group (id: {})'.format(signal_name, group_id))
+            os.killpg(group_id, signal_to_send)
+    except ProcessLookupError:
+        logging.info('Unable to send signal {} as could not find group (id: {})'.format(signal_name, group_id))
+    except Exception:
+        logging.exception('Error in sending signal {} to group (id: {})'.format(signal_name, group_id))
+
+
 def kill_task(process, shutdown_grace_period_ms):
     """Attempts to kill a process.
      First attempt is made by sending the process a SIGTERM.
@@ -184,10 +229,12 @@ def kill_task(process, shutdown_grace_period_ms):
     -------
     Nothing
     """
-    shutdown_grace_period_ms = max(shutdown_grace_period_ms - 100, 0)
+    shutdown_grace_period_ms = max(shutdown_grace_period_ms - (1000 * cook.TERMINATE_GRACE_SECS), 0)
     if is_process_running(process):
         logging.info('Waiting up to {} ms for process to terminate'.format(shutdown_grace_period_ms))
-        process.terminate()
+        group_id = find_process_group(process.pid)
+        kill_process_group(group_id, signal.SIGTERM)
+
         loop_limit = int(shutdown_grace_period_ms / 10)
         for i in range(loop_limit):
             time.sleep(0.01)
@@ -197,7 +244,7 @@ def kill_task(process, shutdown_grace_period_ms):
                 break
         if is_process_running(process):
             logging.info('Process did not terminate, forcefully killing it')
-            process.kill()
+            kill_process_group(group_id, signal.SIGKILL)
             cio.print_and_log('Command terminated with signal Killed (pid: {})'.format(process.pid),
                               flush=True)
 
@@ -288,6 +335,11 @@ def retrieve_process_environment(config, os_environ):
     return environment
 
 
+def output_task_completion(task_id, task_state):
+    """Prints and logs the executor completion message."""
+    cio.print_and_log('Executor completed execution of {} (state={})'.format(task_id, task_state), flush=True)
+
+
 def manage_task(driver, task, stop_signal, completed_signal, config):
     """Manages the execution of a task waiting for it to terminate normally or be killed.
        It also sends the task status updates, sandbox location and exit code back to the scheduler.
@@ -298,6 +350,7 @@ def manage_task(driver, task, stop_signal, completed_signal, config):
     -------
     Nothing
     """
+    group_id = None
     task_id = get_task_id(task)
     cio.print_and_log('Starting task {}'.format(task_id))
     try:
@@ -320,6 +373,8 @@ def manage_task(driver, task, stop_signal, completed_signal, config):
             logging.error('Error in launching task')
             update_status(driver, task_id, cook.TASK_ERROR)
             return
+
+        group_id = find_process_group(process.pid)
 
         stdout_thread, stderr_thread = cio.track_outputs(task_id, process, config.max_bytes_read_per_line)
         task_completed_signal = Event() # event to track task execution completion
@@ -364,34 +419,18 @@ def manage_task(driver, task, stop_signal, completed_signal, config):
     finally:
         # ensure completed_signal is set so driver can stop
         completed_signal.set()
+        kill_process_group(group_id, signal.SIGKILL)
 
 
-def output_task_completion(task_id, task_state):
-    """Prints and logs the executor completion message."""
-    cio.print_and_log('Executor completed execution of {} (state={})'.format(task_id, task_state), flush=True)
-
-
-def run_mesos_driver(stop_signal, config):
-    """Run an executor driver until the stop_signal event is set or the first task it runs completes."""
-    executor = CookExecutor(stop_signal, config)
-    driver = MesosExecutorDriver(executor)
-    driver.start()
-
-    # check the status of the executor and bail if it has crashed
-    while not executor.has_task_completed():
-        time.sleep(1)
-    logging.info('Executor thread has completed, stopping driver')
-    driver.stop()
-
-
-class CookExecutor(Executor):
+class CookExecutor(pm.Executor):
     """This class is responsible for launching the task sent by the scheduler.
     It implements the Executor methods."""
 
     def __init__(self, stop_signal, config):
-        self.stop_signal = stop_signal
         self.completed_signal = Event()
         self.config = config
+        self.disconnect_signal = Event()
+        self.stop_signal = stop_signal
 
     def registered(self, driver, executor_info, framework_info, agent_info):
         logging.info('Executor registered executor={}, framework={}, agent={}'.
@@ -401,7 +440,8 @@ class CookExecutor(Executor):
         logging.info('Executor re-registered agent={}'.format(agent_info))
 
     def disconnected(self, driver):
-        logging.info('Executor disconnected!')
+        logging.info('Mesos requested executor to disconnect')
+        self.disconnect_signal.set()
 
     def launchTask(self, driver, task):
         logging.info('Driver {} launching task {}'.format(driver, task))
@@ -412,24 +452,34 @@ class CookExecutor(Executor):
         Thread(target=manage_task, args=(driver, task, stop_signal, completed_signal, config)).start()
 
     def killTask(self, driver, task_id):
-        logging.info('Task {} has been killed by Mesos'.format(task_id))
+        logging.info('Mesos requested executor to kill task {}'.format(task_id))
         self.stop_signal.set()
 
     def shutdown(self, driver):
-        logging.info('Mesos requested executor to shutdown!')
+        logging.info('Mesos requested executor to shutdown')
         self.stop_signal.set()
 
     def error(self, driver, message):
         logging.error(message)
         super().error(driver, message)
 
-    def has_task_completed(self):
+    def await_completion(self):
         """
-        Returns true when the executor has completed execution of the task specified in the call to launchTask.
-        The executor is intended to run a single task.
-        
-        Returns
-        -------
-        true when the task has completed execution. 
+        Blocks until the internal flag completed_signal is set.
+        The completed_signal Event is expected to be set by manage_task.
         """
-        return self.completed_signal.isSet()
+        logging.info('Waiting for CookExecutor to complete...')
+        self.completed_signal.wait()
+        logging.info('CookExecutor has completed')
+
+    def await_disconnect(self):
+        """
+        Blocks until the internal flag disconnect_signal is set or the disconnect grace period expires.
+        The disconnect grace period is computed based on whether stop_signal is set.
+        """
+        disconnect_grace_secs = cook.DAEMON_GRACE_SECS if not self.stop_signal.isSet() else cook.TERMINATE_GRACE_SECS
+        if not self.disconnect_signal.isSet():
+            logging.info('Waiting up to {} second(s) for CookExecutor to disconnect'.format(disconnect_grace_secs))
+            self.disconnect_signal.wait(disconnect_grace_secs)
+        if not self.disconnect_signal.isSet():
+            logging.info('CookExecutor did not disconnect in {} seconds'.format(disconnect_grace_secs))

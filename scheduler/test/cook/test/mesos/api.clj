@@ -85,7 +85,8 @@
                        :mesos-gpu-enabled gpus-enabled
                        :task-constraints {:cpus cpus :memory-gb memory-gb :retry-limit retry-limit}}
                       (Object.)
-                      (atom true))))
+                      (atom true)
+                      (constantly nil))))
 
 (defn response->body-data [{:keys [body]}]
   (let [baos (ByteArrayOutputStream.)
@@ -1073,7 +1074,8 @@
         (is (thrown? Exception (s/validate api/Job (assoc min-job :expected-runtime 3 :max-runtime 2))))))))
 
 (deftest test-create-jobs!
-  (let [expected-job-map
+  (let [retrieve-sandbox-directory-from-agent (constantly nil)
+        expected-job-map
         (fn
           ; Converts the provided job and framework-id (framework-id) to the job-map we expect to get back from
           ; api/fetch-job-map. Note that we don't include the submit_time field here, so assertions below
@@ -1130,10 +1132,10 @@
                                       {:resource/type :resource.type/mem
                                        :resource/amount (:mem job)}]}
               _ @(d/transact conn [job-ent])
-              job-resp (api/fetch-job-map (db conn) framework-id uuid)]
+              job-resp (api/fetch-job-map (db conn) framework-id retrieve-sandbox-directory-from-agent uuid)]
           (is (= (expected-job-map job framework-id)
                  (dissoc job-resp :submit_time)))
-          (s/validate api/JobResponse
+          (s/validate api/JobResponseDeprecated
                       ; fetch-job-map returns a FrameworkID object instead of a string
                       (assoc job-resp :framework_id (str (:framework_id job-resp))))))
 
@@ -1144,7 +1146,8 @@
           (is (= {::api/results (str "submitted jobs " uuid)}
                  (api/create-jobs! conn {::api/jobs [job]})))
           (is (= (expected-job-map job framework-id)
-                 (dissoc (api/fetch-job-map (db conn) framework-id uuid) :submit_time)))))
+                 (-> (api/fetch-job-map (db conn) framework-id retrieve-sandbox-directory-from-agent uuid)
+                     (dissoc :submit_time))))))
 
       (testing "should fail on a duplicate uuid"
         (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
@@ -1163,7 +1166,8 @@
           (is (= {::api/results (str "submitted jobs " uuid)}
                  (api/create-jobs! conn {::api/jobs [job]})))
           (is (= (expected-job-map job framework-id)
-                 (dissoc (api/fetch-job-map (db conn) framework-id uuid) :submit_time)))))
+                 (-> (api/fetch-job-map (db conn) framework-id retrieve-sandbox-directory-from-agent uuid)
+                     (dissoc :submit_time))))))
 
       (testing "should work when the job specifies the expected runtime"
         (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
@@ -1172,7 +1176,8 @@
           (is (= {::api/results (str "submitted jobs " uuid)}
                  (api/create-jobs! conn {::api/jobs [job]})))
           (is (= (expected-job-map job framework-id)
-                 (dissoc (api/fetch-job-map (db conn) framework-id uuid) :submit_time)))))
+                 (-> (api/fetch-job-map (db conn) framework-id retrieve-sandbox-directory-from-agent uuid)
+                     (dissoc :submit_time))))))
 
       (testing "should work when the job specifies disable-mea-culpa-retries"
         (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
@@ -1181,7 +1186,8 @@
           (is (= {::api/results (str "submitted jobs " uuid)}
                  (api/create-jobs! conn {::api/jobs [job]})))
           (is (= (expected-job-map job framework-id)
-                 (dissoc (api/fetch-job-map (db conn) framework-id uuid) :submit_time)))))
+                 (-> (api/fetch-job-map (db conn) framework-id retrieve-sandbox-directory-from-agent uuid)
+                     (dissoc :submit_time))))))
 
       (testing "should work when the job specifies cook-executor"
         (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
@@ -1190,7 +1196,7 @@
           (is (= {::api/results (str "submitted jobs " uuid)}
                  (api/create-jobs! conn {::api/jobs [job]})))
           (is (= (expected-job-map job framework-id)
-                 (-> (api/fetch-job-map (db conn) framework-id uuid)
+                 (-> (api/fetch-job-map (db conn) framework-id retrieve-sandbox-directory-from-agent uuid)
                      (dissoc :submit_time)
                      (update :executor name))))))
 
@@ -1201,7 +1207,7 @@
           (is (= {::api/results (str "submitted jobs " uuid)}
                  (api/create-jobs! conn {::api/jobs [job]})))
           (is (= (expected-job-map job framework-id)
-                 (-> (api/fetch-job-map (db conn) framework-id uuid)
+                 (-> (api/fetch-job-map (db conn) framework-id retrieve-sandbox-directory-from-agent uuid)
                      (dissoc :submit_time)
                      (update :executor name)))))))))
 
@@ -1304,9 +1310,8 @@
                                            :data (ByteString/copyFrom (.getBytes (pr-str {:percent progress}) "UTF-8"))}]
                                  task))
           job-id (create-dummy-job conn :user "user" :job-state :job.state/running)
-          sync-agent-sandboxes-fn (constantly true)
           send-status-update #(->> (make-status-update "task1" :unknown :task-running %)
-                                   (sched/handle-status-update conn driver fenzo sync-agent-sandboxes-fn)
+                                   (sched/handle-status-update conn driver fenzo)
                                    async/<!!)
           instance-id (create-dummy-instance conn job-id
                                              :instance-status :instance.status/running
@@ -1317,7 +1322,7 @@
                                          [?i :instance/progress ?p]]
                                        (db conn) instance-id))
           job-uuid (:job/uuid (d/entity (db conn) job-id))
-          progress-from-api #(:progress (first (:instances (api/fetch-job-map (db conn) nil job-uuid))))]
+          progress-from-api #(:progress (first (:instances (api/fetch-job-map (db conn) nil (constantly nil) job-uuid))))]
       (send-status-update 0)
       (is (= 0 (progress-from-db)))
       (is (= 0 (progress-from-api)))
@@ -1333,22 +1338,23 @@
 
 (deftest test-fetch-instance-map
   (let [conn (restore-fresh-database! "datomic:mem://test-fetch-instance-map")]
-    (let [job-entity-id (create-dummy-job conn :user "test-user"
-                                          :job-state :job.state/completed)
-          basic-instance-properties {:executor-id (str job-entity-id "-executor-1")
-                                     :slave-id "slave-1"
-                                     :task-id (str job-entity-id "-executor-1")}
-          basic-instance-map {:executor_id (str job-entity-id "-executor-1")
-                              :slave_id "slave-1"
-                              :task_id (str job-entity-id "-executor-1")}]
+    (let [basic-instance-properties (fn [job-entity-id]
+                                      {:executor-id (str job-entity-id "-executor-1")
+                                       :slave-id "slave-1"
+                                       :task-id (str job-entity-id "-executor-1")})
+          basic-instance-map (fn [job-entity-id]
+                               {:executor_id (str job-entity-id "-executor-1")
+                                :slave_id "slave-1"
+                                :task_id (str job-entity-id "-executor-1")})]
 
       (testing "basic-instance-without-sandbox"
-        (let [instance-entity-id (apply create-dummy-instance conn job-entity-id
+        (let [job-entity-id (create-dummy-job conn :user "test-user" :job-state :job.state/completed)
+              instance-entity-id (apply create-dummy-instance conn job-entity-id
                                         :instance-status :instance.status/success
-                                        (mapcat seq basic-instance-properties))
+                                        (mapcat seq (basic-instance-properties job-entity-id)))
               instance-entity (d/entity (db conn) instance-entity-id)
-              instance-map (api/fetch-instance-map (db conn) instance-entity)
-              expected-map (assoc basic-instance-map
+              instance-map (api/fetch-instance-map (db conn) instance-entity (constantly nil))
+              expected-map (assoc (basic-instance-map job-entity-id)
                              :backfilled false
                              :hostname "localhost"
                              :ports []
@@ -1357,14 +1363,15 @@
                              :status "success")]
           (is (= expected-map (dissoc instance-map :start_time)))))
 
-      (testing "basic-instance-with-sandbox-url"
-        (let [instance-entity-id (apply create-dummy-instance conn job-entity-id
+      (testing "basic-instance-with-sandbox-url-from-datomic"
+        (let [job-entity-id (create-dummy-job conn :user "test-user" :job-state :job.state/completed)
+              instance-entity-id (apply create-dummy-instance conn job-entity-id
                                         :instance-status :instance.status/success
                                         :sandbox-directory "/path/to/working/directory"
-                                        (mapcat seq basic-instance-properties))
+                                        (mapcat seq (basic-instance-properties job-entity-id)))
               instance-entity (d/entity (db conn) instance-entity-id)
-              instance-map (api/fetch-instance-map (db conn) instance-entity)
-              expected-map (assoc basic-instance-map
+              instance-map (api/fetch-instance-map (db conn) instance-entity (constantly nil))
+              expected-map (assoc (basic-instance-map job-entity-id)
                              :backfilled false
                              :hostname "localhost"
                              :output_url "http://localhost:5051/files/read.json?path=%2Fpath%2Fto%2Fworking%2Fdirectory"
@@ -1375,8 +1382,28 @@
                              :status "success")]
           (is (= expected-map (dissoc instance-map :start_time)))))
 
+      (testing "basic-instance-with-sandbox-url-from-agent"
+        (let [job-entity-id (create-dummy-job conn :user "test-user" :job-state :job.state/completed)
+              instance-entity-id (apply create-dummy-instance conn job-entity-id
+                                        :instance-status :instance.status/success
+                                        (mapcat seq (basic-instance-properties job-entity-id)))
+              instance-entity (d/entity (db conn) instance-entity-id)
+              retrieve-sandbox-directory-from-agent (constantly "/sandbox/directory")
+              instance-map (api/fetch-instance-map (db conn) instance-entity retrieve-sandbox-directory-from-agent)
+              expected-map (assoc (basic-instance-map job-entity-id)
+                             :backfilled false
+                             :hostname "localhost"
+                             :output_url "http://localhost:5051/files/read.json?path=%2Fsandbox%2Fdirectory"
+                             :ports []
+                             :preempted false
+                             :progress 0
+                             :sandbox_directory "/sandbox/directory"
+                             :status "success")]
+          (is (= expected-map (dissoc instance-map :start_time)))))
+
       (testing "detailed-instance"
-        (let [instance-entity-id (apply create-dummy-instance conn job-entity-id
+        (let [job-entity-id (create-dummy-job conn :user "test-user" :job-state :job.state/completed)
+              instance-entity-id (apply create-dummy-instance conn job-entity-id
                                         :exit-code 2
                                         :hostname "agent-hostname"
                                         :instance-status :instance.status/success
@@ -1385,10 +1412,10 @@
                                         :progress-message "seventy-eight percent done"
                                         :reason :preempted-by-rebalancer
                                         :sandbox-directory "/path/to/working/directory"
-                                        (mapcat seq basic-instance-properties))
+                                        (mapcat seq (basic-instance-properties job-entity-id)))
               instance-entity (d/entity (db conn) instance-entity-id)
-              instance-map (api/fetch-instance-map (db conn) instance-entity)
-              expected-map (assoc basic-instance-map
+              instance-map (api/fetch-instance-map (db conn) instance-entity (constantly nil))
+              expected-map (assoc (basic-instance-map job-entity-id)
                              :backfilled false
                              :exit_code 2
                              :hostname "agent-hostname"

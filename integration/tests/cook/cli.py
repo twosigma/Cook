@@ -150,19 +150,20 @@ class temp_config_file:
         os.remove(self.path)
 
 
-def list_jobs(cook_url=None, list_flags=None, flags=None):
-    """Invokes the list subcommand"""
-    args = f'list {list_flags}' if list_flags else 'list'
+def jobs(cook_url=None, jobs_flags=None, flags=None):
+    """Invokes the jobs subcommand"""
+    args = f'jobs {jobs_flags}' if jobs_flags else 'jobs'
     cp = cli(args, cook_url, flags)
     return cp
 
 
-def list_jobs_json(cook_url=None, list_flags=None):
-    """Invokes the list subcommand with --json"""
-    cp = list_jobs(cook_url, '%s--json' % (list_flags + ' ' if list_flags else ''))
+def jobs_json(cook_url=None, jobs_flags=None):
+    """Invokes the jobs subcommand with --json"""
+    jobs_flags = f'{jobs_flags} --json' if jobs_flags else '--json'
+    cp = jobs(cook_url, jobs_flags=jobs_flags)
     response = json.loads(stdout(cp))
-    jobs = [job for entities in response['clusters'].values() for job in entities['jobs']]
-    return cp, jobs
+    job_list = [job for entities in response['clusters'].values() for job in entities['jobs']]
+    return cp, job_list
 
 
 def output(cp):
