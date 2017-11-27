@@ -21,13 +21,13 @@ import org.json.JSONArray;
 
 /**
  * A simple class to represent a constraint.
- *
+ * <p>
  * A constraint has 3 fields: an attribute, an operator, and a value.
  * An example of constraints could be: "host","EQUALS", "foo.bar.com".
- *
+ * <p>
  * For now, only "EQUALS" operator is supported by Cook. One could construct
  * a constraint with an "EQUALS" operator by
- *
+ * <p>
  * <pre>
  *  Constraint c1 = Constraint.EQUALS.apply("host", "foo.bar.com");
  *  Constraint c2 = new Constraint("host", Constraint.EQUALS, "foo.bar.org");
@@ -63,6 +63,11 @@ final public class Constraint {
         }
     }
 
+    // Supported operators
+
+    final public static Operator EQUALS = Operator.EQUALS;
+
+
     private String _attribute;
     private Operator _operator;
     private String _value;
@@ -78,7 +83,7 @@ final public class Constraint {
 
     /**
      * Construct a constraint from a {@link JSONArray}.
-     *
+     * <p>
      * The given {@link JSONArray} is assumed to have three strings that
      * represent attribute, operator, and value of a constraint respectively.
      *
@@ -143,10 +148,6 @@ final public class Constraint {
         jsonArray.put(2, _value);
         return jsonArray;
     }
-
-    // Supported operators
-
-    final public static Operator EQUALS = Operator.EQUALS;
 
     // Static methods.
 
