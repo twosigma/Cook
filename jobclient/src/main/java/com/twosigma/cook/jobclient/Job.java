@@ -16,16 +16,10 @@
 
 package com.twosigma.cook.jobclient;
 
-import java.util.ArrayList;
-import java.util.Map;
-import java.util.HashMap;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.List;
-import java.util.UUID;
+import java.util.*;
 import java.util.regex.Pattern;
 
-import javafx.concurrent.Task;
+import com.google.common.collect.ImmutableSet;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -98,7 +92,7 @@ final public class Job {
         private JSONObject _container;
         private Map<String, String> _labels = new HashMap<>();
         private List<UUID> _groups = new ArrayList<>();
-        private List<Constraint> _constraints = new ArrayList<>();
+        private Set<Constraint> _constraints = new HashSet<>();
         private Application _application;
 
         /**
@@ -515,7 +509,7 @@ final public class Job {
     final private List<FetchableURI> _uris;
     final private JSONObject _container;
     final private Map<String, String> _labels;
-    final private List<Constraint> _constraints;
+    final private Set<Constraint> _constraints;
     // This is a list although for now each job is only allowed to belong to one group (see setGroup and getGroup). In
     // the future, jobs will be allowed to belong to multiple groups.
     final private List<UUID> _groups;
@@ -524,7 +518,7 @@ final public class Job {
     private Job(UUID uuid, String name, String command, Double memory, Double cpus, Integer retries, Long maxRuntime,
                 Long expectedRuntime, Status status, Integer priority, Boolean isMeaCulpaRetriesDisabled,
                 List<Instance> instances, Map<String, String> env, List<FetchableURI> uris, JSONObject container,
-                Map<String, String> labels, List<Constraint> constraints, List<UUID> groups, Application application) {
+                Map<String, String> labels, Set<Constraint> constraints, List<UUID> groups, Application application) {
         _uuid = uuid;
         _name = name;
         _command = command;
@@ -552,7 +546,7 @@ final public class Job {
             _container = null;
         }
         _labels = ImmutableMap.copyOf(labels);
-        _constraints = ImmutableList.copyOf(constraints);
+        _constraints = ImmutableSet.copyOf(constraints);
         _groups = groups;
     }
 
@@ -620,7 +614,7 @@ final public class Job {
     }
 
 
-    public List<Constraint> getConstraints() {
+    public Set<Constraint> getConstraints() {
         return _constraints;
     }
 

@@ -17,6 +17,7 @@
 package com.twosigma.cook.jobclient;
 
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 import org.json.JSONArray;
@@ -90,9 +91,9 @@ public class JobTest {
         Assert.assertEquals(jobs.get(0).getApplication().getVersion(), "1.2.3");
         Assert.assertEquals(jobs.get(0).getExpectedRuntime(), new Long(500L));
 
-        final List<Constraint> constraints = jobs.get(0).getConstraints();
+        final Set<Constraint> constraints = jobs.get(0).getConstraints();
         Assert.assertEquals(constraints.size(), 1);
-        Constraint constraint = constraints.get(0);
+        Constraint constraint = constraints.iterator().next();
         Assert.assertEquals(constraint, _constraint);
     }
 }
