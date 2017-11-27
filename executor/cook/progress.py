@@ -1,10 +1,9 @@
 import json
 import logging
-import time
-from threading import Event, Lock, Thread
-
 import os
 import re
+import time
+from threading import Event, Lock, Thread
 
 
 class ProgressSequenceCounter:
@@ -27,8 +26,6 @@ class ProgressUpdater(object):
 
     def __init__(self, task_id, max_message_length, poll_interval_ms, send_progress_message_fn):
         """
-        driver: MesosExecutorDriver
-            The mesos driver to use.
         task_id: string
             The task id.
         max_message_length: int
@@ -231,49 +228,48 @@ class ProgressWatcher(object):
                 yield self.progress
 
 
-def track_progress(progress_watcher, progress_complete_event, send_progress_update):
-    """Sends progress updates to the mesos driver until the stop_signal is set.
-    
-    Parameters
-    ----------
-    progress_watcher: ProgressWatcher
-        The progress watcher which maintains the current progress state
-    progress_complete_event: Event
-        Event that triggers completion of progress tracking
-    send_progress_update: function(current_progress)
-        The function to invoke while sending progress updates
-        
-    Returns
-    -------
-    Nothing.
-    """
-    try:
-        for current_progress in progress_watcher.retrieve_progress_states():
-            logging.debug('Latest progress: {}'.format(current_progress))
-            send_progress_update(current_progress)
-    except:
-        logging.exception('Exception while tracking progress')
-    finally:
-        progress_complete_event.set()
-
-
 class ProgressTracker(object):
     """Helper class to track progress messages from the specified location."""
+
+    @staticmethod
+    def track_progress(progress_watcher, progress_complete_event, send_progress_update_fn):
+        """Retrieves and sends progress updates using send_progress_update_fn.
+        It sets the progress_complete_event before returning.
+
+            Parameters
+            ----------
+            progress_watcher: ProgressWatcher
+                The progress watcher which maintains the current progress state
+            progress_complete_event: threading.Event
+                Event that triggers completion of progress tracking
+            send_progress_update_fn: function(progress)
+                The function to invoke while sending progress updates
+
+            Returns
+            -------
+            Nothing.
+            """
+        try:
+            for current_progress in progress_watcher.retrieve_progress_states():
+                logging.debug('Latest progress: {}'.format(current_progress))
+                send_progress_update_fn(current_progress)
+        except:
+            logging.exception('Exception while tracking progress')
+        finally:
+            progress_complete_event.set()
 
     def __init__(self, task_id, config, stop_signal, task_completed_signal, send_progress_message, location, counter):
         """Launches the threads that track progress and send progress updates to the driver.
 
         Parameters
         ----------
-        driver: MesosExecutorDriver
-            The mesos driver to use.
         task_id: string
             The task id.
         config: cook.config.ExecutorConfig
             The current executor config.
-        stop_signal: Event
+        stop_signal: threading.Event
             Event that determines if an interrupt was sent
-        task_completed_signal: Event
+        task_completed_signal: threading.Event
             Event that tracks task execution completion
         send_progress_message: function(message)
             The helper function used to send the progress message
@@ -290,15 +286,16 @@ class ProgressTracker(object):
     def start(self):
         """Launches a thread that starts monitoring the progress location for progress messages."""
         logging.info('Starting progress monitoring from {}'.format(self.watcher.progress_target_file()))
-        progress_complete_event = self.progress_complete_event
-        send_progress_update_fn = self.updater.send_progress_update
-        Thread(target=track_progress, args=(self.watcher, progress_complete_event, send_progress_update_fn)).start()
+        Thread(target=ProgressTracker.track_progress,
+               args=(self.watcher, self.progress_complete_event, self.updater.send_progress_update)).start()
 
     def wait(self, timeout=None):
         """Waits for the progress tracker thread to run to completion."""
         self.progress_complete_event.wait(timeout=timeout)
         if self.progress_complete_event.isSet():
             logging.info('Progress monitoring from {} complete'.format(self.watcher.progress_target_file()))
+        else:
+            logging.info('Progress monitoring from {} did not complete'.format(self.watcher.progress_target_file()))
 
     def force_send_progress_update(self):
         """Retrieves the latest progress message and attempts to force send it to the scheduler."""

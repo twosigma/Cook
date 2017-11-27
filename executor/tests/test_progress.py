@@ -40,7 +40,7 @@ class ProgressTest(unittest.TestCase):
         watcher = FakeProgressWatcher()
         progress_complete_event = Event()
 
-        cp.track_progress(watcher, progress_complete_event, watcher.send_progress_update_helper)
+        cp.ProgressTracker.track_progress(watcher, progress_complete_event, watcher.send_progress_update_helper)
 
         self.assertTrue(progress_complete_event.isSet())
         self.assertEqual([0, 1, 2, 3], watcher.get_progress_states())
