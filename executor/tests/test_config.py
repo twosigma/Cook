@@ -45,6 +45,8 @@ class ConfigTest(unittest.TestCase):
         self.assertEqual(progress_sample_interval_ms, config.progress_sample_interval_ms)
         self.assertEqual(sandbox_directory, config.sandbox_directory)
         self.assertEqual(5000, config.shutdown_grace_period_ms)
+        self.assertEqual(os.path.join(sandbox_directory, 'foo.bar'), config.sandbox_file('foo.bar'))
+        self.assertEqual(os.path.join(sandbox_directory, 'stderr'), config.stderr_file())
         self.assertEqual(os.path.join(sandbox_directory, 'stdout'), config.stdout_file())
 
     def test_initialize_config_defaults(self):

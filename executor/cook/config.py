@@ -49,8 +49,14 @@ class ExecutorConfig(object):
         self.sandbox_directory = sandbox_directory
         self.shutdown_grace_period_ms = ExecutorConfig.parse_time_ms(shutdown_grace_period)
 
+    def sandbox_file(self, file):
+        return os.path.join(self.sandbox_directory, file)
+
+    def stderr_file(self):
+        return self.sandbox_file('stderr')
+
     def stdout_file(self):
-        return os.path.join(self.sandbox_directory, 'stdout')
+        return self.sandbox_file('stdout')
 
 
 def initialize_config(environment):

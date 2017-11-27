@@ -103,11 +103,13 @@ class FakeExecutorConfig(object):
         self.config_map = config_map
 
     def __getattribute__(self, name):
-        logging.info('accessing {}'.format(name))
-        if name == 'config_map' or name == 'stdout_file':
+        if name == 'config_map' or name == 'stderr_file' or name == 'stdout_file':
             return object.__getattribute__(self, name)
         else:
             return self.config_map[name]
+
+    def stderr_file(self):
+        return self.config_map['stderr_file']
 
     def stdout_file(self):
         return self.config_map['stdout_file']
