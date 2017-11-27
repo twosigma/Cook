@@ -1,5 +1,5 @@
-from cook.querying import query, print_no_data
-from cook.util import strip_all, print_info, seconds_to_timedelta, guard_no_cluster
+from cook.querying import query, print_no_data, parse_entity_refs
+from cook.util import print_info, seconds_to_timedelta, guard_no_cluster
 
 
 def all_jobs_completed(jobs):
@@ -31,7 +31,7 @@ def wait(clusters, args, _):
     guard_no_cluster(clusters)
     timeout = args.get('timeout')
     interval = args.get('interval')
-    uuids = strip_all(args.get('uuid'))
+    uuids = parse_entity_refs(clusters, args.get('uuid'))
     timeout_text = ('up to %s' % seconds_to_timedelta(timeout)) if timeout else 'indefinitely'
     print_info('Will wait %s.' % timeout_text)
     query_result = query(clusters, uuids, all_jobs_completed, all_instances_completed,
