@@ -294,6 +294,98 @@ class ProgressTest(unittest.TestCase):
             if os.path.isfile(file_name):
                 os.remove(file_name)
 
+    def test_collect_progress_updates_skip_faulty(self):
+        file_name = ensure_directory('build/collect_progress_updates_skip_faulty.' + get_random_task_id())
+        progress_regex_string = '\^\^\^\^JOB-PROGRESS: (\d*)(?: )?(.*)'
+        config = cc.ExecutorConfig(progress_output_name=file_name,
+                                   progress_regex_string=progress_regex_string)
+        stop_signal = Event()
+        completed_signal = Event()
+
+        file = open(file_name, 'w+')
+        file.flush()
+        progress_watcher = cp.ProgressWatcher(config, stop_signal, completed_signal)
+
+        try:
+            def read_progress_states():
+                for _ in progress_watcher.retrieve_progress_states():
+                    pass
+
+            Thread(target=read_progress_states, args=()).start()
+
+            file.write("^^^^JOB-PROGRESS: F50 Fifty percent\n")
+            file.flush()
+            time.sleep(0.10)
+            self.assertIsNone(progress_watcher.current_progress())
+
+            file.write("^^^^JOB-PROGRESS: 200 Two-hundred percent\n")
+            file.flush()
+            time.sleep(0.10)
+            self.assertIsNone(progress_watcher.current_progress())
+
+            file.write("^^^^JOB-PROGRESS: 121212121212121212 Huge percent\n")
+            file.flush()
+            time.sleep(0.10)
+            self.assertIsNone(progress_watcher.current_progress())
+
+            file.write("^^^^JOB-PROGRESS: 075 75% percent\n")
+            file.flush()
+            time.sleep(0.10)
+            self.assertEqual({'progress-message': '75% percent', 'progress-percent': 75, 'progress-sequence': 1},
+                             progress_watcher.current_progress())
+
+        finally:
+            completed_signal.set()
+            file.close()
+            if os.path.isfile(file_name):
+                os.remove(file_name)
+
+    def test_collect_progress_updates_faulty_regex(self):
+        file_name = ensure_directory('build/collect_progress_updates_skip_faulty.' + get_random_task_id())
+        progress_regex_string = '\^\^\^\^JOB-PROGRESS: (\S+)(?: )?(.*)'
+        config = cc.ExecutorConfig(progress_output_name=file_name,
+                                   progress_regex_string=progress_regex_string)
+        stop_signal = Event()
+        completed_signal = Event()
+
+        file = open(file_name, 'w+')
+        file.flush()
+        progress_watcher = cp.ProgressWatcher(config, stop_signal, completed_signal)
+
+        try:
+            def read_progress_states():
+                for _ in progress_watcher.retrieve_progress_states():
+                    pass
+
+            Thread(target=read_progress_states, args=()).start()
+
+            file.write("^^^^JOB-PROGRESS: ABCDEF string percent\n")
+            file.flush()
+            time.sleep(0.10)
+            self.assertIsNone(progress_watcher.current_progress())
+
+            file.write("^^^^JOB-PROGRESS: F50 Fifty percent\n")
+            file.flush()
+            time.sleep(0.10)
+            self.assertIsNone(progress_watcher.current_progress())
+
+            file.write("^^^^JOB-PROGRESS: 1019101010101010101010101018101101010101010110171010110 Sixty percent\n")
+            file.flush()
+            time.sleep(0.10)
+            self.assertIsNone(progress_watcher.current_progress())
+
+            file.write("^^^^JOB-PROGRESS: 75 75% percent\n")
+            file.flush()
+            time.sleep(0.10)
+            self.assertEqual({'progress-message': '75% percent', 'progress-percent': 75, 'progress-sequence': 1},
+                             progress_watcher.current_progress())
+
+        finally:
+            completed_signal.set()
+            file.close()
+            if os.path.isfile(file_name):
+                os.remove(file_name)
+
     def test_collect_progress_updates_lots_of_writes(self):
         file_name = ensure_directory('build/collect_progress_test.' + get_random_task_id())
         progress_regex_string = 'progress: (\d*), (.*)'
@@ -307,6 +399,7 @@ class ProgressTest(unittest.TestCase):
         def write_to_file():
             target_file = open(file_name, 'w+')
             unit_progress_granularity = int(items_to_write / 100)
+
             for item in range(items_to_write):
                 remainder = (item + 1) % unit_progress_granularity
                 if remainder == 0:
@@ -315,6 +408,7 @@ class ProgressTest(unittest.TestCase):
                     target_file.flush()
                 target_file.write("{}\n".format(item))
                 target_file.flush()
+
             target_file.close()
             time.sleep(0.15)
             completed_signal.set()
