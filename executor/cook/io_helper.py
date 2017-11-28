@@ -12,13 +12,15 @@ __stdout_lock__ = Lock()
 __stderr_lock__ = Lock()
 
 
-def print_out(string_data, flush=False, newline=True):
+def print_out(data, bytes=False, flush=False, newline=True):
     """Wrapper function that prints to stdout in a thread-safe manner using the __stdout_lock__ lock.
 
     Parameters
     ----------
-    string_data: string
-        The string to output
+    data: string or bytes
+        The data to output
+    bytes: boolean
+        Flag determining whether data should be treated as bytes
     flush: boolean
         Flag determining whether to trigger a sys.stdout.flush()
     newline: boolean
@@ -29,7 +31,10 @@ def print_out(string_data, flush=False, newline=True):
     Nothing.
     """
     with __stdout_lock__:
-        sys.stdout.write(string_data)
+        if bytes:
+            sys.stdout.buffer.write(data)
+        else:
+            sys.stdout.write(data)
         if newline:
             sys.stdout.write(os.linesep)
         if flush:
@@ -53,17 +58,19 @@ def print_and_log(string_data, flush=False, newline=True):
     -------
     Nothing.
     """
-    print_out('{}{}'.format(os.linesep, string_data), flush=flush, newline=newline)
+    print_out('{}{}'.format(os.linesep, string_data), bytes=False, flush=flush, newline=newline)
     logging.info(string_data)
 
 
-def print_err(string_data, flush=False, newline=True):
+def print_err(data, bytes=False, flush=False, newline=True):
     """Wrapper function that prints to stderr in a thread-safe manner using the __stderr_lock__ lock.
 
     Parameters
     ----------
-    string_data: string
-        The string to output
+    data: string or bytes
+        The data to output
+    bytes: boolean
+        Flag determining whether data should be treated as bytes
     flush: boolean
         Flag determining whether to trigger a sys.stderr.flush()
     newline: boolean
@@ -74,7 +81,10 @@ def print_err(string_data, flush=False, newline=True):
     Nothing.
     """
     with __stderr_lock__:
-        sys.stderr.write(string_data)
+        if bytes:
+            sys.stderr.buffer.write(data)
+        else:
+            sys.stderr.write(data)
         if newline:
             sys.stderr.write(os.linesep)
         if flush:
@@ -132,7 +142,7 @@ def process_output(label, out_file, out_fn, flush_fn, flush_interval_secs, max_b
             if not line:
                 break
             with io_lock:
-                out_fn(line.decode(), newline=False)
+                out_fn(line, bytes=True, newline=False)
                 lines_buffered_event.set()
         safe_flush()
     except Exception:
