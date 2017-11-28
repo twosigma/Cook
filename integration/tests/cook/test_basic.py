@@ -46,7 +46,7 @@ class CookTest(unittest.TestCase):
         job_uuid, resp = util.submit_job(self.cook_url, command='exit 1', max_retries=10)
         self.assertEqual(resp.status_code, 201, msg=resp.content)
         try:
-            job = util.wait_for_job(self.cook_url, job_uuid, 'completed', max_delay=60000)
+            job = util.wait_for_job(self.cook_url, job_uuid, 'completed', max_wait_ms=60000)
             message = json.dumps(job, sort_keys=True)
             self.assertEqual('failed', job['state'], message)
             self.assertEqual('completed', job['status'], message)
@@ -807,7 +807,7 @@ class CookTest(unittest.TestCase):
                 self.assertEqual([["HOSTNAME", "EQUALS", hostname]], job['constraints'])
             # This job should have been scheduled since the job submitted after it has completed
             # however, its constraint means it won't get scheduled
-            util.wait_for_job(self.cook_url, bad_job_uuid, 'waiting', max_delay=3000)
+            util.wait_for_job(self.cook_url, bad_job_uuid, 'waiting', max_wait_ms=3000)
         finally:
             util.kill_jobs(self.cook_url, [bad_job_uuid])
 

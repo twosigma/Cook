@@ -324,12 +324,12 @@ def group_detail_query(cook_url, group_uuid, assert_response=True):
     return response
 
 
-def wait_for_job(cook_url, job_id, status, max_delay=120000):
+def wait_for_job(cook_url, job_id, status, max_wait_ms=120000):
     """Wait for the given job's status to change to the specified value."""
-    return wait_for_jobs(cook_url, [job_id], status, max_delay)[0]
+    return wait_for_jobs(cook_url, [job_id], status, max_wait_ms)[0]
 
 
-def wait_for_jobs(cook_url, job_ids, status, max_delay=120000):
+def wait_for_jobs(cook_url, job_ids, status, max_wait_ms=120000):
     def query():
         return query_jobs(cook_url, True, uuid=job_ids)
 
@@ -339,16 +339,16 @@ def wait_for_jobs(cook_url, job_ids, status, max_delay=120000):
             logger.info(f"Job {job['uuid']} has status {job['status']}, expecting {status}.")
         return all([job['status'] == status for job in jobs])
 
-    response = wait_until(query, predicate, max_wait_ms=max_delay, wait_interval_ms=2000)
+    response = wait_until(query, predicate, max_wait_ms=max_wait_ms, wait_interval_ms=2000)
     return response.json()
 
 
-def wait_for_exit_code(cook_url, job_id, max_delay_ms=2000):
+def wait_for_exit_code(cook_url, job_id, max_wait_ms=2000):
     """
     Wait for the given job's exit_code field to appear.
     (Only supported by Cook Executor jobs.)
     Returns an up-to-date job description object on success,
-    and raises an exception if the max_delay_ms wait time is exceeded.
+    and raises an exception if the max_wait_ms wait time is exceeded.
     """
     job_id = unpack_uuid(job_id)
 
@@ -367,7 +367,7 @@ def wait_for_exit_code(cook_url, job_id, max_delay_ms=2000):
                 logger.info(f"Job {job_id} instance {inst['task_id']} has exit code {inst['exit_code']}.")
                 return True
 
-    response = wait_until(query, predicate, max_wait_ms=max_delay_ms, wait_interval_ms=250)
+    response = wait_until(query, predicate, max_wait_ms=max_wait_ms, wait_interval_ms=250)
     return response.json()[0]
 
 
@@ -375,13 +375,13 @@ def wait_for_sandbox_directory(cook_url, job_id):
     """
     Wait for the given job's sandbox_directory field to appear.
     Returns an up-to-date job description object on success,
-    and raises an exception if the max_delay_ms wait time is exceeded.
+    and raises an exception if the max_wait_ms wait time is exceeded.
     """
     job_id = unpack_uuid(job_id)
 
     cook_settings = settings(cook_url)
     cache_ttl_ms = get_in(cook_settings, 'agent-query-cache', 'ttl-ms')
-    max_delay_ms = min(4 * cache_ttl_ms, 4 * 60 * 1000)
+    max_wait_ms = min(4 * cache_ttl_ms, 4 * 60 * 1000)
 
     def query():
         response = query_jobs(cook_url, True, uuid=[job_id])
@@ -399,14 +399,14 @@ def wait_for_sandbox_directory(cook_url, job_id):
                     f"Job {job_id} instance {inst['task_id']} has sandbox directory {inst['sandbox_directory']}.")
                 return True
 
-    return wait_until(query, predicate, max_wait_ms=max_delay_ms, wait_interval_ms=250)
+    return wait_until(query, predicate, max_wait_ms=max_wait_ms, wait_interval_ms=250)
 
 
-def wait_for_end_time(cook_url, job_id, max_delay_ms=2000):
+def wait_for_end_time(cook_url, job_id, max_wait_ms=2000):
     """
     Wait for the given job's end_time field to appear in instance 0.
     Returns an up-to-date job description object on success,
-    and raises an exception if the max_delay_ms wait time is exceeded.
+    and raises an exception if the max_wait_ms wait time is exceeded.
     """
     job_id = unpack_uuid(job_id)
 
@@ -425,7 +425,7 @@ def wait_for_end_time(cook_url, job_id, max_delay_ms=2000):
                 logger.info(f"Job {job_id} instance {inst['task_id']} has end_time {inst['end_time']}.")
                 return True
 
-    response = wait_until(query, predicate, max_wait_ms=max_delay_ms, wait_interval_ms=250)
+    response = wait_until(query, predicate, max_wait_ms=max_wait_ms, wait_interval_ms=250)
     return response.json()[0]
 
 
