@@ -1,10 +1,22 @@
 import json
 import logging
+import os
+import re
 import time
 from threading import Event, Lock, Thread
 
-import os
-import re
+
+class ProgressSequenceCounter:
+    """Utility class that supports atomically incrementing the sequence value."""
+    def __init__(self, initial=0):
+        self.lock = Lock()
+        self.value = initial
+
+    def increment_and_get(self):
+        """Atomically increments by one the current value and returns the new value."""
+        with self.lock:
+            self.value += 1
+            return self.value
 
 
 class ProgressUpdater(object):
@@ -12,26 +24,23 @@ class ProgressUpdater(object):
     It throttles the rate at which progress updates are sent.
     """
 
-    def __init__(self, driver, task_id, max_message_length, poll_interval_ms, send_message_fn):
+    def __init__(self, task_id, max_message_length, poll_interval_ms, send_progress_message_fn):
         """
-        driver: MesosExecutorDriver
-            The mesos driver to use.
         task_id: string
             The task id.
         max_message_length: int
             The allowed max message length after encoding.
         poll_interval_ms: int
             The interval after which to send a subsequent progress update.
-        send_message: function(driver, message, max_message_length)
-            The helper function used to send the message.
+        send_progress_message_fn: function(message)
+            The helper function used to send the progress message.
         """
-        self.driver = driver
         self.task_id = task_id
         self.max_message_length = max_message_length
         self.poll_interval_ms = poll_interval_ms
         self.last_reported_time = None
         self.last_progress_data = None
-        self.send_message = send_message_fn
+        self.send_progress_message = send_progress_message_fn
         self.lock = Lock()
 
     def has_enough_time_elapsed_since_last_update(self):
@@ -78,7 +87,7 @@ class ProgressUpdater(object):
                         message_dict['progress-message'] = new_progress_str
                         progress_message = json.dumps(message_dict)
 
-                    self.send_message(self.driver, progress_message, self.max_message_length)
+                    self.send_progress_message(progress_message)
                     self.last_reported_time = time.time()
                     self.last_progress_data = progress_data
                 else:
@@ -109,13 +118,19 @@ class ProgressWatcher(object):
         matches = re.findall(progress_regex_str, input_string)
         return matches[0] if len(matches) >= 1 else None
 
-    def __init__(self, config, stop_signal, task_completed_signal):
-        self.target_file = config.progress_output_name
-        self.progress_regex_string = config.progress_regex_string
+    def __init__(self, output_name, sequence_counter, max_bytes_read_per_line, progress_regex_string, stop_signal,
+                 task_completed_signal):
+        self.target_file = output_name
+        self.sequence_counter = sequence_counter
+        self.progress_regex_string = progress_regex_string
         self.progress = None
         self.stop_signal = stop_signal
         self.task_completed_signal = task_completed_signal
-        self.max_bytes_read_per_line = config.max_bytes_read_per_line
+        self.max_bytes_read_per_line = max_bytes_read_per_line
+
+    def progress_target_file(self):
+        """Returns the file that is being monitored for progress."""
+        return self.target_file
 
     def current_progress(self):
         """Returns the current progress dictionary."""
@@ -138,6 +153,10 @@ class ProgressWatcher(object):
         try:
             sleep_param = sleep_time_ms / 1000
 
+            if os.path.exists(self.target_file) and not os.path.isfile(self.target_file):
+                logging.info('Skipping progress monitoring on {} as it is not a file'.format(self.target_file))
+                return
+
             while not os.path.isfile(self.target_file) and not self.task_completed_signal.isSet():
                 logging.debug('{} has not yet been created, sleeping {} ms'.format(self.target_file, sleep_time_ms))
                 time.sleep(sleep_param)
@@ -159,8 +178,8 @@ class ProgressWatcher(object):
                 if not line:
                     # exit if program has completed and there are no more lines to read
                     if self.task_completed_signal.isSet():
-                        message = 'Done processing progress messages, {} fragments and {} lines read'
-                        logging.info(message.format(fragment_index, line_index))
+                        log_message = 'Done processing progress messages from {}, {} fragments and {} lines read'
+                        logging.info(log_message.format(self.target_file, fragment_index, line_index))
                         break
                     # no new line available, sleep before trying again
                     time.sleep(sleep_param)
@@ -189,7 +208,6 @@ class ProgressWatcher(object):
         """
         if self.progress_regex_string:
             sleep_time_ms = 50
-            sequence = 0
             for line in self.tail(sleep_time_ms):
                 progress_report = ProgressWatcher.match_progress_update(self.progress_regex_string, line)
                 if progress_report is None:
@@ -202,75 +220,69 @@ class ProgressWatcher(object):
                 if percent_int < 0 or percent_int > 100:
                     logging.info('Skipping "{}" as the percent is not in [0, 100]'.format(progress_report))
                     continue
-                logging.info('Updating progress to {} percent, message: {}'.format(percent_str, message))
-                sequence += 1
+                log_message = 'Updating progress to {} percent, message: {} [source={}]'
+                logging.info(log_message.format(percent_str, message, self.target_file))
                 self.progress = {'progress-message': message.strip(),
                                  'progress-percent': percent_int,
-                                 'progress-sequence': sequence}
+                                 'progress-sequence': self.sequence_counter.increment_and_get()}
                 yield self.progress
 
 
-def track_progress(progress_watcher, progress_complete_event, send_progress_update):
-    """Sends progress updates to the mesos driver until the stop_signal is set.
-    
-    Parameters
-    ----------
-    progress_watcher: ProgressWatcher
-        The progress watcher which maintains the current progress state
-    progress_complete_event: Event
-        Event that triggers completion of progress tracking
-    send_progress_update: function(current_progress)
-        The function to invoke while sending progress updates
-        
-    Returns
-    -------
-    Nothing.
-    """
-    try:
-        for current_progress in progress_watcher.retrieve_progress_states():
-            logging.debug('Latest progress: {}'.format(current_progress))
-            send_progress_update(current_progress)
-    except:
-        logging.exception('Exception while tracking progress')
-    finally:
-        progress_complete_event.set()
+class ProgressTracker(object):
+    """Helper class to track progress messages from the specified location."""
 
+    def __init__(self, task_id, config, stop_signal, task_completed_signal, send_progress_message, location, counter):
+        """Launches the threads that track progress and send progress updates to the driver.
 
-def launch_progress_tracker(progress_watcher, progress_updater):
-    """Launches the threads that track progress and send progress updates to the driver.
+        Parameters
+        ----------
+        task_id: string
+            The task id.
+        config: cook.config.ExecutorConfig
+            The current executor config.
+        stop_signal: threading.Event
+            Event that determines if an interrupt was sent
+        task_completed_signal: threading.Event
+            Event that tracks task execution completion
+        send_progress_message: function(message)
+            The helper function used to send the progress message
+        location: string
+            The target location to read for progress messages
+        counter: ProgressSequenceCounter
+            The sequence counter."""
+        self.progress_complete_event = Event()
+        self.watcher = ProgressWatcher(location, counter, config.max_bytes_read_per_line, config.progress_regex_string,
+                                       stop_signal, task_completed_signal)
+        self.updater = ProgressUpdater(task_id, config.max_message_length, config.progress_sample_interval_ms,
+                                       send_progress_message)
 
-    Parameters
-    ----------
-    progress_watcher: ProgressWatcher
-        The progress watcher which maintains the current progress state.
-    progress_updater: ProgressUpdater
-        The progress updater which sends progress updates to the scheduler.
-        
-    Returns
-    -------
-    The progress complete threading.Event.
-    """
-    progress_complete_event = Event()
-    progress_update_thread = Thread(target=track_progress,
-                                    args=(progress_watcher, progress_complete_event,
-                                          progress_updater.send_progress_update))
-    progress_update_thread.start()
-    return progress_complete_event
+    def start(self):
+        """Launches a thread that starts monitoring the progress location for progress messages."""
+        logging.info('Starting progress monitoring from {}'.format(self.watcher.progress_target_file()))
+        Thread(target=self.track_progress, args=()).start()
 
+    def wait(self, timeout=None):
+        """Waits for the progress tracker thread to run to completion."""
+        self.progress_complete_event.wait(timeout=timeout)
+        progress_target_file = self.watcher.progress_target_file()
+        if self.progress_complete_event.isSet():
+            logging.info('Progress monitoring from {} complete'.format(progress_target_file))
+        else:
+            logging.info('Progress monitoring from {} did not complete'.format(progress_target_file))
 
-def force_send_progress_update(progress_watcher, progress_updater):
-    """Retrieves the latest progress message and attempts to force send it to the scheduler.
+    def track_progress(self):
+        """Retrieves and sends progress updates using send_progress_update_fn.
+        It sets the progress_complete_event before returning."""
+        try:
+            for current_progress in self.watcher.retrieve_progress_states():
+                logging.debug('Latest progress: {}'.format(current_progress))
+                self.updater.send_progress_update(current_progress)
+        except:
+            logging.exception('Exception while tracking progress')
+        finally:
+            self.progress_complete_event.set()
 
-    Parameters
-    ----------
-    progress_watcher: ProgressWatcher
-        The progress watcher which maintains the current progress state.
-    progress_updater: ProgressUpdater
-        The progress updater which sends progress updates to the scheduler.
-        
-    Returns
-    -------
-    Nothing.
-    """
-    latest_progress = progress_watcher.current_progress()
-    progress_updater.send_progress_update(latest_progress, force_send=True)
+    def force_send_progress_update(self):
+        """Retrieves the latest progress message and attempts to force send it to the scheduler."""
+        latest_progress = self.watcher.current_progress()
+        self.updater.send_progress_update(latest_progress, force_send=True)

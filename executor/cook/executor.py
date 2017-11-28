@@ -378,11 +378,20 @@ def manage_task(driver, task, stop_signal, completed_signal, config):
 
         stdout_thread, stderr_thread = cio.track_outputs(task_id, process, config.max_bytes_read_per_line)
         task_completed_signal = Event() # event to track task execution completion
+        sequence_counter = cp.ProgressSequenceCounter()
 
-        progress_watcher = cp.ProgressWatcher(config, stop_signal, task_completed_signal)
-        progress_updater = cp.ProgressUpdater(driver, task_id, config.max_message_length,
-                                              config.progress_sample_interval_ms, send_message)
-        progress_complete_event = cp.launch_progress_tracker(progress_watcher, progress_updater)
+        def send_progress_message(message):
+            send_message(driver, message, config.max_message_length)
+
+        def launch_progress_tracker(progress_location):
+            progress_tracker = cp.ProgressTracker(task_id, config, stop_signal, task_completed_signal,
+                                                  send_progress_message, progress_location, sequence_counter)
+            progress_tracker.start()
+            return progress_tracker
+
+        progress_locations = {config.progress_output_name, config.stderr_file(), config.stdout_file()}
+        logging.info('Progress will be tracked from {} locations'.format(len(progress_locations)))
+        progress_trackers = [launch_progress_tracker(progress_location) for progress_location in progress_locations]
 
         process_info = process, stdout_thread, stderr_thread
         await_process_completion(stop_signal, process_info, config.shutdown_grace_period_ms)
@@ -398,12 +407,12 @@ def manage_task(driver, task, stop_signal, completed_signal, config):
 
         # await progress updater termination if executor is terminating normally
         if not stop_signal.isSet():
-            logging.info('Awaiting progress updater completion')
-            progress_complete_event.wait()
-            logging.info('Progress updater completed')
+            logging.info('Awaiting completion of progress updaters')
+            [progress_tracker.wait() for progress_tracker in progress_trackers]
+            logging.info('Progress updaters completed')
 
         # force send the latest progress state if available
-        cp.force_send_progress_update(progress_watcher, progress_updater)
+        [progress_tracker.force_send_progress_update() for progress_tracker in progress_trackers]
 
         # task either completed successfully or aborted with an error
         task_state = get_task_state(exit_code)

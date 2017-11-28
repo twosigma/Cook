@@ -98,6 +98,23 @@ def cleanup_output(stdout_name, stderr_name):
     reset_stderr()
 
 
+class FakeExecutorConfig(object):
+    def __init__(self, config_map):
+        self.config_map = config_map
+
+    def __getattribute__(self, name):
+        if name == 'config_map' or name == 'stderr_file' or name == 'stdout_file':
+            return object.__getattribute__(self, name)
+        else:
+            return self.config_map[name]
+
+    def stderr_file(self):
+        return self.config_map['stderr_file']
+
+    def stdout_file(self):
+        return self.config_map['stdout_file']
+
+
 class FakeMesosExecutorDriver(object):
     def __init__(self):
         self.messages = []
