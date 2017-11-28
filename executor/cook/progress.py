@@ -231,33 +231,6 @@ class ProgressWatcher(object):
 class ProgressTracker(object):
     """Helper class to track progress messages from the specified location."""
 
-    @staticmethod
-    def track_progress(progress_watcher, progress_complete_event, send_progress_update_fn):
-        """Retrieves and sends progress updates using send_progress_update_fn.
-        It sets the progress_complete_event before returning.
-
-            Parameters
-            ----------
-            progress_watcher: ProgressWatcher
-                The progress watcher which maintains the current progress state
-            progress_complete_event: threading.Event
-                Event that triggers completion of progress tracking
-            send_progress_update_fn: function(progress)
-                The function to invoke while sending progress updates
-
-            Returns
-            -------
-            Nothing.
-            """
-        try:
-            for current_progress in progress_watcher.retrieve_progress_states():
-                logging.debug('Latest progress: {}'.format(current_progress))
-                send_progress_update_fn(current_progress)
-        except:
-            logging.exception('Exception while tracking progress')
-        finally:
-            progress_complete_event.set()
-
     def __init__(self, task_id, config, stop_signal, task_completed_signal, send_progress_message, location, counter):
         """Launches the threads that track progress and send progress updates to the driver.
 
@@ -286,16 +259,28 @@ class ProgressTracker(object):
     def start(self):
         """Launches a thread that starts monitoring the progress location for progress messages."""
         logging.info('Starting progress monitoring from {}'.format(self.watcher.progress_target_file()))
-        Thread(target=ProgressTracker.track_progress,
-               args=(self.watcher, self.progress_complete_event, self.updater.send_progress_update)).start()
+        Thread(target=self.track_progress, args=()).start()
 
     def wait(self, timeout=None):
         """Waits for the progress tracker thread to run to completion."""
         self.progress_complete_event.wait(timeout=timeout)
+        progress_target_file = self.watcher.progress_target_file()
         if self.progress_complete_event.isSet():
-            logging.info('Progress monitoring from {} complete'.format(self.watcher.progress_target_file()))
+            logging.info('Progress monitoring from {} complete'.format(progress_target_file))
         else:
-            logging.info('Progress monitoring from {} did not complete'.format(self.watcher.progress_target_file()))
+            logging.info('Progress monitoring from {} did not complete'.format(progress_target_file))
+
+    def track_progress(self):
+        """Retrieves and sends progress updates using send_progress_update_fn.
+        It sets the progress_complete_event before returning."""
+        try:
+            for current_progress in self.watcher.retrieve_progress_states():
+                logging.debug('Latest progress: {}'.format(current_progress))
+                self.updater.send_progress_update(current_progress)
+        except:
+            logging.exception('Exception while tracking progress')
+        finally:
+            self.progress_complete_event.set()
 
     def force_send_progress_update(self):
         """Retrieves the latest progress message and attempts to force send it to the scheduler."""

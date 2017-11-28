@@ -13,38 +13,6 @@ from tests.utils import assert_message, ensure_directory, get_random_task_id, Fa
 
 
 class ProgressTest(unittest.TestCase):
-    def test_track_progress_with_new_states(self):
-        class FakeProgressWatcher(object):
-            def __init__(self):
-                self.total_states = 4
-                self.count_calls = 0
-                self.progress_states = []
-
-            def get_progress_states(self):
-                return self.progress_states
-
-            def current_progress(self):
-                return len(self.progress_states)
-
-            def retrieve_progress_states(self):
-                for v in range(self.total_states):
-                    time.sleep(0.10)
-                    logging.info('Yielding progress state {}'.format(v))
-                    yield v
-
-            def send_progress_update_helper(self, last_progress):
-                self.count_calls += 1
-                self.progress_states.append(last_progress)
-                return self.count_calls
-
-        watcher = FakeProgressWatcher()
-        progress_complete_event = Event()
-
-        cp.ProgressTracker.track_progress(watcher, progress_complete_event, watcher.send_progress_update_helper)
-
-        self.assertTrue(progress_complete_event.isSet())
-        self.assertEqual([0, 1, 2, 3], watcher.get_progress_states())
-
     def test_match_progress_update(self):
 
         def match_progress_update(input_string):
