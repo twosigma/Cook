@@ -23,6 +23,7 @@
             [cook.mesos.api :as api]
             [cook.mesos.schema :as schema]
             [datomic.api :as d :refer (q db)]
+            [plumbing.core :refer [mapply]]
             [qbits.jet.server :refer (run-jetty)]
             [ring.middleware.params :refer (wrap-params)])
   (:import (java.util UUID)
@@ -194,13 +195,11 @@
 (defn create-dummy-job-with-instances
   [conn & {:as kw-args}]
   "Return the entity ids for the created dummy job and instances as a pair: [job [instances ...]]"
-  (let [map->seq (partial mapcat seq)
-        job-args (-> kw-args (dissoc :instances) map->seq)
-        job (apply create-dummy-job conn job-args)
+  (let [job-args (dissoc kw-args :instances)
+        job (mapply create-dummy-job conn job-args)
         instance-arg-maps (:instances kw-args)
-        instances (for [arg-map instance-arg-maps
-                        :let [args (map->seq arg-map)]]
-                    (apply create-dummy-instance conn job args))]
+        instances (for [arg-map instance-arg-maps]
+                    (mapply create-dummy-instance conn job arg-map))]
     [job (vec instances)]))
 
 (defn init-offer-cache
