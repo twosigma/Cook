@@ -191,6 +191,18 @@
         val @(d/transact conn [group-txn])]
     (d/resolve-tempid (db conn) (:tempids val) id)))
 
+(defn create-dummy-job-with-instances
+  [conn & {:as kw-args}]
+  "Return the entity ids for the created dummy job and instances as a pair: [job [instances ...]]"
+  (let [map->seq (partial mapcat seq)
+        job-args (-> kw-args (dissoc :instances) map->seq)
+        job (apply create-dummy-job conn job-args)
+        instance-arg-maps (:instances kw-args)
+        instances (for [arg-map instance-arg-maps
+                        :let [args (map->seq arg-map)]]
+                    (apply create-dummy-instance conn job args))]
+    [job (vec instances)]))
+
 (defn init-offer-cache
   [& init]
   (-> init

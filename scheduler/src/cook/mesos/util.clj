@@ -206,6 +206,20 @@
                job-ents))
       {:cpus total-cpus :mem total-mem})))
 
+(defn total-resources-of-jobs
+  "Given a collections of job entities, returns the total resources they use
+   {:cpus cpu :mem mem :gpus gpu}"
+  [job-ents]
+  (reduce
+    (fn [acc job-ent]
+      (->
+        job-ent
+        job-ent->resources
+        (select-keys [:cpus :mem :gpus])
+        (->> (merge-with + acc))))
+    {:cpus 0.0, :mem 0.0, :gpus 0.0, :jobs (count job-ents)}
+    job-ents))
+
 (defn- get-pending-job-ents*
   "Returns a seq of datomic entities corresponding to jobs
 
@@ -375,16 +389,32 @@
 (timers/deftimer [cook-mesos scheduler get-running-tasks-duration])
 
 (defn get-running-task-ents
-  "Returns all running task entities"
+  "Returns all running task entities."
   [db]
   (timers/time!
     get-running-tasks-duration
-    (->> (q '[:find ?i
+    (->> (q '[:find [?i ...]
               :in $ [?status ...]
               :where
               [?i :instance/status ?status]]
             db [:instance.status/running :instance.status/unknown])
-         (map (fn [[x]] (d/entity db x))))))
+         (map (partial d/entity db)))))
+
+(timers/deftimer [cook-mesos scheduler get-user-running-tasks-duration])
+
+(defn get-user-running-task-ents
+  "Returns all running task entities for a specific user."
+  [db user]
+  (timers/time!
+    get-user-running-tasks-duration
+    (->> (q '[:find [?i ...]
+              :in $ [?status ...] ?user
+              :where
+              [?j :job/user ?user]
+              [?j :job/instance ?i]
+              [?i :instance/status ?status]]
+            db [:instance.status/running :instance.status/unknown] user)
+         (map (partial d/entity db)))))
 
 (defn job-allowed-to-start?
   "Converts the DB function :job/allowed-to-start? into a predicate"
