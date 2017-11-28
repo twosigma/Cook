@@ -54,7 +54,7 @@ class CookTest(unittest.TestCase):
             pass
         job = util.load_job(self.cook_url, job_uuid)
         message = json.dumps(job, sort_keys=True)
-        job_instances = sorted(job['instances'], key=lambda instance: instance['end_time'])
+        job_instances = sorted(job['instances'], key=lambda instance: instance['start_time'])
         self.assertTrue(len(job_instances) >= 2, message)  # sort job instances
         for i in range(1, len(job_instances)):
             message = 'Index ' + str(i) + json.dumps(job_instances[i], sort_keys=True)
