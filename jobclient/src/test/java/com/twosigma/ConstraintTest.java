@@ -15,7 +15,9 @@
  */
 package com.twosigma;
 
-import com.twosigma.cook.jobclient.Constraint;
+import com.twosigma.cook.jobclient.constraint.Constraints;
+import com.twosigma.cook.jobclient.constraint.api.Constraint;
+import com.twosigma.cook.jobclient.constraint.api.Operator;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -23,9 +25,9 @@ public class ConstraintTest {
 
     @Test
     public void testScope() {
-        Constraint c = Constraint.EQUALS.apply("foo", "bar");
-        Assert.assertEquals(c.getAttribute(), "foo");
-        Assert.assertEquals(c.getOperator(), Constraint.Operator.EQUALS);
-        Assert.assertEquals(c.getValue(), "bar");
+        Constraint c = Constraints.get(Operator.EQUALS).build("bar", "foo");
+        Assert.assertEquals(c.getAttribute(), "bar");
+        Assert.assertEquals(c.getOperator(), Operator.EQUALS);
+        Assert.assertEquals(c.getValue(), "foo");
     }
 }

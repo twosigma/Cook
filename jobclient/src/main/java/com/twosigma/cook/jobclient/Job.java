@@ -20,6 +20,8 @@ import java.util.*;
 import java.util.regex.Pattern;
 
 import com.google.common.collect.ImmutableSet;
+import com.twosigma.cook.jobclient.constraint.Constraints;
+import com.twosigma.cook.jobclient.constraint.api.Constraint;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -904,7 +906,7 @@ final public class Job {
             if (json.has("constraints")) {
                 JSONArray constraintsJson = json.getJSONArray("constraints");
                 for (int j = 0; j < constraintsJson.length(); j++) {
-                    jobBuilder.addConstraint(Constraint.parseFrom(constraintsJson.getJSONArray(j)));
+                    jobBuilder.addConstraint(Constraints.parseFrom(constraintsJson.getJSONArray(j)));
                 }
             }
             JSONArray groupsJson = json.optJSONArray("groups");
