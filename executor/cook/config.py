@@ -32,6 +32,7 @@ class ExecutorConfig(object):
             return 1000
 
     def __init__(self,
+                 flush_interval_secs=2,
                  max_bytes_read_per_line=1024,
                  max_message_length=512,
                  progress_output_env_variable=DEFAULT_PROGRESS_FILE_ENV_VARIABLE,
@@ -40,6 +41,7 @@ class ExecutorConfig(object):
                  progress_sample_interval_ms=100,
                  sandbox_directory='',
                  shutdown_grace_period='1secs'):
+        self.flush_interval_secs = flush_interval_secs
         self.max_bytes_read_per_line = max_bytes_read_per_line
         self.max_message_length = max_message_length
         self.progress_output_env_variable = progress_output_env_variable
@@ -78,6 +80,7 @@ def initialize_config(environment):
     if progress_output_env_variable not in environment:
         logging.info('No entry found for {} in the environment'.format(progress_output_env_variable))
 
+    flush_interval_secs = max(int(environment.get('EXECUTOR_FLUSH_INTERVAL_SECS', 10)), 2)
     max_bytes_read_per_line = max(int(environment.get('EXECUTOR_MAX_BYTES_READ_PER_LINE', 4 * 1024)), 128)
     max_message_length = max(int(environment.get('EXECUTOR_MAX_MESSAGE_LENGTH', 512)), 64)
     progress_output_name = environment.get(progress_output_env_variable, default_progress_output_file)
@@ -86,6 +89,7 @@ def initialize_config(environment):
     sandbox_directory = environment.get('MESOS_SANDBOX', '')
     shutdown_grace_period = environment.get('MESOS_EXECUTOR_SHUTDOWN_GRACE_PERIOD', '2secs')
 
+    logging.info('stdout/stderr flush interval is {} seconds'.format(flush_interval_secs))
     logging.info('Max bytes read per line is {}'.format(max_bytes_read_per_line))
     logging.info('Max message length is {}'.format(max_message_length))
     logging.info('Progress output file is {}'.format(progress_output_name))
@@ -94,7 +98,8 @@ def initialize_config(environment):
     logging.info('Sandbox location is {}'.format(sandbox_directory))
     logging.info('Shutdown grace period is {}'.format(shutdown_grace_period))
 
-    return ExecutorConfig(max_bytes_read_per_line=max_bytes_read_per_line,
+    return ExecutorConfig(flush_interval_secs=flush_interval_secs,
+                          max_bytes_read_per_line=max_bytes_read_per_line,
                           max_message_length=max_message_length,
                           progress_output_env_variable=progress_output_env_variable,
                           progress_output_name=progress_output_name,
