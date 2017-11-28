@@ -27,7 +27,7 @@ import org.json.JSONArray;
  * <li>attribute, operator, value
  * <li>attribute, operator, list of values
  * </ul>
- * For examples,
+ * Examples of constraints are
  * <ul>
  * <li>"host", UNIQUE
  * <li>"host", EQUALS, foo.bar.com

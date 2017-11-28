@@ -29,14 +29,14 @@ import org.json.JSONArray;
  * <li>attribute, operator, value
  * <li>attribute, operator, list of values
  * </ul>
- * For examples,
+ * Examples of constraints are
  * <ul>
  * <li>"host", UNIQUE
  * <li>"host", EQUALS, foo.bar.com
  * <li>"host", IN, [foo1.bar.com,foo2.bar.com]
  * </ul>
  * For now, only EQUALS operator is supported by Cook. One could construct
- * a constraint with an "EQUALS" operator by
+ * a constraint with an EQUALS operator by
  * <p>
  * <pre>
  *  Constraint c = Constraints.get(Operator.EQUALS).build("host", "foo.bar.com");
@@ -59,6 +59,12 @@ public class Constraints {
         }
     }
 
+    /**
+     * @param constraint the {@link JSONArray} representation of a constraint. The {@link JSONArray}
+     *                   could have either 2 or 3 elements which represent different forms of constraints.
+     *                   See {@link Constraint}.
+     * @return the parsed constraint.
+     */
     public static Constraint parseFrom(JSONArray constraint) {
         Preconditions.checkArgument(
                 constraint.length() == 2 || constraint.length() == 3,

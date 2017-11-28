@@ -21,6 +21,12 @@ import com.twosigma.cook.jobclient.constraint.api.ConstraintBuilder;
 import com.twosigma.cook.jobclient.constraint.api.Operator;
 import org.json.JSONArray;
 
+/**
+ * The constraint builder to build constraint in the form of
+ * <ul>
+ * attribute, operator, value
+ * </ul>
+ */
 public final class OneToOneConstraintBuilder implements ConstraintBuilder {
     private Operator _operator;
 
@@ -87,7 +93,7 @@ public final class OneToOneConstraintBuilder implements ConstraintBuilder {
 
 
         /**
-         * @return this constraint as a JSONArray.
+         * @return this constraint as a {@link JSONArray}.
          */
         @Override
         public JSONArray toJson() {
