@@ -650,6 +650,171 @@
     (is (= (:task-state interpreted-status) :task-lost))
     (is (= (:reason interpreted-status) :reason-invalid-offers))))
 
+(deftest test-unique-host-placement-constraint
+  (let [uri "datomic:mem://test-unique-host-placement-constraint"
+        conn (restore-fresh-database! uri)
+        framework-id #mesomatic.types.FrameworkID{:value "my-original-framework-id"}]
+    (testing "conflicting jobs, different scheduling cycles"
+      (let [scheduler (make-dummy-scheduler)
+            shared-host "test-host"
+            ; Group jobs, setting unique host-placement constraint
+            group-id (create-dummy-group conn :host-placement {:host-placement/type :host-placement.type/unique})
+            conflicted-job-id (create-dummy-job conn :group group-id)
+            conflicting-job-id (create-dummy-job conn :group group-id)
+            make-offers #(vector (make-vm-offer framework-id shared-host (make-uuid)))
+            group (d/entity (d/db conn) group-id)
+            ; Schedule first job
+            scheduled-tasks (schedule-and-run-jobs conn framework-id scheduler (make-offers) [conflicting-job-id])
+            _ (is (= 1 (count (:scheduled scheduled-tasks))))
+            conflicting-task-id (first (:scheduled scheduled-tasks))
+            ; Try to schedule conflicted job, but fail
+            failures (-> (schedule-and-run-jobs conn framework-id scheduler (make-offers) [conflicted-job-id])
+                         :result
+                         .getFailures)
+            task-results (-> failures
+                             vals
+                             first)
+            fail-reason (-> task-results
+                            first
+                            .getConstraintFailure
+                            .getReason)]
+        (is (= 1 (count failures)))
+        (is (= 1 (count task-results)))
+        (is (= fail-reason (format "The hostname %s is being used by other instances in group %s"
+                                   shared-host (:group/uuid group))))))
+    (testing "conflicting jobs, same scheduling cycle"
+      (let [scheduler (make-dummy-scheduler)
+            shared-host "test-host"
+            ; Group jobs, setting unique host-placement constraint
+            group-id (create-dummy-group conn :host-placement {:host-placement/type :host-placement.type/unique})
+            conflicted-job-id (create-dummy-job conn :group group-id)
+            conflicting-job-id (create-dummy-job conn :group group-id)
+            make-offers #(vector (make-vm-offer framework-id shared-host (make-uuid)))
+            group (d/entity (d/db conn) group-id)
+            ; Schedule first job
+            result (schedule-and-run-jobs conn framework-id scheduler (make-offers) [conflicting-job-id
+                                                                                     conflicted-job-id])
+            _ (is (= 1 (count (:scheduled result))))
+            conflicting-task-id (-> result :scheduled first)
+            ; Try to schedule conflicted job, but fail
+            failures (-> result :result .getFailures)
+            task-results (-> failures
+                             vals
+                             first)
+            fail-reason (-> task-results
+                            first
+                            .getConstraintFailure
+                            .getReason)]
+        (is (= 1 (count failures)))
+        (is (= 1 (count task-results)))
+        (is (= fail-reason (format "The hostname %s is being used by other instances in group %s"
+                                   shared-host (:group/uuid group))))))
+    (testing "non conflicting jobs"
+      (let [scheduler (make-dummy-scheduler)
+            shared-host "test-host"
+            make-offers #(vector (make-vm-offer framework-id shared-host (make-uuid)))
+            isolated-job-id1 (create-dummy-job conn)
+            isolated-job-id2 (create-dummy-job conn)]
+        (is (= 1 (count (:scheduled (schedule-and-run-jobs conn framework-id scheduler (make-offers) [isolated-job-id1])))))
+        (is (= 1 (count (:scheduled (schedule-and-run-jobs conn framework-id scheduler (make-offers) [isolated-job-id2])))))))))
+
+
+(deftest test-balanced-host-placement-constraint
+  (let [uri "datomic:mem://test-balanced-host-placement-constraint"
+        conn (restore-fresh-database! uri)
+        framework-id #mesomatic.types.FrameworkID{:value "my-original-framework-id"}]
+    (testing "schedule 9 jobs with hp-type balanced on 3 hosts, each host should get 3 jobs"
+      (let [scheduler (make-dummy-scheduler)
+            hostnames ["straw" "sticks" "bricks"]
+            make-offers (fn [] (mapv #(make-vm-offer framework-id % (make-uuid)) hostnames))
+            ; Group jobs, setting balanced host-placement constraint
+            group-id (create-dummy-group conn
+                                         :host-placement {:host-placement/type :host-placement.type/balanced
+                                                          :host-placement/parameters {:host-placement.balanced/attribute "HOSTNAME"
+                                                                                      :host-placement.balanced/minimum 3}})
+            job-ids (doall (repeatedly 9 #(create-dummy-job conn :group group-id)))]
+        (is (= {"straw" 3 "sticks" 3 "bricks" 3}
+               (->> job-ids
+                    (schedule-and-run-jobs conn framework-id scheduler (make-offers))
+                    :result
+                    .getResultMap
+                    (pc/map-vals #(count (.getTasksAssigned %))))))))
+    (testing "schedule 9 jobs with no placement constraints on 3 hosts, assignment not balanced"
+      (let [scheduler (make-dummy-scheduler)
+            hostnames ["straw" "sticks" "bricks"]
+            make-offers (fn [] (mapv #(make-vm-offer framework-id % (make-uuid)) hostnames))
+            job-ids (doall (repeatedly 9 #(create-dummy-job conn)))]
+        (is (not (= (list 3) (->> job-ids
+                                  (schedule-and-run-jobs conn framework-id scheduler (make-offers))
+                                  :result
+                                  .getResultMap
+                                  vals
+                                  (map #(count (.getTasksAssigned %)))
+                                  distinct))))))))
+
+(deftest test-attr-equals-host-placement-constraint
+  (let [uri "datomic:mem://test-attr-equals-host-placement-constraint"
+        conn (restore-fresh-database! uri)
+        framework-id #mesomatic.types.FrameworkID{:value "my-original-framework-id"}
+        make-hostname #(str (java.util.UUID/randomUUID))
+        attr-name "az"
+        attr-val "east"
+        make-attr-offer (fn [cpus]
+                          (make-vm-offer framework-id (make-hostname) (make-uuid)
+                                         :cpus cpus :attrs {attr-name attr-val}))
+        ; Each non-attr offer can take only one job
+        make-non-attr-offers (fn [n]
+                               (into [] (repeatedly n #(make-vm-offer framework-id (make-hostname) (make-uuid)
+                                                                      :cpus 1.0 :attrs {attr-name "west"}))))]
+    (testing "Create group, schedule one job unto VM, then all subsequent jobs must have same attr as the VM."
+      (let [scheduler (make-dummy-scheduler)
+            group-id (create-dummy-group conn :host-placement
+                                         {:host-placement/type :host-placement.type/attribute-equals
+                                          :host-placement/parameters {:host-placement.attribute-equals/attribute attr-name}})
+            first-job (create-dummy-job conn :group group-id)
+            other-jobs (doall (repeatedly 20 #(create-dummy-job conn :ncpus 1.0 :group group-id)))
+            ; Group jobs, setting balanced host-placement constraint
+            ; Schedule the first job
+            _ (is (= 1 (->> (schedule-and-run-jobs conn framework-id scheduler [(make-attr-offer 1.0)] [first-job])
+                            :scheduled
+                            count)))
+            batch-result (->> (schedule-and-run-jobs conn framework-id scheduler
+                                                     (conj (make-non-attr-offers 20) (make-attr-offer 5.0)) other-jobs)
+                              :result)]
+        (testing "Other jobs all pile up on attr-offer."
+          (is (= (list attr-val)
+                 (->> batch-result
+                      .getResultMap
+                      vals
+                      (filter #(> (count (.getTasksAssigned %)) 0))
+                      (mapcat #(.getLeasesUsed %))
+                      (map #(.getAttributeMap %))
+                      (map #(get % attr-name))
+                      distinct))))
+        (testing "attr offer only fits five jobs."
+          (is (= 5 (->> batch-result
+                        .getResultMap
+                        vals
+                        (reduce #(+ %1 (count (.getTasksAssigned %2))) 0)))))
+        (testing "Other 15 jobs are unscheduled."
+          (is (= 15 (->> batch-result
+                         .getFailures
+                         count))))))
+    (testing "Jobs use any vm freely when forced and no attr-equals constraint is given"
+      (let [scheduler (make-dummy-scheduler)
+            first-job (create-dummy-job conn)
+            other-jobs (doall (repeatedly 20 #(create-dummy-job conn)))
+            _ (is (= 1 (->> (schedule-and-run-jobs conn framework-id scheduler [(make-attr-offer 2.0)] [first-job])
+                            :scheduled
+                            count)))]
+        ; Need to use all offers to fit all 20 other-jobs
+        (is (= 20 (->> (schedule-and-run-jobs conn framework-id scheduler
+                                              (conj (make-non-attr-offers 15) (make-attr-offer 5.0)) other-jobs)
+                       :result
+                       .getResultMap
+                       vals
+                       (reduce #(+ %1 (count (.getTasksAssigned %2))) 0))))))))
+
 (deftest test-gpu-share-prioritization
   (let [uri "datomic:mem://test-gpu-shares"
         conn (restore-fresh-database! uri)
