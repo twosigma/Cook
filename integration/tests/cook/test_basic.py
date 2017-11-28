@@ -1277,13 +1277,14 @@ class CookTest(unittest.TestCase):
             resp = util.user_current_usage(self.cook_url, user=user)
             self.assertEqual(resp.status_code, 200, resp.content)
             usage_data = resp.json()
-            self.assertEqual(len(usage_data), 1, usage_data)
+            # Check that the response structure looks as expected
+            self.assertEqual(list(usage_data.keys()), ['total_usage'], usage_data)
             self.assertEqual(len(usage_data['total_usage']), 4, usage_data)
             # Since we don't know what other test jobs are currently running,
             # we conservatively check current usage with the >= operation.
+            self.assertGreaterEqual(usage_data['total_usage']['mem'], job_resources['mem'], usage_data)
             self.assertGreaterEqual(usage_data['total_usage']['cpus'], job_resources['cpus'], usage_data)
             self.assertGreaterEqual(usage_data['total_usage']['gpus'], 0, usage_data)
-            self.assertGreaterEqual(usage_data['total_usage']['mem'], job_resources['mem'], usage_data)
             self.assertGreaterEqual(usage_data['total_usage']['jobs'], 1, usage_data)
         finally:
             util.kill_jobs(self.cook_url, [job_uuid])
@@ -1303,23 +1304,33 @@ class CookTest(unittest.TestCase):
             resp = util.user_current_usage(self.cook_url, user=user, group_breakdown='true')
             self.assertEqual(resp.status_code, 200, resp.content)
             usage_data = resp.json()
+            # Check that the response structure looks as expected
             self.assertEqual(set(usage_data.keys()), {'total_usage', 'grouped', 'ungrouped'}, usage_data)
             self.assertEqual(set(usage_data['ungrouped'].keys()), {'running_jobs', 'usage'}, usage_data)
             my_group_usage = next(x for x in usage_data['grouped'] if x['group']['uuid'] == group_uuid)
             self.assertEqual(set(my_group_usage.keys()), {'group', 'usage'}, my_group_usage)
+            # Our jobs should be in the breakdown for our job group
             for job_uuid in job_uuids:
                 self.assertIn(job_uuid, my_group_usage['group']['running_jobs'], my_group_usage)
             # We know all the info about the jobs in our custom group.
-            self.assertEqual(my_group_usage['usage']['cpus'], job_count * job_resources['cpus'], my_group_usage)
             self.assertEqual(my_group_usage['usage']['mem'], job_count * job_resources['mem'], my_group_usage)
+            self.assertEqual(my_group_usage['usage']['cpus'], job_count * job_resources['cpus'], my_group_usage)
             self.assertEqual(my_group_usage['usage']['gpus'], 0, my_group_usage)
             self.assertEqual(my_group_usage['usage']['jobs'], job_count, my_group_usage)
             # Since we don't know what other test jobs are currently running,
             # we conservatively check current usage with the >= operation.
-            self.assertGreaterEqual(usage_data['total_usage']['cpus'], job_resources['cpus'], usage_data)
             self.assertGreaterEqual(usage_data['total_usage']['mem'], job_resources['mem'], usage_data)
+            self.assertGreaterEqual(usage_data['total_usage']['cpus'], job_resources['cpus'], usage_data)
             self.assertGreaterEqual(usage_data['total_usage']['gpus'], 0, usage_data)
             self.assertGreaterEqual(usage_data['total_usage']['jobs'], job_count, usage_data)
+            # The grouped + ungrouped usage should equal the total usage
+            breakdowns_total = Counter(usage_data['ungrouped']['usage'])
+            for grouping in usage_data['grouped']:
+                breakdowns_total += Counter(grouping['usage'])
+            self.assertEqual(usage_data['total_usage']['mem'], breakdowns_total['mem'], usage_data)
+            self.assertEqual(usage_data['total_usage']['cpus'], breakdowns_total['cpus'], usage_data)
+            self.assertEqual(usage_data['total_usage']['gpus'], breakdowns_total['gpus'], usage_data)
+            self.assertEqual(usage_data['total_usage']['jobs'], breakdowns_total['jobs'], usage_data)
         finally:
             util.kill_jobs(self.cook_url, job_uuids)
 
@@ -1336,19 +1347,21 @@ class CookTest(unittest.TestCase):
             resp = util.user_current_usage(self.cook_url, user=user, group_breakdown='true')
             self.assertEqual(resp.status_code, 200, resp.content)
             usage_data = resp.json()
+            # Check that the response structure looks as expected
             self.assertEqual(set(usage_data.keys()), {'total_usage', 'grouped', 'ungrouped'}, usage_data)
             ungrouped_data = usage_data['ungrouped']
             self.assertEqual(set(ungrouped_data.keys()), {'running_jobs', 'usage'}, ungrouped_data)
+            # Our jobs should be included in the ungrouped breakdown
             for job_uuid in job_uuids:
                 self.assertIn(job_uuid, ungrouped_data['running_jobs'], ungrouped_data)
             # Since we don't know what other test jobs are currently running,
             # we conservatively check current usage with the >= operation.
-            self.assertGreaterEqual(ungrouped_data['usage']['cpus'], job_count * job_resources['cpus'], ungrouped_data)
             self.assertGreaterEqual(ungrouped_data['usage']['mem'], job_count * job_resources['mem'], ungrouped_data)
+            self.assertGreaterEqual(ungrouped_data['usage']['cpus'], job_count * job_resources['cpus'], ungrouped_data)
             self.assertGreaterEqual(ungrouped_data['usage']['gpus'], 0, ungrouped_data)
             self.assertGreaterEqual(ungrouped_data['usage']['jobs'], job_count, ungrouped_data)
-            self.assertGreaterEqual(usage_data['total_usage']['cpus'], job_resources['cpus'], usage_data)
             self.assertGreaterEqual(usage_data['total_usage']['mem'], job_resources['mem'], usage_data)
+            self.assertGreaterEqual(usage_data['total_usage']['cpus'], job_resources['cpus'], usage_data)
             self.assertGreaterEqual(usage_data['total_usage']['gpus'], 0, usage_data)
             self.assertGreaterEqual(usage_data['total_usage']['jobs'], job_count, usage_data)
         finally:
