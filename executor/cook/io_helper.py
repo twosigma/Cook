@@ -109,16 +109,25 @@ def process_output(label, out_file, out_fn, flush_fn, flush_interval_secs, max_b
     io_lock = Lock()
     lines_buffered_event = Event()
 
+    def safe_flush():
+        try:
+            flush_fn()
+        except:
+            logging.exception('Error while flushing contents {}'.format(label))
+
     def trigger_flush():
         if lines_buffered_event.is_set():
             with io_lock:
                 logging.info('Flushing contents {}'.format(label))
-                flush_fn()
+                safe_flush()
                 lines_buffered_event.clear()
-        Timer(flush_interval_secs, trigger_flush).start()
+
+    def trigger_flush_daemon():
+        trigger_flush()
+        Timer(flush_interval_secs, trigger_flush_daemon).start()
 
     try:
-        Timer(flush_interval_secs, trigger_flush).start()
+        trigger_flush_daemon()
         while True:
             line = out_file.readline(max_bytes_read_per_line)
             if not line:
@@ -127,7 +136,7 @@ def process_output(label, out_file, out_fn, flush_fn, flush_interval_secs, max_b
                 out_fn(line.decode(), newline=False)
                 lines_buffered_event.set()
         with io_lock:
-            flush_fn()
+            safe_flush()
         logging.info('Done piping {}'.format(label))
     except Exception:
         logging.exception('Error in process_output of {}'.format(label))
@@ -143,7 +152,7 @@ def track_outputs(task_id, process, flush_interval_secs, max_bytes_read_per_line
     process: subprocess.Popen
         The process whose stderr and stdout to monitor.
     flush_interval_secs: number
-        The number of secornds to wait between flushing buffered data
+        The number of seconds to wait between flushing buffered data
     max_bytes_read_per_line: int
         The maximum number of bytes to read per call to readline().
 
