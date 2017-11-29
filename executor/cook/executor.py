@@ -383,15 +383,18 @@ def manage_task(driver, task, stop_signal, completed_signal, config):
         def send_progress_message(message):
             send_message(driver, message, config.max_message_length)
 
-        def launch_progress_tracker(progress_location):
-            progress_tracker = cp.ProgressTracker(task_id, config, stop_signal, task_completed_signal,
-                                                  send_progress_message, progress_location, sequence_counter)
+        def launch_progress_tracker(progress_location, location_tag):
+            logging.info('Location {} tagged as [tag={}]'.format(progress_location, location_tag))
+            progress_tracker = cp.ProgressTracker(task_id, config, stop_signal, task_completed_signal, sequence_counter,
+                                                  send_progress_message, progress_location, location_tag)
             progress_tracker.start()
             return progress_tracker
 
-        progress_locations = {config.progress_output_name, config.stderr_file(), config.stdout_file()}
+        progress_locations = {config.progress_output_name: 'progress',
+                              config.stderr_file(): 'stderr',
+                              config.stdout_file(): 'stdout'}
         logging.info('Progress will be tracked from {} locations'.format(len(progress_locations)))
-        progress_trackers = [launch_progress_tracker(progress_location) for progress_location in progress_locations]
+        progress_trackers = [launch_progress_tracker(l, progress_locations[l]) for l in progress_locations]
 
         process_info = process, stdout_thread, stderr_thread
         await_process_completion(stop_signal, process_info, config.shutdown_grace_period_ms)

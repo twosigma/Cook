@@ -123,7 +123,7 @@ class ProgressTest(unittest.TestCase):
             Thread(target=write_to_file, args=()).start()
 
             counter = cp.ProgressSequenceCounter()
-            watcher = cp.ProgressWatcher(file_name, counter, 1024, '', stop_signal, completed_signal)
+            watcher = cp.ProgressWatcher(file_name, 'test', counter, 1024, '', stop_signal, completed_signal)
             collected_data = []
             for line in watcher.tail(tail_sleep_ms):
                 collected_data.append(line.strip())
@@ -146,7 +146,9 @@ class ProgressTest(unittest.TestCase):
                 file = open(file_name, 'w+')
                 for item in range(items_to_write):
                     file.write("line-{}\n".format(item))
-                    file.flush()
+                    if item % 100 == 0:
+                        file.flush()
+                file.flush()
                 file.close()
                 time.sleep(0.15)
                 completed_signal.set()
@@ -154,7 +156,7 @@ class ProgressTest(unittest.TestCase):
             Thread(target=write_to_file, args=()).start()
 
             counter = cp.ProgressSequenceCounter()
-            watcher = cp.ProgressWatcher(file_name, counter, 1024, '', stop_signal, completed_signal)
+            watcher = cp.ProgressWatcher(file_name, 'test', counter, 1024, '', stop_signal, completed_signal)
             collected_data = []
             for line in watcher.tail(tail_sleep_ms):
                 collected_data.append(line.strip())
@@ -164,7 +166,7 @@ class ProgressTest(unittest.TestCase):
                 for index in range(len(collected_data)):
                     logging.info('{}: {}'.format(index, collected_data[index]))
             self.assertEqual(items_to_write, len(collected_data))
-            expected_data = list(map(lambda x: 'line-' + str(x), range(items_to_write)))
+            expected_data = list(map(lambda x: 'line-{}'.format(x), range(items_to_write)))
             self.assertEqual(expected_data, collected_data)
         finally:
             if os.path.isfile(file_name):
@@ -196,7 +198,7 @@ class ProgressTest(unittest.TestCase):
             Thread(target=write_to_file, args=()).start()
 
             counter = cp.ProgressSequenceCounter()
-            watcher = cp.ProgressWatcher(file_name, counter, 10, '', stop_signal, completed_signal)
+            watcher = cp.ProgressWatcher(file_name, 'test', counter, 10, '', stop_signal, completed_signal)
             collected_data = []
             for line in watcher.tail(tail_sleep_ms):
                 collected_data.append(line.strip())
@@ -212,14 +214,14 @@ class ProgressTest(unittest.TestCase):
 
     def test_collect_progress_updates(self):
         file_name = ensure_directory('build/collect_progress_test.' + get_random_task_id())
-        progress_regex = '\^\^\^\^JOB-PROGRESS: (\d*)(?: )?(.*)'
+        progress_regex = '\^\^\^\^JOB-PROGRESS: (\d+)(?: )?(.*)'
         stop_signal = Event()
         completed_signal = Event()
 
         file = open(file_name, 'w+')
         file.flush()
         counter = cp.ProgressSequenceCounter()
-        watcher = cp.ProgressWatcher(file_name, counter, 1024, progress_regex, stop_signal, completed_signal)
+        watcher = cp.ProgressWatcher(file_name, 'test', counter, 1024, progress_regex, stop_signal, completed_signal)
 
         try:
             def read_progress_states():
@@ -272,14 +274,14 @@ class ProgressTest(unittest.TestCase):
 
     def test_collect_progress_updates_skip_faulty(self):
         file_name = ensure_directory('build/collect_progress_updates_skip_faulty.' + get_random_task_id())
-        progress_regex = '\^\^\^\^JOB-PROGRESS: (\d*)(?: )?(.*)'
+        progress_regex = '\^\^\^\^JOB-PROGRESS: (\d+)(?: )?(.*)'
         stop_signal = Event()
         completed_signal = Event()
 
         file = open(file_name, 'w+')
         file.flush()
         counter = cp.ProgressSequenceCounter()
-        watcher = cp.ProgressWatcher(file_name, counter, 1024, progress_regex, stop_signal, completed_signal)
+        watcher = cp.ProgressWatcher(file_name, 'test', counter, 1024, progress_regex, stop_signal, completed_signal)
 
         try:
             def read_progress_states():
@@ -324,7 +326,7 @@ class ProgressTest(unittest.TestCase):
         file = open(file_name, 'w+')
         file.flush()
         counter = cp.ProgressSequenceCounter()
-        watcher = cp.ProgressWatcher(file_name, counter, 1024, progress_regex, stop_signal, completed_signal)
+        watcher = cp.ProgressWatcher(file_name, 'test', counter, 1024, progress_regex, stop_signal, completed_signal)
 
         try:
             def read_progress_states():
@@ -362,7 +364,7 @@ class ProgressTest(unittest.TestCase):
 
     def test_collect_progress_updates_dev_null(self):
         file_name = ensure_directory('build/collect_progress_test.' + get_random_task_id())
-        progress_regex = '\^\^\^\^JOB-PROGRESS: (\d*)(?: )?(.*)'
+        progress_regex = '\^\^\^\^JOB-PROGRESS: (\d+)(?: )?(.*)'
         location = '/dev/null'
         stop_signal = Event()
         completed_signal = Event()
@@ -370,16 +372,16 @@ class ProgressTest(unittest.TestCase):
         file = open(file_name, 'w+')
         file.flush()
         counter = cp.ProgressSequenceCounter()
-        dev_null_watcher = cp.ProgressWatcher(location, counter, 1024, progress_regex, stop_signal, completed_signal)
-        stdout_watcher = cp.ProgressWatcher(file_name, counter, 1024, progress_regex, stop_signal, completed_signal)
+        dn_watcher = cp.ProgressWatcher(location, 'dn', counter, 1024, progress_regex, stop_signal, completed_signal)
+        out_watcher = cp.ProgressWatcher(file_name, 'so', counter, 1024, progress_regex, stop_signal, completed_signal)
 
         try:
             def read_progress_states(watcher):
                 for _ in watcher.retrieve_progress_states():
                     pass
 
-            Thread(target=read_progress_states, args=(dev_null_watcher,)).start()
-            Thread(target=read_progress_states, args=(stdout_watcher,)).start()
+            Thread(target=read_progress_states, args=(dn_watcher,)).start()
+            Thread(target=read_progress_states, args=(out_watcher,)).start()
 
             file.write("Stage One complete\n")
             file.flush()
@@ -387,9 +389,9 @@ class ProgressTest(unittest.TestCase):
             file.flush()
 
             time.sleep(0.10)
-            self.assertIsNone(dev_null_watcher.current_progress())
+            self.assertIsNone(dn_watcher.current_progress())
             self.assertEqual({'progress-message': 'Hundred percent', 'progress-percent': 100, 'progress-sequence': 1},
-                             stdout_watcher.current_progress())
+                             out_watcher.current_progress())
 
         finally:
             completed_signal.set()
@@ -399,7 +401,7 @@ class ProgressTest(unittest.TestCase):
 
     def test_collect_progress_updates_lots_of_writes(self):
         file_name = ensure_directory('build/collect_progress_test.' + get_random_task_id())
-        progress_regex = 'progress: (\d*), (.*)'
+        progress_regex = 'progress: (\d+), (.*)'
         items_to_write = 250000
         stop_signal = Event()
         completed_signal = Event()
@@ -415,7 +417,7 @@ class ProgressTest(unittest.TestCase):
                     target_file.write('progress: {0}, completed-{0}-percent\n'.format(progress_percent))
                     target_file.flush()
                 target_file.write("{}\n".format(item))
-                target_file.flush()
+            target_file.flush()
 
             target_file.close()
             time.sleep(0.15)
@@ -425,7 +427,7 @@ class ProgressTest(unittest.TestCase):
         write_thread.start()
 
         counter = cp.ProgressSequenceCounter()
-        watcher = cp.ProgressWatcher(file_name, counter, 1024, progress_regex, stop_signal, completed_signal)
+        watcher = cp.ProgressWatcher(file_name, 'test', counter, 1024, progress_regex, stop_signal, completed_signal)
 
         try:
             collected_data = []
@@ -460,7 +462,7 @@ class ProgressTest(unittest.TestCase):
         file = open(file_name, 'w+')
         file.flush()
         counter = cp.ProgressSequenceCounter()
-        watcher = cp.ProgressWatcher(file_name, counter, 1024, progress_regex, stop_signal, completed_signal)
+        watcher = cp.ProgressWatcher(file_name, 'test', counter, 1024, progress_regex, stop_signal, completed_signal)
 
         try:
             def read_progress_states():
