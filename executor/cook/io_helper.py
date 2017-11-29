@@ -5,7 +5,6 @@
 
 import logging
 import os
-import select
 import sys
 from threading import Event, Lock, Thread, Timer
 
@@ -13,13 +12,13 @@ __stdout_lock__ = Lock()
 __stderr_lock__ = Lock()
 
 
-def print_out(data, flush=False, newline=True):
+def print_out(string_data, flush=False, newline=True):
     """Wrapper function that prints to stdout in a thread-safe manner using the __stdout_lock__ lock.
 
     Parameters
     ----------
-    data: string or bytes
-        The data to output
+    string_data: string
+        The string to output
     flush: boolean
         Flag determining whether to trigger a sys.stdout.flush()
     newline: boolean
@@ -29,16 +28,12 @@ def print_out(data, flush=False, newline=True):
     -------
     Nothing.
     """
-    stdout_buffer = sys.stdout.buffer
     with __stdout_lock__:
-        if isinstance(data, str):
-            stdout_buffer.write(data.encode())
-        else:
-            stdout_buffer.write(data)
+        sys.stdout.write(string_data)
         if newline:
-            stdout_buffer.write(os.linesep.encode())
+            sys.stdout.write(os.linesep)
         if flush:
-            stdout_buffer.flush()
+            sys.stdout.flush()
 
 
 def print_and_log(string_data, flush=False, newline=True):
@@ -62,13 +57,13 @@ def print_and_log(string_data, flush=False, newline=True):
     logging.info(string_data)
 
 
-def print_err(data, flush=False, newline=True):
+def print_err(string_data, flush=False, newline=True):
     """Wrapper function that prints to stderr in a thread-safe manner using the __stderr_lock__ lock.
 
     Parameters
     ----------
-    data: string or bytes
-        The data to output
+    string_data: string
+        The string to output
     flush: boolean
         Flag determining whether to trigger a sys.stderr.flush()
     newline: boolean
@@ -78,19 +73,15 @@ def print_err(data, flush=False, newline=True):
     -------
     Nothing.
     """
-    stderr_buffer = sys.stderr.buffer
     with __stderr_lock__:
-        if isinstance(data, str):
-            stderr_buffer.write(data.encode())
-        else:
-            stderr_buffer.write(data)
+        sys.stderr.write(string_data)
         if newline:
-            stderr_buffer.write(os.linesep)
+            sys.stderr.write(os.linesep)
         if flush:
-            stderr_buffer.flush()
+            sys.stderr.flush()
 
 
-def process_output(label, process, out_fd, out_fn, flush_fn, min_reads_before_flush, max_read_nb_chunk_size):
+def process_output(label, out_file, out_fn, flush_fn, flush_interval_secs, max_bytes_read_per_line):
     """Processes output piped from the out_file and prints it using the out_fn function.
     When done reading the file, calls flush_fn to flush the output.
 
@@ -98,15 +89,15 @@ def process_output(label, process, out_fd, out_fn, flush_fn, min_reads_before_fl
     ----------
     label: string
         The string to associate in outputs
-    out_fd: a file descriptor
+    out_file: a file object
         Provides that output from the child process
     out_fn: function(string)
         Function to output a string
     flush_fn: function()
         Function that flushes the output.
-    min_reads_before_flush: int
-        The number of read attempts before triggering a flush
-    max_read_nb_chunk_size: int
+    flush_interval_secs: number
+        The number of seconds to wait between flushing buffered data
+    max_bytes_read_per_line: int
         The maximum number of bytes to read per call to readline().
 
     Returns
@@ -115,43 +106,43 @@ def process_output(label, process, out_fd, out_fn, flush_fn, min_reads_before_fl
     """
     logging.info('Starting to pipe {}'.format(label))
 
+    io_lock = Lock()
+    lines_buffered_event = Event()
+
     def safe_flush():
         try:
             flush_fn()
         except:
             logging.exception('Error while flushing contents {}'.format(label))
 
-    def nb_read(read_pipe, timeout_secs=0.10):
-        read_ready, _, _ = select.select([read_pipe], [], [], timeout_secs)
-        if read_ready:
-            return os.read(read_pipe, max_read_nb_chunk_size)
-        return None
-
-    reads_since_flush = 0
-
-    bytes_in_buffer = 0
-    try:
-        while True:
-            data = nb_read(out_fd)
-            reads_since_flush += 1
-            if data is not None:
-                logging.info('Read: {} [label={}]'.format(data, label))
-                out_fn(data, newline=False)
-                bytes_in_buffer += len(data)
-            if ((reads_since_flush >= min_reads_before_flush and bytes_in_buffer > 0) or
-                        bytes_in_buffer > max_read_nb_chunk_size):
+    def trigger_flush():
+        if lines_buffered_event.is_set():
+            with io_lock:
+                logging.info('Flushing contents {}'.format(label))
                 safe_flush()
-                # reset counters
-                reads_since_flush = 0
-                bytes_in_buffer = 0
-            elif process.poll() is not None:
-                logging.info('Done piping {}'.format(label))
+                lines_buffered_event.clear()
+
+    def trigger_flush_daemon():
+        trigger_flush()
+        Timer(flush_interval_secs, trigger_flush_daemon).start()
+
+    try:
+        trigger_flush_daemon()
+        while True:
+            line = out_file.readline(max_bytes_read_per_line)
+            if not line:
                 break
+            with io_lock:
+                out_fn(line.decode(), newline=False)
+                lines_buffered_event.set()
+        with io_lock:
+            safe_flush()
+        logging.info('Done piping {}'.format(label))
     except Exception:
         logging.exception('Error in process_output of {}'.format(label))
 
 
-def track_outputs(task_id, process, stderr_out, stdout_out, min_reads_before_flush, max_read_nb_chunk_size):
+def track_outputs(task_id, process, flush_interval_secs, max_bytes_read_per_line):
     """Launches two threads to pipe the stderr/stdout from the subprocess to the system stderr/stdout.
 
     Parameters
@@ -160,13 +151,9 @@ def track_outputs(task_id, process, stderr_out, stdout_out, min_reads_before_flu
         The ID of the task being executed.
     process: subprocess.Popen
         The process whose stderr and stdout to monitor.
-    stderr_out: file descriptor
-        The file descriptor for the process' stderr.
-    stdout_out: file descriptor
-        The file descriptor for the process' stdout.
-    min_reads_before_flush: number
+    flush_interval_secs: number
         The number of seconds to wait between flushing buffered data
-    max_read_nb_chunk_size: int
+    max_bytes_read_per_line: int
         The maximum number of bytes to read per call to readline().
 
     Returns
@@ -174,17 +161,17 @@ def track_outputs(task_id, process, stderr_out, stdout_out, min_reads_before_flu
     A tuple containing the two threads that have been started: stdout_thread, stderr_thread.
     """
 
-    def launch_tracker_thread(label, out_fd, out_fn, flush_fn):
+    def launch_tracker_thread(label, out_file, out_fn, flush_fn):
         tracker_thread = Thread(target=process_output,
-                                args=(label, process, out_fd, out_fn, flush_fn, min_reads_before_flush, max_read_nb_chunk_size))
+                                args=(label, out_file, out_fn, flush_fn, flush_interval_secs, max_bytes_read_per_line))
         tracker_thread.daemon = True
         tracker_thread.start()
         return tracker_thread
 
     stderr_label = 'stderr (task-id: {}, pid: {})'.format(task_id, process.pid)
-    stderr_thread = launch_tracker_thread(stderr_label, stderr_out, print_err, sys.stderr.flush)
+    stderr_thread = launch_tracker_thread(stderr_label, process.stderr, print_err, sys.stderr.flush)
 
     stdout_label = 'stdout (task-id: {}, pid: {})'.format(task_id, process.pid)
-    stdout_thread = launch_tracker_thread(stdout_label, stdout_out, print_out, sys.stdout.flush)
+    stdout_thread = launch_tracker_thread(stdout_label, process.stdout, print_out, sys.stdout.flush)
 
     return stdout_thread, stderr_thread
