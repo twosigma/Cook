@@ -104,29 +104,28 @@ def process_output(label, out_file, out_fn, flush_fn, flush_interval_secs, max_b
     -------
     Nothing.
     """
-    logging.info('Starting to pipe {}'.format(label))
-
     io_lock = Lock()
     lines_buffered_event = Event()
+    buffering_complete_event = Event()
 
     def safe_flush():
         try:
-            flush_fn()
+            if lines_buffered_event.is_set():
+                with io_lock:
+                    if lines_buffered_event.is_set():
+                        logging.info('Flushing contents {}'.format(label))
+                        flush_fn()
+                        lines_buffered_event.clear()
         except:
             logging.exception('Error while flushing contents {}'.format(label))
 
-    def trigger_flush():
-        if lines_buffered_event.is_set():
-            with io_lock:
-                logging.info('Flushing contents {}'.format(label))
-                safe_flush()
-                lines_buffered_event.clear()
-
     def trigger_flush_daemon():
-        trigger_flush()
-        Timer(flush_interval_secs, trigger_flush_daemon).start()
+        safe_flush()
+        if not buffering_complete_event.is_set():
+            Timer(flush_interval_secs, trigger_flush_daemon).start()
 
     try:
+        logging.info('Starting to pipe {}'.format(label))
         trigger_flush_daemon()
         while True:
             line = out_file.readline(max_bytes_read_per_line)
@@ -135,11 +134,12 @@ def process_output(label, out_file, out_fn, flush_fn, flush_interval_secs, max_b
             with io_lock:
                 out_fn(line.decode(), newline=False)
                 lines_buffered_event.set()
-        with io_lock:
-            safe_flush()
-        logging.info('Done piping {}'.format(label))
+        safe_flush()
     except Exception:
         logging.exception('Error in process_output of {}'.format(label))
+    finally:
+        buffering_complete_event.set()
+        logging.info('Done piping {}'.format(label))
 
 
 def track_outputs(task_id, process, flush_interval_secs, max_bytes_read_per_line):
