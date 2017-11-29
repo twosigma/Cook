@@ -100,12 +100,12 @@ class ProgressWatcher(object):
     """
 
     @staticmethod
-    def match_progress_update(progress_regex_str, input_string):
+    def match_progress_update(progress_regex_pattern, input_string):
         """Returns the progress tuple when the input string matches the provided regex.
         
         Parameters
         ----------
-        progress_regex_str: string
+        progress_regex_pattern: re.pattern
             The progress regex to match against, it must return two capture groups.
         input_string: string
             The input string.
@@ -115,7 +115,7 @@ class ProgressWatcher(object):
         the tuple (percent, message) if the string matches the provided regex, 
                  else return None. 
         """
-        matches = re.findall(progress_regex_str, input_string)
+        matches = progress_regex_pattern.findall(input_string)
         return matches[0] if len(matches) >= 1 else None
 
     def __init__(self, output_name, sequence_counter, max_bytes_read_per_line, progress_regex_string, stop_signal,
@@ -123,6 +123,7 @@ class ProgressWatcher(object):
         self.target_file = output_name
         self.sequence_counter = sequence_counter
         self.progress_regex_string = progress_regex_string
+        self.progress_regex_pattern = re.compile(progress_regex_string)
         self.progress = None
         self.stop_signal = stop_signal
         self.task_completed_signal = task_completed_signal
@@ -209,7 +210,7 @@ class ProgressWatcher(object):
         if self.progress_regex_string:
             sleep_time_ms = 50
             for line in self.tail(sleep_time_ms):
-                progress_report = ProgressWatcher.match_progress_update(self.progress_regex_string, line)
+                progress_report = ProgressWatcher.match_progress_update(self.progress_regex_pattern, line)
                 if progress_report is None:
                     continue
                 percent_str, message = progress_report
