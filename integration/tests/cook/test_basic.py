@@ -1,6 +1,7 @@
 import dateutil.parser
 import json
 import logging
+import math
 import operator
 import pytest
 import subprocess
@@ -1419,7 +1420,7 @@ class CookTest(unittest.TestCase):
         finally:
             util.kill_jobs(self.cook_url, uuids)
 
-    @attr('explicit')
+    @pytest.mark.xfail
     def test_balanced_host_constraint_cannot_place(self):
         """
         Marked as explicit due to broken constraints handling.

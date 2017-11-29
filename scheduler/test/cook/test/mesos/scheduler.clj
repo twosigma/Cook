@@ -29,6 +29,7 @@
             [cook.mesos.share :as share]
             [cook.mesos.util :as util]
             [cook.test.testutil :refer (restore-fresh-database! create-dummy-group create-dummy-job create-dummy-instance init-offer-cache poll-until)]
+            [criterium.core :as crit]
             [datomic.api :as d :refer (q db)]
             [mesomatic.scheduler :as msched]
             [mesomatic.types :as mtypes]
@@ -136,7 +137,9 @@
                   (map #(util/job-ent->map %)))
         task-ids (take (count jobs) (repeatedly #(str (java.util.UUID/randomUUID))))
         guuid->considerable-cotask-ids (util/make-guuid->considerable-cotask-ids (zipmap jobs task-ids))
-        tasks (map #(sched/make-task-request db %1 :task-id %2 :guuid->considerable-cotask-ids guuid->considerable-cotask-ids)
+        cache (atom (cache/fifo-cache-factory {} :threshold (count job-ids)))
+        tasks (map #(sched/make-task-request db %1 :task-id %2 :guuid->considerable-cotask-ids guuid->considerable-cotask-ids
+                                             :running-cotask-cache cache)
                    jobs task-ids)
         result (-> scheduler
                    (.scheduleOnce tasks offers))
@@ -814,6 +817,20 @@
                        .getResultMap
                        vals
                        (reduce #(+ %1 (count (.getTasksAssigned %2))) 0))))))))
+
+(deftest ^:benchmark stress-test-constraint
+  (let [framework-id #mesomatic.types.FrameworkID{:value "my-original-framework-id"}
+        uri "datomic:mem://stress-test-constraint"
+        conn (restore-fresh-database! uri)
+        scheduler (make-dummy-scheduler)
+        hosts (map (fn [x] (str "test-host-" x)) (range 10))
+        make-offers (fn [] (map #(make-vm-offer framework-id % (make-uuid)) hosts))
+        group-id (create-dummy-group conn :host-placement {:host-placement/type :host-placement.type/unique})
+                                        ;        group-id (create-dummy-group conn)
+        jobs (doall (take 200 (repeatedly (fn [] (create-dummy-job conn :group group-id)))))
+        group (d/entity (d/db conn) group-id)]
+    (println  "============ match offers with group constraints timing ============")
+    (crit/bench (schedule-and-run-jobs conn framework-id scheduler (make-offers) jobs))))
 
 (deftest test-gpu-share-prioritization
   (let [uri "datomic:mem://test-gpu-shares"

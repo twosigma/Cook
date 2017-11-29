@@ -14,7 +14,8 @@
 ;; limitations under the License.
 ;;
 (ns cook.mesos.constraints
-  (:require [clojure.set :as set]
+  (:require [clojure.core.cache :as cache]
+            [clojure.set :as set]
             [clojure.tools.logging :as log]
             [cook.mesos.group :as group]
             [swiss.arrows :refer :all])
@@ -185,12 +186,23 @@
 
 ;; Group host placement constraints
 
+(defn- get-running-cotasks-from-cache
+  [db group-uuid->running-cotask-cache group]
+  (let [group-uuid (:group/uuid group)]
+    (cache/lookup (swap! group-uuid->running-cotask-cache
+                         (fn [c]
+                           (if (cache/has? c group-uuid)
+                             (cache/hit c group-uuid)
+                             (cache/miss c group-uuid (group/group->running-task-set db group)))))
+                  group-uuid)))
+
 (defn get-cotasks
-  [db group job]
+  [db group job group-uuid->running-cotask-cache]
   "Given a group and a job, finds the set of all the running instances that belong to the jobs in
    'group', but do not belong to 'job'"
-  (-> (group/group->running-task-set db group)
-      (set/difference (set (:job/instance job)))))
+  (let [group-uuid (:group/uuid group)
+        db-cotasks (get-running-cotasks-from-cache db group-uuid->running-cotask-cache group)]
+    (set/difference db-cotasks (set (:job/instance job)))))
 
 (defn get-cotasks-from-tracker-state
   "Returns all the Fenzo TaskTracker.ActiveTask (stored in task-tracker-state) that correspond to
@@ -211,12 +223,13 @@
    sequence of Fenzo TaskTracker.ActiveTasks, which correspond to ALL the running tasks in group.
    This includes both running tasks and tasks that are being assigned by Fenzo
    in the current cycle."
-  [db group task-id same-cycle-task-ids task-tracker-state]
-  (let [cotask-ids (disj
-                     (set/union
-                       (group/group->running-task-id-set db group) ; Tasks that are in the database (running or scheduled)
-                       same-cycle-task-ids) ; Tasks in same cycle
-                     task-id)] ; Do not include this task-id
+  [db group task-id same-cycle-task-ids task-tracker-state group-uuid->running-cotask-cache]
+  (let [db-cotask-ids (set (map :instance/task-id (get-running-cotasks-from-cache
+                                                   db group-uuid->running-cotask-cache group)))
+        cotask-ids (disj (set/union
+                          db-cotask-ids ; Tasks that are in the database (running or scheduled)
+                          same-cycle-task-ids) ; Tasks in same cycle
+                         task-id)] ; Do not include this task-id
     ; Return a Fenzo TaskTracker.ActiveTask
     (get-cotasks-from-tracker-state task-tracker-state cotask-ids)))
 
@@ -313,7 +326,7 @@
   "Returns a Fenzo-compatible group host placement constraint for tasks that belong to 'group'. The
    'cycle-task-ids-fn' parameters is a 0-arity function which will return the sequence of task
    ids that will be considered in the cycle where this constraint will be used."
-  [db group cycle-task-ids-fn]
+  [db group cycle-task-ids-fn running-task-id-cache]
   (let [constraint-type (or (-> group :group/host-placement :host-placement/type) :host-placement.type/all)
         constraint-constructor (constraint-type-to-constraint-constructor constraint-type)
         constraint (when constraint-constructor (constraint-constructor group))]
@@ -325,7 +338,7 @@
                 target-attr-map (-> target-vm
                                     .getCurrAvailableResources
                                     (get-vm-lease-attr-map))
-                cotasks (get-fenzo-cotasks db group task-id (cycle-task-ids-fn) task-tracker-state)
+                cotasks (get-fenzo-cotasks db group task-id (cycle-task-ids-fn) task-tracker-state running-task-id-cache)
                 cotask-attr-maps (->> cotasks
                                       (map #(.getTotalLease %))
                                       (map get-vm-lease-attr-map))
@@ -337,13 +350,13 @@
    belong to 'group'. 'slave-attrs-getter' must be a function that takes a slave-id and returns the
    attribute map for that slave. 'tasks-preempted-so-far' must be a sequence of tasks that the
    rebalancer has decided to preempt during the current cycle."
-  [db group slave-attrs-getter tasks-preempted-so-far]
+  [db group slave-attrs-getter tasks-preempted-so-far cotask-cache]
   (let [constraint-type (get-group-constraint-type group)
         constraint-constructor (constraint-type-to-constraint-constructor constraint-type)
         constraint (when constraint-constructor (constraint-constructor group))]
     (when constraint
       (fn group-constraint [job target-slave-id]
-        (let [cotask-slave-ids (->> (get-cotasks db group job)
+        (let [cotask-slave-ids (->> (get-cotasks db group job cotask-cache)
                                     (map :instance/slave-id)
                                     (into (vec (remove nil? (map :instance/slave-id tasks-preempted-so-far)))))
               target-attr-map (slave-attrs-getter target-slave-id)
