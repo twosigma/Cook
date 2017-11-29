@@ -110,7 +110,12 @@ class ExecutorTest(unittest.TestCase):
         task = {'task_id': {'value': task_id},
                 'data': encode_data(json.dumps({'command': command}).encode('utf8'))}
         environment = {}
-        process = ce.launch_task(task, environment)
+        launch_result = ce.launch_task(task, environment)
+        self.assertIsNotNone(launch_result)
+
+        process, stderr_out, stdout_out = launch_result
+        self.assertIsNotNone(stderr_out)
+        self.assertIsNotNone(stdout_out)
 
         group_id = ce.find_process_group(process.pid)
         self.assertGreater(group_id, 0)
@@ -143,11 +148,16 @@ class ExecutorTest(unittest.TestCase):
         redirect_stderr_to_file(stderr_name)
 
         try:
-            process = ce.launch_task(task, os.environ)
-            stdout_thread, stderr_thread = cio.track_outputs(task_id, process, 2, 4096)
+            launch_result = ce.launch_task(task, os.environ)
+            self.assertIsNotNone(launch_result)
+
+            process, stderr_out, stdout_out = launch_result
+            stdout_thread, stderr_thread = cio.track_outputs(task_id, process, stderr_out, stdout_out, 2, 4096)
             process_info = process, stdout_thread, stderr_thread
 
             self.assertIsNotNone(process)
+            self.assertIsNotNone(stderr_out)
+            self.assertIsNotNone(stdout_out)
 
             for _ in range(100):
                 if ce.is_running(process_info):
@@ -182,11 +192,16 @@ class ExecutorTest(unittest.TestCase):
         redirect_stderr_to_file(stderr_name)
 
         try:
-            process = ce.launch_task(task, os.environ)
-            stdout_thread, stderr_thread = cio.track_outputs(task_id, process, 2, 4096)
+            launch_result = ce.launch_task(task, os.environ)
+            self.assertIsNotNone(launch_result)
+
+            process, stderr_out, stdout_out = launch_result
+            stdout_thread, stderr_thread = cio.track_outputs(task_id, process, stderr_out, stdout_out, 2, 4096)
             process_info = process, stdout_thread, stderr_thread
 
             self.assertIsNotNone(process)
+            self.assertIsNotNone(stderr_out)
+            self.assertIsNotNone(stdout_out)
 
             # let the process run for up to 50 seconds
             for _ in range(5000):
@@ -218,17 +233,17 @@ class ExecutorTest(unittest.TestCase):
         task = {'task_id': {'value': task_id},
                 'data': encode_data(json.dumps({'command': ''}).encode('utf8'))}
 
-        process = ce.launch_task(task, os.environ)
+        launch_result = ce.launch_task(task, os.environ)
 
-        self.assertIsNone(process)
+        self.assertIsNone(launch_result)
 
     def test_launch_task_handle_exception(self):
         task_id = get_random_task_id()
         task = {'task_id': {'value': task_id}}
 
-        process = ce.launch_task(task, os.environ)
+        launch_result = ce.launch_task(task, os.environ)
 
-        self.assertIsNone(process)
+        self.assertIsNone(launch_result)
 
     def test_kill_task_terminate_with_sigterm(self):
         task_id = get_random_task_id()
@@ -241,9 +256,10 @@ class ExecutorTest(unittest.TestCase):
 
         try:
             command = "bash -c 'function handle_term { echo GOT TERM; }; trap handle_term SIGTERM TERM; sleep 100'"
-            process = subprocess.Popen(command, preexec_fn=os.setpgrp, shell=True,
-                                       stderr=subprocess.PIPE, stdout=subprocess.PIPE)
-            stdout_thread, stderr_thread = cio.track_outputs(task_id, process, 2, 4096)
+            stdout_out, stdout_in = os.pipe()
+            stderr_out, stderr_in = os.pipe()
+            process = subprocess.Popen(command, preexec_fn=os.setpgrp, shell=True, stderr=stderr_in, stdout=stdout_in)
+            stdout_thread, stderr_thread = cio.track_outputs(task_id, process, stderr_out, stdout_out, 2, 4096)
             shutdown_grace_period_ms = 1000
 
             group_id = ce.find_process_group(process.pid)
@@ -279,9 +295,10 @@ class ExecutorTest(unittest.TestCase):
 
         try:
             command = "trap '' TERM SIGTERM; sleep 100"
-            process = subprocess.Popen(command, preexec_fn=os.setpgrp, shell=True,
-                                       stderr=subprocess.PIPE, stdout=subprocess.PIPE)
-            stdout_thread, stderr_thread = cio.track_outputs(task_id, process, 2, 4096)
+            stdout_out, stdout_in = os.pipe()
+            stderr_out, stderr_in = os.pipe()
+            process = subprocess.Popen(command, preexec_fn=os.setpgrp, shell=True, stderr=stderr_in, stdout=stdout_in)
+            stdout_thread, stderr_thread = cio.track_outputs(task_id, process, stderr_out, stdout_out, 2, 4096)
             shutdown_grace_period_ms = 1000
 
             group_id = ce.find_process_group(process.pid)
@@ -789,9 +806,10 @@ class ExecutorTest(unittest.TestCase):
         stderr_name = ensure_directory('build/stderr.{}'.format(task_id))
         stdout_name = ensure_directory('build/stdout.{}'.format(task_id))
 
-        config = FakeExecutorConfig({'flush_interval_secs': 0.5,
-                                     'max_bytes_read_per_line': 1024,
+        config = FakeExecutorConfig({'max_bytes_read_per_line': 1024,
                                      'max_message_length': max_message_length,
+                                     'max_read_nb_chunk_size': 1024,
+                                     'min_reads_before_flush': 0.5,
                                      'progress_output_env_variable': 'DEFAULT_PROGRESS_FILE_ENV_VARIABLE',
                                      'progress_output_name': progress_name,
                                      'progress_regex_string': '\^\^\^\^JOB-PROGRESS: (\d+)(?: )?(.*)',

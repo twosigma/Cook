@@ -107,7 +107,8 @@ def launch_task(task, environment):
 
     Returns
     -------
-    When command is provided and a process can be started, the process launched.
+    When command is provided and a process can be started, the tuple (process, stderr_out, stdout_out) which include
+    the subprocess.Popen process that was launched along with the output file descriptors for stderr and stdout.
     Else it logs the reason and returns None.
     """
     try:
@@ -119,15 +120,17 @@ def launch_task(task, environment):
             logging.warning('No command provided!')
             return None
 
+        stdout_out, stdout_in = os.pipe()
+        stderr_out, stderr_in = os.pipe()
         # The preexec_fn is run after the fork() but before exec() to run the shell.
         process = subprocess.Popen(command,
                                    env=environment,
                                    preexec_fn=os.setpgrp,
                                    shell=True,
-                                   stderr=subprocess.PIPE,
-                                   stdout=subprocess.PIPE)
+                                   stderr=stderr_in,
+                                   stdout=stdout_in)
 
-        return process
+        return process, stderr_out, stdout_out
     except Exception:
         logging.exception('Error in launch_task')
         return None
@@ -363,8 +366,9 @@ def manage_task(driver, task, stop_signal, completed_signal, config):
         send_message(driver, sandbox_message, config.max_message_length)
 
         environment = retrieve_process_environment(config, os.environ)
-        process = launch_task(task, environment)
-        if process:
+        launch_result = launch_task(task, environment)
+        if launch_result:
+            process, stderr_out, stdout_out = launch_result
             # task has begun running successfully
             update_status(driver, task_id, cook.TASK_RUNNING)
             cio.print_and_log('Forked command at {}'.format(process.pid))
@@ -376,9 +380,8 @@ def manage_task(driver, task, stop_signal, completed_signal, config):
 
         group_id = find_process_group(process.pid)
 
-        flush_interval_secs = config.flush_interval_secs
-        max_bytes_read_per_line = config.max_bytes_read_per_line
-        stdout_thread, stderr_thread = cio.track_outputs(task_id, process, flush_interval_secs, max_bytes_read_per_line)
+        stdout_thread, stderr_thread = cio.track_outputs(task_id, process, stderr_out, stdout_out,
+                                                         config.min_reads_before_flush, config.max_read_nb_chunk_size)
         task_completed_signal = Event() # event to track task execution completion
         sequence_counter = cp.ProgressSequenceCounter()
 
