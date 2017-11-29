@@ -21,8 +21,7 @@ import java.util.Set;
 import java.util.UUID;
 
 import com.twosigma.cook.jobclient.constraint.Constraints;
-import com.twosigma.cook.jobclient.constraint.api.Constraint;
-import com.twosigma.cook.jobclient.constraint.api.Operator;
+import com.twosigma.cook.jobclient.constraint.Constraint;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -61,7 +60,7 @@ public class JobTest {
         jobBuilder.addUri(new FetchableURI.Builder().setValue("http://example.com/my_resource").build());
         jobBuilder.setApplication(new Application("baz-app", "1.2.3"));
         jobBuilder.setExpectedRuntime(500L);
-        _constraint = Constraints.get(Operator.EQUALS).build("bar", "foo");
+        _constraint = Constraints.buildEqualsConstraint("bar", "foo");
         jobBuilder.addConstraint(_constraint);
         _initializedJob = jobBuilder.build();
     }

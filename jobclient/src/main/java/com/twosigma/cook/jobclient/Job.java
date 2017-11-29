@@ -21,7 +21,7 @@ import java.util.regex.Pattern;
 
 import com.google.common.collect.ImmutableSet;
 import com.twosigma.cook.jobclient.constraint.Constraints;
-import com.twosigma.cook.jobclient.constraint.api.Constraint;
+import com.twosigma.cook.jobclient.constraint.Constraint;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;

@@ -16,11 +16,7 @@
 package com.twosigma.cook.jobclient.constraint;
 
 import com.google.common.base.Preconditions;
-import com.twosigma.cook.jobclient.constraint.api.Constraint;
-import com.twosigma.cook.jobclient.constraint.api.ConstraintBuilder;
-import com.twosigma.cook.jobclient.constraint.api.Operator;
 import org.json.JSONArray;
-
 
 /**
  * A constraint in Cook could be one of the following three forms
@@ -39,24 +35,18 @@ import org.json.JSONArray;
  * a constraint with an EQUALS operator by
  * <p>
  * <pre>
- *  Constraint c = Constraints.get(Operator.EQUALS).build("host", "foo.bar.com");
+ *  Constraint c = Constraints.buildEqualsConstraint("host", "foo.bar.com");
  * </pre>
  */
 public class Constraints {
 
     /**
-     * Return a {@link ConstraintBuilder} specific for the given operator.
-     *
-     * @param operator the constraint operator
-     * @return a {@link ConstraintBuilder} specific for the given operator.
+     * @param attribute the constraint attribute
+     * @param value     the constraint value
+     * @return an EQUALS constraint with given attribute and value.
      */
-    public static ConstraintBuilder get(Operator operator) {
-        switch (operator) {
-            case EQUALS:
-                return new OneToOneConstraintBuilder(operator);
-            default:
-                throw new UnsupportedOperationException(operator + " is not supported.");
-        }
+    public static Constraint buildEqualsConstraint(String attribute, String value) {
+        return new OneToOneConstraint(Operator.EQUALS, attribute, value);
     }
 
     /**
@@ -66,11 +56,14 @@ public class Constraints {
      * @return the parsed constraint.
      */
     public static Constraint parseFrom(JSONArray constraint) {
-        Preconditions.checkArgument(
-                constraint.length() == 2 || constraint.length() == 3,
-                "The constraint must be form of [<attribute>, <operator>, <value>] or [<attribute>, <operator>]");
         Operator operator = Operator.fromString(constraint.getString(1));
-        ConstraintBuilder relation = get(operator);
-        return relation.parseFrom(constraint);
+        switch (operator) {
+            case EQUALS:
+                Preconditions.checkArgument(constraint.length() == 3,
+                        "The constraint must be form of [<attribute>, <operator>, <value>]");
+                return new OneToOneConstraint(operator, constraint.getString(0), constraint.getString(2));
+            default:
+                throw new UnsupportedOperationException(operator + " is not supported.");
+        }
     }
 }
