@@ -85,13 +85,13 @@ def send_message(driver, message, max_message_length):
     """
     logging.info('Sending framework message {}'.format(message))
     message_string = str(message).encode('utf8')
-    if len(message_string) < max_message_length:
+    if len(message_string) <= max_message_length:
         encoded_message = pm.encode_data(message_string)
         driver.sendFrameworkMessage(encoded_message)
         return True
     else:
-        log_message_template = 'Unable to send message {} as it exceeds allowed max length of {}'
-        logging.warning(log_message_template.format(message, max_message_length))
+        log_message_template = 'Unable to send message as its length of {} exceeds allowed max length of {}'
+        logging.warning(log_message_template.format(len(message_string), max_message_length))
         return False
 
 
@@ -381,7 +381,7 @@ def manage_task(driver, task, stop_signal, completed_signal, config):
         sequence_counter = cp.ProgressSequenceCounter()
 
         def send_progress_message(message):
-            send_message(driver, message, config.max_message_length)
+            return send_message(driver, message, config.max_message_length)
 
         def launch_progress_tracker(progress_location, location_tag):
             logging.info('Location {} tagged as [tag={}]'.format(progress_location, location_tag))

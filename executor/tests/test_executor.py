@@ -370,7 +370,7 @@ class ExecutorTest(unittest.TestCase):
             sandbox_directory = '/location/to/task/sandbox/{}'.format(task_id)
             config = cc.ExecutorConfig(max_message_length=300,
                                        progress_output_name=stdout_name,
-                                       progress_regex_string='\^\^\^\^JOB-PROGRESS: (\d*)(?: )?(.*)',
+                                       progress_regex_string='\^\^\^\^JOB-PROGRESS: (\d+)(?: )?(.*)',
                                        progress_sample_interval_ms=100,
                                        sandbox_directory=sandbox_directory)
         else:
@@ -391,7 +391,7 @@ class ExecutorTest(unittest.TestCase):
             logging.info('Statuses: {}'.format(driver.statuses))
             self.assertEqual(3, len(driver.statuses))
 
-            logging.info('Messages: {}'.format(driver.messages))
+            logging.info('Messages: {}'.format(list(map(lambda m: parse_message(m), driver.messages))))
             self.assertEqual(2, len(driver.messages))
 
             stdout_name = ensure_directory('build/stdout.{}'.format(task_id))
@@ -427,7 +427,7 @@ class ExecutorTest(unittest.TestCase):
             expected_status_2 = {'task_id': {'value': task_id}, 'state': cook.TASK_FINISHED}
             assert_status(self, expected_status_2, actual_status_2)
 
-            logging.info('Messages: {}'.format(driver.messages))
+            logging.info('Messages: {}'.format(list(map(lambda m: parse_message(m), driver.messages))))
             self.assertEqual(2, len(driver.messages))
 
             actual_encoded_message_0 = driver.messages[0]
@@ -455,7 +455,7 @@ class ExecutorTest(unittest.TestCase):
             expected_status_1 = {'task_id': {'value': task_id}, 'state': cook.TASK_ERROR}
             assert_status(self, expected_status_1, actual_status_1)
 
-            logging.info('Messages: {}'.format(driver.messages))
+            logging.info('Messages: {}'.format(list(map(lambda m: parse_message(m), driver.messages))))
             self.assertEqual(1, len(driver.messages))
 
             actual_encoded_message_0 = driver.messages[0]
@@ -483,7 +483,7 @@ class ExecutorTest(unittest.TestCase):
             expected_status_2 = {'task_id': {'value': task_id}, 'state': cook.TASK_FINISHED}
             assert_status(self, expected_status_2, actual_status_2)
 
-            logging.info('Messages: {}'.format(driver.messages))
+            logging.info('Messages: {}'.format(list(map(lambda m: parse_message(m), driver.messages))))
             self.assertEqual(3, len(driver.messages))
 
             actual_encoded_message_0 = driver.messages[0]
@@ -531,7 +531,7 @@ class ExecutorTest(unittest.TestCase):
             expected_status_2 = {'task_id': {'value': task_id}, 'state': cook.TASK_FINISHED}
             assert_status(self, expected_status_2, actual_status_2)
 
-            logging.info('Messages: {}'.format(driver.messages))
+            logging.info('Messages: {}'.format(list(map(lambda m: parse_message(m), driver.messages))))
             self.assertEqual(4, len(driver.messages))
 
             actual_encoded_message_0 = driver.messages[0]
@@ -561,9 +561,9 @@ class ExecutorTest(unittest.TestCase):
 
         command = 'echo "Hello World"; ' \
                   'echo "^^^^JOB-PROGRESS: 50 Fifty percent"; ' \
-                  'sleep 1; ' \
+                  'sleep 0.1; ' \
                   'echo "^^^^JOB-PROGRESS: 55 Fifty-five percent"; ' \
-                  'sleep 1; ' \
+                  'sleep 0.1; ' \
                   'echo "Exiting..."; ' \
                   'exit 0'
         self.manage_task_runner(command, assertions)
@@ -586,7 +586,7 @@ class ExecutorTest(unittest.TestCase):
             expected_status_2 = {'task_id': {'value': task_id}, 'state': cook.TASK_FAILED}
             assert_status(self, expected_status_2, actual_status_2)
 
-            logging.info('Messages: {}'.format(driver.messages))
+            logging.info('Messages: {}'.format(list(map(lambda m: parse_message(m), driver.messages))))
             self.assertEqual(2, len(driver.messages))
 
             actual_encoded_message_0 = driver.messages[0]
@@ -618,7 +618,7 @@ class ExecutorTest(unittest.TestCase):
             expected_status_2 = {'task_id': {'value': task_id}, 'state': cook.TASK_KILLED}
             assert_status(self, expected_status_2, actual_status_2)
 
-            logging.info('Messages: {}'.format(driver.messages))
+            logging.info('Messages: {}'.format(list(map(lambda m: parse_message(m), driver.messages))))
             self.assertEqual(2, len(driver.messages))
 
             actual_encoded_message_0 = driver.messages[0]
@@ -640,13 +640,13 @@ class ExecutorTest(unittest.TestCase):
         command = 'sleep 100'
         self.manage_task_runner(command, assertions, stop_signal=stop_signal)
 
-    def test_manage_task_long_output(self):
+    def test_manage_task_long_output_single_line(self):
         def assertions(driver, task_id, sandbox_directory):
 
             logging.info('Statuses: {}'.format(driver.statuses))
             self.assertEqual(3, len(driver.statuses))
 
-            logging.info('Messages: {}'.format(driver.messages))
+            logging.info('Messages: {}'.format(list(map(lambda m: parse_message(m), driver.messages))))
             self.assertEqual(2, len(driver.messages))
 
             actual_encoded_message_0 = driver.messages[0]
@@ -683,13 +683,15 @@ class ExecutorTest(unittest.TestCase):
         stop_signal.set()
 
     def test_manage_task_progress_in_progress_stderr_and_stdout_progress(self):
+        max_message_length = 130
+
         def assertions(driver, task_id, sandbox_directory):
 
             logging.info('Statuses: {}'.format(driver.statuses))
             self.assertEqual(3, len(driver.statuses))
 
-            logging.info('Messages: {}'.format(driver.messages))
-            self.assertEqual(5, len(driver.messages))
+            logging.info('Messages: {}'.format(list(map(lambda m: parse_message(m), driver.messages))))
+            self.assertEqual(6, len(driver.messages))
 
             actual_encoded_message_0 = driver.messages[0]
             expected_message_0 = {'sandbox-directory': sandbox_directory, 'task-id': task_id, 'type': 'directory'}
@@ -707,7 +709,16 @@ class ExecutorTest(unittest.TestCase):
                                           {'progress-message': 'Sixty percent in stderr',
                                            'progress-percent': 60,
                                            'progress-sequence': 3,
+                                           'task-id': task_id},
+                                          {'progress-message': 'Sixty-five percent in stdout with...',
+                                           'progress-percent': 65,
+                                           'progress-sequence': 4,
                                            'task-id': task_id}]
+
+            for i in range(0, len(driver.messages)):
+                actual_message = parse_message(driver.messages[i])
+                actual_message_string = str(actual_message).encode('utf8')
+                self.assertLessEqual(len(actual_message_string), max_message_length)
 
             for i in range(1, len(driver.messages)):
                 actual_message = parse_message(driver.messages[i])
@@ -738,11 +749,11 @@ class ExecutorTest(unittest.TestCase):
         stdout_name = ensure_directory('build/stdout.{}'.format(task_id))
 
         config = FakeExecutorConfig({'max_bytes_read_per_line': 1024,
-                                     'max_message_length': 300,
+                                     'max_message_length': max_message_length,
                                      'progress_output_env_variable': 'DEFAULT_PROGRESS_FILE_ENV_VARIABLE',
                                      'progress_output_name': progress_name,
-                                     'progress_regex_string': '\^\^\^\^JOB-PROGRESS: (\d*)(?: )?(.*)',
-                                     'progress_sample_interval_ms': 100,
+                                     'progress_regex_string': '\^\^\^\^JOB-PROGRESS: (\d+)(?: )?(.*)',
+                                     'progress_sample_interval_ms': 10,
                                      'sandbox_directory': '/sandbox/directory/for/{}'.format(task_id),
                                      'shutdown_grace_period_ms': 60000,
                                      'stderr_file': stderr_name,
@@ -750,13 +761,15 @@ class ExecutorTest(unittest.TestCase):
 
         command = 'echo "Hello World"; ' \
                   'echo "^^^^JOB-PROGRESS: 50 Fifty percent in progress file" >> {}; ' \
-                  'sleep 1; ' \
+                  'sleep 0.1; ' \
                   'echo "^^^^JOB-PROGRESS: 55 Fifty-five percent in stdout" >> {}; ' \
-                  'sleep 1; ' \
+                  'sleep 0.1; ' \
                   'echo "^^^^JOB-PROGRESS: 60 Sixty percent in stderr" >> {}; ' \
-                  'sleep 1; ' \
+                  'sleep 0.1; ' \
+                  'echo "^^^^JOB-PROGRESS: 65 Sixty-five percent in stdout with a long message" >> {}; ' \
+                  'sleep 0.1; ' \
                   'echo "Exiting..."; ' \
-                  'exit 0'.format(progress_name, stdout_name, stderr_name)
+                  'exit 0'.format(progress_name, stdout_name, stderr_name, stdout_name)
 
         self.manage_task_runner(command, assertions, stop_signal=stop_signal, task_id=task_id, config=config)
         stop_signal.set()

@@ -43,6 +43,9 @@ class ProgressTest(unittest.TestCase):
 
         def send_progress_message(message):
             ce.send_message(driver, message, max_message_length)
+            message_string = str(message).encode('utf8')
+            self.assertLessEqual(len(message_string), max_message_length)
+            return len(message_string) <= max_message_length
 
         progress_updater = cp.ProgressUpdater(task_id, max_message_length, poll_interval_ms, send_progress_message)
         progress_data_0 = {'progress-message': 'Progress message-0'}
@@ -75,6 +78,9 @@ class ProgressTest(unittest.TestCase):
 
         def send_progress_message(message):
             ce.send_message(driver, message, max_message_length)
+            message_string = str(message).encode('utf8')
+            self.assertLessEqual(len(message_string), max_message_length)
+            return len(message_string) <= max_message_length
 
         progress_updater = cp.ProgressUpdater(task_id, max_message_length, poll_interval_ms, send_progress_message)
         progress_data_0 = {'progress-message': 'Progress message-0 is really long lorem ipsum dolor sit amet text'}
@@ -94,6 +100,9 @@ class ProgressTest(unittest.TestCase):
 
         def send_progress_message(message):
             ce.send_message(driver, message, max_message_length)
+            message_string = str(message).encode('utf8')
+            self.assertGreater(len(message_string), max_message_length)
+            return len(message_string) <= max_message_length
 
         progress_updater = cp.ProgressUpdater(task_id, max_message_length, poll_interval_ms, send_progress_message)
         progress_data_0 = {'unknown': 'Unknown field has a really long lorem ipsum dolor sit amet exceed limit text'}

@@ -87,9 +87,12 @@ class ProgressUpdater(object):
                         message_dict['progress-message'] = new_progress_str
                         progress_message = json.dumps(message_dict)
 
-                    self.send_progress_message(progress_message)
-                    self.last_reported_time = time.time()
-                    self.last_progress_data = progress_data
+                    send_success = self.send_progress_message(progress_message)
+                    if send_success:
+                        self.last_progress_data = progress_data
+                        self.last_reported_time = time.time()
+                    else:
+                        logging.info('Unable to send progress message {}'.format(progress_message))
                 else:
                     logging.debug('Not sending progress data as enough time has not elapsed since last update')
 
