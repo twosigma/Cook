@@ -1324,11 +1324,12 @@ class CookTest(unittest.TestCase):
             self.assertGreaterEqual(usage_data['total_usage']['gpus'], 0, usage_data)
             self.assertGreaterEqual(usage_data['total_usage']['jobs'], job_count, usage_data)
             # The grouped + ungrouped usage should equal the total usage
+            # (with possible rounding errors for floating-point cpu/mem values)
             breakdowns_total = Counter(usage_data['ungrouped']['usage'])
             for grouping in usage_data['grouped']:
                 breakdowns_total += Counter(grouping['usage'])
-            self.assertEqual(usage_data['total_usage']['mem'], breakdowns_total['mem'], usage_data)
-            self.assertEqual(usage_data['total_usage']['cpus'], breakdowns_total['cpus'], usage_data)
+            self.assertAlmostEqual(usage_data['total_usage']['mem'], breakdowns_total['mem'], usage_data)
+            self.assertAlmostEqual(usage_data['total_usage']['cpus'], breakdowns_total['cpus'], usage_data)
             self.assertEqual(usage_data['total_usage']['gpus'], breakdowns_total['gpus'], usage_data)
             self.assertEqual(usage_data['total_usage']['jobs'], breakdowns_total['jobs'], usage_data)
         finally:
