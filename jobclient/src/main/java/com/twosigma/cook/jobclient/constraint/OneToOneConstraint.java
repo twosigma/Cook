@@ -17,6 +17,8 @@ package com.twosigma.cook.jobclient.constraint;
 
 import org.json.JSONArray;
 
+import java.util.Objects;
+
 /**
  * A constraint of form
  * <ul>
@@ -36,26 +38,23 @@ final class OneToOneConstraint implements Constraint {
 
     @Override
     public boolean equals(Object o) {
-        if (this == o) return true;
-        if (o == null || getClass() != o.getClass()) return false;
+        if (o == null) return false;
+        if (o == this) return true;
 
-        OneToOneConstraint that = (OneToOneConstraint) o;
+        if (!(o instanceof OneToOneConstraint)) return false;
 
-        if (_attribute != null ? !_attribute.equals(that._attribute) : that._attribute != null) {
-            return false;
-        }
-        if (_operator != that._operator) {
-            return false;
-        }
-        return _value != null ? _value.equals(that._value) : that._value == null;
+        OneToOneConstraint other = (OneToOneConstraint) o;
+
+        if (!Objects.equals(this._operator, other._operator)) return false;
+        if (!Objects.equals(this._attribute, other._attribute)) return false;
+        if (!Objects.equals(this._value, other._value)) return false;
+
+        return true;
     }
 
     @Override
     public int hashCode() {
-        int result = _attribute != null ? _attribute.hashCode() : 0;
-        result = 31 * result + (_operator != null ? _operator.hashCode() : 0);
-        result = 31 * result + (_value != null ? _value.hashCode() : 0);
-        return result;
+        return Objects.hash(_operator, _attribute, _value);
     }
 
     @Override
