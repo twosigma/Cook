@@ -16,6 +16,7 @@
 (ns cook.mesos.rebalancer
   (:require [chime :refer [chime-at]]
             [clojure.core.async :as async]
+            [clojure.core.cache :as cache]
             [clojure.data.priority-map :as pm]
             [clojure.tools.logging :as log]
             [clojure.walk :refer (keywordize-keys)]
@@ -300,7 +301,8 @@
   [db offer-cache
    {:keys [task->scored-task host->spare-resources compute-pending-job-dru preempted-tasks] :as state}
    {:keys [min-dru-diff safe-dru-threshold] :as params}
-   pending-job-ent]
+   pending-job-ent
+   cotask-cache]
   (timers/time!
    compute-preemption-decision-duration
    (let [{pending-job-mem :mem pending-job-cpus :cpus pending-job-gpus :gpus} (util/job-ent->resources pending-job-ent)
@@ -326,7 +328,8 @@
                                         db
                                         %
                                         (partial util/get-slave-attrs-from-cache offer-cache)
-                                        preempted-tasks))
+                                        preempted-tasks
+                                        cotask-cache))
                                 (remove nil?))
          constraints (into (vec job-constraints) group-constraints)
 
@@ -371,9 +374,9 @@
 
 (defn compute-next-state-and-preemption-decision
   "Takes state, params and a pending job entity, returns new state and preemption decision"
-  [db offer-cache state params pending-job]
+  [db offer-cache state params pending-job cotask-cache]
   (log/debug "Trying to find space for: " pending-job)
-  (if-let [preemption-decision (compute-preemption-decision db offer-cache state params pending-job)]
+  (if-let [preemption-decision (compute-preemption-decision db offer-cache state params pending-job cotask-cache)]
     [(next-state state pending-job preemption-decision)
      (assoc preemption-decision
             :to-make-room-for pending-job)]
@@ -389,14 +392,15 @@
         jobs-to-make-room-for (->> pending-job-ents
                                    (filter (partial util/job-allowed-to-start? db))
                                    (take max-preemption))
-        init-state (init-state db (util/get-running-task-ents db) jobs-to-make-room-for host->spare-resources category)]
+        init-state (init-state db (util/get-running-task-ents db) jobs-to-make-room-for host->spare-resources category)
+        cotask-cache (atom (cache/lru-cache-factory {} :threshold (max 1 max-preemption)))]
     (log/debug "Jobs to make room for:" jobs-to-make-room-for)
     (loop [state init-state
            remaining-preemption max-preemption
            [pending-job-ent & jobs-to-make-room-for] jobs-to-make-room-for
            preemption-decisions []]
       (if (and pending-job-ent (pos? remaining-preemption))
-        (let [[state' preemption-decision] (compute-next-state-and-preemption-decision db offer-cache state params pending-job-ent)]
+        (let [[state' preemption-decision] (compute-next-state-and-preemption-decision db offer-cache state params pending-job-ent cotask-cache)]
           (if preemption-decision
             (recur state'
                    (dec remaining-preemption)
