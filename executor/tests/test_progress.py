@@ -1,5 +1,6 @@
 import logging
 import math
+import re
 import time
 import unittest
 from threading import Event, Thread
@@ -15,9 +16,11 @@ from tests.utils import assert_message, ensure_directory, get_random_task_id, Fa
 class ProgressTest(unittest.TestCase):
     def test_match_progress_update(self):
 
+        progress_regex_string = '\^\^\^\^JOB-PROGRESS: (\d+)(?: )?(.*)'
+        progress_regex_pattern = re.compile(progress_regex_string)
+
         def match_progress_update(input_string):
-            progress_regex_string = '\^\^\^\^JOB-PROGRESS: (\d*)(?: )?(.*)'
-            return cp.ProgressWatcher.match_progress_update(progress_regex_string, input_string)
+            return cp.ProgressWatcher.match_progress_update(progress_regex_pattern, input_string)
 
         self.assertIsNone(match_progress_update("One percent complete"))
         self.assertIsNone(match_progress_update("^^^^JOB-PROGRESS 1 One percent complete"))
