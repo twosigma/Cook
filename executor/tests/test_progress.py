@@ -43,6 +43,9 @@ class ProgressTest(unittest.TestCase):
 
         def send_progress_message(message):
             ce.send_message(driver, message, max_message_length)
+            message_string = str(message).encode('utf8')
+            self.assertLessEqual(len(message_string), max_message_length)
+            return len(message_string) <= max_message_length
 
         progress_updater = cp.ProgressUpdater(task_id, max_message_length, poll_interval_ms, send_progress_message)
         progress_data_0 = {'progress-message': 'Progress message-0'}
@@ -75,6 +78,9 @@ class ProgressTest(unittest.TestCase):
 
         def send_progress_message(message):
             ce.send_message(driver, message, max_message_length)
+            message_string = str(message).encode('utf8')
+            self.assertLessEqual(len(message_string), max_message_length)
+            return len(message_string) <= max_message_length
 
         progress_updater = cp.ProgressUpdater(task_id, max_message_length, poll_interval_ms, send_progress_message)
         progress_data_0 = {'progress-message': 'Progress message-0 is really long lorem ipsum dolor sit amet text'}
@@ -94,6 +100,9 @@ class ProgressTest(unittest.TestCase):
 
         def send_progress_message(message):
             ce.send_message(driver, message, max_message_length)
+            message_string = str(message).encode('utf8')
+            self.assertGreater(len(message_string), max_message_length)
+            return len(message_string) <= max_message_length
 
         progress_updater = cp.ProgressUpdater(task_id, max_message_length, poll_interval_ms, send_progress_message)
         progress_data_0 = {'unknown': 'Unknown field has a really long lorem ipsum dolor sit amet exceed limit text'}
@@ -212,7 +221,7 @@ class ProgressTest(unittest.TestCase):
 
     def test_collect_progress_updates(self):
         file_name = ensure_directory('build/collect_progress_test.' + get_random_task_id())
-        progress_regex = '\^\^\^\^JOB-PROGRESS: (\d*)(?: )?(.*)'
+        progress_regex = '\^\^\^\^JOB-PROGRESS: (\d+)(?: )?(.*)'
         stop_signal = Event()
         completed_signal = Event()
 
@@ -272,7 +281,7 @@ class ProgressTest(unittest.TestCase):
 
     def test_collect_progress_updates_skip_faulty(self):
         file_name = ensure_directory('build/collect_progress_updates_skip_faulty.' + get_random_task_id())
-        progress_regex = '\^\^\^\^JOB-PROGRESS: (\d*)(?: )?(.*)'
+        progress_regex = '\^\^\^\^JOB-PROGRESS: (\d+)(?: )?(.*)'
         stop_signal = Event()
         completed_signal = Event()
 
@@ -362,7 +371,7 @@ class ProgressTest(unittest.TestCase):
 
     def test_collect_progress_updates_dev_null(self):
         file_name = ensure_directory('build/collect_progress_test.' + get_random_task_id())
-        progress_regex = '\^\^\^\^JOB-PROGRESS: (\d*)(?: )?(.*)'
+        progress_regex = '\^\^\^\^JOB-PROGRESS: (\d+)(?: )?(.*)'
         location = '/dev/null'
         stop_signal = Event()
         completed_signal = Event()
@@ -399,7 +408,7 @@ class ProgressTest(unittest.TestCase):
 
     def test_collect_progress_updates_lots_of_writes(self):
         file_name = ensure_directory('build/collect_progress_test.' + get_random_task_id())
-        progress_regex = 'progress: (\d*), (.*)'
+        progress_regex = 'progress: (\d+), (.*)'
         items_to_write = 250000
         stop_signal = Event()
         completed_signal = Event()
