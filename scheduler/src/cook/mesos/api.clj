@@ -1710,7 +1710,7 @@
   "Query a user's current resource usage based on running jobs."
   [db ctx]
   (let [user (get-in ctx [:request :query-params :user])
-        running-jobs (mapv :job/_instance (util/get-user-running-task-ents db user))
+        running-jobs (util/get-user-running-job-ents db user)
         with-group-breakdown? (get-in ctx [:request :query-params :group_breakdown])]
     (merge
       ; basic user usage response
@@ -1722,12 +1722,12 @@
                               (map-vals (juxt #(mapv :job/uuid %)
                                               util/total-resources-of-jobs
                                               #(-> % first :group/_job first))))]
-          {:grouped (vec (for [[guuid [job-uuids usage group]] breakdowns
-                               :when guuid]
-                           {:group {:uuid (:group/uuid group)
-                                    :name (:group/name group)
-                                    :running-jobs job-uuids}
-                            :usage usage}))
+          {:grouped (for [[guuid [job-uuids usage group]] breakdowns
+                          :when guuid]
+                      {:group {:uuid (:group/uuid group)
+                               :name (:group/name group)
+                               :running-jobs job-uuids}
+                       :usage usage})
            :ungrouped (let [[job-uuids usage] (get breakdowns nil)]
                         {:running-jobs job-uuids :usage (or usage zero-usage)})})))))
 

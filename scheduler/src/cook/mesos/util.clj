@@ -400,20 +400,22 @@
             db [:instance.status/running :instance.status/unknown])
          (map (partial d/entity db)))))
 
-(timers/deftimer [cook-mesos scheduler get-user-running-tasks-duration])
+(timers/deftimer [cook-mesos scheduler get-user-running-jobs-duration])
 
-(defn get-user-running-task-ents
-  "Returns all running task entities for a specific user."
+(defn get-user-running-job-ents
+  "Returns all running job entities for a specific user."
   [db user]
   (timers/time!
-    get-user-running-tasks-duration
-    (->> (q '[:find [?i ...]
-              :in $ [?status ...] ?user
+    get-user-running-jobs-duration
+    (->> (q '[:find [?j ...]
+              :in $ ?user
               :where
-              [?j :job/user ?user]
-              [?j :job/instance ?i]
-              [?i :instance/status ?status]]
-            db [:instance.status/running :instance.status/unknown] user)
+              ;; Note: We're assuming that many users will have significantly more
+              ;; completed jobs than there are jobs currently running in the system.
+              ;; If not, we might want to swap these two constraints.
+              [?j :job/state :job.state/running]
+              [?j :job/user ?user]]
+            db user)
          (map (partial d/entity db)))))
 
 (defn job-allowed-to-start?

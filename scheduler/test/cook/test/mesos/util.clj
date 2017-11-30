@@ -46,33 +46,22 @@
     (is (= (util/total-resources-of-jobs nil)
            {:jobs 0 :cpus 0.0 :mem 0.0 :gpus 0.0}))))
 
-(deftest test-get-running-task-ents
+(deftest test-get-running-job-ents
   (let [uri "datomic:mem://test-get-running-task-ents"
         conn (restore-fresh-database! uri)]
-    (create-dummy-job-with-instances conn :user "u1" :job-state :job.state/completed
-                                     :instances [{:instance-status :instance.status/failed}
-                                                 {:instance-status :instance.status/success}])
-    (create-dummy-job-with-instances conn :user "u1" :job-state :job.state/running
-                                     :instances [{:instance-status :instance.status/running}])
-    (create-dummy-job-with-instances conn :user "u1" :job-state :job.state/running
-                                     :instances [{:instance-status :instance.status/unknown}])
+    (create-dummy-job conn :user "u1" :job-state :job.state/completed)
+    (create-dummy-job conn :user "u1" :job-state :job.state/running)
+    (create-dummy-job conn :user "u1" :job-state :job.state/running)
     (create-dummy-job conn :user "u2" :job-state :job.state/waiting)
-    (create-dummy-job-with-instances conn :user "u2" :job-state :job.state/running
-                                     :instances [{:instance-status :instance.status/failed}
-                                                 {:instance-status :instance.status/failed}
-                                                 {:instance-status :instance.status/failed}
-                                                 {:instance-status :instance.status/running}])
+    (create-dummy-job conn :user "u2" :job-state :job.state/running)
     (create-dummy-job conn :user "u1" :job-state :job.state/waiting)
-    (create-dummy-job-with-instances conn :user "u1" :job-state :job.state/waiting
-                                     :instances [{:instance-status :instance.status/failed}])
-    ;; Total of 3 jobs running across all users
-    (is (= 3 (count (util/get-running-task-ents (db conn)))))
+    (create-dummy-job conn :user "u1" :job-state :job.state/waiting)
     ;; u1 has 2 jobs running
-    (is (= 2 (count (util/get-user-running-task-ents (db conn) "u1"))))
+    (is (= 2 (count (util/get-user-running-job-ents (db conn) "u1"))))
     ;; u2 has 1 jobs running
-    (is (= 1 (count (util/get-user-running-task-ents (db conn) "u2"))))
+    (is (= 1 (count (util/get-user-running-job-ents (db conn) "u2"))))
     ;; u3 has no jobs (running or otherwise)
-    (is (= 0 (count (util/get-user-running-task-ents (db conn) "u3"))))))
+    (is (= 0 (count (util/get-user-running-job-ents (db conn) "u3"))))))
 
 (deftest test-get-pending-job-ents
   (let [uri "datomic:mem://test-get-pending-job-ents"
