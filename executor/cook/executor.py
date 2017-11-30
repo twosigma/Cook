@@ -273,7 +273,7 @@ def await_process_completion(stop_signal, process_info, shutdown_grace_period_ms
     while is_running(process_info):
 
         if stop_signal.isSet():
-            logging.info('Executor has been instructed to terminate')
+            logging.info('Executor has been instructed to terminate running task')
             process, _, _ = process_info
             kill_task(process, shutdown_grace_period_ms)
             break
@@ -456,6 +456,7 @@ class CookExecutor(pm.Executor):
     def disconnected(self, driver):
         logging.info('Mesos requested executor to disconnect')
         self.disconnect_signal.set()
+        self.stop_signal.set()
 
     def launchTask(self, driver, task):
         logging.info('Driver {} launching task {}'.format(driver, task))
