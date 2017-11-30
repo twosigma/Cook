@@ -1786,6 +1786,65 @@
                      (get-in ctx [:request :body-params :reason])
                      (reduce into [] (::limits ctx))))}))
 
+(def UserUsageParams
+  "User usage endpoint query string parameters"
+  (assoc UserParam
+         (s/optional-key :group_breakdown) s/Bool))
+
+(def UsageInfo
+  "Schema for a dictionary of job resource usage info."
+  {:cpus s/Num, :mem s/Num, :gpus s/Num, :jobs s/Num})
+
+(def UsageGroupInfo
+  "Helper-schema for :grouped jobs' group info in UserUsageResponse."
+  {:uuid s/Uuid, :name s/Str, :running_jobs [s/Uuid]})
+
+(def JobsUsageResponse
+  "Helper-schema for :ungrouped jobs in UserUsageResponse."
+  {:running_jobs [s/Uuid], :usage UsageInfo})
+
+(def UserUsageResponse
+  "Schema for a usage response."
+  {:total_usage UsageInfo
+   (s/optional-key :grouped) [{:group UsageGroupInfo, :usage UsageInfo}]
+   (s/optional-key :ungrouped) JobsUsageResponse})
+
+(def zero-usage
+  "Resource usage map 'zero' value"
+  (util/total-resources-of-jobs nil))
+
+(defn get-user-usage
+  "Query a user's current resource usage based on running jobs."
+  [db ctx]
+  (let [user (get-in ctx [:request :query-params :user])
+        running-jobs (util/get-user-running-job-ents db user)
+        with-group-breakdown? (get-in ctx [:request :query-params :group_breakdown])]
+    (merge
+      ; basic user usage response
+      {:total-usage (util/total-resources-of-jobs running-jobs)}
+      ; (optional) user's total usage with breakdown by job groups
+      (when with-group-breakdown?
+        (let [breakdowns (->> running-jobs
+                              (group-by util/job-ent->group-uuid)
+                              (map-vals (juxt #(mapv :job/uuid %)
+                                              util/total-resources-of-jobs
+                                              #(-> % first :group/_job first))))]
+          {:grouped (for [[guuid [job-uuids usage group]] breakdowns
+                          :when guuid]
+                      {:group {:uuid (:group/uuid group)
+                               :name (:group/name group)
+                               :running-jobs job-uuids}
+                       :usage usage})
+           :ungrouped (let [[job-uuids usage] (get breakdowns nil)]
+                        {:running-jobs job-uuids :usage (or usage zero-usage)})})))))
+
+(defn read-usage-handler
+  "Handle GET requests for a user's current usage."
+  [conn is-authorized-fn]
+  (base-limit-handler
+    :usage is-authorized-fn
+    {:handle-ok (partial get-user-usage (db conn))}))
+
 
 ;; /failure-reasons
 
@@ -2048,31 +2107,32 @@
   coercion in compojure-api, see:
 
     https://github.com/metosin/compojure-api/wiki/Validation-and-coercion"
-  (constantly
-    (-> c-mw/default-coercion-matchers
-      (update :body
-              (fn [their-matchers]
-                (fn [s]
-                  (or (their-matchers s)
-                      (get {;; can't use form->kebab-case because env and label
-                            ;; accept arbitrary kvs
-                            JobRequestMap (partial map-keys ->kebab-case)
-                            Group (partial map-keys ->kebab-case)
-                            HostPlacement (fn [hp]
-                                            (update hp :type keyword))
-                            UpdateRetriesRequest (partial map-keys ->kebab-case)
-                            StragglerHandling (fn [sh]
-                                                (update sh :type keyword))}
-                           s)))))
-      (update :response
-              (fn [their-matchers]
-                (fn [s]
-                  (or (their-matchers s)
-                      (get {JobResponseDeprecated (partial map-keys ->snake_case)
-                            JobResponse (partial map-keys ->snake_case)
-                            GroupResponse (partial map-keys ->snake_case)
-                            s/Uuid str}
-                           s))))))))
+  (let [merged-matchers (fn [our-matchers]
+                          (fn [their-matchers]
+                            (fn [s]
+                              (or (their-matchers s) (our-matchers s)))))
+        body-matchers (merged-matchers
+                        {;; can't use form->kebab-case because env and label
+                         ;; accept arbitrary kvs
+                         JobRequestMap (partial map-keys ->kebab-case)
+                         Group (partial map-keys ->kebab-case)
+                         HostPlacement (fn [hp]
+                                         (update hp :type keyword))
+                         UpdateRetriesRequest (partial map-keys ->kebab-case)
+                         StragglerHandling (fn [sh]
+                                             (update sh :type keyword))})
+        resp-matchers (merged-matchers
+                        {JobResponseDeprecated (partial map-keys ->snake_case)
+                         JobResponse (partial map-keys ->snake_case)
+                         GroupResponse (partial map-keys ->snake_case)
+                         UserUsageResponse (partial map-keys ->snake_case)
+                         UsageGroupInfo (partial map-keys ->snake_case)
+                         JobsUsageResponse (partial map-keys ->snake_case)
+                         s/Uuid str})]
+    (constantly
+      (-> c-mw/default-coercion-matchers
+          (update :body body-matchers)
+          (update :response resp-matchers)))))
 
 ;;
 ;; "main" - the entry point that routes to other handlers
@@ -2207,6 +2267,18 @@
              :delete {:summary "Reset a user's quota to the default"
                       :parameters {:query-params UserParam}
                       :handler (destroy-limit-handler :delete quota/retract-quota! conn is-authorized-fn)}}))
+
+        (c-api/context
+          "/usage" []
+          (c-api/resource
+            {:produces ["application/json"],
+             :responses {200 {:schema UserUsageResponse
+                              :description "User's usage calculated."}
+                         401 {:description "Not authorized to read usage."}
+                         403 {:description "Invalid request format."}}
+             :get {:summary "Query a user's current resource usage."
+                   :parameters {:query-params UserUsageParams}
+                   :handler (read-usage-handler conn is-authorized-fn)}}))
 
         (c-api/context
           "/retry" []

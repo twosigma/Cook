@@ -206,6 +206,20 @@
                job-ents))
       {:cpus total-cpus :mem total-mem})))
 
+(defn total-resources-of-jobs
+  "Given a collections of job entities, returns the total resources they use
+   {:cpus cpu :mem mem :gpus gpu}"
+  [job-ents]
+  (reduce
+    (fn [acc job-ent]
+      (->
+        job-ent
+        job-ent->resources
+        (select-keys [:cpus :mem :gpus])
+        (->> (merge-with + acc))))
+    {:cpus 0.0, :mem 0.0, :gpus 0.0, :jobs (count job-ents)}
+    job-ents))
+
 (defn- get-pending-job-ents*
   "Returns a seq of datomic entities corresponding to jobs
 
@@ -375,16 +389,34 @@
 (timers/deftimer [cook-mesos scheduler get-running-tasks-duration])
 
 (defn get-running-task-ents
-  "Returns all running task entities"
+  "Returns all running task entities."
   [db]
   (timers/time!
     get-running-tasks-duration
-    (->> (q '[:find ?i
+    (->> (q '[:find [?i ...]
               :in $ [?status ...]
               :where
               [?i :instance/status ?status]]
             db [:instance.status/running :instance.status/unknown])
-         (map (fn [[x]] (d/entity db x))))))
+         (map (partial d/entity db)))))
+
+(timers/deftimer [cook-mesos scheduler get-user-running-jobs-duration])
+
+(defn get-user-running-job-ents
+  "Returns all running job entities for a specific user."
+  [db user]
+  (timers/time!
+    get-user-running-jobs-duration
+    (->> (q '[:find [?j ...]
+              :in $ ?user
+              :where
+              ;; Note: We're assuming that many users will have significantly more
+              ;; completed jobs than there are jobs currently running in the system.
+              ;; If not, we might want to swap these two constraints.
+              [?j :job/state :job.state/running]
+              [?j :job/user ?user]]
+            db user)
+         (map (partial d/entity db)))))
 
 (defn job-allowed-to-start?
   "Converts the DB function :job/allowed-to-start? into a predicate"

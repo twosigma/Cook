@@ -632,3 +632,10 @@ def group_submit_retry(cook_url, command, predicate_statuses, retry_failed_jobs_
     finally:
         # ensure that we don't leave a bunch of jobs running/waiting
         kill_groups(cook_url, [group_uuid])
+
+def user_current_usage(cook_url, **kwargs):
+    """
+    Queries cook for a user's current resource usage
+    based on their currently running jobs.
+    """
+    return session.get('%s/usage' % cook_url, params=kwargs)
