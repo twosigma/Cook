@@ -429,6 +429,12 @@ class ExecutorTest(unittest.TestCase):
         finally:
             cleanup_output(stdout_name, stderr_name)
 
+    def run_command_in_manage_task_runner(self, command, assertions, wait_time_secs):
+        stop_signal = Event()
+        sleep_and_set_stop_signal_task(stop_signal, wait_time_secs)
+        self.manage_task_runner(command, assertions, stop_signal=stop_signal)
+        stop_signal.set()
+
     def test_manage_task_environment_output(self):
         def assertions(driver, task_id, _):
             logging.info('Statuses: {}'.format(driver.statuses))
@@ -652,11 +658,8 @@ class ExecutorTest(unittest.TestCase):
             expected_message_1 = {'exit-code': -15, 'task-id': task_id}
             assert_message(self, expected_message_1, actual_encoded_message_1)
 
-        stop_signal = Event()
-        sleep_and_set_stop_signal_task(stop_signal, 2 * cook.RUNNING_POLL_INTERVAL_SECS)
-
         command = 'sleep 100'
-        self.manage_task_runner(command, assertions, stop_signal=stop_signal)
+        self.run_command_in_manage_task_runner(command, assertions, 2 * cook.RUNNING_POLL_INTERVAL_SECS)
 
     def test_manage_task_random_binary_output(self):
         def assertions(driver, task_id, sandbox_directory):
@@ -727,14 +730,10 @@ class ExecutorTest(unittest.TestCase):
             else:
                 self.fail('{} does not exist.'.format(stderr_name))
 
-        stop_signal = Event()
-        sleep_and_set_stop_signal_task(stop_signal, 60)
-
         command = 'for i in `seq {}`; ' \
                   'do printf "XXXXXXXXXXXXXXXXXXXXXXXXX"; printf "XXXXXXXXXXXXXXXXXXXXXXXXX" >&2; done; ' \
                   'echo "Done."'.format(num_iterations)
-        self.manage_task_runner(command, assertions, stop_signal=stop_signal)
-        stop_signal.set()
+        self.run_command_in_manage_task_runner(command, assertions, 60)
 
     def test_manage_task_long_output_multiple_lines(self):
         num_iterations = 100000
@@ -771,14 +770,10 @@ class ExecutorTest(unittest.TestCase):
             else:
                 self.fail('{} does not exist.'.format(stderr_name))
 
-        stop_signal = Event()
-        sleep_and_set_stop_signal_task(stop_signal, 60)
-
         command = 'for i in `seq {}`; ' \
                   'do printf "XXXXXXXXXXXXXXXXXXXXXXXXX\\n"; printf "XXXXXXXXXXXXXXXXXXXXXXXXX\\n" >&2; done; ' \
                   'echo "Done."'.format(num_iterations)
-        self.manage_task_runner(command, assertions, stop_signal=stop_signal)
-        stop_signal.set()
+        self.run_command_in_manage_task_runner(command, assertions, 60)
 
     def test_manage_task_long_progress_output(self):
         num_iterations = 100000
@@ -821,8 +816,7 @@ class ExecutorTest(unittest.TestCase):
         command = 'for i in `seq {}`; ' \
                   'do printf "^^^^JOB-PROGRESS: 50 Fifty\\n"; printf "XXXXXXXXXXXXXXXXXXXXXXXXX\\n" >&2; done; ' \
                   'echo "Done."'.format(num_iterations)
-        self.manage_task_runner(command, assertions, stop_signal=stop_signal)
-        stop_signal.set()
+        self.run_command_in_manage_task_runner(command, assertions, 60)
 
     def test_manage_task_progress_in_progress_stderr_and_stdout_progress(self):
         max_message_length = 130
