@@ -975,7 +975,7 @@
 
   or:
 
-    [false {::error ...}]
+    [false {::non-existing-uuids ...}]
 
   Given a collection of instance uuids, attempts to return the corresponding set of *existing*
   parent job uuids. By default (or if the 'partial' query parameter is false), the function
@@ -996,10 +996,7 @@
       [true {::jobs (filter some? job-uuids)}]
 
       :else
-      (let [non-existing-uuids (filter (comp nil? instance-uuid->job-uuid) uuids)
-            message (str "The following UUIDs don't correspond to a job instance:\n"
-                         (str/join \newline non-existing-uuids))]
-        [false {::error message}]))))
+      [false {::non-existing-uuids (filter (comp nil? instance-uuid->job-uuid) uuids)}])))
 
 (defn jobs-exist?
   "Returns a tuple that either has the shape:
@@ -1049,7 +1046,7 @@
     [false {::jobs (map #(UUID/fromString %) uuids)
             ::allow-partial-results? allow-partial-results?}]))
 
-(defn instance-request-malformed?
+(defn instance-request-parse-params
   [ctx]
   (let [uuids (wrap-seq (get-in ctx [:request :params :uuid]))
         allow-partial-results? (get-in ctx [:request :query-params :partial])]
@@ -1067,7 +1064,7 @@
   ([conn is-authorized-fn ctx uuids]
    (let [authorized? (partial user-authorized-for-job? conn is-authorized-fn ctx)]
      (if (every? authorized? uuids)
-       true
+       [true {}]
        [false {::error (str "You are not authorized to view access the following jobs "
                             (str/join \space (remove authorized? uuids)))}])))
   ([conn is-authorized-fn ctx]
@@ -1077,8 +1074,14 @@
 
 (defn instance-request-allowed?
   [conn is-authorized-fn ctx]
-  (let [uuids (::jobs (second (instances-exist? conn ctx)))]
-    (job-request-allowed? conn is-authorized-fn ctx uuids)))
+  (let [[exist? exist-data] (instances-exist? conn ctx)]
+    (if exist?
+      (let [job-uuids (::jobs exist-data)
+            [allowed? allowed-data] (job-request-allowed? conn is-authorized-fn ctx job-uuids)]
+        (if allowed?
+          [true {::jobs job-uuids}]
+          [false allowed-data]))
+      [true exist-data])))
 
 (defn render-jobs-for-response-deprecated
   [conn framework-id retrieve-sandbox-directory-from-agent ctx]
@@ -1146,13 +1149,20 @@
             (render-jobs-for-response conn framework-id retrieve-sandbox-directory-from-agent ctx)))]
     (read-jobs-handler conn is-authorized-fn {:handle-ok handle-ok})))
 
+(defn instance-request-exists?
+  [ctx]
+  (if-let [non-existing-uuids (::non-existing-uuids ctx)]
+    [false {::error (str "The following UUIDs don't correspond to a job instance:\n"
+                         (str/join \newline non-existing-uuids))}]
+    true))
+
 (defn read-instances-handler
   [conn is-authorized-fn resource-attrs]
   (base-cook-handler
     (merge {:allowed-methods [:get]
-            :malformed? instance-request-malformed?
+            :malformed? instance-request-parse-params
             :allowed? (partial instance-request-allowed? conn is-authorized-fn)
-            :exists? (partial instances-exist? conn)}
+            :exists? instance-request-exists?}
            resource-attrs)))
 
 (defn read-instances-handler-multiple
