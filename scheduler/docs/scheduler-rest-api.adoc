@@ -505,7 +505,7 @@ To set a user's quota back to the default, an operator can retract the quota the
 |====
 |Code | HTTP Meaning | Possible reason
 |204 | No Content | User's quota was retracted
-|400 | Malformed | Returned if a user is not specified
+|401 | Malformed | Returned if a user is not specified
 |403 | Forbidden | This is returned if the user issuing the request is not authorized
 |====
 
@@ -513,6 +513,42 @@ To set a user's quota back to the default, an operator can retract the quota the
 [source,bash]
 ----
 $ curl -X DELETE -u: --negotiate "$cook_uri/quota?user=$user"
+----
+
+==== User resource usage
+
+Each user's currently running jobs have a resource footprint.
+This endpoint allows you to query a user's current aggregate resource usage.
+
+===== Get user's current resource usage
+
+`GET /usage?user=:user`
+
+.Possible response codes
+[options="header"]
+|====
+|Code | HTTP Meaning | Possible reason
+|200 | OK | Returns the user's current resource usage (JSON)
+|401 | Malformed | Returned if a user is not specified
+|403 | Forbidden | This is returned if the user issuing the request is not authorized
+|====
+
+.Example Usage
+[source,bash]
+----
+$ curl -u: --negotiate "$cook_uri/usage?user=$user"
+{"total_usage":{"cpus":10.0,"mem":2560.0,"gpus":0.0,"jobs":10}}
+----
+
+===== Get user's current resource usage by job group
+
+`GET /usage?user=:user&group_breakdown=true`
+
+.Example Usage
+[source,bash]
+----
+$ curl -u: --negotiate "$cook_uri/usage?user=$user&group_breakdown=true"
+{"total_usage":{"cpus":2.0,"mem":512.0,"gpus":0.0,"jobs":2},"grouped":[{"group":{"uuid":"d250d3ed-f397-47b6-9a71-173871e81c63","name":"cookgroup","running_jobs":["ba9b69a7-5fce-4047-a484-167290134322"]},"usage":{"cpus":1.0,"mem":256.0,"gpus":0.0,"jobs":1}}],"ungrouped":{"running_jobs":["81a23761-25c8-4714-a72f-3e0057ecbab6"],"usage":{"cpus":1.0,"mem":256.0,"gpus":0.0,"jobs":1}}}
 ----
 
 [swagger]

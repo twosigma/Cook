@@ -1265,3 +1265,104 @@ class CookTest(unittest.TestCase):
         self.assertEqual(2, len(instance_uuids))
         self.assertIn(instance_uuid_1, instance_uuids)
         self.assertIn(instance_uuid_2, instance_uuids)
+
+    def test_user_usage_basic(self):
+        job_resources = {'cpus': 0.1, 'mem': 123}
+        job_uuid, resp = util.submit_job(self.cook_url, command='sleep 120', **job_resources)
+        self.assertEqual(resp.status_code, 201, resp.content)
+        try:
+            user = util.get_user(self.cook_url, job_uuid)
+            # Don't query until the job starts
+            util.wait_for_job(self.cook_url, job_uuid, 'running')
+            resp = util.user_current_usage(self.cook_url, user=user)
+            self.assertEqual(resp.status_code, 200, resp.content)
+            usage_data = resp.json()
+            # Check that the response structure looks as expected
+            self.assertEqual(list(usage_data.keys()), ['total_usage'], usage_data)
+            self.assertEqual(len(usage_data['total_usage']), 4, usage_data)
+            # Since we don't know what other test jobs are currently running,
+            # we conservatively check current usage with the >= operation.
+            self.assertGreaterEqual(usage_data['total_usage']['mem'], job_resources['mem'], usage_data)
+            self.assertGreaterEqual(usage_data['total_usage']['cpus'], job_resources['cpus'], usage_data)
+            self.assertGreaterEqual(usage_data['total_usage']['gpus'], 0, usage_data)
+            self.assertGreaterEqual(usage_data['total_usage']['jobs'], 1, usage_data)
+        finally:
+            util.kill_jobs(self.cook_url, [job_uuid])
+
+    def test_user_usage_grouped(self):
+        group_spec = util.minimal_group()
+        group_uuid = group_spec['uuid']
+        job_resources = {'cpus': 0.11, 'mem': 123}
+        job_count = 2
+        job_specs = util.minimal_jobs(job_count, command='sleep 120', group=group_uuid, **job_resources)
+        job_uuids, resp = util.submit_jobs(self.cook_url, job_specs, groups=[group_spec])
+        self.assertEqual(resp.status_code, 201, resp.content)
+        try:
+            user = util.get_user(self.cook_url, job_uuids[0])
+            # Don't query until both of the jobs start
+            util.wait_for_jobs(self.cook_url, job_uuids, 'running')
+            resp = util.user_current_usage(self.cook_url, user=user, group_breakdown='true')
+            self.assertEqual(resp.status_code, 200, resp.content)
+            usage_data = resp.json()
+            # Check that the response structure looks as expected
+            self.assertEqual(set(usage_data.keys()), {'total_usage', 'grouped', 'ungrouped'}, usage_data)
+            self.assertEqual(set(usage_data['ungrouped'].keys()), {'running_jobs', 'usage'}, usage_data)
+            my_group_usage = next(x for x in usage_data['grouped'] if x['group']['uuid'] == group_uuid)
+            self.assertEqual(set(my_group_usage.keys()), {'group', 'usage'}, my_group_usage)
+            # The breakdown for our job group should contain exactly the two jobs we submitted
+            self.assertEqual(set(job_uuids), set(my_group_usage['group']['running_jobs']), my_group_usage)
+            # We know all the info about the jobs in our custom group
+            self.assertEqual(my_group_usage['usage']['mem'], job_count * job_resources['mem'], my_group_usage)
+            self.assertEqual(my_group_usage['usage']['cpus'], job_count * job_resources['cpus'], my_group_usage)
+            self.assertEqual(my_group_usage['usage']['gpus'], 0, my_group_usage)
+            self.assertEqual(my_group_usage['usage']['jobs'], job_count, my_group_usage)
+            # Since we don't know what other test jobs are currently running
+            # we conservatively check current usage with the >= operation
+            self.assertGreaterEqual(usage_data['total_usage']['mem'], job_resources['mem'], usage_data)
+            self.assertGreaterEqual(usage_data['total_usage']['cpus'], job_resources['cpus'], usage_data)
+            self.assertGreaterEqual(usage_data['total_usage']['gpus'], 0, usage_data)
+            self.assertGreaterEqual(usage_data['total_usage']['jobs'], job_count, usage_data)
+            # The grouped + ungrouped usage should equal the total usage
+            # (with possible rounding errors for floating-point cpu/mem values)
+            breakdowns_total = Counter(usage_data['ungrouped']['usage'])
+            for grouping in usage_data['grouped']:
+                breakdowns_total += Counter(grouping['usage'])
+            self.assertAlmostEqual(usage_data['total_usage']['mem'], breakdowns_total['mem'], places=4, msg=usage_data)
+            self.assertAlmostEqual(usage_data['total_usage']['cpus'], breakdowns_total['cpus'], places=4, msg=usage_data)
+            self.assertEqual(usage_data['total_usage']['gpus'], breakdowns_total['gpus'], usage_data)
+            self.assertEqual(usage_data['total_usage']['jobs'], breakdowns_total['jobs'], usage_data)
+        finally:
+            util.kill_jobs(self.cook_url, job_uuids)
+
+    def test_user_usage_ungrouped(self):
+        job_resources = {'cpus': 0.11, 'mem': 123}
+        job_count = 2
+        job_specs = util.minimal_jobs(job_count, command='sleep 120', **job_resources)
+        job_uuids, resp = util.submit_jobs(self.cook_url, job_specs)
+        self.assertEqual(resp.status_code, 201, resp.content)
+        try:
+            user = util.get_user(self.cook_url, job_uuids[0])
+            # Don't query until both of the jobs start
+            util.wait_for_jobs(self.cook_url, job_uuids, 'running')
+            resp = util.user_current_usage(self.cook_url, user=user, group_breakdown='true')
+            self.assertEqual(resp.status_code, 200, resp.content)
+            usage_data = resp.json()
+            # Check that the response structure looks as expected
+            self.assertEqual(set(usage_data.keys()), {'total_usage', 'grouped', 'ungrouped'}, usage_data)
+            ungrouped_data = usage_data['ungrouped']
+            self.assertEqual(set(ungrouped_data.keys()), {'running_jobs', 'usage'}, ungrouped_data)
+            # Our jobs should be included in the ungrouped breakdown
+            for job_uuid in job_uuids:
+                self.assertIn(job_uuid, ungrouped_data['running_jobs'], ungrouped_data)
+            # Since we don't know what other test jobs are currently running,
+            # we conservatively check current usage with the >= operation.
+            self.assertGreaterEqual(ungrouped_data['usage']['mem'], job_count * job_resources['mem'], ungrouped_data)
+            self.assertGreaterEqual(ungrouped_data['usage']['cpus'], job_count * job_resources['cpus'], ungrouped_data)
+            self.assertGreaterEqual(ungrouped_data['usage']['gpus'], 0, ungrouped_data)
+            self.assertGreaterEqual(ungrouped_data['usage']['jobs'], job_count, ungrouped_data)
+            self.assertGreaterEqual(usage_data['total_usage']['mem'], job_resources['mem'], usage_data)
+            self.assertGreaterEqual(usage_data['total_usage']['cpus'], job_resources['cpus'], usage_data)
+            self.assertGreaterEqual(usage_data['total_usage']['gpus'], 0, usage_data)
+            self.assertGreaterEqual(usage_data['total_usage']['jobs'], job_count, usage_data)
+        finally:
+            util.kill_jobs(self.cook_url, job_uuids)
