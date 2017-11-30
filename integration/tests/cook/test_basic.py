@@ -1327,8 +1327,8 @@ class CookTest(unittest.TestCase):
             breakdowns_total = Counter(usage_data['ungrouped']['usage'])
             for grouping in usage_data['grouped']:
                 breakdowns_total += Counter(grouping['usage'])
-            self.assertAlmostEqual(usage_data['total_usage']['mem'], breakdowns_total['mem'], usage_data)
-            self.assertAlmostEqual(usage_data['total_usage']['cpus'], breakdowns_total['cpus'], usage_data)
+            self.assertAlmostEqual(usage_data['total_usage']['mem'], breakdowns_total['mem'], places=4, msg=usage_data)
+            self.assertAlmostEqual(usage_data['total_usage']['cpus'], breakdowns_total['cpus'], places=4, msg=usage_data)
             self.assertEqual(usage_data['total_usage']['gpus'], breakdowns_total['gpus'], usage_data)
             self.assertEqual(usage_data['total_usage']['jobs'], breakdowns_total['jobs'], usage_data)
         finally:
