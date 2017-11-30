@@ -1108,12 +1108,14 @@
 (defn render-instances-for-response
   [conn framework-id retrieve-sandbox-directory-from-agent ctx]
   (let [db (db conn)
-        fetch-job #(fetch-job-map db framework-id retrieve-sandbox-directory-from-agent %)
-        jobs (mapv fetch-job (::jobs ctx))]
+        fetch-job (partial fetch-job-map db framework-id retrieve-sandbox-directory-from-agent)
+        job-uuids (::jobs ctx)
+        jobs (mapv fetch-job job-uuids)
+        instance-uuids (set (::instances ctx))]
     (for [job jobs
           instance (:instances job)
           :let [instance-uuid (-> instance :task_id UUID/fromString)]
-          :when (some #(= instance-uuid %) (::instances ctx))]
+          :when (contains? instance-uuids instance-uuid)]
       (-> instance
           (assoc :job (select-keys job [:uuid :name :status :state :user]))))))
 
@@ -1172,10 +1174,8 @@
 
 (defn read-instances-handler-single
   [conn framework-id is-authorized-fn retrieve-sandbox-directory-from-agent]
-  (let [handle-ok
-        (fn handle-ok [ctx]
-          (first
-            (render-instances-for-response conn framework-id retrieve-sandbox-directory-from-agent ctx)))]
+  (let [handle-ok (->> (partial render-instances-for-response conn framework-id retrieve-sandbox-directory-from-agent)
+                       (comp first))]
     (read-instances-handler conn is-authorized-fn {:handle-ok handle-ok})))
 
 ;;; On DELETE; use repeated job argument
