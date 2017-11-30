@@ -2,6 +2,7 @@ from collections import Counter
 import json
 import logging
 import math
+import operator
 import subprocess
 import time
 import unittest
@@ -45,21 +46,22 @@ class CookTest(unittest.TestCase):
     def test_no_cook_executor_on_subsequent_instances(self):
         job_uuid, resp = util.submit_job(self.cook_url, command='exit 1', max_retries=10) # should launch many instances
         self.assertEqual(resp.status_code, 201, msg=resp.content)
-        util.wait_until(lambda: util.load_job(self.cook_url, job_uuid, assert_response=False),
-                        lambda job: 'instances' in job and len(job['instances']) > 4, # try and get at least 5 instances
-                        max_wait_ms=60000)
+        try: # try to get at least 5 instances
+            util.wait_until(lambda: util.load_job(self.cook_url, job_uuid),
+                            lambda job: len(job['instances']) > 4)
+        except BaseException as e:
+            self.logger.debug("Didn't reach desired instance count: {}".format(e))
         job = util.load_job(self.cook_url, job_uuid)
         message = json.dumps(job, sort_keys=True)
-        job_instances = sorted(job['instances'], key=lambda instance: instance['start_time'])
-        self.assertTrue(len(job_instances) >= 2, message) # happy with at least 2 in case the scheduler is slow
-        for i in range(1, len(job_instances)):
-            job_instance = job_instances[i]
-            message = 'Index ' + str(i) + json.dumps(job_instance, sort_keys=True)
+        later_job_instances = sorted(job['instances'], key=operator.itemgetter('start_time'))[1:]
+        self.assertGreater(len(later_job_instances), 0, message) # happy with at least 1 in case the scheduler is slow
+        for i, job_instance in enumerate(later_job_instances):
+            message = 'Trailing instance {}: {}'.format(i, json.dumps(job_instance, sort_keys=True))
             if 'reason_string' in job_instance:
-                self.assertEqual('failed', job_instances[i]['status'], message)
+                self.assertEqual('failed', job_instance['status'], message)
                 self.assertEqual('Command exited non-zero', job_instance['reason_string'], message)
             else:
-                self.assertEqual('unknown', job_instances[i]['status'], message)
+                self.assertEqual('unknown', job_instance['status'], message)
             self.assertEqual('mesos', job_instance['executor'], message)
 
     def test_disable_mea_culpa(self):
