@@ -1158,7 +1158,7 @@
                          (str/join \newline non-existing-uuids))}]
     true))
 
-(defn read-instances-handler
+(defn base-read-instances-handler
   [conn is-authorized-fn resource-attrs]
   (base-cook-handler
     (merge {:allowed-methods [:get]
@@ -1170,13 +1170,13 @@
 (defn read-instances-handler-multiple
   [conn framework-id is-authorized-fn retrieve-sandbox-directory-from-agent]
   (let [handle-ok (partial render-instances-for-response conn framework-id retrieve-sandbox-directory-from-agent)]
-    (read-instances-handler conn is-authorized-fn {:handle-ok handle-ok})))
+    (base-read-instances-handler conn is-authorized-fn {:handle-ok handle-ok})))
 
 (defn read-instances-handler-single
   [conn framework-id is-authorized-fn retrieve-sandbox-directory-from-agent]
   (let [handle-ok (->> (partial render-instances-for-response conn framework-id retrieve-sandbox-directory-from-agent)
                        (comp first))]
-    (read-instances-handler conn is-authorized-fn {:handle-ok handle-ok})))
+    (base-read-instances-handler conn is-authorized-fn {:handle-ok handle-ok})))
 
 ;;; On DELETE; use repeated job argument
 (defn destroy-jobs-handler
