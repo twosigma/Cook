@@ -39,7 +39,7 @@ class ProgressUpdater(object):
         self.max_message_length = max_message_length
         self.poll_interval_ms = poll_interval_ms
         self.last_reported_time = None
-        self.last_progress_data = None
+        self.last_progress_data_sent = None
         self.send_progress_message = send_progress_message_fn
         self.lock = Lock()
 
@@ -71,7 +71,7 @@ class ProgressUpdater(object):
         Nothing 
         """
         with self.lock:
-            if progress_data is not None and self.last_progress_data != progress_data:
+            if progress_data is not None and self.last_progress_data_sent != progress_data:
                 if force_send or self.has_enough_time_elapsed_since_last_update():
                     logging.info('Sending progress message {}'.format(progress_data))
                     message_dict = dict(progress_data)
@@ -89,7 +89,7 @@ class ProgressUpdater(object):
 
                     send_success = self.send_progress_message(progress_message)
                     if send_success:
-                        self.last_progress_data = progress_data
+                        self.last_progress_data_sent = progress_data
                         self.last_reported_time = time.time()
                     else:
                         logging.info('Unable to send progress message {}'.format(progress_message))
@@ -155,24 +155,24 @@ class ProgressWatcher(object):
             sleep_param = sleep_time_ms / 1000
 
             if os.path.exists(self.target_file) and not os.path.isfile(self.target_file):
-                logging.info('Skipping progress monitoring on {} as it is not a file'.format(self.target_file))
+                logging.info('Skipping progress monitoring on %s as it is not a file', self.target_file)
                 return
 
             if not os.path.isfile(self.target_file):
-                logging.debug('Awaiting creation of file {} [tag={}]'.format(self.target_file, self.location_tag))
+                logging.debug('Awaiting creation of file %s [tag=%s]', self.target_file, self.location_tag)
 
             while not os.path.isfile(self.target_file) and not self.task_completed_signal.isSet():
                 time.sleep(sleep_param)
 
             if not os.path.isfile(self.target_file):
-                logging.info('Progress output file has not been created [tag={}]'.format(self.location_tag))
+                logging.info('Progress output file has not been created [tag=%s]', self.location_tag)
                 return
 
             if self.stop_signal.isSet():
-                logging.info('Parsing progress messages interrupted [tag={}]'.format(self.location_tag))
+                logging.info('Parsing progress messages interrupted [tag=%s]', self.location_tag)
                 return
 
-            logging.info('File has been created, reading contents [tag={}]'.format(self.location_tag))
+            logging.info('File has been created, reading contents [tag=%s]', self.location_tag)
             with open(self.target_file, 'r') as target_file_obj:
                 fragment_index = 0
                 line_index = 0
@@ -181,8 +181,8 @@ class ProgressWatcher(object):
                     if not line:
                         # exit if program has completed and there are no more lines to read
                         if self.task_completed_signal.isSet():
-                            log_message = '{} fragments and {} lines read while processing progress messages [tag={}]'
-                            logging.info(log_message.format(fragment_index, line_index, self.location_tag))
+                            log_message = '%s fragments and %s lines read while processing progress messages [tag=%s]'
+                            logging.info(log_message, fragment_index, line_index, self.location_tag)
                             break
                         # no new line available, sleep before trying again
                         time.sleep(sleep_param)
@@ -195,7 +195,7 @@ class ProgressWatcher(object):
                 if self.stop_signal.isSet() and not self.task_completed_signal.isSet():
                     logging.info('Task requested to be killed, may not have processed all progress messages')
         except:
-            logging.exception('Error while tailing {} [tag={}]'.format(self.target_file, self.location_tag))
+            logging.exception('Error while tailing %s [tag=%s]', self.target_file, self.location_tag)
 
     def retrieve_progress_states(self):
         """Generates the progress states by tailing the target_file.
@@ -217,14 +217,13 @@ class ProgressWatcher(object):
                     continue
                 percent_str, message = progress_report
                 if not percent_str or not percent_str.isdigit():
-                    logging.info('Skipping "{}" as the percent entry is not an int'.format(progress_report))
+                    logging.info('Skipping "%s" as the percent entry is not an int', progress_report)
                     continue
                 percent_int = int(percent_str, 10)
                 if percent_int < 0 or percent_int > 100:
-                    logging.info('Skipping "{}" as the percent is not in [0, 100]'.format(progress_report))
+                    logging.info('Skipping "%s" as the percent is not in [0, 100]', progress_report)
                     continue
-                log_message = 'Updating progress to {} percent [tag={}]'
-                logging.info(log_message.format(percent_str, self.location_tag))
+                logging.debug('Updating progress to %s percent [tag=%s]', percent_str, self.location_tag)
                 self.progress = {'progress-message': message.strip(),
                                  'progress-percent': percent_int,
                                  'progress-sequence': self.sequence_counter.increment_and_get()}
@@ -265,7 +264,7 @@ class ProgressTracker(object):
 
     def start(self):
         """Launches a thread that starts monitoring the progress location for progress messages."""
-        logging.info('Starting progress monitoring from [tag={}]'.format(self.location_tag))
+        logging.info('Starting progress monitoring from [tag=%s]', self.location_tag)
         tracker_thread = Thread(target=self.track_progress, args=())
         tracker_thread.daemon = True
         tracker_thread.start()
@@ -274,9 +273,9 @@ class ProgressTracker(object):
         """Waits for the progress tracker thread to run to completion."""
         self.progress_complete_event.wait(timeout=timeout)
         if self.progress_complete_event.isSet():
-            logging.info('Progress monitoring from complete [tag={}]'.format(self.location_tag))
+            logging.info('Progress monitoring from complete [tag=%s]', self.location_tag)
         else:
-            logging.info('Progress monitoring from did not complete [tag={}]'.format(self.location_tag))
+            logging.info('Progress monitoring from did not complete [tag=%s]', self.location_tag)
 
     def track_progress(self):
         """Retrieves and sends progress updates using send_progress_update_fn.
@@ -285,7 +284,7 @@ class ProgressTracker(object):
             for current_progress in self.watcher.retrieve_progress_states():
                 self.updater.send_progress_update(current_progress)
         except:
-            logging.exception('Exception while tracking progress [tag={}]'.format(self.location_tag))
+            logging.exception('Exception while tracking progress [tag=%s]', self.location_tag)
         finally:
             self.progress_complete_event.set()
 
