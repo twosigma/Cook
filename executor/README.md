@@ -75,7 +75,7 @@ For example:
 {...
  :executor {:command "mkdir .cook-executor && cook-executor"
             :default-progress-output-file "stdout"
-            :default-progress-regex-string "progress: (\d*)(?: )?(.*)"
+            :default-progress-regex-string "progress: ([0-9]*\.?[0-9]+), (.*)"
             :log-level "INFO"
             :max-message-length 512
             :progress-sample-interval-ms 1000
