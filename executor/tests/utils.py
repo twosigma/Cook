@@ -106,7 +106,7 @@ def cleanup_output(stdout_name, stderr_name):
                     read_and_print_contents(f, file_name)
             except UnicodeDecodeError:
                 try:
-                    with open(file_name, 'r', encoding='utf-8') as f:
+                    with open(file_name, 'r', encoding='cp437') as f:
                         read_and_print_contents(f, file_name)
                 except UnicodeDecodeError:
                     with open(file_name, 'rb') as f:

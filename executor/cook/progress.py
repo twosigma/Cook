@@ -76,10 +76,17 @@ class ProgressUpdater(object):
                     logging.info('Sending progress message {}'.format(progress_data))
                     message_dict = dict(progress_data)
                     message_dict['task-id'] = self.task_id
-                    progress_message = json.dumps(message_dict)
 
-                    if len(progress_message) > self.max_message_length and 'progress-message' in message_dict:
-                        progress_str = message_dict['progress-message']
+                    raw_progress_message = progress_data['progress-message']
+                    try:
+                        progress_str = raw_progress_message.decode('ascii').strip()
+                    except UnicodeDecodeError:
+                        logging.info('Unable to decode progress message in ascii, using empty string instead')
+                        progress_str = ''
+                    message_dict['progress-message'] = progress_str
+
+                    progress_message = json.dumps(message_dict)
+                    if len(progress_message) > self.max_message_length:
                         num_extra_chars = len(progress_message) - self.max_message_length
                         allowed_progress_message_length = max(len(progress_str) - num_extra_chars - 3, 0)
                         new_progress_str = progress_str[:allowed_progress_message_length].strip() + '...'
@@ -103,38 +110,23 @@ class ProgressWatcher(object):
     """
 
     @staticmethod
-    def match_progress_update(progress_regex_pattern, input_string):
+    def match_progress_update(progress_regex_pattern, input_data):
         """Returns the progress tuple when the input string matches the provided regex.
         
         Parameters
         ----------
         progress_regex_pattern: re.pattern
             The progress regex to match against, it must return two capture groups.
-        input_string: string
-            The input string.
+        input_data: bytes
+            The input data.
         
         Returns
         -------
         the tuple (percent, message) if the string matches the provided regex, 
                  else return None. 
         """
-        matches = progress_regex_pattern.findall(input_string)
+        matches = progress_regex_pattern.findall(input_data)
         return matches[0] if len(matches) >= 1 else None
-
-    @staticmethod
-    def decode_progress_line(line, location_tag):
-        progress_line = None
-        try:
-            progress_line = line.decode('ascii')
-        except UnicodeDecodeError:
-            try:
-                progress_line = line.decode('utf-8')
-            except UnicodeDecodeError:
-                try:
-                    progress_line = line.decode('utf-16')
-                except UnicodeDecodeError:
-                    logging.debug('Unable to decode line %s [tag=%s]', line, location_tag)
-        return progress_line
 
     def __init__(self, output_name, location_tag, sequence_counter, max_bytes_read_per_line, progress_regex_string,
                  stop_signal, task_completed_signal):
@@ -142,7 +134,7 @@ class ProgressWatcher(object):
         self.location_tag = location_tag
         self.sequence_counter = sequence_counter
         self.progress_regex_string = progress_regex_string
-        self.progress_regex_pattern = re.compile(progress_regex_string)
+        self.progress_regex_pattern = re.compile(progress_regex_string.encode())
         self.progress = None
         self.stop_signal = stop_signal
         self.task_completed_signal = task_completed_signal
@@ -207,9 +199,7 @@ class ProgressWatcher(object):
                     fragment_index += 1
                     if line.endswith(linesep_bytes):
                         line_index += 1
-                    progress_line = ProgressWatcher.decode_progress_line(line, self.location_tag)
-                    if progress_line:
-                        yield progress_line
+                    yield line
                 if self.stop_signal.isSet() and not self.task_completed_signal.isSet():
                     logging.info('Task requested to be killed, may not have processed all progress messages')
         except:
@@ -234,13 +224,13 @@ class ProgressWatcher(object):
                     progress_report = ProgressWatcher.match_progress_update(self.progress_regex_pattern, line)
                     if progress_report is None:
                         continue
-                    percent_str, message = progress_report
-                    percent_int = int(round(float(percent_str)))
+                    percent_data, message_data = progress_report
+                    percent_int = int(round(float(percent_data.decode())))
                     if percent_int < 0 or percent_int > 100:
                         logging.info('Skipping "%s" as the percent is not in [0, 100]', progress_report)
                         continue
-                    logging.debug('Updating progress to %s percent [tag=%s]', percent_str, self.location_tag)
-                    self.progress = {'progress-message': message.strip(),
+                    logging.debug('Updating progress to %s percent [tag=%s]', percent_int, self.location_tag)
+                    self.progress = {'progress-message': message_data,
                                      'progress-percent': percent_int,
                                      'progress-sequence': self.sequence_counter.increment_and_get()}
                     yield self.progress

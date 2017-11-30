@@ -50,7 +50,7 @@ class ProgressTest(unittest.TestCase):
             return len(message_string) <= max_message_length
 
         progress_updater = cp.ProgressUpdater(task_id, max_message_length, poll_interval_ms, send_progress_message)
-        progress_data_0 = {'progress-message': 'Progress message-0'}
+        progress_data_0 = {'progress-message': b'Progress message-0'}
         progress_updater.send_progress_update(progress_data_0)
 
         self.assertEqual(1, len(driver.messages))
@@ -58,13 +58,13 @@ class ProgressTest(unittest.TestCase):
         expected_message_0 = {'progress-message': 'Progress message-0', 'task-id': task_id}
         assert_message(self, expected_message_0, actual_encoded_message_0)
 
-        progress_data_1 = {'progress-message': 'Progress message-1'}
+        progress_data_1 = {'progress-message': b'Progress message-1'}
         progress_updater.send_progress_update(progress_data_1)
 
         self.assertEqual(1, len(driver.messages))
 
         time.sleep(poll_interval_ms / 1000.0)
-        progress_data_2 = {'progress-message': 'Progress message-2'}
+        progress_data_2 = {'progress-message': b'Progress message-2'}
         progress_updater.send_progress_update(progress_data_2)
 
         self.assertEqual(2, len(driver.messages))
@@ -85,7 +85,7 @@ class ProgressTest(unittest.TestCase):
             return len(message_string) <= max_message_length
 
         progress_updater = cp.ProgressUpdater(task_id, max_message_length, poll_interval_ms, send_progress_message)
-        progress_data_0 = {'progress-message': 'Progress message-0 is really long lorem ipsum dolor sit amet text'}
+        progress_data_0 = {'progress-message': b'Progress message-0 is really long lorem ipsum dolor sit amet text'}
         progress_updater.send_progress_update(progress_data_0)
 
         self.assertEqual(1, len(driver.messages))
@@ -107,7 +107,8 @@ class ProgressTest(unittest.TestCase):
             return len(message_string) <= max_message_length
 
         progress_updater = cp.ProgressUpdater(task_id, max_message_length, poll_interval_ms, send_progress_message)
-        progress_data_0 = {'unknown': 'Unknown field has a really long lorem ipsum dolor sit amet exceed limit text'}
+        progress_data_0 = {'unknown': 'Unknown field has a really long lorem ipsum dolor sit amet exceed limit text',
+                           'progress-message': b'pm'}
         progress_updater.send_progress_update(progress_data_0)
 
         self.assertEqual(0, len(driver.messages))
@@ -140,7 +141,7 @@ class ProgressTest(unittest.TestCase):
                 collected_data.append(line.strip())
 
             self.assertEqual(items_to_write, len(collected_data))
-            self.assertEqual(list(map(lambda x: str(x), range(items_to_write))), collected_data)
+            self.assertEqual(list(map(lambda x: str.encode(str(x)), range(items_to_write))), collected_data)
         finally:
             if os.path.isfile(file_name):
                 os.remove(file_name)
@@ -177,7 +178,7 @@ class ProgressTest(unittest.TestCase):
                 for index in range(len(collected_data)):
                     logging.info('{}: {}'.format(index, collected_data[index]))
             self.assertEqual(items_to_write, len(collected_data))
-            expected_data = list(map(lambda x: 'line-{}'.format(x), range(items_to_write)))
+            expected_data = list(map(lambda x: str.encode('line-{}'.format(x)), range(items_to_write)))
             self.assertEqual(expected_data, collected_data)
         finally:
             if os.path.isfile(file_name):
@@ -215,9 +216,9 @@ class ProgressTest(unittest.TestCase):
                 collected_data.append(line.strip())
 
             logging.debug('collected_data = {}'.format(collected_data))
-            expected_data = ['abcd',
-                             'abcdefghij', 'kl',
-                             'abcdefghij', 'klmnopqrst', 'uvwxyz']
+            expected_data = [b'abcd',
+                             b'abcdefghij', b'kl',
+                             b'abcdefghij', b'klmnopqrst', b'uvwxyz']
             self.assertEqual(expected_data, collected_data)
         finally:
             if os.path.isfile(file_name):
@@ -251,28 +252,28 @@ class ProgressTest(unittest.TestCase):
             file.flush()
 
             time.sleep(0.10)
-            self.assertEqual({'progress-message': 'Fifty percent', 'progress-percent': 50, 'progress-sequence': 2},
+            self.assertEqual({'progress-message': b'Fifty percent', 'progress-percent': 50, 'progress-sequence': 2},
                              watcher.current_progress())
 
             file.write("Stage Three complete\n")
             file.flush()
 
             time.sleep(0.10)
-            self.assertEqual({'progress-message': 'Fifty percent', 'progress-percent': 50, 'progress-sequence': 2},
+            self.assertEqual({'progress-message': b'Fifty percent', 'progress-percent': 50, 'progress-sequence': 2},
                              watcher.current_progress())
 
             file.write("^^^^JOB-PROGRESS: 55.0 Fifty-five percent\n")
             file.flush()
 
             time.sleep(0.10)
-            self.assertEqual({'progress-message': 'Fifty-five percent', 'progress-percent': 55, 'progress-sequence': 3},
+            self.assertEqual({'progress-message': b'Fifty-five percent', 'progress-percent': 55, 'progress-sequence': 3},
                              watcher.current_progress())
 
             file.write("^^^^JOB-PROGRESS: 65.8 Sixty-six percent\n")
             file.flush()
 
             time.sleep(0.10)
-            self.assertEqual({'progress-message': 'Sixty-six percent', 'progress-percent': 66, 'progress-sequence': 4},
+            self.assertEqual({'progress-message': b'Sixty-six percent', 'progress-percent': 66, 'progress-sequence': 4},
                              watcher.current_progress())
 
             file.write("Stage Four complete\n")
@@ -281,7 +282,7 @@ class ProgressTest(unittest.TestCase):
             file.flush()
 
             time.sleep(0.10)
-            self.assertEqual({'progress-message': 'Hundred percent', 'progress-percent': 100, 'progress-sequence': 5},
+            self.assertEqual({'progress-message': b'Hundred percent', 'progress-percent': 100, 'progress-sequence': 5},
                              watcher.current_progress())
 
         finally:
@@ -326,7 +327,7 @@ class ProgressTest(unittest.TestCase):
             file.write("^^^^JOB-PROGRESS: 075 75% percent\n")
             file.flush()
             time.sleep(0.10)
-            self.assertEqual({'progress-message': '75% percent', 'progress-percent': 75, 'progress-sequence': 1},
+            self.assertEqual({'progress-message': b'75% percent', 'progress-percent': 75, 'progress-sequence': 1},
                              watcher.current_progress())
 
         finally:
@@ -371,7 +372,7 @@ class ProgressTest(unittest.TestCase):
             file.write("^^^^JOB-PROGRESS: 75 75% percent\n")
             file.flush()
             time.sleep(0.10)
-            self.assertEqual({'progress-message': '75% percent', 'progress-percent': 75, 'progress-sequence': 1},
+            self.assertEqual({'progress-message': b'75% percent', 'progress-percent': 75, 'progress-sequence': 1},
                              watcher.current_progress())
 
         finally:
@@ -408,7 +409,7 @@ class ProgressTest(unittest.TestCase):
 
             time.sleep(0.10)
             self.assertIsNone(dn_watcher.current_progress())
-            self.assertEqual({'progress-message': 'Hundred percent', 'progress-percent': 100, 'progress-sequence': 1},
+            self.assertEqual({'progress-message': b'Hundred percent', 'progress-percent': 100, 'progress-sequence': 1},
                              out_watcher.current_progress())
 
         finally:
@@ -460,7 +461,7 @@ class ProgressTest(unittest.TestCase):
 
             read_progress_states_thread.join()
 
-            expected_data = list(map(lambda x: {'progress-message': 'completed-{}-percent'.format(x),
+            expected_data = list(map(lambda x: {'progress-message': 'completed-{}-percent'.format(x).encode(),
                                                 'progress-percent': x,
                                                 'progress-sequence': x},
                                      range(1, 101)))

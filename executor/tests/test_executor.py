@@ -668,7 +668,7 @@ class ExecutorTest(unittest.TestCase):
             self.assertEqual(3, len(driver.statuses))
 
             logging.info('Messages: {}'.format(driver.messages))
-            self.assertEqual(4, len(driver.messages))
+            self.assertEqual(5, len(driver.messages))
 
             actual_encoded_message_0 = driver.messages[0]
             expected_message_0 = {'sandbox-directory': sandbox_directory, 'task-id': task_id, 'type': 'directory'}
@@ -679,9 +679,13 @@ class ExecutorTest(unittest.TestCase):
                                            'progress-percent': 25,
                                            'progress-sequence': 1,
                                            'task-id': task_id},
+                                          {'progress-message': '',
+                                           'progress-percent': 50,
+                                           'progress-sequence': 2,
+                                           'task-id': task_id},
                                           {'progress-message': 'Fifty-five percent in stdout',
                                            'progress-percent': 55,
-                                           'progress-sequence': 2,
+                                           'progress-sequence': 3,
                                            'task-id': task_id}]
             assert_messages(self, driver.messages, expected_exit_messages, expected_progress_messages)
 
@@ -693,10 +697,14 @@ class ExecutorTest(unittest.TestCase):
         sleep_and_set_stop_signal_task(stop_signal, 60)
 
         # progress string in file with binary data will be ignored
-        command = 'echo "Hello"' \
+        command = 'echo "Hello"; ' \
                   'echo "^^^^JOB-PROGRESS: 25 Twenty-five percent in stdout"; ' \
                   'head -c 1000 /dev/random; ' \
+                  'echo "force newline"; ' \
+                  'sleep 2; ' \
                   'echo "^^^^JOB-PROGRESS: 50 `head -c 100 /dev/random`"; ' \
+                  'echo "force newline"; ' \
+                  'sleep 2; ' \
                   'head -c 1000 /dev/random; ' \
                   'echo "force newline"; ' \
                   'echo "^^^^JOB-PROGRESS: 55 Fifty-five percent in stdout"; ' \
