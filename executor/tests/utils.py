@@ -102,11 +102,15 @@ def cleanup_output(stdout_name, stderr_name):
     def process_file_name(file_name):
         if os.path.isfile(file_name):
             try:
-                with open(file_name, encoding='utf-8') as f:
+                with open(file_name, encoding='ascii') as f:
                     read_and_print_contents(f, file_name)
             except UnicodeDecodeError:
-                with open(file_name, 'rb', encoding='ascii') as f:
-                    read_and_print_contents(f, file_name)
+                try:
+                    with open(file_name, 'r', encoding='utf-8') as f:
+                        read_and_print_contents(f, file_name)
+                except UnicodeDecodeError:
+                    with open(file_name, 'rb') as f:
+                        read_and_print_contents(f, file_name)
         os.remove(file_name)
 
     process_file_name(stdout_name)
