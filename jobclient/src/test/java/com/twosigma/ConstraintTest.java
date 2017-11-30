@@ -18,6 +18,7 @@ package com.twosigma;
 import com.twosigma.cook.jobclient.constraint.Constraints;
 import com.twosigma.cook.jobclient.constraint.Constraint;
 import com.twosigma.cook.jobclient.constraint.Operator;
+import org.json.JSONArray;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -29,5 +30,13 @@ public class ConstraintTest {
         Assert.assertEquals(c.getAttribute(), "bar");
         Assert.assertEquals(c.getOperator(), Operator.EQUALS);
         Assert.assertEquals(c.toJson().getString(2), "foo");
+    }
+
+    @Test
+    public void testParseFrom() {
+        String constraintString = "[bar,EQUALS,foo]";
+        Constraint parsedConstraint = Constraints.parseFrom(new JSONArray(constraintString));
+        Constraint expectedConstraint = Constraints.buildEqualsConstraint("bar", "foo");
+        Assert.assertEquals(parsedConstraint, expectedConstraint);
     }
 }

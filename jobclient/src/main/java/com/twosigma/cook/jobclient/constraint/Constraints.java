@@ -66,26 +66,4 @@ public class Constraints {
                 throw new UnsupportedOperationException(operator + " is not supported.");
         }
     }
-
-    /**
-     * @param constraint the string representation of a constraint. The string could be either the form
-     *                   "attribute,operator" or the form "attribute,operator,value1,value2,...".
-     *                   See {@link Constraint}.
-     * @return the parsed constraint.
-     */
-    public static Constraint parseFrom(String constraint) {
-        String[] tokens = constraint.split(",");
-        Preconditions.checkArgument(tokens.length >= 2,
-                "A constraint's string representation must be \"attribute,operator\", " +
-                        "or \"attribute,operator,value1,value2,...\"");
-        Operator operator = Operator.fromString(tokens[1]);
-        switch (operator) {
-            case EQUALS:
-                Preconditions.checkArgument(tokens.length == 3,
-                        "The constraint must be form of [<attribute>, <operator>, <value>]");
-                return new OneToOneConstraint(operator, tokens[0], tokens[2]);
-            default:
-                throw new UnsupportedOperationException(operator + " is not supported.");
-        }
-    }
 }
