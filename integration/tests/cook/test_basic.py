@@ -61,7 +61,7 @@ class CookTest(unittest.TestCase):
                 self.assertEqual('failed', job_instance['status'], message)
                 self.assertEqual('Command exited non-zero', job_instance['reason_string'], message)
             else:
-                self.assertEqual('unknown', job_instance['status'], message)
+                self.assertIn(job_instance['status'], ['running', 'unknown'], message)
             self.assertEqual('mesos', job_instance['executor'], message)
 
     def test_disable_mea_culpa(self):
