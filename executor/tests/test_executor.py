@@ -668,15 +668,22 @@ class ExecutorTest(unittest.TestCase):
             self.assertEqual(3, len(driver.statuses))
 
             logging.info('Messages: {}'.format(driver.messages))
-            self.assertEqual(2, len(driver.messages))
+            self.assertEqual(4, len(driver.messages))
 
             actual_encoded_message_0 = driver.messages[0]
             expected_message_0 = {'sandbox-directory': sandbox_directory, 'task-id': task_id, 'type': 'directory'}
             assert_message(self, expected_message_0, actual_encoded_message_0)
 
-            actual_encoded_message_1 = driver.messages[1]
-            expected_message_1 = {'exit-code': 0, 'task-id': task_id}
-            assert_message(self, expected_message_1, actual_encoded_message_1)
+            expected_exit_messages = [{'exit-code': 0, 'task-id': task_id}]
+            expected_progress_messages = [{'progress-message': 'Twenty-five percent in stdout',
+                                           'progress-percent': 25,
+                                           'progress-sequence': 1,
+                                           'task-id': task_id},
+                                          {'progress-message': 'Fifty-five percent in stdout',
+                                           'progress-percent': 55,
+                                           'progress-sequence': 2,
+                                           'task-id': task_id}]
+            assert_messages(self, driver.messages, expected_exit_messages, expected_progress_messages)
 
             stdout_name = ensure_directory('build/stdout.' + str(task_id))
             if not os.path.isfile(stdout_name):
@@ -686,11 +693,13 @@ class ExecutorTest(unittest.TestCase):
         sleep_and_set_stop_signal_task(stop_signal, 60)
 
         # progress string in file with binary data will be ignored
-        command = 'head -c 1000 /dev/random; ' \
-                  'echo "Hello"' \
+        command = 'echo "Hello"' \
+                  'echo "^^^^JOB-PROGRESS: 25 Twenty-five percent in stdout"; ' \
+                  'head -c 1000 /dev/random; ' \
                   'echo "^^^^JOB-PROGRESS: 50 `head -c 100 /dev/random`"; ' \
                   'head -c 1000 /dev/random; ' \
-                  'echo "^^^^JOB-PROGRESS: 55 Fifty-five percent in stdout" >> {}; ' \
+                  'echo "force newline"; ' \
+                  'echo "^^^^JOB-PROGRESS: 55 Fifty-five percent in stdout"; ' \
                   'echo "Done"'
         self.manage_task_runner(command, assertions, stop_signal=stop_signal)
         stop_signal.set()

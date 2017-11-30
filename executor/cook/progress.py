@@ -121,6 +121,21 @@ class ProgressWatcher(object):
         matches = progress_regex_pattern.findall(input_string)
         return matches[0] if len(matches) >= 1 else None
 
+    @staticmethod
+    def decode_progress_line(line, location_tag):
+        progress_line = None
+        try:
+            progress_line = line.decode('ascii')
+        except UnicodeDecodeError:
+            try:
+                progress_line = line.decode('utf-8')
+            except UnicodeDecodeError:
+                try:
+                    progress_line = line.decode('utf-16')
+                except UnicodeDecodeError:
+                    logging.debug('Unable to decode line %s [tag=%s]', line, location_tag)
+        return progress_line
+
     def __init__(self, output_name, location_tag, sequence_counter, max_bytes_read_per_line, progress_regex_string,
                  stop_signal, task_completed_signal):
         self.target_file = output_name
@@ -173,9 +188,10 @@ class ProgressWatcher(object):
                 return
 
             logging.info('File has been created, reading contents [tag=%s]', self.location_tag)
-            with open(self.target_file, 'r') as target_file_obj:
-                fragment_index = 0
-                line_index = 0
+            linesep_bytes = os.linesep.encode()
+            fragment_index = 0
+            line_index = 0
+            with open(self.target_file, 'rb') as target_file_obj:
                 while not self.stop_signal.isSet():
                     line = target_file_obj.readline(self.max_bytes_read_per_line)
                     if not line:
@@ -189,9 +205,11 @@ class ProgressWatcher(object):
                         continue
 
                     fragment_index += 1
-                    if line.endswith(os.linesep):
+                    if line.endswith(linesep_bytes):
                         line_index += 1
-                    yield line
+                    progress_line = ProgressWatcher.decode_progress_line(line, self.location_tag)
+                    if progress_line:
+                        yield progress_line
                 if self.stop_signal.isSet() and not self.task_completed_signal.isSet():
                     logging.info('Task requested to be killed, may not have processed all progress messages')
         except:
