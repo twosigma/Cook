@@ -1309,16 +1309,15 @@ class CookTest(unittest.TestCase):
             self.assertEqual(set(usage_data['ungrouped'].keys()), {'running_jobs', 'usage'}, usage_data)
             my_group_usage = next(x for x in usage_data['grouped'] if x['group']['uuid'] == group_uuid)
             self.assertEqual(set(my_group_usage.keys()), {'group', 'usage'}, my_group_usage)
-            # Our jobs should be in the breakdown for our job group
-            for job_uuid in job_uuids:
-                self.assertIn(job_uuid, my_group_usage['group']['running_jobs'], my_group_usage)
-            # We know all the info about the jobs in our custom group.
+            # The breakdown for our job group should contain exactly the two jobs we submitted
+            self.assertEqual(set(job_uuids), set(my_group_usage['group']['running_jobs']), my_group_usage)
+            # We know all the info about the jobs in our custom group
             self.assertEqual(my_group_usage['usage']['mem'], job_count * job_resources['mem'], my_group_usage)
             self.assertEqual(my_group_usage['usage']['cpus'], job_count * job_resources['cpus'], my_group_usage)
             self.assertEqual(my_group_usage['usage']['gpus'], 0, my_group_usage)
             self.assertEqual(my_group_usage['usage']['jobs'], job_count, my_group_usage)
-            # Since we don't know what other test jobs are currently running,
-            # we conservatively check current usage with the >= operation.
+            # Since we don't know what other test jobs are currently running
+            # we conservatively check current usage with the >= operation
             self.assertGreaterEqual(usage_data['total_usage']['mem'], job_resources['mem'], usage_data)
             self.assertGreaterEqual(usage_data['total_usage']['cpus'], job_resources['cpus'], usage_data)
             self.assertGreaterEqual(usage_data['total_usage']['gpus'], 0, usage_data)

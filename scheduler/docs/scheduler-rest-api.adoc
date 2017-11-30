@@ -528,7 +528,7 @@ This endpoint allows you to query a user's current aggregate resource usage.
 [options="header"]
 |====
 |Code | HTTP Meaning | Possible reason
-|200 | OK | Returns the user's current resource usage (JSON).
+|200 | OK | Returns the user's current resource usage (JSON)
 |400 | Malformed | Returned if a user is not specified
 |403 | Forbidden | This is returned if the user issuing the request is not authorized
 |====
