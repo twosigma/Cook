@@ -212,22 +212,22 @@ class ProgressWatcher(object):
         if self.progress_regex_string:
             sleep_time_ms = 50
             for line in self.tail(sleep_time_ms):
-                progress_report = ProgressWatcher.match_progress_update(self.progress_regex_pattern, line)
-                if progress_report is None:
-                    continue
-                percent_str, message = progress_report
-                if not percent_str or not percent_str.isdigit():
-                    logging.info('Skipping "%s" as the percent entry is not an int', progress_report)
-                    continue
-                percent_int = int(percent_str, 10)
-                if percent_int < 0 or percent_int > 100:
-                    logging.info('Skipping "%s" as the percent is not in [0, 100]', progress_report)
-                    continue
-                logging.debug('Updating progress to %s percent [tag=%s]', percent_str, self.location_tag)
-                self.progress = {'progress-message': message.strip(),
-                                 'progress-percent': percent_int,
-                                 'progress-sequence': self.sequence_counter.increment_and_get()}
-                yield self.progress
+                try:
+                    progress_report = ProgressWatcher.match_progress_update(self.progress_regex_pattern, line)
+                    if progress_report is None:
+                        continue
+                    percent_str, message = progress_report
+                    percent_int = int(round(float(percent_str)))
+                    if percent_int < 0 or percent_int > 100:
+                        logging.info('Skipping "%s" as the percent is not in [0, 100]', progress_report)
+                        continue
+                    logging.debug('Updating progress to %s percent [tag=%s]', percent_str, self.location_tag)
+                    self.progress = {'progress-message': message.strip(),
+                                     'progress-percent': percent_int,
+                                     'progress-sequence': self.sequence_counter.increment_and_get()}
+                    yield self.progress
+                except:
+                    logging.exception('Skipping "%s" as a progress entry', progress_report)
 
 
 class ProgressTracker(object):

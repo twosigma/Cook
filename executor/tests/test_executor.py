@@ -413,7 +413,7 @@ class ExecutorTest(unittest.TestCase):
             sandbox_directory = '/location/to/task/sandbox/{}'.format(task_id)
             config = cc.ExecutorConfig(max_message_length=300,
                                        progress_output_name=stdout_name,
-                                       progress_regex_string='\^\^\^\^JOB-PROGRESS: (\d+)(?: )?(.*)',
+                                       progress_regex_string='\^\^\^\^JOB-PROGRESS: ([0-9]*\.?[0-9]+)(?: )?(.*)',
                                        progress_sample_interval_ms=100,
                                        sandbox_directory=sandbox_directory)
         else:
@@ -585,7 +585,7 @@ class ExecutorTest(unittest.TestCase):
         command = 'echo "Hello World"; ' \
                   'echo "^^^^JOB-PROGRESS: 50 Fifty percent"; ' \
                   'sleep 0.1; ' \
-                  'echo "^^^^JOB-PROGRESS: 55 Fifty-five percent"; ' \
+                  'echo "^^^^JOB-PROGRESS: 54.8 Fifty-five percent"; ' \
                   'sleep 0.1; ' \
                   'echo "Exiting..."; ' \
                   'exit 0'
@@ -876,7 +876,7 @@ class ExecutorTest(unittest.TestCase):
                                      'max_message_length': max_message_length,
                                      'progress_output_env_variable': 'DEFAULT_PROGRESS_FILE_ENV_VARIABLE',
                                      'progress_output_name': progress_name,
-                                     'progress_regex_string': '\^\^\^\^JOB-PROGRESS: (\d+)(?: )?(.*)',
+                                     'progress_regex_string': '\^\^\^\^JOB-PROGRESS: ([0-9]*\.?[0-9]+)(?: )?(.*)',
                                      'progress_sample_interval_ms': 10,
                                      'sandbox_directory': '/sandbox/directory/for/{}'.format(task_id),
                                      'shutdown_grace_period_ms': 60000,

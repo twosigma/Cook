@@ -16,7 +16,7 @@ from tests.utils import assert_message, ensure_directory, get_random_task_id, Fa
 class ProgressTest(unittest.TestCase):
     def test_match_progress_update(self):
 
-        progress_regex_string = '\^\^\^\^JOB-PROGRESS: (\d+)(?: )?(.*)'
+        progress_regex_string = '\^\^\^\^JOB-PROGRESS: ([0-9]*\.?[0-9]+)(?: )?(.*)'
         progress_regex_pattern = re.compile(progress_regex_string)
 
         def match_progress_update(input_string):
@@ -31,8 +31,10 @@ class ProgressTest(unittest.TestCase):
                          match_progress_update("^^^^JOB-PROGRESS: 1 One percent complete"))
         self.assertEqual(('50', 'Fifty percent complete'),
                          match_progress_update("^^^^JOB-PROGRESS: 50 Fifty percent complete"))
-        # Fractions in progress update are not supported
-        self.assertEqual(('2', '.0 Two percent complete'),
+        # Fractions in progress update are also supported
+        self.assertEqual(('2.2', ''),
+                         match_progress_update("^^^^JOB-PROGRESS: 2.2"))
+        self.assertEqual(('2.0', 'Two percent complete'),
                          match_progress_update("^^^^JOB-PROGRESS: 2.0 Two percent complete"))
 
     def test_send_progress_update(self):
@@ -223,7 +225,7 @@ class ProgressTest(unittest.TestCase):
 
     def test_collect_progress_updates(self):
         file_name = ensure_directory('build/collect_progress_test.' + get_random_task_id())
-        progress_regex = '\^\^\^\^JOB-PROGRESS: (\d+)(?: )?(.*)'
+        progress_regex = '\^\^\^\^JOB-PROGRESS: ([0-9]*\.?[0-9]+)(?: )?(.*)'
         stop_signal = Event()
         completed_signal = Event()
 
@@ -259,11 +261,18 @@ class ProgressTest(unittest.TestCase):
             self.assertEqual({'progress-message': 'Fifty percent', 'progress-percent': 50, 'progress-sequence': 2},
                              watcher.current_progress())
 
-            file.write("^^^^JOB-PROGRESS: 55 Fifty-five percent\n")
+            file.write("^^^^JOB-PROGRESS: 55.0 Fifty-five percent\n")
             file.flush()
 
             time.sleep(0.10)
             self.assertEqual({'progress-message': 'Fifty-five percent', 'progress-percent': 55, 'progress-sequence': 3},
+                             watcher.current_progress())
+
+            file.write("^^^^JOB-PROGRESS: 65.8 Sixty-six percent\n")
+            file.flush()
+
+            time.sleep(0.10)
+            self.assertEqual({'progress-message': 'Sixty-six percent', 'progress-percent': 66, 'progress-sequence': 4},
                              watcher.current_progress())
 
             file.write("Stage Four complete\n")
@@ -272,7 +281,7 @@ class ProgressTest(unittest.TestCase):
             file.flush()
 
             time.sleep(0.10)
-            self.assertEqual({'progress-message': 'Hundred percent', 'progress-percent': 100, 'progress-sequence': 4},
+            self.assertEqual({'progress-message': 'Hundred percent', 'progress-percent': 100, 'progress-sequence': 5},
                              watcher.current_progress())
 
         finally:
@@ -283,7 +292,7 @@ class ProgressTest(unittest.TestCase):
 
     def test_collect_progress_updates_skip_faulty(self):
         file_name = ensure_directory('build/collect_progress_updates_skip_faulty.' + get_random_task_id())
-        progress_regex = '\^\^\^\^JOB-PROGRESS: (\d+)(?: )?(.*)'
+        progress_regex = '\^\^\^\^JOB-PROGRESS: ([0-9]*\.?[0-9]+)(?: )?(.*)'
         stop_signal = Event()
         completed_signal = Event()
 
@@ -373,7 +382,7 @@ class ProgressTest(unittest.TestCase):
 
     def test_collect_progress_updates_dev_null(self):
         file_name = ensure_directory('build/collect_progress_test.' + get_random_task_id())
-        progress_regex = '\^\^\^\^JOB-PROGRESS: (\d+)(?: )?(.*)'
+        progress_regex = '\^\^\^\^JOB-PROGRESS: ([0-9]*\.?[0-9]+)(?: )?(.*)'
         location = '/dev/null'
         stop_signal = Event()
         completed_signal = Event()
@@ -410,7 +419,7 @@ class ProgressTest(unittest.TestCase):
 
     def test_collect_progress_updates_lots_of_writes(self):
         file_name = ensure_directory('build/collect_progress_test.' + get_random_task_id())
-        progress_regex = 'progress: (\d+), (.*)'
+        progress_regex = 'progress: ([0-9]*\.?[0-9]+), (.*)'
         items_to_write = 250000
         stop_signal = Event()
         completed_signal = Event()
@@ -498,7 +507,7 @@ class ProgressTest(unittest.TestCase):
             time.sleep(0.10)
             self.assertIsNone(watcher.current_progress())
 
-            file.write("^^^^JOB-PROGRESS: 55 Fifty-five percent\n")
+            file.write("^^^^JOB-PROGRESS: 55.0 Fifty-five percent\n")
             file.flush()
 
             time.sleep(0.10)
