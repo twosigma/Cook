@@ -376,7 +376,9 @@ def manage_task(driver, task, stop_signal, completed_signal, config):
 
         group_id = find_process_group(process.pid)
 
-        stdout_thread, stderr_thread = cio.track_outputs(task_id, process, config.max_bytes_read_per_line)
+        flush_interval_secs = config.flush_interval_secs
+        max_bytes_read_per_line = config.max_bytes_read_per_line
+        stdout_thread, stderr_thread = cio.track_outputs(task_id, process, flush_interval_secs, max_bytes_read_per_line)
         task_completed_signal = Event() # event to track task execution completion
         sequence_counter = cp.ProgressSequenceCounter()
 
@@ -461,7 +463,10 @@ class CookExecutor(pm.Executor):
         stop_signal = self.stop_signal
         completed_signal = self.completed_signal
         config = self.config
-        Thread(target=manage_task, args=(driver, task, stop_signal, completed_signal, config)).start()
+
+        task_thread = Thread(target=manage_task, args=(driver, task, stop_signal, completed_signal, config))
+        task_thread.daemon= True
+        task_thread.start()
 
     def killTask(self, driver, task_id):
         logging.info('Mesos requested executor to kill task {}'.format(task_id))
