@@ -94,7 +94,8 @@ final public class Job {
         private JSONObject _container;
         private Map<String, String> _labels = new HashMap<>();
         private List<UUID> _groups = new ArrayList<>();
-        private Set<Constraint> _constraints = new HashSet<>();
+        // Use LinkedHashSet to ensure the insertion order will be kept.
+        private Set<Constraint> _constraints = new LinkedHashSet<>();
         private Application _application;
 
         /**
@@ -216,6 +217,17 @@ final public class Job {
          */
         public Builder addConstraint(Constraint constraint) {
             _constraints.add(constraint);
+            return this;
+        }
+
+        /**
+         * Adds a collection of constraints.
+         *
+         * @param constraints The constraints to add
+         * @return this builder.
+         */
+        public Builder addConstraint(Collection constraints) {
+            _constraints.addAll(constraints);
             return this;
         }
 

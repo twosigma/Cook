@@ -32,8 +32,8 @@ final class OneToOneConstraint implements Constraint {
 
     OneToOneConstraint(Operator operator, String attribute, String value) {
         _operator = operator;
-        _attribute = attribute;
-        _value = value;
+        _attribute = attribute.trim();
+        _value = value.trim();
     }
 
     @Override
