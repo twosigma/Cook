@@ -85,13 +85,13 @@ def send_message(driver, message, max_message_length):
     """
     logging.info('Sending framework message {}'.format(message))
     message_string = str(message).encode('utf8')
-    if len(message_string) < max_message_length:
+    if len(message_string) <= max_message_length:
         encoded_message = pm.encode_data(message_string)
         driver.sendFrameworkMessage(encoded_message)
         return True
     else:
-        log_message_template = 'Unable to send message {} as it exceeds allowed max length of {}'
-        logging.warning(log_message_template.format(message, max_message_length))
+        log_message_template = 'Unable to send message as its length of {} exceeds allowed max length of {}'
+        logging.warning(log_message_template.format(len(message_string), max_message_length))
         return False
 
 
@@ -376,22 +376,27 @@ def manage_task(driver, task, stop_signal, completed_signal, config):
 
         group_id = find_process_group(process.pid)
 
-        stdout_thread, stderr_thread = cio.track_outputs(task_id, process, config.max_bytes_read_per_line)
+        flush_interval_secs = config.flush_interval_secs
+        max_bytes_read_per_line = config.max_bytes_read_per_line
+        stdout_thread, stderr_thread = cio.track_outputs(task_id, process, flush_interval_secs, max_bytes_read_per_line)
         task_completed_signal = Event() # event to track task execution completion
         sequence_counter = cp.ProgressSequenceCounter()
 
         def send_progress_message(message):
-            send_message(driver, message, config.max_message_length)
+            return send_message(driver, message, config.max_message_length)
 
-        def launch_progress_tracker(progress_location):
-            progress_tracker = cp.ProgressTracker(task_id, config, stop_signal, task_completed_signal,
-                                                  send_progress_message, progress_location, sequence_counter)
+        def launch_progress_tracker(progress_location, location_tag):
+            logging.info('Location {} tagged as [tag={}]'.format(progress_location, location_tag))
+            progress_tracker = cp.ProgressTracker(task_id, config, stop_signal, task_completed_signal, sequence_counter,
+                                                  send_progress_message, progress_location, location_tag)
             progress_tracker.start()
             return progress_tracker
 
-        progress_locations = {config.progress_output_name, config.stderr_file(), config.stdout_file()}
+        progress_locations = {config.progress_output_name: 'progress',
+                              config.stderr_file(): 'stderr',
+                              config.stdout_file(): 'stdout'}
         logging.info('Progress will be tracked from {} locations'.format(len(progress_locations)))
-        progress_trackers = [launch_progress_tracker(progress_location) for progress_location in progress_locations]
+        progress_trackers = [launch_progress_tracker(l, progress_locations[l]) for l in progress_locations]
 
         process_info = process, stdout_thread, stderr_thread
         await_process_completion(stop_signal, process_info, config.shutdown_grace_period_ms)
@@ -458,7 +463,10 @@ class CookExecutor(pm.Executor):
         stop_signal = self.stop_signal
         completed_signal = self.completed_signal
         config = self.config
-        Thread(target=manage_task, args=(driver, task, stop_signal, completed_signal, config)).start()
+
+        task_thread = Thread(target=manage_task, args=(driver, task, stop_signal, completed_signal, config))
+        task_thread.daemon= True
+        task_thread.start()
 
     def killTask(self, driver, task_id):
         logging.info('Mesos requested executor to kill task {}'.format(task_id))

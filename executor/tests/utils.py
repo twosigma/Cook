@@ -67,6 +67,18 @@ def assert_message(testcase, expected_message, actual_encoded_message):
     testcase.assertEquals(expected_message, actual_message)
 
 
+def assert_messages(testcase, driver_messages, expected_exit_messages, expected_progress_messages):
+    for i in range(1, len(driver_messages)):
+        actual_message = parse_message(driver_messages[i])
+        if 'exit-code' in actual_message and len(expected_exit_messages) > 0:
+            expected_message = expected_exit_messages.pop(0)
+            testcase.assertEquals(expected_message, actual_message)
+        elif 'progress-sequence' in actual_message and len(expected_progress_messages) > 0:
+            expected_message = expected_progress_messages.pop(0)
+            testcase.assertEquals(expected_message, actual_message)
+        else:
+            testcase.fail('Unexpected message: {}'.format(actual_message))
+
 def close_sys_outputs():
     if not sys.stdout.closed:
         sys.stdout.flush()
@@ -81,18 +93,28 @@ def cleanup_output(stdout_name, stderr_name):
 
     close_sys_outputs()
 
-    if os.path.isfile(stdout_name):
-        with open(stdout_name) as f:
-            logging.debug('==========================================')
-            logging.debug('Contents of {}:'.format(stdout_name))
-            logging.debug(f.read())
-        os.remove(stdout_name)
-    if os.path.isfile(stderr_name):
-        with open(stderr_name) as f:
-            logging.debug('==========================================')
-            logging.debug('Contents of {}:'.format(stderr_name))
-            logging.debug(f.read())
-        os.remove(stderr_name)
+    def read_and_print_contents(f, name):
+        file_contents = f.read()
+        logging.debug('==========================================')
+        logging.debug('Contents of {}:'.format(name))
+        logging.debug(file_contents)
+
+    def process_file_name(file_name):
+        if os.path.isfile(file_name):
+            try:
+                with open(file_name, encoding='ascii') as f:
+                    read_and_print_contents(f, file_name)
+            except UnicodeDecodeError:
+                try:
+                    with open(file_name, 'r', encoding='cp437') as f:
+                        read_and_print_contents(f, file_name)
+                except UnicodeDecodeError:
+                    with open(file_name, 'rb') as f:
+                        read_and_print_contents(f, file_name)
+        os.remove(file_name)
+
+    process_file_name(stdout_name)
+    process_file_name(stderr_name)
 
     reset_stdout()
     reset_stderr()
