@@ -12,13 +12,17 @@ __stdout_lock__ = Lock()
 __stderr_lock__ = Lock()
 
 
-def print_out(string_data, flush=False, newline=True):
-    """Wrapper function that prints to stdout in a thread-safe manner using the __stdout_lock__ lock.
+def print_to_buffer(lock, buffer, data, flush=False, newline=True):
+    """Helper function that prints data to the specified buffer in a thread-safe manner using the lock.
 
     Parameters
     ----------
-    string_data: string
-        The string to output
+    lock: threading.Lock
+        The lock to use
+    buffer: byte buffer
+        The buffer to write to
+    data: string or bytes
+        The data to output
     flush: boolean
         Flag determining whether to trigger a sys.stdout.flush()
     newline: boolean
@@ -28,12 +32,34 @@ def print_out(string_data, flush=False, newline=True):
     -------
     Nothing.
     """
-    with __stdout_lock__:
-        sys.stdout.write(string_data)
+    with lock:
+        if isinstance(data, str):
+            buffer.write(data.encode())
+        else:
+            buffer.write(data)
         if newline:
-            sys.stdout.write(os.linesep)
+            buffer.write(os.linesep.encode())
         if flush:
-            sys.stdout.flush()
+            buffer.flush()
+
+
+def print_out(data, flush=False, newline=True):
+    """Wrapper function that prints to stdout in a thread-safe manner using the __stdout_lock__ lock.
+
+    Parameters
+    ----------
+    data: string or bytes
+        The data to output
+    flush: boolean
+        Flag determining whether to trigger a sys.stdout.flush()
+    newline: boolean
+        Flag determining whether to output a newline at the end
+
+    Returns
+    -------
+    Nothing.
+    """
+    print_to_buffer(__stdout_lock__, sys.stdout.buffer, data, flush=flush, newline=newline)
 
 
 def print_and_log(string_data, flush=False, newline=True):
@@ -57,13 +83,13 @@ def print_and_log(string_data, flush=False, newline=True):
     logging.info(string_data)
 
 
-def print_err(string_data, flush=False, newline=True):
+def print_err(data, flush=False, newline=True):
     """Wrapper function that prints to stderr in a thread-safe manner using the __stderr_lock__ lock.
 
     Parameters
     ----------
-    string_data: string
-        The string to output
+    data: string or bytes
+        The data to output
     flush: boolean
         Flag determining whether to trigger a sys.stderr.flush()
     newline: boolean
@@ -73,12 +99,7 @@ def print_err(string_data, flush=False, newline=True):
     -------
     Nothing.
     """
-    with __stderr_lock__:
-        sys.stderr.write(string_data)
-        if newline:
-            sys.stderr.write(os.linesep)
-        if flush:
-            sys.stderr.flush()
+    print_to_buffer(__stderr_lock__, sys.stderr.buffer, data, flush=flush, newline=newline)
 
 
 def process_output(label, out_file, out_fn, flush_fn, flush_interval_secs, max_bytes_read_per_line):
@@ -132,7 +153,7 @@ def process_output(label, out_file, out_fn, flush_fn, flush_interval_secs, max_b
             if not line:
                 break
             with io_lock:
-                out_fn(line.decode(), newline=False)
+                out_fn(line, newline=False)
                 lines_buffered_event.set()
         safe_flush()
     except Exception:

@@ -6,7 +6,7 @@ import signal
 import subprocess
 import time
 import unittest
-from threading import Event, Thread
+from threading import Event, Thread, Timer
 
 from nose.tools import *
 from pymesos import encode_data
@@ -21,18 +21,10 @@ from tests.utils import assert_message, assert_messages, assert_status, cleanup_
 
 
 def sleep_and_set_stop_signal_task(stop_signal, wait_seconds):
-    """Busy waits for wait_seconds seconds before setting stop_signal."""
-    def sleep_and_set_stop_signal_fn():
-        for _ in range(4 * wait_seconds):
-            if not stop_signal.isSet():
-                time.sleep(0.25)
-            else:
-                break
-        stop_signal.set()
-
-    thread = Thread(target=sleep_and_set_stop_signal_fn, args=())
-    thread.daemon = True
-    thread.start()
+    """Waits for wait_seconds seconds before setting stop_signal."""
+    timer = Timer(wait_seconds, stop_signal.set)
+    timer.daemon = True
+    timer.start()
 
 
 def find_process_ids_in_group(group_id):
