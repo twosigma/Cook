@@ -54,6 +54,22 @@ class ProgressUpdater(object):
             time_diff_ms = (current_time - self.last_reported_time) * 1000
             return time_diff_ms >= self.poll_interval_ms
 
+    def is_increasing_sequence(self, progress_data):
+        """Checks if the sequence number in progress_data is larger than the previously published progress.
+
+        Parameters
+        ----------
+        progress_data: dictionary
+            The progress data to send.
+
+        Returns
+        -------
+        True if the sequence number in progress_data is larger than the previously published progress, False otherwise
+        """
+        last_progress_data = self.last_progress_data_sent
+        last_progress_sequence = last_progress_data['progress-sequence'] if last_progress_data else -1
+        return progress_data['progress-sequence'] > last_progress_sequence
+
     def send_progress_update(self, progress_data, force_send=False):
         """Sends a progress update if enough time has elapsed since the last progress update.
         The force_send flag can be used to ignore the check for enough time having elapsed.
@@ -71,42 +87,40 @@ class ProgressUpdater(object):
         Nothing 
         """
         with self.lock:
-            last_progress_data_sent = self.last_progress_data_sent
-            if progress_data is not None and last_progress_data_sent != progress_data:
-                last_progress_sequence = last_progress_data_sent['progress-sequence'] if last_progress_data_sent else 0
-                if last_progress_sequence < progress_data['progress-sequence']:
-                    if force_send or self.has_enough_time_elapsed_since_last_update():
-                        logging.info('Sending progress message {}'.format(progress_data))
-                        message_dict = dict(progress_data)
-                        message_dict['task-id'] = self.task_id
+            # ensure we do not send outdated progress data due to parallel repeated calls to this method
+            if progress_data is not None and self.is_increasing_sequence(progress_data):
+                if force_send or self.has_enough_time_elapsed_since_last_update():
+                    logging.info('Sending progress message {}'.format(progress_data))
+                    message_dict = dict(progress_data)
+                    message_dict['task-id'] = self.task_id
 
-                        raw_progress_message = progress_data['progress-message']
-                        try:
-                            progress_str = raw_progress_message.decode('ascii').strip()
-                        except UnicodeDecodeError:
-                            logging.info('Unable to decode progress message in ascii, using empty string instead')
-                            progress_str = ''
-                        message_dict['progress-message'] = progress_str
+                    raw_progress_message = progress_data['progress-message']
+                    try:
+                        progress_str = raw_progress_message.decode('ascii').strip()
+                    except UnicodeDecodeError:
+                        logging.info('Unable to decode progress message in ascii, using empty string instead')
+                        progress_str = ''
+                    message_dict['progress-message'] = progress_str
 
+                    progress_message = json.dumps(message_dict)
+                    if len(progress_message) > self.max_message_length:
+                        num_extra_chars = len(progress_message) - self.max_message_length
+                        allowed_progress_message_length = max(len(progress_str) - num_extra_chars - 3, 0)
+                        new_progress_str = progress_str[:allowed_progress_message_length].strip() + '...'
+                        logging.info('Progress message trimmed to {}'.format(new_progress_str))
+                        message_dict['progress-message'] = new_progress_str
                         progress_message = json.dumps(message_dict)
-                        if len(progress_message) > self.max_message_length:
-                            num_extra_chars = len(progress_message) - self.max_message_length
-                            allowed_progress_message_length = max(len(progress_str) - num_extra_chars - 3, 0)
-                            new_progress_str = progress_str[:allowed_progress_message_length].strip() + '...'
-                            logging.info('Progress message trimmed to {}'.format(new_progress_str))
-                            message_dict['progress-message'] = new_progress_str
-                            progress_message = json.dumps(message_dict)
 
-                        send_success = self.send_progress_message(progress_message)
-                        if send_success:
-                            self.last_progress_data_sent = progress_data
-                            self.last_reported_time = time.time()
-                        else:
-                            logging.info('Unable to send progress message {}'.format(progress_message))
+                    send_success = self.send_progress_message(progress_message)
+                    if send_success:
+                        self.last_progress_data_sent = progress_data
+                        self.last_reported_time = time.time()
                     else:
-                        logging.debug('Not sending progress data as enough time has not elapsed since last update')
+                        logging.info('Unable to send progress message {}'.format(progress_message))
                 else:
-                    logging.info('Skipping outdated progress data {}'.format(progress_data))
+                    logging.debug('Not sending progress data as enough time has not elapsed since last update')
+            else:
+                logging.info('Skipping invalid/outdated progress data {}'.format(progress_data))
 
 
 class ProgressWatcher(object):
