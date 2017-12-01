@@ -385,10 +385,13 @@ def manage_task(driver, task, stop_signal, completed_signal, config):
         def send_progress_message(message):
             return send_message(driver, message, config.max_message_length)
 
+        progress_updater = cp.ProgressUpdater(task_id, config.max_message_length, config.progress_sample_interval_ms,
+                                              send_progress_message)
+
         def launch_progress_tracker(progress_location, location_tag):
             logging.info('Location {} tagged as [tag={}]'.format(progress_location, location_tag))
-            progress_tracker = cp.ProgressTracker(task_id, config, stop_signal, task_completed_signal, sequence_counter,
-                                                  send_progress_message, progress_location, location_tag)
+            progress_tracker = cp.ProgressTracker(config, stop_signal, task_completed_signal, sequence_counter,
+                                                  progress_updater, progress_location, location_tag)
             progress_tracker.start()
             return progress_tracker
 

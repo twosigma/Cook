@@ -1,3 +1,4 @@
+import json
 import logging
 import math
 import re
@@ -10,7 +11,7 @@ from nose.tools import *
 
 import cook.executor as ce
 import cook.progress as cp
-from tests.utils import assert_message, ensure_directory, get_random_task_id, FakeMesosExecutorDriver
+from tests.utils import assert_message, ensure_directory, get_random_task_id, parse_message, FakeMesosExecutorDriver
 
 
 class ProgressTest(unittest.TestCase):
@@ -50,27 +51,29 @@ class ProgressTest(unittest.TestCase):
             return len(message_string) <= max_message_length
 
         progress_updater = cp.ProgressUpdater(task_id, max_message_length, poll_interval_ms, send_progress_message)
-        progress_data_0 = {'progress-message': b'Progress message-0'}
+        progress_data_0 = {'progress-message': b'Progress message-0', 'progress-sequence': 1}
         progress_updater.send_progress_update(progress_data_0)
 
         self.assertEqual(1, len(driver.messages))
         actual_encoded_message_0 = driver.messages[0]
-        expected_message_0 = {'progress-message': 'Progress message-0', 'task-id': task_id}
+        expected_message_0 = {'progress-message': 'Progress message-0', 'progress-sequence': 1, 'task-id': task_id}
         assert_message(self, expected_message_0, actual_encoded_message_0)
+        self.assertLess(len(json.dumps(parse_message(actual_encoded_message_0))), max_message_length)
 
-        progress_data_1 = {'progress-message': b'Progress message-1'}
+        progress_data_1 = {'progress-message': b'Progress message-1', 'progress-sequence': 2}
         progress_updater.send_progress_update(progress_data_1)
 
         self.assertEqual(1, len(driver.messages))
 
         time.sleep(poll_interval_ms / 1000.0)
-        progress_data_2 = {'progress-message': b'Progress message-2'}
+        progress_data_2 = {'progress-message': b'Progress message-2', 'progress-sequence': 3}
         progress_updater.send_progress_update(progress_data_2)
 
         self.assertEqual(2, len(driver.messages))
         actual_encoded_message_2 = driver.messages[1]
-        expected_message_2 = {'progress-message': 'Progress message-2', 'task-id': task_id}
+        expected_message_2 = {'progress-message': 'Progress message-2', 'progress-sequence': 3, 'task-id': task_id}
         assert_message(self, expected_message_2, actual_encoded_message_2)
+        self.assertLess(len(json.dumps(parse_message(actual_encoded_message_2))), max_message_length)
 
     def test_send_progress_update_trims_progress_message(self):
         driver = FakeMesosExecutorDriver()
@@ -85,14 +88,17 @@ class ProgressTest(unittest.TestCase):
             return len(message_string) <= max_message_length
 
         progress_updater = cp.ProgressUpdater(task_id, max_message_length, poll_interval_ms, send_progress_message)
-        progress_data_0 = {'progress-message': b'Progress message-0 is really long lorem ipsum dolor sit amet text'}
+        progress_data_0 = {'progress-message': b'Progress message-0 is really long lorem ipsum dolor sit amet text',
+                           'progress-sequence': 1}
         progress_updater.send_progress_update(progress_data_0)
 
         self.assertEqual(1, len(driver.messages))
         actual_encoded_message_0 = driver.messages[0]
-        expected_message_0 = {'progress-message': 'Progress message-0 is really long lorem ipsum dolor...',
+        expected_message_0 = {'progress-message': 'Progress message-0 is really...',
+                              'progress-sequence': 1,
                               'task-id': task_id}
         assert_message(self, expected_message_0, actual_encoded_message_0)
+        self.assertEqual(len(json.dumps(parse_message(actual_encoded_message_0))), max_message_length)
 
     def test_send_progress_does_not_trim_unknown_field(self):
         driver = FakeMesosExecutorDriver()
@@ -107,8 +113,9 @@ class ProgressTest(unittest.TestCase):
             return len(message_string) <= max_message_length
 
         progress_updater = cp.ProgressUpdater(task_id, max_message_length, poll_interval_ms, send_progress_message)
-        progress_data_0 = {'unknown': 'Unknown field has a really long lorem ipsum dolor sit amet exceed limit text',
-                           'progress-message': b'pm'}
+        progress_data_0 = {'progress-message': b'pm',
+                           'progress-sequence': 1,
+                           'unknown': 'Unknown field has a really long lorem ipsum dolor sit amet exceed limit text'}
         progress_updater.send_progress_update(progress_data_0)
 
         self.assertEqual(0, len(driver.messages))

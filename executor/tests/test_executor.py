@@ -758,13 +758,13 @@ class ExecutorTest(unittest.TestCase):
 
         command = 'echo "Hello World"; ' \
                   'echo "^^^^JOB-PROGRESS: 50 Fifty percent in progress file" >> {}; ' \
-                  'sleep 0.1; ' \
+                  'sleep 0.25; ' \
                   'echo "^^^^JOB-PROGRESS: 55 Fifty-five percent in stdout" >> {}; ' \
-                  'sleep 0.1; ' \
+                  'sleep 0.25; ' \
                   'echo "^^^^JOB-PROGRESS: 60 Sixty percent in stderr" >> {}; ' \
-                  'sleep 0.1; ' \
+                  'sleep 0.25; ' \
                   'echo "^^^^JOB-PROGRESS: 65 Sixty-five percent in stdout with a long message" >> {}; ' \
-                  'sleep 0.1; ' \
+                  'sleep 0.25; ' \
                   'echo "Exiting..."; ' \
                   'exit 0'.format(progress_name, stdout_name, stderr_name, stdout_name)
 
@@ -773,20 +773,20 @@ class ExecutorTest(unittest.TestCase):
 
     def test_executor_launch_task(self):
 
-        task_id = get_random_task_id()
-        stdout_name = ensure_directory('build/stdout.{}'.format(task_id))
-        stderr_name = ensure_directory('build/stderr.{}'.format(task_id))
+        task_id = tu.get_random_task_id()
+        stdout_name = tu.ensure_directory('build/stdout.{}'.format(task_id))
+        stderr_name = tu.ensure_directory('build/stderr.{}'.format(task_id))
 
-        redirect_stdout_to_file(stdout_name)
-        redirect_stderr_to_file(stderr_name)
+        tu.redirect_stdout_to_file(stdout_name)
+        tu.redirect_stderr_to_file(stderr_name)
 
         try:
             config = cc.ExecutorConfig()
             stop_signal = Event()
             executor = ce.CookExecutor(stop_signal, config)
 
-            driver = FakeMesosExecutorDriver()
-            output_name = ensure_directory('build/output.' + str(task_id))
+            driver = tu.FakeMesosExecutorDriver()
+            output_name = tu.ensure_directory('build/output.' + str(task_id))
             command = 'echo "Start" >> {}; sleep 0.1; echo "Done." >> {}; '.format(output_name, output_name)
             task = {'task_id': {'value': task_id},
                     'data': encode_data(json.dumps({'command': command}).encode('utf8'))}
@@ -803,50 +803,33 @@ class ExecutorTest(unittest.TestCase):
             else:
                 self.fail('{} does not exist.'.format(stderr_name))
 
-            logging.info('Statuses: {}'.format(driver.statuses))
-            self.assertEqual(3, len(driver.statuses))
+            expected_statuses = [{'task_id': {'value': task_id}, 'state': cook.TASK_STARTING},
+                                 {'task_id': {'value': task_id}, 'state': cook.TASK_RUNNING},
+                                 {'task_id': {'value': task_id}, 'state': cook.TASK_FINISHED}]
+            tu.assert_statuses(self, expected_statuses, driver.statuses)
 
-            actual_status_0 = driver.statuses[0]
-            expected_status_0 = {'task_id': {'value': task_id}, 'state': cook.TASK_STARTING}
-            assert_status(self, expected_status_0, actual_status_0)
-
-            actual_status_1 = driver.statuses[1]
-            expected_status_1 = {'task_id': {'value': task_id}, 'state': cook.TASK_RUNNING}
-            assert_status(self, expected_status_1, actual_status_1)
-
-            actual_status_2 = driver.statuses[2]
-            expected_status_2 = {'task_id': {'value': task_id}, 'state': cook.TASK_FINISHED}
-            assert_status(self, expected_status_2, actual_status_2)
-
-            logging.info('Messages: {}'.format(list(map(lambda m: parse_message(m), driver.messages))))
-            self.assertEqual(2, len(driver.messages))
-
-            actual_encoded_message_0 = driver.messages[0]
             expected_message_0 = {'sandbox-directory': '', 'task-id': task_id, 'type': 'directory'}
-            assert_message(self, expected_message_0, actual_encoded_message_0)
-
-            actual_encoded_message_1 = driver.messages[1]
             expected_message_1 = {'exit-code': 0, 'task-id': task_id}
-            assert_message(self, expected_message_1, actual_encoded_message_1)
+            tu.assert_messages(self, [expected_message_0, expected_message_1], [], driver.messages)
         finally:
-            cleanup_output(stdout_name, stderr_name)
+            tu.cleanup_output(stdout_name, stderr_name)
 
     def test_executor_launch_task_and_disconnect(self):
 
-        task_id = get_random_task_id()
-        stdout_name = ensure_directory('build/stdout.{}'.format(task_id))
-        stderr_name = ensure_directory('build/stderr.{}'.format(task_id))
+        task_id = tu.get_random_task_id()
+        stdout_name = tu.ensure_directory('build/stdout.{}'.format(task_id))
+        stderr_name = tu.ensure_directory('build/stderr.{}'.format(task_id))
 
-        redirect_stdout_to_file(stdout_name)
-        redirect_stderr_to_file(stderr_name)
+        tu.redirect_stdout_to_file(stdout_name)
+        tu.redirect_stderr_to_file(stderr_name)
 
         try:
             config = cc.ExecutorConfig()
             stop_signal = Event()
             executor = ce.CookExecutor(stop_signal, config)
 
-            driver = FakeMesosExecutorDriver()
-            output_name = ensure_directory('build/output.' + str(task_id))
+            driver = tu.FakeMesosExecutorDriver()
+            output_name = tu.ensure_directory('build/output.' + str(task_id))
             command = 'echo "Start" >> {}; sleep 100; echo "Done." >> {}; '.format(output_name, output_name)
             task = {'task_id': {'value': task_id},
                     'data': encode_data(json.dumps({'command': command}).encode('utf8'))}
@@ -877,31 +860,14 @@ class ExecutorTest(unittest.TestCase):
             else:
                 self.fail('{} does not exist.'.format(stderr_name))
 
-            logging.info('Statuses: {}'.format(driver.statuses))
-            self.assertEqual(3, len(driver.statuses))
+            expected_statuses = [{'task_id': {'value': task_id}, 'state': cook.TASK_STARTING},
+                                 {'task_id': {'value': task_id}, 'state': cook.TASK_RUNNING},
+                                 {'task_id': {'value': task_id}, 'state': cook.TASK_KILLED}]
+            tu.assert_statuses(self, expected_statuses, driver.statuses)
 
-            actual_status_0 = driver.statuses[0]
-            expected_status_0 = {'task_id': {'value': task_id}, 'state': cook.TASK_STARTING}
-            assert_status(self, expected_status_0, actual_status_0)
-
-            actual_status_1 = driver.statuses[1]
-            expected_status_1 = {'task_id': {'value': task_id}, 'state': cook.TASK_RUNNING}
-            assert_status(self, expected_status_1, actual_status_1)
-
-            actual_status_2 = driver.statuses[2]
-            expected_status_2 = {'task_id': {'value': task_id}, 'state': cook.TASK_KILLED}
-            assert_status(self, expected_status_2, actual_status_2)
-
-            logging.info('Messages: {}'.format(list(map(lambda m: parse_message(m), driver.messages))))
-            self.assertEqual(2, len(driver.messages))
-
-            actual_encoded_message_0 = driver.messages[0]
             expected_message_0 = {'sandbox-directory': '', 'task-id': task_id, 'type': 'directory'}
-            assert_message(self, expected_message_0, actual_encoded_message_0)
-
-            actual_encoded_message_1 = driver.messages[1]
             expected_message_1 = {'exit-code': -15, 'task-id': task_id}
-            assert_message(self, expected_message_1, actual_encoded_message_1)
+            tu.assert_messages(self, [expected_message_0, expected_message_1], [], driver.messages)
         finally:
-            cleanup_output(stdout_name, stderr_name)
+            tu.cleanup_output(stdout_name, stderr_name)
 
