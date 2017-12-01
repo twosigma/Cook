@@ -7,6 +7,7 @@ import time
 import unittest
 import uuid
 
+from collections import Counter
 from nose.plugins.attrib import attr
 from retrying import retry
 
