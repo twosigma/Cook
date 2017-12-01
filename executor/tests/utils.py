@@ -52,32 +52,45 @@ def redirect_stderr_to_file(output_filename):
     sys.stderr = initialize_file(output_filename)
 
 
-def assert_status(testcase, expected_status, actual_status):
+def assert_status(test_case, expected_status, actual_status):
     assert actual_status['timestamp'] is not None
     if 'timestamp' in actual_status: del actual_status['timestamp']
-    testcase.assertEquals(expected_status, actual_status)
+    test_case.assertEquals(expected_status, actual_status)
 
 
 def parse_message(encoded_message):
     return json.loads(decode_data(encoded_message).decode('utf8'))
 
 
-def assert_message(testcase, expected_message, actual_encoded_message):
+def assert_message(test_case, expected_message, actual_encoded_message):
     actual_message = parse_message(actual_encoded_message)
-    testcase.assertEquals(expected_message, actual_message)
+    test_case.assertEquals(expected_message, actual_message)
 
 
-def assert_messages(testcase, driver_messages, expected_exit_messages, expected_progress_messages):
-    for i in range(1, len(driver_messages)):
+def assert_messages(test_case, expected_process_messages, expected_progress_messages, driver_messages):
+    logging.info('Messages: {}'.format(map(parse_message, driver_messages)))
+    test_case.assertEqual(len(expected_process_messages) + len(expected_progress_messages), len(driver_messages))
+    for i in range(0, len(driver_messages)):
         actual_message = parse_message(driver_messages[i])
-        if 'exit-code' in actual_message and len(expected_exit_messages) > 0:
-            expected_message = expected_exit_messages.pop(0)
-            testcase.assertEquals(expected_message, actual_message)
+        if (('exit-code' in actual_message or 'sandbox-directory' in actual_message) and
+                len(expected_process_messages) > 0):
+            expected_message = expected_process_messages.pop(0)
+            test_case.assertEquals(expected_message, actual_message)
         elif 'progress-sequence' in actual_message and len(expected_progress_messages) > 0:
             expected_message = expected_progress_messages.pop(0)
-            testcase.assertEquals(expected_message, actual_message)
+            test_case.assertEquals(expected_message, actual_message)
         else:
-            testcase.fail('Unexpected message: {}'.format(actual_message))
+            test_case.fail('Unexpected message: {}'.format(actual_message))
+
+
+def assert_statuses(test_case, expected_statuses, driver_statuses):
+    logging.info('Statuses: {}'.format(driver_statuses))
+    test_case.assertEqual(len(expected_statuses), len(driver_statuses))
+    for i in range(1, len(expected_statuses)):
+        expected_status = expected_statuses[i]
+        actual_status = driver_statuses[i]
+        assert_status(test_case, expected_status, actual_status)
+
 
 def close_sys_outputs():
     if not sys.stdout.closed:
