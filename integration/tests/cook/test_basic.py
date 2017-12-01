@@ -1,4 +1,3 @@
-from collections import Counter
 import json
 import logging
 import math
@@ -8,6 +7,7 @@ import time
 import unittest
 import uuid
 
+from collections import Counter
 from nose.plugins.attrib import attr
 from retrying import retry
 
@@ -842,27 +842,27 @@ class CookTest(unittest.TestCase):
         self.assertEqual([job_uuid_1, job_uuid_2].sort(), [job['uuid'] for job in resp.json()].sort())
 
         # Only valid instance uuids
-        job = util.wait_for_job(self.cook_url, job_uuid_1, 'completed')
-        instance_uuid_1 = job['instances'][0]['task_id']
-        job = util.wait_for_job(self.cook_url, job_uuid_2, 'completed')
-        instance_uuid_2 = job['instances'][0]['task_id']
-        resp = util.query_jobs_via_rawscheduler_endpoint(self.cook_url, instance=[instance_uuid_1, instance_uuid_2])
+        instance_uuid_1 = util.wait_for_instance(self.cook_url, job_uuid_1)['task_id']
+        instance_uuid_2 = util.wait_for_instance(self.cook_url, job_uuid_2)['task_id']
+        resp = util.query_instances(self.cook_url, uuid=[instance_uuid_1, instance_uuid_2])
         self.assertEqual(200, resp.status_code, msg=resp.content)
+        self.assertEqual(2, len(resp.json()))
+        self.assertEqual([job_uuid_1, job_uuid_2].sort(), [instance['job']['uuid'] for instance in resp.json()].sort())
 
         # Mixed valid, invalid instance uuids
         instance_uuids = [instance_uuid_1, instance_uuid_2, bogus_uuid]
-        resp = util.query_jobs_via_rawscheduler_endpoint(self.cook_url, instance=instance_uuids)
+        resp = util.query_instances(self.cook_url, uuid=instance_uuids)
         self.assertEqual(404, resp.status_code, msg=resp.content)
         self.assertEqual([bogus_uuid], absent_uuids(resp))
-        resp = util.query_jobs_via_rawscheduler_endpoint(self.cook_url, instance=instance_uuids, partial=False)
+        resp = util.query_instances(self.cook_url, uuid=instance_uuids, partial=False)
         self.assertEqual(404, resp.status_code, msg=resp.content)
         self.assertEqual([bogus_uuid], absent_uuids(resp))
 
         # Partial results with mixed valid, invalid instance uuids
-        resp = util.query_jobs_via_rawscheduler_endpoint(self.cook_url, instance=instance_uuids, partial=True)
+        resp = util.query_instances(self.cook_url, uuid=instance_uuids, partial=True)
         self.assertEqual(200, resp.status_code, msg=resp.content)
         self.assertEqual(2, len(resp.json()))
-        self.assertEqual([job_uuid_1, job_uuid_2].sort(), [job['uuid'] for job in resp.json()].sort())
+        self.assertEqual([job_uuid_1, job_uuid_2].sort(), [instance['job']['uuid'] for instance in resp.json()].sort())
 
     def test_ports(self):
         job_uuid, resp = util.submit_job(self.cook_url, ports=1)
@@ -1268,6 +1268,14 @@ class CookTest(unittest.TestCase):
         self.assertIn(instance_uuid_1, instance_uuids)
         self.assertIn(instance_uuid_2, instance_uuids)
 
+    def test_load_instance_by_uuid(self):
+        job_uuid, resp = util.submit_job(self.cook_url)
+        self.assertEqual(201, resp.status_code, msg=resp.content)
+        instance_uuid = util.wait_for_instance(self.cook_url, job_uuid)['task_id']
+        instance = util.load_instance(self.cook_url, instance_uuid)
+        self.assertEqual(instance_uuid, instance['task_id'])
+        self.assertEqual(job_uuid, instance['job']['uuid'])
+        
     def test_user_usage_basic(self):
         job_resources = {'cpus': 0.1, 'mem': 123}
         job_uuid, resp = util.submit_job(self.cook_url, command='sleep 120', **job_resources)

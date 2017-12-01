@@ -182,6 +182,16 @@ def unpack_uuid(entity):
     return entity['uuid'] if isinstance(entity, dict) else entity
 
 
+def __get(cook_url, endpoint, assert_response=False, **kwargs):
+    """Makes a GET request to the given root URL and endpoint"""
+    if 'partial' in kwargs:
+        kwargs['partial'] = 'true' if (kwargs['partial'] in [True, 'true', '1']) else 'false'
+    response = session.get(f'{cook_url}/{endpoint}', params=kwargs)
+    if assert_response:
+        assert 200 == response.status_code
+    return response
+
+
 def query_jobs_via_rawscheduler_endpoint(cook_url, assert_response=False, **kwargs):
     """
     Queries cook for a set of jobs, by job and/or instance uuid. The kwargs
@@ -193,29 +203,30 @@ def query_jobs_via_rawscheduler_endpoint(cook_url, assert_response=False, **kwar
     for key in ('job', 'instance'):
         if key in kwargs:
             kwargs[key] = map(unpack_uuid, kwargs[key])
-    if 'partial' in kwargs:
-        kwargs['partial'] = 'true' if (kwargs['partial'] in [True, 'true', '1']) else 'false'
-    response = session.get(f'{cook_url}/rawscheduler', params=kwargs)
-    if assert_response:
-        assert 200 == response.status_code
-    return response
+
+    return __get(cook_url, 'rawscheduler', assert_response, **kwargs)
 
 
-def query_jobs(cook_url, assert_response=False, **kwargs):
+def query_resource(cook_url, resource, assert_response=False, **kwargs):
     """
-    Queries cook for a set of jobs by job uuid. The kwargs
+    Queries cook for a set of entities by uuid. The kwargs
     passed to this function are sent straight through as
     query parameters on the request. If the uuid values are
     dictionaries (e.g., job_specs), then they are
     automatically unpacked to get their UUIDs.
     """
     kwargs['uuid'] = [unpack_uuid(u) for u in kwargs['uuid']]
-    if 'partial' in kwargs:
-        kwargs['partial'] = 'true' if (kwargs['partial'] in [True, 'true', '1']) else 'false'
-    response = session.get(f'{cook_url}/jobs', params=kwargs)
-    if assert_response:
-        assert 200 == response.status_code
-    return response
+    return __get(cook_url, resource, assert_response, **kwargs)
+
+
+def query_jobs(cook_url, assert_response=False, **kwargs):
+    """Queries cook for a set of jobs by job uuid"""
+    return query_resource(cook_url, 'jobs', assert_response, **kwargs)
+
+
+def query_instances(cook_url, assert_response=False, **kwargs):
+    """Queries cook for a set of job instances by instance uuid"""
+    return query_resource(cook_url, 'instances', assert_response, **kwargs)
 
 
 def query_groups(cook_url, **kwargs):
@@ -227,12 +238,22 @@ def query_groups(cook_url, **kwargs):
     return session.get('%s/group' % cook_url, params=kwargs)
 
 
-def load_job(cook_url, job_uuid, assert_response=True):
-    """Loads a job by UUID using GET /jobs/UUID"""
-    response = session.get(f'{cook_url}/jobs/{job_uuid}')
+def load_resource(cook_url, resource, uuid, assert_response=True):
+    """Loads an entity by UUID using GET /resource/UUID"""
+    response = session.get(f'{cook_url}/{resource}/{uuid}')
     if assert_response:
         assert 200 == response.status_code
     return response.json()
+
+
+def load_job(cook_url, job_uuid, assert_response=True):
+    """Loads a job by UUID using GET /jobs/UUID"""
+    return load_resource(cook_url, 'jobs', job_uuid, assert_response)
+
+
+def load_instance(cook_url, instance_uuid, assert_response=True):
+    """Loads a job instance by UUID using GET /instances/UUID"""
+    return load_resource(cook_url, 'instances', instance_uuid, assert_response)
 
 
 def multi_cluster_tests_enabled():
