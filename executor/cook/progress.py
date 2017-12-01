@@ -71,37 +71,42 @@ class ProgressUpdater(object):
         Nothing 
         """
         with self.lock:
-            if progress_data is not None and self.last_progress_data_sent != progress_data:
-                if force_send or self.has_enough_time_elapsed_since_last_update():
-                    logging.info('Sending progress message {}'.format(progress_data))
-                    message_dict = dict(progress_data)
-                    message_dict['task-id'] = self.task_id
+            last_progress_data_sent = self.last_progress_data_sent
+            if progress_data is not None and last_progress_data_sent != progress_data:
+                last_progress_sequence = last_progress_data_sent['progress-sequence'] if last_progress_data_sent else 0
+                if last_progress_sequence < progress_data['progress-sequence']:
+                    if force_send or self.has_enough_time_elapsed_since_last_update():
+                        logging.info('Sending progress message {}'.format(progress_data))
+                        message_dict = dict(progress_data)
+                        message_dict['task-id'] = self.task_id
 
-                    raw_progress_message = progress_data['progress-message']
-                    try:
-                        progress_str = raw_progress_message.decode('ascii').strip()
-                    except UnicodeDecodeError:
-                        logging.info('Unable to decode progress message in ascii, using empty string instead')
-                        progress_str = ''
-                    message_dict['progress-message'] = progress_str
+                        raw_progress_message = progress_data['progress-message']
+                        try:
+                            progress_str = raw_progress_message.decode('ascii').strip()
+                        except UnicodeDecodeError:
+                            logging.info('Unable to decode progress message in ascii, using empty string instead')
+                            progress_str = ''
+                        message_dict['progress-message'] = progress_str
 
-                    progress_message = json.dumps(message_dict)
-                    if len(progress_message) > self.max_message_length:
-                        num_extra_chars = len(progress_message) - self.max_message_length
-                        allowed_progress_message_length = max(len(progress_str) - num_extra_chars - 3, 0)
-                        new_progress_str = progress_str[:allowed_progress_message_length].strip() + '...'
-                        logging.info('Progress message trimmed to {}'.format(new_progress_str))
-                        message_dict['progress-message'] = new_progress_str
                         progress_message = json.dumps(message_dict)
+                        if len(progress_message) > self.max_message_length:
+                            num_extra_chars = len(progress_message) - self.max_message_length
+                            allowed_progress_message_length = max(len(progress_str) - num_extra_chars - 3, 0)
+                            new_progress_str = progress_str[:allowed_progress_message_length].strip() + '...'
+                            logging.info('Progress message trimmed to {}'.format(new_progress_str))
+                            message_dict['progress-message'] = new_progress_str
+                            progress_message = json.dumps(message_dict)
 
-                    send_success = self.send_progress_message(progress_message)
-                    if send_success:
-                        self.last_progress_data_sent = progress_data
-                        self.last_reported_time = time.time()
+                        send_success = self.send_progress_message(progress_message)
+                        if send_success:
+                            self.last_progress_data_sent = progress_data
+                            self.last_reported_time = time.time()
+                        else:
+                            logging.info('Unable to send progress message {}'.format(progress_message))
                     else:
-                        logging.info('Unable to send progress message {}'.format(progress_message))
+                        logging.debug('Not sending progress data as enough time has not elapsed since last update')
                 else:
-                    logging.debug('Not sending progress data as enough time has not elapsed since last update')
+                    logging.info('Skipping outdated progress data {}'.format(progress_data))
 
 
 class ProgressWatcher(object):
@@ -241,22 +246,19 @@ class ProgressWatcher(object):
 class ProgressTracker(object):
     """Helper class to track progress messages from the specified location."""
 
-    def __init__(self, task_id, config, stop_signal, task_completed_signal, counter, send_progress_message,
-                 location, location_tag):
+    def __init__(self, config, stop_signal, task_completed_signal, counter, progress_updater, location, location_tag):
         """Launches the threads that track progress and send progress updates to the driver.
 
         Parameters
         ----------
-        task_id: string
-            The task id.
         config: cook.config.ExecutorConfig
             The current executor config.
         stop_signal: threading.Event
             Event that determines if an interrupt was sent
         task_completed_signal: threading.Event
             Event that tracks task execution completion
-        send_progress_message: function(message)
-            The helper function used to send the progress message
+        progress_updater: ProgressUpdater
+            The progress updater used to send the progress messages
         counter: ProgressSequenceCounter
             The sequence counter
         location: string
@@ -267,8 +269,7 @@ class ProgressTracker(object):
         self.progress_complete_event = Event()
         self.watcher = ProgressWatcher(location, location_tag, counter, config.max_bytes_read_per_line,
                                        config.progress_regex_string, stop_signal, task_completed_signal)
-        self.updater = ProgressUpdater(task_id, config.max_message_length, config.progress_sample_interval_ms,
-                                       send_progress_message)
+        self.updater = progress_updater
 
     def start(self):
         """Launches a thread that starts monitoring the progress location for progress messages."""

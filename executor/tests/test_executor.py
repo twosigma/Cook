@@ -758,13 +758,13 @@ class ExecutorTest(unittest.TestCase):
 
         command = 'echo "Hello World"; ' \
                   'echo "^^^^JOB-PROGRESS: 50 Fifty percent in progress file" >> {}; ' \
-                  'sleep 0.1; ' \
+                  'sleep 0.25; ' \
                   'echo "^^^^JOB-PROGRESS: 55 Fifty-five percent in stdout" >> {}; ' \
-                  'sleep 0.1; ' \
+                  'sleep 0.25; ' \
                   'echo "^^^^JOB-PROGRESS: 60 Sixty percent in stderr" >> {}; ' \
-                  'sleep 0.1; ' \
+                  'sleep 0.25; ' \
                   'echo "^^^^JOB-PROGRESS: 65 Sixty-five percent in stdout with a long message" >> {}; ' \
-                  'sleep 0.1; ' \
+                  'sleep 0.25; ' \
                   'echo "Exiting..."; ' \
                   'exit 0'.format(progress_name, stdout_name, stderr_name, stdout_name)
 
