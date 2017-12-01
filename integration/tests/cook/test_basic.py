@@ -2,6 +2,7 @@ from collections import Counter
 import json
 import logging
 import math
+import operator
 import subprocess
 import time
 import unittest
@@ -43,24 +44,25 @@ class CookTest(unittest.TestCase):
             self.assertIsNotNone(job['instances'][0]['sandbox_directory'], message)
 
     def test_no_cook_executor_on_subsequent_instances(self):
-        job_uuid, resp = util.submit_job(self.cook_url, command='exit 1', max_retries=10)
+        job_uuid, resp = util.submit_job(self.cook_url, command='exit 1', max_retries=10) # should launch many instances
         self.assertEqual(resp.status_code, 201, msg=resp.content)
-        try:
-            job = util.wait_for_job(self.cook_url, job_uuid, 'completed', max_wait_ms=60000)
-            message = json.dumps(job, sort_keys=True)
-            self.assertEqual('failed', job['state'], message)
-            self.assertEqual('completed', job['status'], message)
-        except:
-            pass
+        try: # try to get at least 5 instances
+            util.wait_until(lambda: util.load_job(self.cook_url, job_uuid),
+                            lambda job: len(job['instances']) > 4)
+        except BaseException as e:
+            self.logger.debug("Didn't reach desired instance count: {}".format(e))
         job = util.load_job(self.cook_url, job_uuid)
         message = json.dumps(job, sort_keys=True)
-        job_instances = sorted(job['instances'], key=lambda instance: instance['end_time'])
-        self.assertTrue(len(job_instances) >= 2, message)  # sort job instances
-        for i in range(1, len(job_instances)):
-            message = 'Index ' + str(i) + json.dumps(job_instances[i], sort_keys=True)
-            self.assertEqual('failed', job_instances[i]['status'], message)
-            self.assertEqual('Command exited non-zero', job_instances[i]['reason_string'], message)
-            self.assertEqual('mesos', job_instances[i]['executor'], message)
+        later_job_instances = sorted(job['instances'], key=operator.itemgetter('start_time'))[1:]
+        self.assertGreater(len(later_job_instances), 0, message) # happy with at least 1 in case the scheduler is slow
+        for i, job_instance in enumerate(later_job_instances):
+            message = 'Trailing instance {}: {}'.format(i, json.dumps(job_instance, sort_keys=True))
+            if 'reason_string' in job_instance:
+                self.assertEqual('failed', job_instance['status'], message)
+                self.assertEqual('Command exited non-zero', job_instance['reason_string'], message)
+            else:
+                self.assertIn(job_instance['status'], ['running', 'unknown'], message)
+            self.assertEqual('mesos', job_instance['executor'], message)
 
     def test_disable_mea_culpa(self):
         job_uuid, resp = util.submit_job(self.cook_url, disable_mea_culpa_retries=True)
