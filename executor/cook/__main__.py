@@ -5,9 +5,10 @@ This module configures logging and starts the executor's driver thread.
 """
 
 import logging
+import resource
 import signal
 import sys
-from threading import Event, Thread
+from threading import Event, Thread, Timer
 
 import os
 
@@ -20,6 +21,15 @@ import cook.config as cc
 import cook.executor as ce
 import cook.io_helper as cio
 import pymesos as pm
+
+
+def print_memory_usage():
+    """Logs the memory usage of the executor."""
+    try:
+        rusage = resource.getrusage(resource.RUSAGE_SELF)
+        logging.info('Executor Memory usage: {} kB'.format(rusage.ru_maxrss / 1024))
+    except Exception:
+        logging.exception('Error in logging memory usage')
 
 
 def main(args=None):
@@ -42,6 +52,14 @@ def main(args=None):
     logging.info('Log level is {}'.format(log_level))
 
     config = cc.initialize_config(environment)
+
+    def print_memory_usage_task():
+        print_memory_usage()
+        timer = Timer(config.memory_usage_interval_secs, print_memory_usage_task)
+        timer.daemon = True
+        timer.start()
+    print_memory_usage_task()
+
     stop_signal = Event()
 
     def handle_interrupt(interrupt_code, _):
@@ -49,6 +67,7 @@ def main(args=None):
         cio.print_and_log('Received kill for task {} with grace period of {}'.format(
             executor_id, config.shutdown_grace_period))
         stop_signal.set()
+        print_memory_usage()
 
     signal.signal(signal.SIGINT, handle_interrupt)
     signal.signal(signal.SIGTERM, handle_interrupt)
@@ -71,6 +90,7 @@ def main(args=None):
         logging.exception('Error in __main__')
         stop_signal.set()
 
+    print_memory_usage()
     exit_code = 1 if stop_signal.isSet() else 0
     logging.info('Executor exiting with code {}'.format(exit_code))
     sys.exit(exit_code)

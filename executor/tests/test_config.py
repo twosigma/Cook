@@ -23,6 +23,7 @@ class ConfigTest(unittest.TestCase):
         flush_interval_secs = 1234
         max_bytes_read_per_line = 16 * 1024
         max_message_length = 300
+        memory_usage_interval_secs = 150
         progress_output_env_variable = 'PROGRESS_OUTPUT_ENV_VARIABLE'
         progress_output_name = 'stdout_name'
         progress_regex_string = 'some-regex-string'
@@ -32,6 +33,7 @@ class ConfigTest(unittest.TestCase):
         config = cc.ExecutorConfig(flush_interval_secs=flush_interval_secs,
                                    max_bytes_read_per_line=max_bytes_read_per_line,
                                    max_message_length=max_message_length,
+                                   memory_usage_interval_secs=memory_usage_interval_secs,
                                    progress_output_env_variable=progress_output_env_variable,
                                    progress_output_name=progress_output_name,
                                    progress_regex_string=progress_regex_string,
@@ -42,6 +44,7 @@ class ConfigTest(unittest.TestCase):
         self.assertEqual(flush_interval_secs, config.flush_interval_secs)
         self.assertEqual(max_bytes_read_per_line, config.max_bytes_read_per_line)
         self.assertEqual(max_message_length, config.max_message_length)
+        self.assertEqual(memory_usage_interval_secs, config.memory_usage_interval_secs)
         self.assertEqual(progress_output_env_variable, config.progress_output_env_variable)
         self.assertEqual(progress_output_name, config.progress_output_name)
         self.assertEqual(progress_regex_string, config.progress_regex_string)
@@ -69,6 +72,7 @@ class ConfigTest(unittest.TestCase):
         environment = {'EXECUTOR_FLUSH_INTERVAL_SECS': '60',
                        'EXECUTOR_MAX_BYTES_READ_PER_LINE': '1234',
                        'EXECUTOR_MAX_MESSAGE_LENGTH': '1024',
+                       'EXECUTOR_MEMORY_USAGE_INTERVAL_SECS': '120',
                        'EXECUTOR_PROGRESS_OUTPUT_FILE': 'progress_file',
                        'MESOS_EXECUTOR_SHUTDOWN_GRACE_PERIOD': '4secs',
                        'MESOS_SANDBOX': '/sandbox/location',
@@ -79,6 +83,7 @@ class ConfigTest(unittest.TestCase):
         self.assertEqual(60, config.flush_interval_secs)
         self.assertEqual(1234, config.max_bytes_read_per_line)
         self.assertEqual(1024, config.max_message_length)
+        self.assertEqual(120, config.memory_usage_interval_secs)
         self.assertEqual('EXECUTOR_PROGRESS_OUTPUT_FILE', config.progress_output_env_variable)
         self.assertEqual('progress_file', config.progress_output_name)
         self.assertEqual('progress/regex', config.progress_regex_string)
@@ -89,6 +94,7 @@ class ConfigTest(unittest.TestCase):
     def test_initialize_config_custom_progress_file_without_sandbox(self):
         environment = {'EXECUTOR_MAX_BYTES_READ_PER_LINE': '1234',
                        'EXECUTOR_MAX_MESSAGE_LENGTH': '1024',
+                       'EXECUTOR_MEMORY_USAGE_INTERVAL_SECS': '20',
                        'EXECUTOR_PROGRESS_OUTPUT_FILE_ENV': 'OUTPUT_TARGET_FILE',
                        'MESOS_EXECUTOR_SHUTDOWN_GRACE_PERIOD': '4secs',
                        'OUTPUT_TARGET_FILE': 'progress.out',
@@ -99,6 +105,7 @@ class ConfigTest(unittest.TestCase):
         self.assertEqual(10, config.flush_interval_secs)
         self.assertEqual(1234, config.max_bytes_read_per_line)
         self.assertEqual(1024, config.max_message_length)
+        self.assertEqual(30, config.memory_usage_interval_secs)
         self.assertEqual('OUTPUT_TARGET_FILE', config.progress_output_env_variable)
         self.assertEqual('progress.out', config.progress_output_name)
         self.assertEqual('progress/regex', config.progress_regex_string)
@@ -120,6 +127,7 @@ class ConfigTest(unittest.TestCase):
         self.assertEqual(10, config.flush_interval_secs)
         self.assertEqual(1234, config.max_bytes_read_per_line)
         self.assertEqual(1024, config.max_message_length)
+        self.assertEqual(3600, config.memory_usage_interval_secs)
         self.assertEqual('OUTPUT_TARGET_FILE', config.progress_output_env_variable)
         self.assertEqual('progress.out', config.progress_output_name)
         self.assertEqual('progress/regex', config.progress_regex_string)
@@ -141,6 +149,7 @@ class ConfigTest(unittest.TestCase):
         self.assertEqual(10, config.flush_interval_secs)
         self.assertEqual(1234, config.max_bytes_read_per_line)
         self.assertEqual(1024, config.max_message_length)
+        self.assertEqual(3600, config.memory_usage_interval_secs)
         self.assertEqual('OUTPUT_TARGET_FILE', config.progress_output_env_variable)
         self.assertEqual('/sandbox/location/e123456.progress', config.progress_output_name)
         self.assertEqual('progress/regex', config.progress_regex_string)
@@ -163,6 +172,7 @@ class ConfigTest(unittest.TestCase):
         self.assertEqual(10, config.flush_interval_secs)
         self.assertEqual(1234, config.max_bytes_read_per_line)
         self.assertEqual(1024, config.max_message_length)
+        self.assertEqual(3600, config.memory_usage_interval_secs)
         self.assertEqual('OUTPUT_TARGET_FILE', config.progress_output_env_variable)
         self.assertEqual('/sandbox/location/stdout_file', config.progress_output_name)
         self.assertEqual('progress/regex', config.progress_regex_string)
@@ -186,6 +196,7 @@ class ConfigTest(unittest.TestCase):
         self.assertEqual(10, config.flush_interval_secs)
         self.assertEqual(1234, config.max_bytes_read_per_line)
         self.assertEqual(1024, config.max_message_length)
+        self.assertEqual(3600, config.memory_usage_interval_secs)
         self.assertEqual('OUTPUT_TARGET_FILE', config.progress_output_env_variable)
         self.assertEqual('/path/to/progress_file', config.progress_output_name)
         self.assertEqual('progress/regex', config.progress_regex_string)
@@ -209,6 +220,7 @@ class ConfigTest(unittest.TestCase):
         self.assertEqual(10, config.flush_interval_secs)
         self.assertEqual(1234, config.max_bytes_read_per_line)
         self.assertEqual(1024, config.max_message_length)
+        self.assertEqual(3600, config.memory_usage_interval_secs)
         self.assertEqual('OUTPUT_TARGET_FILE', config.progress_output_env_variable)
         self.assertEqual('/dev/null', config.progress_output_name)
         self.assertEqual('progress/regex', config.progress_regex_string)

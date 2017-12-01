@@ -26,7 +26,7 @@ class ExecutorConfig(object):
         """
         try:
             return int(1000 * parse_duration(time_string))
-        except:
+        except Exception:
             logging.exception('Unable to extract seconds from {}'.format(time_string))
             logging.info('Defaulting time to 1 second.')
             return 1000
@@ -35,6 +35,7 @@ class ExecutorConfig(object):
                  flush_interval_secs=2,
                  max_bytes_read_per_line=1024,
                  max_message_length=512,
+                 memory_usage_interval_secs=15,
                  progress_output_env_variable=DEFAULT_PROGRESS_FILE_ENV_VARIABLE,
                  progress_output_name='stdout',
                  progress_regex_string='',
@@ -44,6 +45,7 @@ class ExecutorConfig(object):
         self.flush_interval_secs = flush_interval_secs
         self.max_bytes_read_per_line = max_bytes_read_per_line
         self.max_message_length = max_message_length
+        self.memory_usage_interval_secs = memory_usage_interval_secs
         self.progress_output_env_variable = progress_output_env_variable
         self.progress_output_name = progress_output_name
         self.progress_regex_string = progress_regex_string
@@ -83,6 +85,7 @@ def initialize_config(environment):
     flush_interval_secs = max(int(environment.get('EXECUTOR_FLUSH_INTERVAL_SECS', 10)), 2)
     max_bytes_read_per_line = max(int(environment.get('EXECUTOR_MAX_BYTES_READ_PER_LINE', 4 * 1024)), 128)
     max_message_length = max(int(environment.get('EXECUTOR_MAX_MESSAGE_LENGTH', 512)), 64)
+    memory_usage_interval_secs = max(int(environment.get('EXECUTOR_MEMORY_USAGE_INTERVAL_SECS', 3600)), 30)
     progress_output_name = environment.get(progress_output_env_variable, default_progress_output_file)
     progress_regex_string = environment.get('PROGRESS_REGEX_STRING', 'progress: ([0-9]*\.?[0-9]+), (.*)')
     progress_sample_interval_ms = max(int(environment.get('PROGRESS_SAMPLE_INTERVAL_MS', 1000)), 100)
@@ -92,6 +95,7 @@ def initialize_config(environment):
     logging.info('stdout/stderr flush interval is {} seconds'.format(flush_interval_secs))
     logging.info('Max bytes read per line is {}'.format(max_bytes_read_per_line))
     logging.info('Max message length is {}'.format(max_message_length))
+    logging.info('Memory usage will be logged every {} secs'.format(memory_usage_interval_secs))
     logging.info('Progress output file is {}'.format(progress_output_name))
     logging.info('Progress regex is {}'.format(progress_regex_string))
     logging.info('Progress sample interval is {}'.format(progress_sample_interval_ms))
@@ -101,6 +105,7 @@ def initialize_config(environment):
     return ExecutorConfig(flush_interval_secs=flush_interval_secs,
                           max_bytes_read_per_line=max_bytes_read_per_line,
                           max_message_length=max_message_length,
+                          memory_usage_interval_secs=memory_usage_interval_secs,
                           progress_output_env_variable=progress_output_env_variable,
                           progress_output_name=progress_output_name,
                           progress_regex_string=progress_regex_string,
