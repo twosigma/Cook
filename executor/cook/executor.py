@@ -273,7 +273,7 @@ def await_process_completion(stop_signal, process_info, shutdown_grace_period_ms
     while is_running(process_info):
 
         if stop_signal.isSet():
-            logging.info('Executor has been instructed to terminate')
+            logging.info('Executor has been instructed to terminate running task')
             process, _, _ = process_info
             kill_task(process, shutdown_grace_period_ms)
             break
@@ -385,10 +385,13 @@ def manage_task(driver, task, stop_signal, completed_signal, config):
         def send_progress_message(message):
             return send_message(driver, message, config.max_message_length)
 
+        progress_updater = cp.ProgressUpdater(task_id, config.max_message_length, config.progress_sample_interval_ms,
+                                              send_progress_message)
+
         def launch_progress_tracker(progress_location, location_tag):
             logging.info('Location {} tagged as [tag={}]'.format(progress_location, location_tag))
-            progress_tracker = cp.ProgressTracker(task_id, config, stop_signal, task_completed_signal, sequence_counter,
-                                                  send_progress_message, progress_location, location_tag)
+            progress_tracker = cp.ProgressTracker(config, stop_signal, task_completed_signal, sequence_counter,
+                                                  progress_updater, progress_location, location_tag)
             progress_tracker.start()
             return progress_tracker
 
@@ -456,6 +459,7 @@ class CookExecutor(pm.Executor):
     def disconnected(self, driver):
         logging.info('Mesos requested executor to disconnect')
         self.disconnect_signal.set()
+        self.stop_signal.set()
 
     def launchTask(self, driver, task):
         logging.info('Driver {} launching task {}'.format(driver, task))

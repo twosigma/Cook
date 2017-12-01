@@ -54,6 +54,22 @@ class ProgressUpdater(object):
             time_diff_ms = (current_time - self.last_reported_time) * 1000
             return time_diff_ms >= self.poll_interval_ms
 
+    def is_increasing_sequence(self, progress_data):
+        """Checks if the sequence number in progress_data is larger than the previously published progress.
+
+        Parameters
+        ----------
+        progress_data: dictionary
+            The progress data to send.
+
+        Returns
+        -------
+        True if the sequence number in progress_data is larger than the previously published progress, False otherwise
+        """
+        last_progress_data = self.last_progress_data_sent
+        last_progress_sequence = last_progress_data['progress-sequence'] if last_progress_data else -1
+        return progress_data['progress-sequence'] > last_progress_sequence
+
     def send_progress_update(self, progress_data, force_send=False):
         """Sends a progress update if enough time has elapsed since the last progress update.
         The force_send flag can be used to ignore the check for enough time having elapsed.
@@ -71,8 +87,13 @@ class ProgressUpdater(object):
         Nothing 
         """
         with self.lock:
-            if progress_data is not None and self.last_progress_data_sent != progress_data:
-                if force_send or self.has_enough_time_elapsed_since_last_update():
+            # ensure we do not send outdated progress data due to parallel repeated calls to this method
+            if progress_data is None or not self.is_increasing_sequence(progress_data):
+                logging.info('Skipping invalid/outdated progress data {}'.format(progress_data))
+            else:
+                if not force_send and not self.has_enough_time_elapsed_since_last_update():
+                    logging.debug('Not sending progress data as enough time has not elapsed since last update')
+                else:
                     logging.info('Sending progress message {}'.format(progress_data))
                     message_dict = dict(progress_data)
                     message_dict['task-id'] = self.task_id
@@ -100,8 +121,6 @@ class ProgressUpdater(object):
                         self.last_reported_time = time.time()
                     else:
                         logging.info('Unable to send progress message {}'.format(progress_message))
-                else:
-                    logging.debug('Not sending progress data as enough time has not elapsed since last update')
 
 
 class ProgressWatcher(object):
@@ -241,22 +260,19 @@ class ProgressWatcher(object):
 class ProgressTracker(object):
     """Helper class to track progress messages from the specified location."""
 
-    def __init__(self, task_id, config, stop_signal, task_completed_signal, counter, send_progress_message,
-                 location, location_tag):
+    def __init__(self, config, stop_signal, task_completed_signal, counter, progress_updater, location, location_tag):
         """Launches the threads that track progress and send progress updates to the driver.
 
         Parameters
         ----------
-        task_id: string
-            The task id.
         config: cook.config.ExecutorConfig
             The current executor config.
         stop_signal: threading.Event
             Event that determines if an interrupt was sent
         task_completed_signal: threading.Event
             Event that tracks task execution completion
-        send_progress_message: function(message)
-            The helper function used to send the progress message
+        progress_updater: ProgressUpdater
+            The progress updater used to send the progress messages
         counter: ProgressSequenceCounter
             The sequence counter
         location: string
@@ -267,8 +283,7 @@ class ProgressTracker(object):
         self.progress_complete_event = Event()
         self.watcher = ProgressWatcher(location, location_tag, counter, config.max_bytes_read_per_line,
                                        config.progress_regex_string, stop_signal, task_completed_signal)
-        self.updater = ProgressUpdater(task_id, config.max_message_length, config.progress_sample_interval_ms,
-                                       send_progress_message)
+        self.updater = progress_updater
 
     def start(self):
         """Launches a thread that starts monitoring the progress location for progress messages."""
