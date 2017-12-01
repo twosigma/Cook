@@ -88,8 +88,12 @@ class ProgressUpdater(object):
         """
         with self.lock:
             # ensure we do not send outdated progress data due to parallel repeated calls to this method
-            if progress_data is not None and self.is_increasing_sequence(progress_data):
-                if force_send or self.has_enough_time_elapsed_since_last_update():
+            if progress_data is None or not self.is_increasing_sequence(progress_data):
+                logging.info('Skipping invalid/outdated progress data {}'.format(progress_data))
+            else:
+                if not force_send and not self.has_enough_time_elapsed_since_last_update():
+                    logging.debug('Not sending progress data as enough time has not elapsed since last update')
+                else:
                     logging.info('Sending progress message {}'.format(progress_data))
                     message_dict = dict(progress_data)
                     message_dict['task-id'] = self.task_id
@@ -117,10 +121,6 @@ class ProgressUpdater(object):
                         self.last_reported_time = time.time()
                     else:
                         logging.info('Unable to send progress message {}'.format(progress_message))
-                else:
-                    logging.debug('Not sending progress data as enough time has not elapsed since last update')
-            else:
-                logging.info('Skipping invalid/outdated progress data {}'.format(progress_data))
 
 
 class ProgressWatcher(object):
