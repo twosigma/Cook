@@ -394,7 +394,7 @@
                          (throw (ex-info "Executor environment must be a map from string to string!" {:executor executor}))))
                      (when (and (:portion executor) (not (<= 0 (:portion executor) 1)))
                        (throw (ex-info "Executor portion must be in the range [0, 1]!" {:executor executor})))
-                     (let [default-executor-config {:default-progress-regex-string "progress: (\\d+)(?: )?(.*)"
+                     (let [default-executor-config {:default-progress-regex-string "progress:\\s+([0-9]*\\.?[0-9]+)($|\\s+.*)"
                                                     :environment {}
                                                     :log-level "INFO"
                                                     :max-message-length 512

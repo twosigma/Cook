@@ -297,7 +297,7 @@ An example configuration looks like:
 ```clojure
 {...
  :executor {:command "./cook-executor"
-            :default-progress-regex-string "progress: (\d+)(?: )?(.*)"
+            :default-progress-regex-string "progress:\\s+([0-9]*\\.?[0-9]+)($|\\s+.*)"
             :environment {"EXECUTOR_DEFAULT_PROGRESS_OUTPUT_NAME" "stdout"}
             :log-level "INFO"
             :max-message-length 512
@@ -317,10 +317,10 @@ The configuration values are defined as follows:
 
 `:default-progress-regex-string`::
   The string representation of the regex used to identify progress update messages.
-  The regex should have two capture groups, the first being a number representing the progress percent.
-  The second being a message about the progress.
+  The regex should have one or two capture groups, the first being a number representing the progress percent.
+  The second, when present, being a message about the progress.
   The executor will use the `:max-message-length` value to trim the progress message string before sending it to the scheduler.
-  Defaults to "progress: ([0-9]*\.?[0-9]+), (.*)".
+  Defaults to "progress:\\s+([0-9]*\\.?[0-9]+)($|\\s+.*)".
 
 `:environment`::
   A map that represents the additional environment variables passed on to the executor.
