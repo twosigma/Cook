@@ -537,15 +537,15 @@ def progress_line(cook_url, percent, message):
     cook_settings = settings(cook_url)
     regex_string = get_in(cook_settings, 'executor', 'default-progress-regex-string')
     if not regex_string:
-        regex_string = 'progress: (\d+) (.*)'
-    if '(\d+)' not in regex_string:
-        raise Exception(f'(\d+) not present in {regex_string} regex string')
-    if '(.*)' not in regex_string:
-        raise Exception(f'(.*) not present in {regex_string} regex string')
+        regex_string = 'progress:\s+([0-9]*\.?[0-9]+)($|\s+.*)'
+    if '([0-9]*\.?[0-9]+)' not in regex_string:
+        raise Exception(f'([0-9]*\.?[0-9]+) not present in {regex_string} regex string')
+    if '($|\s+.*)' not in regex_string:
+        raise Exception(f'($|\s+.*) not present in {regex_string} regex string')
     return (regex_string
-            .replace('(\d+)', str(percent))
-            .replace('(.*)', str(message))
-            .replace('(?: )?', ' ')
+            .replace('([0-9]*\.?[0-9]+)', str(percent))
+            .replace('($|\s+.*)', str(f' {message}'))
+            .replace('\s+', ' ')
             .replace('\\', ''))
 
 
