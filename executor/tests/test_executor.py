@@ -410,7 +410,7 @@ class ExecutorTest(unittest.TestCase):
             sandbox_directory = '/location/to/task/sandbox/{}'.format(task_id)
             config = cc.ExecutorConfig(max_message_length=300,
                                        progress_output_name=stdout_name,
-                                       progress_regex_string='\^\^\^\^JOB-PROGRESS: ([0-9]*\.?[0-9]+)(?: )?(.*)',
+                                       progress_regex_string='\^\^\^\^JOB-PROGRESS:\s+([0-9]*\.?[0-9]+)($|\s+.*)',
                                        progress_sample_interval_ms=100,
                                        sandbox_directory=sandbox_directory)
         else:
@@ -749,7 +749,7 @@ class ExecutorTest(unittest.TestCase):
                                         'max_message_length': max_message_length,
                                         'progress_output_env_variable': 'DEFAULT_PROGRESS_FILE_ENV_VARIABLE',
                                         'progress_output_name': progress_name,
-                                        'progress_regex_string': '\^\^\^\^JOB-PROGRESS: ([0-9]*\.?[0-9]+)(?: )?(.*)',
+                                        'progress_regex_string': '\^\^\^\^JOB-PROGRESS:\s+([0-9]*\.?[0-9]+)($|\s+.*)',
                                         'progress_sample_interval_ms': 10,
                                         'sandbox_directory': '/sandbox/directory/for/{}'.format(task_id),
                                         'shutdown_grace_period_ms': 60000,

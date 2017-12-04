@@ -90,37 +90,36 @@ class ProgressUpdater(object):
             # ensure we do not send outdated progress data due to parallel repeated calls to this method
             if progress_data is None or not self.is_increasing_sequence(progress_data):
                 logging.info('Skipping invalid/outdated progress data {}'.format(progress_data))
+            elif not force_send and not self.has_enough_time_elapsed_since_last_update():
+                logging.debug('Not sending progress data as enough time has not elapsed since last update')
             else:
-                if not force_send and not self.has_enough_time_elapsed_since_last_update():
-                    logging.debug('Not sending progress data as enough time has not elapsed since last update')
-                else:
-                    logging.info('Sending progress message {}'.format(progress_data))
-                    message_dict = dict(progress_data)
-                    message_dict['task-id'] = self.task_id
+                logging.info('Sending progress message {}'.format(progress_data))
+                message_dict = dict(progress_data)
+                message_dict['task-id'] = self.task_id
 
-                    raw_progress_message = progress_data['progress-message']
-                    try:
-                        progress_str = raw_progress_message.decode('ascii').strip()
-                    except UnicodeDecodeError:
-                        logging.info('Unable to decode progress message in ascii, using empty string instead')
-                        progress_str = ''
-                    message_dict['progress-message'] = progress_str
+                raw_progress_message = progress_data['progress-message']
+                try:
+                    progress_str = raw_progress_message.decode('ascii').strip()
+                except UnicodeDecodeError:
+                    logging.info('Unable to decode progress message in ascii, using empty string instead')
+                    progress_str = ''
+                message_dict['progress-message'] = progress_str
 
+                progress_message = json.dumps(message_dict)
+                if len(progress_message) > self.max_message_length:
+                    num_extra_chars = len(progress_message) - self.max_message_length
+                    allowed_progress_message_length = max(len(progress_str) - num_extra_chars - 3, 0)
+                    new_progress_str = progress_str[:allowed_progress_message_length].strip() + '...'
+                    logging.info('Progress message trimmed to {}'.format(new_progress_str))
+                    message_dict['progress-message'] = new_progress_str
                     progress_message = json.dumps(message_dict)
-                    if len(progress_message) > self.max_message_length:
-                        num_extra_chars = len(progress_message) - self.max_message_length
-                        allowed_progress_message_length = max(len(progress_str) - num_extra_chars - 3, 0)
-                        new_progress_str = progress_str[:allowed_progress_message_length].strip() + '...'
-                        logging.info('Progress message trimmed to {}'.format(new_progress_str))
-                        message_dict['progress-message'] = new_progress_str
-                        progress_message = json.dumps(message_dict)
 
-                    send_success = self.send_progress_message(progress_message)
-                    if send_success:
-                        self.last_progress_data_sent = progress_data
-                        self.last_reported_time = time.time()
-                    else:
-                        logging.info('Unable to send progress message {}'.format(progress_message))
+                send_success = self.send_progress_message(progress_message)
+                if send_success:
+                    self.last_progress_data_sent = progress_data
+                    self.last_reported_time = time.time()
+                else:
+                    logging.info('Unable to send progress message {}'.format(progress_message))
 
 
 class ProgressWatcher(object):
@@ -135,7 +134,9 @@ class ProgressWatcher(object):
         Parameters
         ----------
         progress_regex_pattern: re.pattern
-            The progress regex to match against, it must return two capture groups.
+            The progress regex to match against, it must return one or two capture groups.
+            The first capture group represent the progress percentage.
+            The second capture group, if present, represents the progress message.
         input_data: bytes
             The input data.
         
@@ -221,7 +222,7 @@ class ProgressWatcher(object):
                     yield line
                 if self.stop_signal.isSet() and not self.task_completed_signal.isSet():
                     logging.info('Task requested to be killed, may not have processed all progress messages')
-        except:
+        except Exception:
             logging.exception('Error while tailing %s [tag=%s]', self.target_file, self.location_tag)
 
     def retrieve_progress_states(self):
@@ -243,18 +244,27 @@ class ProgressWatcher(object):
                     progress_report = ProgressWatcher.match_progress_update(self.progress_regex_pattern, line)
                     if progress_report is None:
                         continue
-                    percent_data, message_data = progress_report
-                    percent_int = int(round(float(percent_data.decode())))
-                    if percent_int < 0 or percent_int > 100:
+
+                    if isinstance(progress_report, tuple) and len(progress_report) == 2:
+                        percent_data, message_data = progress_report
+                    elif isinstance(progress_report, tuple) and len(progress_report) == 1:
+                        percent_data, message_data = progress_report[0], b''
+                    else:
+                        percent_data, message_data = progress_report, b''
+
+                    percent_float = float(percent_data.decode())
+                    if percent_float < 0 or percent_float > 100:
                         logging.info('Skipping "%s" as the percent is not in [0, 100]', progress_report)
                         continue
+
+                    percent_int = int(round(percent_float))
                     logging.debug('Updating progress to %s percent [tag=%s]', percent_int, self.location_tag)
                     self.progress = {'progress-message': message_data,
                                      'progress-percent': percent_int,
                                      'progress-sequence': self.sequence_counter.increment_and_get()}
                     yield self.progress
-                except:
-                    logging.exception('Skipping "%s" as a progress entry', progress_report)
+                except Exception:
+                    logging.exception('Skipping "%s" as a progress entry', line)
 
 
 class ProgressTracker(object):
@@ -306,7 +316,7 @@ class ProgressTracker(object):
         try:
             for current_progress in self.watcher.retrieve_progress_states():
                 self.updater.send_progress_update(current_progress)
-        except:
+        except Exception:
             logging.exception('Exception while tracking progress [tag=%s]', self.location_tag)
         finally:
             self.progress_complete_event.set()
