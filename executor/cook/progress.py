@@ -225,6 +225,28 @@ class ProgressWatcher(object):
         except Exception:
             logging.exception('Error while tailing %s [tag=%s]', self.target_file, self.location_tag)
 
+    def __update_progress(self, progress_report):
+        """Updates the progress field with the data from progress_report if it is valid."""
+        if isinstance(progress_report, tuple) and len(progress_report) == 2:
+            percent_data, message_data = progress_report
+        elif isinstance(progress_report, tuple) and len(progress_report) == 1:
+            percent_data, message_data = progress_report[0], b''
+        else:
+            percent_data, message_data = progress_report, b''
+
+        percent_float = float(percent_data.decode())
+        if percent_float < 0 or percent_float > 100:
+            logging.info('Skipping "%s" as the percent is not in [0, 100]', progress_report)
+            return False
+
+        percent_int = int(round(percent_float))
+        logging.debug('Updating progress to %s percent [tag=%s]', percent_int, self.location_tag)
+
+        self.progress = {'progress-message': message_data,
+                         'progress-percent': percent_int,
+                         'progress-sequence': self.sequence_counter.increment_and_get()}
+        return True
+
     def retrieve_progress_states(self):
         """Generates the progress states by tailing the target_file.
         It tails a target file (using the tail() method) and uses the provided 
@@ -237,6 +259,7 @@ class ProgressWatcher(object):
         -------
         an incrementally generated list of progress states.
         """
+        last_unprocessed_report = None
         if self.progress_regex_string:
             sleep_time_ms = 50
             for line in self.tail(sleep_time_ms):
@@ -244,27 +267,16 @@ class ProgressWatcher(object):
                     progress_report = ProgressWatcher.match_progress_update(self.progress_regex_pattern, line)
                     if progress_report is None:
                         continue
-
-                    if isinstance(progress_report, tuple) and len(progress_report) == 2:
-                        percent_data, message_data = progress_report
-                    elif isinstance(progress_report, tuple) and len(progress_report) == 1:
-                        percent_data, message_data = progress_report[0], b''
-                    else:
-                        percent_data, message_data = progress_report, b''
-
-                    percent_float = float(percent_data.decode())
-                    if percent_float < 0 or percent_float > 100:
-                        logging.info('Skipping "%s" as the percent is not in [0, 100]', progress_report)
+                    if self.task_completed_signal.isSet():
+                        last_unprocessed_report = progress_report
                         continue
-
-                    percent_int = int(round(percent_float))
-                    logging.debug('Updating progress to %s percent [tag=%s]', percent_int, self.location_tag)
-                    self.progress = {'progress-message': message_data,
-                                     'progress-percent': percent_int,
-                                     'progress-sequence': self.sequence_counter.increment_and_get()}
-                    yield self.progress
+                    if self.__update_progress(progress_report):
+                        yield self.progress
                 except Exception:
                     logging.exception('Skipping "%s" as a progress entry', line)
+        if last_unprocessed_report is not None:
+            if self.__update_progress(last_unprocessed_report):
+                yield self.progress
 
 
 class ProgressTracker(object):

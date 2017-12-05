@@ -270,7 +270,6 @@ class ProgressTest(unittest.TestCase):
                 file.write("^^^^JOB-PROGRESS: 198.8\n")
                 file.flush()
                 file.close()
-                completed_signal.set()
 
             print_thread = Thread(target=print_to_file, args=())
             print_thread.start()
@@ -284,6 +283,8 @@ class ProgressTest(unittest.TestCase):
                 expected_progress_state = progress_states.pop(0)
                 self.assertEqual(expected_progress_state, actual_progress_state)
                 self.assertEqual(expected_progress_state, watcher.current_progress())
+                if not progress_states:
+                    completed_signal.set()
             self.assertFalse(progress_states)
 
             print_thread.join()
@@ -316,7 +317,6 @@ class ProgressTest(unittest.TestCase):
                 file.write("^^^^JOB-PROGRESS: 100.1 Over a hundred\n")
                 file.flush()
                 file.close()
-                completed_signal.set()
 
             print_thread = Thread(target=print_to_file, args=())
             print_thread.start()
@@ -330,6 +330,8 @@ class ProgressTest(unittest.TestCase):
                 expected_progress_state = progress_states.pop(0)
                 self.assertEqual(expected_progress_state, actual_progress_state)
                 self.assertEqual(expected_progress_state, watcher.current_progress())
+                if not progress_states:
+                    completed_signal.set()
             self.assertFalse(progress_states)
 
             print_thread.join()
