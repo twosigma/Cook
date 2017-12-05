@@ -274,13 +274,11 @@ class ProgressWatcher(object):
             for line in self.tail(sleep_time_ms):
                 try:
                     progress_report = ProgressWatcher.match_progress_update(self.progress_regex_pattern, line)
-                    if progress_report is None:
-                        continue
-                    if self.task_completed_signal.isSet():
-                        last_unprocessed_report = progress_report
-                        continue
-                    if self.__update_progress(progress_report):
-                        yield self.progress
+                    if progress_report is not None:
+                        if self.task_completed_signal.isSet():
+                            last_unprocessed_report = progress_report
+                        elif self.__update_progress(progress_report):
+                            yield self.progress
                 except Exception:
                     logging.exception('Skipping "%s" as a progress entry', line)
         if last_unprocessed_report is not None:
