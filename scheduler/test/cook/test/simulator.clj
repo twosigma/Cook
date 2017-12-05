@@ -433,6 +433,12 @@
               (async/>!! rebalancer-trigger-chan rebalancer-complete-chan)
               (async/<!! rebalancer-complete-chan)
               (log/info "Rebalance complete"))
+            
+            ;; Periodically perform full gc under hypothesis that holding onto
+            ;; lot of memory is causing problems
+            (when (> (rand) 0.9)
+              (log/warn "Forcing GC")
+              (System/gc))
 
             (when (seq trace)
               (recur (drop (count submission-batch) trace)
