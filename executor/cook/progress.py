@@ -149,16 +149,17 @@ class ProgressWatcher(object):
         return matches[0] if len(matches) >= 1 else None
 
     def __init__(self, output_name, location_tag, sequence_counter, max_bytes_read_per_line, progress_regex_string,
-                 stop_signal, task_completed_signal):
+                 stop_signal, task_completed_signal, progress_termination_signal):
         self.target_file = output_name
         self.location_tag = location_tag
         self.sequence_counter = sequence_counter
+        self.max_bytes_read_per_line = max_bytes_read_per_line
         self.progress_regex_string = progress_regex_string
         self.progress_regex_pattern = re.compile(progress_regex_string.encode())
         self.progress = None
         self.stop_signal = stop_signal
         self.task_completed_signal = task_completed_signal
-        self.max_bytes_read_per_line = max_bytes_read_per_line
+        self.progress_termination_signal = progress_termination_signal
 
     def current_progress(self):
         """Returns the current progress dictionary."""
@@ -205,6 +206,9 @@ class ProgressWatcher(object):
             line_index = 0
             with open(self.target_file, 'rb') as target_file_obj:
                 while not self.stop_signal.isSet():
+                    if self.progress_termination_signal.isSet():
+                        logging.info('tail short-circuiting due to progress termination [tag=%s]', self.location_tag)
+                        break
                     line = target_file_obj.readline(self.max_bytes_read_per_line)
                     if not line:
                         # exit if program has completed and there are no more lines to read
@@ -282,7 +286,8 @@ class ProgressWatcher(object):
 class ProgressTracker(object):
     """Helper class to track progress messages from the specified location."""
 
-    def __init__(self, config, stop_signal, task_completed_signal, counter, progress_updater, location, location_tag):
+    def __init__(self, config, stop_signal, task_completed_signal, counter, progress_updater,
+                 progress_termination_signal, location, location_tag):
         """Launches the threads that track progress and send progress updates to the driver.
 
         Parameters
@@ -304,7 +309,8 @@ class ProgressTracker(object):
         self.location_tag = location_tag
         self.progress_complete_event = Event()
         self.watcher = ProgressWatcher(location, location_tag, counter, config.max_bytes_read_per_line,
-                                       config.progress_regex_string, stop_signal, task_completed_signal)
+                                       config.progress_regex_string, stop_signal, task_completed_signal,
+                                       progress_termination_signal)
         self.updater = progress_updater
 
     def start(self):
@@ -318,9 +324,9 @@ class ProgressTracker(object):
         """Waits for the progress tracker thread to run to completion."""
         self.progress_complete_event.wait(timeout=timeout)
         if self.progress_complete_event.isSet():
-            logging.info('Progress monitoring from complete [tag=%s]', self.location_tag)
+            logging.info('Progress monitoring complete [tag=%s]', self.location_tag)
         else:
-            logging.info('Progress monitoring from did not complete [tag=%s]', self.location_tag)
+            logging.info('Progress monitoring did not complete [tag=%s]', self.location_tag)
 
     def track_progress(self):
         """Retrieves and sends progress updates using send_progress_update_fn.

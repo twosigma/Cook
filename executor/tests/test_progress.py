@@ -138,8 +138,9 @@ class ProgressTest(unittest.TestCase):
     def test_watcher_tail(self):
         file_name = ensure_directory('build/tail_progress_test.' + get_random_task_id())
         items_to_write = 12
-        stop_signal = Event()
-        completed_signal = Event()
+        stop = Event()
+        completed = Event()
+        termination = Event()
         write_sleep_ms = 50
         tail_sleep_ms = 25
 
@@ -152,12 +153,12 @@ class ProgressTest(unittest.TestCase):
                     file.flush()
                 file.close()
                 time.sleep(0.15)
-                completed_signal.set()
+                completed.set()
 
             Thread(target=write_to_file, args=()).start()
 
             counter = cp.ProgressSequenceCounter()
-            watcher = cp.ProgressWatcher(file_name, 'test', counter, 1024, '', stop_signal, completed_signal)
+            watcher = cp.ProgressWatcher(file_name, 'test', counter, 1024, '', stop, completed, termination)
             collected_data = []
             for line in watcher.tail(tail_sleep_ms):
                 collected_data.append(line.strip())
@@ -171,8 +172,9 @@ class ProgressTest(unittest.TestCase):
     def test_watcher_tail_lot_of_writes(self):
         file_name = ensure_directory('build/tail_progress_test.' + get_random_task_id())
         items_to_write = 250000
-        stop_signal = Event()
-        completed_signal = Event()
+        stop = Event()
+        completed = Event()
+        termination = Event()
         tail_sleep_ms = 25
 
         try:
@@ -185,12 +187,12 @@ class ProgressTest(unittest.TestCase):
                 file.flush()
                 file.close()
                 time.sleep(0.15)
-                completed_signal.set()
+                completed.set()
 
             Thread(target=write_to_file, args=()).start()
 
             counter = cp.ProgressSequenceCounter()
-            watcher = cp.ProgressWatcher(file_name, 'test', counter, 1024, '', stop_signal, completed_signal)
+            watcher = cp.ProgressWatcher(file_name, 'test', counter, 1024, '', stop, completed, termination)
             collected_data = []
             for line in watcher.tail(tail_sleep_ms):
                 collected_data.append(line.strip())
@@ -208,8 +210,9 @@ class ProgressTest(unittest.TestCase):
 
     def test_watcher_tail_with_read_limit(self):
         file_name = ensure_directory('build/tail_progress_test.' + get_random_task_id())
-        stop_signal = Event()
-        completed_signal = Event()
+        stop = Event()
+        completed = Event()
+        termination = Event()
         tail_sleep_ms = 25
 
         try:
@@ -227,12 +230,12 @@ class ProgressTest(unittest.TestCase):
 
                 file.close()
                 time.sleep(0.15)
-                completed_signal.set()
+                completed.set()
 
             Thread(target=write_to_file, args=()).start()
 
             counter = cp.ProgressSequenceCounter()
-            watcher = cp.ProgressWatcher(file_name, 'test', counter, 10, '', stop_signal, completed_signal)
+            watcher = cp.ProgressWatcher(file_name, 'test', counter, 10, '', stop, completed, termination)
             collected_data = []
             for line in watcher.tail(tail_sleep_ms):
                 collected_data.append(line.strip())
@@ -249,13 +252,14 @@ class ProgressTest(unittest.TestCase):
     def test_collect_progress_updates_one_capture_group(self):
         file_name = ensure_directory('build/collect_progress_test.' + get_random_task_id())
         progress_regex = '\^\^\^\^JOB-PROGRESS:\s+([0-9]*\.?[0-9]+)$'
-        stop_signal = Event()
-        completed_signal = Event()
+        stop = Event()
+        completed = Event()
+        termination = Event()
 
         file = open(file_name, 'w+')
         file.flush()
         counter = cp.ProgressSequenceCounter()
-        watcher = cp.ProgressWatcher(file_name, 'test', counter, 1024, progress_regex, stop_signal, completed_signal)
+        watcher = cp.ProgressWatcher(file_name, 'test', counter, 1024, progress_regex, stop, completed, termination)
 
         try:
             def print_to_file():
@@ -284,25 +288,26 @@ class ProgressTest(unittest.TestCase):
                 self.assertEqual(expected_progress_state, actual_progress_state)
                 self.assertEqual(expected_progress_state, watcher.current_progress())
                 if not progress_states:
-                    completed_signal.set()
+                    completed.set()
             self.assertFalse(progress_states)
 
             print_thread.join()
         finally:
-            completed_signal.set()
+            completed.set()
             if os.path.isfile(file_name):
                 os.remove(file_name)
 
     def test_collect_progress_updates_two_capture_groups(self):
         file_name = ensure_directory('build/collect_progress_test.' + get_random_task_id())
         progress_regex = '\^\^\^\^JOB-PROGRESS:\s+([0-9]*\.?[0-9]+)($|\s+.*)'
-        stop_signal = Event()
-        completed_signal = Event()
+        stop = Event()
+        completed = Event()
+        termination = Event()
 
         file = open(file_name, 'w+')
         file.flush()
         counter = cp.ProgressSequenceCounter()
-        watcher = cp.ProgressWatcher(file_name, 'test', counter, 1024, progress_regex, stop_signal, completed_signal)
+        watcher = cp.ProgressWatcher(file_name, 'test', counter, 1024, progress_regex, stop, completed, termination)
 
         try:
             def print_to_file():
@@ -331,25 +336,79 @@ class ProgressTest(unittest.TestCase):
                 self.assertEqual(expected_progress_state, actual_progress_state)
                 self.assertEqual(expected_progress_state, watcher.current_progress())
                 if not progress_states:
-                    completed_signal.set()
+                    completed.set()
             self.assertFalse(progress_states)
 
             print_thread.join()
         finally:
-            completed_signal.set()
+            completed.set()
+            if os.path.isfile(file_name):
+                os.remove(file_name)
+
+    def test_progress_updates_early_termination(self):
+        file_name = ensure_directory('build/collect_progress_test.' + get_random_task_id())
+        progress_regex = '\^\^\^\^JOB-PROGRESS:\s+([0-9]*\.?[0-9]+)($|\s+.*)'
+        stop = Event()
+        completed = Event()
+        termination = Event()
+        termination_trigger = Event()
+
+        file = open(file_name, 'w+')
+        file.flush()
+        counter = cp.ProgressSequenceCounter()
+        watcher = cp.ProgressWatcher(file_name, 'test', counter, 1024, progress_regex, stop, completed, termination)
+
+        try:
+            def print_to_file():
+                file.write("Stage One complete\n")
+                file.write("^^^^JOB-PROGRESS: 25 Twenty-Five\n")
+                file.write("^^^^JOB-PROGRESS: 50 Fifty\n")
+                file.flush()
+
+                logging.info('Awaiting termination_trigger')
+                termination_trigger.wait()
+                logging.info('termination_trigger has been set')
+                termination.set()
+
+                file.write("Stage Three complete\n")
+                file.write("^^^^JOB-PROGRESS: 55 Fifty-five\n")
+                file.write("Stage Four complete\n")
+                file.write("^^^^JOB-PROGRESS: 100 Hundred\n")
+                file.flush()
+                file.close()
+                completed.set()
+
+            print_thread = Thread(target=print_to_file, args=())
+            print_thread.daemon = True
+            print_thread.start()
+
+            progress_states = [{'progress-message': b' Twenty-Five', 'progress-percent': 25, 'progress-sequence': 1},
+                               {'progress-message': b' Fifty', 'progress-percent': 50, 'progress-sequence': 2}]
+            for actual_progress_state in watcher.retrieve_progress_states():
+                expected_progress_state = progress_states.pop(0)
+                self.assertEqual(expected_progress_state, actual_progress_state)
+                self.assertEqual(expected_progress_state, watcher.current_progress())
+                if expected_progress_state['progress-percent'] == 50:
+                    termination_trigger.set()
+            self.assertFalse(progress_states)
+
+            print_thread.join()
+        finally:
+            completed.set()
             if os.path.isfile(file_name):
                 os.remove(file_name)
 
     def test_collect_progress_updates_skip_faulty(self):
         file_name = ensure_directory('build/collect_progress_updates_skip_faulty.' + get_random_task_id())
         progress_regex = '\^\^\^\^JOB-PROGRESS:\s+([0-9]*\.?[0-9]+)($|\s+.*)'
-        stop_signal = Event()
-        completed_signal = Event()
+        stop = Event()
+        completed = Event()
+        termination = Event()
 
         file = open(file_name, 'w+')
         file.flush()
         counter = cp.ProgressSequenceCounter()
-        watcher = cp.ProgressWatcher(file_name, 'test', counter, 1024, progress_regex, stop_signal, completed_signal)
+        watcher = cp.ProgressWatcher(file_name, 'test', counter, 1024, progress_regex, stop, completed, termination)
 
         try:
             def print_to_file():
@@ -360,7 +419,7 @@ class ProgressTest(unittest.TestCase):
                 file.write("^^^^JOB-PROGRESS: 075 75% percent\n")
                 file.flush()
                 file.close()
-                completed_signal.set()
+                completed.set()
 
             print_thread = Thread(target=print_to_file, args=())
             print_thread.start()
@@ -374,20 +433,21 @@ class ProgressTest(unittest.TestCase):
 
             print_thread.join()
         finally:
-            completed_signal.set()
+            completed.set()
             if os.path.isfile(file_name):
                 os.remove(file_name)
 
     def test_collect_progress_updates_faulty_regex(self):
         file_name = ensure_directory('build/collect_progress_updates_skip_faulty.' + get_random_task_id())
         progress_regex = '\^\^\^\^JOB-PROGRESS: (\S+)(?: )?(.*)'
-        stop_signal = Event()
-        completed_signal = Event()
+        stop = Event()
+        completed = Event()
+        termination = Event()
 
         file = open(file_name, 'w+')
         file.flush()
         counter = cp.ProgressSequenceCounter()
-        watcher = cp.ProgressWatcher(file_name, 'test', counter, 1024, progress_regex, stop_signal, completed_signal)
+        watcher = cp.ProgressWatcher(file_name, 'test', counter, 1024, progress_regex, stop, completed, termination)
 
         try:
             def print_to_file():
@@ -397,7 +457,7 @@ class ProgressTest(unittest.TestCase):
                 file.write("^^^^JOB-PROGRESS: 75 75% percent\n")
                 file.flush()
                 file.close()
-                completed_signal.set()
+                completed.set()
 
             print_thread = Thread(target=print_to_file, args=())
             print_thread.start()
@@ -411,7 +471,7 @@ class ProgressTest(unittest.TestCase):
 
             print_thread.join()
         finally:
-            completed_signal.set()
+            completed.set()
             if os.path.isfile(file_name):
                 os.remove(file_name)
 
@@ -419,14 +479,15 @@ class ProgressTest(unittest.TestCase):
         file_name = ensure_directory('build/collect_progress_test.' + get_random_task_id())
         progress_regex = '\^\^\^\^JOB-PROGRESS:\s+([0-9]*\.?[0-9]+)($|\s+.*)'
         location = '/dev/null'
-        stop_signal = Event()
-        completed_signal = Event()
+        stop = Event()
+        completed = Event()
+        termination = Event()
 
         file = open(file_name, 'w+')
         file.flush()
         counter = cp.ProgressSequenceCounter()
-        dn_watcher = cp.ProgressWatcher(location, 'dn', counter, 1024, progress_regex, stop_signal, completed_signal)
-        out_watcher = cp.ProgressWatcher(file_name, 'so', counter, 1024, progress_regex, stop_signal, completed_signal)
+        dn_watcher = cp.ProgressWatcher(location, 'dn', counter, 1024, progress_regex, stop, completed, termination)
+        out_watcher = cp.ProgressWatcher(file_name, 'so', counter, 1024, progress_regex, stop, completed, termination)
 
         try:
             def print_to_file():
@@ -434,7 +495,7 @@ class ProgressTest(unittest.TestCase):
                 file.write("^^^^JOB-PROGRESS: 100 100-percent\n")
                 file.flush()
                 file.close()
-                completed_signal.set()
+                completed.set()
 
             print_thread = Thread(target=print_to_file, args=())
             print_thread.start()
@@ -453,7 +514,7 @@ class ProgressTest(unittest.TestCase):
 
             print_thread.join()
         finally:
-            completed_signal.set()
+            completed.set()
             if os.path.isfile(file_name):
                 os.remove(file_name)
 
@@ -461,8 +522,9 @@ class ProgressTest(unittest.TestCase):
         file_name = ensure_directory('build/collect_progress_test.' + get_random_task_id())
         progress_regex = 'progress: ([0-9]*\.?[0-9]+), (.*)'
         items_to_write = 250000
-        stop_signal = Event()
-        completed_signal = Event()
+        stop = Event()
+        completed = Event()
+        termination = Event()
 
         def write_to_file():
             target_file = open(file_name, 'w+')
@@ -479,13 +541,13 @@ class ProgressTest(unittest.TestCase):
 
             target_file.close()
             time.sleep(0.15)
-            completed_signal.set()
+            completed.set()
 
         write_thread = Thread(target=write_to_file, args=())
         write_thread.start()
 
         counter = cp.ProgressSequenceCounter()
-        watcher = cp.ProgressWatcher(file_name, 'test', counter, 1024, progress_regex, stop_signal, completed_signal)
+        watcher = cp.ProgressWatcher(file_name, 'test', counter, 1024, progress_regex, stop, completed, termination)
 
         try:
             progress_states = list(map(lambda x: {'progress-message': 'completed-{}-percent'.format(x).encode(),
@@ -500,20 +562,21 @@ class ProgressTest(unittest.TestCase):
 
             write_thread.join()
         finally:
-            completed_signal.set()
+            completed.set()
             if os.path.isfile(file_name):
                 os.remove(file_name)
 
     def test_collect_progress_updates_with_empty_regex(self):
         file_name = ensure_directory('build/collect_progress_test.' + get_random_task_id())
         progress_regex = ''
-        stop_signal = Event()
-        completed_signal = Event()
+        stop = Event()
+        completed = Event()
+        termination = Event()
 
         file = open(file_name, 'w+')
         file.flush()
         counter = cp.ProgressSequenceCounter()
-        watcher = cp.ProgressWatcher(file_name, 'test', counter, 1024, progress_regex, stop_signal, completed_signal)
+        watcher = cp.ProgressWatcher(file_name, 'test', counter, 1024, progress_regex, stop, completed, termination)
 
         try:
             def print_to_file():
@@ -527,7 +590,7 @@ class ProgressTest(unittest.TestCase):
                 file.write("^^^^JOB-PROGRESS: 100 100-percent\n")
                 file.flush()
                 file.close()
-                completed_signal.set()
+                completed.set()
 
             print_thread = Thread(target=print_to_file, args=())
             print_thread.start()
@@ -540,6 +603,6 @@ class ProgressTest(unittest.TestCase):
             self.assertFalse(progress_states)
             self.assertIsNone(watcher.current_progress())
         finally:
-            completed_signal.set()
+            completed.set()
             if os.path.isfile(file_name):
                 os.remove(file_name)

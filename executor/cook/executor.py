@@ -6,7 +6,7 @@ import os
 import signal
 import subprocess
 import time
-from threading import Event, Thread
+from threading import Event, Thread, Timer
 
 import cook
 import cook.io_helper as cio
@@ -34,8 +34,10 @@ def create_status(task_id, task_state):
 
     Parameters
     ----------
-    task_id: The task id.
-    task_state: The state of the task to report.
+    task_id: string
+        The task id.
+    task_state: string
+        The state of the task to report.
 
     Returns
     -------
@@ -53,8 +55,8 @@ def update_status(driver, task_id, task_state):
     ----------
     driver: MesosExecutorDriver
         The driver to send the status update to.
-    task: dictionary
-        The task whose status update to send.
+    task_id: string
+        The task id of the task whose status update to send.
     task_state: string
         The state of the task which will be sent to the driver.
 
@@ -385,13 +387,15 @@ def manage_task(driver, task, stop_signal, completed_signal, config):
         def send_progress_message(message):
             return send_message(driver, message, config.max_message_length)
 
+        progress_termination_signal = Event()
         progress_updater = cp.ProgressUpdater(task_id, config.max_message_length, config.progress_sample_interval_ms,
                                               send_progress_message)
 
         def launch_progress_tracker(progress_location, location_tag):
             logging.info('Location {} tagged as [tag={}]'.format(progress_location, location_tag))
             progress_tracker = cp.ProgressTracker(config, stop_signal, task_completed_signal, sequence_counter,
-                                                  progress_updater, progress_location, location_tag)
+                                                  progress_updater, progress_termination_signal, progress_location,
+                                                  location_tag)
             progress_tracker.start()
             return progress_tracker
 
@@ -404,6 +408,10 @@ def manage_task(driver, task, stop_signal, completed_signal, config):
         process_info = process, stdout_thread, stderr_thread
         await_process_completion(stop_signal, process_info, config.shutdown_grace_period_ms)
         task_completed_signal.set()
+
+        progress_termination_timer = Timer(config.shutdown_grace_period_ms / 1000.0, progress_termination_signal.set)
+        progress_termination_timer.daemon = True
+        progress_termination_timer.start()
 
         # propagate the exit code
         exit_code = process.returncode
@@ -498,7 +506,7 @@ class CookExecutor(pm.Executor):
         Blocks until the internal flag disconnect_signal is set or the disconnect grace period expires.
         The disconnect grace period is computed based on whether stop_signal is set.
         """
-        disconnect_grace_secs = cook.DAEMON_GRACE_SECS if not self.stop_signal.isSet() else cook.TERMINATE_GRACE_SECS
+        disconnect_grace_secs = cook.TERMINATE_GRACE_SECS if self.stop_signal.isSet() else cook.DAEMON_GRACE_SECS
         if not self.disconnect_signal.isSet():
             logging.info('Waiting up to {} second(s) for CookExecutor to disconnect'.format(disconnect_grace_secs))
             self.disconnect_signal.wait(disconnect_grace_secs)
