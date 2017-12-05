@@ -319,6 +319,57 @@ class CookTest(unittest.TestCase):
         finally:
             util.kill_jobs(self.cook_url, [job_uuid])
 
+    def memory_limit_exceeded_helper(self, executor_type):
+        command = 'python3 -c ' \
+                  '"import resource; ' \
+                  ' import sys; ' \
+                  ' sys.stdout.write(\'Starting...\\n\'); ' \
+                  ' one_mb = 1024 * 1024; ' \
+                  ' [sys.stdout.write(' \
+                  '   \'progress: {} iter-{}.{}-mem-{}mB-{}\\n\'.format(' \
+                  '      i, ' \
+                  '      i, ' \
+                  '      len(\' \' * (i * 50 * one_mb)), ' \
+                  '      int(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / one_mb), ' \
+                  '      sys.stdout.flush())) ' \
+                  '  for i in range(100)]; ' \
+                  ' sys.stdout.write(\'Done.\\n\'); "'
+        job_uuid, resp = util.submit_job(self.cook_url, command=command, executor=executor_type, mem=128)
+        try:
+            self.assertEqual(201, resp.status_code, msg=resp.content)
+            job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
+            job_details = f"Job details: {json.dumps(job, sort_keys=True)}"
+            self.assertEqual('failed', job['state'], job_details)
+            self.assertEqual(1, len(job['instances']), job_details)
+            instance = job['instances'][0]
+            instance_details = json.dumps(instance, sort_keys=True)
+            # did the job fail as expected?
+            self.assertEqual(executor_type, instance['executor'], instance_details)
+            self.assertEqual('failed', instance['status'], instance_details)
+            if 2002 == instance['reason_code']:
+                self.assertEqual(2002, instance['reason_code'], instance_details)
+                self.assertEqual('Container memory limit exceeded', instance['reason_string'], instance_details)
+            elif 99003 == instance['reason_code']:
+                # If the command was killed, it will have exited non-zero
+                self.assertEqual(99003, instance['reason_code'], instance_details)
+                self.assertEqual('Command exited non-zero', instance['reason_string'], instance_details)
+                if executor_type == 'cook':
+                    self.assertEqual(137, instance['exit_code'], instance_details)
+            else:
+                self.fail('Unknown reason code {}, details {}'.format(instance['reason_code'], instance_details))
+        finally:
+            util.kill_jobs(self.cook_url, [job_uuid])
+
+    def test_memory_limit_exceeded_cook(self):
+        job_executor_type = util.get_job_executor_type(self.cook_url)
+        if job_executor_type == 'cook':
+            self.memory_limit_exceeded_helper('cook')
+        else:
+            self.logger.info("Skipping test_memory_limit_exceeded_cook as executor is {}".format(job_executor_type))
+
+    def test_memory_limit_exceeded_mesos(self):
+        self.memory_limit_exceeded_helper('mesos')
+
     def test_get_job(self):
         # schedule a job
         job_spec = util.minimal_job()
