@@ -541,9 +541,9 @@ class ProgressTest(unittest.TestCase):
 
             target_file.close()
             time.sleep(0.15)
-            completed.set()
 
         write_thread = Thread(target=write_to_file, args=())
+        write_thread.daemon = True
         write_thread.start()
 
         counter = cp.ProgressSequenceCounter()
@@ -558,6 +558,8 @@ class ProgressTest(unittest.TestCase):
                 expected_progress_state = progress_states.pop(0)
                 self.assertEqual(expected_progress_state, actual_progress_state)
                 self.assertEqual(expected_progress_state, watcher.current_progress())
+                if not progress_states:
+                    completed.set()
             self.assertFalse(progress_states)
 
             write_thread.join()

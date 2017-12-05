@@ -204,17 +204,22 @@ class ProgressWatcher(object):
             linesep_bytes = os.linesep.encode()
             fragment_index = 0
             line_index = 0
+
+            def log_tail_summary():
+                log_message = '%s fragments and %s lines read while processing progress messages [tag=%s]'
+                logging.info(log_message, fragment_index, line_index, self.location_tag)
+
             with open(self.target_file, 'rb') as target_file_obj:
                 while not self.stop_signal.isSet():
                     if self.progress_termination_signal.isSet():
                         logging.info('tail short-circuiting due to progress termination [tag=%s]', self.location_tag)
+                        log_tail_summary()
                         break
                     line = target_file_obj.readline(self.max_bytes_read_per_line)
                     if not line:
                         # exit if program has completed and there are no more lines to read
                         if self.task_completed_signal.isSet():
-                            log_message = '%s fragments and %s lines read while processing progress messages [tag=%s]'
-                            logging.info(log_message, fragment_index, line_index, self.location_tag)
+                            log_tail_summary()
                             break
                         # no new line available, sleep before trying again
                         time.sleep(sleep_param)
