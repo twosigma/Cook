@@ -1,6 +1,5 @@
 import json
 import logging
-import math
 import operator
 import subprocess
 import time
@@ -319,10 +318,9 @@ class CookTest(unittest.TestCase):
         finally:
             util.kill_jobs(self.cook_url, [job_uuid])
 
-    def memory_limit_exceeded_helper(self, executor_type):
+    def memory_limit_python_command(self):
         """Generates a python command that incrementally allocates large strings that cause the python process to
-        request more memory than it is allocated. When the command is submitted to cook, this job should be killed
-        by Mesos as it exceeds its memory limits."""
+        request more memory than it is allocated."""
         command = 'python3 -c ' \
                   '"import resource; ' \
                   ' import sys; ' \
@@ -337,6 +335,28 @@ class CookTest(unittest.TestCase):
                   '      sys.stdout.flush())) ' \
                   '  for i in range(100)]; ' \
                   ' sys.stdout.write(\'Done.\\n\'); "'
+        return command
+
+    def memory_limit_script_command(self):
+        """Generates a script command that incrementally allocates large strings that cause the process to
+        request more memory than it is allocated."""
+        command = 'random_string() { ' \
+                  '  base64 /dev/urandom | tr -d \'/+\' | dd bs=1048576 count=1024 2>/dev/null; ' \
+                  '}; ' \
+                  'R="$(random_string)"; ' \
+                  'V=""; ' \
+                  'echo "Length of R is ${#R}" ; ' \
+                  'for p in `seq 0 99`; do ' \
+                  '  for i in `seq 1 10`; do ' \
+                  '    V="${V}.${R}"; ' \
+                  '    echo "progress: ${p} ${p}-percent iter-${i}" ; ' \
+                  '  done ; ' \
+                  'done'
+        return command
+
+    def memory_limit_exceeded_helper(self, command, executor_type):
+        """Given a command that needs more memory than it is allocated, when the command is submitted to cook,
+        the job should be killed by Mesos as it exceeds its memory limits."""
         job_uuid, resp = util.submit_job(self.cook_url, command=command, executor=executor_type, mem=128)
         try:
             self.assertEqual(201, resp.status_code, msg=resp.content)
@@ -362,15 +382,33 @@ class CookTest(unittest.TestCase):
         finally:
             util.kill_jobs(self.cook_url, [job_uuid])
 
-    def test_memory_limit_exceeded_cook(self):
+    @attr('memory_limit')
+    def test_memory_limit_exceeded_cook_python(self):
         job_executor_type = util.get_job_executor_type(self.cook_url)
         if job_executor_type == 'cook':
-            self.memory_limit_exceeded_helper('cook')
+            command = self.memory_limit_python_command()
+            self.memory_limit_exceeded_helper(command, 'cook')
         else:
-            self.logger.info("Skipping test_memory_limit_exceeded_cook as executor is {}".format(job_executor_type))
+            self.logger.info("Skipping test_memory_limit_exceeded_cook_python, executor={}".format(job_executor_type))
 
-    def test_memory_limit_exceeded_mesos(self):
-        self.memory_limit_exceeded_helper('mesos')
+    @attr('memory_limit')
+    def test_memory_limit_exceeded_mesos_python(self):
+        command = self.memory_limit_python_command()
+        self.memory_limit_exceeded_helper(command, 'mesos')
+
+    @attr('memory_limit')
+    def test_memory_limit_exceeded_cook_script(self):
+        job_executor_type = util.get_job_executor_type(self.cook_url)
+        if job_executor_type == 'cook':
+            command = self.memory_limit_script_command()
+            self.memory_limit_exceeded_helper(command, 'cook')
+        else:
+            self.logger.info("Skipping test_memory_limit_exceeded_cook_script, executor={}".format(job_executor_type))
+
+    @attr('memory_limit')
+    def test_memory_limit_exceeded_mesos_script(self):
+        command = self.memory_limit_script_command()
+        self.memory_limit_exceeded_helper(command, 'mesos')
 
     def test_get_job(self):
         # schedule a job
