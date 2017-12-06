@@ -1,7 +1,6 @@
 import logging
 import unittest
 
-from nose.tools import *
 import os
 
 import cook.config as cc
