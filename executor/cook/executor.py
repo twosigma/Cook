@@ -28,7 +28,7 @@ def get_task_id(task):
     return task['task_id']['value']
 
 
-def create_status(task_id, task_state):
+def create_status(task_id, task_state, reason=None):
     """Creates a dictionary representing the task status.
 
     Parameters
@@ -37,17 +37,22 @@ def create_status(task_id, task_state):
         The task id.
     task_state: string
         The state of the task to report.
+    reason: string
+        The reason for the task state.
 
     Returns
     -------
     a status dictionary that can be sent to the driver.
     """
-    return {'task_id': {'value': task_id},
-            'state': task_state,
-            'timestamp': time.time()}
+    task_status = {'task_id': {'value': task_id},
+                   'state': task_state,
+                   'timestamp': time.time()}
+    if reason:
+        task_status['reason'] = reason
+    return task_status
 
 
-def update_status(driver, task_id, task_state):
+def update_status(driver, task_id, task_state, reason=None):
     """Sends the status using the driver. 
 
     Parameters
@@ -58,13 +63,15 @@ def update_status(driver, task_id, task_state):
         The task id of the task whose status update to send.
     task_state: string
         The state of the task which will be sent to the driver.
+    reason: string
+        The reason for the task state.
 
     Returns
     -------
     Nothing.
     """
     logging.info('Updating task {} state to {}'.format(task_id, task_state))
-    status = create_status(task_id, task_state)
+    status = create_status(task_id, task_state, reason=reason)
     driver.sendStatusUpdate(status)
 
 
@@ -242,7 +249,7 @@ def manage_task(driver, task, stop_signal, completed_signal, config):
         else:
             # task launch failed, report an error
             logging.error('Error in launching task')
-            update_status(driver, task_id, cook.TASK_ERROR)
+            update_status(driver, task_id, cook.TASK_ERROR, reason=cook.REASON_TASK_INVALID)
             return
 
         task_completed_signal = Event() # event to track task execution completion
@@ -301,7 +308,7 @@ def manage_task(driver, task, stop_signal, completed_signal, config):
         # task aborted with an error
         logging.exception('Error in executing task')
         output_task_completion(task_id, cook.TASK_FAILED)
-        update_status(driver, task_id, cook.TASK_FAILED)
+        update_status(driver, task_id, cook.TASK_FAILED, reason=cook.REASON_EXECUTOR_TERMINATED)
 
     finally:
         # ensure completed_signal is set so driver can stop

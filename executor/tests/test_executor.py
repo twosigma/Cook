@@ -338,8 +338,11 @@ class ExecutorTest(unittest.TestCase):
 
     def test_manage_task_empty_command(self):
         def assertions(driver, task_id, sandbox_directory):
-            expected_statuses = [{'task_id': {'value': task_id}, 'state': cook.TASK_STARTING},
-                                 {'task_id': {'value': task_id}, 'state': cook.TASK_ERROR}]
+            expected_statuses = [{'task_id': {'value': task_id},
+                                  'state': cook.TASK_STARTING},
+                                 {'task_id': {'value': task_id},
+                                  'reason': cook.REASON_TASK_INVALID,
+                                  'state': cook.TASK_ERROR}]
             tu.assert_statuses(self, expected_statuses, driver.statuses)
 
             expected_message_0 = {'sandbox-directory': sandbox_directory, 'task-id': task_id, 'type': 'directory'}
