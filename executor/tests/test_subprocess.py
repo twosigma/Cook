@@ -57,8 +57,12 @@ class SubprocessTest(unittest.TestCase):
             cs.kill_process(process, shutdown_grace_period_ms)
 
             # await process termination
-            while process.poll() is None:
-                time.sleep(0.01)
+            for i in range(1, 10 * shutdown_grace_period_ms):
+                if process.poll() is None:
+                    time.sleep(0.01)
+            if process.poll() is None:
+                process.kill()
+
             stderr_thread.join()
             stdout_thread.join()
 
@@ -94,8 +98,12 @@ class SubprocessTest(unittest.TestCase):
             cs.kill_process(process, shutdown_grace_period_ms)
 
             # await process termination
-            while process.poll() is None:
-                time.sleep(0.01)
+            for i in range(1, 10 * shutdown_grace_period_ms):
+                if process.poll() is None:
+                    time.sleep(0.01)
+            if process.poll() is None:
+                process.kill()
+
             stderr_thread.join()
             stdout_thread.join()
 
@@ -106,7 +114,7 @@ class SubprocessTest(unittest.TestCase):
         finally:
             tu.cleanup_output(stdout_name, stderr_name)
 
-    def test_progress_group_assignment_and_killing(self):
+    def process_launch_and_kill_helper(self, kill_fn):
         start_time = time.time()
 
         command = 'echo "A.$(sleep 30)" & echo "B.$(sleep 30)" & echo "C.$(sleep 30)" &'
@@ -122,11 +130,30 @@ class SubprocessTest(unittest.TestCase):
         self.assertGreaterEqual(len(child_process_ids), 7)
         self.assertLessEqual(len(child_process_ids), 10)
 
-        cs.send_signal(process.pid, signal.SIGKILL)
+        kill_fn(process.pid)
 
         child_process_ids = tu.wait_for(lambda: find_process_ids_in_group(group_id),
                                         lambda data: len(data) == 0,
                                         default_value=[])
         self.assertEqual(0, len(child_process_ids))
 
-        self.assertLess(time.time() - start_time, 30)
+        # ensure the test ran in under 30 seconds
+        self.assertLess(time.time() - start_time, 20)
+
+    def test_process_group_assignment_and_killing_send_process_tree_kill(self):
+        self.process_launch_and_kill_helper(lambda pid: cs._send_signal_to_process_tree(pid, signal.SIGKILL))
+
+    def test_process_group_assignment_and_killing_send_process_tree_term(self):
+        self.process_launch_and_kill_helper(lambda pid: cs._send_signal_to_process_tree(pid, signal.SIGTERM))
+
+    def test_process_group_assignment_and_killing_send_process_group_kill(self):
+        self.process_launch_and_kill_helper(lambda pid: cs._send_signal_to_process_group(pid, signal.SIGKILL))
+
+    def test_process_group_assignment_and_killing_send_process_group_term(self):
+        self.process_launch_and_kill_helper(lambda pid: cs._send_signal_to_process_group(pid, signal.SIGTERM))
+
+    def test_process_group_assignment_and_killing_send_signal_kill(self):
+        self.process_launch_and_kill_helper(lambda pid: cs.send_signal(pid, signal.SIGKILL))
+
+    def test_process_group_assignment_and_killing_send_signal_term(self):
+        self.process_launch_and_kill_helper(lambda pid: cs.send_signal(pid, signal.SIGTERM))

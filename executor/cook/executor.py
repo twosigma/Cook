@@ -244,7 +244,7 @@ def manage_task(driver, task, stop_signal, completed_signal, config):
     -------
     Nothing
     """
-    process_id = None
+    launched_process = None
     task_id = get_task_id(task)
     cio.print_and_log('Starting task {}'.format(task_id))
     try:
@@ -257,22 +257,19 @@ def manage_task(driver, task, stop_signal, completed_signal, config):
         send_message(driver, sandbox_message, config.max_message_length)
 
         environment = retrieve_process_environment(config, os.environ)
-        process = launch_task(task, environment)
-        if process:
+        launched_process = launch_task(task, environment)
+        if launched_process:
             # task has begun running successfully
             update_status(driver, task_id, cook.TASK_RUNNING)
-            cio.print_and_log('Forked command at {}'.format(process.pid))
+            cio.print_and_log('Forked command at {}'.format(launched_process.pid))
         else:
             # task launch failed, report an error
             logging.error('Error in launching task')
             update_status(driver, task_id, cook.TASK_ERROR)
             return
 
-        process_id = process.pid
-
-        flush_interval_secs = config.flush_interval_secs
-        max_bytes_read_per_line = config.max_bytes_read_per_line
-        stdout_thread, stderr_thread = cio.track_outputs(task_id, process, flush_interval_secs, max_bytes_read_per_line)
+        stdout_thread, stderr_thread = cio.track_outputs(task_id, launched_process, config.flush_interval_secs,
+                                                         config.max_bytes_read_per_line)
         task_completed_signal = Event() # event to track task execution completion
         sequence_counter = cp.ProgressSequenceCounter()
 
@@ -297,7 +294,7 @@ def manage_task(driver, task, stop_signal, completed_signal, config):
         logging.info('Progress will be tracked from {} locations'.format(len(progress_locations)))
         progress_trackers = [launch_progress_tracker(l, progress_locations[l]) for l in progress_locations]
 
-        process_info = process, stdout_thread, stderr_thread
+        process_info = launched_process, stdout_thread, stderr_thread
         await_process_completion(stop_signal, process_info, config.shutdown_grace_period_ms)
         task_completed_signal.set()
 
@@ -306,8 +303,8 @@ def manage_task(driver, task, stop_signal, completed_signal, config):
         progress_termination_timer.start()
 
         # propagate the exit code
-        exit_code = process.returncode
-        cio.print_and_log('Command exited with status {} (pid: {})'.format(exit_code, process.pid),
+        exit_code = launched_process.returncode
+        cio.print_and_log('Command exited with status {} (pid: {})'.format(exit_code, launched_process.pid),
                           flush=True)
 
         exit_message = json.dumps({'exit-code': exit_code, 'task-id': task_id})
@@ -336,7 +333,8 @@ def manage_task(driver, task, stop_signal, completed_signal, config):
     finally:
         # ensure completed_signal is set so driver can stop
         completed_signal.set()
-        cs.send_signal(process_id, signal.SIGKILL)
+        if launched_process is not None and cs.is_process_running(launched_process):
+            cs.send_signal(launched_process.pid, signal.SIGKILL)
 
 
 class CookExecutor(pm.Executor):

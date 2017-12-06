@@ -4,6 +4,7 @@ import subprocess
 import time
 
 import os
+import psutil
 
 import cook
 import cook.io_helper as cio
@@ -27,9 +28,10 @@ def launch_process(command, environment):
         logging.warning('No command provided!')
         return None
     # The preexec_fn is run after the fork() but before exec() to run the shell.
+    # setsid will run the program in a new session, thus assigning a new process group to it and its children.
     return subprocess.Popen(command,
                             env=environment,
-                            preexec_fn=os.setpgrp,
+                            preexec_fn=os.setsid,
                             shell=True,
                             stderr=subprocess.PIPE,
                             stdout=subprocess.PIPE)
@@ -70,7 +72,7 @@ def find_process_group(process_id):
         logging.exception('Error in finding group for process (pid: {})'.format(process_id))
 
 
-def send_signal_to_process(process_id, signal_to_send):
+def _send_signal_to_process(process_id, signal_to_send):
     """Send the signal_to_send signal to the process with process_id.
     Parameters
     ----------
@@ -80,7 +82,7 @@ def send_signal_to_process(process_id, signal_to_send):
         The signal to send to the process group.
     Returns
     -------
-    Nothing
+    True if the signal was sent successfully.
     """
     signal_name = signal_to_send.name
     try:
@@ -94,7 +96,46 @@ def send_signal_to_process(process_id, signal_to_send):
     return False
 
 
-def send_signal_to_process_group(process_id, signal_to_send):
+def _send_signal_to_process_tree(process_id, signal_to_send):
+    """Send the signal_to_send signal to the process tree rooted at process_id.
+    Parameters
+    ----------
+    process_id: int
+        The id of the root process.
+    signal_to_send: signal.Signals enum
+        The signal to send to the process group.
+    Returns
+    -------
+    True if the signal was sent successfully.
+    """
+    signal_name = signal_to_send.name
+    try:
+        logging.info('Sending signal {} to process tree rooted at (id: {})'.format(signal_name, process_id))
+        process = psutil.Process(process_id)
+        children = process.children(recursive=True)
+
+        _send_signal_to_process(process_id, signal_to_send)
+
+        signal_sent_to_all_children_successfully = True
+        if children:
+            for child in children:
+                logging.info('Found child process (id: {}) of process (id: {})'.format(child.pid, process_id))
+                if not _send_signal_to_process(child.pid, signal_to_send):
+                    logging.info('Failed to send signal {} to child process (id: {})'.format(signal_name, child.pid))
+                    signal_sent_to_all_children_successfully = False
+        else:
+            logging.info('No child process found for process (id: {})'.format(process_id))
+
+        return signal_sent_to_all_children_successfully
+    except ProcessLookupError:
+        log_message = 'Unable to send signal {} as could not find process tree rooted at (id: {})'
+        logging.info(log_message.format(signal_name, process_id))
+    except Exception:
+        logging.exception('Error in sending signal {} to process tree (id: {})'.format(signal_name, process_id))
+    return False
+
+
+def _send_signal_to_process_group(process_id, signal_to_send):
     """Send the signal_to_send signal to the process group with group_id.
     Parameters
     ----------
@@ -104,7 +145,7 @@ def send_signal_to_process_group(process_id, signal_to_send):
         The signal to send to the process group.
     Returns
     -------
-    Nothing
+    True if the signal was sent successfully.
     """
     signal_name = signal_to_send.name
     try:
@@ -122,14 +163,21 @@ def send_signal_to_process_group(process_id, signal_to_send):
 
 def send_signal(process_id, signal_to_send):
     """Send the signal_to_send signal to the process with process_id.
-    The function uses a two-step mechanism:
-    1. It sends the signal to the process group,
-    2. If unsuccessful, it sends the signal directly to the process"""
+    The function uses a three-step mechanism:
+    1. It sends the signal to the process tree rooted at process_id;
+    2. If unsuccessful, it sends the signal to the process group of process_id;
+    3. If unsuccessful, it sends the signal directly to the process with id process_id."""
     if process_id:
-        if send_signal_to_process_group(process_id, signal_to_send):
-            logging.info('Successfully killed group for process (id: {})'.format(process_id))
+        signal_name = signal_to_send.name
+        logging.info('Requested to send {} to process (id: {})'.format(signal_name, process_id))
+        if _send_signal_to_process_tree(process_id, signal_to_send):
+            logging.info('Successfully sent {} to process tree (id: {})'.format(signal_name, process_id))
+        elif _send_signal_to_process_group(process_id, signal_to_send):
+            logging.info('Successfully sent {} to group for process (id: {})'.format(signal_name, process_id))
+        elif _send_signal_to_process(process_id, signal_to_send):
+            logging.info('Successfully sent {} to process (id: {})'.format(signal_name, process_id))
         else:
-            send_signal_to_process(process_id, signal_to_send)
+            logging.info('Failed to send {} to process (id: {})'.format(signal_name, process_id))
 
 
 def kill_process(process, shutdown_grace_period_ms):
