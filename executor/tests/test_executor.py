@@ -51,12 +51,17 @@ class ExecutorTest(unittest.TestCase):
         status_updater = ce.StatusUpdater(driver, task_id)
         task_state = "TEST_TASK_STATE"
 
-        status_updater.update_status(task_state)
+        self.assertTrue(status_updater.update_status(cook.TASK_STARTING))
+        self.assertTrue(status_updater.update_status(task_state))
+        self.assertTrue(status_updater.update_status(cook.TASK_RUNNING, reason='Running'))
+        self.assertTrue(status_updater.update_status(cook.TASK_FAILED, reason='Termination'))
+        self.assertFalse(status_updater.update_status(cook.TASK_FINISHED))
 
-        self.assertEqual(1, len(driver.statuses))
-        actual_status = driver.statuses[0]
-        expected_status = {'task_id': {'value': task_id}, 'state': task_state}
-        tu.assert_status(self, expected_status, actual_status)
+        expected_statuses = [{'task_id': {'value': task_id}, 'state': cook.TASK_STARTING},
+                             {'task_id': {'value': task_id}, 'state': task_state},
+                             {'task_id': {'value': task_id}, 'reason': 'Running', 'state': cook.TASK_RUNNING},
+                             {'task_id': {'value': task_id}, 'reason': 'Termination', 'state': cook.TASK_FAILED}]
+        tu.assert_statuses(self, expected_statuses, driver.statuses)
 
     def test_send_message(self):
         driver = tu.FakeMesosExecutorDriver()

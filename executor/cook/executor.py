@@ -2,7 +2,7 @@ import json
 import logging
 import signal
 import time
-from threading import Event, Thread, Timer
+from threading import Event, Lock, Thread, Timer
 
 import os
 import pymesos as pm
@@ -40,7 +40,10 @@ class StatusUpdater(object):
             The task whose status update to send.
         """
         self.driver = driver
+        self.lock = Lock()
         self.task_id = task_id
+        self.terminal_states = [cook.TASK_ERROR, cook.TASK_FAILED, cook.TASK_FINISHED, cook.TASK_KILLED]
+        self.terminal_status_sent = False
 
     def create_status(self, task_state, reason=None):
         """Creates a dictionary representing the task status.
@@ -77,14 +80,20 @@ class StatusUpdater(object):
         -------
         True if successfully sent the status update, else False.
         """
-        try:
-            logging.info('Updating task state to {}'.format(task_state))
-            status = self.create_status(task_state, reason=reason)
-            self.driver.sendStatusUpdate(status)
-            return True
-        except Exception:
-            logging.exception('Unable to send task state {}'.format(task_state))
-            return False
+        with self.lock:
+            is_terminal_status = task_state in self.terminal_states
+            if is_terminal_status and self.terminal_status_sent:
+                logging.info('Terminal state for task already sent, dropping state {}'.format(task_state))
+                return False
+            try:
+                logging.info('Updating task state to {}'.format(task_state))
+                status = self.create_status(task_state, reason=reason)
+                self.driver.sendStatusUpdate(status)
+                self.terminal_status_sent = is_terminal_status
+                return True
+            except Exception:
+                logging.exception('Unable to send task state {}'.format(task_state))
+                return False
 
 
 def send_message(driver, message, max_message_length):
