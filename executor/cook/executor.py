@@ -28,51 +28,63 @@ def get_task_id(task):
     return task['task_id']['value']
 
 
-def create_status(task_id, task_state, reason=None):
-    """Creates a dictionary representing the task status.
+class StatusUpdater(object):
+    """Sends status updates for the task."""
+    def __init__(self, driver, task_id):
+        """
+        Parameters
+        ----------
+        driver: MesosExecutorDriver
+            The driver to send the status update to.
+        task_id: dictionary
+            The task whose status update to send.
+        """
+        self.driver = driver
+        self.task_id = task_id
 
-    Parameters
-    ----------
-    task_id: string
-        The task id.
-    task_state: string
-        The state of the task to report.
-    reason: string
-        The reason for the task state.
+    def create_status(self, task_state, reason=None):
+        """Creates a dictionary representing the task status.
 
-    Returns
-    -------
-    a status dictionary that can be sent to the driver.
-    """
-    task_status = {'task_id': {'value': task_id},
-                   'state': task_state,
-                   'timestamp': time.time()}
-    if reason:
-        task_status['reason'] = reason
-    return task_status
+        Parameters
+        ----------
+        task_state: string
+            The state of the task to report.
+        reason: string
+            The reason for the task state.
 
+        Returns
+        -------
+        a status dictionary that can be sent to the driver.
+        """
+        task_status = {'task_id': {'value': self.task_id},
+                       'state': task_state,
+                       'timestamp': time.time()}
+        if reason:
+            task_status['reason'] = reason
+        return task_status
 
-def update_status(driver, task_id, task_state, reason=None):
-    """Sends the status using the driver. 
+    def update_status(self, task_state, reason=None):
+        """Sends the status using the driver.
 
-    Parameters
-    ----------
-    driver: MesosExecutorDriver
-        The driver to send the status update to.
-    task_id: string
-        The task id of the task whose status update to send.
-    task_state: string
-        The state of the task which will be sent to the driver.
-    reason: string
-        The reason for the task state.
+        Parameters
+        ----------
+        task_state: string
+            The state of the task which will be sent to the driver.
+        reason: string
+            The reason for the task state.
 
-    Returns
-    -------
-    Nothing.
-    """
-    logging.info('Updating task {} state to {}'.format(task_id, task_state))
-    status = create_status(task_id, task_state, reason=reason)
-    driver.sendStatusUpdate(status)
+        Returns
+        -------
+        True if successfully sent the status update, else False.
+        """
+        try:
+            logging.info('Updating task state to {}'.format(task_state))
+            status = self.create_status(task_state, reason=reason)
+            self.driver.sendStatusUpdate(status)
+            return True
+        except Exception:
+            logging.exception('Unable to send task state {}'.format(task_state))
+            return False
 
 
 def send_message(driver, message, max_message_length):
@@ -231,9 +243,10 @@ def manage_task(driver, task, stop_signal, completed_signal, config):
     launched_process = None
     task_id = get_task_id(task)
     cio.print_and_log('Starting task {}'.format(task_id))
+    status_updater = StatusUpdater(driver, task_id)
     try:
         # not yet started to run the task
-        update_status(driver, task_id, cook.TASK_STARTING)
+        status_updater.update_status(cook.TASK_STARTING)
 
         sandbox_message = json.dumps({'sandbox-directory': config.sandbox_directory,
                                       'task-id': task_id,
@@ -244,12 +257,12 @@ def manage_task(driver, task, stop_signal, completed_signal, config):
         launched_process = launch_task(task, environment)
         if launched_process:
             # task has begun running successfully
-            update_status(driver, task_id, cook.TASK_RUNNING)
+            status_updater.update_status(cook.TASK_RUNNING)
             cio.print_and_log('Forked command at {}'.format(launched_process.pid))
         else:
             # task launch failed, report an error
             logging.error('Error in launching task')
-            update_status(driver, task_id, cook.TASK_ERROR, reason=cook.REASON_TASK_INVALID)
+            status_updater.update_status(cook.TASK_ERROR, reason=cook.REASON_TASK_INVALID)
             return
 
         task_completed_signal = Event() # event to track task execution completion
@@ -302,13 +315,13 @@ def manage_task(driver, task, stop_signal, completed_signal, config):
         # task either completed successfully or aborted with an error
         task_state = get_task_state(exit_code)
         output_task_completion(task_id, task_state)
-        update_status(driver, task_id, task_state)
+        status_updater.update_status(task_state)
 
     except Exception:
         # task aborted with an error
         logging.exception('Error in executing task')
         output_task_completion(task_id, cook.TASK_FAILED)
-        update_status(driver, task_id, cook.TASK_FAILED, reason=cook.REASON_EXECUTOR_TERMINATED)
+        status_updater.update_status(cook.TASK_FAILED, reason=cook.REASON_EXECUTOR_TERMINATED)
 
     finally:
         # ensure completed_signal is set so driver can stop

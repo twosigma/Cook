@@ -37,8 +37,10 @@ class ExecutorTest(unittest.TestCase):
             ce.get_task_id({})
 
     def test_create_status_running(self):
+        driver = tu.FakeMesosExecutorDriver()
         task_id = tu.get_random_task_id()
-        actual_status = ce.create_status(task_id, cook.TASK_RUNNING)
+        status_updater = ce.StatusUpdater(driver, task_id)
+        actual_status = status_updater.create_status(cook.TASK_RUNNING)
         expected_status = {'task_id': {'value': task_id},
                            'state': cook.TASK_RUNNING}
         tu.assert_status(self, expected_status, actual_status)
@@ -46,9 +48,10 @@ class ExecutorTest(unittest.TestCase):
     def test_update_status(self):
         driver = tu.FakeMesosExecutorDriver()
         task_id = tu.get_random_task_id()
+        status_updater = ce.StatusUpdater(driver, task_id)
         task_state = "TEST_TASK_STATE"
 
-        ce.update_status(driver, task_id, task_state)
+        status_updater.update_status(task_state)
 
         self.assertEqual(1, len(driver.statuses))
         actual_status = driver.statuses[0]
