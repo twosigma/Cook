@@ -1,17 +1,16 @@
-#!/usr/bin/env python3
-
 import json
 import logging
-import os
 import signal
-import subprocess
 import time
 from threading import Event, Thread, Timer
+
+import os
+import pymesos as pm
 
 import cook
 import cook.io_helper as cio
 import cook.progress as cp
-import pymesos as pm
+import cook.subprocess as cs
 
 
 def get_task_id(task):
@@ -117,37 +116,10 @@ def launch_task(task, environment):
         data_json = json.loads(data_string)
         command = str(data_json['command']).strip()
         logging.info('Command: {}'.format(command))
-        if not command:
-            logging.warning('No command provided!')
-            return None
-
-        # The preexec_fn is run after the fork() but before exec() to run the shell.
-        process = subprocess.Popen(command,
-                                   env=environment,
-                                   preexec_fn=os.setpgrp,
-                                   shell=True,
-                                   stderr=subprocess.PIPE,
-                                   stdout=subprocess.PIPE)
-
-        return process
+        return cs.launch_process(command, environment)
     except Exception:
         logging.exception('Error in launch_task')
         return None
-
-
-def is_process_running(process):
-    """Checks whether the process is still running.
-
-    Parameters
-    ----------
-    process: subprocess.Popen
-        The process to query
-
-    Returns
-    -------
-    whether the process is still running.
-    """
-    return process.poll() is None
 
 
 def is_running(process_info):
@@ -168,87 +140,7 @@ def is_running(process_info):
     whether any of the process or the piping threads are still running.
     """
     process, stdout_thread, stderr_thread = process_info
-    return is_process_running(process) or stdout_thread.isAlive() or stderr_thread.isAlive()
-
-
-def find_process_group(process_id):
-    """Return the process group id of the process with process id process_id.
-    Parameters
-    ----------
-    process_id: int
-        The process id.
-    Returns
-    -------
-    The process group id of the process with process id process_id or None.
-    """
-    try:
-        group_id = os.getpgid(process_id)
-        logging.info('Process (pid: {}) belongs to group (id: {})'.format(process_id, group_id))
-        return group_id
-    except ProcessLookupError:
-        logging.info('Unable to find group for process (pid: {})'.format(process_id))
-    except Exception:
-        logging.exception('Error in finding group for process (pid: {})'.format(process_id))
-
-
-def kill_process_group(group_id, signal_to_send):
-    """Send the SIGKILL signal to the process group with group_id.
-    Parameters
-    ----------
-    group_id: int
-        The id of the process group.
-    signal_to_send: signal.Signals enum
-        The signal to send to the process group.
-    Returns
-    -------
-    Nothing
-    """
-    signal_name = signal_to_send.name
-    try:
-        if group_id:
-            logging.info('Sending signal {} to group (id: {})'.format(signal_name, group_id))
-            os.killpg(group_id, signal_to_send)
-    except ProcessLookupError:
-        logging.info('Unable to send signal {} as could not find group (id: {})'.format(signal_name, group_id))
-    except Exception:
-        logging.exception('Error in sending signal {} to group (id: {})'.format(signal_name, group_id))
-
-
-def kill_task(process, shutdown_grace_period_ms):
-    """Attempts to kill a process.
-     First attempt is made by sending the process a SIGTERM.
-     If the process does not terminate inside (shutdown_grace_period_ms - 100) ms, it is then sent a SIGKILL.
-     The 100 ms grace period is allocated for the executor to perform its other cleanup actions.
-
-    Parameters
-    ----------
-    process: subprocess.Popen
-        The process to kill
-    shutdown_grace_period_ms: int
-        Grace period before forceful kill
-
-    Returns
-    -------
-    Nothing
-    """
-    shutdown_grace_period_ms = max(shutdown_grace_period_ms - (1000 * cook.TERMINATE_GRACE_SECS), 0)
-    if is_process_running(process):
-        logging.info('Waiting up to {} ms for process to terminate'.format(shutdown_grace_period_ms))
-        group_id = find_process_group(process.pid)
-        kill_process_group(group_id, signal.SIGTERM)
-
-        loop_limit = int(shutdown_grace_period_ms / 10)
-        for i in range(loop_limit):
-            time.sleep(0.01)
-            if not is_process_running(process):
-                cio.print_and_log('Command terminated with signal Terminated (pid: {})'.format(process.pid),
-                                  flush=True)
-                break
-        if is_process_running(process):
-            logging.info('Process did not terminate, forcefully killing it')
-            kill_process_group(group_id, signal.SIGKILL)
-            cio.print_and_log('Command terminated with signal Killed (pid: {})'.format(process.pid),
-                              flush=True)
+    return cs.is_process_running(process) or stdout_thread.isAlive() or stderr_thread.isAlive()
 
 
 def await_process_completion(stop_signal, process_info, shutdown_grace_period_ms):
@@ -277,7 +169,7 @@ def await_process_completion(stop_signal, process_info, shutdown_grace_period_ms
         if stop_signal.isSet():
             logging.info('Executor has been instructed to terminate running task')
             process, _, _ = process_info
-            kill_task(process, shutdown_grace_period_ms)
+            cs.kill_process(process, shutdown_grace_period_ms)
             break
 
         time.sleep(cook.RUNNING_POLL_INTERVAL_SECS)
@@ -352,7 +244,7 @@ def manage_task(driver, task, stop_signal, completed_signal, config):
     -------
     Nothing
     """
-    group_id = None
+    process_id = None
     task_id = get_task_id(task)
     cio.print_and_log('Starting task {}'.format(task_id))
     try:
@@ -376,7 +268,7 @@ def manage_task(driver, task, stop_signal, completed_signal, config):
             update_status(driver, task_id, cook.TASK_ERROR)
             return
 
-        group_id = find_process_group(process.pid)
+        process_id = process.pid
 
         flush_interval_secs = config.flush_interval_secs
         max_bytes_read_per_line = config.max_bytes_read_per_line
@@ -444,7 +336,7 @@ def manage_task(driver, task, stop_signal, completed_signal, config):
     finally:
         # ensure completed_signal is set so driver can stop
         completed_signal.set()
-        kill_process_group(group_id, signal.SIGKILL)
+        cs.send_signal(process_id, signal.SIGKILL)
 
 
 class CookExecutor(pm.Executor):
@@ -477,7 +369,7 @@ class CookExecutor(pm.Executor):
         config = self.config
 
         task_thread = Thread(target=manage_task, args=(driver, task, stop_signal, completed_signal, config))
-        task_thread.daemon= True
+        task_thread.daemon = True
         task_thread.start()
 
     def killTask(self, driver, task_id):

@@ -1,14 +1,12 @@
-import collections
 import json
 import logging
-import os
-import signal
 import subprocess
 import time
 import unittest
-from nose.tools import *
-from pymesos import encode_data
 from threading import Event, Thread, Timer
+
+import os
+import pymesos as pm
 
 import cook
 import cook.config as cc
@@ -22,30 +20,6 @@ def sleep_and_set_stop_signal_task(stop_signal, wait_seconds):
     timer = Timer(wait_seconds, stop_signal.set)
     timer.daemon = True
     timer.start()
-
-
-def find_process_ids_in_group(group_id):
-    group_id_to_process_ids = collections.defaultdict(set)
-    process_id_to_command = collections.defaultdict(lambda: '')
-
-    p = subprocess.Popen('ps -eo pid,pgid,command',
-                         close_fds=True, shell=True,
-                         stderr=subprocess.STDOUT, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
-    ps_output = p.stdout.read().decode('utf8')
-
-    for line in ps_output.splitlines():
-        line_split = line.split()
-        pid = line_split[0]
-        pgid = line_split[1]
-        command = str.join(' ', line_split[2:])
-        group_id_to_process_ids[pgid].add(pid)
-        process_id_to_command[pid] = command
-
-    group_id_str = str(group_id)
-    logging.info("group_id_to_process_ids[{}]: {}".format(group_id, group_id_to_process_ids[group_id_str]))
-    for pid in group_id_to_process_ids[group_id_str]:
-        logging.info("process (pid: {}) command is {}".format(pid, process_id_to_command[pid]))
-    return group_id_to_process_ids[group_id_str]
 
 
 class ExecutorTest(unittest.TestCase):
@@ -104,40 +78,11 @@ class ExecutorTest(unittest.TestCase):
         result = ce.send_message(driver, message, max_message_length)
         self.assertFalse(result)
 
-    def test_progress_group_assignment_and_killing(self):
-
-        start_time = time.time()
-
-        task_id = tu.get_random_task_id()
-        command = 'echo "A.$(sleep 30)" & echo "B.$(sleep 30)" & echo "C.$(sleep 30)" &'
-        task = {'task_id': {'value': task_id},
-                'data': encode_data(json.dumps({'command': command}).encode('utf8'))}
-        environment = {}
-        process = ce.launch_task(task, environment)
-
-        group_id = ce.find_process_group(process.pid)
-        self.assertGreater(group_id, 0)
-
-        child_process_ids = tu.wait_for(lambda: find_process_ids_in_group(group_id),
-                                        lambda data: len(data) >= 7,
-                                        default_value=[])
-        self.assertGreaterEqual(len(child_process_ids), 7)
-        self.assertLessEqual(len(child_process_ids), 10)
-
-        ce.kill_process_group(group_id, signal.SIGKILL)
-
-        child_process_ids = tu.wait_for(lambda: find_process_ids_in_group(group_id),
-                                        lambda data: len(data) == 1,
-                                        default_value=[])
-        self.assertEqual(len(child_process_ids), 1)
-
-        self.assertLess(time.time() - start_time, 30)
-
     def test_launch_task(self):
         task_id = tu.get_random_task_id()
         command = 'echo "Hello World"; echo "Error Message" >&2'
         task = {'task_id': {'value': task_id},
-                'data': encode_data(json.dumps({'command': command}).encode('utf8'))}
+                'data': pm.encode_data(json.dumps({'command': command}).encode('utf8'))}
 
         stdout_name = tu.ensure_directory('build/stdout.{}'.format(task_id))
         stderr_name = tu.ensure_directory('build/stderr.{}'.format(task_id))
@@ -176,7 +121,7 @@ class ExecutorTest(unittest.TestCase):
         task_id = tu.get_random_task_id()
         command = 'echo "Start"; echo "Hello"; sleep 100; echo "World"; echo "Done"; '
         task = {'task_id': {'value': task_id},
-                'data': encode_data(json.dumps({'command': command}).encode('utf8'))}
+                'data': pm.encode_data(json.dumps({'command': command}).encode('utf8'))}
 
         stdout_name = tu.ensure_directory('build/stdout.{}'.format(task_id))
         stderr_name = tu.ensure_directory('build/stderr.{}'.format(task_id))
@@ -219,7 +164,7 @@ class ExecutorTest(unittest.TestCase):
     def test_launch_task_no_command(self):
         task_id = tu.get_random_task_id()
         task = {'task_id': {'value': task_id},
-                'data': encode_data(json.dumps({'command': ''}).encode('utf8'))}
+                'data': pm.encode_data(json.dumps({'command': ''}).encode('utf8'))}
 
         process = ce.launch_task(task, os.environ)
 
@@ -232,78 +177,6 @@ class ExecutorTest(unittest.TestCase):
         process = ce.launch_task(task, os.environ)
 
         self.assertIsNone(process)
-
-    def test_kill_task_terminate_with_sigterm(self):
-        task_id = tu.get_random_task_id()
-
-        stdout_name = tu.ensure_directory('build/stdout.{}'.format(task_id))
-        stderr_name = tu.ensure_directory('build/stderr.{}'.format(task_id))
-
-        tu.redirect_stdout_to_file(stdout_name)
-        tu.redirect_stderr_to_file(stderr_name)
-
-        try:
-            command = "bash -c 'function handle_term { echo GOT TERM; }; trap handle_term SIGTERM TERM; sleep 100'"
-            process = subprocess.Popen(command, preexec_fn=os.setpgrp, shell=True,
-                                       stderr=subprocess.PIPE, stdout=subprocess.PIPE)
-            stdout_thread, stderr_thread = cio.track_outputs(task_id, process, 2, 4096)
-            shutdown_grace_period_ms = 1000
-
-            group_id = ce.find_process_group(process.pid)
-            self.assertGreater(len(find_process_ids_in_group(group_id)), 0)
-
-            ce.kill_task(process, shutdown_grace_period_ms)
-
-            # await process termination
-            while process.poll() is None:
-                time.sleep(0.01)
-            stderr_thread.join()
-            stdout_thread.join()
-
-            self.assertTrue(((-1 * signal.SIGTERM) == process.poll()) or ((128 + signal.SIGTERM) == process.poll()),
-                            'Process exited with code {}'.format(process.poll()))
-            self.assertEqual(0, len(find_process_ids_in_group(group_id)))
-
-            with open(stdout_name) as f:
-                file_contents = f.read()
-                self.assertTrue('GOT TERM' in file_contents)
-
-        finally:
-            tu.cleanup_output(stdout_name, stderr_name)
-
-    def test_kill_task_terminate_with_sigkill(self):
-        task_id = tu.get_random_task_id()
-
-        stdout_name = tu.ensure_directory('build/stdout.{}'.format(task_id))
-        stderr_name = tu.ensure_directory('build/stderr.{}'.format(task_id))
-
-        tu.redirect_stdout_to_file(stdout_name)
-        tu.redirect_stderr_to_file(stderr_name)
-
-        try:
-            command = "trap '' TERM SIGTERM; sleep 100"
-            process = subprocess.Popen(command, preexec_fn=os.setpgrp, shell=True,
-                                       stderr=subprocess.PIPE, stdout=subprocess.PIPE)
-            stdout_thread, stderr_thread = cio.track_outputs(task_id, process, 2, 4096)
-            shutdown_grace_period_ms = 1000
-
-            group_id = ce.find_process_group(process.pid)
-            self.assertGreater(len(find_process_ids_in_group(group_id)), 0)
-
-            ce.kill_task(process, shutdown_grace_period_ms)
-
-            # await process termination
-            while process.poll() is None:
-                time.sleep(0.01)
-            stderr_thread.join()
-            stdout_thread.join()
-
-            self.assertTrue(((-1 * signal.SIGKILL) == process.poll()) or ((128 + signal.SIGKILL) == process.poll()),
-                            'Process exited with code {}'.format(process.poll()))
-            self.assertEqual(len(find_process_ids_in_group(group_id)), 0)
-
-        finally:
-            tu.cleanup_output(stdout_name, stderr_name)
 
     def test_await_process_completion_normal(self):
         task_id = tu.get_random_task_id()
@@ -397,7 +270,7 @@ class ExecutorTest(unittest.TestCase):
                            config=None):
         driver = tu.FakeMesosExecutorDriver()
         task = {'task_id': {'value': task_id},
-                'data': encode_data(json.dumps({'command': command}).encode('utf8'))}
+                'data': pm.encode_data(json.dumps({'command': command}).encode('utf8'))}
 
         stdout_name = tu.ensure_directory('build/stdout.{}'.format(task_id))
         stderr_name = tu.ensure_directory('build/stderr.{}'.format(task_id))
@@ -779,7 +652,7 @@ class ExecutorTest(unittest.TestCase):
             output_name = tu.ensure_directory('build/output.' + str(task_id))
             command = 'echo "Start" >> {}; sleep 0.1; echo "Done." >> {}; '.format(output_name, output_name)
             task = {'task_id': {'value': task_id},
-                    'data': encode_data(json.dumps({'command': command}).encode('utf8'))}
+                    'data': pm.encode_data(json.dumps({'command': command}).encode('utf8'))}
 
             executor.launchTask(driver, task)
             executor.await_completion()
@@ -822,7 +695,7 @@ class ExecutorTest(unittest.TestCase):
             output_name = tu.ensure_directory('build/output.' + str(task_id))
             command = 'echo "Start" >> {}; sleep 100; echo "Done." >> {}; '.format(output_name, output_name)
             task = {'task_id': {'value': task_id},
-                    'data': encode_data(json.dumps({'command': command}).encode('utf8'))}
+                    'data': pm.encode_data(json.dumps({'command': command}).encode('utf8'))}
 
             executor.launchTask(driver, task)
 
@@ -860,4 +733,3 @@ class ExecutorTest(unittest.TestCase):
             tu.assert_messages(self, [expected_message_0, expected_message_1], [], driver.messages)
         finally:
             tu.cleanup_output(stdout_name, stderr_name)
-
