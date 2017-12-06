@@ -7,10 +7,10 @@ import unittest
 from threading import Event, Thread
 
 import os
-from nose.tools import *
 
 import cook.executor as ce
 import cook.progress as cp
+import tests.utils as tu
 from tests.utils import assert_message, ensure_directory, get_random_task_id, parse_message, FakeMesosExecutorDriver
 
 
@@ -283,7 +283,7 @@ class ProgressTest(unittest.TestCase):
                                {'progress-message': b'', 'progress-percent': 99, 'progress-sequence': 3},
                                {'progress-message': b'', 'progress-percent': 100, 'progress-sequence': 4},
                                {'progress-message': b'', 'progress-percent': 100, 'progress-sequence': 5}]
-            for actual_progress_state in watcher.retrieve_progress_states():
+            for actual_progress_state in watcher.retrieve_progress_states(tu.os_error_handler_stub):
                 expected_progress_state = progress_states.pop(0)
                 self.assertEqual(expected_progress_state, actual_progress_state)
                 self.assertEqual(expected_progress_state, watcher.current_progress())
@@ -331,7 +331,7 @@ class ProgressTest(unittest.TestCase):
                                {'progress-message': b' Fifty-five', 'progress-percent': 55, 'progress-sequence': 3},
                                {'progress-message': b' Sixty-six', 'progress-percent': 66, 'progress-sequence': 4},
                                {'progress-message': b' Hundred', 'progress-percent': 100, 'progress-sequence': 5}]
-            for actual_progress_state in watcher.retrieve_progress_states():
+            for actual_progress_state in watcher.retrieve_progress_states(tu.os_error_handler_stub):
                 expected_progress_state = progress_states.pop(0)
                 self.assertEqual(expected_progress_state, actual_progress_state)
                 self.assertEqual(expected_progress_state, watcher.current_progress())
@@ -384,7 +384,7 @@ class ProgressTest(unittest.TestCase):
 
             progress_states = [{'progress-message': b' Twenty-Five', 'progress-percent': 25, 'progress-sequence': 1},
                                {'progress-message': b' Fifty', 'progress-percent': 50, 'progress-sequence': 2}]
-            for actual_progress_state in watcher.retrieve_progress_states():
+            for actual_progress_state in watcher.retrieve_progress_states(tu.os_error_handler_stub):
                 expected_progress_state = progress_states.pop(0)
                 self.assertEqual(expected_progress_state, actual_progress_state)
                 self.assertEqual(expected_progress_state, watcher.current_progress())
@@ -425,7 +425,7 @@ class ProgressTest(unittest.TestCase):
             print_thread.start()
 
             progress_states = [{'progress-message': b' 75% percent', 'progress-percent': 75, 'progress-sequence': 1}]
-            for actual_progress_state in watcher.retrieve_progress_states():
+            for actual_progress_state in watcher.retrieve_progress_states(tu.os_error_handler_stub):
                 expected_progress_state = progress_states.pop(0)
                 self.assertEqual(expected_progress_state, actual_progress_state)
                 self.assertEqual(expected_progress_state, watcher.current_progress())
@@ -463,7 +463,7 @@ class ProgressTest(unittest.TestCase):
             print_thread.start()
 
             progress_states = [{'progress-message': b'75% percent', 'progress-percent': 75, 'progress-sequence': 1}]
-            for actual_progress_state in watcher.retrieve_progress_states():
+            for actual_progress_state in watcher.retrieve_progress_states(tu.os_error_handler_stub):
                 expected_progress_state = progress_states.pop(0)
                 self.assertEqual(expected_progress_state, actual_progress_state)
                 self.assertEqual(expected_progress_state, watcher.current_progress())
@@ -501,13 +501,13 @@ class ProgressTest(unittest.TestCase):
             print_thread.start()
 
             progress_states = [{'progress-message': b' 100-percent', 'progress-percent': 100, 'progress-sequence': 1}]
-            for actual_progress_state in out_watcher.retrieve_progress_states():
+            for actual_progress_state in out_watcher.retrieve_progress_states(tu.os_error_handler_stub):
                 expected_progress_state = progress_states.pop(0)
                 self.assertEqual(expected_progress_state, actual_progress_state)
                 self.assertEqual(expected_progress_state, out_watcher.current_progress())
             self.assertFalse(progress_states)
 
-            iterable = dn_watcher.retrieve_progress_states()
+            iterable = dn_watcher.retrieve_progress_states(tu.os_error_handler_stub)
             exhausted = object()
             self.assertEqual(exhausted, next(iterable, exhausted))
             self.assertIsNone(dn_watcher.current_progress())
@@ -554,7 +554,7 @@ class ProgressTest(unittest.TestCase):
                                                   'progress-percent': x,
                                                   'progress-sequence': x},
                                        range(1, 101)))
-            for actual_progress_state in watcher.retrieve_progress_states():
+            for actual_progress_state in watcher.retrieve_progress_states(tu.os_error_handler_stub):
                 expected_progress_state = progress_states.pop(0)
                 self.assertEqual(expected_progress_state, actual_progress_state)
                 self.assertEqual(expected_progress_state, watcher.current_progress())
@@ -598,7 +598,7 @@ class ProgressTest(unittest.TestCase):
             print_thread.start()
 
             progress_states = []
-            for actual_progress_state in watcher.retrieve_progress_states():
+            for actual_progress_state in watcher.retrieve_progress_states(tu.os_error_handler_stub):
                 expected_progress_state = progress_states.pop(0)
                 self.assertEqual(expected_progress_state, actual_progress_state)
                 self.assertEqual(expected_progress_state, watcher.current_progress())

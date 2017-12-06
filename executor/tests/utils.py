@@ -133,6 +133,10 @@ def cleanup_output(stdout_name, stderr_name):
     reset_stderr()
 
 
+def os_error_handler_stub(_):
+    logging.exception('Test generated OSError')
+
+
 class FakeExecutorConfig(object):
     def __init__(self, config_map):
         self.config_map = config_map

@@ -231,8 +231,9 @@ class ProgressWatcher(object):
                     yield line
                 if self.stop_signal.isSet() and not self.task_completed_signal.isSet():
                     logging.info('Task requested to be killed, may not have processed all progress messages')
-        except Exception:
+        except Exception as exception:
             logging.exception('Error while tailing %s [tag=%s]', self.target_file, self.location_tag)
+            raise exception
 
     def __update_progress(self, progress_report):
         """Updates the progress field with the data from progress_report if it is valid."""
@@ -256,14 +257,19 @@ class ProgressWatcher(object):
                          'progress-sequence': self.sequence_counter.increment_and_get()}
         return True
 
-    def retrieve_progress_states(self):
+    def retrieve_progress_states(self, os_error_handler):
         """Generates the progress states by tailing the target_file.
         It tails a target file (using the tail() method) and uses the provided 
         regex to find a match for a progress message. The regex is expected to 
         generate two components in the match: the progress percent as an int and 
         a progress message string. When such a message is found, this method 
         yields the current progress as a dictionary.
-        
+
+        Parameters
+        ----------
+        os_error_handler: fn(os_error)
+            OSError exception handler
+
         Returns
         -------
         an incrementally generated list of progress states.
@@ -279,6 +285,8 @@ class ProgressWatcher(object):
                             last_unprocessed_report = progress_report
                         elif self.__update_progress(progress_report):
                             yield self.progress
+                except OSError as os_error:
+                    os_error_handler(os_error)
                 except Exception:
                     logging.exception('Skipping "%s" as a progress entry', line)
         if last_unprocessed_report is not None:
@@ -290,7 +298,7 @@ class ProgressTracker(object):
     """Helper class to track progress messages from the specified location."""
 
     def __init__(self, config, stop_signal, task_completed_signal, counter, progress_updater,
-                 progress_termination_signal, location, location_tag):
+                 progress_termination_signal, location, location_tag, os_error_handler):
         """Launches the threads that track progress and send progress updates to the driver.
 
         Parameters
@@ -308,8 +316,11 @@ class ProgressTracker(object):
         location: string
             The target location to read for progress messages
         location_tag: string
-            A tag to identify the target location."""
+            A tag to identify the target location.
+        os_error_handler: fn(os_error)
+            OSError exception handler."""
         self.location_tag = location_tag
+        self.os_error_handler = os_error_handler
         self.progress_complete_event = Event()
         self.watcher = ProgressWatcher(location, location_tag, counter, config.max_bytes_read_per_line,
                                        config.progress_regex_string, stop_signal, task_completed_signal,
@@ -317,7 +328,11 @@ class ProgressTracker(object):
         self.updater = progress_updater
 
     def start(self):
-        """Launches a thread that starts monitoring the progress location for progress messages."""
+        """Launches a thread that starts monitoring the progress location for progress messages.
+
+        Parameters
+        ----------
+        """
         logging.info('Starting progress monitoring from [tag=%s]', self.location_tag)
         tracker_thread = Thread(target=self.track_progress, args=())
         tracker_thread.daemon = True
@@ -333,10 +348,18 @@ class ProgressTracker(object):
 
     def track_progress(self):
         """Retrieves and sends progress updates using send_progress_update_fn.
-        It sets the progress_complete_event before returning."""
+        It sets the progress_complete_event before returning.
+
+        Parameters
+        ----------
+        os_error_handler: fn(os_error)
+            OSError exception handler
+        """
         try:
-            for current_progress in self.watcher.retrieve_progress_states():
+            for current_progress in self.watcher.retrieve_progress_states(self.os_error_handler):
                 self.updater.send_progress_update(current_progress)
+        except OSError as os_error:
+            self.os_error_handler(os_error)
         except Exception:
             logging.exception('Exception while tracking progress [tag=%s]', self.location_tag)
         finally:

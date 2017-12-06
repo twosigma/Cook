@@ -1,3 +1,4 @@
+import errno
 import json
 import logging
 import signal
@@ -158,7 +159,7 @@ def await_process_completion(process, stop_signal, shutdown_grace_period_ms):
     process: subprocess.Popen
         The process to whose termination to wait on.
     stop_signal: Event
-        Event that determines if an interrupt was sent
+        Event that determines if the process was requested to terminate
     shutdown_grace_period_ms: int
         Grace period before forceful kill
 
@@ -239,6 +240,28 @@ def output_task_completion(task_id, task_state):
     cio.print_and_log('Executor completed execution of {} (state={})'.format(task_id, task_state))
 
 
+def os_error_handler(os_error, stop_signal, status_updater):
+    """Exception handler for OSError.
+
+    Parameters
+    ----------
+    os_error: OSError
+        The current executor config.
+    stop_signal: threading.Event
+        Event that determines if the process was requested to terminate.
+    status_updater: StatusUpdater
+        Wrapper object that sends task status messages.
+
+    Returns
+    -------
+    Nothing
+    """
+    stop_signal.set()
+    logging.exception('OSError generated, requesting process to terminate')
+    reason = cook.REASON_CONTAINER_LIMITATION_MEMORY if os_error.errno == errno.ENOMEM else None
+    status_updater.update_status(cook.TASK_FAILED, reason=reason)
+
+
 def manage_task(driver, task, stop_signal, completed_signal, config):
     """Manages the execution of a task waiting for it to terminate normally or be killed.
        It also sends the task status updates, sandbox location and exit code back to the scheduler.
@@ -253,6 +276,10 @@ def manage_task(driver, task, stop_signal, completed_signal, config):
     task_id = get_task_id(task)
     cio.print_and_log('Starting task {}'.format(task_id))
     status_updater = StatusUpdater(driver, task_id)
+
+    def inner_os_error_handler(os_error):
+        os_error_handler(os_error, stop_signal, status_updater)
+
     try:
         # not yet started to run the task
         status_updater.update_status(cook.TASK_STARTING)
@@ -288,7 +315,7 @@ def manage_task(driver, task, stop_signal, completed_signal, config):
             logging.info('Location {} tagged as [tag={}]'.format(progress_location, location_tag))
             progress_tracker = cp.ProgressTracker(config, stop_signal, task_completed_signal, sequence_counter,
                                                   progress_updater, progress_termination_signal, progress_location,
-                                                  location_tag)
+                                                  location_tag, inner_os_error_handler)
             progress_tracker.start()
             return progress_tracker
 
@@ -325,6 +352,9 @@ def manage_task(driver, task, stop_signal, completed_signal, config):
         task_state = get_task_state(exit_code)
         output_task_completion(task_id, task_state)
         status_updater.update_status(task_state)
+
+    except OSError as os_error:
+        inner_os_error_handler(os_error)
 
     except Exception:
         # task aborted with an error
