@@ -320,6 +320,9 @@ class CookTest(unittest.TestCase):
             util.kill_jobs(self.cook_url, [job_uuid])
 
     def memory_limit_exceeded_helper(self, executor_type):
+        """Generates a python command that incrementally allocates large strings that cause the python process to
+        request more memory than it is allocated. When the command is submitted to cook, this job should be killed
+        by Mesos as it exceeds its memory limits."""
         command = 'python3 -c ' \
                   '"import resource; ' \
                   ' import sys; ' \
@@ -346,12 +349,11 @@ class CookTest(unittest.TestCase):
             # did the job fail as expected?
             self.assertEqual(executor_type, instance['executor'], instance_details)
             self.assertEqual('failed', instance['status'], instance_details)
+            # Mesos chooses to kill the task (exit code 137) or kill the executor with a memory limit exceeded message
             if 2002 == instance['reason_code']:
-                self.assertEqual(2002, instance['reason_code'], instance_details)
                 self.assertEqual('Container memory limit exceeded', instance['reason_string'], instance_details)
             elif 99003 == instance['reason_code']:
-                # If the command was killed, it will have exited non-zero
-                self.assertEqual(99003, instance['reason_code'], instance_details)
+                # If the command was killed, it will have exited with 137 (Fatal error signal of 128 + SIGKILL)
                 self.assertEqual('Command exited non-zero', instance['reason_string'], instance_details)
                 if executor_type == 'cook':
                     self.assertEqual(137, instance['exit_code'], instance_details)
