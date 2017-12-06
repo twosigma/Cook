@@ -102,6 +102,11 @@ def close_sys_outputs():
         sys.stderr.close()
 
 
+def cleanup_file(file_name):
+    if os.path.isfile(file_name):
+        os.remove(file_name)
+
+
 def cleanup_output(stdout_name, stderr_name):
 
     close_sys_outputs()
@@ -124,7 +129,7 @@ def cleanup_output(stdout_name, stderr_name):
                 except UnicodeDecodeError:
                     with open(file_name, 'rb') as f:
                         read_and_print_contents(f, file_name)
-        os.remove(file_name)
+        cleanup_file(file_name)
 
     process_file_name(stdout_name)
     process_file_name(stderr_name)
