@@ -12,6 +12,7 @@ import cook
 import cook.io_helper as cio
 import cook.progress as cp
 import cook.subprocess as cs
+import cook.util as cu
 
 
 def get_task_id(task):
@@ -260,6 +261,7 @@ def os_error_handler(os_error, stop_signal, status_updater):
     logging.exception('OSError generated, requesting process to terminate')
     reason = cook.REASON_CONTAINER_LIMITATION_MEMORY if os_error.errno == errno.ENOMEM else None
     status_updater.update_status(cook.TASK_FAILED, reason=reason)
+    cu.print_memory_usage()
 
 
 def manage_task(driver, task, stop_signal, completed_signal, config):
