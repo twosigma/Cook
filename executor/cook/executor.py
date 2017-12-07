@@ -333,7 +333,7 @@ def manage_task(driver, task, stop_signal, completed_signal, config):
     finally:
         # ensure completed_signal is set so driver can stop
         completed_signal.set()
-        if launched_process is not None and cs.is_process_running(launched_process):
+        if launched_process and cs.is_process_running(launched_process):
             cs.send_signal(launched_process.pid, signal.SIGKILL)
 
 
