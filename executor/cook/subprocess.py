@@ -86,17 +86,17 @@ def _send_signal_to_process(process_id, signal_to_send):
     """
     signal_name = signal_to_send.name
     try:
-        logging.info('Sending signal {} to process (id: {})'.format(signal_name, process_id))
+        logging.info('Sending {} to process (id: {})'.format(signal_name, process_id))
         os.kill(process_id, signal_to_send)
         return True
     except ProcessLookupError:
-        logging.info('Unable to send signal {} as could not find process (id: {})'.format(signal_name, process_id))
+        logging.info('Unable to send {} as could not find process (id: {})'.format(signal_name, process_id))
     except Exception:
-        logging.exception('Error in sending signal {} to process (id: {})'.format(signal_name, process_id))
+        logging.exception('Error in sending {} to process (id: {})'.format(signal_name, process_id))
     return False
 
 
-def _send_signal_to_process_tree(process_id, signal_to_send):
+def _send_signal_to_process_tree(root_process_id, signal_to_send):
     """Send the signal_to_send signal to the process tree rooted at process_id.
     Parameters
     ----------
@@ -109,30 +109,47 @@ def _send_signal_to_process_tree(process_id, signal_to_send):
     True if the signal was sent successfully.
     """
     signal_name = signal_to_send.name
-    try:
-        logging.info('Sending signal {} to process tree rooted at (id: {})'.format(signal_name, process_id))
-        process = psutil.Process(process_id)
-        children = process.children(recursive=True)
+    logging.info('Sending {} to process tree rooted at (id: {})'.format(signal_name, root_process_id))
 
-        _send_signal_to_process(process_id, signal_to_send)
+    process_queue = [root_process_id]
+    visited_process_ids = set()
 
-        signal_sent_to_all_children_successfully = True
-        if children:
-            for child in children:
-                logging.info('Found child process (id: {}) of process (id: {})'.format(child.pid, process_id))
-                if not _send_signal_to_process(child.pid, signal_to_send):
-                    logging.info('Failed to send signal {} to child process (id: {})'.format(signal_name, child.pid))
-                    signal_sent_to_all_children_successfully = False
-        else:
-            logging.info('No child process found for process (id: {})'.format(process_id))
+    num_processes_found = 0
+    num_processes_killed = 0
+    signal_sent_to_all_processes_successfully = True
 
-        return signal_sent_to_all_children_successfully
-    except ProcessLookupError:
-        log_message = 'Unable to send signal {} as could not find process tree rooted at (id: {})'
-        logging.info(log_message.format(signal_name, process_id))
-    except Exception:
-        logging.exception('Error in sending signal {} to process tree (id: {})'.format(signal_name, process_id))
-    return False
+    while process_queue:
+        loop_process_id = process_queue.pop(0)
+        num_processes_found += 1
+        try:
+            visited_process_ids.add(loop_process_id)
+
+            # Stop the process to keep it from forking since a forked child might get re-parented
+            _send_signal_to_process(loop_process_id, signal.SIGSTOP)
+
+            # Now safe to retrieve the children
+            process = psutil.Process(loop_process_id)
+            children = process.children()
+            [process_queue.append(child.pid) for child in children if child.pid not in visited_process_ids]
+
+            if _send_signal_to_process(loop_process_id, signal_to_send):
+                num_processes_killed += 1
+            else:
+                signal_sent_to_all_processes_successfully = False
+        except ProcessLookupError:
+            logging.info('Unable to send {} as could not find process (id: {})'.format(signal_name, loop_process_id))
+        except Exception:
+            logging.exception('Error in sending {} to process (id: {})'.format(signal_name, loop_process_id))
+            signal_sent_to_all_processes_successfully = False
+
+    log_message = 'Found {} processes in tree rooted at (id: {}), successfully sent {} to {} processes'
+    logging.info(log_message.format(num_processes_found, root_process_id, signal_name, num_processes_killed))
+
+    for loop_process_id in visited_process_ids:
+        # Try and continue the processes in case the signal is non-terminating but doesn't continue the process.
+        _send_signal_to_process(loop_process_id, signal.SIGCONT)
+
+    return signal_sent_to_all_processes_successfully
 
 
 def _send_signal_to_process_group(process_id, signal_to_send):
@@ -151,13 +168,13 @@ def _send_signal_to_process_group(process_id, signal_to_send):
     try:
         group_id = find_process_group(process_id)
         if group_id:
-            logging.info('Sending signal {} to group (id: {})'.format(signal_name, group_id))
+            logging.info('Sending {} to group (id: {})'.format(signal_name, group_id))
             os.killpg(group_id, signal_to_send)
             return True
     except ProcessLookupError:
-        logging.info('Unable to send signal {} as could not find group (id: {})'.format(signal_name, group_id))
+        logging.info('Unable to send {} as could not find group (id: {})'.format(signal_name, group_id))
     except Exception:
-        logging.exception('Error in sending signal {} to group (id: {})'.format(signal_name, group_id))
+        logging.exception('Error in sending {} to group (id: {})'.format(signal_name, group_id))
     return False
 
 
