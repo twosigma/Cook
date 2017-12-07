@@ -102,15 +102,15 @@ def print_err(data, flush=False, newline=True):
     print_to_buffer(__stderr_lock__, sys.stderr.buffer, data, flush=flush, newline=newline)
 
 
-def process_output(label, out_file, out_fn, flush_fn, flush_interval_secs, max_bytes_read_per_line):
-    """Processes output piped from the out_file and prints it using the out_fn function.
+def process_output(label, out_buffer, out_fn, flush_fn, flush_interval_secs, max_bytes_per_read):
+    """Processes output piped from the out_buffer and prints it using the out_fn function.
     When done reading the file, calls flush_fn to flush the output.
 
     Parameters
     ----------
     label: string
         The string to associate in outputs
-    out_file: a file object
+    out_buffer: a file object
         Provides that output from the child process
     out_fn: function(string)
         Function to output a string
@@ -118,8 +118,8 @@ def process_output(label, out_file, out_fn, flush_fn, flush_interval_secs, max_b
         Function that flushes the output.
     flush_interval_secs: number
         The number of seconds to wait between flushing buffered data
-    max_bytes_read_per_line: int
-        The maximum number of bytes to read per call to readline().
+    max_bytes_per_read: int
+        The maximum number of bytes to read per call to read().
 
     Returns
     -------
@@ -149,7 +149,7 @@ def process_output(label, out_file, out_fn, flush_fn, flush_interval_secs, max_b
         logging.info('Starting to pipe {}'.format(label))
         trigger_flush_daemon()
         while True:
-            line = out_file.readline(max_bytes_read_per_line)
+            line = out_buffer.read1(max_bytes_per_read)
             if not line:
                 break
             with io_lock:
@@ -163,7 +163,7 @@ def process_output(label, out_file, out_fn, flush_fn, flush_interval_secs, max_b
         logging.info('Done piping {}'.format(label))
 
 
-def track_outputs(task_id, process, flush_interval_secs, max_bytes_read_per_line):
+def track_outputs(task_id, process, flush_interval_secs, max_bytes_per_read):
     """Launches two threads to pipe the stderr/stdout from the subprocess to the system stderr/stdout.
 
     Parameters
@@ -174,17 +174,17 @@ def track_outputs(task_id, process, flush_interval_secs, max_bytes_read_per_line
         The process whose stderr and stdout to monitor.
     flush_interval_secs: number
         The number of seconds to wait between flushing buffered data
-    max_bytes_read_per_line: int
-        The maximum number of bytes to read per call to readline().
+    max_bytes_per_read: int
+        The maximum number of bytes to read per call to read().
 
     Returns
     -------
     A tuple containing the two threads that have been started: stdout_thread, stderr_thread.
     """
 
-    def launch_tracker_thread(label, out_file, out_fn, flush_fn):
+    def launch_tracker_thread(label, out_buffer, out_fn, flush_fn):
         tracker_thread = Thread(target=process_output,
-                                args=(label, out_file, out_fn, flush_fn, flush_interval_secs, max_bytes_read_per_line))
+                                args=(label, out_buffer, out_fn, flush_fn, flush_interval_secs, max_bytes_per_read))
         tracker_thread.daemon = True
         tracker_thread.start()
         return tracker_thread
