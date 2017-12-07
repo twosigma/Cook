@@ -61,12 +61,14 @@ def main(args=None):
     print_memory_usage_task()
 
     stop_signal = Event()
+    non_zero_exit_signal = Event()
 
     def handle_interrupt(interrupt_code, _):
         logging.info('Executor interrupted with code {}'.format(interrupt_code))
         cio.print_and_log('Received kill for task {} with grace period of {}'.format(
             executor_id, config.shutdown_grace_period))
         stop_signal.set()
+        non_zero_exit_signal.set()
         print_memory_usage()
 
     signal.signal(signal.SIGINT, handle_interrupt)
@@ -89,9 +91,10 @@ def main(args=None):
     except Exception:
         logging.exception('Error in __main__')
         stop_signal.set()
+        non_zero_exit_signal.set()
 
     print_memory_usage()
-    exit_code = 1 if stop_signal.isSet() else 0
+    exit_code = 1 if non_zero_exit_signal.isSet() else 0
     logging.info('Executor exiting with code {}'.format(exit_code))
     sys.exit(exit_code)
 

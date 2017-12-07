@@ -149,16 +149,17 @@ class ProgressWatcher(object):
         return matches[0] if len(matches) >= 1 else None
 
     def __init__(self, output_name, location_tag, sequence_counter, max_bytes_read_per_line, progress_regex_string,
-                 stop_signal, task_completed_signal):
+                 stop_signal, task_completed_signal, progress_termination_signal):
         self.target_file = output_name
         self.location_tag = location_tag
         self.sequence_counter = sequence_counter
+        self.max_bytes_read_per_line = max_bytes_read_per_line
         self.progress_regex_string = progress_regex_string
         self.progress_regex_pattern = re.compile(progress_regex_string.encode())
         self.progress = None
         self.stop_signal = stop_signal
         self.task_completed_signal = task_completed_signal
-        self.max_bytes_read_per_line = max_bytes_read_per_line
+        self.progress_termination_signal = progress_termination_signal
 
     def current_progress(self):
         """Returns the current progress dictionary."""
@@ -203,14 +204,22 @@ class ProgressWatcher(object):
             linesep_bytes = os.linesep.encode()
             fragment_index = 0
             line_index = 0
+
+            def log_tail_summary():
+                log_message = '%s fragments and %s lines read while processing progress messages [tag=%s]'
+                logging.info(log_message, fragment_index, line_index, self.location_tag)
+
             with open(self.target_file, 'rb') as target_file_obj:
                 while not self.stop_signal.isSet():
+                    if self.progress_termination_signal.isSet():
+                        logging.info('tail short-circuiting due to progress termination [tag=%s]', self.location_tag)
+                        log_tail_summary()
+                        break
                     line = target_file_obj.readline(self.max_bytes_read_per_line)
                     if not line:
                         # exit if program has completed and there are no more lines to read
                         if self.task_completed_signal.isSet():
-                            log_message = '%s fragments and %s lines read while processing progress messages [tag=%s]'
-                            logging.info(log_message, fragment_index, line_index, self.location_tag)
+                            log_tail_summary()
                             break
                         # no new line available, sleep before trying again
                         time.sleep(sleep_param)
@@ -225,6 +234,28 @@ class ProgressWatcher(object):
         except Exception:
             logging.exception('Error while tailing %s [tag=%s]', self.target_file, self.location_tag)
 
+    def __update_progress(self, progress_report):
+        """Updates the progress field with the data from progress_report if it is valid."""
+        if isinstance(progress_report, tuple) and len(progress_report) == 2:
+            percent_data, message_data = progress_report
+        elif isinstance(progress_report, tuple) and len(progress_report) == 1:
+            percent_data, message_data = progress_report[0], b''
+        else:
+            percent_data, message_data = progress_report, b''
+
+        percent_float = float(percent_data.decode())
+        if percent_float < 0 or percent_float > 100:
+            logging.info('Skipping "%s" as the percent is not in [0, 100]', progress_report)
+            return False
+
+        percent_int = int(round(percent_float))
+        logging.debug('Updating progress to %s percent [tag=%s]', percent_int, self.location_tag)
+
+        self.progress = {'progress-message': message_data,
+                         'progress-percent': percent_int,
+                         'progress-sequence': self.sequence_counter.increment_and_get()}
+        return True
+
     def retrieve_progress_states(self):
         """Generates the progress states by tailing the target_file.
         It tails a target file (using the tail() method) and uses the provided 
@@ -237,40 +268,29 @@ class ProgressWatcher(object):
         -------
         an incrementally generated list of progress states.
         """
+        last_unprocessed_report = None
         if self.progress_regex_string:
             sleep_time_ms = 50
             for line in self.tail(sleep_time_ms):
                 try:
                     progress_report = ProgressWatcher.match_progress_update(self.progress_regex_pattern, line)
-                    if progress_report is None:
-                        continue
-
-                    if isinstance(progress_report, tuple) and len(progress_report) == 2:
-                        percent_data, message_data = progress_report
-                    elif isinstance(progress_report, tuple) and len(progress_report) == 1:
-                        percent_data, message_data = progress_report[0], b''
-                    else:
-                        percent_data, message_data = progress_report, b''
-
-                    percent_float = float(percent_data.decode())
-                    if percent_float < 0 or percent_float > 100:
-                        logging.info('Skipping "%s" as the percent is not in [0, 100]', progress_report)
-                        continue
-
-                    percent_int = int(round(percent_float))
-                    logging.debug('Updating progress to %s percent [tag=%s]', percent_int, self.location_tag)
-                    self.progress = {'progress-message': message_data,
-                                     'progress-percent': percent_int,
-                                     'progress-sequence': self.sequence_counter.increment_and_get()}
-                    yield self.progress
+                    if progress_report is not None:
+                        if self.task_completed_signal.isSet():
+                            last_unprocessed_report = progress_report
+                        elif self.__update_progress(progress_report):
+                            yield self.progress
                 except Exception:
                     logging.exception('Skipping "%s" as a progress entry', line)
+        if last_unprocessed_report is not None:
+            if self.__update_progress(last_unprocessed_report):
+                yield self.progress
 
 
 class ProgressTracker(object):
     """Helper class to track progress messages from the specified location."""
 
-    def __init__(self, config, stop_signal, task_completed_signal, counter, progress_updater, location, location_tag):
+    def __init__(self, config, stop_signal, task_completed_signal, counter, progress_updater,
+                 progress_termination_signal, location, location_tag):
         """Launches the threads that track progress and send progress updates to the driver.
 
         Parameters
@@ -292,7 +312,8 @@ class ProgressTracker(object):
         self.location_tag = location_tag
         self.progress_complete_event = Event()
         self.watcher = ProgressWatcher(location, location_tag, counter, config.max_bytes_read_per_line,
-                                       config.progress_regex_string, stop_signal, task_completed_signal)
+                                       config.progress_regex_string, stop_signal, task_completed_signal,
+                                       progress_termination_signal)
         self.updater = progress_updater
 
     def start(self):
@@ -306,9 +327,9 @@ class ProgressTracker(object):
         """Waits for the progress tracker thread to run to completion."""
         self.progress_complete_event.wait(timeout=timeout)
         if self.progress_complete_event.isSet():
-            logging.info('Progress monitoring from complete [tag=%s]', self.location_tag)
+            logging.info('Progress monitoring complete [tag=%s]', self.location_tag)
         else:
-            logging.info('Progress monitoring from did not complete [tag=%s]', self.location_tag)
+            logging.info('Progress monitoring did not complete [tag=%s]', self.location_tag)
 
     def track_progress(self):
         """Retrieves and sends progress updates using send_progress_update_fn.

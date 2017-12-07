@@ -565,12 +565,8 @@ class ExecutorTest(unittest.TestCase):
 
             expected_core_messages = [{'sandbox-directory': sandbox_directory, 'task-id': task_id, 'type': 'directory'},
                                       {'exit-code': 0, 'task-id': task_id}]
-            expected_progress_messages = [{'progress-message': 'Twenty-five percent in stdout',
-                                           'progress-percent': 25, 'progress-sequence': 1, 'task-id': task_id},
-                                          {'progress-message': '',
-                                           'progress-percent': 50, 'progress-sequence': 2, 'task-id': task_id},
-                                          {'progress-message': 'Fifty-five percent in stdout',
-                                           'progress-percent': 55, 'progress-sequence': 3, 'task-id': task_id}]
+            expected_progress_messages = [{'progress-message': '',
+                                           'progress-percent': 50, 'progress-sequence': 1, 'task-id': task_id}]
             tu.assert_messages(self, expected_core_messages, expected_progress_messages, driver.messages)
 
             stdout_name = tu.ensure_directory('build/stdout.' + str(task_id))
@@ -582,16 +578,10 @@ class ExecutorTest(unittest.TestCase):
 
         # progress string in file with binary data will be ignored
         command = 'echo "Hello"; ' \
-                  'echo "^^^^JOB-PROGRESS: 25 Twenty-five percent in stdout"; ' \
                   'head -c 1000 /dev/random; ' \
-                  'echo "force newline"; ' \
-                  'sleep 2; ' \
-                  'echo "^^^^JOB-PROGRESS: 50 `head -c 100 /dev/random`"; ' \
-                  'echo "force newline"; ' \
-                  'sleep 2; ' \
-                  'head -c 1000 /dev/random; ' \
-                  'echo "force newline"; ' \
-                  'echo "^^^^JOB-PROGRESS: 55 Fifty-five percent in stdout"; ' \
+                  'echo "force newline stage-1"; ' \
+                  'echo "^^^^JOB-PROGRESS: 50 `head -c 20 /dev/random`"; ' \
+                  'echo "force newline stage-2"; ' \
                   'echo "Done"'
         self.manage_task_runner(command, assertions, stop_signal=stop_signal)
         stop_signal.set()
