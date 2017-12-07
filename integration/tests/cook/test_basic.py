@@ -1,6 +1,5 @@
 import json
 import logging
-import math
 import operator
 import subprocess
 import time
@@ -318,6 +317,98 @@ class CookTest(unittest.TestCase):
                 self.assertIsNotNone(job['instances'][0]['sandbox_directory'], message)
         finally:
             util.kill_jobs(self.cook_url, [job_uuid])
+
+    def memory_limit_python_command(self):
+        """Generates a python command that incrementally allocates large strings that cause the python process to
+        request more memory than it is allocated."""
+        command = 'python3 -c ' \
+                  '"import resource; ' \
+                  ' import sys; ' \
+                  ' sys.stdout.write(\'Starting...\\n\'); ' \
+                  ' one_mb = 1024 * 1024; ' \
+                  ' [sys.stdout.write(' \
+                  '   \'progress: {} iter-{}.{}-mem-{}mB-{}\\n\'.format(' \
+                  '      i, ' \
+                  '      i, ' \
+                  '      len(\' \' * (i * 50 * one_mb)), ' \
+                  '      int(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / one_mb), ' \
+                  '      sys.stdout.flush())) ' \
+                  '  for i in range(100)]; ' \
+                  ' sys.stdout.write(\'Done.\\n\'); "'
+        return command
+
+    def memory_limit_script_command(self):
+        """Generates a script command that incrementally allocates large strings that cause the process to
+        request more memory than it is allocated."""
+        command = 'random_string() { ' \
+                  '  base64 /dev/urandom | tr -d \'/+\' | dd bs=1048576 count=1024 2>/dev/null; ' \
+                  '}; ' \
+                  'R="$(random_string)"; ' \
+                  'V=""; ' \
+                  'echo "Length of R is ${#R}" ; ' \
+                  'for p in `seq 0 99`; do ' \
+                  '  for i in `seq 1 10`; do ' \
+                  '    V="${V}.${R}"; ' \
+                  '    echo "progress: ${p} ${p}-percent iter-${i}" ; ' \
+                  '  done ; ' \
+                  'done'
+        return command
+
+    def memory_limit_exceeded_helper(self, command, executor_type):
+        """Given a command that needs more memory than it is allocated, when the command is submitted to cook,
+        the job should be killed by Mesos as it exceeds its memory limits."""
+        job_uuid, resp = util.submit_job(self.cook_url, command=command, executor=executor_type, mem=128)
+        try:
+            self.assertEqual(201, resp.status_code, msg=resp.content)
+            job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
+            job_details = f"Job details: {json.dumps(job, sort_keys=True)}"
+            self.assertEqual('failed', job['state'], job_details)
+            self.assertEqual(1, len(job['instances']), job_details)
+            instance = job['instances'][0]
+            instance_details = json.dumps(instance, sort_keys=True)
+            # did the job fail as expected?
+            self.assertEqual(executor_type, instance['executor'], instance_details)
+            self.assertEqual('failed', instance['status'], instance_details)
+            # Mesos chooses to kill the task (exit code 137) or kill the executor with a memory limit exceeded message
+            if 2002 == instance['reason_code']:
+                self.assertEqual('Container memory limit exceeded', instance['reason_string'], instance_details)
+            elif 99003 == instance['reason_code']:
+                # If the command was killed, it will have exited with 137 (Fatal error signal of 128 + SIGKILL)
+                self.assertEqual('Command exited non-zero', instance['reason_string'], instance_details)
+                if executor_type == 'cook':
+                    self.assertEqual(137, instance['exit_code'], instance_details)
+            else:
+                self.fail('Unknown reason code {}, details {}'.format(instance['reason_code'], instance_details))
+        finally:
+            util.kill_jobs(self.cook_url, [job_uuid])
+
+    @attr('memory_limit')
+    def test_memory_limit_exceeded_cook_python(self):
+        job_executor_type = util.get_job_executor_type(self.cook_url)
+        if job_executor_type == 'cook':
+            command = self.memory_limit_python_command()
+            self.memory_limit_exceeded_helper(command, 'cook')
+        else:
+            self.logger.info("Skipping test_memory_limit_exceeded_cook_python, executor={}".format(job_executor_type))
+
+    @attr('memory_limit')
+    def test_memory_limit_exceeded_mesos_python(self):
+        command = self.memory_limit_python_command()
+        self.memory_limit_exceeded_helper(command, 'mesos')
+
+    @attr('memory_limit')
+    def test_memory_limit_exceeded_cook_script(self):
+        job_executor_type = util.get_job_executor_type(self.cook_url)
+        if job_executor_type == 'cook':
+            command = self.memory_limit_script_command()
+            self.memory_limit_exceeded_helper(command, 'cook')
+        else:
+            self.logger.info("Skipping test_memory_limit_exceeded_cook_script, executor={}".format(job_executor_type))
+
+    @attr('memory_limit')
+    def test_memory_limit_exceeded_mesos_script(self):
+        command = self.memory_limit_script_command()
+        self.memory_limit_exceeded_helper(command, 'mesos')
 
     def test_get_job(self):
         # schedule a job
