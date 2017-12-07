@@ -39,7 +39,7 @@ def main(args=None):
         print(__version__)
         sys.exit(0)
 
-    cio.print_out('Cook Executor version {}'.format(__version__))
+    cio.print_out('Cook Executor version {}'.format(__version__), flush=True)
 
     environment = os.environ
     executor_id = environment.get('MESOS_EXECUTOR_ID', '1')

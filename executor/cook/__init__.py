@@ -7,7 +7,6 @@ For more information on Mesos executors, see the "Working with Executors"
 section at http://mesos.apache.org/documentation/latest/app-framework-development-guide/
 """
 
-RUNNING_POLL_INTERVAL_SECS = 1
 DAEMON_GRACE_SECS = 1
 TERMINATE_GRACE_SECS = 0.1
 

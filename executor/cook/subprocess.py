@@ -1,7 +1,9 @@
+"""This module provides helper functions for subprocess management."""
+
 import logging
 import signal
 import subprocess
-import time
+import sys
 
 import os
 import psutil
@@ -30,11 +32,12 @@ def launch_process(command, environment):
     # The preexec_fn is run after the fork() but before exec() to run the shell.
     # setsid will run the program in a new session, thus assigning a new process group to it and its children.
     return subprocess.Popen(command,
+                            bufsize=0,
                             env=environment,
                             preexec_fn=os.setsid,
                             shell=True,
-                            stderr=subprocess.PIPE,
-                            stdout=subprocess.PIPE)
+                            stderr=sys.stderr,
+                            stdout=sys.stdout)
 
 
 def is_process_running(process):
@@ -142,7 +145,7 @@ def _send_signal_to_process_tree(root_process_id, signal_to_send):
             logging.exception('Error in sending {} to process (id: {})'.format(signal_name, loop_process_id))
             signal_sent_to_all_processes_successfully = False
 
-    log_message = 'Found {} processes in tree rooted at (id: {}), successfully sent {} to {} processes'
+    log_message = 'Found {} process(es) in tree rooted at (id: {}), successfully sent {} to {} process(es)'
     logging.info(log_message.format(num_processes_found, root_process_id, signal_name, num_processes_killed))
 
     for loop_process_id in visited_process_ids:
@@ -212,22 +215,28 @@ def kill_process(process, shutdown_grace_period_ms):
 
     Returns
     -------
-    Nothing
+    True if the process completed execution or was killed.
     """
     shutdown_grace_period_ms = max(shutdown_grace_period_ms - (1000 * cook.TERMINATE_GRACE_SECS), 0)
     if is_process_running(process):
         logging.info('Waiting up to {} ms for process to terminate'.format(shutdown_grace_period_ms))
-        send_signal(process.pid, signal.SIGTERM)
 
-        loop_limit = int(shutdown_grace_period_ms / 10)
-        for i in range(loop_limit):
-            time.sleep(0.01)
-            if not is_process_running(process):
-                cio.print_and_log('Command terminated with signal Terminated (pid: {})'.format(process.pid),
-                                  flush=True)
-                break
+        send_signal(process.pid, signal.SIGTERM)
+        shutdown_grace_period_secs = shutdown_grace_period_ms / 1000.0
+        try:
+            process.wait(shutdown_grace_period_secs)
+            cio.print_and_log('Command terminated with signal Terminated (pid: {})'.format(process.pid))
+        except subprocess.TimeoutExpired:
+            logging.info('Process did not terminate via SIGTERM after {} seconds'.format(shutdown_grace_period_secs))
+        except Exception:
+            logging.exception('Error while sending SIGTERM to (pid: {})'.format(process.pid))
+
         if is_process_running(process):
-            logging.info('Process did not terminate, forcefully killing it')
             send_signal(process.pid, signal.SIGKILL)
-            cio.print_and_log('Command terminated with signal Killed (pid: {})'.format(process.pid),
-                              flush=True)
+            try:
+                process.wait() # wait indefinitely for process to die/complete, it cannot ignore SIGKILL
+                cio.print_and_log('Command terminated with signal Killed (pid: {})'.format(process.pid))
+            except Exception:
+                logging.exception('Error while sending SIGKILL to (pid: {})'.format(process.pid))
+
+        return not is_process_running(process)

@@ -122,41 +122,15 @@ def launch_task(task, environment):
         return None
 
 
-def is_running(process_info):
-    """Checks whether any of the process or the piping threads are still running.
+def await_process_completion(process, stop_signal, shutdown_grace_period_ms):
+    """Awaits process completion. Also sets up the thread that will kill the process if stop_signal is set.
 
     Parameters
     ----------
-    process_info: tuple of process, stdout_thread, stderr_thread
-        process: subprocess.Popen
-            The process to query
-        stdout_thread: threading.Thread
-            The thread that is piping the subprocess stdout.
-        stderr_thread: threading.Thread
-            The thread that is piping the subprocess stderr.
-
-    Returns
-    -------
-    whether any of the process or the piping threads are still running.
-    """
-    process, stdout_thread, stderr_thread = process_info
-    return cs.is_process_running(process) or stdout_thread.isAlive() or stderr_thread.isAlive()
-
-
-def await_process_completion(stop_signal, process_info, shutdown_grace_period_ms):
-    """Awaits process completion.
-
-    Parameters
-    ----------
+    process: subprocess.Popen
+        The process to whose termination to wait on.
     stop_signal: Event
         Event that determines if an interrupt was sent
-    process_info: tuple of process, stdout_thread, stderr_thread
-        process: subprocess.Popen
-            The process to query
-        stdout_thread: threading.Thread
-            The thread that is piping the subprocess stdout.
-        stderr_thread: threading.Thread
-            The thread that is piping the subprocess stderr.
     shutdown_grace_period_ms: int
         Grace period before forceful kill
 
@@ -164,15 +138,18 @@ def await_process_completion(stop_signal, process_info, shutdown_grace_period_ms
     -------
     True if the process was killed, False if it terminated naturally.
     """
-    while is_running(process_info):
-
-        if stop_signal.isSet():
+    def process_stop_signal():
+        stop_signal.wait() # wait indefinitely for the stop_signal to be set
+        if cs.is_process_running(process):
             logging.info('Executor has been instructed to terminate running task')
-            process, _, _ = process_info
             cs.kill_process(process, shutdown_grace_period_ms)
-            break
 
-        time.sleep(cook.RUNNING_POLL_INTERVAL_SECS)
+    kill_thread = Thread(target=process_stop_signal, args=())
+    kill_thread.daemon = True
+    kill_thread.start()
+
+    # wait indefinitely for process to terminate (either normally or by being killed)
+    process.wait()
 
 
 def get_task_state(exit_code):
@@ -231,7 +208,7 @@ def retrieve_process_environment(config, os_environ):
 
 def output_task_completion(task_id, task_state):
     """Prints and logs the executor completion message."""
-    cio.print_and_log('Executor completed execution of {} (state={})'.format(task_id, task_state), flush=True)
+    cio.print_and_log('Executor completed execution of {} (state={})'.format(task_id, task_state))
 
 
 def manage_task(driver, task, stop_signal, completed_signal, config):
@@ -268,8 +245,6 @@ def manage_task(driver, task, stop_signal, completed_signal, config):
             update_status(driver, task_id, cook.TASK_ERROR)
             return
 
-        stdout_thread, stderr_thread = cio.track_outputs(task_id, launched_process, config.flush_interval_secs,
-                                                         config.max_bytes_read_per_line)
         task_completed_signal = Event() # event to track task execution completion
         sequence_counter = cp.ProgressSequenceCounter()
 
@@ -294,8 +269,7 @@ def manage_task(driver, task, stop_signal, completed_signal, config):
         logging.info('Progress will be tracked from {} locations'.format(len(progress_locations)))
         progress_trackers = [launch_progress_tracker(l, progress_locations[l]) for l in progress_locations]
 
-        process_info = launched_process, stdout_thread, stderr_thread
-        await_process_completion(stop_signal, process_info, config.shutdown_grace_period_ms)
+        await_process_completion(launched_process, stop_signal, config.shutdown_grace_period_ms)
         task_completed_signal.set()
 
         progress_termination_timer = Timer(config.shutdown_grace_period_ms / 1000.0, progress_termination_signal.set)
@@ -304,8 +278,7 @@ def manage_task(driver, task, stop_signal, completed_signal, config):
 
         # propagate the exit code
         exit_code = launched_process.returncode
-        cio.print_and_log('Command exited with status {} (pid: {})'.format(exit_code, launched_process.pid),
-                          flush=True)
+        cio.print_and_log('Command exited with status {} (pid: {})'.format(exit_code, launched_process.pid))
 
         exit_message = json.dumps({'exit-code': exit_code, 'task-id': task_id})
         send_message(driver, exit_message, config.max_message_length)
@@ -372,6 +345,9 @@ class CookExecutor(pm.Executor):
 
     def killTask(self, driver, task_id):
         logging.info('Mesos requested executor to kill task {}'.format(task_id))
+        task_id_str = task_id['value'] if 'value' in task_id else task_id
+        grace_period = os.environ.get('MESOS_EXECUTOR_SHUTDOWN_GRACE_PERIOD', '')
+        cio.print_and_log('Received kill for task {} with grace period of {}'.format(task_id_str, grace_period))
         self.stop_signal.set()
 
     def shutdown(self, driver):
