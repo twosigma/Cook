@@ -23,11 +23,18 @@ import cook.io_helper as cio
 import pymesos as pm
 
 
+__is_osx = sys.platform == 'darwin'
+__rusage_denom_mb = 1024.0
+if __is_osx:
+    # in OSX the output is in different units
+    __rusage_denom_mb = __rusage_denom_mb * 1024
+
+
 def print_memory_usage():
     """Logs the memory usage of the executor."""
     try:
-        rusage = resource.getrusage(resource.RUSAGE_SELF)
-        logging.info('Executor Memory usage: {} kB'.format(rusage.ru_maxrss / 1024))
+        max_rss = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+        logging.info('Executor Memory usage: {} MB'.format(max_rss / __rusage_denom_mb))
     except Exception:
         logging.exception('Error in logging memory usage')
 
