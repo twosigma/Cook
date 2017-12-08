@@ -364,7 +364,7 @@ def wait_for_jobs(cook_url, job_ids, status, max_wait_ms=120000):
     return response.json()
 
 
-def wait_for_exit_code(cook_url, job_id, max_wait_ms=2000):
+def wait_for_exit_code(cook_url, job_id, max_wait_ms=60000):
     """
     Wait for the given job's exit_code field to appear.
     (Only supported by Cook Executor jobs.)
