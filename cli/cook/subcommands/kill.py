@@ -83,8 +83,10 @@ def kill_entities(query_result, clusters):
                 for group_uuid in group_uuids:
                     print(colors.failed(f'Failed to kill job group {group_uuid} on {cluster_name}.'))
 
-    if num_failures > 0:
+    if num_failures > 1:
         print_info(f'There were {colors.failed(str(num_failures))} kill failures.')
+    elif num_failures == 1:
+        print_info(f'There was {colors.failed("1")} kill failure.')
 
     return num_failures
 
