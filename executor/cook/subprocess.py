@@ -239,4 +239,4 @@ def kill_process(process, shutdown_grace_period_ms):
             except Exception:
                 logging.exception('Error while sending SIGKILL to (pid: {})'.format(process.pid))
 
-        return not is_process_running(process)
+    return not is_process_running(process)
