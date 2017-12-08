@@ -328,11 +328,7 @@ class ProgressTracker(object):
         self.updater = progress_updater
 
     def start(self):
-        """Launches a thread that starts monitoring the progress location for progress messages.
-
-        Parameters
-        ----------
-        """
+        """Launches a thread that starts monitoring the progress location for progress messages."""
         logging.info('Starting progress monitoring from [tag=%s]', self.location_tag)
         tracker_thread = Thread(target=self.track_progress, args=())
         tracker_thread.daemon = True
@@ -348,13 +344,7 @@ class ProgressTracker(object):
 
     def track_progress(self):
         """Retrieves and sends progress updates using send_progress_update_fn.
-        It sets the progress_complete_event before returning.
-
-        Parameters
-        ----------
-        os_error_handler: fn(os_error)
-            OSError exception handler
-        """
+        It sets the progress_complete_event before returning."""
         try:
             for current_progress in self.watcher.retrieve_progress_states(self.os_error_handler):
                 self.updater.send_progress_update(current_progress)

@@ -44,7 +44,7 @@ class StatusUpdater(object):
         self.driver = driver
         self.lock = Lock()
         self.task_id = task_id
-        self.terminal_states = [cook.TASK_ERROR, cook.TASK_FAILED, cook.TASK_FINISHED, cook.TASK_KILLED]
+        self.terminal_states = {cook.TASK_ERROR, cook.TASK_FAILED, cook.TASK_FINISHED, cook.TASK_KILLED}
         self.terminal_status_sent = False
 
     def create_status(self, task_state, reason=None):
@@ -61,8 +61,8 @@ class StatusUpdater(object):
         -------
         a status dictionary that can be sent to the driver.
         """
-        task_status = {'task_id': {'value': self.task_id},
-                       'state': task_state,
+        task_status = {'state': task_state,
+                       'task_id': {'value': self.task_id},
                        'timestamp': time.time()}
         if reason:
             task_status['reason'] = reason
