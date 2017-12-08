@@ -333,7 +333,7 @@ def parse_entity_refs(clusters, ref_strings):
     return entity_refs
 
 
-def query_with_pipe_support(clusters, uuids, command, pred_jobs=None, pred_instances=None,
+def query_with_pipe_support(clusters, entity_refs, command, pred_jobs=None, pred_instances=None,
                             pred_groups=None, timeout=None, interval=None):
     """
     Queries for UUIDs across clusters, supporting input being passed via a pipe from another command, e.g.:
@@ -344,7 +344,7 @@ def query_with_pipe_support(clusters, uuids, command, pred_jobs=None, pred_insta
     """
     stdin_from_pipe = not sys.stdin.isatty()
 
-    if uuids and stdin_from_pipe:
+    if entity_refs and stdin_from_pipe:
         raise Exception(f'When piping to {command}, you cannot also supply UUIDs as arguments.')
 
     if stdin_from_pipe:
@@ -361,11 +361,11 @@ def query_with_pipe_support(clusters, uuids, command, pred_jobs=None, pred_insta
 
         piped_cluster_names = set()
         piped_types = set()
-        uuids = []
+        entity_refs = []
         for datum in piped_data:
             piped_cluster_names.add(datum['cluster'])
             piped_types.add(datum['type'])
-            uuids.append(datum['uuid'])
+            entity_refs.append(datum['uuid'])
 
         configured_cluster_names = set(c['name'] for c in clusters)
         if not piped_cluster_names.issubset(configured_cluster_names):
@@ -374,8 +374,8 @@ def query_with_pipe_support(clusters, uuids, command, pred_jobs=None, pred_insta
 
         clusters = (c for c in clusters if c['name'] in piped_cluster_names)
 
-    if not uuids:
+    if not entity_refs:
         raise Exception('You must specify at least one UUID.')
 
-    query_result = query(clusters, uuids, pred_jobs, pred_instances, pred_groups, timeout, interval)
+    query_result = query(clusters, entity_refs, pred_jobs, pred_instances, pred_groups, timeout, interval)
     return query_result

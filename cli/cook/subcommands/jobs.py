@@ -186,7 +186,7 @@ def register(add_parser, add_defaults):
     group.add_argument('-1', help='list one job per line, without table formatting',
                        dest='one-per-line', action='store_true')
 
-    add_defaults('list', {'states': ['running'],
+    add_defaults('jobs', {'states': ['running'],
                           'user': current_user(),
                           'limit': DEFAULT_LIMIT})
 
