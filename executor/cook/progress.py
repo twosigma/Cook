@@ -127,29 +127,17 @@ class ProgressWatcher(object):
     The retrieve_progress_states generates all progress messages iteratively.
     """
 
-    @staticmethod
-    def match_progress_update(progress_regex_pattern, input_data):
-        """Returns the progress tuple when the input string matches the provided regex.
-        
+    def __init__(self, output_name, location_tag, sequence_counter, max_bytes_read_per_line, progress_regex_string,
+                 stop_signal, task_completed_signal, progress_termination_signal):
+        """The ProgressWatcher constructor.
+
         Parameters
         ----------
-        progress_regex_pattern: re.pattern
+        progress_regex_string: string
             The progress regex to match against, it must return one or two capture groups.
             The first capture group represent the progress percentage.
             The second capture group, if present, represents the progress message.
-        input_data: bytes
-            The input data.
-        
-        Returns
-        -------
-        the tuple (percent, message) if the string matches the provided regex, 
-                 else return None. 
         """
-        matches = progress_regex_pattern.findall(input_data)
-        return matches[0] if len(matches) >= 1 else None
-
-    def __init__(self, output_name, location_tag, sequence_counter, max_bytes_read_per_line, progress_regex_string,
-                 stop_signal, task_completed_signal, progress_termination_signal):
         self.target_file = output_name
         self.location_tag = location_tag
         self.sequence_counter = sequence_counter
@@ -235,6 +223,22 @@ class ProgressWatcher(object):
             logging.exception('Error while tailing %s [tag=%s]', self.target_file, self.location_tag)
             raise exception
 
+    def match_progress_update(self, input_data):
+        """Returns the progress tuple when the input string matches the provided regex.
+
+        Parameters
+        ----------
+        input_data: bytes
+            The input data.
+
+        Returns
+        -------
+        the tuple (percent, message) if the string matches the provided regex,
+                 else return None.
+        """
+        matches = self.progress_regex_pattern.findall(input_data)
+        return matches[0] if len(matches) >= 1 else None
+
     def __update_progress(self, progress_report):
         """Updates the progress field with the data from progress_report if it is valid."""
         if isinstance(progress_report, tuple) and len(progress_report) == 2:
@@ -257,7 +261,7 @@ class ProgressWatcher(object):
                          'progress-sequence': self.sequence_counter.increment_and_get()}
         return True
 
-    def retrieve_progress_states(self, os_error_handler):
+    def retrieve_progress_states(self):
         """Generates the progress states by tailing the target_file.
         It tails a target file (using the tail() method) and uses the provided 
         regex to find a match for a progress message. The regex is expected to 
@@ -265,28 +269,25 @@ class ProgressWatcher(object):
         a progress message string. When such a message is found, this method 
         yields the current progress as a dictionary.
 
-        Parameters
-        ----------
-        os_error_handler: fn(os_error)
-            OSError exception handler
+        Note: This function must rethrow any OSError exceptions that it encounters.
 
         Returns
         -------
-        an incrementally generated list of progress states.
+        An incrementally generated list of progress states.
         """
         last_unprocessed_report = None
         if self.progress_regex_string:
             sleep_time_ms = 50
             for line in self.tail(sleep_time_ms):
                 try:
-                    progress_report = ProgressWatcher.match_progress_update(self.progress_regex_pattern, line)
+                    progress_report = self.match_progress_update(line)
                     if progress_report is not None:
                         if self.task_completed_signal.isSet():
                             last_unprocessed_report = progress_report
                         elif self.__update_progress(progress_report):
                             yield self.progress
                 except OSError as os_error:
-                    os_error_handler(os_error)
+                    raise os_error
                 except Exception:
                     logging.exception('Skipping "%s" as a progress entry', line)
         if last_unprocessed_report is not None:
@@ -346,7 +347,7 @@ class ProgressTracker(object):
         """Retrieves and sends progress updates using send_progress_update_fn.
         It sets the progress_complete_event before returning."""
         try:
-            for current_progress in self.watcher.retrieve_progress_states(self.os_error_handler):
+            for current_progress in self.watcher.retrieve_progress_states():
                 self.updater.send_progress_update(current_progress)
         except OSError as os_error:
             self.os_error_handler(os_error)

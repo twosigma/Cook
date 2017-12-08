@@ -1,11 +1,10 @@
+import errno
 import json
 import logging
 import math
 import time
 import unittest
 from threading import Event, Thread
-
-import re
 
 import cook.executor as ce
 import cook.progress as cp
@@ -16,40 +15,40 @@ class ProgressTest(unittest.TestCase):
     def test_match_progress_update(self):
 
         progress_regex_string = '\^\^\^\^JOB-PROGRESS:\s+([0-9]*\.?[0-9]+)($|\s+.*)'
-        progress_regex_pattern = re.compile(progress_regex_string)
+        progress_watcher = cp.ProgressWatcher('', '', None, 1, progress_regex_string, None, None, None)
 
         def match_progress_update(input_string):
-            return cp.ProgressWatcher.match_progress_update(progress_regex_pattern, input_string)
+            return progress_watcher.match_progress_update(input_string)
 
-        self.assertIsNone(match_progress_update("One percent complete"))
-        self.assertIsNone(match_progress_update("^^^^JOB-PROGRESS: 1done"))
-        self.assertIsNone(match_progress_update("^^^^JOB-PROGRESS: 1.0done"))
-        self.assertIsNone(match_progress_update("^^^^JOB-PROGRESS 1 One percent complete"))
-        self.assertIsNone(match_progress_update("JOB-PROGRESS: 1 One percent complete"))
+        self.assertIsNone(match_progress_update(b'One percent complete'))
+        self.assertIsNone(match_progress_update(b'^^^^JOB-PROGRESS: 1done'))
+        self.assertIsNone(match_progress_update(b'^^^^JOB-PROGRESS: 1.0done'))
+        self.assertIsNone(match_progress_update(b'^^^^JOB-PROGRESS 1 One percent complete'))
+        self.assertIsNone(match_progress_update(b'JOB-PROGRESS: 1 One percent complete'))
 
-        self.assertEqual(('1', ''),
-                         match_progress_update("^^^^JOB-PROGRESS: 1"))
-        self.assertEqual(('1', ''),
-                         match_progress_update("^^^^JOB-PROGRESS:   1"))
-        self.assertEqual(('1', '    '),
-                         match_progress_update("^^^^JOB-PROGRESS:   1    "))
-        self.assertEqual(('1', ' done'),
-                         match_progress_update("^^^^JOB-PROGRESS:   1 done"))
-        self.assertEqual(('1', ' One percent complete'),
-                         match_progress_update("^^^^JOB-PROGRESS: 1 One percent complete"))
-        self.assertEqual(('1', '    One percent complete'),
-                         match_progress_update("^^^^JOB-PROGRESS: 1    One percent complete"))
-        self.assertEqual(('50', ' Fifty percent complete'),
-                         match_progress_update("^^^^JOB-PROGRESS: 50 Fifty percent complete"))
+        self.assertEqual((b'1', b''),
+                         match_progress_update(b'^^^^JOB-PROGRESS: 1'))
+        self.assertEqual((b'1', b''),
+                         match_progress_update(b'^^^^JOB-PROGRESS:   1'))
+        self.assertEqual((b'1', b'    '),
+                         match_progress_update(b'^^^^JOB-PROGRESS:   1    '))
+        self.assertEqual((b'1', b' done'),
+                         match_progress_update(b'^^^^JOB-PROGRESS:   1 done'))
+        self.assertEqual((b'1', b' One percent complete'),
+                         match_progress_update(b'^^^^JOB-PROGRESS: 1 One percent complete'))
+        self.assertEqual((b'1', b'    One percent complete'),
+                         match_progress_update(b'^^^^JOB-PROGRESS: 1    One percent complete'))
+        self.assertEqual((b'50', b' Fifty percent complete'),
+                         match_progress_update(b'^^^^JOB-PROGRESS: 50 Fifty percent complete'))
         # Fractions in progress update are also supported
-        self.assertEqual(('2.2', ''),
-                         match_progress_update("^^^^JOB-PROGRESS: 2.2"))
-        self.assertEqual(('2.0', ' Two percent complete'),
-                         match_progress_update("^^^^JOB-PROGRESS: 2.0 Two percent complete"))
-        self.assertEqual(('2.0', '   Two percent complete'),
-                         match_progress_update("^^^^JOB-PROGRESS: 2.0   Two percent complete"))
-        self.assertEqual(('2.0', '\tTwo percent complete'),
-                         match_progress_update("^^^^JOB-PROGRESS: 2.0\tTwo percent complete"))
+        self.assertEqual((b'2.2', b''),
+                         match_progress_update(b'^^^^JOB-PROGRESS: 2.2'))
+        self.assertEqual((b'2.0', b' Two percent complete'),
+                         match_progress_update(b'^^^^JOB-PROGRESS: 2.0 Two percent complete'))
+        self.assertEqual((b'2.0', b'   Two percent complete'),
+                         match_progress_update(b'^^^^JOB-PROGRESS: 2.0   Two percent complete'))
+        self.assertEqual((b'2.0', b'\tTwo percent complete'),
+                         match_progress_update(b'^^^^JOB-PROGRESS: 2.0\tTwo percent complete'))
 
     def test_send_progress_update(self):
         driver = tu.FakeMesosExecutorDriver()
@@ -147,7 +146,7 @@ class ProgressTest(unittest.TestCase):
                 file = open(file_name, 'w+')
                 for item in range(items_to_write):
                     time.sleep(write_sleep_ms / 1000.0)
-                    file.write("{}\n".format(item))
+                    file.write('{}\n'.format(item))
                     file.flush()
                 file.close()
                 time.sleep(0.15)
@@ -178,7 +177,7 @@ class ProgressTest(unittest.TestCase):
             def write_to_file():
                 file = open(file_name, 'w+')
                 for item in range(items_to_write):
-                    file.write("line-{}\n".format(item))
+                    file.write('line-{}\n'.format(item))
                     if item % 100 == 0:
                         file.flush()
                 file.flush()
@@ -215,13 +214,13 @@ class ProgressTest(unittest.TestCase):
             def write_to_file():
                 file = open(file_name, 'w+')
 
-                file.write("abcd\n")
+                file.write('abcd\n')
                 file.flush()
 
-                file.write("abcdefghijkl\n")
+                file.write('abcdefghijkl\n')
                 file.flush()
 
-                file.write("abcdefghijklmnopqrstuvwxyz\n")
+                file.write('abcdefghijklmnopqrstuvwxyz\n')
                 file.flush()
 
                 file.close()
@@ -258,15 +257,15 @@ class ProgressTest(unittest.TestCase):
 
         try:
             def print_to_file():
-                file.write("Stage One complete\n")
-                file.write("^^^^JOB-PROGRESS: 50\n")
-                file.write("Stage Three complete\n")
-                file.write("^^^^JOB-PROGRESS: 55.0\n")
-                file.write("^^^^JOB-PROGRESS: 65.8 Sixty-six percent\n")
-                file.write("^^^^JOB-PROGRESS: 98.8\n")
-                file.write("^^^^JOB-PROGRESS: 99.8\n")
-                file.write("^^^^JOB-PROGRESS: 100.0\n")
-                file.write("^^^^JOB-PROGRESS: 198.8\n")
+                file.write('Stage One complete\n')
+                file.write('^^^^JOB-PROGRESS: 50\n')
+                file.write('Stage Three complete\n')
+                file.write('^^^^JOB-PROGRESS: 55.0\n')
+                file.write('^^^^JOB-PROGRESS: 65.8 Sixty-six percent\n')
+                file.write('^^^^JOB-PROGRESS: 98.8\n')
+                file.write('^^^^JOB-PROGRESS: 99.8\n')
+                file.write('^^^^JOB-PROGRESS: 100.0\n')
+                file.write('^^^^JOB-PROGRESS: 198.8\n')
                 file.flush()
                 file.close()
 
@@ -278,7 +277,7 @@ class ProgressTest(unittest.TestCase):
                                {'progress-message': b'', 'progress-percent': 99, 'progress-sequence': 3},
                                {'progress-message': b'', 'progress-percent': 100, 'progress-sequence': 4},
                                {'progress-message': b'', 'progress-percent': 100, 'progress-sequence': 5}]
-            for actual_progress_state in watcher.retrieve_progress_states(tu.os_error_handler_stub):
+            for actual_progress_state in watcher.retrieve_progress_states():
                 expected_progress_state = progress_states.pop(0)
                 self.assertEqual(expected_progress_state, actual_progress_state)
                 self.assertEqual(expected_progress_state, watcher.current_progress())
@@ -305,15 +304,15 @@ class ProgressTest(unittest.TestCase):
 
         try:
             def print_to_file():
-                file.write("Stage One complete\n")
-                file.write("^^^^JOB-PROGRESS: 25 Twenty-Five\n")
-                file.write("^^^^JOB-PROGRESS: 50 Fifty\n")
-                file.write("Stage Three complete\n")
-                file.write("^^^^JOB-PROGRESS: 55.0 Fifty-five\n")
-                file.write("^^^^JOB-PROGRESS: 65.8 Sixty-six\n")
-                file.write("Stage Four complete\n")
-                file.write("^^^^JOB-PROGRESS: 100 Hundred\n")
-                file.write("^^^^JOB-PROGRESS: 100.1 Over a hundred\n")
+                file.write('Stage One complete\n')
+                file.write('^^^^JOB-PROGRESS: 25 Twenty-Five\n')
+                file.write('^^^^JOB-PROGRESS: 50 Fifty\n')
+                file.write('Stage Three complete\n')
+                file.write('^^^^JOB-PROGRESS: 55.0 Fifty-five\n')
+                file.write('^^^^JOB-PROGRESS: 65.8 Sixty-six\n')
+                file.write('Stage Four complete\n')
+                file.write('^^^^JOB-PROGRESS: 100 Hundred\n')
+                file.write('^^^^JOB-PROGRESS: 100.1 Over a hundred\n')
                 file.flush()
                 file.close()
 
@@ -325,7 +324,7 @@ class ProgressTest(unittest.TestCase):
                                {'progress-message': b' Fifty-five', 'progress-percent': 55, 'progress-sequence': 3},
                                {'progress-message': b' Sixty-six', 'progress-percent': 66, 'progress-sequence': 4},
                                {'progress-message': b' Hundred', 'progress-percent': 100, 'progress-sequence': 5}]
-            for actual_progress_state in watcher.retrieve_progress_states(tu.os_error_handler_stub):
+            for actual_progress_state in watcher.retrieve_progress_states():
                 expected_progress_state = progress_states.pop(0)
                 self.assertEqual(expected_progress_state, actual_progress_state)
                 self.assertEqual(expected_progress_state, watcher.current_progress())
@@ -353,9 +352,9 @@ class ProgressTest(unittest.TestCase):
 
         try:
             def print_to_file():
-                file.write("Stage One complete\n")
-                file.write("^^^^JOB-PROGRESS: 25 Twenty-Five\n")
-                file.write("^^^^JOB-PROGRESS: 50 Fifty\n")
+                file.write('Stage One complete\n')
+                file.write('^^^^JOB-PROGRESS: 25 Twenty-Five\n')
+                file.write('^^^^JOB-PROGRESS: 50 Fifty\n')
                 file.flush()
 
                 logging.info('Awaiting termination_trigger')
@@ -363,10 +362,10 @@ class ProgressTest(unittest.TestCase):
                 logging.info('termination_trigger has been set')
                 termination.set()
 
-                file.write("Stage Three complete\n")
-                file.write("^^^^JOB-PROGRESS: 55 Fifty-five\n")
-                file.write("Stage Four complete\n")
-                file.write("^^^^JOB-PROGRESS: 100 Hundred\n")
+                file.write('Stage Three complete\n')
+                file.write('^^^^JOB-PROGRESS: 55 Fifty-five\n')
+                file.write('Stage Four complete\n')
+                file.write('^^^^JOB-PROGRESS: 100 Hundred\n')
                 file.flush()
                 file.close()
                 completed.set()
@@ -377,7 +376,7 @@ class ProgressTest(unittest.TestCase):
 
             progress_states = [{'progress-message': b' Twenty-Five', 'progress-percent': 25, 'progress-sequence': 1},
                                {'progress-message': b' Fifty', 'progress-percent': 50, 'progress-sequence': 2}]
-            for actual_progress_state in watcher.retrieve_progress_states(tu.os_error_handler_stub):
+            for actual_progress_state in watcher.retrieve_progress_states():
                 expected_progress_state = progress_states.pop(0)
                 self.assertEqual(expected_progress_state, actual_progress_state)
                 self.assertEqual(expected_progress_state, watcher.current_progress())
@@ -404,11 +403,11 @@ class ProgressTest(unittest.TestCase):
 
         try:
             def print_to_file():
-                file.write("^^^^JOB-PROGRESS: F50 Fifty percent\n")
-                file.write("^^^^JOB-PROGRESS: 100.1 Over a hundred percent\n")
-                file.write("^^^^JOB-PROGRESS: 200 Two-hundred percent\n")
-                file.write("^^^^JOB-PROGRESS: 121212121212121212 Huge percent\n")
-                file.write("^^^^JOB-PROGRESS: 075 75% percent\n")
+                file.write('^^^^JOB-PROGRESS: F50 Fifty percent\n')
+                file.write('^^^^JOB-PROGRESS: 100.1 Over a hundred percent\n')
+                file.write('^^^^JOB-PROGRESS: 200 Two-hundred percent\n')
+                file.write('^^^^JOB-PROGRESS: 121212121212121212 Huge percent\n')
+                file.write('^^^^JOB-PROGRESS: 075 75% percent\n')
                 file.flush()
                 file.close()
                 completed.set()
@@ -417,7 +416,7 @@ class ProgressTest(unittest.TestCase):
             print_thread.start()
 
             progress_states = [{'progress-message': b' 75% percent', 'progress-percent': 75, 'progress-sequence': 1}]
-            for actual_progress_state in watcher.retrieve_progress_states(tu.os_error_handler_stub):
+            for actual_progress_state in watcher.retrieve_progress_states():
                 expected_progress_state = progress_states.pop(0)
                 self.assertEqual(expected_progress_state, actual_progress_state)
                 self.assertEqual(expected_progress_state, watcher.current_progress())
@@ -442,10 +441,10 @@ class ProgressTest(unittest.TestCase):
 
         try:
             def print_to_file():
-                file.write("^^^^JOB-PROGRESS: ABCDEF string percent\n")
-                file.write("^^^^JOB-PROGRESS: F50 Fifty percent\n")
-                file.write("^^^^JOB-PROGRESS: 1019101010101010101010101018101101010101010110171010110 Sixty percent\n")
-                file.write("^^^^JOB-PROGRESS: 75 75% percent\n")
+                file.write('^^^^JOB-PROGRESS: ABCDEF string percent\n')
+                file.write('^^^^JOB-PROGRESS: F50 Fifty percent\n')
+                file.write('^^^^JOB-PROGRESS: 1019101010101010101010101018101101010101010110171010110 Sixty percent\n')
+                file.write('^^^^JOB-PROGRESS: 75 75% percent\n')
                 file.flush()
                 file.close()
                 completed.set()
@@ -454,7 +453,7 @@ class ProgressTest(unittest.TestCase):
             print_thread.start()
 
             progress_states = [{'progress-message': b'75% percent', 'progress-percent': 75, 'progress-sequence': 1}]
-            for actual_progress_state in watcher.retrieve_progress_states(tu.os_error_handler_stub):
+            for actual_progress_state in watcher.retrieve_progress_states():
                 expected_progress_state = progress_states.pop(0)
                 self.assertEqual(expected_progress_state, actual_progress_state)
                 self.assertEqual(expected_progress_state, watcher.current_progress())
@@ -481,8 +480,8 @@ class ProgressTest(unittest.TestCase):
 
         try:
             def print_to_file():
-                file.write("Stage One complete\n")
-                file.write("^^^^JOB-PROGRESS: 100 100-percent\n")
+                file.write('Stage One complete\n')
+                file.write('^^^^JOB-PROGRESS: 100 100-percent\n')
                 file.flush()
                 file.close()
                 completed.set()
@@ -491,13 +490,13 @@ class ProgressTest(unittest.TestCase):
             print_thread.start()
 
             progress_states = [{'progress-message': b' 100-percent', 'progress-percent': 100, 'progress-sequence': 1}]
-            for actual_progress_state in out_watcher.retrieve_progress_states(tu.os_error_handler_stub):
+            for actual_progress_state in out_watcher.retrieve_progress_states():
                 expected_progress_state = progress_states.pop(0)
                 self.assertEqual(expected_progress_state, actual_progress_state)
                 self.assertEqual(expected_progress_state, out_watcher.current_progress())
             self.assertFalse(progress_states)
 
-            iterable = dn_watcher.retrieve_progress_states(tu.os_error_handler_stub)
+            iterable = dn_watcher.retrieve_progress_states()
             exhausted = object()
             self.assertEqual(exhausted, next(iterable, exhausted))
             self.assertIsNone(dn_watcher.current_progress())
@@ -525,7 +524,7 @@ class ProgressTest(unittest.TestCase):
                     progress_percent = math.ceil(item / unit_progress_granularity)
                     target_file.write('progress: {0}, completed-{0}-percent\n'.format(progress_percent))
                     target_file.flush()
-                target_file.write("{}\n".format(item))
+                target_file.write('{}\n'.format(item))
             target_file.flush()
 
             target_file.close()
@@ -543,7 +542,7 @@ class ProgressTest(unittest.TestCase):
                                                   'progress-percent': x,
                                                   'progress-sequence': x},
                                        range(1, 101)))
-            for actual_progress_state in watcher.retrieve_progress_states(tu.os_error_handler_stub):
+            for actual_progress_state in watcher.retrieve_progress_states():
                 expected_progress_state = progress_states.pop(0)
                 self.assertEqual(expected_progress_state, actual_progress_state)
                 self.assertEqual(expected_progress_state, watcher.current_progress())
@@ -570,14 +569,14 @@ class ProgressTest(unittest.TestCase):
 
         try:
             def print_to_file():
-                file.write("Stage One complete\n")
-                file.write("^^^^JOB-PROGRESS: 25 Twenty-Fine percent\n")
-                file.write("Stage Two complete\n")
-                file.write("^^^^JOB-PROGRESS: 50 Fifty percent\n")
-                file.write("Stage Three complete\n")
-                file.write("^^^^JOB-PROGRESS: 55.0 Fifty-five percent\n")
-                file.write("Stage Four complete\n")
-                file.write("^^^^JOB-PROGRESS: 100 100-percent\n")
+                file.write('Stage One complete\n')
+                file.write('^^^^JOB-PROGRESS: 25 Twenty-Five percent\n')
+                file.write('Stage Two complete\n')
+                file.write('^^^^JOB-PROGRESS: 50 Fifty percent\n')
+                file.write('Stage Three complete\n')
+                file.write('^^^^JOB-PROGRESS: 55.0 Fifty-five percent\n')
+                file.write('Stage Four complete\n')
+                file.write('^^^^JOB-PROGRESS: 100 100-percent\n')
                 file.flush()
                 file.close()
                 completed.set()
@@ -586,7 +585,7 @@ class ProgressTest(unittest.TestCase):
             print_thread.start()
 
             progress_states = []
-            for actual_progress_state in watcher.retrieve_progress_states(tu.os_error_handler_stub):
+            for actual_progress_state in watcher.retrieve_progress_states():
                 expected_progress_state = progress_states.pop(0)
                 self.assertEqual(expected_progress_state, actual_progress_state)
                 self.assertEqual(expected_progress_state, watcher.current_progress())
@@ -595,3 +594,57 @@ class ProgressTest(unittest.TestCase):
         finally:
             completed.set()
             tu.cleanup_file(file_name)
+
+    def test_retrieve_progress_states_os_error_from_tail(self):
+
+        class FakeProgressWatcher(cp.ProgressWatcher):
+
+            def __init__(self, output_name, location_tag, sequence_counter, max_bytes_read_per_line,
+                         progress_regex_string, stop_signal, task_completed_signal, progress_termination_signal):
+                super().__init__(output_name, location_tag, sequence_counter, max_bytes_read_per_line,
+                                 progress_regex_string, stop_signal, task_completed_signal, progress_termination_signal)
+
+            def tail(self, sleep_time_ms):
+                yield (b'Stage One complete')
+                yield (b'progress: 25 Twenty-Five percent')
+                raise OSError(errno.ENOMEM, 'No Memory')
+
+        regex = 'progress: ([0-9]*\.?[0-9]+) (.*)'
+        counter = cp.ProgressSequenceCounter()
+        watcher = FakeProgressWatcher('', '', counter, 1024, regex, Event(), Event(), Event())
+
+        with self.assertRaises(OSError) as context:
+            for progress in watcher.retrieve_progress_states():
+                self.assertIsNotNone(progress)
+        self.assertEqual('No Memory', context.exception.strerror)
+
+    def test_retrieve_progress_states_os_error_from_match_progress_update(self):
+
+        class FakeProgressWatcher(cp.ProgressWatcher):
+
+            def __init__(self, output_name, location_tag, sequence_counter, max_bytes_read_per_line,
+                         progress_regex_string, stop_signal, task_completed_signal, progress_termination_signal):
+                super().__init__(output_name, location_tag, sequence_counter, max_bytes_read_per_line,
+                                 progress_regex_string, stop_signal, task_completed_signal, progress_termination_signal)
+
+            def tail(self, sleep_time_ms):
+                yield (b'Stage One complete')
+                yield (b'progress: 25 Twenty-Five percent')
+                yield (b'Stage Two complete')
+
+            def match_progress_update(self, input_data):
+                if self.current_progress() is not None:
+                    raise OSError(errno.ENOMEM, 'No Memory')
+                else:
+                    return super().match_progress_update(input_data)
+
+        regex = 'progress: ([0-9]*\.?[0-9]+) (.*)'
+        counter = cp.ProgressSequenceCounter()
+        watcher = FakeProgressWatcher('', '', counter, 1024, regex, Event(), Event(), Event())
+
+        with self.assertRaises(OSError) as context:
+            for progress in watcher.retrieve_progress_states():
+                self.assertIsNotNone(progress)
+        self.assertEqual('No Memory', context.exception.strerror)
+
+
