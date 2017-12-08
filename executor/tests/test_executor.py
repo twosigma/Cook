@@ -1,4 +1,5 @@
 import errno
+import functools
 import json
 import logging
 import subprocess
@@ -87,6 +88,21 @@ class ExecutorTest(unittest.TestCase):
         result = ce.send_message(driver, message, max_message_length)
         self.assertFalse(result)
 
+    def test_os_error_handler_functools_partial(self):
+        driver = tu.FakeMesosExecutorDriver()
+        task_id = tu.get_random_task_id()
+        status_updater = ce.StatusUpdater(driver, task_id)
+        stop_signal = Event()
+        inner_os_error_handler = functools.partial(ce.os_error_handler, stop_signal, status_updater)
+
+        inner_os_error_handler(OSError(errno.ENOMEM, 'No Memory'))
+
+        self.assertTrue(stop_signal.isSet())
+        expected_statuses = [{'task_id': {'value': task_id},
+                              'reason': cook.REASON_CONTAINER_LIMITATION_MEMORY,
+                              'state': cook.TASK_FAILED}]
+        tu.assert_statuses(self, expected_statuses, driver.statuses)
+
     def test_os_error_handler_no_memory(self):
         driver = tu.FakeMesosExecutorDriver()
         task_id = tu.get_random_task_id()
@@ -94,7 +110,7 @@ class ExecutorTest(unittest.TestCase):
         stop_signal = Event()
         os_error = OSError(errno.ENOMEM, 'No Memory')
 
-        ce.os_error_handler(os_error, stop_signal, status_updater)
+        ce.os_error_handler(stop_signal, status_updater, os_error)
 
         self.assertTrue(stop_signal.isSet())
         expected_statuses = [{'task_id': {'value': task_id},
@@ -109,7 +125,7 @@ class ExecutorTest(unittest.TestCase):
         stop_signal = Event()
         os_error = OSError(errno.EPERM, 'No Permission')
 
-        ce.os_error_handler(os_error, stop_signal, status_updater)
+        ce.os_error_handler(stop_signal, status_updater, os_error)
 
         self.assertTrue(stop_signal.isSet())
         expected_statuses = [{'task_id': {'value': task_id}, 'state': cook.TASK_FAILED}]

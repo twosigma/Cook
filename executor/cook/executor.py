@@ -1,4 +1,5 @@
 import errno
+import functools
 import json
 import logging
 import signal
@@ -241,17 +242,17 @@ def output_task_completion(task_id, task_state):
     cio.print_and_log('Executor completed execution of {} (state={})'.format(task_id, task_state))
 
 
-def os_error_handler(os_error, stop_signal, status_updater):
+def os_error_handler(stop_signal, status_updater, os_error):
     """Exception handler for OSError.
 
     Parameters
     ----------
-    os_error: OSError
-        The current executor config.
     stop_signal: threading.Event
         Event that determines if the process was requested to terminate.
     status_updater: StatusUpdater
         Wrapper object that sends task status messages.
+    os_error: OSError
+        The current executor config.
 
     Returns
     -------
@@ -279,9 +280,7 @@ def manage_task(driver, task, stop_signal, completed_signal, config):
     cio.print_and_log('Starting task {}'.format(task_id))
     status_updater = StatusUpdater(driver, task_id)
 
-    def inner_os_error_handler(os_error):
-        os_error_handler(os_error, stop_signal, status_updater)
-
+    inner_os_error_handler = functools.partial(os_error_handler, stop_signal, status_updater)
     try:
         # not yet started to run the task
         status_updater.update_status(cook.TASK_STARTING)
