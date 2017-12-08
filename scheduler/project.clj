@@ -13,7 +13,7 @@
 ;; See the License for the specific language governing permissions and
 ;; limitations under the License.
 ;;
-(defproject cook "1.8.2-SNAPSHOT"
+(defproject cook "1.8.3-SNAPSHOT"
   :description "This launches jobs on a Mesos cluster with fair sharing and preemption"
   :license {:name "Apache License, Version 2.0"}
   :dependencies [[org.clojure/clojure "1.8.0"]
@@ -101,7 +101,7 @@
                  [ring/ring-json "0.2.0"]
                  [ring-edn "0.1.0"]
                  [com.duelinmarkers/ring-request-logging "0.2.0"]
-                 [liberator "0.14.1"]
+                 [liberator "0.15.0"]
 
                  ;;Databases
                  [com.datomic/datomic-free "0.9.5206"

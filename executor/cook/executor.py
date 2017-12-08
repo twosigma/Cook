@@ -1,17 +1,19 @@
-#!/usr/bin/env python3
-
+import errno
+import functools
 import json
 import logging
-import os
-import subprocess
+import signal
 import time
-from threading import Event, Thread
+from threading import Event, Lock, Thread, Timer
 
-from pymesos import Executor, MesosExecutorDriver, decode_data, encode_data
+import os
+import pymesos as pm
 
 import cook
 import cook.io_helper as cio
 import cook.progress as cp
+import cook.subprocess as cs
+import cook.util as cu
 
 
 def get_task_id(task):
@@ -29,42 +31,72 @@ def get_task_id(task):
     return task['task_id']['value']
 
 
-def create_status(task_id, task_state):
-    """Creates a dictionary representing the task status.
+class StatusUpdater(object):
+    """Sends status updates for the task."""
+    def __init__(self, driver, task_id):
+        """
+        Parameters
+        ----------
+        driver: MesosExecutorDriver
+            The driver to send the status update to.
+        task_id: dictionary
+            The task whose status update to send.
+        """
+        self.driver = driver
+        self.lock = Lock()
+        self.task_id = task_id
+        self.terminal_states = {cook.TASK_ERROR, cook.TASK_FAILED, cook.TASK_FINISHED, cook.TASK_KILLED}
+        self.terminal_status_sent = False
 
-    Parameters
-    ----------
-    task_id: The task id.
-    task_state: The state of the task to report.
+    def create_status(self, task_state, reason=None):
+        """Creates a dictionary representing the task status.
 
-    Returns
-    -------
-    a status dictionary that can be sent to the driver.
-    """
-    return {'task_id': {'value': task_id},
-            'state': task_state,
-            'timestamp': time.time()}
+        Parameters
+        ----------
+        task_state: string
+            The state of the task to report.
+        reason: string
+            The reason for the task state.
 
+        Returns
+        -------
+        a status dictionary that can be sent to the driver.
+        """
+        task_status = {'state': task_state,
+                       'task_id': {'value': self.task_id},
+                       'timestamp': time.time()}
+        if reason:
+            task_status['reason'] = reason
+        return task_status
 
-def update_status(driver, task_id, task_state):
-    """Sends the status using the driver. 
+    def update_status(self, task_state, reason=None):
+        """Sends the status using the driver.
 
-    Parameters
-    ----------
-    driver: MesosExecutorDriver
-        The driver to send the status update to.
-    task: dictionary
-        The task whose status update to send.
-    task_state: string
-        The state of the task which will be sent to the driver.
+        Parameters
+        ----------
+        task_state: string
+            The state of the task which will be sent to the driver.
+        reason: string
+            The reason for the task state.
 
-    Returns
-    -------
-    Nothing.
-    """
-    logging.info('Updating task {} state to {}'.format(task_id, task_state))
-    status = create_status(task_id, task_state)
-    driver.sendStatusUpdate(status)
+        Returns
+        -------
+        True if successfully sent the status update, else False.
+        """
+        with self.lock:
+            is_terminal_status = task_state in self.terminal_states
+            if is_terminal_status and self.terminal_status_sent:
+                logging.info('Terminal state for task already sent, dropping state {}'.format(task_state))
+                return False
+            try:
+                logging.info('Updating task state to {}'.format(task_state))
+                status = self.create_status(task_state, reason=reason)
+                self.driver.sendStatusUpdate(status)
+                self.terminal_status_sent = is_terminal_status
+                return True
+            except Exception:
+                logging.exception('Unable to send task state {}'.format(task_state))
+                return False
 
 
 def send_message(driver, message, max_message_length):
@@ -85,13 +117,13 @@ def send_message(driver, message, max_message_length):
     """
     logging.info('Sending framework message {}'.format(message))
     message_string = str(message).encode('utf8')
-    if len(message_string) < max_message_length:
-        encoded_message = encode_data(message_string)
+    if len(message_string) <= max_message_length:
+        encoded_message = pm.encode_data(message_string)
         driver.sendFrameworkMessage(encoded_message)
         return True
     else:
-        log_message_template = 'Unable to send message {} as it exceeds allowed max length of {}'
-        logging.warning(log_message_template.format(message, max_message_length))
+        log_message_template = 'Unable to send message as its length of {} exceeds allowed max length of {}'
+        logging.warning(log_message_template.format(len(message_string), max_message_length))
         return False
 
 
@@ -102,8 +134,8 @@ def launch_task(task, environment):
     ----------
     task: dictionary
         The task to execute.
-    max_bytes_read_per_line: int
-        The maximum number of bytes to read per call to readline().
+    environment: dictionary
+        The task environment.
 
     Returns
     -------
@@ -111,111 +143,25 @@ def launch_task(task, environment):
     Else it logs the reason and returns None.
     """
     try:
-        data_string = decode_data(task['data']).decode('utf8')
+        data_string = pm.decode_data(task['data']).decode('utf8')
         data_json = json.loads(data_string)
         command = str(data_json['command']).strip()
         logging.info('Command: {}'.format(command))
-        if not command:
-            logging.warning('No command provided!')
-            return None
-
-        process = subprocess.Popen(command,
-                                   env=environment,
-                                   shell=True,
-                                   stderr=subprocess.PIPE,
-                                   stdout=subprocess.PIPE)
-
-        return process
+        return cs.launch_process(command, environment)
     except Exception:
         logging.exception('Error in launch_task')
         return None
 
 
-def is_process_running(process):
-    """Checks whether the process is still running.
+def await_process_completion(process, stop_signal, shutdown_grace_period_ms):
+    """Awaits process completion. Also sets up the thread that will kill the process if stop_signal is set.
 
     Parameters
     ----------
     process: subprocess.Popen
-        The process to query
-
-    Returns
-    -------
-    whether the process is still running.
-    """
-    return process.poll() is None
-
-
-def is_running(process_info):
-    """Checks whether any of the process or the piping threads are still running.
-
-    Parameters
-    ----------
-    process_info: tuple of process, stdout_thread, stderr_thread
-        process: subprocess.Popen
-            The process to query
-        stdout_thread: threading.Thread
-            The thread that is piping the subprocess stdout.
-        stderr_thread: threading.Thread
-            The thread that is piping the subprocess stderr.
-
-    Returns
-    -------
-    whether any of the process or the piping threads are still running.
-    """
-    process, stdout_thread, stderr_thread = process_info
-    return is_process_running(process) or stdout_thread.isAlive() or stderr_thread.isAlive()
-
-
-def kill_task(process, shutdown_grace_period_ms):
-    """Attempts to kill a process.
-     First attempt is made by sending the process a SIGTERM.
-     If the process does not terminate inside (shutdown_grace_period_ms - 100) ms, it is then sent a SIGKILL.
-     The 100 ms grace period is allocated for the executor to perform its other cleanup actions.
-
-    Parameters
-    ----------
-    process: subprocess.Popen
-        The process to kill
-    shutdown_grace_period_ms: int
-        Grace period before forceful kill
-
-    Returns
-    -------
-    Nothing
-    """
-    shutdown_grace_period_ms = max(shutdown_grace_period_ms - 100, 0)
-    if is_process_running(process):
-        logging.info('Waiting up to {} ms for process to terminate'.format(shutdown_grace_period_ms))
-        process.terminate()
-        loop_limit = int(shutdown_grace_period_ms / 10)
-        for i in range(loop_limit):
-            time.sleep(0.01)
-            if not is_process_running(process):
-                cio.print_and_log('Command terminated with signal Terminated (pid: {})'.format(process.pid),
-                                  flush=True)
-                break
-        if is_process_running(process):
-            logging.info('Process did not terminate, forcefully killing it')
-            process.kill()
-            cio.print_and_log('Command terminated with signal Killed (pid: {})'.format(process.pid),
-                              flush=True)
-
-
-def await_process_completion(stop_signal, process_info, shutdown_grace_period_ms):
-    """Awaits process completion.
-
-    Parameters
-    ----------
+        The process to whose termination to wait on.
     stop_signal: Event
-        Event that determines if an interrupt was sent
-    process_info: tuple of process, stdout_thread, stderr_thread
-        process: subprocess.Popen
-            The process to query
-        stdout_thread: threading.Thread
-            The thread that is piping the subprocess stdout.
-        stderr_thread: threading.Thread
-            The thread that is piping the subprocess stderr.
+        Event that determines if the process was requested to terminate
     shutdown_grace_period_ms: int
         Grace period before forceful kill
 
@@ -223,15 +169,18 @@ def await_process_completion(stop_signal, process_info, shutdown_grace_period_ms
     -------
     True if the process was killed, False if it terminated naturally.
     """
-    while is_running(process_info):
+    def process_stop_signal():
+        stop_signal.wait() # wait indefinitely for the stop_signal to be set
+        if cs.is_process_running(process):
+            logging.info('Executor has been instructed to terminate running task')
+            cs.kill_process(process, shutdown_grace_period_ms)
 
-        if stop_signal.isSet():
-            logging.info('Executor has been instructed to terminate')
-            process, _, _ = process_info
-            kill_task(process, shutdown_grace_period_ms)
-            break
+    kill_thread = Thread(target=process_stop_signal, args=())
+    kill_thread.daemon = True
+    kill_thread.start()
 
-        time.sleep(cook.RUNNING_POLL_INTERVAL_SECS)
+    # wait indefinitely for process to terminate (either normally or by being killed)
+    process.wait()
 
 
 def get_task_state(exit_code):
@@ -288,6 +237,34 @@ def retrieve_process_environment(config, os_environ):
     return environment
 
 
+def output_task_completion(task_id, task_state):
+    """Prints and logs the executor completion message."""
+    cio.print_and_log('Executor completed execution of {} (state={})'.format(task_id, task_state))
+
+
+def os_error_handler(stop_signal, status_updater, os_error):
+    """Exception handler for OSError.
+
+    Parameters
+    ----------
+    stop_signal: threading.Event
+        Event that determines if the process was requested to terminate.
+    status_updater: StatusUpdater
+        Wrapper object that sends task status messages.
+    os_error: OSError
+        The current executor config.
+
+    Returns
+    -------
+    Nothing
+    """
+    stop_signal.set()
+    logging.exception('OSError generated, requesting process to terminate')
+    reason = cook.REASON_CONTAINER_LIMITATION_MEMORY if os_error.errno == errno.ENOMEM else None
+    status_updater.update_status(cook.TASK_FAILED, reason=reason)
+    cu.print_memory_usage()
+
+
 def manage_task(driver, task, stop_signal, completed_signal, config):
     """Manages the execution of a task waiting for it to terminate normally or be killed.
        It also sends the task status updates, sandbox location and exit code back to the scheduler.
@@ -298,11 +275,15 @@ def manage_task(driver, task, stop_signal, completed_signal, config):
     -------
     Nothing
     """
+    launched_process = None
     task_id = get_task_id(task)
     cio.print_and_log('Starting task {}'.format(task_id))
+    status_updater = StatusUpdater(driver, task_id)
+
+    inner_os_error_handler = functools.partial(os_error_handler, stop_signal, status_updater)
     try:
         # not yet started to run the task
-        update_status(driver, task_id, cook.TASK_STARTING)
+        status_updater.update_status(cook.TASK_STARTING)
 
         sandbox_message = json.dumps({'sandbox-directory': config.sandbox_directory,
                                       'task-id': task_id,
@@ -310,88 +291,94 @@ def manage_task(driver, task, stop_signal, completed_signal, config):
         send_message(driver, sandbox_message, config.max_message_length)
 
         environment = retrieve_process_environment(config, os.environ)
-        process = launch_task(task, environment)
-        if process:
+        launched_process = launch_task(task, environment)
+        if launched_process:
             # task has begun running successfully
-            update_status(driver, task_id, cook.TASK_RUNNING)
-            cio.print_and_log('Forked command at {}'.format(process.pid))
+            status_updater.update_status(cook.TASK_RUNNING)
+            cio.print_and_log('Forked command at {}'.format(launched_process.pid))
         else:
             # task launch failed, report an error
             logging.error('Error in launching task')
-            update_status(driver, task_id, cook.TASK_ERROR)
+            status_updater.update_status(cook.TASK_ERROR, reason=cook.REASON_TASK_INVALID)
             return
 
-        stdout_thread, stderr_thread = cio.track_outputs(task_id, process, config.max_bytes_read_per_line)
         task_completed_signal = Event() # event to track task execution completion
+        sequence_counter = cp.ProgressSequenceCounter()
 
-        progress_watcher = cp.ProgressWatcher(config, stop_signal, task_completed_signal)
-        progress_updater = cp.ProgressUpdater(driver, task_id, config.max_message_length,
-                                              config.progress_sample_interval_ms, send_message)
-        progress_complete_event = cp.launch_progress_tracker(progress_watcher, progress_updater)
+        def send_progress_message(message):
+            return send_message(driver, message, config.max_message_length)
 
-        process_info = process, stdout_thread, stderr_thread
-        await_process_completion(stop_signal, process_info, config.shutdown_grace_period_ms)
+        progress_termination_signal = Event()
+        progress_updater = cp.ProgressUpdater(task_id, config.max_message_length, config.progress_sample_interval_ms,
+                                              send_progress_message)
+
+        def launch_progress_tracker(progress_location, location_tag):
+            logging.info('Location {} tagged as [tag={}]'.format(progress_location, location_tag))
+            progress_tracker = cp.ProgressTracker(config, stop_signal, task_completed_signal, sequence_counter,
+                                                  progress_updater, progress_termination_signal, progress_location,
+                                                  location_tag, inner_os_error_handler)
+            progress_tracker.start()
+            return progress_tracker
+
+        progress_locations = {config.progress_output_name: 'progress',
+                              config.stderr_file(): 'stderr',
+                              config.stdout_file(): 'stdout'}
+        logging.info('Progress will be tracked from {} locations'.format(len(progress_locations)))
+        progress_trackers = [launch_progress_tracker(l, progress_locations[l]) for l in progress_locations]
+
+        await_process_completion(launched_process, stop_signal, config.shutdown_grace_period_ms)
         task_completed_signal.set()
 
+        progress_termination_timer = Timer(config.shutdown_grace_period_ms / 1000.0, progress_termination_signal.set)
+        progress_termination_timer.daemon = True
+        progress_termination_timer.start()
+
         # propagate the exit code
-        exit_code = process.returncode
-        cio.print_and_log('Command exited with status {} (pid: {})'.format(exit_code, process.pid),
-                          flush=True)
+        exit_code = launched_process.returncode
+        cio.print_and_log('Command exited with status {} (pid: {})'.format(exit_code, launched_process.pid))
 
         exit_message = json.dumps({'exit-code': exit_code, 'task-id': task_id})
         send_message(driver, exit_message, config.max_message_length)
 
         # await progress updater termination if executor is terminating normally
         if not stop_signal.isSet():
-            logging.info('Awaiting progress updater completion')
-            progress_complete_event.wait()
-            logging.info('Progress updater completed')
+            logging.info('Awaiting completion of progress updaters')
+            [progress_tracker.wait() for progress_tracker in progress_trackers]
+            logging.info('Progress updaters completed')
 
         # force send the latest progress state if available
-        cp.force_send_progress_update(progress_watcher, progress_updater)
+        [progress_tracker.force_send_progress_update() for progress_tracker in progress_trackers]
 
         # task either completed successfully or aborted with an error
         task_state = get_task_state(exit_code)
         output_task_completion(task_id, task_state)
-        update_status(driver, task_id, task_state)
+        status_updater.update_status(task_state)
+
+    except OSError as os_error:
+        inner_os_error_handler(os_error)
 
     except Exception:
         # task aborted with an error
         logging.exception('Error in executing task')
         output_task_completion(task_id, cook.TASK_FAILED)
-        update_status(driver, task_id, cook.TASK_FAILED)
+        status_updater.update_status(cook.TASK_FAILED, reason=cook.REASON_EXECUTOR_TERMINATED)
 
     finally:
         # ensure completed_signal is set so driver can stop
         completed_signal.set()
+        if launched_process and cs.is_process_running(launched_process):
+            cs.send_signal(launched_process.pid, signal.SIGKILL)
 
 
-def output_task_completion(task_id, task_state):
-    """Prints and logs the executor completion message."""
-    cio.print_and_log('Executor completed execution of {} (state={})'.format(task_id, task_state), flush=True)
-
-
-def run_mesos_driver(stop_signal, config):
-    """Run an executor driver until the stop_signal event is set or the first task it runs completes."""
-    executor = CookExecutor(stop_signal, config)
-    driver = MesosExecutorDriver(executor)
-    driver.start()
-
-    # check the status of the executor and bail if it has crashed
-    while not executor.has_task_completed():
-        time.sleep(1)
-    logging.info('Executor thread has completed, stopping driver')
-    driver.stop()
-
-
-class CookExecutor(Executor):
+class CookExecutor(pm.Executor):
     """This class is responsible for launching the task sent by the scheduler.
     It implements the Executor methods."""
 
     def __init__(self, stop_signal, config):
-        self.stop_signal = stop_signal
         self.completed_signal = Event()
         self.config = config
+        self.disconnect_signal = Event()
+        self.stop_signal = stop_signal
 
     def registered(self, driver, executor_info, framework_info, agent_info):
         logging.info('Executor registered executor={}, framework={}, agent={}'.
@@ -401,7 +388,9 @@ class CookExecutor(Executor):
         logging.info('Executor re-registered agent={}'.format(agent_info))
 
     def disconnected(self, driver):
-        logging.info('Executor disconnected!')
+        logging.info('Mesos requested executor to disconnect')
+        self.disconnect_signal.set()
+        self.stop_signal.set()
 
     def launchTask(self, driver, task):
         logging.info('Driver {} launching task {}'.format(driver, task))
@@ -409,27 +398,43 @@ class CookExecutor(Executor):
         stop_signal = self.stop_signal
         completed_signal = self.completed_signal
         config = self.config
-        Thread(target=manage_task, args=(driver, task, stop_signal, completed_signal, config)).start()
+
+        task_thread = Thread(target=manage_task, args=(driver, task, stop_signal, completed_signal, config))
+        task_thread.daemon = True
+        task_thread.start()
 
     def killTask(self, driver, task_id):
-        logging.info('Task {} has been killed by Mesos'.format(task_id))
+        logging.info('Mesos requested executor to kill task {}'.format(task_id))
+        task_id_str = task_id['value'] if 'value' in task_id else task_id
+        grace_period = os.environ.get('MESOS_EXECUTOR_SHUTDOWN_GRACE_PERIOD', '')
+        cio.print_and_log('Received kill for task {} with grace period of {}'.format(task_id_str, grace_period))
         self.stop_signal.set()
 
     def shutdown(self, driver):
-        logging.info('Mesos requested executor to shutdown!')
+        logging.info('Mesos requested executor to shutdown')
         self.stop_signal.set()
 
     def error(self, driver, message):
         logging.error(message)
         super().error(driver, message)
 
-    def has_task_completed(self):
+    def await_completion(self):
         """
-        Returns true when the executor has completed execution of the task specified in the call to launchTask.
-        The executor is intended to run a single task.
-        
-        Returns
-        -------
-        true when the task has completed execution. 
+        Blocks until the internal flag completed_signal is set.
+        The completed_signal Event is expected to be set by manage_task.
         """
-        return self.completed_signal.isSet()
+        logging.info('Waiting for CookExecutor to complete...')
+        self.completed_signal.wait()
+        logging.info('CookExecutor has completed')
+
+    def await_disconnect(self):
+        """
+        Blocks until the internal flag disconnect_signal is set or the disconnect grace period expires.
+        The disconnect grace period is computed based on whether stop_signal is set.
+        """
+        disconnect_grace_secs = cook.TERMINATE_GRACE_SECS if self.stop_signal.isSet() else cook.DAEMON_GRACE_SECS
+        if not self.disconnect_signal.isSet():
+            logging.info('Waiting up to {} second(s) for CookExecutor to disconnect'.format(disconnect_grace_secs))
+            self.disconnect_signal.wait(disconnect_grace_secs)
+        if not self.disconnect_signal.isSet():
+            logging.info('CookExecutor did not disconnect in {} seconds'.format(disconnect_grace_secs))

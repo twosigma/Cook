@@ -1,24 +1,27 @@
 #!/usr/bin/env python3
 
-"""This module ensures atomic writes to stdout and stderr.
-"""
+"""This module ensures atomic writes to stdout."""
 
 import logging
-import os
 import sys
-from threading import Lock, Thread
+from threading import Lock
+
+import os
 
 __stdout_lock__ = Lock()
-__stderr_lock__ = Lock()
 
 
-def print_out(string_data, flush=False, newline=True):
-    """Wrapper function that prints to stdout in a thread-safe manner using the __stdout_lock__ lock.
+def print_to_buffer(lock, buffer, data, flush=False, newline=True):
+    """Helper function that prints data to the specified buffer in a thread-safe manner using the lock.
 
     Parameters
     ----------
-    string_data: string
-        The string to output
+    lock: threading.Lock
+        The lock to use
+    buffer: byte buffer
+        The buffer to write to
+    data: string or bytes
+        The data to output
     flush: boolean
         Flag determining whether to trigger a sys.stdout.flush()
     newline: boolean
@@ -28,24 +31,44 @@ def print_out(string_data, flush=False, newline=True):
     -------
     Nothing.
     """
-    with __stdout_lock__:
-        sys.stdout.write(string_data)
+    with lock:
+        if isinstance(data, str):
+            buffer.write(data.encode())
+        else:
+            buffer.write(data)
         if newline:
-            sys.stdout.write(os.linesep)
+            buffer.write(os.linesep.encode())
         if flush:
-            sys.stdout.flush()
+            buffer.flush()
 
 
-def print_and_log(string_data, flush=False, newline=True):
-    """Wrapper function that prints to stdout in a thread-safe manner ensuring newline at the start.
+def print_out(data, flush=False, newline=True):
+    """Wrapper function that prints to stdout in a thread-safe manner using the __stdout_lock__ lock.
+
+    Parameters
+    ----------
+    data: string or bytes
+        The data to output
+    flush: boolean
+        Flag determining whether to trigger a sys.stdout.flush()
+    newline: boolean
+        Flag determining whether to output a newline at the end
+
+    Returns
+    -------
+    Nothing.
+    """
+    print_to_buffer(__stdout_lock__, sys.stdout.buffer, data, flush=flush, newline=newline)
+
+
+def print_and_log(string_data, newline=True):
+    """Wrapper function that prints and flushes to stdout in a locally thread-safe manner ensuring newline at the start.
     The function also outputs the same message via logging.info().
 
     Parameters
     ----------
     string_data: string
         The string to output
-    flush: boolean
-        Flag determining whether to trigger a sys.stdout.flush()
     newline: boolean
         Flag determining whether to output a newline at the end
 
@@ -53,92 +76,5 @@ def print_and_log(string_data, flush=False, newline=True):
     -------
     Nothing.
     """
-    print_out('{}{}'.format(os.linesep, string_data), flush=flush, newline=newline)
+    print_out('{}{}'.format(os.linesep, string_data), flush=True, newline=newline)
     logging.info(string_data)
-
-
-def print_err(string_data, flush=False, newline=True):
-    """Wrapper function that prints to stderr in a thread-safe manner using the __stderr_lock__ lock.
-
-    Parameters
-    ----------
-    string_data: string
-        The string to output
-    flush: boolean
-        Flag determining whether to trigger a sys.stderr.flush()
-    newline: boolean
-        Flag determining whether to output a newline at the end
-
-    Returns
-    -------
-    Nothing.
-    """
-    with __stderr_lock__:
-        sys.stderr.write(string_data)
-        if newline:
-            sys.stderr.write(os.linesep)
-        if flush:
-            sys.stderr.flush()
-
-
-def process_output(label, out_file, max_bytes_read_per_line, out_fn, flush_fn):
-    """Processes output piped from the out_file and prints it using the out_fn function.
-    When done reading the file, calls flush_fn to flush the output.
-
-    Parameters
-    ----------
-    label: string
-        The string to associate in outputs
-    out_file: a file object
-        Provides that output from the child process
-    max_bytes_read_per_line: int
-        The maximum number of bytes to read per call to readline().
-    out_fn: function(string)
-        Function to output a string
-    flush_fn: function()
-        Function that flushes the output.
-
-    Returns
-    -------
-    Nothing.
-    """
-    logging.info('Starting to pipe {}'.format(label))
-    try:
-        while True:
-            line = out_file.readline(max_bytes_read_per_line)
-            if not line:
-                break
-            out_fn(line.decode(), newline=False)
-        flush_fn()
-        logging.info('Done piping {}'.format(label))
-    except Exception:
-        logging.exception('Error in process_output of {}'.format(label))
-
-
-def track_outputs(task_id, process, max_bytes_read_per_line):
-    """Launches two threads to pipe the stderr/stdout from the subprocess to the system stderr/stdout.
-
-    Parameters
-    ----------
-    task_id: string
-        The ID of the task being executed.
-    process: subprocess.Popen
-        The process whose stderr and stdout to monitor.
-    max_bytes_read_per_line: int
-        The maximum number of bytes to read per call to readline().
-
-    Returns
-    -------
-    A tuple containing the two threads that have been started: stdout_thread, stderr_thread.
-    """
-    stderr_label = 'stderr (task-id: {}, pid: {})'.format(task_id, process.pid)
-    stderr_thread = Thread(target=process_output,
-                           args=(stderr_label, process.stderr, max_bytes_read_per_line, print_err, sys.stderr.flush))
-    stderr_thread.start()
-
-    stdout_label = 'stdout (task-id: {}, pid: {})'.format(task_id, process.pid)
-    stdout_thread = Thread(target=process_output,
-                           args=(stdout_label, process.stdout, max_bytes_read_per_line, print_out, sys.stdout.flush))
-    stdout_thread.start()
-
-    return stdout_thread, stderr_thread

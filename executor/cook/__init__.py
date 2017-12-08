@@ -7,7 +7,12 @@ For more information on Mesos executors, see the "Working with Executors"
 section at http://mesos.apache.org/documentation/latest/app-framework-development-guide/
 """
 
-RUNNING_POLL_INTERVAL_SECS = 1
+DAEMON_GRACE_SECS = 1
+TERMINATE_GRACE_SECS = 0.1
+
+REASON_CONTAINER_LIMITATION_MEMORY = 'REASON_CONTAINER_LIMITATION_MEMORY'
+REASON_EXECUTOR_TERMINATED = 'REASON_EXECUTOR_TERMINATED'
+REASON_TASK_INVALID = 'REASON_TASK_INVALID'
 
 TASK_ERROR = 'TASK_ERROR'
 TASK_FAILED = 'TASK_FAILED'

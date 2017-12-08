@@ -117,7 +117,7 @@ def lookback_hours_to_range(lookback_hours):
     return start_ms, end_ms
 
 
-def list_jobs(clusters, args, _):
+def jobs(clusters, args, _):
     """Prints info for the jobs with the given list criteria"""
     guard_no_cluster(clusters)
     as_json = args.get('json')
@@ -156,7 +156,7 @@ def list_jobs(clusters, args, _):
 
 def register(add_parser, add_defaults):
     """Adds this sub-command's parser and returns the action function"""
-    parser = add_parser('list', help='list jobs by state / user / time / name')
+    parser = add_parser('jobs', help='list jobs by state / user / time / name')
     parser.add_argument('--waiting', '-w', help='include waiting jobs', dest='states',
                         action='append_const', const='waiting')
     parser.add_argument('--running', '-r', help='include running jobs', dest='states',
@@ -190,4 +190,4 @@ def register(add_parser, add_defaults):
                           'user': current_user(),
                           'limit': DEFAULT_LIMIT})
 
-    return list_jobs
+    return jobs

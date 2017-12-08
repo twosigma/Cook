@@ -20,9 +20,48 @@
             [clojure.core.async :as async]
             [clojure.core.cache :as cache]
             [cook.mesos.util :as util]
-            [cook.test.testutil :as testutil :refer (create-dummy-group create-dummy-instance create-dummy-job restore-fresh-database!)]
+            [cook.test.testutil :as testutil
+             :refer [create-dummy-group
+                     create-dummy-instance
+                     create-dummy-job
+                     create-dummy-job-with-instances
+                     restore-fresh-database!]]
             [datomic.api :as d :refer (q db)])
   (:import [java.util Date]))
+
+(deftest test-total-resources-of-jobs
+  (let [uri "datomic:mem://test-total-resources-of-jobs"
+        conn (restore-fresh-database! uri)
+        jobs [(create-dummy-job conn :ncpus 4.00 :memory 0.5)
+              (create-dummy-job conn :ncpus 0.10 :memory 10.0 :gpus 1.0)
+              (create-dummy-job conn :ncpus 1.00 :memory 30.0 :gpus 2.0)
+              (create-dummy-job conn :ncpus 10.0 :memory 5.0)]
+        job-ents (mapv (partial d/entity (db conn)) jobs)]
+    (is (= (util/total-resources-of-jobs (take 1 job-ents))
+           {:jobs 1 :cpus 4.0 :mem 0.5 :gpus 0.0}))
+    (is (= (util/total-resources-of-jobs (take 2 job-ents))
+           {:jobs 2 :cpus 4.1 :mem 10.5 :gpus 1.0}))
+    (is (= (util/total-resources-of-jobs job-ents)
+           {:jobs 4 :cpus 15.1 :mem 45.5 :gpus 3.0}))
+    (is (= (util/total-resources-of-jobs nil)
+           {:jobs 0 :cpus 0.0 :mem 0.0 :gpus 0.0}))))
+
+(deftest test-get-running-job-ents
+  (let [uri "datomic:mem://test-get-running-task-ents"
+        conn (restore-fresh-database! uri)]
+    (create-dummy-job conn :user "u1" :job-state :job.state/completed)
+    (create-dummy-job conn :user "u1" :job-state :job.state/running)
+    (create-dummy-job conn :user "u1" :job-state :job.state/running)
+    (create-dummy-job conn :user "u2" :job-state :job.state/waiting)
+    (create-dummy-job conn :user "u2" :job-state :job.state/running)
+    (create-dummy-job conn :user "u1" :job-state :job.state/waiting)
+    (create-dummy-job conn :user "u1" :job-state :job.state/waiting)
+    ;; u1 has 2 jobs running
+    (is (= 2 (count (util/get-user-running-job-ents (db conn) "u1"))))
+    ;; u2 has 1 jobs running
+    (is (= 1 (count (util/get-user-running-job-ents (db conn) "u2"))))
+    ;; u3 has no jobs (running or otherwise)
+    (is (= 0 (count (util/get-user-running-job-ents (db conn) "u3"))))))
 
 (deftest test-get-pending-job-ents
   (let [uri "datomic:mem://test-get-pending-job-ents"
@@ -188,6 +227,8 @@
     (is group)
     (is (not (instance? datomic.Entity group)))
     (is (not (nil? (:group/uuid group))))
+    (is (not (nil? (:group/host-placement group))))
+    (is (not (instance? datomic.Entity (:group/host-placement group))))
     (is (nil? (:group/job group)))))
 
 (deftest test-namespace-datomic

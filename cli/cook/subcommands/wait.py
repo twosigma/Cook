@@ -1,6 +1,5 @@
-from cook import colors
-from cook.querying import print_no_data, query_with_pipe_support
-from cook.util import strip_all, print_info, seconds_to_timedelta, guard_no_cluster
+from cook.querying import query, print_no_data, parse_entity_refs
+from cook.util import print_info, seconds_to_timedelta, guard_no_cluster
 
 
 def all_jobs_completed(jobs):
@@ -32,14 +31,11 @@ def wait(clusters, args, _):
     guard_no_cluster(clusters)
     timeout = args.get('timeout')
     interval = args.get('interval')
-    uuids = strip_all(args.get('uuid'))
-
-    timeout_text = f'up to {seconds_to_timedelta(timeout)}' if timeout else 'indefinitely'
-    print_info(f'Will wait {colors.bold(timeout_text)}.')
-    query_result = query_with_pipe_support(clusters, uuids, 'wait', pred_jobs=all_jobs_completed,
-                                           pred_instances=all_instances_completed, pred_groups=all_groups_completed,
-                                           timeout=timeout, interval=interval)
-
+    uuids = parse_entity_refs(clusters, args.get('uuid'))
+    timeout_text = ('up to %s' % seconds_to_timedelta(timeout)) if timeout else 'indefinitely'
+    print_info('Will wait %s.' % timeout_text)
+    query_result = query(clusters, uuids, all_jobs_completed, all_instances_completed,
+                         all_groups_completed, timeout, interval)
     if query_result['count'] > 0:
         return 0
     else:

@@ -7,8 +7,8 @@ from functools import partial
 from tabulate import tabulate
 
 from cook import http, mesos, colors
-from cook.querying import query_unique_and_run
-from cook.util import strip_all, guard_no_cluster
+from cook.querying import query_unique_and_run, parse_entity_refs
+from cook.util import guard_no_cluster
 
 
 def basename(path):
@@ -76,7 +76,7 @@ def browse_files(instance, sandbox_dir, path):
 def ls_for_instance(instance, sandbox_dir, path, long_format, as_json):
     """Lists contents of the Mesos sandbox path for the given instance"""
     entries = browse_files(instance, sandbox_dir, path)
-    if len(entries) == 0:
+    if len(entries) == 0 and path:
         # Mesos will return 200 with an empty list in two cases:
         # - the provided path is a file (this is odd)
         # - the provided path is an empty directory (this one makes sense)
@@ -103,7 +103,7 @@ def ls_for_instance(instance, sandbox_dir, path, long_format, as_json):
 def ls(clusters, args, _):
     """Lists contents of the corresponding Mesos sandbox path by job or instance uuid."""
     guard_no_cluster(clusters)
-    uuids = strip_all(args.get('uuid'))
+    uuids = parse_entity_refs(clusters, args.get('uuid'))
     path = args.get('path')
     long_format = args.get('long_format')
     as_json = args.get('json')

@@ -94,11 +94,6 @@ def print_info(text, silent_mode_text=None, end='\n'):
         print(silent_mode_text, flush=True, end=end)
 
 
-def strip_all(strs):
-    """Strips whitespace from each string in strs"""
-    return [s.strip() for s in strs]
-
-
 def seconds_to_timedelta(s):
     """Converts seconds to a timedelta for display on screen"""
     return humanfriendly.format_timespan(s)

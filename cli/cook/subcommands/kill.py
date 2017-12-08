@@ -1,8 +1,8 @@
 from collections import defaultdict
 
 from cook import http, colors
-from cook.querying import print_no_data, query_with_pipe_support
-from cook.util import strip_all, print_info, guard_no_cluster
+from cook.querying import query, print_no_data, parse_entity_refs
+from cook.util import print_info, guard_no_cluster
 
 
 def guard_against_duplicates(query_result):
@@ -16,10 +16,10 @@ def guard_against_duplicates(query_result):
     duplicate_uuids = set()
 
     def add(uuid, entity_type, cluster):
+        if uuid in uuid_to_entries:
+            duplicate_uuids.add(uuid)
         entry_map = {'type': entity_type, 'cluster_name': cluster}
         uuid_to_entries[uuid].append(entry_map)
-        if len(uuid_to_entries[uuid]) > 1:
-            duplicate_uuids.add(uuid)
 
     for cluster_name, entities in query_result['clusters'].items():
         if 'jobs' in entities:
@@ -96,9 +96,8 @@ def kill_entities(query_result, clusters):
 def kill(clusters, args, _):
     """Attempts to kill the jobs / instances / groups with the given UUIDs."""
     guard_no_cluster(clusters)
-    uuids = strip_all(args.get('uuid'))
-    query_result = query_with_pipe_support(clusters, uuids, 'kill')
-
+    uuids = parse_entity_refs(clusters, args.get('uuid'))
+    query_result = query(clusters, uuids)
     if query_result['count'] == 0:
         print_no_data(clusters)
         return 1

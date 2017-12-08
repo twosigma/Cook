@@ -1,1 +1,2 @@
-pymesos==0.2.14
+psutil==5.4.1
+pymesos==0.2.15

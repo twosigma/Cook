@@ -7,7 +7,7 @@ This module configures logging and starts the executor's driver thread.
 import logging
 import signal
 import sys
-from threading import Event, Thread
+from threading import Event, Timer
 
 import os
 
@@ -19,6 +19,8 @@ import encodings.idna
 import cook.config as cc
 import cook.executor as ce
 import cook.io_helper as cio
+import cook.util as cu
+import pymesos as pm
 
 
 def main(args=None):
@@ -28,7 +30,7 @@ def main(args=None):
         print(__version__)
         sys.exit(0)
 
-    cio.print_out('Cook Executor version {}'.format(__version__))
+    cio.print_out('Cook Executor version {}'.format(__version__), flush=True)
 
     environment = os.environ
     executor_id = environment.get('MESOS_EXECUTOR_ID', '1')
@@ -42,22 +44,48 @@ def main(args=None):
 
     config = cc.initialize_config(environment)
 
+    def print_memory_usage_task():
+        cu.print_memory_usage()
+        timer = Timer(config.memory_usage_interval_secs, print_memory_usage_task)
+        timer.daemon = True
+        timer.start()
+    print_memory_usage_task()
+
+    stop_signal = Event()
+    non_zero_exit_signal = Event()
+
     def handle_interrupt(interrupt_code, _):
         logging.info('Executor interrupted with code {}'.format(interrupt_code))
         cio.print_and_log('Received kill for task {} with grace period of {}'.format(
             executor_id, config.shutdown_grace_period))
         stop_signal.set()
+        non_zero_exit_signal.set()
+        cu.print_memory_usage()
+
     signal.signal(signal.SIGINT, handle_interrupt)
     signal.signal(signal.SIGTERM, handle_interrupt)
 
-    stop_signal = Event()
-    driver_thread = Thread(target=ce.run_mesos_driver, args=(stop_signal, config))
-    driver_thread.start()
-    logging.info('Driver thread has started')
-    driver_thread.join()
-    logging.info('Driver thread has completed')
+    try:
+        executor = ce.CookExecutor(stop_signal, config)
+        driver = pm.MesosExecutorDriver(executor)
 
-    exit_code = 1 if stop_signal.isSet() else 0
+        logging.info('MesosExecutorDriver is starting...')
+        driver.start()
+
+        executor.await_completion()
+
+        logging.info('MesosExecutorDriver requested to stop')
+        driver.stop()
+        logging.info('MesosExecutorDriver has been stopped')
+
+        executor.await_disconnect()
+    except Exception:
+        logging.exception('Error in __main__')
+        stop_signal.set()
+        non_zero_exit_signal.set()
+
+    cu.print_memory_usage()
+    exit_code = 1 if non_zero_exit_signal.isSet() else 0
     logging.info('Executor exiting with code {}'.format(exit_code))
     sys.exit(exit_code)
 

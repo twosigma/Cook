@@ -23,6 +23,7 @@
             [cook.mesos.api :as api]
             [cook.mesos.schema :as schema]
             [datomic.api :as d :refer (q db)]
+            [plumbing.core :refer [mapply]]
             [qbits.jet.server :refer (run-jetty)]
             [ring.middleware.params :refer (wrap-params)])
   (:import (java.util UUID)
@@ -40,7 +41,8 @@
                                          :mesos-gpu-enabled false
                                          :task-constraints {:cpus 12 :memory-gb 100 :retry-limit 200}}
                                         (Object.)
-                                        (atom true)))
+                                        (atom true)
+                                        (constantly nil)))
         ; Mock kerberization, not testing that
         api-handler-kerb (fn [req]
                            (api-handler (assoc req :authorization/user (System/getProperty "user.name"))))
@@ -189,6 +191,16 @@
                    :group/straggler-handling straggler-handling}
         val @(d/transact conn [group-txn])]
     (d/resolve-tempid (db conn) (:tempids val) id)))
+
+(defn create-dummy-job-with-instances
+  [conn & {:as kw-args}]
+  "Return the entity ids for the created dummy job and instances as a pair: [job [instances ...]]"
+  (let [job-args (dissoc kw-args :instances)
+        job (mapply create-dummy-job conn job-args)
+        instance-arg-maps (:instances kw-args)
+        instances (for [arg-map instance-arg-maps]
+                    (mapply create-dummy-instance conn job arg-map))]
+    [job (vec instances)]))
 
 (defn init-offer-cache
   [& init]

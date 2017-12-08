@@ -16,15 +16,12 @@
 
 package com.twosigma.cook.jobclient;
 
-import java.util.ArrayList;
-import java.util.Map;
-import java.util.HashMap;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.List;
-import java.util.UUID;
+import java.util.*;
 import java.util.regex.Pattern;
 
+import com.google.common.collect.ImmutableSet;
+import com.twosigma.cook.jobclient.constraint.Constraints;
+import com.twosigma.cook.jobclient.constraint.Constraint;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -64,7 +61,8 @@ final public class Job {
     public static enum Status {
         INITIALIZED("INITIALIZED"), WAITING("WAITING"), RUNNING("RUNNING"), COMPLETED("COMPLETED");
 
-        private Status(String name) {}
+        private Status(String name) {
+        }
 
         /**
          * @param name specifies a string representation of status.
@@ -78,8 +76,7 @@ final public class Job {
     /**
      * Job builder
      */
-    public static class Builder
-    {
+    public static class Builder {
         private UUID _uuid;
         private String _name;
         private String _command;
@@ -93,10 +90,12 @@ final public class Job {
         private Boolean _isMeaCulpaRetriesDisabled;
         private List<Instance> _instances = Collections.synchronizedList(new ArrayList<Instance>());
         private List<FetchableURI> _uris = new ArrayList<>();
-        private Map<String,String> _env = new HashMap<>();
+        private Map<String, String> _env = new HashMap<>();
         private JSONObject _container;
-        private Map<String,String> _labels = new HashMap<>();
+        private Map<String, String> _labels = new HashMap<>();
         private List<UUID> _groups = new ArrayList<>();
+        // Use LinkedHashSet to ensure the insertion order will be kept.
+        private Set<Constraint> _constraints = new LinkedHashSet<>();
         private Application _application;
 
         /**
@@ -135,8 +134,8 @@ final public class Job {
                 _isMeaCulpaRetriesDisabled = false;
             }
             return new Job(_uuid, _name, _command, _memory, _cpus, _retries, _maxRuntime, _expectedRuntime, _status,
-                    _priority, _isMeaCulpaRetriesDisabled, _instances, _env, _uris, _container, _labels, _groups,
-                    _application);
+                    _priority, _isMeaCulpaRetriesDisabled, _instances, _env, _uris, _container, _labels, _constraints,
+                    _groups, _application);
         }
 
         /**
@@ -176,7 +175,7 @@ final public class Job {
 
         /**
          * Adds the URIs to the job.
-         *
+         * <p>
          * Note that this keeps previously added URIs.
          *
          * @param uris A list of URIs to add to this job
@@ -190,7 +189,6 @@ final public class Job {
         /**
          * Adds the job to a group by UUID
          *
-         *
          * @param guuid A group to which the job belongs by UUID
          * @return this builder
          */
@@ -203,12 +201,33 @@ final public class Job {
         /**
          * Adds the job to a group
          *
-         *
          * @param group A group to which the job belongs
          * @return this builder
          */
         public Builder setGroup(Group group) {
             _setGroupByUUID(group.getUUID());
+            return this;
+        }
+
+        /**
+         * Adds a constraint.
+         *
+         * @param constraint The constraint to add
+         * @return this builder.
+         */
+        public Builder addConstraint(Constraint constraint) {
+            _constraints.add(constraint);
+            return this;
+        }
+
+        /**
+         * Adds a collection of constraints.
+         *
+         * @param constraints The constraints to add
+         * @return this builder.
+         */
+        public Builder addConstraint(Collection constraints) {
+            _constraints.addAll(constraints);
             return this;
         }
 
@@ -227,7 +246,7 @@ final public class Job {
         /**
          * Add an env var to the job
          *
-         * @param name specifies the name of the env var
+         * @param name  specifies the name of the env var
          * @param value specifies the value of the env var
          * @return this builder
          */
@@ -238,26 +257,26 @@ final public class Job {
 
         /**
          * Adds a collection of env vars to the job.
-         *
+         * <p>
          * This adds the enviroment to the job; it won't remove variables that were previously set.
          *
          * @param environment specifies the environment to add to this job.
          * @return this builder
          */
-        public Builder addEnv(Map<String,String> environment) {
+        public Builder addEnv(Map<String, String> environment) {
             _env.putAll(environment);
             return this;
         }
 
         /**
          * Adds a collection of env vars to the job.
-         *
+         * <p>
          * This resets the enviroment to the job; it will remove variables that were previously set.
          *
          * @param environment specifies the environment to set for this job.
          * @return this builder
          */
-        public Builder setEnv(Map<String,String> environment) {
+        public Builder setEnv(Map<String, String> environment) {
             _env = ImmutableMap.copyOf(environment);
             return this;
         }
@@ -265,7 +284,7 @@ final public class Job {
         /**
          * Add an label to the job
          *
-         * @param key specifies the key of the label
+         * @param key   specifies the key of the label
          * @param value specifies the value of the label
          * @return this builder
          */
@@ -276,26 +295,26 @@ final public class Job {
 
         /**
          * Adds a collection of labels to the job.
-         *
+         * <p>
          * This adds the labels to the job; it won't remove labels that were previously set.
          *
          * @param labels specifies the labelironment to add to this job.
          * @return this builder
          */
-        public Builder addLabels(Map<String,String> labels) {
+        public Builder addLabels(Map<String, String> labels) {
             _labels.putAll(labels);
             return this;
         }
 
         /**
          * Adds a collection of label to the job.
-         *
+         * <p>
          * This resets the labels of the job; it will remove labels that were previously set.
          *
          * @param labels specifies the labels to set for this job.
          * @return this builder
          */
-        public Builder setLabels(Map<String,String> labels) {
+        public Builder setLabels(Map<String, String> labels) {
             _labels = ImmutableMap.copyOf(labels);
             return this;
         }
@@ -370,10 +389,10 @@ final public class Job {
         /**
          * Disable the "mea-culpa" retries.
          *
-         * @see <a href ="https://github.com/twosigma/Cook/blob/master/scheduler/docs/faq.md#how-can-i-configure-my-job-to-run-exactly-once">
-         *      how-can-i-configure-my-job-to-run-exactly-once
-         *      </a>
          * @return this builder.
+         * @see <a href ="https://github.com/twosigma/Cook/blob/master/scheduler/docs/faq.md#how-can-i-configure-my-job-to-run-exactly-once">
+         * how-can-i-configure-my-job-to-run-exactly-once
+         * </a>
          */
         public Builder disableMeaCulpaRetries() {
             _isMeaCulpaRetriesDisabled = true;
@@ -383,10 +402,10 @@ final public class Job {
         /**
          * Enable the "mea-culpa" retries.
          *
-         * @see <a href ="https://github.com/twosigma/Cook/blob/master/scheduler/docs/faq.md#how-can-i-configure-my-job-to-run-exactly-once">
-         *      how-can-i-configure-my-job-to-run-exactly-once
-         *      </a>
          * @return this builder.
+         * @see <a href ="https://github.com/twosigma/Cook/blob/master/scheduler/docs/faq.md#how-can-i-configure-my-job-to-run-exactly-once">
+         * how-can-i-configure-my-job-to-run-exactly-once
+         * </a>
          */
         public Builder enableMeaCulpaRetries() {
             _isMeaCulpaRetriesDisabled = false;
@@ -407,6 +426,7 @@ final public class Job {
 
         /**
          * Set the expected runtime in milliseconds of the job expected to build.
+         *
          * @param runtime {@link Long} specifies the expected runtime in milliseconds for a job.
          * @return this builder.
          */
@@ -436,8 +456,8 @@ final public class Job {
         public Builder setName(String name) {
             final Pattern pattern = Pattern.compile("[\\.a-zA-Z0-9_-]{0,128}");
             Preconditions.checkArgument
-                (pattern.matcher(name).matches(),
-                 "Name can only contain '.', '_', '-' or any work characters has length at most 128");
+                    (pattern.matcher(name).matches(),
+                            "Name can only contain '.', '_', '-' or any work characters has length at most 128");
             _name = name;
             return this;
         }
@@ -448,7 +468,7 @@ final public class Job {
          * @param priority {@link Integer} specifies the priority of the job
          * @return this builder.
          */
-        public Builder setPriority(Integer priority){
+        public Builder setPriority(Integer priority) {
             _priority = priority;
             return this;
         }
@@ -477,6 +497,7 @@ final public class Job {
 
         /**
          * Sets the application of the job expected to build.
+         *
          * @param application {@link Application} specifies the application of the job.
          * @return this builder.
          */
@@ -502,6 +523,7 @@ final public class Job {
     final private List<FetchableURI> _uris;
     final private JSONObject _container;
     final private Map<String, String> _labels;
+    final private Set<Constraint> _constraints;
     // This is a list although for now each job is only allowed to belong to one group (see setGroup and getGroup). In
     // the future, jobs will be allowed to belong to multiple groups.
     final private List<UUID> _groups;
@@ -510,7 +532,7 @@ final public class Job {
     private Job(UUID uuid, String name, String command, Double memory, Double cpus, Integer retries, Long maxRuntime,
                 Long expectedRuntime, Status status, Integer priority, Boolean isMeaCulpaRetriesDisabled,
                 List<Instance> instances, Map<String, String> env, List<FetchableURI> uris, JSONObject container,
-                Map<String, String> labels, List<UUID> groups, Application application) {
+                Map<String, String> labels, Set<Constraint> constraints, List<UUID> groups, Application application) {
         _uuid = uuid;
         _name = name;
         _command = command;
@@ -538,6 +560,7 @@ final public class Job {
             _container = null;
         }
         _labels = ImmutableMap.copyOf(labels);
+        _constraints = ImmutableSet.copyOf(constraints);
         _groups = groups;
     }
 
@@ -586,22 +609,28 @@ final public class Job {
     /**
      * @return the expected runtime in milliseconds for this job.
      */
-    public Long getExpectedRuntime() { return _expectedRuntime; }
+    public Long getExpectedRuntime() {
+        return _expectedRuntime;
+    }
 
     /**
      * @return the job's environment
      */
-    public Map<String,String> getEnv() {
+    public Map<String, String> getEnv() {
         return _env;
     }
 
     /**
      * @return the job's labels
      */
-    public Map<String,String> getLabels() {
+    public Map<String, String> getLabels() {
         return _labels;
     }
 
+
+    public Set<Constraint> getConstraints() {
+        return _constraints;
+    }
 
     /**
      * @return the job's group, or null if the job does not belong to a group
@@ -644,15 +673,15 @@ final public class Job {
     /**
      * @return the job priority.
      */
-    public Integer getPriority(){
+    public Integer getPriority() {
         return _priority;
     }
 
     /**
      * @return whether "mea-culpa" retries is disabled.
      * @see <a href ="https://github.com/twosigma/Cook/blob/master/scheduler/docs/faq.md#how-can-i-configure-my-job-to-run-exactly-once">
-     *      how-can-i-configure-my-job-to-run-exactly-once
-     *      </a>
+     * how-can-i-configure-my-job-to-run-exactly-once
+     * </a>
      */
     public Boolean isMeaCulpaRetriesDisabled() {
         return _isMeaCulpaRetriesDisabled;
@@ -684,7 +713,7 @@ final public class Job {
         return null;
     }
 
-   /**
+    /**
      * A job is successful if and only if the job is completed and one of its instances is successful.
      *
      * @return
@@ -701,7 +730,7 @@ final public class Job {
 
     /**
      * Convert a job to a JSON object, e.g.
-     *
+     * <p>
      * <pre>
      * <code>
      * {
@@ -721,7 +750,7 @@ final public class Job {
      * @throws JSONException
      */
     public static JSONObject jsonizeJob(Job job)
-        throws JSONException {
+            throws JSONException {
         final JSONObject env = new JSONObject(job.getEnv());
         final JSONObject labels = new JSONObject(job.getLabels());
         final JSONObject container = job.getContainer();
@@ -742,6 +771,9 @@ final public class Job {
         if (group != null) {
             object.put("group", job.getGroup().toString());
         }
+        for (Constraint constraint : job.getConstraints()) {
+            object.append("constraints", constraint.toJson());
+        }
         if (container != null) {
             object.put("container", container);
         }
@@ -759,7 +791,7 @@ final public class Job {
 
     /**
      * Convert a list of job to a JSON object, e.g.
-     *
+     * <p>
      * <pre>
      * <code>
      * {
@@ -777,7 +809,7 @@ final public class Job {
      * }
      * </code>
      * </pre>
-     *
+     * <p>
      * The converted JSON object could be used for job submission via Cook client.
      *
      * @param jobs specifies a collection of jobs.
@@ -785,7 +817,7 @@ final public class Job {
      * @throws JSONException
      */
     public static JSONObject jsonizeJob(Collection<Job> jobs)
-        throws JSONException {
+            throws JSONException {
         final ArrayList<JSONObject> objects = new ArrayList<JSONObject>();
         for (final Job job : jobs) {
             objects.add(jsonizeJob(job));
@@ -797,7 +829,7 @@ final public class Job {
 
     /**
      * Parse a JSON string representing a list of jobs, e.g.
-     *
+     * <p>
      * <pre>
      * <code>
      * [
@@ -826,13 +858,13 @@ final public class Job {
      * </pre>
      *
      * @param listOfJobs {@link String} specifies a list of jobs.
-     * @param decorator specifies an instance decorator expected to decorate instances parsed from JSON string.
-     *                  If it is null, it will do nothing with it.
+     * @param decorator  specifies an instance decorator expected to decorate instances parsed from JSON string.
+     *                   If it is null, it will do nothing with it.
      * @return a list of {@link Job}s.
      * @throws JSONException
      */
     public static List<Job> parseFromJSON(String listOfJobs, InstanceDecorator decorator)
-        throws JSONException {
+            throws JSONException {
         JSONArray jsonArray = new JSONArray(listOfJobs);
         List<Job> jobs = new ArrayList<Job>(jsonArray.length());
         for (int i = 0; i < jsonArray.length(); ++i) {
@@ -883,6 +915,12 @@ final public class Job {
                     jobBuilder.addUri(FetchableURI.parseFromJSON(urisJson.getJSONObject(j)));
                 }
             }
+            if (json.has("constraints")) {
+                JSONArray constraintsJson = json.getJSONArray("constraints");
+                for (int j = 0; j < constraintsJson.length(); j++) {
+                    jobBuilder.addConstraint(Constraints.parseFrom(constraintsJson.getJSONArray(j)));
+                }
+            }
             JSONArray groupsJson = json.optJSONArray("groups");
             if (groupsJson != null) {
                 for (int j = 0; j < groupsJson.length(); j++) {
@@ -918,10 +956,10 @@ final public class Job {
     public String toString() {
         StringBuilder stringBuilder = new StringBuilder(512);
         stringBuilder
-            .append("Job [_uuid=" + _uuid + ", _name=" + _name + ", _command=" + _command + ", _memory=" + _memory
-                    + ", _cpus=" + _cpus + ", _retries=" + _retries + ", _maxRuntime=" + _maxRuntime
-                    + ", _status=" + _status + ", _priority=" + _priority
-                    + ", _isMeaCulpaRetriesDisabled" + _isMeaCulpaRetriesDisabled + "]");
+                .append("Job [_uuid=" + _uuid + ", _name=" + _name + ", _command=" + _command + ", _memory=" + _memory
+                        + ", _cpus=" + _cpus + ", _retries=" + _retries + ", _maxRuntime=" + _maxRuntime
+                        + ", _status=" + _status + ", _priority=" + _priority
+                        + ", _isMeaCulpaRetriesDisabled" + _isMeaCulpaRetriesDisabled + "]");
         stringBuilder.append('\n');
         for (Instance instance : getInstances()) {
             stringBuilder.append(instance.toString()).append('\n');

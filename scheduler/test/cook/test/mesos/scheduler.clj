@@ -424,38 +424,55 @@
   (java.util.Date. (tc/to-long datetime)))
 
 (deftest test-get-lingering-tasks
-  (let [uri "datomic:mem://test-get-lingering-tasks"
+  (let [uri "datomic:mem://test-lingering-tasks"
         conn (restore-fresh-database! uri)
-        ;; a job has been timeout
-        job-id-1 (create-dummy-job conn :user "tsram" :job-state :job.state/running)
-        ;; a job has been timeout
-        job-id-2 (create-dummy-job conn :user "tsram" :job-state :job.state/running)
-        ;; a job is not timeout
-        job-id-3 (create-dummy-job conn :user "tsram" :job-state :job.state/running)
-        task-id-1 "task-1"
-        task-id-2 "task-2"
-        task-id-3 "task-3"
-        timeout-hours 4
-        start-time-1 (joda-datetime->java-date
-                       (t/minus (t/now) (t/hours (+ timeout-hours 1))))
-        start-time-2 (joda-datetime->java-date
-                       (t/minus (t/now) (t/hours (+ timeout-hours 1))))
-        start-time-3 (joda-datetime->java-date
-                       (t/minus (t/now) (t/hours (- timeout-hours 1))))
+        now (tc/from-date #inst "2015-01-05T00:00:30")
+        next-month (t/plus now (t/months 1))
+        next-year (t/plus now (t/years 1))
+        long-timeout (-> 64 t/days t/in-millis)
+        job-id-1 (create-dummy-job conn
+                                   :user "tsram"
+                                   :job-state :job.state/running
+                                   :max-runtime Long/MAX_VALUE)
         instance-id-1 (create-dummy-instance conn job-id-1
-                                             :instance-status :instance.status/unknown
-                                             :task-id task-id-1
-                                             :start-time start-time-1)
+                                             :start-time #inst "2015-01-01")
+        job-id-2 (create-dummy-job conn
+                                   :user "tsram"
+                                   :job-state :job.state/running
+                                   :max-runtime 60000)
         instance-id-2 (create-dummy-instance conn job-id-2
-                                             :instance-status :instance.status/running
-                                             :task-id task-id-2
-                                             :start-time start-time-2)
+                                             :start-time #inst "2015-01-04")
+
+        job-id-3 (create-dummy-job conn
+                                   :user "tsram"
+                                   :job-state :job.state/running
+                                   ; this timeout is equal to the "now" value
+                                   :max-runtime 30000)
         instance-id-3 (create-dummy-instance conn job-id-3
-                                             :instance-status :instance.status/running
-                                             :task-id task-id-3
-                                             :start-time start-time-3)
-        test-db (d/db conn)]
-    (is (= #{task-id-1 task-id-2} (set (sched/get-lingering-tasks test-db (t/now) timeout-hours timeout-hours))))))
+                                             :start-time #inst "2015-01-05")
+
+        job-id-4 (create-dummy-job conn
+                                   :user "tsram"
+                                   :job-state :job.state/running
+                                   :max-runtime 10000)
+        instance-id-4 (create-dummy-instance conn job-id-4
+                                             :start-time #inst "2015-01-05")
+
+        job-id-5 (create-dummy-job conn
+                                   :user "tsram"
+                                   :job-state :job.state/running
+                                   ; timeout value exceeds Integer/MAX_VALUE millis
+                                   :max-runtime long-timeout)
+        instance-id-5 (create-dummy-instance conn job-id-5
+                                             :start-time #inst "2015-01-01")
+
+        test-db (d/db conn)
+        task-id-2 (-> (d/entity test-db instance-id-2) :instance/task-id)
+        task-id-4 (-> (d/entity test-db instance-id-4) :instance/task-id)
+        task-id-5 (-> (d/entity test-db instance-id-5) :instance/task-id)]
+    (is (= #{task-id-2 task-id-4} (set (sched/get-lingering-tasks test-db now 120 120))))
+    (is (not (contains? (set (sched/get-lingering-tasks test-db next-month 1e4 1e4)) task-id-5)))
+    (is (contains? (set (sched/get-lingering-tasks test-db next-year 1e5 1e5)) task-id-5))))
 
 (deftest test-kill-lingering-tasks
   ;; Ensure that lingering tasks are killed properly
@@ -587,28 +604,6 @@
             :gpu ()}
            (sched/rank-jobs test-db offensive-job-filter)))))
 
-(deftest test-get-lingering-tasks
-  (let [uri "datomic:mem://test-lingering-tasks"
-        conn (restore-fresh-database! uri)
-        now (tc/from-date #inst "2015-01-05")
-        job-id-1 (create-dummy-job conn
-                                   :user "tsram"
-                                   :job-state :job.state/running
-                                   :max-runtime Long/MAX_VALUE)
-        instance-id-1 (create-dummy-instance conn job-id-1
-                                             :start-time #inst "2015-01-01")
-        job-id-2 (create-dummy-job conn
-                                   :user "tsram"
-                                   :job-state :job.state/running
-                                   :max-runtime 60000)
-        instance-id-2 (create-dummy-instance conn job-id-2
-                                             :start-time #inst "2015-01-04")
-        test-db (d/db conn)
-        task-id-2 (-> (d/entity test-db instance-id-2) :instance/task-id)
-        ]
-    (is (= [task-id-2] (sched/get-lingering-tasks test-db now 120 120))))
-  )
-
 (deftest test-virtual-machine-lease-adapter
   ;; ensure that the VirtualMachineLeaseAdapter can successfully handle an offer from Mesomatic.
   (let [;; observed offer from Mesomatic API:
@@ -654,171 +649,6 @@
     (is (= (:task-id interpreted-status) "a07708d8-7ab6-404d-b136-a3e2cb2567e3"))
     (is (= (:task-state interpreted-status) :task-lost))
     (is (= (:reason interpreted-status) :reason-invalid-offers))))
-
-(deftest test-unique-host-placement-constraint
-  (let [uri "datomic:mem://test-unique-host-placement-constraint"
-        conn (restore-fresh-database! uri)
-        framework-id #mesomatic.types.FrameworkID{:value "my-original-framework-id"}]
-    (testing "conflicting jobs, different scheduling cycles"
-      (let [scheduler (make-dummy-scheduler)
-            shared-host "test-host"
-            ; Group jobs, setting unique host-placement constraint
-            group-id (create-dummy-group conn :host-placement {:host-placement/type :host-placement.type/unique})
-            conflicted-job-id (create-dummy-job conn :group group-id)
-            conflicting-job-id (create-dummy-job conn :group group-id)
-            make-offers #(vector (make-vm-offer framework-id shared-host (make-uuid)))
-            group (d/entity (d/db conn) group-id)
-            ; Schedule first job
-            scheduled-tasks (schedule-and-run-jobs conn framework-id scheduler (make-offers) [conflicting-job-id])
-            _ (is (= 1 (count (:scheduled scheduled-tasks))))
-            conflicting-task-id (first (:scheduled scheduled-tasks))
-            ; Try to schedule conflicted job, but fail
-            failures (-> (schedule-and-run-jobs conn framework-id scheduler (make-offers) [conflicted-job-id])
-                         :result
-                         .getFailures)
-            task-results (-> failures
-                             vals
-                             first)
-            fail-reason (-> task-results
-                            first
-                            .getConstraintFailure
-                            .getReason)]
-        (is (= 1 (count failures)))
-        (is (= 1 (count task-results)))
-        (is (= fail-reason (format "The hostname %s is being used by other instances in group %s"
-                                   shared-host (:group/uuid group))))))
-    (testing "conflicting jobs, same scheduling cycle"
-      (let [scheduler (make-dummy-scheduler)
-            shared-host "test-host"
-            ; Group jobs, setting unique host-placement constraint
-            group-id (create-dummy-group conn :host-placement {:host-placement/type :host-placement.type/unique})
-            conflicted-job-id (create-dummy-job conn :group group-id)
-            conflicting-job-id (create-dummy-job conn :group group-id)
-            make-offers #(vector (make-vm-offer framework-id shared-host (make-uuid)))
-            group (d/entity (d/db conn) group-id)
-            ; Schedule first job
-            result (schedule-and-run-jobs conn framework-id scheduler (make-offers) [conflicting-job-id
-                                                                                     conflicted-job-id])
-            _ (is (= 1 (count (:scheduled result))))
-            conflicting-task-id (-> result :scheduled first)
-            ; Try to schedule conflicted job, but fail
-            failures (-> result :result .getFailures)
-            task-results (-> failures
-                             vals
-                             first)
-            fail-reason (-> task-results
-                            first
-                            .getConstraintFailure
-                            .getReason)]
-        (is (= 1 (count failures)))
-        (is (= 1 (count task-results)))
-        (is (= fail-reason (format "The hostname %s is being used by other instances in group %s"
-                                   shared-host (:group/uuid group))))))
-    (testing "non conflicting jobs"
-      (let [scheduler (make-dummy-scheduler)
-            shared-host "test-host"
-            make-offers #(vector (make-vm-offer framework-id shared-host (make-uuid)))
-            isolated-job-id1 (create-dummy-job conn)
-            isolated-job-id2 (create-dummy-job conn)]
-        (is (= 1 (count (:scheduled (schedule-and-run-jobs conn framework-id scheduler (make-offers) [isolated-job-id1])))))
-        (is (= 1 (count (:scheduled (schedule-and-run-jobs conn framework-id scheduler (make-offers) [isolated-job-id2])))))))))
-
-
-(deftest test-balanced-host-placement-constraint
-  (let [uri "datomic:mem://test-balanced-host-placement-constraint"
-        conn (restore-fresh-database! uri)
-        framework-id #mesomatic.types.FrameworkID{:value "my-original-framework-id"}]
-    (testing "schedule 9 jobs with hp-type balanced on 3 hosts, each host should get 3 jobs"
-      (let [scheduler (make-dummy-scheduler)
-            hostnames ["straw" "sticks" "bricks"]
-            make-offers (fn [] (mapv #(make-vm-offer framework-id % (make-uuid)) hostnames))
-            ; Group jobs, setting balanced host-placement constraint
-            group-id (create-dummy-group conn
-                                         :host-placement {:host-placement/type :host-placement.type/balanced
-                                                          :host-placement/parameters {:host-placement.balanced/attribute "HOSTNAME"
-                                                                                      :host-placement.balanced/minimum 3}})
-            job-ids (doall (repeatedly 9 #(create-dummy-job conn :group group-id)))]
-        (is (= {"straw" 3 "sticks" 3 "bricks" 3}
-               (->> job-ids
-                    (schedule-and-run-jobs conn framework-id scheduler (make-offers))
-                    :result
-                    .getResultMap
-                    (pc/map-vals #(count (.getTasksAssigned %))))))))
-    (testing "schedule 9 jobs with no placement constraints on 3 hosts, assignment not balanced"
-      (let [scheduler (make-dummy-scheduler)
-            hostnames ["straw" "sticks" "bricks"]
-            make-offers (fn [] (mapv #(make-vm-offer framework-id % (make-uuid)) hostnames))
-            job-ids (doall (repeatedly 9 #(create-dummy-job conn)))]
-        (is (not (= (list 3) (->> job-ids
-                                  (schedule-and-run-jobs conn framework-id scheduler (make-offers))
-                                  :result
-                                  .getResultMap
-                                  vals
-                                  (map #(count (.getTasksAssigned %)))
-                                  distinct))))))))
-
-(deftest test-attr-equals-host-placement-constraint
-  (let [uri "datomic:mem://test-attr-equals-host-placement-constraint"
-        conn (restore-fresh-database! uri)
-        framework-id #mesomatic.types.FrameworkID{:value "my-original-framework-id"}
-        make-hostname #(str (java.util.UUID/randomUUID))
-        attr-name "az"
-        attr-val "east"
-        make-attr-offer (fn [cpus]
-                          (make-vm-offer framework-id (make-hostname) (make-uuid)
-                                         :cpus cpus :attrs {attr-name attr-val}))
-        ; Each non-attr offer can take only one job
-        make-non-attr-offers (fn [n]
-                               (into [] (repeatedly n #(make-vm-offer framework-id (make-hostname) (make-uuid)
-                                                                      :cpus 1.0 :attrs {attr-name "west"}))))]
-    (testing "Create group, schedule one job unto VM, then all subsequent jobs must have same attr as the VM."
-      (let [scheduler (make-dummy-scheduler)
-            group-id (create-dummy-group conn :host-placement
-                                         {:host-placement/type :host-placement.type/attribute-equals
-                                          :host-placement/parameters {:host-placement.attribute-equals/attribute attr-name}})
-            first-job (create-dummy-job conn :group group-id)
-            other-jobs (doall (repeatedly 20 #(create-dummy-job conn :ncpus 1.0 :group group-id)))
-            ; Group jobs, setting balanced host-placement constraint
-            ; Schedule the first job
-            _ (is (= 1 (->> (schedule-and-run-jobs conn framework-id scheduler [(make-attr-offer 1.0)] [first-job])
-                            :scheduled
-                            count)))
-            batch-result (->> (schedule-and-run-jobs conn framework-id scheduler
-                                                     (conj (make-non-attr-offers 20) (make-attr-offer 5.0)) other-jobs)
-                              :result)]
-        (testing "Other jobs all pile up on attr-offer."
-          (is (= (list attr-val)
-                 (->> batch-result
-                      .getResultMap
-                      vals
-                      (filter #(> (count (.getTasksAssigned %)) 0))
-                      (mapcat #(.getLeasesUsed %))
-                      (map #(.getAttributeMap %))
-                      (map #(get % attr-name))
-                      distinct))))
-        (testing "attr offer only fits five jobs."
-          (is (= 5 (->> batch-result
-                        .getResultMap
-                        vals
-                        (reduce #(+ %1 (count (.getTasksAssigned %2))) 0)))))
-        (testing "Other 15 jobs are unscheduled."
-          (is (= 15 (->> batch-result
-                         .getFailures
-                         count))))))
-    (testing "Jobs use any vm freely when forced and no attr-equals constraint is given"
-      (let [scheduler (make-dummy-scheduler)
-            first-job (create-dummy-job conn)
-            other-jobs (doall (repeatedly 20 #(create-dummy-job conn)))
-            _ (is (= 1 (->> (schedule-and-run-jobs conn framework-id scheduler [(make-attr-offer 2.0)] [first-job])
-                            :scheduled
-                            count)))]
-        ; Need to use all offers to fit all 20 other-jobs
-        (is (= 20 (->> (schedule-and-run-jobs conn framework-id scheduler
-                                              (conj (make-non-attr-offers 15) (make-attr-offer 5.0)) other-jobs)
-                       :result
-                       .getResultMap
-                       vals
-                       (reduce #(+ %1 (count (.getTasksAssigned %2))) 0))))))))
 
 (deftest test-gpu-share-prioritization
   (let [uri "datomic:mem://test-gpu-shares"
@@ -880,10 +710,7 @@
                                    (let [task {:task-id {:value task-id}
                                                :reason reason
                                                :state state}]
-                                     task))
-        synced-agents-atom (atom [])
-        sync-agent-sandboxes-fn (fn sync-agent-sandboxes-fn [hostname]
-                                  (swap! synced-agents-atom conj hostname))]
+                                     task))]
 
     (testing "Mesos task death"
       (let [job-id (create-dummy-job conn :user "tsram" :job-state :job.state/running)
@@ -893,7 +720,7 @@
                                                :task-id task-id)]
         ; Wait for async database transaction inside handle-status-update
         (->> (make-dummy-status-update task-id :reason-gc-error :task-killed)
-             (sched/handle-status-update conn driver fenzo sync-agent-sandboxes-fn)
+             (sched/handle-status-update conn driver fenzo)
              async/<!!)
 
         (is (= :instance.status/failed
@@ -918,7 +745,7 @@
               original-end-time (get-end-time)]
           (Thread/sleep 100)
           (->> (make-dummy-status-update task-id :reason-gc-error :task-killed)
-               (sched/handle-status-update conn driver fenzo sync-agent-sandboxes-fn)
+               (sched/handle-status-update conn driver fenzo)
                async/<!!)
           (is (= original-end-time (get-end-time))))))
 
@@ -943,7 +770,7 @@
                                                :reason :max-runtime-exceeded)] ; Previous reason is not mea-culpa
         ; Status update says slave got restarted (mea-culpa)
         (->> (make-dummy-status-update task-id :mesos-slave-restarted :task-killed)
-             (sched/handle-status-update conn driver fenzo sync-agent-sandboxes-fn)
+             (sched/handle-status-update conn driver fenzo)
              async/<!!)
         ; Assert old reason persists
         (is (= :max-runtime-exceeded
@@ -978,12 +805,10 @@
                                :instance-status :instance.status/success
                                :task-id task-id-b
                                :reason :unknown)
-        (reset! synced-agents-atom [])
         (->> (make-dummy-status-update task-id-a :mesos-slave-restarted :task-running)
-             (sched/handle-status-update conn driver fenzo sync-agent-sandboxes-fn)
+             (sched/handle-status-update conn driver fenzo)
              async/<!!)
-        (is (true? (contains? @tasks-killed task-id-a)))
-        (is (= ["www.test-host.com"] @synced-agents-atom))))
+        (is (true? (contains? @tasks-killed task-id-a)))))
 
     (testing "instance persists mesos-start-time when task is first known to be starting or running"
       (let [job-id (create-dummy-job conn
@@ -1002,19 +827,17 @@
                                :task-id task-id)
         (is (nil? (mesos-start-time)))
         (->> (make-dummy-status-update task-id :unknown :task-staging)
-             (sched/handle-status-update conn driver fenzo sync-agent-sandboxes-fn)
+             (sched/handle-status-update conn driver fenzo)
              async/<!!)
         (is (nil? (mesos-start-time)))
-        (reset! synced-agents-atom [])
         (->> (make-dummy-status-update task-id :unknown :task-running)
-             (sched/handle-status-update conn driver fenzo sync-agent-sandboxes-fn)
+             (sched/handle-status-update conn driver fenzo)
              async/<!!)
-        (is (= ["www.test-host.com"] @synced-agents-atom))
         (is (not (nil? (mesos-start-time))))
         (let [first-observed-start-time (.getTime (mesos-start-time))]
           (is (not (nil? first-observed-start-time)))
           (->> (make-dummy-status-update task-id :unknown :task-running)
-               (sched/handle-status-update conn driver fenzo sync-agent-sandboxes-fn)
+               (sched/handle-status-update conn driver fenzo)
                async/<!!)
           (is (= first-observed-start-time (.getTime (mesos-start-time)))))))))
 
@@ -1641,7 +1464,7 @@
   (let [status-store (atom {})
         latch (CountDownLatch. 11)]
     (with-redefs [sched/handle-status-update
-                  (fn [_ _ _ _ status]
+                  (fn [_ _ _ status]
                     (let [task-id (-> status :task-id :value str)]
                       (swap! status-store update task-id
                              (fn [statuses] (conj (or statuses [])
@@ -1995,62 +1818,6 @@
 
         (cancel-handle)
         (async/close! progress-state-chan)))))
-
-(deftest test-sandbox-directory-population
-  (let [db-conn (restore-fresh-database! "datomic:mem://test-sandbox-directory-population")
-        executing-tasks-atom (atom #{})
-        num-jobs 25
-        cache-timeout-ms 65
-        get-task-id #(str "task-test-sandbox-directory-population-" %)]
-    (dotimes [n num-jobs]
-      (let [task-id (get-task-id n)
-            job (create-dummy-job db-conn :task-id task-id)]
-        (create-dummy-instance db-conn job :executor-id task-id :task-id task-id)))
-
-    (with-redefs [sandbox/retrieve-sandbox-directories-on-agent
-                  (fn [_ _]
-                    (pc/map-from-keys #(str "/sandbox/for/" %) @executing-tasks-atom))]
-      (let [framework-id "test-framework-id"
-            publish-interval-ms 20
-            sync-interval-ms 20
-            agent-query-cache (-> {} (cache/ttl-cache-factory :ttl cache-timeout-ms) atom)
-            {:keys [pending-sync-agent publisher-cancel-fn syncer-cancel-fn task-id->sandbox-agent] :as sandbox-syncer-state}
-            (sandbox/prepare-sandbox-publisher framework-id db-conn 10 publish-interval-ms sync-interval-ms 5 agent-query-cache)
-            sync-agent-sandboxes-fn
-            (fn [hostname]
-              (sandbox/sync-agent-sandboxes sandbox-syncer-state framework-id hostname))]
-        (try
-          (-> (dotimes [n num-jobs]
-                (let [task-id (get-task-id n)]
-                  (swap! executing-tasks-atom conj task-id)
-                  (->> {:task-id {:value task-id}, :state :task-running}
-                       (sched/handle-status-update db-conn nil nil sync-agent-sandboxes-fn)))
-                (Thread/sleep 5))
-              async/thread
-              async/<!!)
-
-          (Thread/sleep (+ cache-timeout-ms sync-interval-ms))
-          (await pending-sync-agent)
-          (Thread/sleep (* 2 publish-interval-ms))
-          (await task-id->sandbox-agent)
-
-          ;; verify the sandbox-directory stored into the db
-          (let [datomic-db (d/db db-conn)]
-            (dotimes [n num-jobs]
-              (let [task-id (get-task-id n)
-                    sandbox-directory (->> task-id
-                                           (d/q '[:find ?i
-                                                  :in $ ?task-id
-                                                  :where [?i :instance/task-id ?task-id]]
-                                                datomic-db)
-                                           ffirst
-                                           (d/entity (d/db db-conn))
-                                           :instance/sandbox-directory)]
-                (is (= (str "/sandbox/for/" task-id) sandbox-directory)))))
-
-          (finally
-            (publisher-cancel-fn)
-            (syncer-cancel-fn)))))))
 
 (comment
   (run-tests))

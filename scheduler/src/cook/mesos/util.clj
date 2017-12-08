@@ -17,6 +17,7 @@
   (:require [clj-time.coerce :as tc]
             [clj-time.core :as t]
             [clj-time.periodic :refer [periodic-seq]]
+            [cook.mesos.schema :as schema]
             [clojure.core.async :as async]
             [clojure.core.cache :as cache]
             [datomic.api :as d :refer (q)]
@@ -91,22 +92,36 @@
 (defn entity->map
   "Takes a datomic entity and converts it along with any nested entities
   into clojure maps"
-  ([entity & {:keys [db skip-keys]
-              :or {skip-keys #{}}}]
-   (let [entity' (if db (d/entity db (:db/id entity))
-                     entity)]
-     (deep-transduce-kv (filter (fn [[k _]] (not (contains? skip-keys k)))) entity'))))
+  ([entity db]
+   (entity->map (d/entity db (:db/id entity))))
+  ([entity]
+   (deep-transduce-kv (map identity) entity)))
 
-(defn job-ent->map
-  "Convert a job entity to a map. This also loads the associated group and converts it to a map."
-  ([job db]
-   (job-ent->map (d/entity db (:db/id job))))
-  ([job]
-   (-> (entity->map job)
-       ; Load the group related to the job (if any) but without loading the job entities
-       ; inside the group entity. If someone needs to access them, it's better to query
-       ; at that point instead of relying on the cached data.
-       (assoc :group/_job (entity->map (:group/_job job) :skip-keys #{:group/job})))))
+; During testing, we found that calling (keys) on a group entity with a large number of jobs was
+; quite slow (12ms just to list keys vs 200 microseconds for job-ent->map.)
+; As an optimization, load the group keys ahead of time from the schema.
+(let [group-keys (->> schema/schema-attributes
+                      (map :db/ident)
+                      (filter #(= "group" (namespace %)))
+                      ; Do not load the nested job entities for a group. These should be queried on-demand
+                      ; as required.
+                      (remove (partial = :group/job)))]
+  (defn job-ent->map
+    "Convert a job entity to a map.
+     This also loads the associated group without the nested jobs in the group and converts it to a map."
+    ([job db]
+     (job-ent->map (d/entity db (:db/id job))))
+    ([job]
+     (let [group-ent (first (:group/_job job))
+           job (entity->map job)
+           group (when group-ent
+                   (->> group-keys
+                        (pc/map-from-keys (fn [k] (entity->map (get group-ent k))))
+                        ; The :group/job key normally returns a set, so let's do the same for compatibility
+                        hash-set))]
+       (cond-> job
+         group (assoc :group/_job group))))))
+
 
 (defn remove-datomic-namespacing
   "Takes a map from datomic (pull) and removes the namespace
@@ -190,6 +205,20 @@
                (+ total-mem (or mem 0))
                job-ents))
       {:cpus total-cpus :mem total-mem})))
+
+(defn total-resources-of-jobs
+  "Given a collections of job entities, returns the total resources they use
+   {:cpus cpu :mem mem :gpus gpu}"
+  [job-ents]
+  (reduce
+    (fn [acc job-ent]
+      (->
+        job-ent
+        job-ent->resources
+        (select-keys [:cpus :mem :gpus])
+        (->> (merge-with + acc))))
+    {:cpus 0.0, :mem 0.0, :gpus 0.0, :jobs (count job-ents)}
+    job-ents))
 
 (defn- get-pending-job-ents*
   "Returns a seq of datomic entities corresponding to jobs
@@ -360,16 +389,34 @@
 (timers/deftimer [cook-mesos scheduler get-running-tasks-duration])
 
 (defn get-running-task-ents
-  "Returns all running task entities"
+  "Returns all running task entities."
   [db]
   (timers/time!
     get-running-tasks-duration
-    (->> (q '[:find ?i
+    (->> (q '[:find [?i ...]
               :in $ [?status ...]
               :where
               [?i :instance/status ?status]]
             db [:instance.status/running :instance.status/unknown])
-         (map (fn [[x]] (d/entity db x))))))
+         (map (partial d/entity db)))))
+
+(timers/deftimer [cook-mesos scheduler get-user-running-jobs-duration])
+
+(defn get-user-running-job-ents
+  "Returns all running job entities for a specific user."
+  [db user]
+  (timers/time!
+    get-user-running-jobs-duration
+    (->> (q '[:find [?j ...]
+              :in $ ?user
+              :where
+              ;; Note: We're assuming that many users will have significantly more
+              ;; completed jobs than there are jobs currently running in the system.
+              ;; If not, we might want to swap these two constraints.
+              [?j :job/state :job.state/running]
+              [?j :job/user ?user]]
+            db user)
+         (map (partial d/entity db)))))
 
 (defn job-allowed-to-start?
   "Converts the DB function :job/allowed-to-start? into a predicate"

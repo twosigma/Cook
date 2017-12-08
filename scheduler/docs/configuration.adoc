@@ -86,15 +86,14 @@ If need it to bind to another port, you can specify that with the `:local-port` 
   `max-size` is the maximum number of elements in the cache before the LRU eviction semantics apply. The default is 1000.
   `ttl-ms` is the default time in milliseconds that entries are allowed to reside in the cache. The default is 60000, i.e. 1 minute.
 
-`:sandbox-syncer`::
+`:sandbox-publisher`::
   The Cook scheduler throttles the rate at which it publishes task sandbox directories.
   This allows us to handle high rate of incoming progress messages in a graceful manner.
-  `sandbox-syncer` is a map with two possible keys, `publish-batch-size` and `publish-interval-ms`.
+  `sandbox-publisher` is a map with the following possible keys: `publish-batch-size` and `publish-interval-ms`.
   The `publish-batch-size` is an integer representing the number of facts that are updated in individual datomic instance sandbox directory update transactions.
   The default value is 100.
   The `publish-interval-ms` is an integer representing the number of millisecond intervals at which sandbox directories updates will be published to datomic.
   The default value is 2500.
-
 
 [[mesos_config]]
 ==== Mesos Configuration
@@ -298,7 +297,7 @@ An example configuration looks like:
 ```clojure
 {...
  :executor {:command "./cook-executor"
-            :default-progress-regex-string "progress: (\d+)(?: )?(.*)"
+            :default-progress-regex-string "progress:\\s+([0-9]*\\.?[0-9]+)($|\\s+.*)"
             :environment {"EXECUTOR_DEFAULT_PROGRESS_OUTPUT_NAME" "stdout"}
             :log-level "INFO"
             :max-message-length 512
@@ -318,10 +317,10 @@ The configuration values are defined as follows:
 
 `:default-progress-regex-string`::
   The string representation of the regex used to identify progress update messages.
-  The regex should have two capture groups, the first being an integer representing the progress percent.
-  The second being a message about the progress.
+  The regex should have one or two capture groups, the first being a number representing the progress percent.
+  The second, when present, being a message about the progress.
   The executor will use the `:max-message-length` value to trim the progress message string before sending it to the scheduler.
-  Defaults to "progress: (\d*), (.*)".
+  Defaults to "progress:\\s+([0-9]*\\.?[0-9]+)($|\\s+.*)".
 
 `:environment`::
   A map that represents the additional environment variables passed on to the executor.

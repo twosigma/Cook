@@ -75,7 +75,7 @@ def print_submit_result(cluster, response):
         print_info(submit_failed_message(cluster_name, reason))
 
 
-def submit_federated(clusters, jobs):
+def submit_federated(clusters, jobs, group):
     """
     Attempts to submit the provided jobs to each cluster in clusters, until a cluster
     returns a "created" status code. If no cluster returns "created" status, throws.
@@ -85,7 +85,12 @@ def submit_federated(clusters, jobs):
         cluster_url = cluster['url']
         try:
             print_info('Attempting to submit on %s cluster...' % colors.bold(cluster_name))
-            resp = http.post(cluster, 'rawscheduler', {'jobs': jobs})
+
+            json_body = {'jobs': jobs}
+            if group:
+                json_body['groups'] = [group]
+
+            resp = http.post(cluster, 'rawscheduler', json_body)
             print_submit_result(cluster, resp)
             if resp.status_code == 201:
                 metrics.inc('command.submit.jobs', len(jobs))
@@ -148,43 +153,53 @@ def submit(clusters, args, _):
     """
     guard_no_cluster(clusters)
     logging.debug('submit args: %s' % args)
-    job = args
-    raw = job.pop('raw', None)
-    command_from_command_line = job.pop('command', None)
-    command_prefix = job.pop('command-prefix')
-    application_name = job.pop('application-name', 'cook-scheduler-cli')
-    application_version = job.pop('application-version', version.VERSION)
-    job['application'] = {'name': application_name, 'version': application_version}
+    job_template = args
+    raw = job_template.pop('raw', None)
+    command_from_command_line = job_template.pop('command', None)
+    command_prefix = job_template.pop('command-prefix')
+    application_name = job_template.pop('application-name', 'cook-scheduler-cli')
+    application_version = job_template.pop('application-version', version.VERSION)
+    job_template['application'] = {'name': application_name, 'version': application_version}
+
+    group = None
+    if 'group-name' in job_template:
+        # If the user did not also specify a group uuid, generate
+        # one for them, and place the job(s) into the group
+        if 'group' not in job_template:
+            job_template['group'] = str(uuid.uuid4())
+
+        # The group name is specified on the group object
+        group = {'name': job_template.pop('group-name'), 'uuid': job_template['group']}
 
     if raw:
         if command_from_command_line:
             raise Exception('You cannot specify a command at the command line when using --raw/-r.')
 
         jobs_json = read_jobs_from_stdin()
-        jobs = parse_raw_job_spec(job, jobs_json)
+        jobs = parse_raw_job_spec(job_template, jobs_json)
     else:
         commands = acquire_commands(command_from_command_line)
 
-        if job.get('uuid') and len(commands) > 1:
+        if job_template.get('uuid') and len(commands) > 1:
             raise Exception('You cannot specify multiple subcommands with a single UUID.')
 
-        if job.get('env'):
-            job['env'] = dict([e.split('=', maxsplit=1) for e in job['env']])
+        if job_template.get('env'):
+            job_template['env'] = dict([e.split('=', maxsplit=1) for e in job_template['env']])
 
-        jobs = [deep_merge(job, {'command': c}) for c in commands]
+        jobs = [deep_merge(job_template, {'command': c}) for c in commands]
 
-    for j in jobs:
-        if not j.get('uuid'):
-            j['uuid'] = str(uuid.uuid4())
+    for job in jobs:
+        if not job.get('uuid'):
+            job['uuid'] = str(uuid.uuid4())
 
-        if not j.get('name'):
-            j['name'] = '%s_job' % current_user()
+        if not job.get('name'):
+            job['name'] = '%s_job' % current_user()
 
         if command_prefix:
-            j['command'] = f'{command_prefix}{j["command"]}'
+            job['command'] = f'{command_prefix}{job["command"]}'
 
     logging.debug('jobs: %s' % jobs)
-    return submit_federated(clusters, jobs)
+    return submit_federated(clusters, jobs, group)
 
 
 def valid_uuid(s):
@@ -210,6 +225,8 @@ def register(add_parser, add_defaults):
     submit_parser.add_argument('--cpus', '-c', help='cpus to reserve for job', type=float)
     submit_parser.add_argument('--mem', '-m', help='memory to reserve for job', type=int)
     submit_parser.add_argument('--group', '-g', help='group uuid for job', type=str, metavar='UUID')
+    submit_parser.add_argument('--group-name', '-G', help='group name for job',
+                               type=str, metavar='NAME', dest='group-name')
     submit_parser.add_argument('--env', '-e', help='environment variable for job (can be repeated)',
                                metavar='KEY=VALUE', action='append')
     submit_parser.add_argument('--ports', help='number of ports to reserve for job', type=int)

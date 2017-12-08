@@ -82,13 +82,42 @@ def show(uuids=None, cook_url=None, flags=None, show_flags=None):
     return cp
 
 
-def show_json(uuids, cook_url=None, flags=None):
-    """Shows the job JSON corresponding to the given UUID(s)"""
+def __show_json(uuids, cook_url=None, flags=None):
+    """Invokes show on the given UUIDs with --silent and --json, and returns the parsed JSON"""
     flags = (flags + ' ') if flags else ''
-    cp = show(uuids, cook_url, '%s--silent' % flags, '--json')
-    response = json.loads(stdout(cp))
-    jobs = [job for entities in response['clusters'].values() for job in entities['jobs']]
+    cp = show(uuids, cook_url, f'{flags}--silent', '--json')
+    data = json.loads(stdout(cp))
+    return cp, data
+
+
+def show_jobs(uuids, cook_url=None, flags=None):
+    """Shows the job JSON corresponding to the given UUID(s)"""
+    cp, data = __show_json(uuids, cook_url, flags)
+    jobs = [job for entities in data['clusters'].values() for job in entities['jobs']]
     return cp, jobs
+
+
+def show_instances(uuids, cook_url=None, flags=None):
+    """Shows the instance JSON corresponding to the given UUID(s)"""
+    cp, data = __show_json(uuids, cook_url, flags)
+    instance_job_pairs = [pair for entities in data['clusters'].values() for pair in entities['instances']]
+    return cp, instance_job_pairs
+
+
+def show_groups(uuids, cook_url=None, flags=None):
+    """Shows the group JSON corresponding to the given UUID(s)"""
+    cp, data = __show_json(uuids, cook_url, flags)
+    groups = [group for entities in data['clusters'].values() for group in entities['groups']]
+    return cp, groups
+
+
+def show_all(uuids, cook_url=None, flags=None):
+    """Shows the job, instance, and group JSON corresponding to the given UUID(s)"""
+    cp, data = __show_json(uuids, cook_url, flags)
+    jobs = [job for entities in data['clusters'].values() for job in entities['jobs']]
+    instance_job_pairs = [pair for entities in data['clusters'].values() for pair in entities['instances']]
+    groups = [group for entities in data['clusters'].values() for group in entities['groups']]
+    return cp, jobs, instance_job_pairs, groups
 
 
 def wait(uuids=None, cook_url=None, flags=None, wait_flags=None):
@@ -121,19 +150,20 @@ class temp_config_file:
         os.remove(self.path)
 
 
-def list_jobs(cook_url=None, list_flags=None, flags=None):
-    """Invokes the list subcommand"""
-    args = f'list {list_flags}' if list_flags else 'list'
+def jobs(cook_url=None, jobs_flags=None, flags=None):
+    """Invokes the jobs subcommand"""
+    args = f'jobs {jobs_flags}' if jobs_flags else 'jobs'
     cp = cli(args, cook_url, flags)
     return cp
 
 
-def list_jobs_json(cook_url=None, list_flags=None):
-    """Invokes the list subcommand with --json"""
-    cp = list_jobs(cook_url, '%s--json' % (list_flags + ' ' if list_flags else ''))
+def jobs_json(cook_url=None, jobs_flags=None):
+    """Invokes the jobs subcommand with --json"""
+    jobs_flags = f'{jobs_flags} --json' if jobs_flags else '--json'
+    cp = jobs(cook_url, jobs_flags=jobs_flags)
     response = json.loads(stdout(cp))
-    jobs = [job for entities in response['clusters'].values() for job in entities['jobs']]
-    return cp, jobs
+    job_list = [job for entities in response['clusters'].values() for job in entities['jobs']]
+    return cp, job_list
 
 
 def output(cp):

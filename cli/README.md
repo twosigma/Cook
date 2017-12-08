@@ -75,16 +75,16 @@ UUIDs are passed as positional arguments.
 This command shows information about the queried jobs, instances, and groups. 
 If you use `--json`, the command returns a JSON representation instead of tables.
 
-#### `list`
+#### `jobs`
 
-The `list` command allows you to list all jobs:
+The `jobs` command allows you to list all jobs:
 
 - in a particular state (e.g. running / waiting),
 - for a particular user,
 - submitted within the last X hours,
 - with a particular name pattern (e.g. "spark*")
 
-As with `show`, `list` will list jobs across all configured clusters.
+As with `show`, `jobs` will list jobs across all configured clusters.
 
 #### `ssh`
 
@@ -176,7 +176,7 @@ Job Instance                          Run Time                      Host        
 
 List all jobs submitted by root, in any state, within the last (one) hour:
 ```bash
-$ cs list --user root --state all --lookback 1
+$ cs jobs --user root --state all --lookback 1
 Cluster    UUID                                  Name                                  Memory      CPUs    Priority  Attempts    Submitted       Command    Job Status
 dev0       df1ecf44-e42e-4aa3-8cc3-40a289b98666  ff9e3613-97c5-4a33-b4bd-5194fae9c29e  128 MB         1          50  1 / 1       44 minutes ago  exit 1     Failed
 dev0       ec62e5c3-a2e0-454b-ada6-e31ac35ff79b  ff9e3613-97c5-4a33-b4bd-5194fae9c29e  128 MB         1          50  1 / 1       44 minutes ago  ls         Success
