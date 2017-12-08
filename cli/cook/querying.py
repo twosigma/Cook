@@ -302,7 +302,7 @@ def parse_entity_refs(clusters, ref_strings):
             path_parts = result.path.split('/')
             num_path_parts = len(path_parts)
             cluster_url = (f'{result.scheme}://' if result.scheme else '') + result.netloc
-            cluster_names = [c['name'] for c in clusters if c['url'].lower() == cluster_url.lower()]
+            cluster_names = [c['name'] for c in clusters if c['url'].lower().rstrip('/') == cluster_url.lower()]
 
             if num_path_parts < 2:
                 raise Exception(f'Unable to determine entity type and UUID from {ref_string}.')
