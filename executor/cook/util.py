@@ -2,9 +2,8 @@ import logging
 import resource
 import sys
 
-__is_osx = sys.platform == 'darwin'
 __rusage_denom_mb = 1024.0
-if __is_osx:
+if sys.platform == 'darwin':
     # in OSX the output is in different units
     __rusage_denom_mb = __rusage_denom_mb * 1024
 
