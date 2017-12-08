@@ -1363,3 +1363,15 @@ class CookCliTest(unittest.TestCase):
         _, instance_job_pairs = cli.show_instances([instance_url], self.cook_url)
         self.assertIn(instance_uuid_1, (i['task_id'] for i, _ in instance_job_pairs))
         self.assertIn(instance_uuid_2, (i['task_id'] for i, _ in instance_job_pairs))
+
+    def test_entity_refs_trailing_slash_on_cluster(self):
+        config = {'clusters': [{'name': 'Foo', 'url': f'{self.cook_url}/'}]}
+        with cli.temp_config_file(config) as path:
+            flags = f'--config {path}'
+            cp, uuids = cli.submit('ls', flags=flags)
+            self.assertEqual(0, cp.returncode, cp.stderr)
+            uuid = uuids[0]
+            _, jobs = cli.show_jobs([f'{self.cook_url}/jobs/{uuid}'], flags=flags)
+            self.assertEqual(0, cp.returncode, cp.stderr)
+            self.assertEqual(1, len(jobs))
+            self.assertEqual(uuid, jobs[0]['uuid'])
