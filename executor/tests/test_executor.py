@@ -1,3 +1,5 @@
+import errno
+import functools
 import json
 import logging
 import subprocess
@@ -37,8 +39,10 @@ class ExecutorTest(unittest.TestCase):
             ce.get_task_id({})
 
     def test_create_status_running(self):
+        driver = tu.FakeMesosExecutorDriver()
         task_id = tu.get_random_task_id()
-        actual_status = ce.create_status(task_id, cook.TASK_RUNNING)
+        status_updater = ce.StatusUpdater(driver, task_id)
+        actual_status = status_updater.create_status(cook.TASK_RUNNING)
         expected_status = {'task_id': {'value': task_id},
                            'state': cook.TASK_RUNNING}
         tu.assert_status(self, expected_status, actual_status)
@@ -46,14 +50,20 @@ class ExecutorTest(unittest.TestCase):
     def test_update_status(self):
         driver = tu.FakeMesosExecutorDriver()
         task_id = tu.get_random_task_id()
+        status_updater = ce.StatusUpdater(driver, task_id)
         task_state = "TEST_TASK_STATE"
 
-        ce.update_status(driver, task_id, task_state)
+        self.assertTrue(status_updater.update_status(cook.TASK_STARTING))
+        self.assertTrue(status_updater.update_status(task_state))
+        self.assertTrue(status_updater.update_status(cook.TASK_RUNNING, reason='Running'))
+        self.assertTrue(status_updater.update_status(cook.TASK_FAILED, reason='Termination'))
+        self.assertFalse(status_updater.update_status(cook.TASK_FINISHED))
 
-        self.assertEqual(1, len(driver.statuses))
-        actual_status = driver.statuses[0]
-        expected_status = {'task_id': {'value': task_id}, 'state': task_state}
-        tu.assert_status(self, expected_status, actual_status)
+        expected_statuses = [{'task_id': {'value': task_id}, 'state': cook.TASK_STARTING},
+                             {'task_id': {'value': task_id}, 'state': task_state},
+                             {'task_id': {'value': task_id}, 'reason': 'Running', 'state': cook.TASK_RUNNING},
+                             {'task_id': {'value': task_id}, 'reason': 'Termination', 'state': cook.TASK_FAILED}]
+        tu.assert_statuses(self, expected_statuses, driver.statuses)
 
     def test_send_message(self):
         driver = tu.FakeMesosExecutorDriver()
@@ -77,6 +87,49 @@ class ExecutorTest(unittest.TestCase):
 
         result = ce.send_message(driver, message, max_message_length)
         self.assertFalse(result)
+
+    def test_os_error_handler_functools_partial(self):
+        driver = tu.FakeMesosExecutorDriver()
+        task_id = tu.get_random_task_id()
+        status_updater = ce.StatusUpdater(driver, task_id)
+        stop_signal = Event()
+        inner_os_error_handler = functools.partial(ce.os_error_handler, stop_signal, status_updater)
+
+        inner_os_error_handler(OSError(errno.ENOMEM, 'No Memory'))
+
+        self.assertTrue(stop_signal.isSet())
+        expected_statuses = [{'task_id': {'value': task_id},
+                              'reason': cook.REASON_CONTAINER_LIMITATION_MEMORY,
+                              'state': cook.TASK_FAILED}]
+        tu.assert_statuses(self, expected_statuses, driver.statuses)
+
+    def test_os_error_handler_no_memory(self):
+        driver = tu.FakeMesosExecutorDriver()
+        task_id = tu.get_random_task_id()
+        status_updater = ce.StatusUpdater(driver, task_id)
+        stop_signal = Event()
+        os_error = OSError(errno.ENOMEM, 'No Memory')
+
+        ce.os_error_handler(stop_signal, status_updater, os_error)
+
+        self.assertTrue(stop_signal.isSet())
+        expected_statuses = [{'task_id': {'value': task_id},
+                              'reason': cook.REASON_CONTAINER_LIMITATION_MEMORY,
+                              'state': cook.TASK_FAILED}]
+        tu.assert_statuses(self, expected_statuses, driver.statuses)
+
+    def test_os_error_handler_no_permission(self):
+        driver = tu.FakeMesosExecutorDriver()
+        task_id = tu.get_random_task_id()
+        status_updater = ce.StatusUpdater(driver, task_id)
+        stop_signal = Event()
+        os_error = OSError(errno.EPERM, 'No Permission')
+
+        ce.os_error_handler(stop_signal, status_updater, os_error)
+
+        self.assertTrue(stop_signal.isSet())
+        expected_statuses = [{'task_id': {'value': task_id}, 'state': cook.TASK_FAILED}]
+        tu.assert_statuses(self, expected_statuses, driver.statuses)
 
     def test_launch_task(self):
         task_id = tu.get_random_task_id()
@@ -338,8 +391,11 @@ class ExecutorTest(unittest.TestCase):
 
     def test_manage_task_empty_command(self):
         def assertions(driver, task_id, sandbox_directory):
-            expected_statuses = [{'task_id': {'value': task_id}, 'state': cook.TASK_STARTING},
-                                 {'task_id': {'value': task_id}, 'state': cook.TASK_ERROR}]
+            expected_statuses = [{'task_id': {'value': task_id},
+                                  'state': cook.TASK_STARTING},
+                                 {'task_id': {'value': task_id},
+                                  'reason': cook.REASON_TASK_INVALID,
+                                  'state': cook.TASK_ERROR}]
             tu.assert_statuses(self, expected_statuses, driver.statuses)
 
             expected_message_0 = {'sandbox-directory': sandbox_directory, 'task-id': task_id, 'type': 'directory'}
@@ -620,14 +676,18 @@ class ExecutorTest(unittest.TestCase):
                   'echo "Exiting..."; ' \
                   'exit 0'.format(progress_name, stdout_name, stderr_name, stdout_name)
 
-        self.manage_task_runner(command, assertions, stop_signal=stop_signal, task_id=task_id, config=config)
-        stop_signal.set()
+        try:
+            self.manage_task_runner(command, assertions, stop_signal=stop_signal, task_id=task_id, config=config)
+            stop_signal.set()
+        finally:
+            tu.cleanup_file(progress_name)
 
     def test_executor_launch_task(self):
 
         task_id = tu.get_random_task_id()
         stdout_name = tu.ensure_directory('build/stdout.{}'.format(task_id))
         stderr_name = tu.ensure_directory('build/stderr.{}'.format(task_id))
+        output_name = tu.ensure_directory('build/output.' + str(task_id))
 
         tu.redirect_stdout_to_file(stdout_name)
         tu.redirect_stderr_to_file(stderr_name)
@@ -638,7 +698,6 @@ class ExecutorTest(unittest.TestCase):
             executor = ce.CookExecutor(stop_signal, config)
 
             driver = tu.FakeMesosExecutorDriver()
-            output_name = tu.ensure_directory('build/output.' + str(task_id))
             command = 'echo "Start" >> {}; sleep 0.1; echo "Done." >> {}; '.format(output_name, output_name)
             task = {'task_id': {'value': task_id},
                     'data': pm.encode_data(json.dumps({'command': command}).encode('utf8'))}
@@ -665,12 +724,14 @@ class ExecutorTest(unittest.TestCase):
             tu.assert_messages(self, [expected_message_0, expected_message_1], [], driver.messages)
         finally:
             tu.cleanup_output(stdout_name, stderr_name)
+            tu.cleanup_file(output_name)
 
     def test_executor_launch_task_and_disconnect(self):
 
         task_id = tu.get_random_task_id()
         stdout_name = tu.ensure_directory('build/stdout.{}'.format(task_id))
         stderr_name = tu.ensure_directory('build/stderr.{}'.format(task_id))
+        output_name = tu.ensure_directory('build/output.' + str(task_id))
 
         tu.redirect_stdout_to_file(stdout_name)
         tu.redirect_stderr_to_file(stderr_name)
@@ -681,7 +742,6 @@ class ExecutorTest(unittest.TestCase):
             executor = ce.CookExecutor(stop_signal, config)
 
             driver = tu.FakeMesosExecutorDriver()
-            output_name = tu.ensure_directory('build/output.' + str(task_id))
             command = 'echo "Start" >> {}; sleep 100; echo "Done." >> {}; '.format(output_name, output_name)
             task = {'task_id': {'value': task_id},
                     'data': pm.encode_data(json.dumps({'command': command}).encode('utf8'))}
@@ -722,3 +782,4 @@ class ExecutorTest(unittest.TestCase):
             tu.assert_messages(self, [expected_message_0, expected_message_1], [], driver.messages)
         finally:
             tu.cleanup_output(stdout_name, stderr_name)
+            tu.cleanup_file(output_name)

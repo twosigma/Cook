@@ -5,10 +5,9 @@ This module configures logging and starts the executor's driver thread.
 """
 
 import logging
-import resource
 import signal
 import sys
-from threading import Event, Thread, Timer
+from threading import Event, Timer
 
 import os
 
@@ -20,23 +19,8 @@ import encodings.idna
 import cook.config as cc
 import cook.executor as ce
 import cook.io_helper as cio
+import cook.util as cu
 import pymesos as pm
-
-
-__is_osx = sys.platform == 'darwin'
-__rusage_denom_mb = 1024.0
-if __is_osx:
-    # in OSX the output is in different units
-    __rusage_denom_mb = __rusage_denom_mb * 1024
-
-
-def print_memory_usage():
-    """Logs the memory usage of the executor."""
-    try:
-        max_rss = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
-        logging.info('Executor Memory usage: {} MB'.format(max_rss / __rusage_denom_mb))
-    except Exception:
-        logging.exception('Error in logging memory usage')
 
 
 def main(args=None):
@@ -61,7 +45,7 @@ def main(args=None):
     config = cc.initialize_config(environment)
 
     def print_memory_usage_task():
-        print_memory_usage()
+        cu.print_memory_usage()
         timer = Timer(config.memory_usage_interval_secs, print_memory_usage_task)
         timer.daemon = True
         timer.start()
@@ -76,7 +60,7 @@ def main(args=None):
             executor_id, config.shutdown_grace_period))
         stop_signal.set()
         non_zero_exit_signal.set()
-        print_memory_usage()
+        cu.print_memory_usage()
 
     signal.signal(signal.SIGINT, handle_interrupt)
     signal.signal(signal.SIGTERM, handle_interrupt)
@@ -100,7 +84,7 @@ def main(args=None):
         stop_signal.set()
         non_zero_exit_signal.set()
 
-    print_memory_usage()
+    cu.print_memory_usage()
     exit_code = 1 if non_zero_exit_signal.isSet() else 0
     logging.info('Executor exiting with code {}'.format(exit_code))
     sys.exit(exit_code)

@@ -1,8 +1,10 @@
+import errno
+import functools
 import json
 import logging
 import signal
 import time
-from threading import Event, Thread, Timer
+from threading import Event, Lock, Thread, Timer
 
 import os
 import pymesos as pm
@@ -11,6 +13,7 @@ import cook
 import cook.io_helper as cio
 import cook.progress as cp
 import cook.subprocess as cs
+import cook.util as cu
 
 
 def get_task_id(task):
@@ -28,44 +31,72 @@ def get_task_id(task):
     return task['task_id']['value']
 
 
-def create_status(task_id, task_state):
-    """Creates a dictionary representing the task status.
+class StatusUpdater(object):
+    """Sends status updates for the task."""
+    def __init__(self, driver, task_id):
+        """
+        Parameters
+        ----------
+        driver: MesosExecutorDriver
+            The driver to send the status update to.
+        task_id: dictionary
+            The task whose status update to send.
+        """
+        self.driver = driver
+        self.lock = Lock()
+        self.task_id = task_id
+        self.terminal_states = {cook.TASK_ERROR, cook.TASK_FAILED, cook.TASK_FINISHED, cook.TASK_KILLED}
+        self.terminal_status_sent = False
 
-    Parameters
-    ----------
-    task_id: string
-        The task id.
-    task_state: string
-        The state of the task to report.
+    def create_status(self, task_state, reason=None):
+        """Creates a dictionary representing the task status.
 
-    Returns
-    -------
-    a status dictionary that can be sent to the driver.
-    """
-    return {'task_id': {'value': task_id},
-            'state': task_state,
-            'timestamp': time.time()}
+        Parameters
+        ----------
+        task_state: string
+            The state of the task to report.
+        reason: string
+            The reason for the task state.
 
+        Returns
+        -------
+        a status dictionary that can be sent to the driver.
+        """
+        task_status = {'state': task_state,
+                       'task_id': {'value': self.task_id},
+                       'timestamp': time.time()}
+        if reason:
+            task_status['reason'] = reason
+        return task_status
 
-def update_status(driver, task_id, task_state):
-    """Sends the status using the driver. 
+    def update_status(self, task_state, reason=None):
+        """Sends the status using the driver.
 
-    Parameters
-    ----------
-    driver: MesosExecutorDriver
-        The driver to send the status update to.
-    task_id: string
-        The task id of the task whose status update to send.
-    task_state: string
-        The state of the task which will be sent to the driver.
+        Parameters
+        ----------
+        task_state: string
+            The state of the task which will be sent to the driver.
+        reason: string
+            The reason for the task state.
 
-    Returns
-    -------
-    Nothing.
-    """
-    logging.info('Updating task {} state to {}'.format(task_id, task_state))
-    status = create_status(task_id, task_state)
-    driver.sendStatusUpdate(status)
+        Returns
+        -------
+        True if successfully sent the status update, else False.
+        """
+        with self.lock:
+            is_terminal_status = task_state in self.terminal_states
+            if is_terminal_status and self.terminal_status_sent:
+                logging.info('Terminal state for task already sent, dropping state {}'.format(task_state))
+                return False
+            try:
+                logging.info('Updating task state to {}'.format(task_state))
+                status = self.create_status(task_state, reason=reason)
+                self.driver.sendStatusUpdate(status)
+                self.terminal_status_sent = is_terminal_status
+                return True
+            except Exception:
+                logging.exception('Unable to send task state {}'.format(task_state))
+                return False
 
 
 def send_message(driver, message, max_message_length):
@@ -130,7 +161,7 @@ def await_process_completion(process, stop_signal, shutdown_grace_period_ms):
     process: subprocess.Popen
         The process to whose termination to wait on.
     stop_signal: Event
-        Event that determines if an interrupt was sent
+        Event that determines if the process was requested to terminate
     shutdown_grace_period_ms: int
         Grace period before forceful kill
 
@@ -211,6 +242,29 @@ def output_task_completion(task_id, task_state):
     cio.print_and_log('Executor completed execution of {} (state={})'.format(task_id, task_state))
 
 
+def os_error_handler(stop_signal, status_updater, os_error):
+    """Exception handler for OSError.
+
+    Parameters
+    ----------
+    stop_signal: threading.Event
+        Event that determines if the process was requested to terminate.
+    status_updater: StatusUpdater
+        Wrapper object that sends task status messages.
+    os_error: OSError
+        The current executor config.
+
+    Returns
+    -------
+    Nothing
+    """
+    stop_signal.set()
+    logging.exception('OSError generated, requesting process to terminate')
+    reason = cook.REASON_CONTAINER_LIMITATION_MEMORY if os_error.errno == errno.ENOMEM else None
+    status_updater.update_status(cook.TASK_FAILED, reason=reason)
+    cu.print_memory_usage()
+
+
 def manage_task(driver, task, stop_signal, completed_signal, config):
     """Manages the execution of a task waiting for it to terminate normally or be killed.
        It also sends the task status updates, sandbox location and exit code back to the scheduler.
@@ -224,9 +278,12 @@ def manage_task(driver, task, stop_signal, completed_signal, config):
     launched_process = None
     task_id = get_task_id(task)
     cio.print_and_log('Starting task {}'.format(task_id))
+    status_updater = StatusUpdater(driver, task_id)
+
+    inner_os_error_handler = functools.partial(os_error_handler, stop_signal, status_updater)
     try:
         # not yet started to run the task
-        update_status(driver, task_id, cook.TASK_STARTING)
+        status_updater.update_status(cook.TASK_STARTING)
 
         sandbox_message = json.dumps({'sandbox-directory': config.sandbox_directory,
                                       'task-id': task_id,
@@ -237,12 +294,12 @@ def manage_task(driver, task, stop_signal, completed_signal, config):
         launched_process = launch_task(task, environment)
         if launched_process:
             # task has begun running successfully
-            update_status(driver, task_id, cook.TASK_RUNNING)
+            status_updater.update_status(cook.TASK_RUNNING)
             cio.print_and_log('Forked command at {}'.format(launched_process.pid))
         else:
             # task launch failed, report an error
             logging.error('Error in launching task')
-            update_status(driver, task_id, cook.TASK_ERROR)
+            status_updater.update_status(cook.TASK_ERROR, reason=cook.REASON_TASK_INVALID)
             return
 
         task_completed_signal = Event() # event to track task execution completion
@@ -259,7 +316,7 @@ def manage_task(driver, task, stop_signal, completed_signal, config):
             logging.info('Location {} tagged as [tag={}]'.format(progress_location, location_tag))
             progress_tracker = cp.ProgressTracker(config, stop_signal, task_completed_signal, sequence_counter,
                                                   progress_updater, progress_termination_signal, progress_location,
-                                                  location_tag)
+                                                  location_tag, inner_os_error_handler)
             progress_tracker.start()
             return progress_tracker
 
@@ -295,13 +352,16 @@ def manage_task(driver, task, stop_signal, completed_signal, config):
         # task either completed successfully or aborted with an error
         task_state = get_task_state(exit_code)
         output_task_completion(task_id, task_state)
-        update_status(driver, task_id, task_state)
+        status_updater.update_status(task_state)
+
+    except OSError as os_error:
+        inner_os_error_handler(os_error)
 
     except Exception:
         # task aborted with an error
         logging.exception('Error in executing task')
         output_task_completion(task_id, cook.TASK_FAILED)
-        update_status(driver, task_id, cook.TASK_FAILED)
+        status_updater.update_status(cook.TASK_FAILED, reason=cook.REASON_EXECUTOR_TERMINATED)
 
     finally:
         # ensure completed_signal is set so driver can stop
