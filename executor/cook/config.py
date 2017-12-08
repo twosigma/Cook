@@ -32,7 +32,6 @@ class ExecutorConfig(object):
             return 1000
 
     def __init__(self,
-                 flush_interval_secs=2,
                  max_bytes_read_per_line=1024,
                  max_message_length=512,
                  memory_usage_interval_secs=15,
@@ -42,7 +41,6 @@ class ExecutorConfig(object):
                  progress_sample_interval_ms=100,
                  sandbox_directory='',
                  shutdown_grace_period='1secs'):
-        self.flush_interval_secs = flush_interval_secs
         self.max_bytes_read_per_line = max_bytes_read_per_line
         self.max_message_length = max_message_length
         self.memory_usage_interval_secs = memory_usage_interval_secs
@@ -82,7 +80,6 @@ def initialize_config(environment):
     if progress_output_env_variable not in environment:
         logging.info('No entry found for {} in the environment'.format(progress_output_env_variable))
 
-    flush_interval_secs = max(int(environment.get('EXECUTOR_FLUSH_INTERVAL_SECS', 10)), 2)
     max_bytes_read_per_line = max(int(environment.get('EXECUTOR_MAX_BYTES_READ_PER_LINE', 4 * 1024)), 128)
     max_message_length = max(int(environment.get('EXECUTOR_MAX_MESSAGE_LENGTH', 512)), 64)
     memory_usage_interval_secs = max(int(environment.get('EXECUTOR_MEMORY_USAGE_INTERVAL_SECS', 3600)), 30)
@@ -92,7 +89,6 @@ def initialize_config(environment):
     sandbox_directory = environment.get('MESOS_SANDBOX', '')
     shutdown_grace_period = environment.get('MESOS_EXECUTOR_SHUTDOWN_GRACE_PERIOD', '2secs')
 
-    logging.info('stdout/stderr flush interval is {} seconds'.format(flush_interval_secs))
     logging.info('Max bytes read per line is {}'.format(max_bytes_read_per_line))
     logging.info('Max message length is {}'.format(max_message_length))
     logging.info('Memory usage will be logged every {} secs'.format(memory_usage_interval_secs))
@@ -102,8 +98,7 @@ def initialize_config(environment):
     logging.info('Sandbox location is {}'.format(sandbox_directory))
     logging.info('Shutdown grace period is {}'.format(shutdown_grace_period))
 
-    return ExecutorConfig(flush_interval_secs=flush_interval_secs,
-                          max_bytes_read_per_line=max_bytes_read_per_line,
+    return ExecutorConfig(max_bytes_read_per_line=max_bytes_read_per_line,
                           max_message_length=max_message_length,
                           memory_usage_interval_secs=memory_usage_interval_secs,
                           progress_output_env_variable=progress_output_env_variable,

@@ -6,7 +6,6 @@ import unittest
 
 import collections
 
-import cook.io_helper as cio
 import cook.subprocess as cs
 import tests.utils as tu
 
@@ -48,7 +47,6 @@ class SubprocessTest(unittest.TestCase):
         try:
             command = "bash -c 'function handle_term { echo GOT TERM; }; trap handle_term SIGTERM TERM; sleep 100'"
             process = cs.launch_process(command, {})
-            stdout_thread, stderr_thread = cio.track_outputs(task_id, process, 2, 4096)
             shutdown_grace_period_ms = 1000
 
             group_id = cs.find_process_group(process.pid)
@@ -62,9 +60,6 @@ class SubprocessTest(unittest.TestCase):
                     time.sleep(0.01)
             if process.poll() is None:
                 process.kill()
-
-            stderr_thread.join()
-            stdout_thread.join()
 
             self.assertTrue(((-1 * signal.SIGTERM) == process.poll()) or ((128 + signal.SIGTERM) == process.poll()),
                             'Process exited with code {}'.format(process.poll()))
@@ -89,7 +84,6 @@ class SubprocessTest(unittest.TestCase):
         try:
             command = "trap '' TERM SIGTERM; sleep 100"
             process = cs.launch_process(command, {})
-            stdout_thread, stderr_thread = cio.track_outputs(task_id, process, 2, 4096)
             shutdown_grace_period_ms = 1000
 
             group_id = cs.find_process_group(process.pid)
@@ -104,9 +98,6 @@ class SubprocessTest(unittest.TestCase):
             if process.poll() is None:
                 process.kill()
 
-            stderr_thread.join()
-            stdout_thread.join()
-
             self.assertTrue(((-1 * signal.SIGKILL) == process.poll()) or ((128 + signal.SIGKILL) == process.poll()),
                             'Process exited with code {}'.format(process.poll()))
             self.assertEqual(len(find_process_ids_in_group(group_id)), 0)
@@ -115,30 +106,41 @@ class SubprocessTest(unittest.TestCase):
             tu.cleanup_output(stdout_name, stderr_name)
 
     def process_launch_and_kill_helper(self, kill_fn):
-        start_time = time.time()
+        task_id = tu.get_random_task_id()
 
-        command = 'echo "A.$(sleep 30)" & echo "B.$(sleep 30)" & echo "C.$(sleep 30)" &'
-        environment = {}
-        process = cs.launch_process(command, environment)
+        stdout_name = tu.ensure_directory('build/stdout.{}'.format(task_id))
+        stderr_name = tu.ensure_directory('build/stderr.{}'.format(task_id))
 
-        group_id = cs.find_process_group(process.pid)
-        self.assertGreater(group_id, 0)
+        tu.redirect_stdout_to_file(stdout_name)
+        tu.redirect_stderr_to_file(stderr_name)
 
-        child_process_ids = tu.wait_for(lambda: find_process_ids_in_group(group_id),
-                                        lambda data: len(data) >= 7,
-                                        default_value=[])
-        self.assertGreaterEqual(len(child_process_ids), 7)
-        self.assertLessEqual(len(child_process_ids), 10)
+        try:
+            start_time = time.time()
 
-        kill_fn(process.pid)
+            command = 'echo "A.$(sleep 30)" & echo "B.$(sleep 30)" & echo "C.$(sleep 30)" &'
+            environment = {}
+            process = cs.launch_process(command, environment)
 
-        child_process_ids = tu.wait_for(lambda: find_process_ids_in_group(group_id),
-                                        lambda data: len(data) == 0,
-                                        default_value=[])
-        self.assertEqual(0, len(child_process_ids))
+            group_id = cs.find_process_group(process.pid)
+            self.assertGreater(group_id, 0)
 
-        # ensure the test ran in under 30 seconds
-        self.assertLess(time.time() - start_time, 20)
+            child_process_ids = tu.wait_for(lambda: find_process_ids_in_group(group_id),
+                                            lambda data: len(data) >= 7,
+                                            default_value=[])
+            self.assertGreaterEqual(len(child_process_ids), 7)
+            self.assertLessEqual(len(child_process_ids), 10)
+
+            kill_fn(process.pid)
+
+            child_process_ids = tu.wait_for(lambda: find_process_ids_in_group(group_id),
+                                            lambda data: len(data) == 0,
+                                            default_value=[])
+            self.assertEqual(0, len(child_process_ids))
+
+            # ensure the test ran in under 30 seconds
+            self.assertLess(time.time() - start_time, 20)
+        finally:
+            tu.cleanup_output(stdout_name, stderr_name)
 
     def test_process_group_assignment_and_killing_send_process_tree_kill(self):
         self.process_launch_and_kill_helper(lambda pid: cs._send_signal_to_process_tree(pid, signal.SIGKILL))

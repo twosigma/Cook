@@ -20,7 +20,6 @@ class ConfigTest(unittest.TestCase):
         self.assertEqual(1000, cc.ExecutorConfig.parse_time_ms('corrupt-value'))
 
     def test_executor_config(self):
-        flush_interval_secs = 1234
         max_bytes_read_per_line = 16 * 1024
         max_message_length = 300
         memory_usage_interval_secs = 150
@@ -30,8 +29,7 @@ class ConfigTest(unittest.TestCase):
         progress_sample_interval_ms = 100
         sandbox_directory = '/location/to/task/sandbox/task_id'
         shutdown_grace_period_secs = '5secs'
-        config = cc.ExecutorConfig(flush_interval_secs=flush_interval_secs,
-                                   max_bytes_read_per_line=max_bytes_read_per_line,
+        config = cc.ExecutorConfig(max_bytes_read_per_line=max_bytes_read_per_line,
                                    max_message_length=max_message_length,
                                    memory_usage_interval_secs=memory_usage_interval_secs,
                                    progress_output_env_variable=progress_output_env_variable,
@@ -41,7 +39,6 @@ class ConfigTest(unittest.TestCase):
                                    sandbox_directory=sandbox_directory,
                                    shutdown_grace_period=shutdown_grace_period_secs)
 
-        self.assertEqual(flush_interval_secs, config.flush_interval_secs)
         self.assertEqual(max_bytes_read_per_line, config.max_bytes_read_per_line)
         self.assertEqual(max_message_length, config.max_message_length)
         self.assertEqual(memory_usage_interval_secs, config.memory_usage_interval_secs)
@@ -59,7 +56,6 @@ class ConfigTest(unittest.TestCase):
         environment = {}
         config = cc.initialize_config(environment)
 
-        self.assertEqual(10, config.flush_interval_secs)
         self.assertEqual(4 * 1024, config.max_bytes_read_per_line)
         self.assertEqual(512, config.max_message_length)
         self.assertEqual('executor.progress', config.progress_output_name)
@@ -69,8 +65,7 @@ class ConfigTest(unittest.TestCase):
         self.assertEqual(2000, config.shutdown_grace_period_ms)
 
     def test_initialize_config_custom(self):
-        environment = {'EXECUTOR_FLUSH_INTERVAL_SECS': '60',
-                       'EXECUTOR_MAX_BYTES_READ_PER_LINE': '1234',
+        environment = {'EXECUTOR_MAX_BYTES_READ_PER_LINE': '1234',
                        'EXECUTOR_MAX_MESSAGE_LENGTH': '1024',
                        'EXECUTOR_MEMORY_USAGE_INTERVAL_SECS': '120',
                        'EXECUTOR_PROGRESS_OUTPUT_FILE': 'progress_file',
@@ -80,7 +75,6 @@ class ConfigTest(unittest.TestCase):
                        'PROGRESS_SAMPLE_INTERVAL_MS': '2500'}
         config = cc.initialize_config(environment)
 
-        self.assertEqual(60, config.flush_interval_secs)
         self.assertEqual(1234, config.max_bytes_read_per_line)
         self.assertEqual(1024, config.max_message_length)
         self.assertEqual(120, config.memory_usage_interval_secs)
@@ -102,7 +96,6 @@ class ConfigTest(unittest.TestCase):
                        'PROGRESS_SAMPLE_INTERVAL_MS': '2500'}
         config = cc.initialize_config(environment)
 
-        self.assertEqual(10, config.flush_interval_secs)
         self.assertEqual(1234, config.max_bytes_read_per_line)
         self.assertEqual(1024, config.max_message_length)
         self.assertEqual(30, config.memory_usage_interval_secs)
@@ -124,7 +117,6 @@ class ConfigTest(unittest.TestCase):
                        'PROGRESS_SAMPLE_INTERVAL_MS': '2500'}
         config = cc.initialize_config(environment)
 
-        self.assertEqual(10, config.flush_interval_secs)
         self.assertEqual(1234, config.max_bytes_read_per_line)
         self.assertEqual(1024, config.max_message_length)
         self.assertEqual(3600, config.memory_usage_interval_secs)
@@ -146,7 +138,6 @@ class ConfigTest(unittest.TestCase):
                        'PROGRESS_SAMPLE_INTERVAL_MS': '2500'}
         config = cc.initialize_config(environment)
 
-        self.assertEqual(10, config.flush_interval_secs)
         self.assertEqual(1234, config.max_bytes_read_per_line)
         self.assertEqual(1024, config.max_message_length)
         self.assertEqual(3600, config.memory_usage_interval_secs)
@@ -169,7 +160,6 @@ class ConfigTest(unittest.TestCase):
                        'PROGRESS_SAMPLE_INTERVAL_MS': '2500'}
         config = cc.initialize_config(environment)
 
-        self.assertEqual(10, config.flush_interval_secs)
         self.assertEqual(1234, config.max_bytes_read_per_line)
         self.assertEqual(1024, config.max_message_length)
         self.assertEqual(3600, config.memory_usage_interval_secs)
@@ -193,7 +183,6 @@ class ConfigTest(unittest.TestCase):
                        'PROGRESS_SAMPLE_INTERVAL_MS': '2500'}
         config = cc.initialize_config(environment)
 
-        self.assertEqual(10, config.flush_interval_secs)
         self.assertEqual(1234, config.max_bytes_read_per_line)
         self.assertEqual(1024, config.max_message_length)
         self.assertEqual(3600, config.memory_usage_interval_secs)
@@ -217,7 +206,6 @@ class ConfigTest(unittest.TestCase):
                        'PROGRESS_SAMPLE_INTERVAL_MS': '2500'}
         config = cc.initialize_config(environment)
 
-        self.assertEqual(10, config.flush_interval_secs)
         self.assertEqual(1234, config.max_bytes_read_per_line)
         self.assertEqual(1024, config.max_message_length)
         self.assertEqual(3600, config.memory_usage_interval_secs)

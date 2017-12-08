@@ -3,7 +3,7 @@ import logging
 import subprocess
 import time
 import unittest
-from threading import Event, Thread, Timer
+from threading import Event, Timer
 
 import os
 import pymesos as pm
@@ -11,7 +11,7 @@ import pymesos as pm
 import cook
 import cook.config as cc
 import cook.executor as ce
-import cook.io_helper as cio
+import cook.subprocess as cs
 import tests.utils as tu
 
 
@@ -92,13 +92,11 @@ class ExecutorTest(unittest.TestCase):
 
         try:
             process = ce.launch_task(task, os.environ)
-            stdout_thread, stderr_thread = cio.track_outputs(task_id, process, 2, 4096)
-            process_info = process, stdout_thread, stderr_thread
 
             self.assertIsNotNone(process)
 
             for _ in range(100):
-                if ce.is_running(process_info):
+                if cs.is_process_running(process):
                     time.sleep(0.01)
 
             if process.poll() is None:
@@ -131,14 +129,12 @@ class ExecutorTest(unittest.TestCase):
 
         try:
             process = ce.launch_task(task, os.environ)
-            stdout_thread, stderr_thread = cio.track_outputs(task_id, process, 2, 4096)
-            process_info = process, stdout_thread, stderr_thread
 
             self.assertIsNotNone(process)
 
             # let the process run for up to 50 seconds
             for _ in range(5000):
-                if ce.is_running(process_info):
+                if cs.is_process_running(process):
                     time.sleep(0.01)
                     with open(stdout_name) as f:
                         stdout_content = f.read()
@@ -190,14 +186,11 @@ class ExecutorTest(unittest.TestCase):
         try:
             command = 'sleep 2'
             process = subprocess.Popen(command, preexec_fn=os.setpgrp, shell=True)
-            stdout_thread = Thread()
-            stderr_thread = Thread()
-            process_info = process, stdout_thread, stderr_thread
             shutdown_grace_period_ms = 1000
 
             stop_signal = Event()
 
-            ce.await_process_completion(stop_signal, process_info, shutdown_grace_period_ms)
+            ce.await_process_completion(process, stop_signal, shutdown_grace_period_ms)
 
             self.assertFalse(stop_signal.isSet())
             self.assertEqual(0, process.returncode)
@@ -217,15 +210,12 @@ class ExecutorTest(unittest.TestCase):
         try:
             command = 'sleep 100'
             process = subprocess.Popen(command, preexec_fn=os.setpgrp, shell=True)
-            stdout_thread = Thread()
-            stderr_thread = Thread()
-            process_info = process, stdout_thread, stderr_thread
             shutdown_grace_period_ms = 2000
 
             stop_signal = Event()
-            sleep_and_set_stop_signal_task(stop_signal, 2 * cook.RUNNING_POLL_INTERVAL_SECS)
+            sleep_and_set_stop_signal_task(stop_signal, 2)
 
-            ce.await_process_completion(stop_signal, process_info, shutdown_grace_period_ms)
+            ce.await_process_completion(process, stop_signal, shutdown_grace_period_ms)
 
             self.assertTrue(process.returncode < 0)
 
@@ -427,7 +417,7 @@ class ExecutorTest(unittest.TestCase):
             tu.assert_messages(self, [expected_message_0, expected_message_1], [], driver.messages)
 
         command = 'sleep 100'
-        self.run_command_in_manage_task_runner(command, assertions, 2 * cook.RUNNING_POLL_INTERVAL_SECS)
+        self.run_command_in_manage_task_runner(command, assertions, 2)
 
     def test_manage_task_random_binary_output(self):
         def assertions(driver, task_id, sandbox_directory):
@@ -453,7 +443,7 @@ class ExecutorTest(unittest.TestCase):
         command = 'echo "Hello"; ' \
                   'head -c 1000 /dev/random; ' \
                   'echo "force newline stage-1"; ' \
-                  'echo "^^^^JOB-PROGRESS: 50 `head -c 20 /dev/random`"; ' \
+                  'echo "^^^^JOB-PROGRESS: 50 `head -c 50 /dev/random`"; ' \
                   'echo "force newline stage-2"; ' \
                   'echo "Done"'
         self.manage_task_runner(command, assertions, stop_signal=stop_signal)
@@ -607,8 +597,7 @@ class ExecutorTest(unittest.TestCase):
         stderr_name = tu.ensure_directory('build/stderr.{}'.format(task_id))
         stdout_name = tu.ensure_directory('build/stdout.{}'.format(task_id))
 
-        config = tu.FakeExecutorConfig({'flush_interval_secs': 0.5,
-                                        'max_bytes_read_per_line': 1024,
+        config = tu.FakeExecutorConfig({'max_bytes_read_per_line': 1024,
                                         'max_message_length': max_message_length,
                                         'progress_output_env_variable': 'DEFAULT_PROGRESS_FILE_ENV_VARIABLE',
                                         'progress_output_name': progress_name,
