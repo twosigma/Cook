@@ -99,7 +99,8 @@
   [conn user reason & kvs]
   (loop [[type amount & kvs] kvs
          txns []]
-    (if (and amount (pos? amount))
+    (if (nil? amount)
+      @(d/transact conn txns)
       (if (= type :count)
         (recur kvs (into [{:db/id (d/tempid :db.part/user)
                                   :quota/user user
@@ -120,8 +121,7 @@
                       :quota/user user
                       :quota/resource [{:resource/type type
                                         :resource/amount amount}]}])]
-          (recur kvs (into txn txns))))
-      @(d/transact conn txns)))
+          (recur kvs (into txn txns))))))
   @(d/transact conn [[:db/add [:quota/user user] :quota/reason reason]]))
 
 (defn create-user->quota-fn

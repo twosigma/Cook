@@ -525,7 +525,7 @@
 
 (deftest quota-api
   (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
-        h (basic-handler conn)
+        h (basic-handler conn :cpus 128)
         quota-req-attrs {:scheme :http
                          :uri "/quota"
                          :authorization/user "mforsyth"
@@ -553,6 +553,15 @@
                                 :query-params {:user "foo"}}))
             get-body (response->body-data get-resp)]
         (is (= get-body update-body))))
+
+    (testing "quota is checked on job submission"
+      (let [job (assoc (basic-job) "cpus" 32.0)
+            job-resp (h (merge quota-req-attrs
+                               {:uri "/rawscheduler"
+                                :authorization/user "foo"
+                                :request-method :post
+                                :body-params {"jobs" [job]}}))]
+        (is (= 422 (:status job-resp)))))
 
     (testing "delete resets quota"
       (let [delete-resp (h (merge quota-req-attrs

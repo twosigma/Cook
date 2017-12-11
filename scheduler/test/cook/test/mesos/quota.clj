@@ -13,7 +13,7 @@
 ;; See the License for the specific language governing permissions and
 ;; limitations under the License.
 ;;
-(ns cook.test.mesos.share
+(ns cook.test.mesos.quota
   (:use clojure.test)
   (:require [cook.mesos.scheduler :as sched]
             [cook.mesos.quota :as quota]
@@ -29,6 +29,8 @@
     (quota/set-quota! conn "u1" "too many CPUs" :cpus 5.0)
     (quota/set-quota! conn "u1" "higher count" :count 6)
     (quota/set-quota! conn "u2" "custom limits" :cpus 5.0  :mem 10.0)
+    (quota/set-quota! conn "u3" "needs no GPUs" :gpus 0.0)
+    (quota/set-quota! conn "u4" "no jobs allowed" :count 0)
     (quota/set-quota! conn "default" "lock most users down" :cpus 1.0 :mem 2.0 :gpus 1.0)
     (let [db (db conn)]
       (testing "set and query."

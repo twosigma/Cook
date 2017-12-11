@@ -84,3 +84,41 @@ class MultiUserCookTest(unittest.TestCase):
             # Terminate all of the jobs
             if all_job_uuids:
                 util.kill_jobs(self.cook_url, all_job_uuids)
+
+    def test_job_too_big(self):
+        admin = self.user_factory.admin()
+        user = self.user_factory.new_user()
+        try:
+            # User with no quota can't submit jobs
+            with admin:
+                resp = util.set_limit(self.cook_url, 'quota', user.name, cpus=0)
+                self.assertEqual(resp.status_code, 201, resp.text)
+            with user:
+                _, resp = util.submit_job(self.cook_url)
+                self.assertEqual(resp.status_code, 422, msg=resp.text)
+            # User with tiny quota can't submit bigger jobs, but can submit tiny jobs
+            with admin:
+                resp = util.set_limit(self.cook_url, 'quota', user.name, cpus=4)
+                self.assertEqual(resp.status_code, 201, resp.text)
+            with user:
+                _, resp = util.submit_job(self.cook_url, cpus=5)
+                self.assertEqual(resp.status_code, 422, msg=resp.text)
+                _, resp = util.submit_job(self.cook_url, cpus=4)
+                self.assertEqual(resp.status_code, 201, msg=resp.text)
+            # User with zero-jobs quota can't submit any jobs
+            with admin:
+                resp = util.set_limit(self.cook_url, 'quota', user.name, count=0)
+                self.assertEqual(resp.status_code, 201, resp.text)
+            with user:
+                _, resp = util.submit_job(self.cook_url, cpus=0.1)
+                self.assertEqual(resp.status_code, 422, msg=resp.text)
+            # Reset user's quota back to default, then user can submit jobs again
+            with admin:
+                resp = util.reset_limit(self.cook_url, 'quota', user.name)
+                self.assertEqual(resp.status_code, 204, resp.text)
+            with user:
+                _, resp = util.submit_job(self.cook_url)
+                self.assertEqual(resp.status_code, 201, msg=resp.text)
+        finally:
+            with admin:
+                util.reset_limit(self.cook_url, 'quota', user.name)
