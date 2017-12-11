@@ -1325,11 +1325,11 @@
 (defn retrieve-groups
   "Returns a tuple that either has the shape:
 
-    [true {::guuids ...}]
+    [false {::guuids ...}]
 
   or:
 
-    [false {::error ...}]
+    [true {::error ...}]
 
   Given a collection of group uuids, attempts to return the corresponding
   set of existing group uuids. By default (or if the 'partial' query
@@ -1346,22 +1346,18 @@
                                 (mapv #(UUID/fromString %)))
           allow-partial-results (get-in ctx [:request :query-params :partial])
           exists? #(group-exists? (db conn) %)
-          existing-groups (filter exists? requested-guuids)]
-      (if (or (= (count existing-groups) (count requested-guuids))
-              (and allow-partial-results (pos? (count existing-groups))))
-        [true {::guuids existing-groups}]
-        [false {::error (str "UUID "
-                             (str/join
-                               \space
-                               (set/difference (set requested-guuids) (set existing-groups)))
-                             " didn't correspond to a group")}]))
+          {existing-groups true missing-groups false} (group-by exists? requested-guuids)]
+      [false {::allow-partial-results? allow-partial-results
+              ::guuids existing-groups
+              ::non-existing-guuids missing-groups}])
     (catch Exception e
-      [false {::error e}])))
+      [true {::error e}])))
 
 (defn groups-action-handler
   [conn task-constraints is-authorized-fn]
   (base-cook-handler
     {:allowed-methods [:get :delete]
+     :malformed? (partial retrieve-groups conn)
      :allowed? (fn [ctx]
                  (let [user (get-in ctx [:request :authorization/user])
                        guuids (::guuids ctx)
@@ -1371,16 +1367,24 @@
                        authorized? (fn [guuid] (is-authorized-fn user
                                                                  request-method
                                                                  {:owner (group-user guuid) :item :job}))
-                       unauthorized-guuids (mapv :uuid (remove authorized? guuids))]
-                   (if (empty? unauthorized-guuids)
-                     true
+                       {authorized-guuids true unauthorized-guuids false} (group-by authorized? guuids)]
+                   (if (or (empty? unauthorized-guuids) (::allow-partial-results? ctx))
+                     [true {::guuids (with-meta
+                                       authorized-guuids
+                                       ; Liberator will concatenate vectors by default when composing context values,
+                                       ; but we want to replace our vector with only the filtered entries.
+                                       {:replace true})}]
                      [false {::error (str "You are not authorized to "
                                           (case request-method
                                             :get "view"
                                             :delete "kill")
                                           " the following groups "
                                           (str/join \space unauthorized-guuids))}])))
-     :exists? (partial retrieve-groups conn)
+     :exists? (fn [ctx]
+                (or (::allow-partial-results? ctx)
+                    (empty? (::non-existing-guuids ctx))
+                    [false {::error (str "The following UUIDs didn't correspond to a group: "
+                                         (str/join \space (::non-existing-guuids ctx)))}]))
      :handle-ok (fn [ctx]
                   (if (Boolean/valueOf (get-in ctx [:request :query-params "detailed"]))
                     (mapv #(merge (fetch-group-map (db conn) %)
