@@ -73,10 +73,7 @@ def print_as_one_per_line(query_result, clusters):
 
 
 def print_as_table(query_result):
-    """
-    Given a collection of (cluster, job) pairs, formats a table showing the most relevant job
-    fields. If the output is being piped, JSON is printed instead of a formatted table.
-    """
+    """Given a collection of (cluster, job) pairs, formats a table showing the most relevant job fields"""
     cluster_job_pairs = query_result_to_cluster_job_pairs(query_result)
     rows = [collections.OrderedDict([("Cluster", cluster),
                                      ("UUID", job['uuid']),

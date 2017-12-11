@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import subprocess
 import time
 import unittest
 import uuid
@@ -1375,3 +1376,85 @@ class CookCliTest(unittest.TestCase):
             self.assertEqual(0, cp.returncode, cp.stderr)
             self.assertEqual(1, len(jobs))
             self.assertEqual(uuid, jobs[0]['uuid'])
+
+    def test_entity_refs_as_arguments_and_stdin_not_allowed(self):
+        cp, uuids = cli.submit('ls', self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        stdin = cli.encode('\n'.join(uuids))
+        cp = cli.kill(uuids, self.cook_url, stdin=stdin)
+        self.assertEqual(1, cp.returncode, cp.stderr)
+        self.assertIn('You cannot supply entity references both as arguments and from stdin', cli.decode(cp.stderr))
+        cp = cli.show(uuids, self.cook_url, stdin=stdin)
+        self.assertEqual(1, cp.returncode, cp.stderr)
+        self.assertIn('You cannot supply entity references both as arguments and from stdin', cli.decode(cp.stderr))
+        cp = cli.wait(uuids, self.cook_url, stdin=stdin)
+        self.assertEqual(1, cp.returncode, cp.stderr)
+        self.assertIn('You cannot supply entity references both as arguments and from stdin', cli.decode(cp.stderr))
+
+    def test_jobs_one_per_line(self):
+        name = uuid.uuid4()
+        cp, uuids = cli.submit_stdin(['ls', 'ls', 'ls'], self.cook_url, submit_flags=f'--name {name}')
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        user = util.get_user(self.cook_url, uuids[0])
+        cp = cli.jobs(self.cook_url, f'--user {user} --name {name} --all -1')
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertEqual(sorted([f'{self.cook_url}/jobs/{u}' for u in uuids]), sorted(cli.stdout(cp).split('\n')))
+
+    def test_jobs_json_and_one_per_line_mutually_exclusive(self):
+        cp = cli.jobs(self.cook_url, f'--json -1')
+        self.assertEqual(2, cp.returncode, cp.stderr)
+        self.assertIn('not allowed with argument', cli.decode(cp.stderr))
+
+    def test_piping_from_jobs_to_kill(self):
+        name = uuid.uuid4()
+        cp, uuids = cli.submit_stdin(['sleep 300'] * 3, self.cook_url, submit_flags=f'--name {name}')
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        user = util.get_user(self.cook_url, uuids[0])
+        jobs_flags = f'--user {user} --name {name} --running --waiting'
+        cp, jobs = cli.jobs_json(self.cook_url, jobs_flags)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertEqual(3, len(jobs))
+        cs = f'cs --url {self.cook_url}'
+        command = f'{cs} jobs {jobs_flags} -1 | {cs} kill'
+        self.logger.info(command)
+        cp = subprocess.run(command, shell=True)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        cp, jobs = cli.jobs_json(self.cook_url, jobs_flags)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertEqual(0, len(jobs))
+        cp, jobs = cli.jobs_json(self.cook_url, f'--user {user} --name {name} --failed')
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertEqual(3, len(jobs))
+
+    def test_piping_from_jobs_to_show(self):
+        name = uuid.uuid4()
+        cp, uuids = cli.submit_stdin(['ls'] * 3, self.cook_url, submit_flags=f'--name {name}')
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        user = util.get_user(self.cook_url, uuids[0])
+        jobs_flags = f'--user {user} --name {name} --all'
+        cp, jobs = cli.jobs_json(self.cook_url, jobs_flags)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertEqual(3, len(jobs))
+        cs = f'cs --url {self.cook_url}'
+        command = f'{cs} jobs {jobs_flags} -1 | {cs} show --json'
+        self.logger.info(command)
+        cp = subprocess.run(command, shell=True, stdout=subprocess.PIPE)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        jobs = json.loads(cli.stdout(cp))['clusters'][self.cook_url]['jobs']
+        self.assertEqual(3, len(jobs), json.dumps(jobs, indent=2))
+        self.assertEqual(sorted(uuids), sorted([j['uuid'] for j in jobs]))
+
+    def test_piping_from_jobs_to_wait(self):
+        name = uuid.uuid4()
+        cp, uuids = cli.submit_stdin(['ls'] * 3, self.cook_url, submit_flags=f'--name {name}')
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        user = util.get_user(self.cook_url, uuids[0])
+        jobs_flags = f'--user {user} --name {name} --all'
+        cp, jobs = cli.jobs_json(self.cook_url, jobs_flags)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertEqual(3, len(jobs))
+        cs = f'cs --url {self.cook_url}'
+        command = f'{cs} jobs {jobs_flags} -1 | {cs} wait'
+        self.logger.info(command)
+        cp = subprocess.run(command, shell=True)
+        self.assertEqual(0, cp.returncode, cp.stderr)
