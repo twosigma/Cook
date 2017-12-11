@@ -65,6 +65,36 @@ $ bin/run-integration.sh --port 12321 --port-2 22321
 By default, this script mounts the local directory in the docker container so there is no need to rebuild when changing the tests.
 You can disable this behavior using the `--no-mount` option.
 
+## Running multi-user tests with Kerberos
+
+Running the multi-user integration tests with Kerberos requires that the test framework
+has a way to get valid Kerberos authentication tickets for the many users from the tests.
+We use several environment variables to make this possible.
+
+* `COOK_TEST_USER_PREFIX`:
+The numbers 0-9 will be appended to this username prefix to generate usernames for the tests.
+We currently assume that no Kerberos-enabled test will need more than 10 unique test users.
+
+* `COOK_ADMIN_USER_NAME`:
+The username to be used in tests specifically requiring an admin user.
+This user should *not* have impersonation priviledges.
+
+* `COOK_IMPERSONATOR_USER_NAME`:
+The username to be used in tests specifically requiring an impersonator user.
+This user should *not* have administrator priviledges.
+
+* `COOK_KERBEROS_TEST_AUTH_CMD`:
+Command string (run in a shell subprocess) to obtain a test user's Kerberos ticket.
+The command can contain the special strings `{{COOK_USER}}`,
+which will be replaced with the target test user's name,
+and `{{COOK_SCHEDULER_URL}}`,
+which will be replaced with the Cook Scheduler URL being used by the current tests.
+The command must print (to `stdout`) the `Authorization` header value for the target user.
+
+When using Kerberos, multi-user integration tests must *not* be run in parallel.
+This restriction is due to only having 10 unique test user names,
+which are reused across each of the multi-user tests.
+
 ## Credits
 
 This package was created with (Cookiecutter)[https://github.com/audreyr/cookiecutter] and the (audreyr/cookiecutter-pypackage)[https://github.com/audreyr/cookiecutter-pypackage] project template.

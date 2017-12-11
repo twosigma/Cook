@@ -4,6 +4,7 @@ import unittest
 
 from tests.cook import reasons, util
 
+@pytest.mark.multi_user
 @unittest.skipUnless(util.multi_user_tests_enabled(), 'Requires using multi-user coniguration (e.g., BasicAuth) for Cook Scheduler')
 @pytest.mark.timeout(util.DEFAULT_TEST_TIMEOUT_SECS)  # individual test timeout
 class MultiUserCookTest(unittest.TestCase):
@@ -82,4 +83,5 @@ class MultiUserCookTest(unittest.TestCase):
                     self.assertEqual(usage_data['total_usage']['jobs'], i, usage_data)
         finally:
             # Terminate all of the jobs
-            util.kill_jobs(self.cook_url, all_job_uuids)
+            if all_job_uuids:
+                util.kill_jobs(self.cook_url, all_job_uuids)
