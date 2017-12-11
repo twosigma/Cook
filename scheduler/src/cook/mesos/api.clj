@@ -1349,7 +1349,7 @@
           {existing-groups true missing-groups false} (group-by exists? requested-guuids)]
       [false {::allow-partial-results? allow-partial-results
               ::guuids existing-groups
-              ::bad-uuids missing-groups}])
+              ::non-existing-guuids missing-groups}])
     (catch Exception e
       [true {::error e}])))
 
@@ -1382,11 +1382,9 @@
                                           (str/join \space unauthorized-guuids))}])))
      :exists? (fn [ctx]
                 (or (::allow-partial-results? ctx)
-                    (empty? (::bad-uuids ctx))
+                    (empty? (::non-existing-guuids ctx))
                     [false {::error (str "The following UUIDs didn't correspond to a group: "
-                                         (str/join
-                                           \space
-                                           (::bad-uuids ctx)))}]))
+                                         (str/join \space (::non-existing-guuids ctx)))}]))
      :handle-ok (fn [ctx]
                   (if (Boolean/valueOf (get-in ctx [:request :query-params "detailed"]))
                     (mapv #(merge (fetch-group-map (db conn) %)
