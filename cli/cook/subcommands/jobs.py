@@ -3,7 +3,7 @@ import datetime
 import json
 import logging
 import time
-from urllib.parse import quote_plus
+from urllib.parse import urljoin
 
 from tabulate import tabulate
 
@@ -53,16 +53,23 @@ def format_job_command(job):
 
 
 def query_result_to_cluster_job_pairs(query_result):
-    """TODO(DPO)"""
+    """Given a query result structure, returns a sequence of (cluster, job) pairs from the result"""
     cluster_job_pairs = ((c, j) for c, e in query_result['clusters'].items() for j in e['jobs'])
     return cluster_job_pairs
 
 
-def print_as_one_per_line(query_result):
-    """TODO(DPO)"""
+def print_as_one_per_line(query_result, clusters):
+    """Prints one entity ref URL per line from the given query result"""
     cluster_job_pairs = query_result_to_cluster_job_pairs(query_result)
-    lines = (f'{quote_plus(c)}/job/{j["uuid"]}' for c, j in cluster_job_pairs)
-    print('\n'.join(lines))
+    lines = []
+    for cluster_name, job in cluster_job_pairs:
+        cluster_url = next(c['url'] for c in clusters if c['name'] == cluster_name)
+        jobs_endpoint = urljoin(cluster_url, 'jobs/')
+        job_url = urljoin(jobs_endpoint, job['uuid'])
+        lines.append(job_url)
+
+    if lines:
+        print('\n'.join(lines))
 
 
 def print_as_table(query_result):
@@ -87,7 +94,7 @@ def print_as_table(query_result):
 
 
 def print_as_json(query_result):
-    """TODO(DPO)"""
+    """Prints the query result as raw JSON"""
     print(json.dumps(query_result))
 
 
@@ -146,7 +153,7 @@ def jobs(clusters, args, _):
     if as_json:
         print_as_json(query_result)
     elif one_per_line:
-        print_as_one_per_line(query_result)
+        print_as_one_per_line(query_result, clusters)
     elif found_jobs:
         print_as_table(query_result)
     else:

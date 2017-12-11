@@ -1,7 +1,7 @@
 from collections import defaultdict
 
 from cook import http, colors
-from cook.querying import query, print_no_data, parse_entity_refs
+from cook.querying import print_no_data, parse_entity_refs, query_with_stdin_support
 from cook.util import print_info, guard_no_cluster
 
 
@@ -97,7 +97,7 @@ def kill(clusters, args, _):
     """Attempts to kill the jobs / instances / groups with the given UUIDs."""
     guard_no_cluster(clusters)
     uuids = parse_entity_refs(clusters, args.get('uuid'))
-    query_result = query(clusters, uuids)
+    query_result = query_with_stdin_support(clusters, uuids)
     if query_result['count'] == 0:
         print_no_data(clusters)
         return 1

@@ -234,7 +234,7 @@ class CookCliTest(unittest.TestCase):
         self.assertEqual('%s_job' % os.environ['USER'], jobs[0]['name'])
 
     def test_wait_requires_at_least_one_uuid(self):
-        cp = cli.wait([], self.cook_url)
+        cp = cli.wait([], self.cook_url, stdin='')
         self.assertEqual(1, cp.returncode, cp.stderr)
         self.assertIn('You must specify at least one UUID', cli.decode(cp.stderr))
 
@@ -264,7 +264,7 @@ class CookCliTest(unittest.TestCase):
         self.assertIn('No matching data found', cli.stdout(cp))
 
     def test_show_requires_at_least_one_uuid(self):
-        cp = cli.show([], self.cook_url)
+        cp = cli.show([], self.cook_url, stdin='')
         self.assertEqual(1, cp.returncode, cp.stderr)
         self.assertIn('You must specify at least one UUID', cli.decode(cp.stderr))
 

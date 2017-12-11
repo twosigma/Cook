@@ -6,7 +6,7 @@ from tabulate import tabulate
 
 from cook.format import format_instance_run_time, format_instance_status, format_job_memory, format_list, format_dict, \
     format_job_attempts, format_job_status
-from cook.querying import print_no_data, parse_entity_refs, query_with_pipe_support
+from cook.querying import print_no_data, parse_entity_refs, query_with_stdin_support
 from cook.util import millis_to_timedelta, millis_to_date_string, guard_no_cluster
 
 DEFAULT_MAX_RUNTIME = 2 ** 63 - 1
@@ -148,7 +148,7 @@ def show(clusters, args, _):
     guard_no_cluster(clusters)
     as_json = args.get('json')
     uuids = parse_entity_refs(clusters, args.get('uuid'))
-    query_result = query_with_pipe_support(clusters, uuids, 'show')
+    query_result = query_with_stdin_support(clusters, uuids)
     if as_json:
         print(json.dumps(query_result))
     else:

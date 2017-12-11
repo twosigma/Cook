@@ -9,7 +9,7 @@ from operator import itemgetter
 from urllib.parse import urlparse, parse_qs
 
 from cook import http, colors, mesos, progress
-from cook.util import is_valid_uuid, wait_until
+from cook.util import is_valid_uuid, wait_until, print_info
 
 
 class Types:
@@ -333,49 +333,30 @@ def parse_entity_refs(clusters, ref_strings):
     return entity_refs
 
 
-def query_with_pipe_support(clusters, entity_refs, command, pred_jobs=None, pred_instances=None,
-                            pred_groups=None, timeout=None, interval=None):
+def query_with_stdin_support(clusters, entity_refs, pred_jobs=None, pred_instances=None,
+                             pred_groups=None, timeout=None, interval=None):
     """
-    Queries for UUIDs across clusters, supporting input being passed via a pipe from another command, e.g.:
+    Queries for UUIDs across clusters, supporting input being passed via stdin, e.g.:
 
-      $ cs list --user sally --running --waiting -1 | cs wait
+      $ cs jobs --user sally --running --waiting -1 | cs wait
 
     The above example would wait for all of sally's running and waiting jobs to complete.
     """
     stdin_from_pipe = not sys.stdin.isatty()
 
     if entity_refs and stdin_from_pipe:
-        raise Exception(f'When piping to {command}, you cannot also supply UUIDs as arguments.')
-
-    if stdin_from_pipe:
-        s = sys.stdin.read()
-        if not s:
-            raise Exception('No data received.')
-
-        entity_refs = s.splitlines()
-
-        try:
-            piped_data = parse_entity_refs(clusters, entity_refs)
-        except:
-            raise Exception('Unable to parse data.')
-
-        piped_cluster_names = set()
-        piped_types = set()
-        entity_refs = []
-        for datum in piped_data:
-            piped_cluster_names.add(datum['cluster'])
-            piped_types.add(datum['type'])
-            entity_refs.append(datum['uuid'])
-
-        configured_cluster_names = set(c['name'] for c in clusters)
-        if not piped_cluster_names.issubset(configured_cluster_names):
-            raise Exception(f'You piped data from:\n\n{", ".join(piped_cluster_names)}\n\n' 
-                            f'But \'{command}\' is only querying against:\n\n{", ".join(configured_cluster_names)}')
-
-        clusters = (c for c in clusters if c['name'] in piped_cluster_names)
+        raise Exception(f'You cannot supply entity references both as arguments and from stdin.')
 
     if not entity_refs:
-        raise Exception('You must specify at least one UUID.')
+        if not stdin_from_pipe:
+            print_info('Enter the UUIDs or URLs, one per line (press Ctrl+D on a blank line to submit)')
+
+        stdin = sys.stdin.read()
+        if not stdin:
+            raise Exception('You must specify at least one UUID or URL.')
+
+        ref_strings = stdin.splitlines()
+        entity_refs = parse_entity_refs(clusters, ref_strings)
 
     query_result = query(clusters, entity_refs, pred_jobs, pred_instances, pred_groups, timeout, interval)
     return query_result
