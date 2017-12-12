@@ -1414,7 +1414,7 @@ class CookCliTest(unittest.TestCase):
         cp, jobs = cli.jobs_json(self.cook_url, jobs_flags)
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual(3, len(jobs))
-        cs = f'cs --url {self.cook_url}'
+        cs = f'{cli.command()} --url {self.cook_url}'
         command = f'{cs} jobs {jobs_flags} -1 | {cs} kill'
         self.logger.info(command)
         cp = subprocess.run(command, shell=True)
@@ -1435,7 +1435,7 @@ class CookCliTest(unittest.TestCase):
         cp, jobs = cli.jobs_json(self.cook_url, jobs_flags)
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual(3, len(jobs))
-        cs = f'cs --url {self.cook_url}'
+        cs = f'{cli.command()} --url {self.cook_url}'
         command = f'{cs} jobs {jobs_flags} -1 | {cs} show --json'
         self.logger.info(command)
         cp = subprocess.run(command, shell=True, stdout=subprocess.PIPE)
@@ -1453,7 +1453,7 @@ class CookCliTest(unittest.TestCase):
         cp, jobs = cli.jobs_json(self.cook_url, jobs_flags)
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual(3, len(jobs))
-        cs = f'cs --url {self.cook_url}'
+        cs = f'{cli.command()} --url {self.cook_url}'
         command = f'{cs} jobs {jobs_flags} -1 | {cs} wait'
         self.logger.info(command)
         cp = subprocess.run(command, shell=True)
