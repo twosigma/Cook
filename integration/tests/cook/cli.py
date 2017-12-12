@@ -255,3 +255,9 @@ def config_set(key, value, flags):
     """Invokes the config subcommand to set a config value"""
     cp = cli(f'config {key} {value}', flags=flags)
     return cp
+
+
+def command_prefix():
+    """Returns the currently configured command-prefix, if any"""
+    cp = config_get('defaults.submit.command-prefix')
+    return decode(cp.stdout).rstrip('\n') if cp.returncode == 0 else ''
