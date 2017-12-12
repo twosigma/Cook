@@ -294,30 +294,27 @@ class CookCliTest(unittest.TestCase):
         cp, uuids = cli.submit('-- ls -al', 'localhost:99999', '--verbose')
         stderr = cli.decode(cp.stderr)
         self.assertEqual(1, cp.returncode, stderr)
-        self.assertIn('Starting new HTTP connection (1)', stderr)
-        self.assertIn('Starting new HTTP connection (2)', stderr)
-        self.assertIn('Starting new HTTP connection (3)', stderr)
-        self.assertNotIn('Starting new HTTP connection (4)', stderr)
+        self.assertIn('Retrying (Retry(total=1', stderr)
+        self.assertIn('Retrying (Retry(total=0', stderr)
+        self.assertNotIn('Retrying (Retry(total=2', stderr)
         # Set retries = 0
         config = {'http': {'retries': 0}}
         with cli.temp_config_file(config) as path:
             cp, uuids = cli.submit('-- ls -al', 'localhost:99999', '--verbose --config %s' % path)
             stderr = cli.decode(cp.stderr)
             self.assertEqual(1, cp.returncode, stderr)
-            self.assertIn('Starting new HTTP connection (1)', stderr)
-            self.assertNotIn('Starting new HTTP connection (2)', stderr)
+            self.assertNotIn('Retrying (Retry(total=0', stderr)
         # Set retries = 4
         config = {'http': {'retries': 4}}
         with cli.temp_config_file(config) as path:
             cp, uuids = cli.submit('-- ls -al', 'localhost:99999', '--verbose --config %s' % path)
             stderr = cli.decode(cp.stderr)
             self.assertEqual(1, cp.returncode, stderr)
-            self.assertIn('Starting new HTTP connection (1)', stderr)
-            self.assertIn('Starting new HTTP connection (2)', stderr)
-            self.assertIn('Starting new HTTP connection (3)', stderr)
-            self.assertIn('Starting new HTTP connection (4)', stderr)
-            self.assertIn('Starting new HTTP connection (5)', stderr)
-            self.assertNotIn('Starting new HTTP connection (6)', stderr)
+            self.assertIn('Retrying (Retry(total=3', stderr)
+            self.assertIn('Retrying (Retry(total=2', stderr)
+            self.assertIn('Retrying (Retry(total=1', stderr)
+            self.assertIn('Retrying (Retry(total=0', stderr)
+            self.assertNotIn('Retrying (Retry(total=4', stderr)
 
     def test_submit_priority(self):
         cp, uuids = cli.submit('ls', self.cook_url, submit_flags='--priority 0')
