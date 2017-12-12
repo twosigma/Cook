@@ -133,9 +133,7 @@ class CookTest(unittest.TestCase):
 
     def test_progress_update_submit(self):
         job_executor_type = util.get_job_executor_type(self.cook_url)
-        settings = util.settings(self.cook_url)
-        progress_file_env = (util.get_in(settings, 'executor', 'environment', 'EXECUTOR_PROGRESS_OUTPUT_FILE_ENV') or
-                             'EXECUTOR_PROGRESS_OUTPUT_FILE')
+        progress_file_env = util.retrieve_progress_file_env(self.cook_url)
 
         line = util.progress_line(self.cook_url, 25, f'Twenty-five percent in ${{{progress_file_env}}}')
         command = f'echo "{line}" >> ${{{progress_file_env}}}; sleep 1; exit 0'

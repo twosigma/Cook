@@ -936,9 +936,7 @@ class CookCliTest(unittest.TestCase):
 
     def test_show_progress_message_custom_progress_file(self):
         executor = util.get_job_executor_type(self.cook_url)
-        settings = util.settings(self.cook_url)
-        progress_file_env = (util.get_in(settings, 'executor', 'environment', 'EXECUTOR_PROGRESS_OUTPUT_FILE_ENV') or
-                             'EXECUTOR_PROGRESS_OUTPUT_FILE')
+        progress_file_env = util.retrieve_progress_file_env(self.cook_url)
 
         line = util.progress_line(self.cook_url, 99, 'We are so close!')
         cp, uuids = cli.submit('\'touch progress.txt && '
