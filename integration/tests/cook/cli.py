@@ -46,11 +46,16 @@ def sh(command, stdin=None, env=None, wait_for_exit=True):
         return proc
 
 
+def command():
+    """If the COOK_CLI_COMMAND environment variable is set, returns its value, otherwise 'cs'"""
+    return os.environ['COOK_CLI_COMMAND'] if 'COOK_CLI_COMMAND' in os.environ else 'cs'
+
+
 def cli(args, cook_url=None, flags=None, stdin=None, env=None, wait_for_exit=True):
     """Runs a CLI command with the given URL, flags, and stdin"""
     url_flag = f'--url {cook_url} ' if cook_url else ''
     other_flags = f'{flags} ' if flags else ''
-    cp = sh(f'cs {url_flag}{other_flags}{args}', stdin, env, wait_for_exit)
+    cp = sh(f'{command()} {url_flag}{other_flags}{args}', stdin, env, wait_for_exit)
     return cp
 
 
