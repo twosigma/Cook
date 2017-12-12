@@ -1116,13 +1116,16 @@ class CookCliTest(unittest.TestCase):
         self.assertEqual('success', jobs[0]['state'])
 
         # Default command prefix (empty)
-        cp, uuids = cli.submit('"exit ${FOO:-1}"', self.cook_url)
-        self.assertEqual(0, cp.returncode, cp.stderr)
-        cp = cli.wait(uuids, self.cook_url)
-        self.assertEqual(0, cp.returncode, cp.stderr)
-        cp, jobs = cli.show_jobs(uuids, self.cook_url)
-        self.assertEqual('exit ${FOO:-1}', jobs[0]['command'])
-        self.assertEqual('failed', jobs[0]['state'])
+        config = {'defaults': {'submit': {}}}
+        with cli.temp_config_file(config) as path:
+            flags = '--config %s' % path
+            cp, uuids = cli.submit('"exit ${FOO:-1}"', self.cook_url, flags=flags)
+            self.assertEqual(0, cp.returncode, cp.stderr)
+            cp = cli.wait(uuids, self.cook_url)
+            self.assertEqual(0, cp.returncode, cp.stderr)
+            cp, jobs = cli.show_jobs(uuids, self.cook_url)
+            self.assertEqual('exit ${FOO:-1}', jobs[0]['command'])
+            self.assertEqual('failed', jobs[0]['state'])
 
         # User-defined default
         config = {'defaults': {'submit': {'command-prefix': 'export FOO=0; '}}}
