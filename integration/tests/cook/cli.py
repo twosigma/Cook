@@ -245,7 +245,7 @@ def version():
         raise Exception(f'Unable to parse version from {string}')
 
 
-def config_get(key, flags):
+def config_get(key, flags=None):
     """Invokes the config subcommand to get a config value"""
     cp = cli(f'config --get {key}', flags=flags)
     return cp

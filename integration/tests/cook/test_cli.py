@@ -211,9 +211,10 @@ class CookCliTest(unittest.TestCase):
         cp, jobs = cli.show_jobs(uuids, self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual(3, len(jobs), jobs)
+        cp = cli.config_get('defaults.submit.command-prefix')
+        command_prefix = cli.decode(cp.stdout).rstrip('\n') if cp.returncode == 0 else ''
         for job in jobs:
-            self.assertEqual(0, cp.returncode, cp.stderr)
-            self.assertEqual(command, job['command'])
+            self.assertEqual(f'{command_prefix}{command}', job['command'])
             self.assertEqual(name, job['name'])
             self.assertEqual(priority, job['priority'])
             self.assertEqual(max_retries, job['max_retries'])
