@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.8.3] - 2017-12-12
+### Added
+- Added /instances endpoint for retrieving job instances, from @dposada
+- Added /jobs resource for retrieving jobs, from @dposada
+- Added /usage endpoint for displaying user resource usage, from @DaoWen
+- Added failed-only option for retry endpoint, from @DaoWen
+### Changed
+- Fixed authorization check on group endpoint, from @DaoWen
+- Disabled fenzo group constraints, from @pschorf
+
 ## [1.8.2] - 2017-11-13
 ### Changed
 - Retries sandbox syncing of hosts when cache entries expire, from @shamsimam
