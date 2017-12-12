@@ -699,7 +699,7 @@ class CookCliTest(unittest.TestCase):
             f'bash -c \'for i in {{1..30}}; do echo $i >> bar; sleep {sleep_seconds_between_lines}; done\'',
             self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
-        util.wait_for_job(self.cook_url, uuids[0], 'running')
+        util.wait_for_instance(self.cook_url, uuids[0])
         proc = cli.tail(uuids[0], 'bar', self.cook_url,
                         f'--follow --sleep-interval {sleep_seconds_between_lines}',
                         wait_for_exit=False)
