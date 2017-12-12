@@ -374,14 +374,15 @@ class CookCliTest(unittest.TestCase):
         self.assertEqual(0, cp.returncode, cp.stderr)
         cp, jobs = cli.show_jobs(uuids, self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
-        self.assertEqual(desired_command.replace('"', ''), jobs[0]['command'])
+        expected_command = desired_command.replace('"', '')
+        self.assertEqual(f'{cli.command_prefix()}{expected_command}', jobs[0]['command'])
         # Correctly submitted command
         command = '"(foo -x \'def bar = \\"baz\\"\')"'
         cp, uuids = cli.submit(command, self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
         cp, jobs = cli.show_jobs(uuids, self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
-        self.assertEqual(desired_command, jobs[0]['command'])
+        self.assertEqual(f'{cli.command_prefix()}{desired_command}', jobs[0]['command'])
 
         desired_command = "export HOME=$MESOS_DIRECTORY; export LOGNAME=$(whoami); JAVA_OPTS='-Xmx15000m' foo"
         # Incorrectly submitted command
@@ -390,14 +391,15 @@ class CookCliTest(unittest.TestCase):
         self.assertEqual(0, cp.returncode, cp.stderr)
         cp, jobs = cli.show_jobs(uuids, self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
-        self.assertEqual(desired_command.replace("'", ''), jobs[0]['command'])
+        expected_command = desired_command.replace("'", '')
+        self.assertEqual(f'{cli.command_prefix()}{expected_command}', jobs[0]['command'])
         # Correctly submitted command
         command = "'export HOME=$MESOS_DIRECTORY; export LOGNAME=$(whoami); JAVA_OPTS='\"'\"'-Xmx15000m'\"'\"' foo'"
         cp, uuids = cli.submit(command, self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
         cp, jobs = cli.show_jobs(uuids, self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
-        self.assertEqual(desired_command, jobs[0]['command'])
+        self.assertEqual(f'{cli.command_prefix()}{desired_command}', jobs[0]['command'])
 
     def test_list_no_matching_jobs(self):
         cp = cli.jobs(self.cook_url, '--name %s' % uuid.uuid4())
