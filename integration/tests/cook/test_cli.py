@@ -279,13 +279,13 @@ class CookCliTest(unittest.TestCase):
         self.assertEqual(0, cp.returncode, cp.stderr)
         cp, jobs = cli.show_jobs(uuids, self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
-        self.assertEqual('ls -al', jobs[0]['command'])
+        self.assertEqual(f'{cli.command_prefix()}ls -al', jobs[0]['command'])
         # Double-dash along with other flags
         cp, uuids = cli.submit('-- ls -al', self.cook_url, submit_flags='--name foo --priority 12')
         self.assertEqual(0, cp.returncode, cp.stderr)
         cp, jobs = cli.show_jobs(uuids, self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
-        self.assertEqual('ls -al', jobs[0]['command'])
+        self.assertEqual(f'{cli.command_prefix()}ls -al', jobs[0]['command'])
         self.assertEqual('foo', jobs[0]['name'])
         self.assertEqual(12, jobs[0]['priority'])
 
