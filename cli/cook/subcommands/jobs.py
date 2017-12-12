@@ -187,7 +187,7 @@ def register(add_parser, add_defaults):
                         type=check_positive)
     group = parser.add_mutually_exclusive_group()
     group.add_argument('--json', help='show the data in JSON format', dest='json', action='store_true')
-    group.add_argument('-1', help='list one job per line, without table formatting',
+    group.add_argument('--urls', '-1', help='list one job URL per line, without table formatting',
                        dest='one-per-line', action='store_true')
 
     add_defaults('jobs', {'states': ['running'],
