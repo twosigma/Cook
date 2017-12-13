@@ -93,11 +93,11 @@ def settings(cook_url):
 
 def minimal_job(**kwargs):
     job = {
-        'command': 'echo hello',
-        'cpus': 1,
+        'command': 'echo Default Test Command',
+        'cpus': 0.1,
         'max_retries': 1,
-        'mem': 256,
-        'name': 'echo',
+        'mem': 128,
+        'name': 'default_test_job',
         'priority': 1,
         'uuid': str(uuid.uuid4())
     }

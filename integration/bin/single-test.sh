@@ -24,4 +24,4 @@ fi
 
 echo "Found $test_name in $test_file:$test_class"
 
-time nosetests --verbosity 3 --nologcapture --tests "$test_file:$test_class.$test_name"
+time nosetests --processes=0 --verbosity 3 --nologcapture --tests "$test_file:$test_class.$test_name"
