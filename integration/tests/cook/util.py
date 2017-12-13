@@ -640,3 +640,10 @@ def user_current_usage(cook_url, **kwargs):
     based on their currently running jobs.
     """
     return session.get('%s/usage' % cook_url, params=kwargs)
+
+
+def retrieve_progress_file_env(cook_url):
+    """Retrieves the environment variable used by the cook executor to lookup the progress file."""
+    cook_settings = settings(cook_url)
+    default_value = 'EXECUTOR_PROGRESS_OUTPUT_FILE'
+    return get_in(cook_settings, 'executor', 'environment', 'EXECUTOR_PROGRESS_OUTPUT_FILE_ENV') or default_value

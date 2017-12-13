@@ -133,11 +133,12 @@ class CookTest(unittest.TestCase):
 
     def test_progress_update_submit(self):
         job_executor_type = util.get_job_executor_type(self.cook_url)
-        line = util.progress_line(self.cook_url, 25, 'Twenty-five percent in ${PROGRESS_FILE}')
-        command = f'echo "{line}" >> ${{PROGRESS_FILE}}; sleep 1; exit 0'
+        progress_file_env = util.retrieve_progress_file_env(self.cook_url)
+
+        line = util.progress_line(self.cook_url, 25, f'Twenty-five percent in ${{{progress_file_env}}}')
+        command = f'echo "{line}" >> ${{{progress_file_env}}}; sleep 1; exit 0'
         job_uuid, resp = util.submit_job(self.cook_url, command=command,
-                                         env={'EXECUTOR_PROGRESS_OUTPUT_FILE_ENV': 'PROGRESS_FILE',
-                                              'PROGRESS_FILE': 'progress.txt'},
+                                         env={progress_file_env: 'progress.txt'},
                                          executor=job_executor_type, max_runtime=60000)
         self.assertEqual(201, resp.status_code, msg=resp.content)
         job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
