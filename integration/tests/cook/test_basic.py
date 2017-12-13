@@ -784,7 +784,11 @@ class CookTest(unittest.TestCase):
     def test_no_such_group(self):
         group_uuid = str(uuid.uuid4())
         resp = util.query_groups(self.cook_url, uuid=[group_uuid])
-        self.assertEqual(resp.status_code, 404)
+        self.assertEqual(resp.status_code, 404, resp)
+        resp_data = resp.json()
+        resp_string = json.dumps(resp_data, sort_keys=True)
+        self.assertIn('error', resp_data, resp_string)
+        self.assertIn(group_uuid, resp_data['error'], resp_string)
 
     def test_implicit_group(self):
         group_uuid = str(uuid.uuid4())
