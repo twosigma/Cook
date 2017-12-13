@@ -361,19 +361,25 @@
                                          user-password-valid?
                                          ((lazy-load-var 'cook.basic-auth/make-user-password-valid?) validation http-basic)]
                                      (log/info "Using http basic authorization with validation" validation)
-                                     ((lazy-load-var 'cook.basic-auth/create-http-basic-middleware) user-password-valid?))
+                                     (with-meta
+                                       ((lazy-load-var 'cook.basic-auth/create-http-basic-middleware) user-password-valid?)
+                                       {:json-value "HttpBasicAuthMiddleware"}))
 
                                    one-user
                                    (do
                                      (log/info "Using single user authorization")
-                                     (fn one-user-middleware [h]
-                                       (fn one-user-auth-wrapper [req]
-                                         (h (assoc req :authorization/user one-user)))))
+                                     (with-meta
+                                       (fn one-user-middleware [h]
+                                         (fn one-user-auth-wrapper [req]
+                                           (h (assoc req :authorization/user one-user))))
+                                       {:json-value "OneUserAuthMiddleware"}))
 
                                    kerberos
                                    (do
                                      (log/info "Using kerberos middleware")
-                                     (lazy-load-var 'cook.spnego/require-gss))
+                                     (with-meta
+                                       (lazy-load-var 'cook.spnego/require-gss)
+                                       {:json-value "KerberosAuthMiddleware"}))
                                    :else (throw (ex-info "Missing authorization configuration" {}))))
      :rate-limit (fnk [[:config {rate-limit nil}]]
                    (let [{:keys [user-limit-per-m]

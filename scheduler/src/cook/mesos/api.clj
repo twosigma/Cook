@@ -1881,6 +1881,7 @@
   "Converts values to strings as needed for conversion to JSON"
   [v]
   (cond
+    (contains? (meta v) :json-value) (-> v meta :json-value str)
     (fn? v) (str v)
     (map? v) (map-vals stringify v)
     (instance? Atom v) (stringify (deref v))
