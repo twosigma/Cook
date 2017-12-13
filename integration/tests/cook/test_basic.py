@@ -781,6 +781,11 @@ class CookTest(unittest.TestCase):
         job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
         self.assertEqual('success', job['state'], 'Job details: %s' % (json.dumps(job, sort_keys=True)))
 
+    def test_no_such_group(self):
+        group_uuid = str(uuid.uuid4())
+        resp = util.query_groups(self.cook_url, uuid=[group_uuid])
+        self.assertEqual(resp.status_code, 404)
+
     def test_implicit_group(self):
         group_uuid = str(uuid.uuid4())
         job_spec = {'group': group_uuid}
