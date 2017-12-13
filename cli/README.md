@@ -128,7 +128,7 @@ Job submission succeeded on dev0. Your job UUID is:
 Create multiple jobs, each with their own command:
 ```shell
 $ printf 'echo 1\necho 2' | cs submit
-Enter the subcommands, one per line (press Ctrl+D on a blank line to submit)
+Enter the commands, one per line (press Ctrl+D on a blank line to submit)
 Attempting to submit on dev0 cluster...
 Job submission succeeded on dev0. Your job UUIDs are:
 6c01233c-3cf6-4994-a48a-9678b20adc35

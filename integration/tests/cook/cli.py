@@ -73,17 +73,17 @@ def submit_stdin(commands, cook_url, flags=None, submit_flags=None):
     return cp, uuids
 
 
-def show_or_wait(action, uuids=None, cook_url=None, flags=None, action_flags=None):
+def show_or_wait(action, uuids=None, cook_url=None, flags=None, action_flags=None, stdin=None):
     """Helper function used to either show or wait via the CLI"""
     action_flags = (action_flags + ' ') if action_flags else ''
     uuids = ' '.join([str(uuid) for uuid in uuids])
-    cp = cli('%s %s%s' % (action, action_flags, uuids), cook_url, flags)
+    cp = cli('%s %s%s' % (action, action_flags, uuids), cook_url, flags, stdin)
     return cp
 
 
-def show(uuids=None, cook_url=None, flags=None, show_flags=None):
+def show(uuids=None, cook_url=None, flags=None, show_flags=None, stdin=None):
     """Shows the job(s) corresponding to the given UUID(s) via the CLI"""
-    cp = show_or_wait('show', uuids, cook_url, flags, show_flags)
+    cp = show_or_wait('show', uuids, cook_url, flags, show_flags, stdin)
     return cp
 
 
@@ -125,9 +125,9 @@ def show_all(uuids, cook_url=None, flags=None):
     return cp, jobs, instance_job_pairs, groups
 
 
-def wait(uuids=None, cook_url=None, flags=None, wait_flags=None):
+def wait(uuids=None, cook_url=None, flags=None, wait_flags=None, stdin=None):
     """Waits for the jobs corresponding to the given UUID(s) to complete"""
-    cp = show_or_wait('wait', uuids, cook_url, flags, wait_flags)
+    cp = show_or_wait('wait', uuids, cook_url, flags, wait_flags, stdin)
     return cp
 
 
@@ -219,10 +219,10 @@ def ls_entry_by_name(entries, name):
     return next(e for e in entries if os.path.basename(os.path.normpath(e['path'])) == name)
 
 
-def kill(uuids, cook_url):
+def kill(uuids, cook_url, stdin=None):
     """Invokes the kill subcommand"""
     args = f'kill {" ".join([str(u) for u in uuids])}'
-    cp = cli(args, cook_url)
+    cp = cli(args, cook_url, stdin=stdin)
     return cp
 
 

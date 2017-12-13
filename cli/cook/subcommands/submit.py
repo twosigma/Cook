@@ -109,8 +109,8 @@ def submit_federated(clusters, jobs, group):
 
 
 def read_commands_from_stdin():
-    """Prompts for and then reads subcommands, one per line, from stdin"""
-    print_info('Enter the subcommands, one per line (press Ctrl+D on a blank line to submit)')
+    """Prompts for and then reads commands, one per line, from stdin"""
+    print_info('Enter the commands, one per line (press Ctrl+D on a blank line to submit)')
     commands = read_lines()
     if len(commands) < 1:
         raise Exception('You must specify at least one command.')

@@ -1,7 +1,7 @@
 from collections import defaultdict
 
 from cook import http, colors
-from cook.querying import query, print_no_data, parse_entity_refs
+from cook.querying import print_no_data, parse_entity_refs, query_with_stdin_support
 from cook.util import print_info, guard_no_cluster
 
 
@@ -22,14 +22,17 @@ def guard_against_duplicates(query_result):
         uuid_to_entries[uuid].append(entry_map)
 
     for cluster_name, entities in query_result['clusters'].items():
-        for job in entities['jobs']:
-            add(job['uuid'], 'job', cluster_name)
+        if 'jobs' in entities:
+            for job in entities['jobs']:
+                add(job['uuid'], 'job', cluster_name)
 
-        for instance, _ in entities['instances']:
-            add(instance['task_id'], 'job instance', cluster_name)
+        if 'instances' in entities:
+            for instance, _ in entities['instances']:
+                add(instance['task_id'], 'job instance', cluster_name)
 
-        for group in entities['groups']:
-            add(group['uuid'], 'job group', cluster_name)
+        if 'groups' in entities:
+            for group in entities['groups']:
+                add(group['uuid'], 'job group', cluster_name)
 
     if len(duplicate_uuids) > 0:
         messages = []
@@ -53,8 +56,8 @@ def kill_entities(query_result, clusters):
     for cluster_name, entities in query_result['clusters'].items():
         cluster = clusters_by_name[cluster_name]
 
-        job_uuids = [j['uuid'] for j in entities['jobs']]
-        instance_uuids = [i['task_id'] for i, _ in entities['instances']]
+        job_uuids = [j['uuid'] for j in entities['jobs']] if 'jobs' in entities else []
+        instance_uuids = [i['task_id'] for i, _ in entities['instances']] if 'instances' in entities else []
         num_jobs = len(job_uuids)
         num_instances = len(instance_uuids)
         if num_jobs > 0 or num_instances > 0:
@@ -71,17 +74,18 @@ def kill_entities(query_result, clusters):
                 for instance_uuid in instance_uuids:
                     print(colors.failed(f'Failed to kill job instance {instance_uuid} on {cluster_name}.'))
 
-        group_uuids = [g['uuid'] for g in entities['groups']]
-        num_groups = len(group_uuids)
-        if num_groups > 0:
-            resp = http.delete(cluster, 'group', params={'uuid': group_uuids})
-            if resp.status_code == success_status_code:
-                for group_uuid in group_uuids:
-                    print_info(f'Killed job group {colors.bold(group_uuid)} on {colors.bold(cluster_name)}.')
-            else:
-                num_failures += num_groups
-                for group_uuid in group_uuids:
-                    print(colors.failed(f'Failed to kill job group {group_uuid} on {cluster_name}.'))
+        if 'groups' in entities:
+            group_uuids = [g['uuid'] for g in entities['groups']]
+            num_groups = len(group_uuids)
+            if num_groups > 0:
+                resp = http.delete(cluster, 'group', params={'uuid': group_uuids})
+                if resp.status_code == success_status_code:
+                    for group_uuid in group_uuids:
+                        print_info(f'Killed job group {colors.bold(group_uuid)} on {colors.bold(cluster_name)}.')
+                else:
+                    num_failures += num_groups
+                    for group_uuid in group_uuids:
+                        print(colors.failed(f'Failed to kill job group {group_uuid} on {cluster_name}.'))
 
     if num_failures > 1:
         print_info(f'There were {colors.failed(str(num_failures))} kill failures.')
@@ -95,7 +99,7 @@ def kill(clusters, args, _):
     """Attempts to kill the jobs / instances / groups with the given UUIDs."""
     guard_no_cluster(clusters)
     uuids = parse_entity_refs(clusters, args.get('uuid'))
-    query_result = query(clusters, uuids)
+    query_result = query_with_stdin_support(clusters, uuids)
     if query_result['count'] == 0:
         print_no_data(clusters)
         return 1
@@ -110,5 +114,5 @@ def kill(clusters, args, _):
 def register(add_parser, _):
     """Adds this sub-command's parser and returns the action function"""
     parser = add_parser('kill', help='kill jobs / instances / groups by uuid')
-    parser.add_argument('uuid', nargs='+')
+    parser.add_argument('uuid', nargs='*')
     return kill

@@ -3,6 +3,7 @@ import datetime
 import json
 import logging
 import time
+from urllib.parse import urljoin
 
 from tabulate import tabulate
 
@@ -51,11 +52,29 @@ def format_job_command(job):
     return job['command'] if len(job['command']) <= 50 else ('%s...' % job['command'][:47])
 
 
-def show_data(cluster_job_pairs):
-    """
-    Given a collection of (cluster, job) pairs,
-    formats a table showing the most relevant job fields
-    """
+def query_result_to_cluster_job_pairs(query_result):
+    """Given a query result structure, returns a sequence of (cluster, job) pairs from the result"""
+    cluster_job_pairs = ((c, j) for c, e in query_result['clusters'].items() for j in e['jobs'])
+    return cluster_job_pairs
+
+
+def print_as_one_per_line(query_result, clusters):
+    """Prints one entity ref URL per line from the given query result"""
+    cluster_job_pairs = query_result_to_cluster_job_pairs(query_result)
+    lines = []
+    for cluster_name, job in cluster_job_pairs:
+        cluster_url = next(c['url'] for c in clusters if c['name'] == cluster_name)
+        jobs_endpoint = urljoin(cluster_url, 'jobs/')
+        job_url = urljoin(jobs_endpoint, job['uuid'])
+        lines.append(job_url)
+
+    if lines:
+        print('\n'.join(lines))
+
+
+def print_as_table(query_result):
+    """Given a collection of (cluster, job) pairs, formats a table showing the most relevant job fields"""
+    cluster_job_pairs = query_result_to_cluster_job_pairs(query_result)
     rows = [collections.OrderedDict([("Cluster", cluster),
                                      ("UUID", job['uuid']),
                                      ("Name", job['name']),
@@ -69,6 +88,11 @@ def show_data(cluster_job_pairs):
             for (cluster, job) in cluster_job_pairs]
     job_table = tabulate(rows, headers='keys', tablefmt='plain')
     print_info(job_table)
+
+
+def print_as_json(query_result):
+    """Prints the query result as raw JSON"""
+    print(json.dumps(query_result))
 
 
 def date_time_string_to_ms_since_epoch(date_time_string):
@@ -101,6 +125,7 @@ def jobs(clusters, args, _):
     """Prints info for the jobs with the given list criteria"""
     guard_no_cluster(clusters)
     as_json = args.get('json')
+    one_per_line = args.get('one-per-line')
     states = args.get('states')
     user = args.get('user')
     lookback_hours = args.get('lookback')
@@ -121,11 +146,13 @@ def jobs(clusters, args, _):
         start_ms, end_ms = lookback_hours_to_range(lookback_hours or DEFAULT_LOOKBACK_HOURS)
 
     query_result = query(clusters, states, user, start_ms, end_ms, name, limit)
+    found_jobs = query_result['count'] > 0
     if as_json:
-        print(json.dumps(query_result))
-    elif query_result['count'] > 0:
-        cluster_job_pairs = [(c, j) for c, e in query_result['clusters'].items() for j in e['jobs']]
-        show_data(cluster_job_pairs)
+        print_as_json(query_result)
+    elif one_per_line:
+        print_as_one_per_line(query_result, clusters)
+    elif found_jobs:
+        print_as_table(query_result)
     else:
         print_no_data(clusters)
     return 0
@@ -158,7 +185,10 @@ def register(add_parser, add_defaults):
                                              "alphanumeric characters, '.', '-', '_', and '*' as a wildcard)")
     parser.add_argument('--limit', '-l', help=f'limit the number of results (default = {DEFAULT_LIMIT})',
                         type=check_positive)
-    parser.add_argument('--json', help='show the data in JSON format', dest='json', action='store_true')
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument('--json', help='show the data in JSON format', dest='json', action='store_true')
+    group.add_argument('--urls', '-1', help='list one job URL per line, without table formatting',
+                       dest='one-per-line', action='store_true')
 
     add_defaults('jobs', {'states': ['running'],
                           'user': current_user(),

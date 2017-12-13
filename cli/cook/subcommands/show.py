@@ -6,7 +6,7 @@ from tabulate import tabulate
 
 from cook.format import format_instance_run_time, format_instance_status, format_job_memory, format_list, format_dict, \
     format_job_attempts, format_job_status
-from cook.querying import query, print_no_data, parse_entity_refs
+from cook.querying import print_no_data, parse_entity_refs, query_with_stdin_support
 from cook.util import millis_to_timedelta, millis_to_date_string, guard_no_cluster
 
 DEFAULT_MAX_RUNTIME = 2 ** 63 - 1
@@ -148,14 +148,20 @@ def show(clusters, args, _):
     guard_no_cluster(clusters)
     as_json = args.get('json')
     uuids = parse_entity_refs(clusters, args.get('uuid'))
-    query_result = query(clusters, uuids)
+    query_result = query_with_stdin_support(clusters, uuids)
     if as_json:
         print(json.dumps(query_result))
     else:
         for cluster_name, entities in query_result['clusters'].items():
-            show_data(cluster_name, entities['jobs'], tabulate_job)
-            show_data(cluster_name, entities['instances'], tabulate_instance)
-            show_data(cluster_name, entities['groups'], tabulate_group)
+            if 'jobs' in entities:
+                show_data(cluster_name, entities['jobs'], tabulate_job)
+
+            if 'instances' in entities:
+                show_data(cluster_name, entities['instances'], tabulate_instance)
+
+            if 'groups' in entities:
+                show_data(cluster_name, entities['groups'], tabulate_group)
+
     if query_result['count'] > 0:
         return 0
     else:
@@ -167,6 +173,6 @@ def show(clusters, args, _):
 def register(add_parser, _):
     """Adds this sub-command's parser and returns the action function"""
     show_parser = add_parser('show', help='show jobs / instances / groups by uuid')
-    show_parser.add_argument('uuid', nargs='+')
+    show_parser.add_argument('uuid', nargs='*')
     show_parser.add_argument('--json', help='show the data in JSON format', dest='json', action='store_true')
     return show

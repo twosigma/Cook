@@ -2,13 +2,14 @@ import collections
 import concurrent
 import logging
 import os
+import sys
 from collections import defaultdict
 from concurrent import futures
 from operator import itemgetter
 from urllib.parse import urlparse, parse_qs
 
-from cook import http, colors, progress, mesos
-from cook.util import wait_until, is_valid_uuid
+from cook import http, colors, mesos, progress
+from cook.util import is_valid_uuid, wait_until, print_info
 
 
 class Types:
@@ -44,18 +45,20 @@ def query_cluster(cluster, uuids, pred, timeout, interval, make_request_fn, enti
         return pred(http.make_data_request(cluster, lambda: make_request_fn(cluster, uuids)))
 
     entities = http.make_data_request(cluster, lambda: make_request_fn(cluster, uuids))
-    if pred and len(entities) > 0:
+    num_entities = len(entities)
+    if pred and num_entities > 0:
+        s = 's' if num_entities > 1 else ''
+        num_string = colors.bold(str(num_entities))
         if entity_type == Types.JOB:
-            wait_text = 'Waiting for the following jobs'
+            wait_text = f'Waiting for {num_string} job{s}'
         elif entity_type == Types.INSTANCE:
-            wait_text = 'Waiting for instances of the following jobs'
+            wait_text = f'Waiting for instances of {num_string} job{s}'
         elif entity_type == Types.GROUP:
-            wait_text = 'Waiting for the following job groups'
+            wait_text = f'Waiting for {num_string} job group{s}'
         else:
-            raise Exception('Invalid entity type %s.' % entity_type)
+            raise Exception(f'Invalid entity type {entity_type}.')
 
-        uuid_text = ', '.join([e['uuid'] for e in entities])
-        wait_text = '%s on %s: %s' % (wait_text, colors.bold(cluster['name']), uuid_text)
+        wait_text = f'{wait_text} on {colors.bold(cluster["name"])}'
         index = progress.add(wait_text)
         if pred(entities):
             progress.update(index, colors.bold('Done'))
@@ -328,3 +331,32 @@ def parse_entity_refs(clusters, ref_strings):
                     entity_refs.append({'cluster': cluster_name, 'type': entity_type, 'uuid': uuid})
 
     return entity_refs
+
+
+def query_with_stdin_support(clusters, entity_refs, pred_jobs=None, pred_instances=None,
+                             pred_groups=None, timeout=None, interval=None):
+    """
+    Queries for UUIDs across clusters, supporting input being passed via stdin, e.g.:
+
+      $ cs jobs --user sally --running --waiting -1 | cs wait
+
+    The above example would wait for all of sally's running and waiting jobs to complete.
+    """
+    stdin_from_pipe = not sys.stdin.isatty()
+
+    if entity_refs and stdin_from_pipe:
+        raise Exception(f'You cannot supply entity references both as arguments and from stdin.')
+
+    if not entity_refs:
+        if not stdin_from_pipe:
+            print_info('Enter the UUIDs or URLs, one per line (press Ctrl+D on a blank line to submit)')
+
+        stdin = sys.stdin.read()
+        if not stdin:
+            raise Exception('You must specify at least one UUID or URL.')
+
+        ref_strings = stdin.splitlines()
+        entity_refs = parse_entity_refs(clusters, ref_strings)
+
+    query_result = query(clusters, entity_refs, pred_jobs, pred_instances, pred_groups, timeout, interval)
+    return query_result
