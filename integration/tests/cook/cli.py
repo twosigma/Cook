@@ -138,12 +138,12 @@ class temp_config_file:
     """
 
     def __init__(self, config):
-        self.config = config
         session_module = os.getenv('COOK_SESSION_MODULE')
         if session_module:
-            modules_config = {'http': {'modules': {'session-module': session_module,
-                                                   'adapters-module': session_module}}}
-            self.config = {**modules_config, **config}
+            self.config = {'http': {'modules': {'session-module': session_module, 'adapters-module': session_module}}}
+            self.config.update(config)
+        else:
+            self.config = config
 
     def write_temp_json(self):
         path = tempfile.NamedTemporaryFile(delete=False).name
