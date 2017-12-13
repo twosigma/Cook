@@ -138,7 +138,12 @@ class temp_config_file:
     """
 
     def __init__(self, config):
-        self.config = config
+        session_module = os.getenv('COOK_SESSION_MODULE')
+        if session_module:
+            self.config = {'http': {'modules': {'session-module': session_module, 'adapters-module': session_module}}}
+            self.config.update(config)
+        else:
+            self.config = config
 
     def write_temp_json(self):
         path = tempfile.NamedTemporaryFile(delete=False).name
@@ -240,7 +245,7 @@ def version():
         raise Exception(f'Unable to parse version from {string}')
 
 
-def config_get(key, flags):
+def config_get(key, flags=None):
     """Invokes the config subcommand to get a config value"""
     cp = cli(f'config --get {key}', flags=flags)
     return cp
@@ -250,3 +255,9 @@ def config_set(key, value, flags):
     """Invokes the config subcommand to set a config value"""
     cp = cli(f'config {key} {value}', flags=flags)
     return cp
+
+
+def command_prefix():
+    """Returns the currently configured command-prefix, if any"""
+    cp = config_get('defaults.submit.command-prefix')
+    return decode(cp.stdout).rstrip('\n') if cp.returncode == 0 else ''

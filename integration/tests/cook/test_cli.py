@@ -182,7 +182,7 @@ class CookCliTest(unittest.TestCase):
         self.assertEqual(str(juuid), uuids[0], uuids)
         cp, jobs = cli.show_jobs(uuids, self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
-        self.assertEqual(command, jobs[0]['command'])
+        self.assertEqual(f'{cli.command_prefix()}{command}', jobs[0]['command'])
         self.assertEqual(name, jobs[0]['name'])
         self.assertEqual(priority, jobs[0]['priority'])
         self.assertEqual(max_retries, jobs[0]['max_retries'])
@@ -213,8 +213,7 @@ class CookCliTest(unittest.TestCase):
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual(3, len(jobs), jobs)
         for job in jobs:
-            self.assertEqual(0, cp.returncode, cp.stderr)
-            self.assertEqual(command, job['command'])
+            self.assertEqual(f'{cli.command_prefix()}{command}', job['command'])
             self.assertEqual(name, job['name'])
             self.assertEqual(priority, job['priority'])
             self.assertEqual(max_retries, job['max_retries'])
@@ -281,13 +280,13 @@ class CookCliTest(unittest.TestCase):
         self.assertEqual(0, cp.returncode, cp.stderr)
         cp, jobs = cli.show_jobs(uuids, self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
-        self.assertEqual('ls -al', jobs[0]['command'])
+        self.assertEqual(f'{cli.command_prefix()}ls -al', jobs[0]['command'])
         # Double-dash along with other flags
         cp, uuids = cli.submit('-- ls -al', self.cook_url, submit_flags='--name foo --priority 12')
         self.assertEqual(0, cp.returncode, cp.stderr)
         cp, jobs = cli.show_jobs(uuids, self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
-        self.assertEqual('ls -al', jobs[0]['command'])
+        self.assertEqual(f'{cli.command_prefix()}ls -al', jobs[0]['command'])
         self.assertEqual('foo', jobs[0]['name'])
         self.assertEqual(12, jobs[0]['priority'])
 
@@ -296,30 +295,27 @@ class CookCliTest(unittest.TestCase):
         cp, uuids = cli.submit('-- ls -al', 'localhost:99999', '--verbose')
         stderr = cli.decode(cp.stderr)
         self.assertEqual(1, cp.returncode, stderr)
-        self.assertIn('Starting new HTTP connection (1)', stderr)
-        self.assertIn('Starting new HTTP connection (2)', stderr)
-        self.assertIn('Starting new HTTP connection (3)', stderr)
-        self.assertNotIn('Starting new HTTP connection (4)', stderr)
+        self.assertIn('Retrying (Retry(total=1', stderr)
+        self.assertIn('Retrying (Retry(total=0', stderr)
+        self.assertNotIn('Retrying (Retry(total=2', stderr)
         # Set retries = 0
         config = {'http': {'retries': 0}}
         with cli.temp_config_file(config) as path:
             cp, uuids = cli.submit('-- ls -al', 'localhost:99999', '--verbose --config %s' % path)
             stderr = cli.decode(cp.stderr)
             self.assertEqual(1, cp.returncode, stderr)
-            self.assertIn('Starting new HTTP connection (1)', stderr)
-            self.assertNotIn('Starting new HTTP connection (2)', stderr)
+            self.assertNotIn('Retrying (Retry(total=0', stderr)
         # Set retries = 4
         config = {'http': {'retries': 4}}
         with cli.temp_config_file(config) as path:
             cp, uuids = cli.submit('-- ls -al', 'localhost:99999', '--verbose --config %s' % path)
             stderr = cli.decode(cp.stderr)
             self.assertEqual(1, cp.returncode, stderr)
-            self.assertIn('Starting new HTTP connection (1)', stderr)
-            self.assertIn('Starting new HTTP connection (2)', stderr)
-            self.assertIn('Starting new HTTP connection (3)', stderr)
-            self.assertIn('Starting new HTTP connection (4)', stderr)
-            self.assertIn('Starting new HTTP connection (5)', stderr)
-            self.assertNotIn('Starting new HTTP connection (6)', stderr)
+            self.assertIn('Retrying (Retry(total=3', stderr)
+            self.assertIn('Retrying (Retry(total=2', stderr)
+            self.assertIn('Retrying (Retry(total=1', stderr)
+            self.assertIn('Retrying (Retry(total=0', stderr)
+            self.assertNotIn('Retrying (Retry(total=4', stderr)
 
     def test_submit_priority(self):
         cp, uuids = cli.submit('ls', self.cook_url, submit_flags='--priority 0')
@@ -379,14 +375,15 @@ class CookCliTest(unittest.TestCase):
         self.assertEqual(0, cp.returncode, cp.stderr)
         cp, jobs = cli.show_jobs(uuids, self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
-        self.assertEqual(desired_command.replace('"', ''), jobs[0]['command'])
+        expected_command = desired_command.replace('"', '')
+        self.assertEqual(f'{cli.command_prefix()}{expected_command}', jobs[0]['command'])
         # Correctly submitted command
         command = '"(foo -x \'def bar = \\"baz\\"\')"'
         cp, uuids = cli.submit(command, self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
         cp, jobs = cli.show_jobs(uuids, self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
-        self.assertEqual(desired_command, jobs[0]['command'])
+        self.assertEqual(f'{cli.command_prefix()}{desired_command}', jobs[0]['command'])
 
         desired_command = "export HOME=$MESOS_DIRECTORY; export LOGNAME=$(whoami); JAVA_OPTS='-Xmx15000m' foo"
         # Incorrectly submitted command
@@ -395,14 +392,15 @@ class CookCliTest(unittest.TestCase):
         self.assertEqual(0, cp.returncode, cp.stderr)
         cp, jobs = cli.show_jobs(uuids, self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
-        self.assertEqual(desired_command.replace("'", ''), jobs[0]['command'])
+        expected_command = desired_command.replace("'", '')
+        self.assertEqual(f'{cli.command_prefix()}{expected_command}', jobs[0]['command'])
         # Correctly submitted command
         command = "'export HOME=$MESOS_DIRECTORY; export LOGNAME=$(whoami); JAVA_OPTS='\"'\"'-Xmx15000m'\"'\"' foo'"
         cp, uuids = cli.submit(command, self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
         cp, jobs = cli.show_jobs(uuids, self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
-        self.assertEqual(desired_command, jobs[0]['command'])
+        self.assertEqual(f'{cli.command_prefix()}{desired_command}', jobs[0]['command'])
 
     def test_list_no_matching_jobs(self):
         cp = cli.jobs(self.cook_url, '--name %s' % uuid.uuid4())
@@ -702,7 +700,7 @@ class CookCliTest(unittest.TestCase):
             f'bash -c \'for i in {{1..30}}; do echo $i >> bar; sleep {sleep_seconds_between_lines}; done\'',
             self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
-        util.wait_for_job(self.cook_url, uuids[0], 'running')
+        util.wait_for_instance(self.cook_url, uuids[0])
         proc = cli.tail(uuids[0], 'bar', self.cook_url,
                         f'--follow --sleep-interval {sleep_seconds_between_lines}',
                         wait_for_exit=False)
@@ -1118,13 +1116,16 @@ class CookCliTest(unittest.TestCase):
         self.assertEqual('success', jobs[0]['state'])
 
         # Default command prefix (empty)
-        cp, uuids = cli.submit('"exit ${FOO:-1}"', self.cook_url)
-        self.assertEqual(0, cp.returncode, cp.stderr)
-        cp = cli.wait(uuids, self.cook_url)
-        self.assertEqual(0, cp.returncode, cp.stderr)
-        cp, jobs = cli.show_jobs(uuids, self.cook_url)
-        self.assertEqual('exit ${FOO:-1}', jobs[0]['command'])
-        self.assertEqual('failed', jobs[0]['state'])
+        config = {'defaults': {'submit': {}}}
+        with cli.temp_config_file(config) as path:
+            flags = '--config %s' % path
+            cp, uuids = cli.submit('"exit ${FOO:-1}"', self.cook_url, flags=flags)
+            self.assertEqual(0, cp.returncode, cp.stderr)
+            cp = cli.wait(uuids, self.cook_url)
+            self.assertEqual(0, cp.returncode, cp.stderr)
+            cp, jobs = cli.show_jobs(uuids, self.cook_url)
+            self.assertEqual('exit ${FOO:-1}', jobs[0]['command'])
+            self.assertEqual('failed', jobs[0]['state'])
 
         # User-defined default
         config = {'defaults': {'submit': {'command-prefix': 'export FOO=0; '}}}
