@@ -1374,7 +1374,7 @@ class CookCliTest(unittest.TestCase):
             cp, uuids = cli.submit('ls', flags=flags)
             self.assertEqual(0, cp.returncode, cp.stderr)
             uuid = uuids[0]
-            _, jobs = cli.show_jobs([f'{self.cook_url}/jobs/{uuid}'], flags=flags)
+            cp, jobs = cli.show_jobs([f'{self.cook_url}/jobs/{uuid}'], flags=flags)
             self.assertEqual(0, cp.returncode, cp.stderr)
             self.assertEqual(1, len(jobs))
             self.assertEqual(uuid, jobs[0]['uuid'])
@@ -1460,3 +1460,8 @@ class CookCliTest(unittest.TestCase):
         self.logger.info(command)
         cp = subprocess.run(command, shell=True)
         self.assertEqual(0, cp.returncode, cp.stderr)
+
+    def test_show_interesting_uuid(self):
+        cp = cli.show(['019c34c3-13b3-b370-01a5-d1ecc9071249'], self.cook_url)
+        self.assertEqual(1, cp.returncode, cp.stderr)
+        self.assertIn('No matching data found', cli.stdout(cp), cp.stderr)
