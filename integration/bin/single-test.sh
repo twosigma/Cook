@@ -24,4 +24,5 @@ fi
 
 echo "Found $test_name in $test_file:$test_class"
 
+export COOK_MULTI_CLUSTER=
 time nosetests --processes=0 --verbosity 3 --nologcapture --tests "$test_file:$test_class.$test_name"
