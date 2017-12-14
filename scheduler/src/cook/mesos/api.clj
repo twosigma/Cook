@@ -1370,7 +1370,7 @@
                        {authorized-guuids true unauthorized-guuids false} (group-by authorized? guuids)]
                    (if (or (empty? unauthorized-guuids) (::allow-partial-results? ctx))
                      [true {::guuids (with-meta
-                                       authorized-guuids
+                                       (vec authorized-guuids)
                                        ; Liberator will concatenate vectors by default when composing context values,
                                        ; but we want to replace our vector with only the filtered entries.
                                        {:replace true})}]
