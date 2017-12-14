@@ -98,17 +98,17 @@ def kill_entities(query_result, clusters):
 def kill(clusters, args, _):
     """Attempts to kill the jobs / instances / groups with the given UUIDs."""
     guard_no_cluster(clusters)
-    uuids = parse_entity_refs(clusters, args.get('uuid'))
-    query_result = query_with_stdin_support(clusters, uuids)
+    entity_refs, _ = parse_entity_refs(clusters, args.get('uuid'))
+    query_result, clusters_of_interest = query_with_stdin_support(clusters, entity_refs)
     if query_result['count'] == 0:
-        print_no_data(clusters)
+        print_no_data(clusters_of_interest)
         return 1
 
     # If the user provides UUIDs that map to more than one entity,
     # we will raise an Exception that contains the details
     guard_against_duplicates(query_result)
 
-    return kill_entities(query_result, clusters)
+    return kill_entities(query_result, clusters_of_interest)
 
 
 def register(add_parser, _):

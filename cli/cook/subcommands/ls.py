@@ -103,13 +103,13 @@ def ls_for_instance(instance, sandbox_dir, path, long_format, as_json):
 def ls(clusters, args, _):
     """Lists contents of the corresponding Mesos sandbox path by job or instance uuid."""
     guard_no_cluster(clusters)
-    uuids = parse_entity_refs(clusters, args.get('uuid'))
+    entity_refs, clusters_of_interest = parse_entity_refs(clusters, args.get('uuid'))
     path = args.get('path')
     long_format = args.get('long_format')
     as_json = args.get('json')
     literal = args.get('literal')
 
-    if len(uuids) > 1:
+    if len(entity_refs) > 1:
         # argparse should prevent this, but we'll be defensive anyway
         raise Exception(f'You can only provide a single uuid.')
 
@@ -117,16 +117,16 @@ def ls(clusters, args, _):
         message = 'It looks like you are trying to glob, but ls does not support globbing. ' \
                   f'You can use the {colors.bold("ssh")} command instead:\n' \
                   '\n' \
-                  f'  cs ssh {uuids[0]}\n' \
+                  f'  cs ssh {entity_refs[0]}\n' \
                   '\n' \
                   f'Or, if you want the literal path {colors.bold(path)}, add {colors.bold("--literal")}:\n' \
                   '\n' \
-                  f'  cs ls {colors.bold("--literal")} {uuids[0]} {path}'
+                  f'  cs ls {colors.bold("--literal")} {entity_refs[0]} {path}'
         print(message)
         return 1
 
     command_fn = partial(ls_for_instance, path=path, long_format=long_format, as_json=as_json)
-    query_unique_and_run(clusters, uuids[0], command_fn)
+    query_unique_and_run(clusters_of_interest, entity_refs[0], command_fn)
 
 
 def register(add_parser, _):

@@ -290,6 +290,8 @@ def parse_entity_refs(clusters, ref_strings):
     Throws if an invalid entity ref string is encountered.
     """
     entity_refs = []
+    cluster_names_of_interest = set()
+    all_cluster_names = set(c['name'] for c in clusters)
     for ref_string in ref_strings:
         result = urlparse(ref_string)
 
@@ -301,11 +303,12 @@ def parse_entity_refs(clusters, ref_strings):
                 raise Exception(f'{result.path} is not a valid UUID.')
 
             entity_refs.append({'cluster': Clusters.ALL, 'type': Types.ALL, 'uuid': result.path})
+            cluster_names_of_interest = all_cluster_names
         else:
             path_parts = result.path.split('/')
             num_path_parts = len(path_parts)
             cluster_url = (f'{result.scheme}://' if result.scheme else '') + result.netloc
-            cluster_names = [c['name'] for c in clusters if c['url'].lower().rstrip('/') == cluster_url.lower()]
+            matched_clusters = [c for c in clusters if c['url'].lower().rstrip('/') == cluster_url.lower()]
 
             if num_path_parts < 2:
                 raise Exception(f'Unable to determine entity type and UUID from {ref_string}.')
@@ -313,11 +316,12 @@ def parse_entity_refs(clusters, ref_strings):
             if num_path_parts == 2 and not result.query:
                 raise Exception(f'Unable to determine UUID from {ref_string}.')
 
-            if len(cluster_names) == 0:
+            if len(matched_clusters) == 0:
                 raise Exception(f'There is no configured cluster that matches {ref_string}.')
 
-            cluster_name = cluster_names[0]
+            cluster_name = matched_clusters[0]['name']
             entity_type = resource_to_entity_type(path_parts[1])
+            cluster_names_of_interest.add(cluster_name)
 
             if num_path_parts > 2:
                 entity_refs.append({'cluster': cluster_name, 'type': entity_type, 'uuid': path_parts[2]})
@@ -330,7 +334,8 @@ def parse_entity_refs(clusters, ref_strings):
                 for uuid in query_args['uuid']:
                     entity_refs.append({'cluster': cluster_name, 'type': entity_type, 'uuid': uuid})
 
-    return entity_refs
+    clusters_of_interest = [c for c in clusters if c['name'] in cluster_names_of_interest]
+    return entity_refs, clusters_of_interest
 
 
 def query_with_stdin_support(clusters, entity_refs, pred_jobs=None, pred_instances=None,
@@ -347,6 +352,7 @@ def query_with_stdin_support(clusters, entity_refs, pred_jobs=None, pred_instanc
     if entity_refs and stdin_from_pipe:
         raise Exception(f'You cannot supply entity references both as arguments and from stdin.')
 
+    clusters_of_interest = clusters
     if not entity_refs:
         if not stdin_from_pipe:
             print_info('Enter the UUIDs or URLs, one per line (press Ctrl+D on a blank line to submit)')
@@ -356,7 +362,7 @@ def query_with_stdin_support(clusters, entity_refs, pred_jobs=None, pred_instanc
             raise Exception('You must specify at least one UUID or URL.')
 
         ref_strings = stdin.splitlines()
-        entity_refs = parse_entity_refs(clusters, ref_strings)
+        entity_refs, clusters_of_interest = parse_entity_refs(clusters, ref_strings)
 
-    query_result = query(clusters, entity_refs, pred_jobs, pred_instances, pred_groups, timeout, interval)
-    return query_result
+    query_result = query(clusters_of_interest, entity_refs, pred_jobs, pred_instances, pred_groups, timeout, interval)
+    return query_result, clusters_of_interest
