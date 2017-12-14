@@ -103,17 +103,16 @@ class ProgressUpdater(object):
                 except UnicodeDecodeError:
                     logging.info('Unable to decode progress message in ascii, using empty string instead')
                     progress_str = ''
-                message_dict['progress-message'] = progress_str
 
-                progress_message = json.dumps(message_dict)
-                if len(progress_message) > self.max_message_length:
-                    num_extra_chars = len(progress_message) - self.max_message_length
-                    allowed_progress_message_length = max(len(progress_str) - num_extra_chars - 3, 0)
+                if len(progress_str) <= self.max_message_length:
+                    message_dict['progress-message'] = progress_str
+                else:
+                    allowed_progress_message_length = max(self.max_message_length - 3, 0)
                     new_progress_str = progress_str[:allowed_progress_message_length].strip() + '...'
                     logging.info('Progress message trimmed to {}'.format(new_progress_str))
                     message_dict['progress-message'] = new_progress_str
-                    progress_message = json.dumps(message_dict)
 
+                progress_message = json.dumps(message_dict)
                 send_success = self.send_progress_message(progress_message)
                 if send_success:
                     self.last_progress_data_sent = progress_data

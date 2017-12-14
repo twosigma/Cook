@@ -90,8 +90,8 @@ def initialize_config(environment):
     shutdown_grace_period = environment.get('MESOS_EXECUTOR_SHUTDOWN_GRACE_PERIOD', '2secs')
 
     logging.info('Max bytes read per line is {}'.format(max_bytes_read_per_line))
-    logging.info('Max message length is {}'.format(max_message_length))
     logging.info('Memory usage will be logged every {} secs'.format(memory_usage_interval_secs))
+    logging.info('Progress message length is limited to {}'.format(max_message_length))
     logging.info('Progress output file is {}'.format(progress_output_name))
     logging.info('Progress regex is {}'.format(progress_regex_string))
     logging.info('Progress sample interval is {}'.format(progress_sample_interval_ms))
