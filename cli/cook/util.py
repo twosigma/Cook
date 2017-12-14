@@ -76,11 +76,10 @@ def is_valid_uuid(uuid_to_test, version=4):
     False
     """
     try:
-        uuid_obj = uuid.UUID(uuid_to_test, version=version)
+        uuid.UUID(uuid_to_test, version=version)
+        return True
     except:
         return False
-
-    return str(uuid_obj) == uuid_to_test
 
 
 silent = False
