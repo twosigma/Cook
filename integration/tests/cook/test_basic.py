@@ -1,3 +1,4 @@
+import dateutil.parser
 import json
 import logging
 import operator
@@ -22,6 +23,19 @@ class CookTest(unittest.TestCase):
         self.mesos_url = util.retrieve_mesos_url()
         self.logger = logging.getLogger(__name__)
         util.wait_for_cook(self.cook_url)
+
+    def test_scheduler_info(self):
+        info = util.scheduler_info(self.cook_url)
+        info_details = json.dumps(info, sort_keys=True)
+        self.assertIn('authentication-scheme', info, info_details)
+        self.assertIn('commit', info, info_details)
+        self.assertIn('start-time', info, info_details)
+        self.assertIn('version', info, info_details)
+        self.assertEqual(len(info), 4, info_details)
+        try:
+            timestamp = dateutil.parser.parse(info['start-time'])
+        except:
+            self.fail(f"Unable to parse start time: {info_details}")
 
     def test_basic_submit(self):
         job_executor_type = util.get_job_executor_type(self.cook_url)
