@@ -102,11 +102,13 @@ class StatusUpdater(object):
 def send_message(driver, message):
     """Sends the message, if it is smaller than the max length, using the driver.
 
+    Note: This function must rethrow any OSError exceptions that it encounters.
+
     Parameters
     ----------
     driver: MesosExecutorDriver
         The driver to send the message to.
-    message: object
+    message: dictionary
         The raw message to send.
 
     Returns
@@ -115,10 +117,12 @@ def send_message(driver, message):
     """
     try:
         logging.info('Sending framework message {}'.format(message))
-        message_string = str(message).encode('utf8')
+        message_string = json.dumps(message).encode('utf8')
         encoded_message = pm.encode_data(message_string)
         driver.sendFrameworkMessage(encoded_message)
         return True
+    except OSError as os_error:
+        raise os_error
     except Exception:
         logging.exception('Error in sending message {}'.format(message))
         return False
@@ -281,10 +285,7 @@ def manage_task(driver, task, stop_signal, completed_signal, config):
         # not yet started to run the task
         status_updater.update_status(cook.TASK_STARTING)
 
-        sandbox_message = json.dumps({'sandbox-directory': config.sandbox_directory,
-                                      'task-id': task_id,
-                                      'type': 'directory'})
-        send_message(driver, sandbox_message)
+        send_message(driver, {'sandbox-directory': config.sandbox_directory, 'task-id': task_id, 'type': 'directory'})
 
         environment = retrieve_process_environment(config, os.environ)
         launched_process = launch_task(task, environment)
@@ -332,8 +333,7 @@ def manage_task(driver, task, stop_signal, completed_signal, config):
         exit_code = launched_process.returncode
         cio.print_and_log('Command exited with status {} (pid: {})'.format(exit_code, launched_process.pid))
 
-        exit_message = json.dumps({'exit-code': exit_code, 'task-id': task_id})
-        send_message(driver, exit_message)
+        send_message(driver, {'exit-code': exit_code, 'task-id': task_id})
 
         # await progress updater termination if executor is terminating normally
         if not stop_signal.isSet():

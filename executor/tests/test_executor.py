@@ -69,9 +69,8 @@ class ExecutorTest(unittest.TestCase):
         driver = tu.FakeMesosExecutorDriver()
         task_id = tu.get_random_task_id()
         expected_message = {'task-id': task_id, 'message': 'test-message'}
-        message = json.dumps(expected_message)
 
-        result = ce.send_message(driver, message)
+        result = ce.send_message(driver, expected_message)
 
         self.assertTrue(result)
         self.assertEqual(1, len(driver.messages))

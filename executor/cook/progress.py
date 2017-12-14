@@ -112,13 +112,12 @@ class ProgressUpdater(object):
                     logging.info('Progress message trimmed to {}'.format(new_progress_str))
                     message_dict['progress-message'] = new_progress_str
 
-                progress_message = json.dumps(message_dict)
-                send_success = self.send_progress_message(progress_message)
+                send_success = self.send_progress_message(message_dict)
                 if send_success:
                     self.last_progress_data_sent = progress_data
                     self.last_reported_time = time.time()
                 else:
-                    logging.info('Unable to send progress message {}'.format(progress_message))
+                    logging.info('Unable to send progress message {}'.format(message_dict))
 
 
 class ProgressWatcher(object):
