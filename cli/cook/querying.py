@@ -265,8 +265,11 @@ def resource_to_entity_type(resource):
 
 def parse_entity_refs(clusters, ref_strings):
     """
-    Given a collection of entity ref strings, returns a list of entity ref maps, where each map has
-    the following shape:
+    Given the collection of configured clusters and a collection of entity ref strings, returns a pair
+    where the first element is a list of corresponding entity ref maps, and the second element is the
+    subset of clusters that are of interest.
+
+    In the list of entity ref maps, each map has the following shape:
 
       {'cluster': ..., 'type': ..., 'uuid': ...}
 
@@ -345,7 +348,8 @@ def query_with_stdin_support(clusters, entity_refs, pred_jobs=None, pred_instanc
 
       $ cs jobs --user sally --running --waiting -1 | cs wait
 
-    The above example would wait for all of sally's running and waiting jobs to complete.
+    The above example would wait for all of sally's running and waiting jobs to complete. Returns a pair where the
+    first element is the query result map, and the second element is the subset of clusters that are of interest.
     """
     stdin_from_pipe = not sys.stdin.isatty()
 
