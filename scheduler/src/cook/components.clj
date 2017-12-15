@@ -47,6 +47,7 @@
            org.eclipse.jetty.server.handler.HandlerCollection
            org.eclipse.jetty.server.handler.RequestLogHandler)
   (:gen-class))
+
 (defn wrap-no-cache
   [handler]
   (fn [req]
@@ -230,6 +231,15 @@
       (log/info "Found framework id in zookeeper:" framework-id)
       framework-id)))
 
+(defn conditional-auth-bypass
+  "Skip authentication on some hard-coded endpoints."
+  [h auth-middleware]
+  (let [auth-fn (auth-middleware h)]
+    (fn filtered-auth [{:keys [uri request-method] :as req}]
+      (if (and (= "/info" uri) (= :get request-method))
+        (h req)
+        (auth-fn req)))))
+
 (def scheduler-server
   (graph/eager-compile
     {:mesos-datomic mesos-datomic
@@ -246,7 +256,7 @@
                                                        tell-jetty-about-usename
                                                        (wrap-rate-limit {:storage rate-limit-storage
                                                                          :limit user-limit})
-                                                       authorization-middleware
+                                                       (conditional-auth-bypass authorization-middleware)
                                                        wrap-stacktrace
                                                        wrap-no-cache
                                                        wrap-cookies
@@ -363,7 +373,7 @@
                                      (log/info "Using http basic authorization with validation" validation)
                                      (with-meta
                                        ((lazy-load-var 'cook.basic-auth/create-http-basic-middleware) user-password-valid?)
-                                       {:json-value "HttpBasicAuthMiddleware"}))
+                                       {:json-value "http-basic"}))
 
                                    one-user
                                    (do
@@ -372,14 +382,14 @@
                                        (fn one-user-middleware [h]
                                          (fn one-user-auth-wrapper [req]
                                            (h (assoc req :authorization/user one-user))))
-                                       {:json-value "OneUserAuthMiddleware"}))
+                                       {:json-value "one-user"}))
 
                                    kerberos
                                    (do
                                      (log/info "Using kerberos middleware")
                                      (with-meta
                                        (lazy-load-var 'cook.spnego/require-gss)
-                                       {:json-value "KerberosAuthMiddleware"}))
+                                       {:json-value "kerberos"}))
                                    :else (throw (ex-info "Missing authorization configuration" {}))))
      :rate-limit (fnk [[:config {rate-limit nil}]]
                    (let [{:keys [user-limit-per-m]

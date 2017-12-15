@@ -17,6 +17,7 @@
   (:require [camel-snake-kebab.core :refer [->snake_case ->kebab-case]]
             [cheshire.core :as cheshire]
             [clj-time.core :as t]
+            [clj-time.format :as tf]
             [clojure.set :as set]
             [clojure.string :as str]
             [clojure.tools.logging :as log]
@@ -31,6 +32,7 @@
             [cook.mesos.unscheduled :as unscheduled]
             [cook.mesos.util :as util]
             [cook.mesos]
+            [cook.util]
             [datomic.api :as d :refer [q]]
             [liberator.core :as liberator]
             [liberator.util :refer [combine]]
@@ -123,6 +125,15 @@
 
 (def NonEmptyString
   (s/both s/Str (s/pred #(not (zero? (count %))) 'not-empty-string)))
+
+(def iso-8601-format (:date-time tf/formatters))
+
+(s/defschema CookInfo
+  "Schema for the /info endpoint response"
+  {:authentication-scheme s/Str
+   :commit s/Str
+   :start-time s/Inst
+   :version s/Str})
 
 (def PortMapping
   "Schema for Docker Portmapping"
@@ -1118,6 +1129,21 @@
           :when (contains? instance-uuids instance-uuid)]
       (-> instance
           (assoc :job (select-keys job [:uuid :name :status :state :user]))))))
+
+(defn cook-info-handler
+  "Handler for the /info endpoint"
+  [settings]
+  (let [auth-middleware (:authorization-middleware settings)
+        auth-scheme (str (or (-> auth-middleware meta :json-value) auth-middleware))
+        ;; We store the start-up time (ISO-8601) for reporting on the /info endpoint
+        start-up-time (tf/unparse iso-8601-format (t/now))]
+    (base-cook-handler
+      {:allowed-methods [:get]
+       :handle-ok (fn get-info-handler [_]
+                    {:authentication-scheme auth-scheme
+                     :commit @cook.util/commit
+                     :start-time start-up-time
+                     :version @cook.util/version})})))
 
 ;;; On GET; use repeated job argument
 (defn read-jobs-handler-deprecated
@@ -2208,6 +2234,15 @@
                                403 {:description "The supplied UUIDs don't correspond to valid jobs."}}
                    :handler (read-jobs-handler-multiple conn framework-id is-authorized-fn
                                                         retrieve-sandbox-directory-from-agent)}}))
+
+        (c-api/context
+          "/info" []
+          (c-api/resource
+            ;; NOTE: The authentication for this endpoint is disabled via cook.components/conditional-auth-bypass
+            {:get {:summary "Returns info about this Cook Scheduler instance's setup. No authentication required."
+                   :responses {200 {:schema CookInfo
+                                    :description "The Cook Scheduler info was returned."}}
+                   :handler (cook-info-handler settings)}}))
 
         (c-api/context
           "/instances/:uuid" [uuid]

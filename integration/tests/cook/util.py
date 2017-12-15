@@ -88,7 +88,13 @@ def wait_for_cook(cook_url):
 
 
 def settings(cook_url):
-    return session.get('%s/settings' % cook_url).json()
+    return session.get(f'{cook_url}/settings').json()
+
+
+def scheduler_info(cook_url):
+    resp = session.get(f'{cook_url}/info', auth=None)
+    assert resp.status_code == 200
+    return resp.json()
 
 
 def minimal_job(**kwargs):
