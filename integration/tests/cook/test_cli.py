@@ -415,73 +415,89 @@ class CookCliTest(unittest.TestCase):
 
     def test_list_by_state(self):
         name = str(uuid.uuid4())
-        # waiting
+
+        # Submit a job that will never run
         raw_job = {'command': 'ls', 'name': name, 'constraints': [['HOSTNAME', 'EQUALS', 'will not get scheduled']]}
         cp, uuids = cli.submit(stdin=cli.encode(json.dumps(raw_job)), cook_url=self.cook_url, submit_flags='--raw')
+        self.assertEqual(0, cp.returncode, cp.stderr)
         user = util.get_user(self.cook_url, uuids[0])
-        self.assertEqual(0, cp.returncode, cp.stderr)
-        util.wait_for_job(self.cook_url, uuids[0], 'waiting')
-        cp, jobs = self.list_jobs(name, user, 'waiting')
-        self.assertEqual(0, cp.returncode, cp.stderr)
-        self.assertEqual(1, len(jobs))
-        self.assertEqual(uuids[0], jobs[0]['uuid'])
         waiting_uuid = uuids[0]
-        # running
-        cp, uuids = cli.submit('sleep 120', self.cook_url, submit_flags='--name %s' % name)
+
+        # Submit a long-running job
+        cp, uuids = cli.submit('sleep 300', self.cook_url, submit_flags='--name %s' % name)
         self.assertEqual(0, cp.returncode, cp.stderr)
-        util.wait_for_job(self.cook_url, uuids[0], 'running')
-        cp, jobs = self.list_jobs(name, user, 'running')
-        self.assertEqual(0, cp.returncode, cp.stderr)
-        self.assertEqual(1, len(jobs))
-        self.assertEqual(uuids[0], jobs[0]['uuid'])
         running_uuid = uuids[0]
-        # completed
+
+        # Submit a successful job
         cp, uuids = cli.submit('ls', self.cook_url, submit_flags='--name %s' % name)
         self.assertEqual(0, cp.returncode, cp.stderr)
-        util.wait_for_job(self.cook_url, uuids[0], 'completed')
-        cp, jobs = self.list_jobs(name, user, 'completed')
-        self.assertEqual(0, cp.returncode, cp.stderr)
-        self.assertEqual(1, len(jobs))
-        self.assertEqual(uuids[0], jobs[0]['uuid'])
-        # success
-        cp, jobs = self.list_jobs(name, user, 'success')
-        self.assertEqual(0, cp.returncode, cp.stderr)
-        self.assertEqual(1, len(jobs))
-        self.assertEqual(uuids[0], jobs[0]['uuid'])
         success_uuid = uuids[0]
-        # failed
+
+        # Submit a failed job
         cp, uuids = cli.submit('exit 1', self.cook_url, submit_flags='--name %s' % name)
         self.assertEqual(0, cp.returncode, cp.stderr)
-        util.wait_for_job(self.cook_url, uuids[0], 'completed')
-        cp, jobs = self.list_jobs(name, user, 'failed')
-        self.assertEqual(0, cp.returncode, cp.stderr)
-        self.assertEqual(1, len(jobs))
-        self.assertEqual(uuids[0], jobs[0]['uuid'])
         failed_uuid = uuids[0]
-        # all
-        cp, jobs = self.list_jobs(name, user, 'all')
-        uuids = [j['uuid'] for j in jobs]
-        self.assertEqual(0, cp.returncode, cp.stderr)
-        self.assertEqual(4, len(jobs))
-        self.assertIn(waiting_uuid, uuids)
-        self.assertIn(running_uuid, uuids)
-        self.assertIn(success_uuid, uuids)
-        self.assertIn(failed_uuid, uuids)
-        # waiting+running
-        cp, jobs = self.list_jobs(name, user, 'waiting', 'running')
-        uuids = [j['uuid'] for j in jobs]
-        self.assertEqual(0, cp.returncode, cp.stderr)
-        self.assertEqual(2, len(jobs))
-        self.assertIn(waiting_uuid, uuids)
-        self.assertIn(running_uuid, uuids)
-        # completed+waiting
-        cp, jobs = self.list_jobs(name, user, 'completed', 'waiting')
-        uuids = [j['uuid'] for j in jobs]
-        self.assertEqual(0, cp.returncode, cp.stderr)
-        self.assertEqual(3, len(jobs), f'Expected 3 jobs, got: {jobs}')
-        self.assertIn(waiting_uuid, uuids)
-        self.assertIn(success_uuid, uuids)
-        self.assertIn(failed_uuid, uuids)
+
+        # Wait for the desired states to be reached
+        util.wait_for_job(self.cook_url, waiting_uuid, 'waiting')
+        util.wait_for_job(self.cook_url, running_uuid, 'running')
+        util.wait_for_job(self.cook_url, success_uuid, 'completed')
+        util.wait_for_job(self.cook_url, failed_uuid, 'completed')
+
+        try:
+            # waiting
+            cp, jobs = self.list_jobs(name, user, 'waiting')
+            self.assertEqual(0, cp.returncode, cp.stderr)
+            self.assertEqual(1, len(jobs))
+            self.assertEqual(waiting_uuid, jobs[0]['uuid'])
+            # running
+            cp, jobs = self.list_jobs(name, user, 'running')
+            self.assertEqual(0, cp.returncode, cp.stderr)
+            self.assertEqual(1, len(jobs))
+            self.assertEqual(running_uuid, jobs[0]['uuid'])
+            # completed
+            cp, jobs = self.list_jobs(name, user, 'completed')
+            uuids = [j['uuid'] for j in jobs]
+            self.assertEqual(0, cp.returncode, cp.stderr)
+            self.assertEqual(2, len(jobs))
+            self.assertIn(success_uuid, uuids)
+            self.assertIn(failed_uuid, uuids)
+            # success
+            cp, jobs = self.list_jobs(name, user, 'success')
+            self.assertEqual(0, cp.returncode, cp.stderr)
+            self.assertEqual(1, len(jobs))
+            self.assertEqual(success_uuid, jobs[0]['uuid'])
+            # failed
+            cp, jobs = self.list_jobs(name, user, 'failed')
+            self.assertEqual(0, cp.returncode, cp.stderr)
+            self.assertEqual(1, len(jobs))
+            self.assertEqual(failed_uuid, jobs[0]['uuid'])
+            # all
+            cp, jobs = self.list_jobs(name, user, 'all')
+            uuids = [j['uuid'] for j in jobs]
+            self.assertEqual(0, cp.returncode, cp.stderr)
+            self.assertEqual(4, len(jobs))
+            self.assertIn(waiting_uuid, uuids)
+            self.assertIn(running_uuid, uuids)
+            self.assertIn(success_uuid, uuids)
+            self.assertIn(failed_uuid, uuids)
+            # waiting+running
+            cp, jobs = self.list_jobs(name, user, 'waiting', 'running')
+            uuids = [j['uuid'] for j in jobs]
+            self.assertEqual(0, cp.returncode, cp.stderr)
+            self.assertEqual(2, len(jobs))
+            self.assertIn(waiting_uuid, uuids)
+            self.assertIn(running_uuid, uuids)
+            # completed+waiting
+            cp, jobs = self.list_jobs(name, user, 'completed', 'waiting')
+            uuids = [j['uuid'] for j in jobs]
+            self.assertEqual(0, cp.returncode, cp.stderr)
+            self.assertEqual(3, len(jobs), f'Expected 3 jobs, got: {jobs}')
+            self.assertIn(waiting_uuid, uuids)
+            self.assertIn(success_uuid, uuids)
+            self.assertIn(failed_uuid, uuids)
+        finally:
+            util.kill_jobs(self.cook_url, jobs=[waiting_uuid, running_uuid])
 
     def test_list_invalid_state(self):
         cp = cli.jobs(self.cook_url, '--foo')
