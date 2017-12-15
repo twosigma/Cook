@@ -31,15 +31,16 @@ def wait(clusters, args, _):
     guard_no_cluster(clusters)
     timeout = args.get('timeout')
     interval = args.get('interval')
-    uuids = parse_entity_refs(clusters, args.get('uuid'))
+    entity_refs, _ = parse_entity_refs(clusters, args.get('uuid'))
     timeout_text = ('up to %s' % seconds_to_timedelta(timeout)) if timeout else 'indefinitely'
     print_info('Will wait %s.' % timeout_text)
-    query_result = query_with_stdin_support(clusters, uuids, all_jobs_completed, all_instances_completed,
-                                            all_groups_completed, timeout, interval)
+    query_result, clusters_of_interest = query_with_stdin_support(clusters, entity_refs, all_jobs_completed,
+                                                                  all_instances_completed, all_groups_completed,
+                                                                  timeout, interval)
     if query_result['count'] > 0:
         return 0
     else:
-        print_no_data(clusters)
+        print_no_data(clusters_of_interest)
         return 1
 
 

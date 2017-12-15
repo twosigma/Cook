@@ -1,6 +1,9 @@
 import logging
 import os
+import subprocess
 import unittest
+import uuid
+from urllib.parse import urlparse
 
 from nose.plugins.attrib import attr
 
@@ -24,7 +27,7 @@ class MultiCookCliTest(unittest.TestCase):
         return {'clusters': [{'name': 'cook1', 'url': self.cook_url_1},
                              {'name': 'cook2', 'url': self.cook_url_2}]}
 
-    def test_federated_query(self):
+    def test_federated_show(self):
         # Submit to cluster #1
         cp, uuids = cli.submit('ls', self.cook_url_1)
         self.assertEqual(0, cp.returncode, cp.stderr)
@@ -38,16 +41,12 @@ class MultiCookCliTest(unittest.TestCase):
         # Single query for both jobs, federated across clusters
         config = self.__two_cluster_config()
         with cli.temp_config_file(config) as path:
-            cp = cli.wait([uuid_1, uuid_2], flags='--config %s' % path)
-            self.assertEqual(0, cp.returncode, cp.stderr)
             cp, jobs = cli.show_jobs([uuid_1, uuid_2], flags='--config %s' % path)
             uuids = [job['uuid'] for job in jobs]
             self.assertEqual(0, cp.returncode, cp.stderr)
             self.assertEqual(2, len(jobs), jobs)
             self.assertIn(str(uuid_1), uuids)
             self.assertIn(str(uuid_2), uuids)
-            self.assertEqual('completed', jobs[0]['status'])
-            self.assertEqual('completed', jobs[1]['status'])
 
     def test_ssh(self):
         # Submit to cluster #2
@@ -101,3 +100,25 @@ class MultiCookCliTest(unittest.TestCase):
             self.assertEqual(1, len(jobs), jobs)
             self.assertEqual(uuid, jobs[0]['uuid'])
             self.assertEqual('job2', jobs[0]['command'])
+
+    def test_no_matching_data_error_shows_only_cluster_of_interest(self):
+        name = uuid.uuid4()
+        config = {'clusters': [{'name': 'FOO', 'url': f'{self.cook_url_1}'},
+                               {'name': 'BAR', 'url': f'{self.cook_url_2}'}]}
+        with cli.temp_config_file(config) as path:
+            flags = f'--config {path}'
+            cp, uuids = cli.submit('ls', flags=flags, submit_flags=f'--name {name}')
+            self.assertEqual(0, cp.returncode, cp.stderr)
+            user = util.get_user(self.cook_url_1, uuids[0])
+            jobs_flags = f'--user {user} --name {name} --all'
+            cp, jobs = cli.jobs_json(self.cook_url_1, jobs_flags)
+            self.assertEqual(0, cp.returncode, cp.stderr)
+            self.assertEqual(1, len(jobs))
+            cs = f'{cli.command()} {flags}'
+            netloc_1 = urlparse(self.cook_url_1).netloc
+            netloc_2 = urlparse(self.cook_url_2).netloc
+            command = f'{cs} jobs {jobs_flags} -1 | sed "s/{netloc_1}/{netloc_2}/" | {cs} show'
+            self.logger.info(command)
+            cp = subprocess.run(command, shell=True, stdout=subprocess.PIPE)
+            self.assertEqual(1, cp.returncode, cp.stderr)
+            self.assertIn('No matching data found in BAR.\nDo you need to add another cluster', cli.stdout(cp))

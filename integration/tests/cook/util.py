@@ -100,9 +100,9 @@ def scheduler_info(cook_url):
 def minimal_job(**kwargs):
     job = {
         'command': 'echo Default Test Command',
-        'cpus': 0.1,
+        'cpus': float(os.getenv('COOK_DEFAULT_JOB_CPUS', 1.0)),
         'max_retries': 1,
-        'mem': 128,
+        'mem': int(os.getenv('COOK_DEFAULT_JOB_MEM_MB', 256)),
         'name': 'default_test_job',
         'priority': 1,
         'uuid': str(uuid.uuid4())

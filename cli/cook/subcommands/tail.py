@@ -141,13 +141,13 @@ def tail_for_instance(instance, sandbox_dir, path, num_lines_to_print, follow, f
 def tail(clusters, args, _):
     """Tails the contents of the corresponding Mesos sandbox path by job or instance uuid."""
     guard_no_cluster(clusters)
-    uuids = parse_entity_refs(clusters, args.get('uuid'))
+    entity_refs, clusters_of_interest = parse_entity_refs(clusters, args.get('uuid'))
     paths = args.get('path')
     lines = args.get('lines')
     follow = args.get('follow')
     sleep_interval = args.get('sleep-interval')
 
-    if len(uuids) > 1:
+    if len(entity_refs) > 1:
         # argparse should prevent this, but we'll be defensive anyway
         raise Exception(f'You can only provide a single uuid.')
 
@@ -157,7 +157,7 @@ def tail(clusters, args, _):
 
     command_fn = partial(tail_for_instance, path=paths[0], num_lines_to_print=lines,
                          follow=follow, follow_sleep_seconds=sleep_interval)
-    query_unique_and_run(clusters, uuids[0], command_fn)
+    query_unique_and_run(clusters_of_interest, entity_refs[0], command_fn)
 
 
 def register(add_parser, add_defaults):

@@ -147,8 +147,8 @@ def show(clusters, args, _):
     """Prints info for the jobs / instances / groups with the given UUIDs."""
     guard_no_cluster(clusters)
     as_json = args.get('json')
-    uuids = parse_entity_refs(clusters, args.get('uuid'))
-    query_result = query_with_stdin_support(clusters, uuids)
+    entity_refs, _ = parse_entity_refs(clusters, args.get('uuid'))
+    query_result, clusters_of_interest = query_with_stdin_support(clusters, entity_refs)
     if as_json:
         print(json.dumps(query_result))
     else:
@@ -166,7 +166,7 @@ def show(clusters, args, _):
         return 0
     else:
         if not as_json:
-            print_no_data(clusters)
+            print_no_data(clusters_of_interest)
         return 1
 
 
