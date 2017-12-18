@@ -1,10 +1,10 @@
-import json
 import logging
 import os
 import re
 import time
 from threading import Event, Lock, Thread
 
+import cook.util as cu
 
 class ProgressSequenceCounter:
     """Utility class that supports atomically incrementing the sequence value."""
@@ -284,10 +284,11 @@ class ProgressWatcher(object):
                             last_unprocessed_report = progress_report
                         elif self.__update_progress(progress_report):
                             yield self.progress
-                except OSError:
-                    raise
-                except Exception:
-                    logging.exception('Skipping "%s" as a progress entry', line)
+                except Exception as exception:
+                    if cu.is_out_of_memory_error(exception):
+                        raise exception
+                    else:
+                        logging.exception('Skipping "%s" as a progress entry', line)
         if last_unprocessed_report is not None:
             if self.__update_progress(last_unprocessed_report):
                 yield self.progress
@@ -347,10 +348,11 @@ class ProgressTracker(object):
         try:
             for current_progress in self.watcher.retrieve_progress_states():
                 self.updater.send_progress_update(current_progress)
-        except OSError as os_error:
-            self.os_error_handler(os_error)
-        except Exception:
-            logging.exception('Exception while tracking progress [tag=%s]', self.location_tag)
+        except Exception as exception:
+            if cu.is_out_of_memory_error(exception):
+                self.os_error_handler(exception)
+            else:
+                logging.exception('Exception while tracking progress [tag=%s]', self.location_tag)
         finally:
             self.progress_complete_event.set()
 

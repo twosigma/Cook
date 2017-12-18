@@ -1,4 +1,3 @@
-import errno
 import functools
 import json
 import logging
@@ -260,7 +259,7 @@ def os_error_handler(stop_signal, status_updater, os_error):
     """
     stop_signal.set()
     logging.exception('OSError generated, requesting process to terminate')
-    reason = cook.REASON_CONTAINER_LIMITATION_MEMORY if os_error.errno == errno.ENOMEM else None
+    reason = cook.REASON_CONTAINER_LIMITATION_MEMORY if cu.is_out_of_memory_error(os_error) else None
     status_updater.update_status(cook.TASK_FAILED, reason=reason)
     cu.print_memory_usage()
 
@@ -349,14 +348,14 @@ def manage_task(driver, task, stop_signal, completed_signal, config):
         output_task_completion(task_id, task_state)
         status_updater.update_status(task_state)
 
-    except OSError as os_error:
-        inner_os_error_handler(os_error)
-
-    except Exception:
-        # task aborted with an error
-        logging.exception('Error in executing task')
-        output_task_completion(task_id, cook.TASK_FAILED)
-        status_updater.update_status(cook.TASK_FAILED, reason=cook.REASON_EXECUTOR_TERMINATED)
+    except Exception as exception:
+        if cu.is_out_of_memory_error(exception):
+            inner_os_error_handler(exception)
+        else:
+            # task aborted with an error
+            logging.exception('Error in executing task')
+            output_task_completion(task_id, cook.TASK_FAILED)
+            status_updater.update_status(cook.TASK_FAILED, reason=cook.REASON_EXECUTOR_TERMINATED)
 
     finally:
         # ensure completed_signal is set so driver can stop
