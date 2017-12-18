@@ -318,7 +318,7 @@ class ProgressTracker(object):
         location_tag: string
             A tag to identify the target location.
         os_error_handler: fn(os_error)
-            OSError exception handler."""
+            OSError exception handler for out of memory situations."""
         self.location_tag = location_tag
         self.os_error_handler = os_error_handler
         self.progress_complete_event = Event()

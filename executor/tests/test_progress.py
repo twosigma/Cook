@@ -53,7 +53,7 @@ class ProgressTest(unittest.TestCase):
     def send_progress_message_helper(self, driver, max_message_length):
 
         def send_progress_message(message):
-            ce.send_message(driver, message)
+            ce.send_message(driver, tu.fake_os_error_handler, message)
             self.assertTrue('progress-message' in message)
             self.assertLessEqual(len(message['progress-message']), max_message_length)
             return len(message['progress-message']) <= max_message_length

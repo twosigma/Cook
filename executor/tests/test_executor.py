@@ -70,12 +70,54 @@ class ExecutorTest(unittest.TestCase):
         task_id = tu.get_random_task_id()
         expected_message = {'task-id': task_id, 'message': 'test-message'}
 
-        result = ce.send_message(driver, expected_message)
+        result = ce.send_message(driver, tu.fake_os_error_handler, expected_message)
 
         self.assertTrue(result)
         self.assertEqual(1, len(driver.messages))
         actual_encoded_message = driver.messages[0]
         tu.assert_message(self, expected_message, actual_encoded_message)
+
+    def test_send_message_handles_os_error_memory(self):
+        exception_handler_calls = []
+        exception_handler = functools.partial(tu.store_exception_handler, exception_handler_calls)
+        exception = OSError(errno.ENOMEM, 'Out of memory')
+        driver = tu.ErrorMesosExecutorDriver(exception)
+        task_id = tu.get_random_task_id()
+        message = {'task-id': task_id, 'message': 'test-message'}
+
+        result = ce.send_message(driver, exception_handler, message)
+
+        self.assertEqual([exception], exception_handler_calls)
+        self.assertFalse(result)
+        self.assertEqual(1, len(driver.messages))
+
+    def test_send_message_handles_os_error_non_memory(self):
+        exception_handler_calls = []
+        exception_handler = functools.partial(tu.store_exception_handler, exception_handler_calls)
+        exception = OSError(errno.EACCES, 'Permission denied')
+        driver = tu.ErrorMesosExecutorDriver(exception)
+        task_id = tu.get_random_task_id()
+        message = {'task-id': task_id, 'message': 'test-message'}
+
+        result = ce.send_message(driver, exception_handler, message)
+
+        self.assertEqual([], exception_handler_calls)
+        self.assertFalse(result)
+        self.assertEqual(1, len(driver.messages))
+
+    def test_send_message_handles_generic_exception(self):
+        exception_handler_calls = []
+        exception_handler = functools.partial(tu.store_exception_handler, exception_handler_calls)
+        exception = Exception('Generic Exception')
+        driver = tu.ErrorMesosExecutorDriver(exception)
+        task_id = tu.get_random_task_id()
+        message = {'task-id': task_id, 'message': 'test-message'}
+
+        result = ce.send_message(driver, exception_handler, message)
+
+        self.assertEqual([], exception_handler_calls)
+        self.assertFalse(result)
+        self.assertEqual(1, len(driver.messages))
 
     def test_os_error_handler_functools_partial(self):
         driver = tu.FakeMesosExecutorDriver()
