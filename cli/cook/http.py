@@ -6,6 +6,8 @@ from urllib.parse import urljoin
 import requests
 
 import cook
+from cook import colors
+from cook.util import print_info
 
 session = None
 timeouts = None
@@ -90,17 +92,15 @@ def make_data_request(cluster, make_request_fn):
         resp = make_request_fn()
         if resp.status_code == 200:
             return resp.json()
-        else:
-            return []
     except requests.exceptions.ConnectionError as ce:
         logging.exception(ce)
-        raise Exception(f'Encountered connection error with {cluster["name"]} ({cluster["url"]}).')
+        print_info(f'Encountered connection error with {colors.failed(cluster["name"])} ({cluster["url"]}).')
     except requests.exceptions.ReadTimeout as rt:
         logging.exception(rt)
-        raise Exception(f'Encountered read timeout with {cluster["name"]} ({cluster["url"]}).')
+        print_info(f'Encountered read timeout with {colors.failed(cluster["name"])} ({cluster["url"]}).')
     except IOError as ioe:
         logging.exception(ioe)
-        return []
     except json.decoder.JSONDecodeError as jde:
         logging.exception(jde)
-        return []
+
+    return []
