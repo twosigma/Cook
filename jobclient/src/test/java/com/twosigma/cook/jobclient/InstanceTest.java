@@ -46,6 +46,7 @@ public class InstanceTest {
         instanceBuilder.setStartTime(1426632249597L);
         instanceBuilder.setEndTime(1426632251828L);
         instanceBuilder.setHostName("server1.example.com");
+        instanceBuilder.setExecutor("cook");
         instanceBuilder.setExecutorID("f52fbacf-52a1-44a2-bda1-cbfa477cc163");
         instanceBuilder.setStatus(Instance.Status.SUCCESS);
         instanceBuilder.setPreempted(false);
@@ -61,12 +62,15 @@ public class InstanceTest {
         json.put("status", _successfulInstance.getStatus());
         json.put("preempted", _successfulInstance.getPreempted());
         json.put("hostname", _successfulInstance.getHostName());
+        json.put("executor", _successfulInstance.getExecutor());
         json.put("task_id", _successfulInstance.getTaskID());
         json.put("executor_id", _successfulInstance.getExecutorID());
         final String jsonString = new JSONArray().put(json).toString();
         final List<Instance> instances = Instance.parseFromJSON(jsonString);
         Assert.assertEquals(instances.size(), 1);
-        Assert.assertEquals(instances.get(0), _successfulInstance);
+        final Instance actualInstance = instances.get(0);
+        Assert.assertEquals(_successfulInstance, actualInstance);
+        Assert.assertEquals(_successfulInstance.getExecutor(), actualInstance.getExecutor());
     }
 }
 

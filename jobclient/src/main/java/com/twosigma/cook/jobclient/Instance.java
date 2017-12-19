@@ -73,6 +73,7 @@ final public class Instance {
         private Boolean _preempted;
         private String _outputURL;
         private String _hostName;
+        private String _executor;
 
         /**
          * The task id must be provided prior to {@code build()}. If the instance status is not
@@ -86,7 +87,7 @@ final public class Instance {
                 _status = Status.UNKNOWN;
             }
             return new Instance(_taskID, _slaveID, _executorID, _startTime, _endTime, _status, _reasonCode,
-                    _preempted, _outputURL, _hostName);
+                    _preempted, _outputURL, _hostName, _executor);
         }
 
         /**
@@ -196,6 +197,17 @@ final public class Instance {
             return this;
         }
 
+        /**
+         * Set the executor for the instance expected to build.
+         *
+         * @param executor {@link String} specifies the executor used to run this task.
+         * @return this builder.
+         */
+        public Builder setExecutor(String executor) {
+            _executor = executor;
+            return this;
+        }
+
         public UUID getTaskID() {
             return _taskID;
         }
@@ -227,6 +239,10 @@ final public class Instance {
         public String getHostName() {
             return _hostName;
         }
+
+        public String getExecutor() {
+            return _executor;
+        }
     }
 
     /**
@@ -242,9 +258,11 @@ final public class Instance {
     final private Boolean _preempted;
     final private String _outputURL;
     final private String _hostName;
+    private String _executor;
 
     private Instance(UUID taskID, String slaveID, String executorID, Long startTime, Long endTime,
-                     Status status, Long reasonCode, Boolean preempted, String outputURL, String hostName) {
+                     Status status, Long reasonCode, Boolean preempted, String outputURL, String hostName,
+                     String executor) {
         _taskID = taskID;
         _slaveID = slaveID;
         _executorID = executorID;
@@ -255,6 +273,7 @@ final public class Instance {
         _preempted = preempted;
         _outputURL = outputURL;
         _hostName = hostName;
+        _executor = executor;
     }
 
     /**
@@ -269,6 +288,7 @@ final public class Instance {
      *      "status" : "success",
      *      "start_time" : 1426632249597,
      *      "hostname" : "server1.example.com",
+     *      "executor" : "mesos",
      *      "executor_id" : "f52fbacf-52a1-44a2-bda1-cbfa477cc163",
      *      "task_id" : "f52fbacf-52a1-44a2-bda1-cbfa477cc163",
      *      "preempted": false
@@ -305,6 +325,9 @@ final public class Instance {
             instanceBuilder.setSlaveID(json.getString("slave_id"));
             instanceBuilder.setExecutorID(json.getString("executor_id"));
             instanceBuilder.setHostName(json.getString("hostname"));
+            if (json.has("executor")) {
+                instanceBuilder.setExecutor(json.getString("executor"));
+            }
             instanceBuilder.setStatus(Status.fromString(json.getString("status")));
             instanceBuilder.setPreempted(json.getBoolean("preempted"));
             instanceBuilder.setStartTime(json.getLong("start_time"));
@@ -344,7 +367,7 @@ final public class Instance {
         return "Instance [_taskID=" + _taskID + ", _slaveID=" + _slaveID + ", _executorID="
                 + _executorID + ", _startTime=" + _startTime + ", _endTime=" + _endTime
                 + ", _status=" + _status + ", _reasonCode=" + _reasonCode + ", _preempted=" + _preempted
-                + ", _outputURL=" + _outputURL + ", _hostName=" + _hostName + "]";
+                + ", _outputURL=" + _outputURL + ", _hostName=" + _hostName + ", _executor=" + _executor + "]";
     }
 
     public UUID getTaskID() {
@@ -385,6 +408,10 @@ final public class Instance {
 
     public String getHostName() {
         return _hostName;
+    }
+
+    public String getExecutor() {
+        return _executor;
     }
 
 
