@@ -340,9 +340,15 @@ class ExecutorTest(unittest.TestCase):
                               'EXECUTOR_PROGRESS_OUTPUT_FILE_ENV': 'CUSTOM_PROGRESS_OUTPUT_FILE',
                               'PROGRESS_OUTPUT_FILE': 'stdout'}))
 
-    def manage_task_runner(self, command, assertions_fn, stop_signal=Event(), task_id=tu.get_random_task_id(),
-                           config=None):
-        driver = tu.FakeMesosExecutorDriver()
+    def manage_task_runner(self, command, assertions_fn, stop_signal=None, task_id=None, config=None, driver=None):
+
+        if driver is None:
+            driver = tu.FakeMesosExecutorDriver()
+        if stop_signal is None:
+            stop_signal = Event()
+        if task_id is None:
+            task_id = tu.get_random_task_id()
+
         task = {'task_id': {'value': task_id},
                 'data': pm.encode_data(json.dumps({'command': command}).encode('utf8'))}
 
@@ -453,6 +459,27 @@ class ExecutorTest(unittest.TestCase):
                    'LINE_COUNT=`wc -l < {0} | tr -d \'[:space:]\'`; cat  {0}; rm -rfv {0}; '
                    'echo "^^^^JOB-PROGRESS: 90 line count is $LINE_COUNT"'.format(test_file_name))
         self.manage_task_runner(command, assertions)
+
+    def test_manage_task_successful_exit_despite_faulty_driver(self):
+        def assertions(driver, task_id, sandbox_directory):
+            expected_statuses = [{'task_id': {'value': task_id}, 'state': cook.TASK_STARTING},
+                                 {'task_id': {'value': task_id}, 'state': cook.TASK_RUNNING},
+                                 {'task_id': {'value': task_id}, 'state': cook.TASK_FINISHED}]
+            tu.assert_statuses(self, expected_statuses, driver.statuses)
+
+            expected_core_messages = [{'sandbox-directory': sandbox_directory, 'task-id': task_id, 'type': 'directory'},
+                                      {'exit-code': 0, 'task-id': task_id}]
+            expected_progress_messages = [{'progress-message': 'ninety percent',
+                                           'progress-percent': 90, 'progress-sequence': 1, 'task-id': task_id},
+                                          # retried because the previous send fails
+                                          {'progress-message': 'ninety percent',
+                                           'progress-percent': 90, 'progress-sequence': 1, 'task-id': task_id}]
+            tu.assert_messages(self, expected_core_messages, expected_progress_messages, driver.messages)
+
+        test_file_name = tu.ensure_directory('build/file.' + tu.get_random_task_id())
+        command = ('echo "^^^^JOB-PROGRESS: 90 ninety percent"'.format(test_file_name))
+        socket_error = OSError('socket.error') # socket.error is an alias of OSError
+        self.manage_task_runner(command, assertions, driver=tu.ErrorMesosExecutorDriver(socket_error))
 
     def test_manage_task_successful_exit_with_progress_message(self):
         def assertions(driver, task_id, sandbox_directory):
