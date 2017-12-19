@@ -1481,3 +1481,63 @@ class CookCliTest(unittest.TestCase):
         cp = cli.show(['019c34c3-13b3-b370-01a5-d1ecc9071249'], self.cook_url)
         self.assertEqual(1, cp.returncode, cp.stderr)
         self.assertIn('No matching data found', cli.stdout(cp), cp.stderr)
+
+    def test_cat_basic(self):
+        cp, uuids = cli.submit('bash -c "for i in {1..10}; do echo $i >> foo; done"', self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        cp = cli.wait(uuids, self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        # Ask for the file we wrote to
+        cp = cli.cat_with_logging(uuids[0], 'foo', self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertEqual('\n'.join([str(i) for i in range(1, 11)]) + '\n', cli.decode(cp.stdout))
+        # Ask for a file that doesn't exist
+        cp = cli.cat(uuids[0], uuid.uuid4(), self.cook_url)
+        self.assertEqual(1, cp.returncode, cp.stderr)
+        self.assertIn('file was not found', cli.decode(cp.stderr))
+
+    def test_cat_no_newlines(self):
+        cp, uuids = cli.submit('bash -c \'for i in {1..100}; do printf "$i " >> foo; done\'', self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        cp = cli.wait(uuids, self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        cp = cli.cat(uuids[0], 'foo', self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertEqual(' '.join([str(i) for i in range(1, 101)]) + ' ', cli.decode(cp.stdout))
+
+    def test_cat_large_file(self):
+        iterations = 20
+        cp, uuids = cli.submit('bash -c \'printf "hello\\nworld\\n" > file.txt; '
+                               f'for i in {{1..{iterations}}}; do '
+                               'cat file.txt file.txt > file2.txt && '
+                               'mv file2.txt file.txt; done\'',
+                               self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        cp = cli.wait(uuids, self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        cp = cli.cat(uuids[0], 'file.txt', self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertEqual('hello\nworld\n' * pow(2, iterations), cli.decode(cp.stdout))
+
+    def test_cat_large_file_no_newlines(self):
+        iterations = 18
+        cp, uuids = cli.submit('bash -c \'printf "helloworld" > file.txt; '
+                               f'for i in {{1..{iterations}}}; do '
+                               'cat file.txt file.txt > file2.txt && '
+                               'mv file2.txt file.txt; done\'',
+                               self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        cp = cli.wait(uuids, self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        cp = cli.cat(uuids[0], 'file.txt', self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertEqual('helloworld' * pow(2, iterations), cli.decode(cp.stdout))
+
+    def test_cat_zero_byte_file(self):
+        cp, uuids = cli.submit('touch file.txt', self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        cp = cli.wait(uuids, self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        cp = cli.cat(uuids[0], 'file.txt', self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertEqual('', cli.decode(cp.stdout))

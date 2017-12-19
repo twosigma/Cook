@@ -261,3 +261,18 @@ def command_prefix():
     """Returns the currently configured command-prefix, if any"""
     cp = config_get('defaults.submit.command-prefix')
     return decode(cp.stdout).rstrip('\n') if cp.returncode == 0 else ''
+
+
+def cat(uuid, path, cook_url):
+    """Invokes the cat subcommand"""
+    args = f'cat {uuid} {path}'
+    cp = cli(args, cook_url)
+    return cp
+
+
+def cat_with_logging(uuid, path, cook_url):
+    """Invokes the cat subcommand and logs the output"""
+    cp = cat(uuid, path, cook_url)
+    s = stdout(cp)
+    logging.info(f'cat of {path}: {s}')
+    return cp
