@@ -284,8 +284,8 @@ class ProgressWatcher(object):
                             last_unprocessed_report = progress_report
                         elif self.__update_progress(progress_report):
                             yield self.progress
-                except OSError as os_error:
-                    raise os_error
+                except OSError:
+                    raise
                 except Exception:
                     logging.exception('Skipping "%s" as a progress entry', line)
         if last_unprocessed_report is not None:

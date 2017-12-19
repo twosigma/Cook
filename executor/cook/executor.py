@@ -121,8 +121,8 @@ def send_message(driver, message):
         encoded_message = pm.encode_data(message_string)
         driver.sendFrameworkMessage(encoded_message)
         return True
-    except OSError as os_error:
-        raise os_error
+    except OSError:
+        raise
     except Exception:
         logging.exception('Error in sending message {}'.format(message))
         return False
