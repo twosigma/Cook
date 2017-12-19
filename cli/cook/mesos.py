@@ -78,6 +78,6 @@ def read_file(instance, sandbox_dir, path, offset=None, length=None):
 
     if resp.status_code != 200:
         logging.error(f'mesos agent returned status code {resp.status_code} and body {resp.text}')
-        raise Exception('Encountered error when reading file from Mesos agent.')
+        raise Exception('Could not read the file.')
 
     return resp.json()

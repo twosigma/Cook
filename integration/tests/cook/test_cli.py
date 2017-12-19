@@ -1541,3 +1541,39 @@ class CookCliTest(unittest.TestCase):
         cp = cli.cat(uuids[0], 'file.txt', self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual('', cli.decode(cp.stdout))
+
+    def test_cat_invalid_entity_ref_string(self):
+        cp = cli.cat('foo', 'file.txt', self.cook_url)
+        self.assertEqual(2, cp.returncode, cp.stderr)
+        self.assertIn('error: argument target-entity', cli.decode(cp.stderr))
+
+    def test_cat_empty_path(self):
+        cp = cli.cat(uuid.uuid4(), '""', self.cook_url)
+        self.assertEqual(2, cp.returncode, cp.stderr)
+        self.assertIn('error: argument path', cli.decode(cp.stderr))
+
+    def test_cat_group_uuid(self):
+        group_uuid = uuid.uuid4()
+        cp, uuids = cli.submit('ls', self.cook_url, submit_flags=f'--group {group_uuid}')
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        cp = cli.cat(group_uuid, 'stdout', self.cook_url)
+        self.assertEqual(1, cp.returncode, cp.stdout)
+        self.assertIn('You provided a job group uuid', cli.decode(cp.stderr))
+
+    def test_cat_bogus_uuid(self):
+        bogus_uuid = uuid.uuid4()
+        cp = cli.cat(bogus_uuid, 'stdout', self.cook_url)
+        self.assertEqual(1, cp.returncode, cp.stdout)
+        self.assertIn('No matching data found', cli.decode(cp.stderr))
+
+    def test_cat_job_with_no_instances(self):
+        raw_job = {'command': 'ls', 'constraints': [['HOSTNAME', 'EQUALS', 'will not get scheduled']]}
+        cp, uuids = cli.submit(stdin=cli.encode(json.dumps(raw_job)), cook_url=self.cook_url, submit_flags='--raw')
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        waiting_uuid = uuids[0]
+        try:
+            cp = cli.cat(waiting_uuid, 'stdout', self.cook_url)
+            self.assertEqual(1, cp.returncode, cp.stdout)
+            self.assertIn('currently has no instances', cli.decode(cp.stderr))
+        finally:
+            util.kill_jobs(self.cook_url, jobs=[waiting_uuid])
