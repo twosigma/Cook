@@ -1,4 +1,3 @@
-import errno
 import functools
 import json
 import logging
@@ -99,7 +98,7 @@ class StatusUpdater(object):
                 return False
 
 
-def send_message(driver, message):
+def send_message(driver, error_handler, message):
     """Sends the message, if it is smaller than the max length, using the driver.
 
     Note: This function must rethrow any OSError exceptions that it encounters.
@@ -108,6 +107,8 @@ def send_message(driver, message):
     ----------
     driver: MesosExecutorDriver
         The driver to send the message to.
+    error_handler: fn(os_error)
+        OSError exception handler for out of memory situations.
     message: dictionary
         The raw message to send.
 
@@ -121,10 +122,11 @@ def send_message(driver, message):
         encoded_message = pm.encode_data(message_string)
         driver.sendFrameworkMessage(encoded_message)
         return True
-    except OSError:
-        raise
-    except Exception:
-        logging.exception('Error in sending message {}'.format(message))
+    except Exception as exception:
+        if cu.is_out_of_memory_error(exception):
+            error_handler(exception)
+        else:
+            logging.exception('Exception while sending message {}'.format(message))
         return False
 
 def launch_task(task, environment):
@@ -260,7 +262,7 @@ def os_error_handler(stop_signal, status_updater, os_error):
     """
     stop_signal.set()
     logging.exception('OSError generated, requesting process to terminate')
-    reason = cook.REASON_CONTAINER_LIMITATION_MEMORY if os_error.errno == errno.ENOMEM else None
+    reason = cook.REASON_CONTAINER_LIMITATION_MEMORY if cu.is_out_of_memory_error(os_error) else None
     status_updater.update_status(cook.TASK_FAILED, reason=reason)
     cu.print_memory_usage()
 
@@ -285,7 +287,8 @@ def manage_task(driver, task, stop_signal, completed_signal, config):
         # not yet started to run the task
         status_updater.update_status(cook.TASK_STARTING)
 
-        send_message(driver, {'sandbox-directory': config.sandbox_directory, 'task-id': task_id, 'type': 'directory'})
+        sandbox_message = {'sandbox-directory': config.sandbox_directory, 'task-id': task_id, 'type': 'directory'}
+        send_message(driver, inner_os_error_handler, sandbox_message)
 
         environment = retrieve_process_environment(config, os.environ)
         launched_process = launch_task(task, environment)
@@ -302,7 +305,7 @@ def manage_task(driver, task, stop_signal, completed_signal, config):
         task_completed_signal = Event() # event to track task execution completion
         sequence_counter = cp.ProgressSequenceCounter()
 
-        send_progress_message = functools.partial(send_message, driver)
+        send_progress_message = functools.partial(send_message, driver, inner_os_error_handler)
         max_message_length = config.max_message_length
         sample_interval_ms = config.progress_sample_interval_ms
         progress_updater = cp.ProgressUpdater(task_id, max_message_length, sample_interval_ms, send_progress_message)
@@ -333,7 +336,8 @@ def manage_task(driver, task, stop_signal, completed_signal, config):
         exit_code = launched_process.returncode
         cio.print_and_log('Command exited with status {} (pid: {})'.format(exit_code, launched_process.pid))
 
-        send_message(driver, {'exit-code': exit_code, 'task-id': task_id})
+        exit_message = {'exit-code': exit_code, 'task-id': task_id}
+        send_message(driver, inner_os_error_handler, exit_message)
 
         # await progress updater termination if executor is terminating normally
         if not stop_signal.isSet():
@@ -349,14 +353,14 @@ def manage_task(driver, task, stop_signal, completed_signal, config):
         output_task_completion(task_id, task_state)
         status_updater.update_status(task_state)
 
-    except OSError as os_error:
-        inner_os_error_handler(os_error)
-
-    except Exception:
-        # task aborted with an error
-        logging.exception('Error in executing task')
-        output_task_completion(task_id, cook.TASK_FAILED)
-        status_updater.update_status(cook.TASK_FAILED, reason=cook.REASON_EXECUTOR_TERMINATED)
+    except Exception as exception:
+        if cu.is_out_of_memory_error(exception):
+            inner_os_error_handler(exception)
+        else:
+            # task aborted with an error
+            logging.exception('Error in executing task')
+            output_task_completion(task_id, cook.TASK_FAILED)
+            status_updater.update_status(cook.TASK_FAILED, reason=cook.REASON_EXECUTOR_TERMINATED)
 
     finally:
         # ensure completed_signal is set so driver can stop

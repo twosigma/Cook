@@ -55,7 +55,7 @@ def redirect_stderr_to_file(output_filename):
 def assert_status(test_case, expected_status, actual_status):
     assert actual_status['timestamp'] is not None
     if 'timestamp' in actual_status: del actual_status['timestamp']
-    test_case.assertEquals(expected_status, actual_status)
+    test_case.assertEqual(expected_status, actual_status)
 
 
 def parse_message(encoded_message):
@@ -64,7 +64,7 @@ def parse_message(encoded_message):
 
 def assert_message(test_case, expected_message, actual_encoded_message):
     actual_message = parse_message(actual_encoded_message)
-    test_case.assertEquals(expected_message, actual_message)
+    test_case.assertEqual(expected_message, actual_message)
 
 
 def assert_messages(test_case, expected_process_messages, expected_progress_messages, driver_messages):
@@ -75,10 +75,10 @@ def assert_messages(test_case, expected_process_messages, expected_progress_mess
         if (('exit-code' in actual_message or 'sandbox-directory' in actual_message) and
                 len(expected_process_messages) > 0):
             expected_message = expected_process_messages.pop(0)
-            test_case.assertEquals(expected_message, actual_message)
+            test_case.assertEqual(expected_message, actual_message)
         elif 'progress-sequence' in actual_message and len(expected_progress_messages) > 0:
             expected_message = expected_progress_messages.pop(0)
-            test_case.assertEquals(expected_message, actual_message)
+            test_case.assertEqual(expected_message, actual_message)
         else:
             test_case.fail('Unexpected message: {}'.format(actual_message))
 
@@ -138,6 +138,15 @@ def cleanup_output(stdout_name, stderr_name):
     reset_stderr()
 
 
+def fake_os_error_handler(os_error):
+    logging.exception('Unexpected exception thrown')
+    raise os_error
+
+
+def store_exception_handler(exception_store, exception):
+    exception_store.append(exception)
+
+
 class FakeExecutorConfig(object):
     def __init__(self, config_map):
         self.config_map = config_map
@@ -165,3 +174,17 @@ class FakeMesosExecutorDriver(object):
 
     def sendStatusUpdate(self, status):
         self.statuses.append(status)
+
+
+class ErrorMesosExecutorDriver(FakeMesosExecutorDriver):
+    def __init__(self, exception):
+        super().__init__()
+        self.exception = exception
+
+    def sendFrameworkMessage(self, message):
+        super().sendFrameworkMessage(message)
+        raise self.exception
+
+    def sendStatusUpdate(self, status):
+        super().sendStatusUpdate(status)
+        raise self.exception

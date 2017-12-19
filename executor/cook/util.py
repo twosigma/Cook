@@ -1,3 +1,4 @@
+import errno
 import logging
 import resource
 import sys
@@ -15,3 +16,8 @@ def print_memory_usage():
         logging.info('Executor Memory usage: {} MB'.format(max_rss / __rusage_denom_mb))
     except Exception:
         logging.exception('Error in logging memory usage')
+
+
+def is_out_of_memory_error(exception):
+    """Returns true iff exception is an instance of OSError and error code represents an out of memory error."""
+    return isinstance(exception, OSError) and exception.errno == errno.ENOMEM
