@@ -1577,3 +1577,21 @@ class CookCliTest(unittest.TestCase):
             self.assertIn('currently has no instances', cli.decode(cp.stderr))
         finally:
             util.kill_jobs(self.cook_url, jobs=[waiting_uuid])
+
+    def test_cat_with_broken_pipe(self):
+        iterations = 20
+        cp, uuids = cli.submit('bash -c \'printf "hello\\nworld\\n" > file.txt; '
+                               f'for i in {{1..{iterations}}}; do '
+                               'cat file.txt file.txt > file2.txt && '
+                               'mv file2.txt file.txt; done\'',
+                               self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        cp = cli.wait(uuids, self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        cs = f'{cli.command()} --url {self.cook_url}'
+        command = f'{cs} cat {uuids[0]} file.txt | head'
+        self.logger.info(command)
+        cp = subprocess.run(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertEqual('hello\nworld\n' * 5, cli.decode(cp.stdout))
+        self.assertEqual('', cli.decode(cp.stderr))

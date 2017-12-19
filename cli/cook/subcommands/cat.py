@@ -1,4 +1,5 @@
 import argparse
+import logging
 from functools import partial
 
 from cook.mesos import read_file
@@ -12,10 +13,13 @@ def cat_for_instance(instance, sandbox_dir, path):
     offset = 0
     chunk_size = 4096
     data = read(offset=offset, length=chunk_size)['data']
-    while len(data) > 0:
-        print(data, end='')
-        offset = offset + len(data)
-        data = read(offset=offset, length=chunk_size)['data']
+    try:
+        while len(data) > 0:
+            print(data, end='')
+            offset = offset + len(data)
+            data = read(offset=offset, length=chunk_size)['data']
+    except BrokenPipeError as bpe:
+        logging.exception(bpe)
 
 
 def cat(clusters, args, _):
