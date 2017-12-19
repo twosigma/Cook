@@ -69,24 +69,13 @@ class ExecutorTest(unittest.TestCase):
         driver = tu.FakeMesosExecutorDriver()
         task_id = tu.get_random_task_id()
         expected_message = {'task-id': task_id, 'message': 'test-message'}
-        message = json.dumps(expected_message)
-        max_message_length = 512
 
-        result = ce.send_message(driver, message, max_message_length)
+        result = ce.send_message(driver, expected_message)
 
         self.assertTrue(result)
         self.assertEqual(1, len(driver.messages))
         actual_encoded_message = driver.messages[0]
         tu.assert_message(self, expected_message, actual_encoded_message)
-
-    def test_send_message_max_length_exceeded(self):
-        driver = object()
-        task_id = tu.get_random_task_id()
-        message = json.dumps({'task-id': task_id, 'message': 'test-message'})
-        max_message_length = 1
-
-        result = ce.send_message(driver, message, max_message_length)
-        self.assertFalse(result)
 
     def test_os_error_handler_functools_partial(self):
         driver = tu.FakeMesosExecutorDriver()
@@ -621,7 +610,7 @@ class ExecutorTest(unittest.TestCase):
         self.run_command_in_manage_task_runner(command, assertions, 60)
 
     def test_manage_task_progress_in_progress_stderr_and_stdout_progress(self):
-        max_message_length = 130
+        max_message_length = 35
 
         def assertions(driver, task_id, sandbox_directory):
             expected_statuses = [{'task_id': {'value': task_id}, 'state': cook.TASK_STARTING},
@@ -637,13 +626,9 @@ class ExecutorTest(unittest.TestCase):
                                            'progress-percent': 55, 'progress-sequence': 2, 'task-id': task_id},
                                           {'progress-message': 'Sixty percent in stderr',
                                            'progress-percent': 60, 'progress-sequence': 3, 'task-id': task_id},
-                                          {'progress-message': 'Sixty-five percent in stdout with...',
+                                          {'progress-message': 'Sixty-five percent in stdout wit...',
                                            'progress-percent': 65, 'progress-sequence': 4, 'task-id': task_id}]
             tu.assert_messages(self, expected_core_messages, expected_progress_messages, driver.messages)
-            for i in range(0, len(driver.messages)):
-                actual_message = tu.parse_message(driver.messages[i])
-                actual_message_string = str(actual_message).encode('utf8')
-                self.assertLessEqual(len(actual_message_string), max_message_length)
 
         stop_signal = Event()
         sleep_and_set_stop_signal_task(stop_signal, 60)

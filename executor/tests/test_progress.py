@@ -50,18 +50,23 @@ class ProgressTest(unittest.TestCase):
         self.assertEqual((b'2.0', b'\tTwo percent complete'),
                          match_progress_update(b'^^^^JOB-PROGRESS: 2.0\tTwo percent complete'))
 
+    def send_progress_message_helper(self, driver, max_message_length):
+
+        def send_progress_message(message):
+            ce.send_message(driver, message)
+            self.assertTrue('progress-message' in message)
+            self.assertLessEqual(len(message['progress-message']), max_message_length)
+            return len(message['progress-message']) <= max_message_length
+
+        return send_progress_message
+
     def test_send_progress_update(self):
         driver = tu.FakeMesosExecutorDriver()
         task_id = tu.get_random_task_id()
-        max_message_length = 100
+        max_message_length = 30
         poll_interval_ms = 100
 
-        def send_progress_message(message):
-            ce.send_message(driver, message, max_message_length)
-            message_string = str(message).encode('utf8')
-            self.assertLessEqual(len(message_string), max_message_length)
-            return len(message_string) <= max_message_length
-
+        send_progress_message = self.send_progress_message_helper(driver, max_message_length)
         progress_updater = cp.ProgressUpdater(task_id, max_message_length, poll_interval_ms, send_progress_message)
         progress_data_0 = {'progress-message': b' Progress message-0', 'progress-sequence': 1}
         progress_updater.send_progress_update(progress_data_0)
@@ -70,7 +75,6 @@ class ProgressTest(unittest.TestCase):
         actual_encoded_message_0 = driver.messages[0]
         expected_message_0 = {'progress-message': 'Progress message-0', 'progress-sequence': 1, 'task-id': task_id}
         tu.assert_message(self, expected_message_0, actual_encoded_message_0)
-        self.assertLess(len(json.dumps(tu.parse_message(actual_encoded_message_0))), max_message_length)
 
         progress_data_1 = {'progress-message': b' Progress message-1', 'progress-sequence': 2}
         progress_updater.send_progress_update(progress_data_1)
@@ -85,20 +89,14 @@ class ProgressTest(unittest.TestCase):
         actual_encoded_message_2 = driver.messages[1]
         expected_message_2 = {'progress-message': 'Progress message-2', 'progress-sequence': 3, 'task-id': task_id}
         tu.assert_message(self, expected_message_2, actual_encoded_message_2)
-        self.assertLess(len(json.dumps(tu.parse_message(actual_encoded_message_2))), max_message_length)
 
     def test_send_progress_update_trims_progress_message(self):
         driver = tu.FakeMesosExecutorDriver()
         task_id = tu.get_random_task_id()
-        max_message_length = 100
+        max_message_length = 30
         poll_interval_ms = 10
 
-        def send_progress_message(message):
-            ce.send_message(driver, message, max_message_length)
-            message_string = str(message).encode('utf8')
-            self.assertLessEqual(len(message_string), max_message_length)
-            return len(message_string) <= max_message_length
-
+        send_progress_message = self.send_progress_message_helper(driver, max_message_length)
         progress_updater = cp.ProgressUpdater(task_id, max_message_length, poll_interval_ms, send_progress_message)
         progress_data_0 = {'progress-message': b' Progress message-0 is really long lorem ipsum dolor sit amet text',
                            'progress-sequence': 1}
@@ -106,31 +104,31 @@ class ProgressTest(unittest.TestCase):
 
         self.assertEqual(1, len(driver.messages))
         actual_encoded_message_0 = driver.messages[0]
-        expected_message_0 = {'progress-message': 'Progress message-0 is really...',
+        expected_message_0 = {'progress-message': 'Progress message-0 is reall...',
                               'progress-sequence': 1,
                               'task-id': task_id}
         tu.assert_message(self, expected_message_0, actual_encoded_message_0)
-        self.assertEqual(len(json.dumps(tu.parse_message(actual_encoded_message_0))), max_message_length)
 
     def test_send_progress_does_not_trim_unknown_field(self):
         driver = tu.FakeMesosExecutorDriver()
         task_id = tu.get_random_task_id()
-        max_message_length = 100
+        max_message_length = 30
         poll_interval_ms = 10
 
-        def send_progress_message(message):
-            ce.send_message(driver, message, max_message_length)
-            message_string = str(message).encode('utf8')
-            self.assertGreater(len(message_string), max_message_length)
-            return len(message_string) <= max_message_length
-
+        send_progress_message = self.send_progress_message_helper(driver, max_message_length)
         progress_updater = cp.ProgressUpdater(task_id, max_message_length, poll_interval_ms, send_progress_message)
         progress_data_0 = {'progress-message': b' pm',
                            'progress-sequence': 1,
                            'unknown': 'Unknown field has a really long lorem ipsum dolor sit amet exceed limit text'}
         progress_updater.send_progress_update(progress_data_0)
 
-        self.assertEqual(0, len(driver.messages))
+        self.assertEqual(1, len(driver.messages))
+        actual_encoded_message_0 = driver.messages[0]
+        expected_message_0 = {'progress-message': 'pm',
+                              'progress-sequence': 1,
+                              'task-id': task_id,
+                              'unknown': 'Unknown field has a really long lorem ipsum dolor sit amet exceed limit text'}
+        tu.assert_message(self, expected_message_0, actual_encoded_message_0)
 
     def test_watcher_tail(self):
         file_name = tu.ensure_directory('build/tail_progress_test.' + tu.get_random_task_id())

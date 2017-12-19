@@ -99,33 +99,33 @@ class StatusUpdater(object):
                 return False
 
 
-def send_message(driver, message, max_message_length):
+def send_message(driver, message):
     """Sends the message, if it is smaller than the max length, using the driver.
+
+    Note: This function must rethrow any OSError exceptions that it encounters.
 
     Parameters
     ----------
     driver: MesosExecutorDriver
         The driver to send the message to.
-    message: object
+    message: dictionary
         The raw message to send.
-    max_message_length: int
-        The allowed max message length after encoding.
 
     Returns
     -------
     whether the message was successfully sent
     """
-    logging.info('Sending framework message {}'.format(message))
-    message_string = str(message).encode('utf8')
-    if len(message_string) <= max_message_length:
+    try:
+        logging.info('Sending framework message {}'.format(message))
+        message_string = json.dumps(message).encode('utf8')
         encoded_message = pm.encode_data(message_string)
         driver.sendFrameworkMessage(encoded_message)
         return True
-    else:
-        log_message_template = 'Unable to send message as its length of {} exceeds allowed max length of {}'
-        logging.warning(log_message_template.format(len(message_string), max_message_length))
+    except OSError:
+        raise
+    except Exception:
+        logging.exception('Error in sending message {}'.format(message))
         return False
-
 
 def launch_task(task, environment):
     """Launches the task using the command available in the json map from the data field.
@@ -285,10 +285,7 @@ def manage_task(driver, task, stop_signal, completed_signal, config):
         # not yet started to run the task
         status_updater.update_status(cook.TASK_STARTING)
 
-        sandbox_message = json.dumps({'sandbox-directory': config.sandbox_directory,
-                                      'task-id': task_id,
-                                      'type': 'directory'})
-        send_message(driver, sandbox_message, config.max_message_length)
+        send_message(driver, {'sandbox-directory': config.sandbox_directory, 'task-id': task_id, 'type': 'directory'})
 
         environment = retrieve_process_environment(config, os.environ)
         launched_process = launch_task(task, environment)
@@ -305,12 +302,11 @@ def manage_task(driver, task, stop_signal, completed_signal, config):
         task_completed_signal = Event() # event to track task execution completion
         sequence_counter = cp.ProgressSequenceCounter()
 
-        def send_progress_message(message):
-            return send_message(driver, message, config.max_message_length)
-
+        send_progress_message = functools.partial(send_message, driver)
+        max_message_length = config.max_message_length
+        sample_interval_ms = config.progress_sample_interval_ms
+        progress_updater = cp.ProgressUpdater(task_id, max_message_length, sample_interval_ms, send_progress_message)
         progress_termination_signal = Event()
-        progress_updater = cp.ProgressUpdater(task_id, config.max_message_length, config.progress_sample_interval_ms,
-                                              send_progress_message)
 
         def launch_progress_tracker(progress_location, location_tag):
             logging.info('Location {} tagged as [tag={}]'.format(progress_location, location_tag))
@@ -337,8 +333,7 @@ def manage_task(driver, task, stop_signal, completed_signal, config):
         exit_code = launched_process.returncode
         cio.print_and_log('Command exited with status {} (pid: {})'.format(exit_code, launched_process.pid))
 
-        exit_message = json.dumps({'exit-code': exit_code, 'task-id': task_id})
-        send_message(driver, exit_message, config.max_message_length)
+        send_message(driver, {'exit-code': exit_code, 'task-id': task_id})
 
         # await progress updater termination if executor is terminating normally
         if not stop_signal.isSet():
