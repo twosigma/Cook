@@ -80,7 +80,7 @@ final public class Job {
         private UUID _uuid;
         private String _name;
         private String _command;
-        private String _executor;
+        private Executor _executor;
         private Double _memory;
         private Double _cpus;
         private Integer _retries;
@@ -350,6 +350,16 @@ final public class Job {
          * @return this builder.
          */
         public Builder setExecutor(String executor) {
+            return setExecutor(Executor.fromString(executor));
+        }
+
+        /**
+         * Set the executor of the job expected to build.
+         *
+         * @param executor {@link Executor} specifies executor for a job.
+         * @return this builder.
+         */
+        public Builder setExecutor(Executor executor) {
             _executor = executor;
             return this;
         }
@@ -523,7 +533,7 @@ final public class Job {
     final private UUID _uuid;
     final private String _name;
     final private String _command;
-    final private String _executor;
+    final private Executor _executor;
     final private Double _memory;
     final private Double _cpus;
     final private Integer _retries;
@@ -543,7 +553,7 @@ final public class Job {
     final private List<UUID> _groups;
     final private Application _application;
 
-    private Job(UUID uuid, String name, String command, String executor, Double memory, Double cpus, Integer retries,
+    private Job(UUID uuid, String name, String command, Executor executor, Double memory, Double cpus, Integer retries,
                 Long maxRuntime, Long expectedRuntime, Status status, Integer priority, Boolean isMeaCulpaRetriesDisabled,
                 List<Instance> instances, Map<String, String> env, List<FetchableURI> uris, JSONObject container,
                 Map<String, String> labels, Set<Constraint> constraints, List<UUID> groups, Application application) {
@@ -596,7 +606,7 @@ final public class Job {
     /**
      * @return the job executor.
      */
-    public String getExecutor() {
+    public Executor getExecutor() {
         return _executor;
     }
 
@@ -781,7 +791,7 @@ final public class Job {
         object.put("name", job.getName());
         object.put("command", job.getCommand());
         if (job.getExecutor() != null) {
-            object.put("executor", job.getExecutor());
+            object.put("executor", job.getExecutor().displayName());
         }
         object.put("mem", job.getMemory());
         object.put("cpus", job.getCpus());

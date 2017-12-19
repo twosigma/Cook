@@ -62,7 +62,7 @@ public class InstanceTest {
         json.put("status", _successfulInstance.getStatus());
         json.put("preempted", _successfulInstance.getPreempted());
         json.put("hostname", _successfulInstance.getHostName());
-        json.put("executor", _successfulInstance.getExecutor());
+        json.put("executor", _successfulInstance.getExecutor().name().toLowerCase());
         json.put("task_id", _successfulInstance.getTaskID());
         json.put("executor_id", _successfulInstance.getExecutorID());
         final String jsonString = new JSONArray().put(json).toString();

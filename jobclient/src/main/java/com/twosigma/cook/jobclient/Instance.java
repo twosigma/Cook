@@ -73,7 +73,7 @@ final public class Instance {
         private Boolean _preempted;
         private String _outputURL;
         private String _hostName;
-        private String _executor;
+        private Executor _executor;
 
         /**
          * The task id must be provided prior to {@code build()}. If the instance status is not
@@ -198,12 +198,22 @@ final public class Instance {
         }
 
         /**
-         * Set the executor for the instance expected to build.
+         * Set the executor of the instance expected to build.
          *
-         * @param executor {@link String} specifies the executor used to run this task.
+         * @param executor {@link String} specifies executor for a job.
          * @return this builder.
          */
         public Builder setExecutor(String executor) {
+            return setExecutor(Executor.fromString(executor));
+        }
+
+        /**
+         * Set the executor of the instance expected to build.
+         *
+         * @param executor {@link Executor} specifies executor for a job.
+         * @return this builder.
+         */
+        public Builder setExecutor(Executor executor) {
             _executor = executor;
             return this;
         }
@@ -240,7 +250,7 @@ final public class Instance {
             return _hostName;
         }
 
-        public String getExecutor() {
+        public Executor getExecutor() {
             return _executor;
         }
     }
@@ -258,11 +268,11 @@ final public class Instance {
     final private Boolean _preempted;
     final private String _outputURL;
     final private String _hostName;
-    private String _executor;
+    private Executor _executor;
 
     private Instance(UUID taskID, String slaveID, String executorID, Long startTime, Long endTime,
                      Status status, Long reasonCode, Boolean preempted, String outputURL, String hostName,
-                     String executor) {
+                     Executor executor) {
         _taskID = taskID;
         _slaveID = slaveID;
         _executorID = executorID;
@@ -410,7 +420,7 @@ final public class Instance {
         return _hostName;
     }
 
-    public String getExecutor() {
+    public Executor getExecutor() {
         return _executor;
     }
 

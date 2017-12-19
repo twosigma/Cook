@@ -67,7 +67,7 @@ public class JobTest {
     public void testJsonizeJob() throws JSONException {
         final JSONObject jsonJob = Job.jsonizeJob(_initializedJob);
         Assert.assertEquals(jsonJob.getString("uuid"), _initializedJob.getUUID().toString());
-        Assert.assertEquals(jsonJob.getString("executor"), _initializedJob.getExecutor());
+        Assert.assertEquals(jsonJob.getString("executor"), _initializedJob.getExecutor().displayName());
         Assert.assertEquals(
                 jsonJob.getJSONObject("application").toString(),
                 new JSONObject().put("name", "baz-app").put("version", "1.2.3").toString());
