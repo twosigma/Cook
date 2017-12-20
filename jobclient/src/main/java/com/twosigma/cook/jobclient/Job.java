@@ -98,6 +98,8 @@ final public class Job {
         // Use LinkedHashSet to ensure the insertion order will be kept.
         private Set<Constraint> _constraints = new LinkedHashSet<>();
         private Application _application;
+        private String _progressOutputFile;
+        private String _progressRegexString;
 
         /**
          * Prior to {@code build()}, command, memory and cpus for a job must be provided.<br>
@@ -136,7 +138,7 @@ final public class Job {
             }
             return new Job(_uuid, _name, _command, _executor, _memory, _cpus, _retries, _maxRuntime, _expectedRuntime, _status,
                     _priority, _isMeaCulpaRetriesDisabled, _instances, _env, _uris, _container, _labels, _constraints,
-                    _groups, _application);
+                    _groups, _application, _progressOutputFile, _progressRegexString);
         }
 
         /**
@@ -528,6 +530,28 @@ final public class Job {
             _application = application;
             return this;
         }
+
+        /**
+         * Set the progress output file of the job expected to build.
+         *
+         * @param progressOutputFile {@link String} specifies the progress output file for the job.
+         * @return this builder.
+         */
+        public Builder setProgressOutputFile(String progressOutputFile) {
+            _progressOutputFile = progressOutputFile;
+            return this;
+        }
+
+        /**
+         * Set the progress regex string of the job expected to build.
+         *
+         * @param progressRegexString {@link String} specifies the progress regex string for the job.
+         * @return this builder.
+         */
+        public Builder setProgressRegexString(String progressRegexString) {
+            _progressRegexString = progressRegexString;
+            return this;
+        }
     }
 
     final private UUID _uuid;
@@ -552,11 +576,14 @@ final public class Job {
     // the future, jobs will be allowed to belong to multiple groups.
     final private List<UUID> _groups;
     final private Application _application;
+    final private String _progressOutputFile;
+    final private String _progressRegexString;
 
     private Job(UUID uuid, String name, String command, Executor executor, Double memory, Double cpus, Integer retries,
                 Long maxRuntime, Long expectedRuntime, Status status, Integer priority, Boolean isMeaCulpaRetriesDisabled,
                 List<Instance> instances, Map<String, String> env, List<FetchableURI> uris, JSONObject container,
-                Map<String, String> labels, Set<Constraint> constraints, List<UUID> groups, Application application) {
+                Map<String, String> labels, Set<Constraint> constraints, List<UUID> groups, Application application,
+                String progressOutputFile, String progressRegexString) {
         _uuid = uuid;
         _name = name;
         _command = command;
@@ -573,6 +600,8 @@ final public class Job {
         _env = ImmutableMap.copyOf(env);
         _uris = ImmutableList.copyOf(uris);
         _application = application;
+        _progressOutputFile = progressOutputFile;
+        _progressRegexString = progressRegexString;
         // This take the string representation of the JSON object and then parses it again which is inefficient but
         // that is most convenient way to deep copy a JSONObject and make this Job instance immutable.
         if (container != null) {
@@ -734,6 +763,20 @@ final public class Job {
     }
 
     /**
+     * @return the progress output file configured for the job. It returns null if not configured.
+     */
+    public String getProgressOutputFile() {
+        return _progressOutputFile;
+    }
+
+    /**
+     * @return the progress regex string configured for the job. It returns null if not configured.
+     */
+    public String getProgressRegexString() {
+        return _progressRegexString;
+    }
+
+    /**
      * @return the job instance with the running state or {@code null} if can't find one.
      */
     public Instance getRunningInstance() {
@@ -817,6 +860,12 @@ final public class Job {
         }
         if (job._application != null) {
             object.put("application", Application.jsonizeApplication(job._application));
+        }
+        if (job._progressOutputFile != null) {
+            object.put("progress_output_file", job._progressOutputFile);
+        }
+        if (job._progressRegexString != null) {
+            object.put("progress_regex_string", job._progressRegexString);
         }
         if (job._expectedRuntime != null) {
             object.put("expected_runtime", job._expectedRuntime);
@@ -973,6 +1022,12 @@ final public class Job {
             if (json.has("expected_runtime")) {
                 jobBuilder.setExpectedRuntime(json.getLong("expected_runtime"));
             }
+            if (json.has("progress_output_file")) {
+                jobBuilder.setProgressOutputFile(json.getString("progress_output_file"));
+            }
+            if (json.has("progress_regex_string")) {
+                jobBuilder.setProgressRegexString(json.getString("progress_regex_string"));
+            }
             jobs.add(jobBuilder.build());
         }
         return jobs;
@@ -995,9 +1050,10 @@ final public class Job {
         StringBuilder stringBuilder = new StringBuilder(512);
         stringBuilder
                 .append("Job [_uuid=" + _uuid + ", _name=" + _name + ", _command=" + _command + ", _executor=" + _executor
-                        + ", _memory=" + _memory + ", _cpus=" + _cpus + ", _retries=" + _retries
-                        + ", _maxRuntime=" + _maxRuntime + ", _status=" + _status + ", _priority=" + _priority
-                        + ", _isMeaCulpaRetriesDisabled" + _isMeaCulpaRetriesDisabled + "]");
+                    + ", _memory=" + _memory + ", _cpus=" + _cpus + ", _retries=" + _retries
+                    + ", _maxRuntime=" + _maxRuntime + ", _status=" + _status + ", _priority=" + _priority
+                    + ", _progressOutputFile=" + _progressOutputFile + ", _progressRegexString=" + _progressRegexString
+                    + ", _isMeaCulpaRetriesDisabled" + _isMeaCulpaRetriesDisabled + "]");
         stringBuilder.append('\n');
         for (Instance instance : getInstances()) {
             stringBuilder.append(instance.toString()).append('\n');
