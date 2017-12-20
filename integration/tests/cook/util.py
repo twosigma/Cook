@@ -12,6 +12,8 @@ logger = logging.getLogger(__name__)
 session = importlib.import_module(os.getenv('COOK_SESSION_MODULE', 'requests')).Session()
 session.headers['User-Agent'] = f"Cook-Scheduler-Integration-Tests ({session.headers['User-Agent']})"
 
+DEFAULT_TIMEOUT_MS = 120000
+
 
 def get_in(dct, *keys):
     for key in keys:
@@ -266,7 +268,7 @@ def multi_cluster_tests_enabled():
     return os.getenv('COOK_MULTI_CLUSTER') is not None
 
 
-def wait_until(query, predicate, max_wait_ms=60000, wait_interval_ms=1000):
+def wait_until(query, predicate, max_wait_ms=DEFAULT_TIMEOUT_MS, wait_interval_ms=1000):
     """
     Block until the predicate is true for the result of the provided query.
     `query` is a thunk (nullary callable) that may be called multiple times.
@@ -351,12 +353,12 @@ def group_detail_query(cook_url, group_uuid, assert_response=True):
     return response
 
 
-def wait_for_job(cook_url, job_id, status, max_wait_ms=120000):
+def wait_for_job(cook_url, job_id, status, max_wait_ms=DEFAULT_TIMEOUT_MS):
     """Wait for the given job's status to change to the specified value."""
     return wait_for_jobs(cook_url, [job_id], status, max_wait_ms)[0]
 
 
-def wait_for_jobs(cook_url, job_ids, status, max_wait_ms=120000):
+def wait_for_jobs(cook_url, job_ids, status, max_wait_ms=DEFAULT_TIMEOUT_MS):
     def query():
         return query_jobs(cook_url, True, uuid=job_ids)
 
@@ -370,7 +372,7 @@ def wait_for_jobs(cook_url, job_ids, status, max_wait_ms=120000):
     return response.json()
 
 
-def wait_for_exit_code(cook_url, job_id, max_wait_ms=60000):
+def wait_for_exit_code(cook_url, job_id, max_wait_ms=DEFAULT_TIMEOUT_MS):
     """
     Wait for the given job's exit_code field to appear.
     (Only supported by Cook Executor jobs.)
@@ -394,7 +396,7 @@ def wait_for_exit_code(cook_url, job_id, max_wait_ms=60000):
                 logger.info(f"Job {job_id} instance {inst['task_id']} has exit code {inst['exit_code']}.")
                 return True
 
-    response = wait_until(query, predicate, max_wait_ms=max_wait_ms, wait_interval_ms=250)
+    response = wait_until(query, predicate, max_wait_ms=max_wait_ms)
     return response.json()[0]
 
 
@@ -429,7 +431,7 @@ def wait_for_sandbox_directory(cook_url, job_id):
     return wait_until(query, predicate, max_wait_ms=max_wait_ms, wait_interval_ms=250)
 
 
-def wait_for_end_time(cook_url, job_id, max_wait_ms=2000):
+def wait_for_end_time(cook_url, job_id, max_wait_ms=DEFAULT_TIMEOUT_MS):
     """
     Wait for the given job's end_time field to appear in instance 0.
     Returns an up-to-date job description object on success,
@@ -452,7 +454,7 @@ def wait_for_end_time(cook_url, job_id, max_wait_ms=2000):
                 logger.info(f"Job {job_id} instance {inst['task_id']} has end_time {inst['end_time']}.")
                 return True
 
-    response = wait_until(query, predicate, max_wait_ms=max_wait_ms, wait_interval_ms=250)
+    response = wait_until(query, predicate, max_wait_ms=max_wait_ms)
     return response.json()[0]
 
 
@@ -480,7 +482,7 @@ def wait_for_output_url(cook_url, job_uuid):
         else:
             logger.info(f"Job {job['uuid']} had no output_url")
 
-    response = wait_until(query, predicate, max_wait_ms=120000)
+    response = wait_until(query, predicate)
     return response['instances'][0]
 
 
