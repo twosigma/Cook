@@ -80,6 +80,7 @@ final public class Job {
         private UUID _uuid;
         private String _name;
         private String _command;
+        private Executor _executor;
         private Double _memory;
         private Double _cpus;
         private Integer _retries;
@@ -133,7 +134,7 @@ final public class Job {
             if (_isMeaCulpaRetriesDisabled == null) {
                 _isMeaCulpaRetriesDisabled = false;
             }
-            return new Job(_uuid, _name, _command, _memory, _cpus, _retries, _maxRuntime, _expectedRuntime, _status,
+            return new Job(_uuid, _name, _command, _executor, _memory, _cpus, _retries, _maxRuntime, _expectedRuntime, _status,
                     _priority, _isMeaCulpaRetriesDisabled, _instances, _env, _uris, _container, _labels, _constraints,
                     _groups, _application);
         }
@@ -146,6 +147,7 @@ final public class Job {
          */
         public Builder of(Job job) {
             setCommand(job.getCommand());
+            setExecutor(job.getExecutor());
             setMemory(job.getMemory());
             setCpus(job.getCpus());
             setRetries(job.getRetries());
@@ -342,6 +344,27 @@ final public class Job {
         }
 
         /**
+         * Set the executor of the job expected to build.
+         *
+         * @param executor {@link String} specifies executor for a job.
+         * @return this builder.
+         */
+        public Builder setExecutor(String executor) {
+            return setExecutor(Executor.fromString(executor));
+        }
+
+        /**
+         * Set the executor of the job expected to build.
+         *
+         * @param executor {@link Executor} specifies executor for a job.
+         * @return this builder.
+         */
+        public Builder setExecutor(Executor executor) {
+            _executor = executor;
+            return this;
+        }
+
+        /**
          * Set the cpus of the job expected to build.
          *
          * @param cpus {@link Double} specifies cpus for a job.
@@ -510,6 +533,7 @@ final public class Job {
     final private UUID _uuid;
     final private String _name;
     final private String _command;
+    final private Executor _executor;
     final private Double _memory;
     final private Double _cpus;
     final private Integer _retries;
@@ -529,13 +553,14 @@ final public class Job {
     final private List<UUID> _groups;
     final private Application _application;
 
-    private Job(UUID uuid, String name, String command, Double memory, Double cpus, Integer retries, Long maxRuntime,
-                Long expectedRuntime, Status status, Integer priority, Boolean isMeaCulpaRetriesDisabled,
+    private Job(UUID uuid, String name, String command, Executor executor, Double memory, Double cpus, Integer retries,
+                Long maxRuntime, Long expectedRuntime, Status status, Integer priority, Boolean isMeaCulpaRetriesDisabled,
                 List<Instance> instances, Map<String, String> env, List<FetchableURI> uris, JSONObject container,
                 Map<String, String> labels, Set<Constraint> constraints, List<UUID> groups, Application application) {
         _uuid = uuid;
         _name = name;
         _command = command;
+        _executor = executor;
         _memory = memory;
         _cpus = cpus;
         _retries = retries;
@@ -576,6 +601,13 @@ final public class Job {
      */
     public String getCommand() {
         return _command;
+    }
+
+    /**
+     * @return the job executor.
+     */
+    public Executor getExecutor() {
+        return _executor;
     }
 
     /**
@@ -758,6 +790,9 @@ final public class Job {
         object.put("uuid", job.getUUID().toString());
         object.put("name", job.getName());
         object.put("command", job.getCommand());
+        if (job.getExecutor() != null) {
+            object.put("executor", job.getExecutor().displayName());
+        }
         object.put("mem", job.getMemory());
         object.put("cpus", job.getCpus());
         object.put("priority", job.getPriority());
@@ -874,6 +909,9 @@ final public class Job {
             jobBuilder.setMemory(json.getDouble("mem"));
             jobBuilder.setCpus(json.getDouble("cpus"));
             jobBuilder.setCommand(json.getString("command"));
+            if (json.has("executor")) {
+                jobBuilder.setExecutor(json.getString("executor"));
+            }
             jobBuilder.setPriority(json.getInt("priority"));
             jobBuilder.setStatus(Status.fromString(json.getString("status")));
             if (json.has("disable_mea_culpa_retries") && json.getBoolean("disable_mea_culpa_retries")) {
@@ -956,9 +994,9 @@ final public class Job {
     public String toString() {
         StringBuilder stringBuilder = new StringBuilder(512);
         stringBuilder
-                .append("Job [_uuid=" + _uuid + ", _name=" + _name + ", _command=" + _command + ", _memory=" + _memory
-                        + ", _cpus=" + _cpus + ", _retries=" + _retries + ", _maxRuntime=" + _maxRuntime
-                        + ", _status=" + _status + ", _priority=" + _priority
+                .append("Job [_uuid=" + _uuid + ", _name=" + _name + ", _command=" + _command + ", _executor=" + _executor
+                        + ", _memory=" + _memory + ", _cpus=" + _cpus + ", _retries=" + _retries
+                        + ", _maxRuntime=" + _maxRuntime + ", _status=" + _status + ", _priority=" + _priority
                         + ", _isMeaCulpaRetriesDisabled" + _isMeaCulpaRetriesDisabled + "]");
         stringBuilder.append('\n');
         for (Instance instance : getInstances()) {
