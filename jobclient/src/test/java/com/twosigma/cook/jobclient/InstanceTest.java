@@ -116,5 +116,48 @@ public class InstanceTest {
             Assert.assertEquals(executor, actualInstance.getExecutor());
         }
     }
+
+    @Test
+    public void testBuilderWithProgressData() throws JSONException {
+        final int progressPercent = 50;
+        final String progressMessage = "Fifty percent";
+
+        final Instance.Builder instanceBuilder = new Instance.Builder();
+        populateBuilder(instanceBuilder);
+        instanceBuilder.setProgress(progressPercent);
+        instanceBuilder.setProgressMessage(progressMessage);
+
+        Instance basicInstance = instanceBuilder.build();
+
+        Assert.assertEquals(Integer.valueOf(progressPercent), basicInstance.getProgress());
+        Assert.assertEquals(progressMessage, basicInstance.getProgressMessage());
+    }
+
+    @Test
+    public void testParseFromJsonWithProgressData() throws JSONException {
+
+        final int progressPercent = 50;
+        final String progressMessage = "Fifty percent";
+
+        final Instance.Builder instanceBuilder = new Instance.Builder();
+        populateBuilder(instanceBuilder);
+        Instance basicInstance = instanceBuilder.build();
+
+        Assert.assertNotEquals(Integer.valueOf(progressPercent), basicInstance.getProgress());
+        Assert.assertNotEquals(progressMessage, basicInstance.getProgress());
+
+        final JSONObject json = new JSONObject();
+        populateJson(json, basicInstance);
+        json.put("progress", progressPercent);
+        json.put("progress_message", progressMessage);
+
+        final String jsonString = new JSONArray().put(json).toString();
+        final List<Instance> instances = Instance.parseFromJSON(jsonString);
+
+        Assert.assertEquals(instances.size(), 1);
+        final Instance actualInstance = instances.get(0);
+        Assert.assertEquals(Integer.valueOf(progressPercent), actualInstance.getProgress());
+        Assert.assertEquals(progressMessage, actualInstance.getProgressMessage());
+    }
 }
 
