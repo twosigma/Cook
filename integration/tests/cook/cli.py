@@ -199,7 +199,13 @@ def ls(uuid, cook_url, path=None, parse_json=True):
     """Invokes the ls subcommand"""
     args = f'ls --json {uuid} {path}' if path else f'ls --json {uuid}'
     cp = cli(args, cook_url)
-    entries = json.loads(stdout(cp)) if parse_json else None
+    out = stdout(cp)
+    try:
+        entries = json.loads(out) if parse_json else None
+    except:
+        err = decode(cp.stderr)
+        logging.exception(f'Exception when parsing output from ls (stdout = {out}, stderr = {err})')
+        raise
     return cp, entries
 
 
