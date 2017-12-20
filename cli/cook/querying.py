@@ -83,7 +83,6 @@ def query_cluster(cluster, uuids, pred, timeout, interval, make_request_fn, enti
     # Prevent this by calling distinct:
     uuids = __distinct(uuids)
 
-    # return __query_cluster(cluster, uuids, pred, timeout, interval, make_request_fn, entity_type)
     entities = []
     query_batch_size = 100
     for uuid_batch in partition(uuids, query_batch_size):
