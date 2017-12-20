@@ -1444,17 +1444,22 @@ class CookCliTest(unittest.TestCase):
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual(3, len(jobs))
 
-    def test_piping_from_jobs_to_show(self):
+    def test_piping_from_jobs_to_show_and_wait(self):
         name = uuid.uuid4()
         num_jobs = 200
+        # Submit a batch of jobs
         cp, uuids = cli.submit_stdin(['ls'] * num_jobs, self.cook_url,
                                      submit_flags=f'--name {name} --cpus 0.01 --mem 16')
         self.assertEqual(0, cp.returncode, cp.stderr)
+
+        # List the jobs
         user = util.get_user(self.cook_url, uuids[0])
         jobs_flags = f'--user {user} --name {name} --all --limit {num_jobs}'
         cp, jobs = cli.jobs_json(self.cook_url, jobs_flags)
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual(num_jobs, len(jobs))
+
+        # Pipe from jobs to show
         cs = f'{cli.command()} --url {self.cook_url}'
         command = f'{cs} jobs {jobs_flags} -1 | {cs} show --json'
         self.logger.info(command)
@@ -1464,18 +1469,7 @@ class CookCliTest(unittest.TestCase):
         self.assertEqual(num_jobs, len(jobs))
         self.assertEqual(sorted(uuids), sorted([j['uuid'] for j in jobs]))
 
-    def test_piping_from_jobs_to_wait(self):
-        name = uuid.uuid4()
-        num_jobs = 200
-        cp, uuids = cli.submit_stdin(['ls'] * num_jobs, self.cook_url,
-                                     submit_flags=f'--name {name} --cpus 0.01 --mem 16')
-        self.assertEqual(0, cp.returncode, cp.stderr)
-        user = util.get_user(self.cook_url, uuids[0])
-        jobs_flags = f'--user {user} --name {name} --all --limit {num_jobs}'
-        cp, jobs = cli.jobs_json(self.cook_url, jobs_flags)
-        self.assertEqual(0, cp.returncode, cp.stderr)
-        self.assertEqual(num_jobs, len(jobs))
-        cs = f'{cli.command()} --url {self.cook_url}'
+        # Pipe from jobs to wait
         command = f'{cs} jobs {jobs_flags} -1 | {cs} wait'
         self.logger.info(command)
         cp = subprocess.run(command, shell=True)
