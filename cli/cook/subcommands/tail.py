@@ -1,9 +1,7 @@
-import logging
-import os
 import time
 from functools import partial
 
-from cook import mesos, http
+from cook.mesos import read_file
 from cook.querying import query_unique_and_run, parse_entity_refs
 from cook.util import check_positive, guard_no_cluster
 
@@ -16,27 +14,6 @@ DEFAULT_FOLLOW_SLEEP_SECS = 1.0
 # For everything we print in tail, we want to forcibly flush
 # the stream, and we don't want to end with a newline
 __print = partial(print, flush=True, end='')
-
-
-def read_file(instance, sandbox_dir, path, offset=None, length=None):
-    """Calls the Mesos agent files/read API for the given path, offset, and length"""
-    logging.info(f'reading file from sandbox {sandbox_dir} with path {path} at offset {offset} and length {length}')
-    agent_url = mesos.instance_to_agent_url(instance)
-    params = {'path': os.path.join(sandbox_dir, path)}
-    if offset is not None:
-        params['offset'] = offset
-    if length is not None:
-        params['length'] = length
-
-    resp = http.__get(f'{agent_url}/files/read', params=params)
-    if resp.status_code == 404:
-        raise Exception(f"Cannot open '{path}' for reading (file was not found).")
-
-    if resp.status_code != 200:
-        logging.error(f'mesos agent returned status code {resp.status_code} and body {resp.text}')
-        raise Exception('Encountered error when reading file from Mesos agent.')
-
-    return resp.json()
 
 
 def print_lines(lines):

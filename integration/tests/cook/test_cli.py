@@ -1481,3 +1481,117 @@ class CookCliTest(unittest.TestCase):
         cp = cli.show(['019c34c3-13b3-b370-01a5-d1ecc9071249'], self.cook_url)
         self.assertEqual(1, cp.returncode, cp.stderr)
         self.assertIn('No matching data found', cli.stdout(cp), cp.stderr)
+
+    def test_cat_basic(self):
+        cp, uuids = cli.submit('bash -c "for i in {1..10}; do echo $i >> foo; done"', self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        cp = cli.wait(uuids, self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        # Ask for the file we wrote to
+        cp = cli.cat_with_logging(uuids[0], 'foo', self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertEqual('\n'.join([str(i) for i in range(1, 11)]) + '\n', cli.decode(cp.stdout))
+        # Ask for a file that doesn't exist
+        cp = cli.cat(uuids[0], uuid.uuid4(), self.cook_url)
+        self.assertEqual(1, cp.returncode, cp.stderr)
+        self.assertIn('file was not found', cli.decode(cp.stderr))
+
+    def test_cat_no_newlines(self):
+        cp, uuids = cli.submit('bash -c \'for i in {1..100}; do printf "$i " >> foo; done\'', self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        cp = cli.wait(uuids, self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        cp = cli.cat(uuids[0], 'foo', self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertEqual(' '.join([str(i) for i in range(1, 101)]) + ' ', cli.decode(cp.stdout))
+
+    def test_cat_large_file(self):
+        iterations = 20
+        cp, uuids = cli.submit('bash -c \'printf "hello\\nworld\\n" > file.txt; '
+                               f'for i in {{1..{iterations}}}; do '
+                               'cat file.txt file.txt > file2.txt && '
+                               'mv file2.txt file.txt; done\'',
+                               self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        cp = cli.wait(uuids, self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        cp = cli.cat(uuids[0], 'file.txt', self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertEqual('hello\nworld\n' * pow(2, iterations), cli.decode(cp.stdout))
+
+    def test_cat_large_file_no_newlines(self):
+        iterations = 18
+        cp, uuids = cli.submit('bash -c \'printf "helloworld" > file.txt; '
+                               f'for i in {{1..{iterations}}}; do '
+                               'cat file.txt file.txt > file2.txt && '
+                               'mv file2.txt file.txt; done\'',
+                               self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        cp = cli.wait(uuids, self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        cp = cli.cat(uuids[0], 'file.txt', self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertEqual('helloworld' * pow(2, iterations), cli.decode(cp.stdout))
+
+    def test_cat_zero_byte_file(self):
+        cp, uuids = cli.submit('touch file.txt', self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        cp = cli.wait(uuids, self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        cp = cli.cat(uuids[0], 'file.txt', self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertEqual('', cli.decode(cp.stdout))
+
+    def test_cat_invalid_entity_ref_string(self):
+        cp = cli.cat('foo', 'file.txt', self.cook_url)
+        self.assertEqual(2, cp.returncode, cp.stderr)
+        self.assertIn('error: argument target-entity', cli.decode(cp.stderr))
+
+    def test_cat_empty_path(self):
+        cp = cli.cat(uuid.uuid4(), '""', self.cook_url)
+        self.assertEqual(2, cp.returncode, cp.stderr)
+        self.assertIn('error: argument path', cli.decode(cp.stderr))
+
+    def test_cat_group_uuid(self):
+        group_uuid = uuid.uuid4()
+        cp, uuids = cli.submit('ls', self.cook_url, submit_flags=f'--group {group_uuid}')
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        cp = cli.cat(group_uuid, 'stdout', self.cook_url)
+        self.assertEqual(1, cp.returncode, cp.stdout)
+        self.assertIn('You provided a job group uuid', cli.decode(cp.stderr))
+
+    def test_cat_bogus_uuid(self):
+        bogus_uuid = uuid.uuid4()
+        cp = cli.cat(bogus_uuid, 'stdout', self.cook_url)
+        self.assertEqual(1, cp.returncode, cp.stdout)
+        self.assertIn('No matching data found', cli.decode(cp.stderr))
+
+    def test_cat_job_with_no_instances(self):
+        raw_job = {'command': 'ls', 'constraints': [['HOSTNAME', 'EQUALS', 'will not get scheduled']]}
+        cp, uuids = cli.submit(stdin=cli.encode(json.dumps(raw_job)), cook_url=self.cook_url, submit_flags='--raw')
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        waiting_uuid = uuids[0]
+        try:
+            cp = cli.cat(waiting_uuid, 'stdout', self.cook_url)
+            self.assertEqual(1, cp.returncode, cp.stdout)
+            self.assertIn('currently has no instances', cli.decode(cp.stderr))
+        finally:
+            util.kill_jobs(self.cook_url, jobs=[waiting_uuid])
+
+    def test_cat_with_broken_pipe(self):
+        iterations = 20
+        cp, uuids = cli.submit('bash -c \'printf "hello\\nworld\\n" > file.txt; '
+                               f'for i in {{1..{iterations}}}; do '
+                               'cat file.txt file.txt > file2.txt && '
+                               'mv file2.txt file.txt; done\'',
+                               self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        cp = cli.wait(uuids, self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        cs = f'{cli.command()} --url {self.cook_url}'
+        command = f'{cs} cat {uuids[0]} file.txt | head'
+        self.logger.info(command)
+        cp = subprocess.run(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertEqual('hello\nworld\n' * 5, cli.decode(cp.stdout))
+        self.assertEqual('', cli.decode(cp.stderr))

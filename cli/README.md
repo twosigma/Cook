@@ -115,6 +115,12 @@ UUIDs are passed as positional arguments.
 You can query and set CLI configuration options with this command. 
 The name is actually the sections and the key, separated by dots.
 
+## `cat`
+
+The `cat` command accepts a job or instance uuid and a path, and outputs the contents of the file with that path.
+As with `tail`, the path is relative to the sandbox directory on the Mesos agent where the instance runs.
+When given a job instance uuid, it will choose the most recently started instance's agent to tail files.
+
 ### Examples
 
 Simple job creation:

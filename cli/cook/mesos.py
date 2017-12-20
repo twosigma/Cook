@@ -1,4 +1,5 @@
 import logging
+import os
 from urllib.parse import urlparse, parse_qs
 
 from cook import http
@@ -59,3 +60,24 @@ def retrieve_instance_sandbox_directory(instance, job):
         raise Exception(f'Found more than one Mesos executor with ID {instance_id}')
 
     return directories[0]
+
+
+def read_file(instance, sandbox_dir, path, offset=None, length=None):
+    """Calls the Mesos agent files/read API for the given path, offset, and length"""
+    logging.info(f'reading file from sandbox {sandbox_dir} with path {path} at offset {offset} and length {length}')
+    agent_url = instance_to_agent_url(instance)
+    params = {'path': os.path.join(sandbox_dir, path)}
+    if offset is not None:
+        params['offset'] = offset
+    if length is not None:
+        params['length'] = length
+
+    resp = http.__get(f'{agent_url}/files/read', params=params)
+    if resp.status_code == 404:
+        raise Exception(f"Cannot open '{path}' for reading (file was not found).")
+
+    if resp.status_code != 200:
+        logging.error(f'mesos agent returned status code {resp.status_code} and body {resp.text}')
+        raise Exception('Could not read the file.')
+
+    return resp.json()
