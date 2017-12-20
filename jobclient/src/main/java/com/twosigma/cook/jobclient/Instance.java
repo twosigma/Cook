@@ -266,13 +266,20 @@ final public class Instance {
             return _status;
         }
 
+        /**
+         * @return the progress percent of the instance. It returns null if the progress percent is unavailable.
+         */
         public Integer getProgress() {
             return _progress;
         }
 
+        /**
+         * @return the progress message associated with the instance. It returns null if the message is unavailable.
+         */
         public String getProgressMessage() {
             return _progressMessage;
         }
+
 
         public String getOutputURL() {
             return _outputURL;
@@ -449,10 +456,16 @@ final public class Instance {
         return _status;
     }
 
+    /**
+     * @return the progress percent of the instance. It returns null if the progress percent is unavailable.
+     */
     public Integer getProgress() {
         return _progress;
     }
 
+    /**
+     * @return the progress message associated with the instance. It returns null if the message is unavailable.
+     */
     public String getProgressMessage() {
         return _progressMessage;
     }
