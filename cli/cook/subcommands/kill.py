@@ -87,9 +87,6 @@ def kill_entities(query_result, clusters):
 
     def __kill(cluster, uuids, kill_fn):
         if len(uuids) > 0:
-            # success = kill_fn(cluster, uuids)
-            # if not success:
-            #     failed.extend(uuids)
             for uuid_batch in partition(uuids, kill_batch_size):
                 success = kill_fn(cluster, uuid_batch)
                 (succeeded if success else failed).extend(uuid_batch)

@@ -1425,28 +1425,39 @@ class CookCliTest(unittest.TestCase):
 
     def test_piping_from_jobs_to_kill(self):
         name = uuid.uuid4()
-        cp, uuids = cli.submit_stdin(['sleep 300'] * 3, self.cook_url, submit_flags=f'--name {name}')
+        num_jobs = 101
+
+        # Submit a batch of jobs
+        cp, uuids = cli.submit_stdin(['sleep 300'] * num_jobs, self.cook_url,
+                                     submit_flags=f'--name {name} --cpus 0.01 --mem 16')
         self.assertEqual(0, cp.returncode, cp.stderr)
+
+        # List the jobs
         user = util.get_user(self.cook_url, uuids[0])
-        jobs_flags = f'--user {user} --name {name} --running --waiting'
+        jobs_flags = f'--user {user} --name {name} --running --waiting --limit {num_jobs}'
         cp, jobs = cli.jobs_json(self.cook_url, jobs_flags)
         self.assertEqual(0, cp.returncode, cp.stderr)
-        self.assertEqual(3, len(jobs))
+        self.assertEqual(num_jobs, len(jobs))
+
+        # Pipe from jobs to kill
         cs = f'{cli.command()} --url {self.cook_url}'
         command = f'{cs} jobs {jobs_flags} -1 | {cs} kill'
         self.logger.info(command)
         cp = subprocess.run(command, shell=True)
         self.assertEqual(0, cp.returncode, cp.stderr)
+
+        # All jobs should now be failed
         cp, jobs = cli.jobs_json(self.cook_url, jobs_flags)
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual(0, len(jobs))
-        cp, jobs = cli.jobs_json(self.cook_url, f'--user {user} --name {name} --failed')
+        cp, jobs = cli.jobs_json(self.cook_url, f'--user {user} --name {name} --failed --limit {num_jobs}')
         self.assertEqual(0, cp.returncode, cp.stderr)
-        self.assertEqual(3, len(jobs))
+        self.assertEqual(num_jobs, len(jobs))
 
     def test_piping_from_jobs_to_show_and_wait(self):
         name = uuid.uuid4()
         num_jobs = 101
+
         # Submit a batch of jobs
         cp, uuids = cli.submit_stdin(['ls'] * num_jobs, self.cook_url,
                                      submit_flags=f'--name {name} --cpus 0.01 --mem 16')
