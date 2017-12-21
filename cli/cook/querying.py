@@ -1,4 +1,3 @@
-import collections
 import concurrent
 import logging
 import os
@@ -10,7 +9,7 @@ from operator import itemgetter
 from urllib.parse import urlparse, parse_qs
 
 from cook import http, colors, mesos, progress
-from cook.util import is_valid_uuid, wait_until, print_info
+from cook.util import is_valid_uuid, wait_until, print_info, distinct, partition
 
 
 class Types:
@@ -24,23 +23,11 @@ class Clusters:
     ALL = '*'
 
 
-def __distinct(seq):
-    """Remove duplicate entries from a sequence. Maintains original order."""
-    return collections.OrderedDict(zip(seq, seq)).keys()
-
-
-def query_cluster(cluster, uuids, pred, timeout, interval, make_request_fn, entity_type):
+def __query_cluster(cluster, uuids, pred, timeout, interval, make_request_fn, entity_type):
     """
     Queries the given cluster for the given uuids with
     an optional predicate, pred, that must be satisfied
     """
-    if len(uuids) == 0:
-        return []
-
-    # Cook will give us back two copies if the user asks for the same UUID twice, e.g.
-    # $ cs show d38ea6bd-8a26-4ddf-8a93-5926fa2991ce d38ea6bd-8a26-4ddf-8a93-5926fa2991ce
-    # Prevent this by calling distinct:
-    uuids = __distinct(uuids)
 
     def satisfy_pred():
         return pred(http.make_data_request(cluster, lambda: make_request_fn(cluster, uuids)))
@@ -69,6 +56,24 @@ def query_cluster(cluster, uuids, pred, timeout, interval, make_request_fn, enti
                 progress.update(index, colors.bold('Done'))
             else:
                 raise TimeoutError('Timeout waiting for response.')
+    return entities
+
+
+def query_cluster(cluster, uuids, pred, timeout, interval, make_request_fn, entity_type):
+    """Delegates to __query_cluster in batches of at most 100 UUIDs and combines the results"""
+    if len(uuids) == 0:
+        return []
+
+    # Cook will give us back two copies if the user asks for the same UUID twice, e.g.
+    # $ cs show d38ea6bd-8a26-4ddf-8a93-5926fa2991ce d38ea6bd-8a26-4ddf-8a93-5926fa2991ce
+    # Prevent this by calling distinct:
+    uuids = distinct(uuids)
+
+    entities = []
+    query_batch_size = 100
+    for uuid_batch in partition(uuids, query_batch_size):
+        entity_batch = __query_cluster(cluster, uuid_batch, pred, timeout, interval, make_request_fn, entity_type)
+        entities.extend(entity_batch)
     return entities
 
 
