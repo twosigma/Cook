@@ -1,4 +1,3 @@
-import collections
 import concurrent
 import logging
 import os
@@ -10,7 +9,7 @@ from operator import itemgetter
 from urllib.parse import urlparse, parse_qs
 
 from cook import http, colors, mesos, progress
-from cook.util import is_valid_uuid, wait_until, print_info
+from cook.util import is_valid_uuid, wait_until, print_info, distinct, partition
 
 
 class Types:
@@ -22,13 +21,6 @@ class Types:
 
 class Clusters:
     ALL = '*'
-
-
-def __distinct(seq):
-    """Remove duplicate entries from a sequence. Maintains original order."""
-    seen = set()
-    seen_add = seen.add
-    return [x for x in seq if not (x in seen or seen_add(x))]
 
 
 def __query_cluster(cluster, uuids, pred, timeout, interval, make_request_fn, entity_type):
@@ -67,12 +59,6 @@ def __query_cluster(cluster, uuids, pred, timeout, interval, make_request_fn, en
     return entities
 
 
-def partition(l, n):
-    """Yield successive n-sized chunks from l"""
-    for i in range(0, len(l), n):
-        yield l[i:i + n]
-
-
 def query_cluster(cluster, uuids, pred, timeout, interval, make_request_fn, entity_type):
     """Delegates to __query_cluster in batches of at most 100 UUIDs and combines the results"""
     if len(uuids) == 0:
@@ -81,7 +67,7 @@ def query_cluster(cluster, uuids, pred, timeout, interval, make_request_fn, enti
     # Cook will give us back two copies if the user asks for the same UUID twice, e.g.
     # $ cs show d38ea6bd-8a26-4ddf-8a93-5926fa2991ce d38ea6bd-8a26-4ddf-8a93-5926fa2991ce
     # Prevent this by calling distinct:
-    uuids = __distinct(uuids)
+    uuids = distinct(uuids)
 
     entities = []
     query_batch_size = 100
