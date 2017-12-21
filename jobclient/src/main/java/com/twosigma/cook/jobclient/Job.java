@@ -533,6 +533,7 @@ final public class Job {
 
         /**
          * Set the progress output file of the job expected to build.
+         * It can be an absolute path or a path relative to the sandbox directory.
          *
          * @param progressOutputFile {@link String} specifies the progress output file for the job.
          * @return this builder.
@@ -544,6 +545,9 @@ final public class Job {
 
         /**
          * Set the progress regex string of the job expected to build.
+         * The progress regex to match against, it must return one or two capture groups.
+         * The first capture group represents the progress percentage.
+         * The second capture group, if present, represents the progress message.
          *
          * @param progressRegexString {@link String} specifies the progress regex string for the job.
          * @return this builder.
@@ -763,6 +767,9 @@ final public class Job {
     }
 
     /**
+     * The progress output file configured for the job.
+     * It is either an absolute path or a path relative to the sandbox directory.
+     *
      * @return the progress output file configured for the job. It returns null if not configured.
      */
     public String getProgressOutputFile() {
@@ -770,6 +777,10 @@ final public class Job {
     }
 
     /**
+     * The progress regex to match against, it must return one or two capture groups.
+     * The first capture group represents the progress percentage.
+     * The second capture group, if present, represents the progress message.
+     *
      * @return the progress regex string configured for the job. It returns null if not configured.
      */
     public String getProgressRegexString() {
