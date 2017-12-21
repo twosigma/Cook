@@ -1434,7 +1434,7 @@ class CookCliTest(unittest.TestCase):
 
         # List the jobs
         user = util.get_user(self.cook_url, uuids[0])
-        jobs_flags = f'--user {user} --name {name} --running --waiting --limit {num_jobs}'
+        jobs_flags = f'--user {user} --name {name} --all --limit {num_jobs}'
         cp, jobs = cli.jobs_json(self.cook_url, jobs_flags)
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual(num_jobs, len(jobs))
@@ -1447,9 +1447,6 @@ class CookCliTest(unittest.TestCase):
         self.assertEqual(0, cp.returncode, cp.stderr)
 
         # All jobs should now be failed
-        cp, jobs = cli.jobs_json(self.cook_url, jobs_flags)
-        self.assertEqual(0, cp.returncode, cp.stderr)
-        self.assertEqual(0, len(jobs))
         cp, jobs = cli.jobs_json(self.cook_url, f'--user {user} --name {name} --failed --limit {num_jobs}')
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual(num_jobs, len(jobs))
