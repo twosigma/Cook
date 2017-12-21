@@ -1446,7 +1446,7 @@ class CookCliTest(unittest.TestCase):
 
     def test_piping_from_jobs_to_show_and_wait(self):
         name = uuid.uuid4()
-        num_jobs = 200
+        num_jobs = 101
         # Submit a batch of jobs
         cp, uuids = cli.submit_stdin(['ls'] * num_jobs, self.cook_url,
                                      submit_flags=f'--name {name} --cpus 0.01 --mem 16')
