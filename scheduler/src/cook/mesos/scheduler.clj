@@ -249,7 +249,9 @@
              (meters/mark! tasks-killed-in-status-update)
              (mesos/kill-task! driver {:value task-id}))
            (when-not (nil? instance)
-             (when (#{:task-starting :task-running} task-state)
+             (when (and (#{:task-starting :task-running} task-state)
+                        (not= :executor/cook (:instance/executor instance-ent)))
+               ;; cook executor tasks should automatically get sandbox directory updates
                (sync-agent-sandboxes-fn (:instance/hostname instance-ent)))
              ;; (println "update:" task-id task-state job instance instance-status prior-job-state)
              (log/debug "Transacting updated state for instance" instance "to status" instance-status)

@@ -2008,7 +2008,19 @@
         (cancel-handle)
         (async/close! progress-state-chan)))))
 
-(deftest test-sandbox-directory-population
+(defn- task-id->instance-entity
+  [db-conn task-id]
+  (let [datomic-db (d/db db-conn)]
+    (->> task-id
+         (d/q '[:find ?i
+                :in $ ?task-id
+                :where [?i :instance/task-id ?task-id]]
+              datomic-db)
+         ffirst
+         (d/entity (d/db db-conn))
+         d/touch)))
+
+(deftest test-sandbox-directory-population-for-mesos-executor-tasks
   (let [db-conn (restore-fresh-database! "datomic:mem://test-sandbox-directory-population")
         executing-tasks-atom (atom #{})
         num-jobs 25
@@ -2017,7 +2029,7 @@
     (dotimes [n num-jobs]
       (let [task-id (get-task-id n)
             job (create-dummy-job db-conn :task-id task-id)]
-        (create-dummy-instance db-conn job :executor-id task-id :task-id task-id)))
+        (create-dummy-instance db-conn job :executor :executor/mesos :executor-id task-id :task-id task-id)))
 
     (with-redefs [sandbox/retrieve-sandbox-directories-on-agent
                   (fn [_ _]
@@ -2041,28 +2053,57 @@
               async/thread
               async/<!!)
 
+          (dotimes [n num-jobs]
+            (let [task-id (get-task-id n)
+                  instance-ent (task-id->instance-entity db-conn task-id)]
+              (is (= "localhost" (:instance/hostname instance-ent)))
+              (is (= :instance.status/running (:instance/status instance-ent)))
+              (is (= :executor/mesos (:instance/executor instance-ent)))))
+
           (Thread/sleep (+ cache-timeout-ms sync-interval-ms))
           (await pending-sync-agent)
           (Thread/sleep (* 2 publish-interval-ms))
           (await task-id->sandbox-agent)
 
           ;; verify the sandbox-directory stored into the db
-          (let [datomic-db (d/db db-conn)]
-            (dotimes [n num-jobs]
-              (let [task-id (get-task-id n)
-                    sandbox-directory (->> task-id
-                                           (d/q '[:find ?i
-                                                  :in $ ?task-id
-                                                  :where [?i :instance/task-id ?task-id]]
-                                                datomic-db)
-                                           ffirst
-                                           (d/entity (d/db db-conn))
-                                           :instance/sandbox-directory)]
-                (is (= (str "/sandbox/for/" task-id) sandbox-directory)))))
+          (dotimes [n num-jobs]
+            (let [task-id (get-task-id n)
+                  instance-ent (task-id->instance-entity db-conn task-id)]
+              (is (= (str "/sandbox/for/" task-id) (:instance/sandbox-directory instance-ent)))))
 
           (finally
             (publisher-cancel-fn)
             (syncer-cancel-fn)))))))
+
+(deftest test-no-sandbox-directory-population-for-cook-executor-tasks
+  (let [db-conn (restore-fresh-database! "datomic:mem://test-sandbox-directory-population")
+        executing-tasks-atom (atom #{})
+        num-jobs 25
+        get-task-id #(str "task-test-sandbox-directory-population-" %)
+        sync-agent-sandboxes-fn (fn [_] (throw (Exception. "Unexpected call for cook executor task")))]
+    (dotimes [n num-jobs]
+      (let [task-id (get-task-id n)
+            job (create-dummy-job db-conn :task-id task-id)]
+        (create-dummy-instance db-conn job :executor :executor/cook :executor-id task-id :task-id task-id)))
+
+    (try
+      (-> (dotimes [n num-jobs]
+            (let [task-id (get-task-id n)]
+              (swap! executing-tasks-atom conj task-id)
+              (->> {:task-id {:value task-id}, :state :task-running}
+                   (sched/handle-status-update db-conn nil nil sync-agent-sandboxes-fn)))
+            (Thread/sleep 5))
+          async/thread
+          async/<!!)
+
+      ;; verify the instance state
+      (dotimes [n num-jobs]
+        (let [task-id (get-task-id n)
+              instance-ent (task-id->instance-entity db-conn task-id)]
+          (is (= "localhost" (:instance/hostname instance-ent)))
+          (is (= :instance.status/running (:instance/status instance-ent)))
+          (is (= :executor/cook (:instance/executor instance-ent)))
+          (is (nil? (:instance/sandbox-directory instance-ent))))))))
 
 (comment
   (run-tests))

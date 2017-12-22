@@ -28,6 +28,9 @@
 
 (def sandbox-aggregator-message-rate (meters/meter ["cook-mesos" "scheduler" "sandbox-aggregator-message-rate"]))
 (def sandbox-aggregator-pending-count (counters/counter ["cook-mesos" "scheduler" "sandbox-aggregator-pending-count"]))
+(def sandbox-pending-sync-host-count (counters/counter ["cook-mesos" "scheduler" "sandbox-pending-sync-host-count"]))
+(def sandbox-updater-filter-duration (timers/timer ["cook-mesos" "scheduler" "sandbox-updater-filter-duration"]))
+(def sandbox-updater-filter-entries (histograms/histogram ["cook-mesos" "scheduler" "sandbox-updater-filter-entries"]))
 (def sandbox-updater-pending-entries (histograms/histogram ["cook-mesos" "scheduler" "sandbox-updater-pending-entries"]))
 (def sandbox-updater-publish-duration (timers/timer ["cook-mesos" "scheduler" "sandbox-updater-publish-duration"]))
 (def sandbox-updater-publish-rate (meters/meter ["cook-mesos" "scheduler" "sandbox-updater-publish-rate"]))
@@ -120,21 +123,31 @@
                 [id directory]))
          (into {}))))
 
+(defn- update-pending-sync-host-counter!
+  "Updates the sandbox-pending-sync-host-count to the number of pending sync hosts and returns the input."
+  [{:keys [pending-sync-hosts] :as pending-sync-state}]
+  (counters/clear! sandbox-pending-sync-host-count)
+  (when (seq pending-sync-hosts)
+    (counters/inc! sandbox-pending-sync-host-count (count pending-sync-hosts)))
+  pending-sync-state)
+
 (defn- aggregate-pending-sync-hostname
   "Aggregates the hostname as a pending sync item into pending-sync-state.
    It also updates host->consecutive-failures if the reason is :error."
   [pending-sync-state hostname reason]
-  (cond-> (update pending-sync-state :pending-sync-hosts conj hostname)
-          (= :error reason)
-          (update-in [:host->consecutive-failures hostname] (fnil inc 0))))
+  (update-pending-sync-host-counter!
+    (cond-> (update pending-sync-state :pending-sync-hosts conj hostname)
+            (= :error reason)
+            (update-in [:host->consecutive-failures hostname] (fnil inc 0)))))
 
 (defn- clear-pending-sync-hostname
   "Clears the hostname as a pending sync item from pending-sync-state.
    It also clears the entry from host->consecutive-failures if the reason is :success or :threshold."
   [pending-sync-state hostname reason]
-  (cond-> (update pending-sync-state :pending-sync-hosts disj hostname)
-          (contains? #{:success :threshold} reason)
-          (update :host->consecutive-failures dissoc hostname)))
+  (update-pending-sync-host-counter!
+    (cond-> (update pending-sync-state :pending-sync-hosts disj hostname)
+            (contains? #{:success :threshold} reason)
+            (update :host->consecutive-failures dissoc hostname))))
 
 (defn- remove-task-ids-with-sandbox
   "Filters the task-ids which have a sandbox directory from task-id->sandbox."
@@ -147,11 +160,17 @@
                    [?e :instance/sandbox-directory ?s]]
                  datomic-db task-ids))
           (remove-task-id-with-sandbox [task-id->sandbox task-id]
-            (dissoc! task-id->sandbox task-id))]
-    (->> (keys task-id->sandbox)
-         (retrieve-task-ids-with-sandbox (d/db datomic-conn))
-         (reduce remove-task-id-with-sandbox (transient task-id->sandbox))
-         persistent!)))
+            (dissoc! task-id->sandbox task-id))
+          (update-filter-entries-histogram! [task-id->sandbox]
+            (histograms/update! sandbox-updater-filter-entries (count task-id->sandbox))
+            task-id->sandbox)]
+    (timers/time!
+      sandbox-updater-filter-duration
+      (->> (keys task-id->sandbox)
+           (retrieve-task-ids-with-sandbox (d/db datomic-conn))
+           (reduce remove-task-id-with-sandbox (transient task-id->sandbox))
+           persistent!
+           update-filter-entries-histogram!))))
 
 (defn refresh-agent-cache-entry
   "If the entry for the specified agent is not cached:

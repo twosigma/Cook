@@ -1239,7 +1239,8 @@
           (is (= {::api/results (str "submitted jobs " uuid)}
                  (api/create-jobs! conn {::api/jobs [job]})))
           (is (= (expected-job-map job framework-id)
-                 (dissoc (api/fetch-job-map (db conn) framework-id uuid) :submit_time)))))
+                 (-> (api/fetch-job-map (db conn) framework-id uuid)
+                     (dissoc :submit_time))))))
 
       (testing "should work when the job specifies disable-mea-culpa-retries"
         (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
@@ -1248,7 +1249,8 @@
           (is (= {::api/results (str "submitted jobs " uuid)}
                  (api/create-jobs! conn {::api/jobs [job]})))
           (is (= (expected-job-map job framework-id)
-                 (dissoc (api/fetch-job-map (db conn) framework-id uuid) :submit_time)))))
+                 (-> (api/fetch-job-map (db conn) framework-id uuid)
+                     (dissoc :submit_time))))))
 
       (testing "should work when the job specifies cook-executor"
         (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
@@ -1400,8 +1402,7 @@
 
 (deftest test-fetch-instance-map
   (let [conn (restore-fresh-database! "datomic:mem://test-fetch-instance-map")]
-    (let [job-entity-id (create-dummy-job conn :user "test-user"
-                                          :job-state :job.state/completed)
+    (let [job-entity-id (create-dummy-job conn :user "test-user" :job-state :job.state/completed)
           basic-instance-properties {:executor-id (str job-entity-id "-executor-1")
                                      :slave-id "slave-1"
                                      :task-id (str job-entity-id "-executor-1")}
@@ -1582,7 +1583,7 @@
     @(d/transact conn [job-txn-no-name])
     (let [db (db conn)
           job-entity (d/entity db [:job/uuid job-uuid])
-          job-map-for-api (api/fetch-job-map db nil nil job-uuid)]
+          job-map-for-api (api/fetch-job-map db nil job-uuid)]
       (is (= job-uuid (:job/uuid job-entity)))
       (is (nil? (:job/name job-entity)))
       (is (= job-uuid (:uuid job-map-for-api)))

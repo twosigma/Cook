@@ -189,7 +189,8 @@
    rebalancer-config        -- map, config for rebalancer. See scheduler/docs/rebalancer-config.adoc for details
    progress-config          -- map, config for progress publishing. See scheduler/docs/configuration.adoc for more details
    framework-id             -- str, the Mesos framework id from the cook settings
-   fenzo-config             -- map, config for fenzo, See scheduler/docs/configuration.adoc for more details"
+   fenzo-config             -- map, config for fenzo, See scheduler/docs/configuration.adoc for more details
+   sandbox-syncer-state     -- map, representing the sandbox syncer object"
   [{:keys [curator-framework executor-config fenzo-config framework-id get-mesos-utilization gpu-enabled? make-mesos-driver-fn
            mea-culpa-failure-limit mesos-datomic-conn mesos-datomic-mult mesos-leadership-atom mesos-pending-jobs-atom
            offer-cache offer-incubate-time-ms progress-config rebalancer-config riemann-host riemann-port
