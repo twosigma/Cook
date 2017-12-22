@@ -66,9 +66,9 @@
 (sh/let-programs
   [_id "/usr/bin/id"]
   (defn uid [user-name]
-    (clojure.string/trim (_id "-u" user-name)))
+    (str/trim (_id "-u" user-name)))
   (defn gid [user-name]
-    (clojure.string/trim (_id "-g" user-name))))
+    (str/trim (_id "-g" user-name))))
 
 (defn render-error
   [ctx]
@@ -427,7 +427,7 @@
 (defn- mk-container-params
   "Helper for build-container.  Transforms parameters into the datomic schema."
   [cid params]
-  (when-not (empty? params)
+  (when (seq params)
     {:docker/parameters (mapv (fn [{:keys [key value]}]
                                 {:docker.param/key key
                                  :docker.param/value value})
@@ -436,28 +436,28 @@
 (defn- mkvolumes
   "Helper for build-container.  Transforms volumes into the datomic schema."
   [cid vols]
-  (when-not (empty? vols)
+  (when (seq vols)
     (let [vol-maps (mapv (fn [{:keys [container-path host-path mode]}]
                            (merge (when container-path
                                     {:container.volume/container-path container-path})
                                   (when host-path
                                     {:container.volume/host-path host-path})
                                   (when mode
-                                    {:container.volume/mode (clojure.string/upper-case mode)})))
+                                    {:container.volume/mode (str/upper-case mode)})))
                          vols)]
       {:container/volumes vol-maps})))
 
 (defn- mk-docker-ports
   "Helper for build-container.  Transforms port-mappings into the datomic schema."
   [cid ports]
-  (when-not (empty? ports)
+  (when (seq ports)
     (let [port-maps (mapv (fn [{:keys [container-port host-port protocol]}]
                             (merge (when container-port
                                      {:docker.portmap/container-port container-port})
                                    (when host-port
                                      {:docker.portmap/host-port host-port})
                                    (when protocol
-                                     {:docker.portmap/protocol (clojure.string/upper-case protocol)})))
+                                     {:docker.portmap/protocol (str/upper-case protocol)})))
                           ports)]
       {:docker/port-mapping port-maps})))
 
@@ -468,7 +468,7 @@
         docker-id (d/tempid :db.part/user)
         ctype (:type container)
         volumes (or (:volumes container) [])]
-    (if (= (clojure.string/lower-case ctype) "docker")
+    (if (= (str/lower-case ctype) "docker")
       (let [docker (:docker container)
             params (or (:parameters docker) [])
             port-mappings (or (:port-mapping docker) [])
@@ -1243,7 +1243,7 @@
                                (map make-default-group))
           groups (into (vec implicit-groups) groups)
           job-asserts (map (fn [j] [:entity/ensure-not-exists [:job/uuid (:uuid j)]]) jobs)
-          job-txns (mapcat #(make-job-txn %) jobs)
+          job-txns (mapcat make-job-txn jobs)
           job-uuids->dbids (->> job-txns
                                 ;; Not all txns are for the top level job
                                 (filter :job/uuid)
@@ -1973,10 +1973,9 @@
 (defn name-filter-str->name-filter-fn
   "Returns a name-filtering function (or nil) given a user-provided name filter string"
   [name]
-  (if name
+  (when name
     (let [pattern (name-filter-str->name-filter-pattern name)]
-      #(re-matches pattern %))
-    nil))
+      #(re-matches pattern %))))
 
 (defn list-resource
   [db framework-id is-authorized-fn retrieve-sandbox-directory-from-agent]
@@ -1991,7 +1990,7 @@
                          :as params}
                         (keywordize-keys (or (get-in ctx [:request :query-params])
                                              (get-in ctx [:request :body-params])))
-                        states (if state (set (clojure.string/split state #"\+")) nil)
+                        states (when state (set (str/split state #"\+")))
                         allowed-list-states (set/union util/job-states util/instance-states)]
                     (cond
                       (not (and state user))
@@ -2028,7 +2027,7 @@
                    [false {::error (str "You are not authorized to list jobs for " user)}]
 
                    (or (< 168 since-hours-ago)
-                       (> 0 since-hours-ago))
+                       (neg? since-hours-ago))
                    [false {::error (str "since-hours-ago must be between 0 and 168 (7 days)")}]
 
                    (> 1 limit)
@@ -2050,9 +2049,7 @@
                         since-hours-ago ::since-hours-ago
                         limit ::limit
                         name-filter-fn ::name-filter-fn} ctx
-                        start-ms' (if start-ms
-                                    start-ms
-                                    (- end-ms (-> since-hours-ago t/hours t/in-millis)))
+                        start-ms' (or start-ms (- end-ms (-> since-hours-ago t/hours t/in-millis)))
                         start (Date. start-ms')
                         end (Date. end-ms)
                         job-uuids (->> (timers/time!

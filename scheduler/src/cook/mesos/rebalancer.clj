@@ -487,12 +487,15 @@
 (defn update-datomic-params-from-config!
   [conn config]
   (let [recognized-params (select-keys config datomic-params)]
-    (if (not-empty recognized-params)
-      (do
-        (log/info "Updating rebalancer params to" recognized-params)
-        @(d/transact conn [(into {:db/id :rebalancer/config}
-                                 (map-keys #(keyword "rebalancer.config" (name %))
-                                           recognized-params))])))))
+    (when (not-empty recognized-params)
+      (log/info "Updating rebalancer params to" recognized-params)
+      @(d/transact
+         conn
+         [(into
+            {:db/id :rebalancer/config}
+            (map-keys
+              #(keyword "rebalancer.config" (name %))
+              recognized-params))]))))
 
 (defn start-rebalancer!
   [{:keys [config conn driver get-mesos-utilization pending-jobs-atom offer-cache
