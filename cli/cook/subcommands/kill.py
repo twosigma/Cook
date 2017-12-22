@@ -48,34 +48,25 @@ def guard_against_duplicates(query_result):
         raise Exception(message)
 
 
-def __kill_entities(cluster, uuids, endpoint, param, entity_type):
+def __kill_entities(cluster, uuids, endpoint, param):
     """Attempts to kill the jobs / instances / groups with the given UUIDs on the given cluster"""
-    success_status_code = 204
-    cluster_name = cluster['name']
     resp = http.delete(cluster, endpoint, params={param: uuids})
-    if resp.status_code == success_status_code:
-        for uuid in uuids:
-            print_info(f'Killed {entity_type} {colors.bold(uuid)} on {colors.bold(cluster_name)}.')
-        return True
-    else:
-        for uuid in uuids:
-            print(colors.failed(f'Failed to kill {entity_type} {uuid} on {cluster_name}.'))
-        return False
+    return resp.status_code == 204
 
 
 def kill_jobs(cluster, uuids):
     """Attempts to kill the jobs with the given UUIDs"""
-    return __kill_entities(cluster, uuids, 'rawscheduler', 'job', 'job')
+    return __kill_entities(cluster, uuids, 'rawscheduler', 'job')
 
 
 def kill_instances(cluster, uuids):
     """Attempts to kill the job instsances with the given UUIDs"""
-    return __kill_entities(cluster, uuids, 'rawscheduler', 'instance', 'job instance')
+    return __kill_entities(cluster, uuids, 'rawscheduler', 'instance')
 
 
 def kill_groups(cluster, uuids):
     """Attempts to kill the job groups with the given UUIDs"""
-    return __kill_entities(cluster, uuids, 'group', 'uuid', 'job group')
+    return __kill_entities(cluster, uuids, 'group', 'uuid')
 
 
 def kill_entities(query_result, clusters):
@@ -85,20 +76,25 @@ def kill_entities(query_result, clusters):
     succeeded = []
     clusters_by_name = {c['name']: c for c in clusters}
 
-    def __kill(cluster, uuids, kill_fn):
+    def __kill(cluster, uuids, kill_fn, entity_type):
         if len(uuids) > 0:
             for uuid_batch in partition(uuids, kill_batch_size):
                 success = kill_fn(cluster, uuid_batch)
                 (succeeded if success else failed).extend(uuid_batch)
+                for uuid in uuid_batch:
+                    if success:
+                        print_info(f'Killed {entity_type} {colors.bold(uuid)} on {colors.bold(cluster_name)}.')
+                    else:
+                        print(colors.failed(f'Failed to kill {entity_type} {uuid} on {cluster_name}.'))
 
     for cluster_name, entities in query_result['clusters'].items():
         cluster = clusters_by_name[cluster_name]
         job_uuids = [j['uuid'] for j in entities['jobs']] if 'jobs' in entities else []
         instance_uuids = [i['task_id'] for i, _ in entities['instances']] if 'instances' in entities else []
         group_uuids = [g['uuid'] for g in entities['groups']] if 'groups' in entities else []
-        __kill(cluster, job_uuids, kill_jobs)
-        __kill(cluster, instance_uuids, kill_instances)
-        __kill(cluster, group_uuids, kill_groups)
+        __kill(cluster, job_uuids, kill_jobs, 'job')
+        __kill(cluster, instance_uuids, kill_instances, 'job instance')
+        __kill(cluster, group_uuids, kill_groups, 'job group')
 
     num_succeeded = len(succeeded)
     num_failed = len(failed)
