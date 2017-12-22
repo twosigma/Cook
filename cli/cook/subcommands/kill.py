@@ -80,12 +80,8 @@ def kill_entities(query_result, clusters):
         if len(uuids) > 0:
             for uuid_batch in partition(uuids, kill_batch_size):
                 success = kill_fn(cluster, uuid_batch)
-                (succeeded if success else failed).extend(uuid_batch)
-                for uuid in uuid_batch:
-                    if success:
-                        print_info(f'Killed {entity_type} {colors.bold(uuid)} on {colors.bold(cluster_name)}.')
-                    else:
-                        print(colors.failed(f'Failed to kill {entity_type} {uuid} on {cluster_name}.'))
+                batch = [{'cluster': cluster, 'type': entity_type, 'uuid': u} for u in uuid_batch]
+                (succeeded if success else failed).extend(batch)
 
     for cluster_name, entities in query_result['clusters'].items():
         cluster = clusters_by_name[cluster_name]
@@ -96,6 +92,10 @@ def kill_entities(query_result, clusters):
         __kill(cluster, instance_uuids, kill_instances, 'job instance')
         __kill(cluster, group_uuids, kill_groups, 'job group')
 
+    for item in succeeded:
+        print_info(f'Killed {item["type"]} {colors.bold(item["uuid"])} on {colors.bold(item["cluster"]["name"])}.')
+    for item in failed:
+        print(colors.failed(f'Failed to kill {item["type"]} {item["uuid"]} on {item["cluster"]["name"]}.'))
     num_succeeded = len(succeeded)
     num_failed = len(failed)
     print_info(f'Successful: {num_succeeded}, Failed: {num_failed}')
