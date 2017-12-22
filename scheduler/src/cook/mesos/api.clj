@@ -800,12 +800,11 @@
 
 (defn fetch-instance-map
   "Converts the instance entity to a map representing the instance fields."
-  [db instance retrieve-sandbox-directory-from-agent]
+  [db instance]
   (let [hostname (:instance/hostname instance)
         task-id (:instance/task-id instance)
         executor (:instance/executor instance)
-        sandbox-directory (or (:instance/sandbox-directory instance)
-                              (retrieve-sandbox-directory-from-agent hostname task-id))
+        sandbox-directory (:instance/sandbox-directory instance)
         url-path (retrieve-url-path hostname task-id sandbox-directory)
         start (:instance/start-time instance)
         mesos-start (:instance/mesos-start-time instance)
@@ -837,7 +836,7 @@
             sandbox-directory (assoc :sandbox_directory sandbox-directory))))
 
 (defn fetch-job-map
-  [db framework-id retrieve-sandbox-directory-from-agent job-uuid]
+  [db framework-id job-uuid]
   (let [job (d/entity db [:job/uuid job-uuid])
         resources (util/job-ent->resources job)
         groups (:group/_job job)
@@ -853,7 +852,7 @@
                          (map (fn [{:keys [attribute operator pattern]}]
                                 (->> [attribute (str/upper-case (name operator)) pattern]
                                      (map str)))))
-        instances (map #(fetch-instance-map db %1 retrieve-sandbox-directory-from-agent) (:job/instance job))
+        instances (map #(fetch-instance-map db %1) (:job/instance job))
         submit-time (when (:job/submit-time job) ; due to a bug, submit time may not exist for some jobs
                      (.getTime (:job/submit-time job)))
         job-map {:command (:job/command job)
@@ -2027,7 +2026,7 @@
       #(re-matches pattern %))))
 
 (defn list-resource
-  [db framework-id is-authorized-fn retrieve-sandbox-directory-from-agent]
+  [db framework-id is-authorized-fn]
   (liberator/resource
     :available-media-types ["application/json"]
     :allowed-methods [:get]
@@ -2110,7 +2109,7 @@
                         job-uuids (if (nil? limit)
                                     job-uuids
                                     (take limit job-uuids))
-                        jobs (mapv (partial fetch-job-map db framework-id retrieve-sandbox-directory-from-agent) job-uuids)]
+                        jobs (mapv (partial fetch-job-map db framework-id) job-uuids)]
                     (histograms/update! list-request-param-time-range-ms (- end-ms start-ms'))
                     (histograms/update! list-request-param-limit limit)
                     (histograms/update! list-response-job-count (count jobs))
@@ -2220,8 +2219,7 @@
     gpu-enabled? :mesos-gpu-enabled
     :as settings}
    leader-selector
-   mesos-leadership-atom
-   retrieve-sandbox-directory-from-agent]
+   mesos-leadership-atom]
   (->
     (routes
       (c-api/api
@@ -2445,7 +2443,7 @@
       (ANY "/running" []
         (running-jobs conn is-authorized-fn))
       (ANY "/list" []
-        (list-resource (db conn) framework-id is-authorized-fn retrieve-sandbox-directory-from-agent)))
+        (list-resource (db conn) framework-id is-authorized-fn)))
     (format-params/wrap-restful-params {:formats [:json-kw]
                                         :handle-error c-mw/handle-req-error})
     (streaming-json-middleware)))

@@ -193,7 +193,7 @@
   [{:keys [curator-framework executor-config fenzo-config framework-id get-mesos-utilization gpu-enabled? make-mesos-driver-fn
            mea-culpa-failure-limit mesos-datomic-conn mesos-datomic-mult mesos-leadership-atom mesos-pending-jobs-atom
            offer-cache offer-incubate-time-ms progress-config rebalancer-config riemann-host riemann-port
-           sandbox-publisher-state server-config task-constraints trigger-chans zk-prefix]}]
+           sandbox-syncer-state server-config task-constraints trigger-chans zk-prefix]}]
   (let [{:keys [fenzo-fitness-calculator fenzo-floor-iterations-before-reset fenzo-floor-iterations-before-warn
                 fenzo-max-jobs-considered fenzo-scaleback good-enough-fitness]} fenzo-config
         {:keys [cancelled-task-trigger-chan lingering-task-trigger-chan rebalancer-trigger-chan
@@ -232,7 +232,7 @@
                                           gpu-enabled?
                                           good-enough-fitness
                                           framework-id
-                                          sandbox-publisher-state
+                                          sandbox-syncer-state
                                           executor-config
                                           progress-config
                                           trigger-chans)

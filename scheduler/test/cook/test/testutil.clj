@@ -41,8 +41,7 @@
                                          :mesos-gpu-enabled false
                                          :task-constraints {:cpus 12 :memory-gb 100 :retry-limit 200}}
                                         (Object.)
-                                        (atom true)
-                                        (constantly nil)))
+                                        (atom true)))
         ; Mock kerberization, not testing that
         api-handler-kerb (fn [req]
                            (api-handler (assoc req :authorization/user (System/getProperty "user.name"))))
