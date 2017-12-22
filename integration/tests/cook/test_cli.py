@@ -1423,30 +1423,10 @@ class CookCliTest(unittest.TestCase):
         self.assertEqual(2, cp.returncode, cp.stderr)
         self.assertIn('not allowed with argument', cli.decode(cp.stderr))
 
-    def test_piping_from_jobs_to_kill(self):
-        name = uuid.uuid4()
-        cp, uuids = cli.submit_stdin(['sleep 300'] * 3, self.cook_url, submit_flags=f'--name {name}')
-        self.assertEqual(0, cp.returncode, cp.stderr)
-        user = util.get_user(self.cook_url, uuids[0])
-        jobs_flags = f'--user {user} --name {name} --running --waiting'
-        cp, jobs = cli.jobs_json(self.cook_url, jobs_flags)
-        self.assertEqual(0, cp.returncode, cp.stderr)
-        self.assertEqual(3, len(jobs))
-        cs = f'{cli.command()} --url {self.cook_url}'
-        command = f'{cs} jobs {jobs_flags} -1 | {cs} kill'
-        self.logger.info(command)
-        cp = subprocess.run(command, shell=True)
-        self.assertEqual(0, cp.returncode, cp.stderr)
-        cp, jobs = cli.jobs_json(self.cook_url, jobs_flags)
-        self.assertEqual(0, cp.returncode, cp.stderr)
-        self.assertEqual(0, len(jobs))
-        cp, jobs = cli.jobs_json(self.cook_url, f'--user {user} --name {name} --failed')
-        self.assertEqual(0, cp.returncode, cp.stderr)
-        self.assertEqual(3, len(jobs))
-
-    def test_piping_from_jobs_to_show_and_wait(self):
+    def test_piping_from_jobs_to_kill_show_wait(self):
         name = uuid.uuid4()
         num_jobs = 101
+
         # Submit a batch of jobs
         cp, uuids = cli.submit_stdin(['ls'] * num_jobs, self.cook_url,
                                      submit_flags=f'--name {name} --cpus 0.01 --mem 16')
@@ -1456,6 +1436,19 @@ class CookCliTest(unittest.TestCase):
         user = util.get_user(self.cook_url, uuids[0])
         jobs_flags = f'--user {user} --name {name} --all --limit {num_jobs}'
         cp, jobs = cli.jobs_json(self.cook_url, jobs_flags)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertEqual(num_jobs, len(jobs))
+
+        # Pipe from jobs to kill
+        cs = f'{cli.command()} --url {self.cook_url}'
+        command = f'{cs} jobs {jobs_flags} -1 | {cs} kill'
+        self.logger.info(command)
+        cp = subprocess.run(command, shell=True, stdout=subprocess.PIPE)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertIn(f'Successful: {num_jobs}, Failed: 0', cli.stdout(cp))
+
+        # All jobs should now be completed
+        cp, jobs = cli.jobs_json(self.cook_url, f'--user {user} --name {name} --completed --limit {num_jobs}')
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual(num_jobs, len(jobs))
 
@@ -1472,8 +1465,10 @@ class CookCliTest(unittest.TestCase):
         # Pipe from jobs to wait
         command = f'{cs} jobs {jobs_flags} -1 | {cs} wait'
         self.logger.info(command)
-        cp = subprocess.run(command, shell=True)
+        cp = subprocess.run(command, shell=True, stdout=subprocess.PIPE)
         self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertIn('Waiting for 100 jobs', cli.stdout(cp))
+        self.assertIn(f'Waiting for {num_jobs-100} job', cli.stdout(cp))
 
     def test_show_interesting_uuid(self):
         cp = cli.show(['019c34c3-13b3-b370-01a5-d1ecc9071249'], self.cook_url)
