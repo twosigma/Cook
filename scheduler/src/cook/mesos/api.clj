@@ -2026,9 +2026,8 @@
                    (not (is-authorized-fn request-user :get {:owner user :item :job}))
                    [false {::error (str "You are not authorized to list jobs for " user)}]
 
-                   (or (< 168 since-hours-ago)
-                       (neg? since-hours-ago))
-                   [false {::error (str "since-hours-ago must be between 0 and 168 (7 days)")}]
+                   (not (<= 0 since-hours-ago 168))
+                   [false {::error (str "since-hours-ago must be in the interval [0, 168], (168 hours = 7 days)")}]
 
                    (> 1 limit)
                    [false {::error (str "limit must be positive")}]
