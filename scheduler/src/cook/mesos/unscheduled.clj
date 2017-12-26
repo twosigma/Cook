@@ -14,14 +14,12 @@
 ;; limitations under the License.
 ;;
 (ns cook.mesos.unscheduled
-  (:require [clojure.tools.logging :as log]
-            [datomic.api :as d :refer (q)]
+  (:require [datomic.api :as d :refer (q)]
             [cook.mesos.scheduler :as scheduler]
             [cook.mesos.quota :as quota]
             [cook.mesos.share :as share]
             [cook.mesos.util :as util]
-            [clojure.edn :as edn])
-  (import java.util.Date))
+            [clojure.edn :as edn]))
 
 (defn check-exhausted-retries
   [db job]
@@ -62,9 +60,8 @@
                 (read-limit-fn db user)
                 (util/jobs-by-user-and-state db user :job.state/running)
                 job)]
-      (if (seq ways)
-        [err-msg ways]
-        nil))))
+      (when (seq ways)
+        [err-msg ways]))))
 
 (def constraint-name->message
   {"novel_host_constraint" "Job already ran on this host."
