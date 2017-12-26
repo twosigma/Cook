@@ -311,34 +311,140 @@ class ExecutorTest(unittest.TestCase):
         self.assertEqual(cook.TASK_FAILED, ce.get_task_state(1))
         self.assertEqual(cook.TASK_KILLED, ce.get_task_state(-1))
 
-    def test_retrieve_process_environment(self):
+    def test_retrieve_task_environment(self):
+        task = {'name': 'task_name',
+                'task_id': {'value': 'task-1234'},
+                'agent_id': {'value': 'agent-1234'},
+                'executor': {'name': 'cook_executor',
+                             'framework_id': {'value': 'framework-1234'},
+                             'executor_id': {'value': 'exec-1234'},
+                             'source': 'cook_scheduler_executor'}}
+        self.assertEqual({}, ce.retrieve_task_environment(task))
+
+        task['executor']['command'] = {'user': 'root',
+                                       'shell': True,
+                                       'value': '/path/to/cook-executor'}
+        self.assertEqual({}, ce.retrieve_task_environment(task))
+
+        task['executor']['command']['environment'] = {}
+        self.assertEqual({}, ce.retrieve_task_environment(task))
+
+        task['executor']['command']['environment']['variables'] = []
+        self.assertEqual({}, ce.retrieve_task_environment(task))
+
+        task['executor']['command']['environment']['variables'] = [{'name': 'F1', 'value': 'V1', 'type': 'VALUE'},
+                                                                   {'name': 'F2', 'value': 'V2', 'type': 'VALUE'},
+                                                                   {'name': 'F3', 'value': 'N3', 'type': 'NAME'},
+                                                                   {'name': 'F4', 'value': 'V4', 'type': 'VALUE'},
+                                                                   {'name': 'F5', 'value': 'V5'},
+                                                                   {'name': 'F6', 'type': 'VALUE'},
+                                                                   {'value': 'V7', 'type': 'VALUE'}]
+        self.assertEqual({'F1': 'V1', 'F2': 'V2', 'F4': 'V4'}, ce.retrieve_task_environment(task))
+
+    def test_retrieve_executor_environment(self):
+        executor_info = {}
+        self.assertEqual({}, ce.retrieve_executor_environment(executor_info))
+
+        executor_info = {'command': {}}
+        self.assertEqual({}, ce.retrieve_executor_environment(executor_info))
+
+        executor_info = {'command': {'user': 'root'}}
+        self.assertEqual({}, ce.retrieve_executor_environment(executor_info))
+
+        executor_info = {'command': {'value': './cook-executor/cook-executor',
+                                     'user': 'root'}}
+        self.assertEqual({}, ce.retrieve_executor_environment(executor_info))
+
+        executor_info = {'command': {'environment': {'variables': []},
+                                     'value': './cook-executor/cook-executor',
+                                     'user': 'root'}}
+        self.assertEqual({}, ce.retrieve_executor_environment(executor_info))
+
+        executor_info = {'command': {'environment': {'variables': [{'name': 'k1', 'value': 'v1'},
+                                                                   {'name': 'k2', 'value': 'v2'},
+                                                                   {'name': 'k3', 'value': 'v3'},
+                                                                   {'name': 'k4'},
+                                                                   {'value': 'v5'}]},
+                                     'value': './cook-executor/cook-executor',
+                                     'user': 'root'},
+                         'framework_id': {'value': 'cook-framework-123456'},
+                         'name': 'cook_executor',
+                         'executor_id': {'value': 'test-executor-1234'},
+                         'source': 'cook_scheduler_executor'}
+        self.assertEqual({'k1': 'v1', 'k2': 'v2', 'k3': 'v3'},
+                         ce.retrieve_executor_environment(executor_info))
+
+    def test_retrieve_subprocess_environment(self):
         self.assertEqual({'EXECUTOR_PROGRESS_OUTPUT_FILE': 'stdout'},
-                         ce.retrieve_process_environment(cc.ExecutorConfig(), {}))
+                         ce.retrieve_subprocess_environment(cc.ExecutorConfig(), {}, {}, {}))
+        self.assertEqual({'EXECUTOR_PROGRESS_OUTPUT_FILE': 'stdout',
+                          'FOO': 'BAR'},
+                         ce.retrieve_subprocess_environment(cc.ExecutorConfig(), {}, {}, {'FOO': 'BAR'}))
         self.assertEqual({'CUSTOM_PROGRESS_OUTPUT_FILE': 'stdout',
+                          'FEE': 'FOE',
                           'FOO': 'BAR',
                           'MESOS_SANDBOX': '/path/to/sandbox',
                           'PROGRESS_OUTPUT_FILE': 'executor.progress'},
-                         ce.retrieve_process_environment(
+                         ce.retrieve_subprocess_environment(
                              cc.ExecutorConfig(progress_output_env_variable='CUSTOM_PROGRESS_OUTPUT_FILE'),
                              {'FOO': 'BAR',
                               'MESOS_SANDBOX': '/path/to/sandbox',
-                              'PROGRESS_OUTPUT_FILE': 'executor.progress'}))
+                              'PROGRESS_OUTPUT_FILE': 'executor.progress'},
+                             {'FEE': 'FOE'},
+                             {}))
         self.assertEqual({'CUSTOM_PROGRESS_OUTPUT_FILE': 'custom.progress',
                           'EXECUTOR_PROGRESS_OUTPUT_FILE_ENV': 'CUSTOM_PROGRESS_OUTPUT_FILE'},
-                         ce.retrieve_process_environment(
+                         ce.retrieve_subprocess_environment(
                              cc.ExecutorConfig(progress_output_env_variable='CUSTOM_PROGRESS_OUTPUT_FILE',
                                                progress_output_name='custom.progress'),
                              {'CUSTOM_PROGRESS_OUTPUT_FILE': 'executor.progress',
-                              'EXECUTOR_PROGRESS_OUTPUT_FILE_ENV': 'CUSTOM_PROGRESS_OUTPUT_FILE'}))
+                              'EXECUTOR_PROGRESS_OUTPUT_FILE_ENV': 'CUSTOM_PROGRESS_OUTPUT_FILE'},
+                             {},
+                             {}))
         self.assertEqual({'CUSTOM_PROGRESS_OUTPUT_FILE': 'custom.progress',
                           'EXECUTOR_PROGRESS_OUTPUT_FILE_ENV': 'CUSTOM_PROGRESS_OUTPUT_FILE',
                           'PROGRESS_OUTPUT_FILE': 'stdout'},
-                         ce.retrieve_process_environment(
+                         ce.retrieve_subprocess_environment(
                              cc.ExecutorConfig(progress_output_env_variable='CUSTOM_PROGRESS_OUTPUT_FILE',
                                                progress_output_name='custom.progress'),
                              {'CUSTOM_PROGRESS_OUTPUT_FILE': 'executor.progress',
                               'EXECUTOR_PROGRESS_OUTPUT_FILE_ENV': 'CUSTOM_PROGRESS_OUTPUT_FILE',
-                              'PROGRESS_OUTPUT_FILE': 'stdout'}))
+                              'PROGRESS_OUTPUT_FILE': 'stdout'},
+                             {},
+                             {}))
+        self.assertEqual({'CUSTOM_PROGRESS_OUTPUT_FILE': 'custom.progress',
+                          'EXECUTOR_PROGRESS_OUTPUT_FILE_ENV': 'CUSTOM_PROGRESS_OUTPUT_FILE',
+                          'FEE': 'FIE',
+                          'FOO': 'BAR',
+                          'LOREM': 'IPSUM',
+                          'PROGRESS_OUTPUT_FILE': 'stdout'},
+                         ce.retrieve_subprocess_environment(
+                             cc.ExecutorConfig(progress_output_env_variable='CUSTOM_PROGRESS_OUTPUT_FILE',
+                                               progress_output_name='custom.progress'),
+                             {'CUSTOM_PROGRESS_OUTPUT_FILE': 'executor.progress',
+                              'EXECUTOR_PROGRESS_OUTPUT_FILE_ENV': 'CUSTOM_PROGRESS_OUTPUT_FILE',
+                              'PROGRESS_OUTPUT_FILE': 'stdout'},
+                             {'LOREM': 'IPSUM'},
+                             {'FEE': 'FIE',
+                              'FOO': 'BAR'}))
+        self.assertEqual({'CUSTOM_PROGRESS_OUTPUT_FILE': 'custom.progress',
+                          'EXECUTOR_PROGRESS_OUTPUT_FILE_ENV': 'CUSTOM_PROGRESS_OUTPUT_FILE',
+                          'FEE': 'FIE',
+                          'FOO': 'BAR',
+                          'LOREM': 'IPSUM',
+                          'PROGRESS_OUTPUT_FILE': 'stderr'},
+                         ce.retrieve_subprocess_environment(
+                             cc.ExecutorConfig(progress_output_env_variable='CUSTOM_PROGRESS_OUTPUT_FILE',
+                                               progress_output_name='custom.progress'),
+                             {'CUSTOM_PROGRESS_OUTPUT_FILE': 'executor.progress',
+                              'EXECUTOR_PROGRESS_OUTPUT_FILE_ENV': 'CUSTOM_PROGRESS_OUTPUT_FILE',
+                              'FOO': 'FU',
+                              'PROGRESS_OUTPUT_FILE': 'stdout'},
+                             {'FEE': 'FOE',
+                              'LOREM': 'IPSUM',
+                              'PROGRESS_OUTPUT_FILE': 'stderr'},
+                             {'FEE': 'FIE',
+                              'FOO': 'BAR'}))
 
     def manage_task_runner(self, command, assertions_fn, stop_signal=None, task_id=None, config=None, driver=None):
 
@@ -351,6 +457,7 @@ class ExecutorTest(unittest.TestCase):
 
         task = {'task_id': {'value': task_id},
                 'data': pm.encode_data(json.dumps({'command': command}).encode('utf8'))}
+        executor_environ = {}
 
         stdout_name = tu.ensure_directory('build/stdout.{}'.format(task_id))
         stderr_name = tu.ensure_directory('build/stderr.{}'.format(task_id))
@@ -370,8 +477,7 @@ class ExecutorTest(unittest.TestCase):
             sandbox_directory = config.sandbox_directory
 
         try:
-
-            ce.manage_task(driver, task, stop_signal, completed_signal, config)
+            ce.manage_task(driver, task, stop_signal, completed_signal, config, executor_environ)
 
             self.assertTrue(completed_signal.isSet())
             assertions_fn(driver, task_id, sandbox_directory)

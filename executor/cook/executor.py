@@ -129,6 +129,7 @@ def send_message(driver, error_handler, message):
             logging.exception('Exception while sending message {}'.format(message))
         return False
 
+
 def launch_task(task, environment):
     """Launches the task using the command available in the json map from the data field.
 
@@ -137,7 +138,7 @@ def launch_task(task, environment):
     task: dictionary
         The task to execute.
     environment: dictionary
-        The task environment.
+        The environment in which to launch the process.
 
     Returns
     -------
@@ -217,8 +218,51 @@ def set_environment(environment, key, value):
         environment[key] = value
 
 
-def retrieve_process_environment(config, os_environ):
+def retrieve_task_environment(task):
+    """Return the environment configured in the task.
+    task: dictionary
+        The task
+    Returns
+    -------
+    A dictionary containing the requested task environment.
+    """
+    task_environ = {}
+    try:
+        for task_environ_variable in task['executor']['command']['environment']['variables']:
+            if all(k in task_environ_variable for k in ('name', 'type', 'value')):
+                if task_environ_variable['type'] == 'VALUE':
+                    task_environ[task_environ_variable['name']] = task_environ_variable['value']
+    except Exception:
+        logging.exception('Error in retrieving task-specific environment configuration')
+    return task_environ
+
+
+def retrieve_executor_environment(executor_info):
+    """Returns the environment in the executor_info as a dictionary.
+
+    Parameters
+    ----------
+    executor_info: dictionary
+        The executor info as a dictionary.
+
+    Returns
+    -------
+    The environment dictionary extracted from the executor_info.
+    """
+    executor_environment = {}
+    try:
+        for environ_variable in executor_info['command']['environment']['variables']:
+            if all(k in environ_variable for k in ('name', 'value')):
+                executor_environment[environ_variable['name']] = environ_variable['value']
+    except Exception:
+        logging.exception('Error in retrieving executor-specific environment configuration')
+    return executor_environment
+
+
+def retrieve_subprocess_environment(config, process_environment, executor_environment, task_environment):
     """Prepares the environment for the subprocess.
+    The requested task environment takes precedence over the executor environment which in turn takes
+    precedence over process environment.
     The function also ensures that env[config.progress_output_env_variable] is set to config.progress_output_name.
     This protects against the scenario where the config.progress_output_env_variable was specified
     in the environment, but the progress output file was not specified.
@@ -227,14 +271,20 @@ def retrieve_process_environment(config, os_environ):
     ----------
     config: cook.config.ExecutorConfig
         The current executor config.
-    os_environ: dictionary
-        A dictionary representing the current environment.
+    process_environment: dictionary
+        A dictionary representing the current process environment.
+    executor_environment: dictionary
+        A dictionary representing the executor environment.
+    task_environment: dictionary
+        A dictionary representing the requested task environment.
 
     Returns
     -------
     The environment dictionary for the subprocess.
     """
-    environment = dict(os_environ)
+    environment = dict(process_environment)
+    environment.update(executor_environment)
+    environment.update(task_environment)
     set_environment(environment, config.progress_output_env_variable, config.progress_output_name)
     return environment
 
@@ -267,7 +317,7 @@ def os_error_handler(stop_signal, status_updater, os_error):
     cu.print_memory_usage()
 
 
-def manage_task(driver, task, stop_signal, completed_signal, config):
+def manage_task(driver, task, stop_signal, completed_signal, config, executor_environment):
     """Manages the execution of a task waiting for it to terminate normally or be killed.
        It also sends the task status updates, sandbox location and exit code back to the scheduler.
        Progress updates are tracked on a separate thread and are also sent to the scheduler.
@@ -290,7 +340,8 @@ def manage_task(driver, task, stop_signal, completed_signal, config):
         sandbox_message = {'sandbox-directory': config.sandbox_directory, 'task-id': task_id, 'type': 'directory'}
         send_message(driver, inner_os_error_handler, sandbox_message)
 
-        environment = retrieve_process_environment(config, os.environ)
+        task_environment = retrieve_task_environment(task)
+        environment = retrieve_subprocess_environment(config, os.environ, executor_environment, task_environment)
         launched_process = launch_task(task, environment)
         if launched_process:
             # task has begun running successfully
@@ -377,11 +428,13 @@ class CookExecutor(pm.Executor):
         self.completed_signal = Event()
         self.config = config
         self.disconnect_signal = Event()
+        self.executor_environment = {}
         self.stop_signal = stop_signal
 
     def registered(self, driver, executor_info, framework_info, agent_info):
         logging.info('Executor registered executor={}, framework={}, agent={}'.
                      format(executor_info['executor_id']['value'], framework_info['id'], agent_info['id']['value']))
+        self.executor_environment = retrieve_executor_environment(executor_info)
 
     def reregistered(self, driver, agent_info):
         logging.info('Executor re-registered agent={}'.format(agent_info))
@@ -398,7 +451,8 @@ class CookExecutor(pm.Executor):
         completed_signal = self.completed_signal
         config = self.config
 
-        task_thread = Thread(target=manage_task, args=(driver, task, stop_signal, completed_signal, config))
+        task_thread = Thread(target=manage_task,
+                             args=(driver, task, stop_signal, completed_signal, config, self.executor_environment))
         task_thread.daemon = True
         task_thread.start()
 
