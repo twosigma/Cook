@@ -2,9 +2,9 @@
 
 set -e
 
-MINIMESOS_TAG="0.13.0"
-PARAMS="$@"
-MINIMESOS_CLI_IMAGE="containersol/minimesos-cli"
+MINIMESOS_TAG="0.13.1"
+PARAMS="--debug $@"
+MINIMESOS_CLI_IMAGE="daowen/minimesos-cli"
 
 command_exists() {
     command -v "$@" > /dev/null 2>&1
