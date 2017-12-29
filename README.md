@@ -1,3 +1,5 @@
+<img src="./cook.svg" align="right" width="175px" height="175px">
+
 # Cook Scheduler
 
 [![Build Status](https://travis-ci.org/twosigma/Cook.svg)](https://travis-ci.org/twosigma/Cook)
