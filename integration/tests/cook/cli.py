@@ -289,3 +289,18 @@ def cat_with_logging(uuid, path, cook_url):
     s = stdout(cp)
     logging.info(f'cat of {path}: {s}')
     return cp
+
+
+def wait_for_output_file(cook_url, job_uuid, name):
+    """Waits for a file with the given name for the given job to exist"""
+
+    def query():
+        cp, _ = ls(job_uuid, cook_url, parse_json=False)
+        return json.loads(stdout(cp)) if cp.returncode == 0 else []
+
+    def predicate(entries):
+        logging.debug(f'Job {job_uuid} has entries {entries}')
+        return ls_entry_by_name(entries, name)
+
+    response = util.wait_until(query, predicate)
+    return response
