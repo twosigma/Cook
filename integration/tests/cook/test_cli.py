@@ -722,6 +722,7 @@ class CookCliTest(unittest.TestCase):
             self.cook_url, submit_flags=f'--name {self.current_name()}')
         self.assertEqual(0, cp.returncode, cp.stderr)
         util.wait_for_instance(self.cook_url, uuids[0])
+        util.wait_for_output_url(self.cook_url, uuids[0])
         proc = cli.tail(uuids[0], 'bar', self.cook_url,
                         f'--follow --sleep-interval {sleep_seconds_between_lines}',
                         wait_for_exit=False)
