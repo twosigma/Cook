@@ -1470,10 +1470,12 @@ class CookCliTest(unittest.TestCase):
         self.assertIn('Waiting for 100 jobs', cli.stdout(cp))
         self.assertIn(f'Waiting for {num_jobs-100} job', cli.stdout(cp))
 
-    def test_show_interesting_uuid(self):
+    def test_show_non_v4_uuid(self):
         cp = cli.show(['019c34c3-13b3-b370-01a5-d1ecc9071249'], self.cook_url)
-        self.assertEqual(1, cp.returncode, cp.stderr)
-        self.assertIn('No matching data found', cli.stdout(cp), cp.stderr)
+        if cp.returncode == 1:
+            self.assertIn('No matching data found', cli.stdout(cp), cp.stderr)
+        else:
+            self.assertEqual(0, cp.returncode, cp.stderr)
 
     def test_cat_basic(self):
         cp, uuids = cli.submit('bash -c "for i in {1..10}; do echo $i >> foo; done"', self.cook_url)
