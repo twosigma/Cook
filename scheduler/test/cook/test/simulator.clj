@@ -307,7 +307,6 @@
                                               :task->complete-status task->complete-status
                                               :complete-trigger-chan complete-trigger-chan
                                               :state-atom state-atom))
-        initial-time (System/currentTimeMillis)
         config (merge {:shares [{:user "default" :mem 4000.0 :cpus 4.0 :gpus 1.0}]
                        :time-ms-between-rebalancing (-> 30 t/minutes t/in-millis)}
                       config)
@@ -329,7 +328,7 @@
     ;; We are setting time to enable us to have deterministic runs
     ;; of the simulator while hooking into the scheduler as non-invasively
     ;; as possible. A longer explanation can be found in the simulator dev docs.
-    (org.joda.time.DateTimeUtils/setCurrentMillisFixed initial-time)
+    (org.joda.time.DateTimeUtils/setCurrentMillisFixed simulation-time)
     (log/info "Starting simulation.")
     (with-cook-scheduler mesos-datomic-conn make-mesos-driver-fn
       scheduler-config
@@ -338,10 +337,9 @@
           (share/set-share! mesos-datomic-conn user "simulation" :mem mem :cpus cpus :gpus gpus))
         (loop [trace trace
                simulation-time simulation-time
-               fake-real-time initial-time
                time-ms-since-last-rebalancer 0]
 
-          (org.joda.time.DateTimeUtils/setCurrentMillisFixed fake-real-time)
+          (org.joda.time.DateTimeUtils/setCurrentMillisFixed simulation-time)
 
           (let [start-ms (System/currentTimeMillis)
                 submission-batch (take-while #(<= (:submit-time-ms %) simulation-time) trace)
@@ -443,7 +441,6 @@
             (when (seq trace)
               (recur (drop (count submission-batch) trace)
                      (+ simulation-time cycle-step-ms)
-                     (+ fake-real-time cycle-step-ms)
                      (if (> time-ms-since-last-rebalancer (:time-ms-between-rebalancing config))
                        0
                        (+ time-ms-since-last-rebalancer cycle-step-ms))))))
