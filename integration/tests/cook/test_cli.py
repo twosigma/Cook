@@ -586,7 +586,7 @@ class CookCliTest(unittest.TestCase):
     def test_ssh_job_uuid(self):
         cp, uuids = cli.submit('ls', self.cook_url, submit_flags=f'--name {self.current_test()}')
         self.assertEqual(0, cp.returncode, cp.stderr)
-        instance = util.wait_for_instance(self.cook_url, uuids[0])
+        instance = util.wait_for_output_url(self.cook_url, uuids[0])
         hostname = instance['hostname']
         env = os.environ
         env['CS_SSH'] = 'echo'
@@ -635,7 +635,7 @@ class CookCliTest(unittest.TestCase):
     def test_ssh_instance_uuid(self):
         cp, uuids = cli.submit('ls', self.cook_url, submit_flags=f'--name {self.current_test()}')
         self.assertEqual(0, cp.returncode, cp.stderr)
-        instance = util.wait_for_instance(self.cook_url, uuids[0])
+        instance = util.wait_for_output_url(self.cook_url, uuids[0])
         hostname = instance['hostname']
         env = os.environ
         env['CS_SSH'] = 'echo'
