@@ -1,8 +1,9 @@
 import json
 
-from cook import http
+from cook import http, colors
+from cook.format import format_job_memory
 from cook.querying import query_across_clusters, make_job_request
-from cook.util import guard_no_cluster, current_user
+from cook.util import guard_no_cluster, current_user, print_info
 
 
 def get_usage_on_cluster(cluster, user):
@@ -28,7 +29,7 @@ def get_usage_on_cluster(cluster, user):
         application = job['application']['name'] if 'application' in job else None
         if 'groups' in job:
             group_uuids = job['groups']
-            group = f'{group_uuid_to_name[group_uuids[0]]} ({group_uuids[0]})'if group_uuids else None
+            group = f'{group_uuid_to_name[group_uuids[0]]} ({group_uuids[0]})' if group_uuids else None
         else:
             group = None
 
@@ -73,9 +74,41 @@ def print_as_json(query_result):
     print(json.dumps(query_result))
 
 
-def print_as_bullets():
+def format_usage(usage_map):
+    """Given a "usage map" with cpus, mem, and gpus, returns a formatted usage string"""
+    cpus = usage_map['cpus']
+    s = f'Usage: {cpus} CPU{"s" if cpus > 1 else ""}, {format_job_memory(usage_map)} Mem'
+    gpus = usage_map['gpus']
+    if gpus > 0:
+        s += f', {gpus} GPUs'
+    return s
+
+
+def print_formatted(query_result):
     """Prints the query result as a hierarchical set of bullets"""
-    raise Exception('NOT YET IMPLEMENTED')
+    for cluster, cluster_usage in query_result['clusters'].items():
+        usage_map = cluster_usage['usage']
+        print_info(colors.bold(cluster))
+        print_info(format_usage(usage_map))
+        applications = cluster_usage['applications']
+        if applications:
+            print_info('Applications:')
+        else:
+            print_info('Nothing Running')
+        for application, application_usage in applications.items():
+            usage_map = application_usage['usage']
+            print_info(f'- {colors.running(application if application else "[no application defined]")}')
+            print_info(f'  {format_usage(usage_map)}')
+            print_info('  Job Groups:')
+            for group, group_usage in application_usage['groups'].items():
+                usage_map = group_usage['usage']
+                print_info(f'\t- {colors.bold(group if group else "[ungrouped]")}')
+                print_info(f'\t  {format_usage(usage_map)}')
+                print_info('\t  Jobs:')
+                for job in group_usage['jobs']:
+                    print_info(f'\t\t- {job["name"]} ({job["uuid"]}) {format_usage(job)}')
+                print_info('')
+        print_info('')
 
 
 def usage(clusters, args, _):
@@ -88,7 +121,7 @@ def usage(clusters, args, _):
     if as_json:
         print_as_json(query_result)
     else:
-        print_as_bullets()
+        print_formatted(query_result)
     return 0
 
 
