@@ -1,5 +1,7 @@
 import json
 
+import sys
+
 from cook import http, colors
 from cook.format import format_job_memory
 from cook.querying import query_across_clusters, make_job_request
@@ -11,7 +13,11 @@ def get_usage_on_cluster(cluster, user):
     params = {'user': user, 'group_breakdown': 'true'}
     usage_map = http.make_data_request(cluster, lambda: http.get(cluster, 'usage', params=params))
     if not usage_map:
-        raise Exception(f'Unable to retrieve usage information on {cluster}.')
+        raise Exception(f'Unable to retrieve usage information on {cluster["name"]} ({cluster["url"]}).')
+
+    share_map = http.make_data_request(cluster, lambda: http.get(cluster, 'share', params={'user': user}))
+    if not share_map:
+        raise Exception(f'Unable to retrieve share information on {cluster["name"]} ({cluster["url"]}).')
 
     ungrouped_running_job_uuids = usage_map['ungrouped']['running_jobs']
     job_uuids_to_retrieve = ungrouped_running_job_uuids[:]
@@ -53,7 +59,10 @@ def get_usage_on_cluster(cluster, user):
                    'gpus': job['gpus']}
         applications[application]['groups'][group]['jobs'].append(job_map)
 
-    query_result = {'usage': usage_map['total_usage'], 'applications': applications, 'count': len(jobs)}
+    query_result = {'usage': usage_map['total_usage'],
+                    'applications': applications,
+                    'count': len(jobs),
+                    'share': share_map}
     return query_result
 
 
@@ -84,11 +93,38 @@ def format_usage(usage_map):
     return s
 
 
+def format_share(share_map):
+    """Given a "share map" with cpus, mem, and gpus, returns a formatted share string"""
+    cpus = share_map['cpus']
+    mem = share_map['mem']
+    gpus = share_map['gpus']
+
+    if cpus == sys.float_info.max:
+        cpu_share = 'No CPU Limit'
+    else:
+        cpu_share = f'{cpus} CPU{"s" if cpus > 1 else ""}'
+
+    if mem == sys.float_info.max:
+        mem_share = 'No Memory Limit'
+    else:
+        mem_share = f'{format_job_memory(share_map)} Mem'
+
+    if gpus == sys.float_info.max:
+        gpu_share = 'No GPU Limit'
+    else:
+        gpu_share = f'{gpus} GPU{"s" if gpus > 1 else ""}'
+
+    s = f'Share: {cpu_share}, {mem_share}, {gpu_share}'
+    return s
+
+
 def print_formatted(query_result):
     """Prints the query result as a hierarchical set of bullets"""
     for cluster, cluster_usage in query_result['clusters'].items():
         usage_map = cluster_usage['usage']
+        share_map = cluster_usage['share']
         print_info(colors.bold(cluster))
+        print_info(format_share(share_map))
         print_info(format_usage(usage_map))
         applications = cluster_usage['applications']
         if applications:
