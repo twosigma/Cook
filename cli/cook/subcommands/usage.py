@@ -41,7 +41,7 @@ def get_usage_on_cluster(cluster, user):
         metrics_map = resp.json()
         utilization_map = {'cpus': metrics_map['master/cpus_percent'],
                            'mem': metrics_map['master/mem_percent'],
-                           'gpus': metrics_map['master/gpus_percent']}
+                           'gpus': metrics_map['master/gpus_percent'] if 'master/gpus_percent' in metrics_map else 0}
 
     ungrouped_running_job_uuids = usage_map['ungrouped']['running_jobs']
     job_uuids_to_retrieve = ungrouped_running_job_uuids[:]
