@@ -280,6 +280,11 @@
                         (System/getProperty "cook.version")
                         "version_unknown")))
 
+(defn principal->username
+ "Convert a Kerberos-style principal to a Mesos username."
+ [principal]
+ (-> principal (split #"[/@]" 2) first))
+
 (defn get-html-stacktrace
   "Returns a string representation of the exception. The 3 argument form fleshes
    out information about the thread, user, and host."

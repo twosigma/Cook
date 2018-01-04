@@ -55,10 +55,16 @@ class _BasicAuthUser(object):
     to conveniently set a user for a sequence of commands.
     """
 
-    def __init__(self, name):
+    def __init__(self, name, impersonatee=None):
         self.name = name
         self.auth = (name, '')
         self.previous_auth = None
+        self.impersonatee = impersonatee
+        self.previous_impersonatee = None
+
+    def impersonating(self, other_user):
+        other_username = other_user.name if isinstance(other_user, User) else other_user
+        return User(self.name, impersonatee=other_username)
 
     def __enter__(self):
         global session
@@ -66,6 +72,9 @@ class _BasicAuthUser(object):
         assert self.previous_auth is None
         self.previous_auth = session.auth
         session.auth = self.auth
+        if self.impersonatee:
+            self.previous_impersonatee = session.headers.get('X-Cook-Impersonate')
+            session.headers['X-Cook-Impersonate'] = self.impersonatee
 
     def __exit__(self, ex_type, ex_val, ex_trace):
         global session
@@ -73,6 +82,12 @@ class _BasicAuthUser(object):
         assert self.previous_auth is not None
         session.auth = self.previous_auth
         self.previous_auth = None
+        if self.impersonatee:
+            if self.previous_impersonatee:
+                session.headers['X-Cook-Impersonate'] = self.previous_impersonatee
+                self.previous_impersonatee = None
+            else:
+                del session.headers['X-Cook-Impersonate']
 
 
 class _KerberosUser(object):
@@ -832,6 +847,11 @@ def user_current_usage(cook_url, **kwargs):
     based on their currently running jobs.
     """
     return session.get('%s/usage' % cook_url, params=kwargs)
+
+
+def query_queue(cook_url):
+    """Get current jobs via the queue endpoint (admin-only)"""
+    return session.get(f'{cook_url}/queue')
 
 
 def set_limit(cook_url, limit_type, user, mem=None, cpus=None, gpus=None, jobs=None, reason='testing'):

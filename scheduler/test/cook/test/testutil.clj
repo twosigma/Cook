@@ -32,7 +32,7 @@
 (defn run-test-server-in-thread
   "Runs a minimal cook scheduler server for testing inside a thread. Note that it is not properly kerberized."
   [conn port]
-  (let [authorized-fn (fn [x y z] true)
+  (let [authorized-fn (fn [w x y z] true)
         api-handler (wrap-params
                       (api/main-handler conn
                                         "my-framework-id"

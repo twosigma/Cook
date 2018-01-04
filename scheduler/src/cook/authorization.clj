@@ -216,6 +216,7 @@
   [settings
    ^String user
    ^Keyword verb
+   ^String impersonator
    {:keys [owner item] :as object}]
   (log/debug "[is-authorized?] Checking whether user" user
              "may perform" verb "on" (str object) "...")

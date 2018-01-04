@@ -9,7 +9,9 @@
                         :authorization-fn cook.authorization/configfile-admins-auth-open-gets
                         ;; These users have admin privileges when using configfile-admins-auth;
                         ;; e.g., they can view and modify other users' jobs.
-                        :admins #{"admin" "root"}}
+                        :admins #{"admin" "root"}
+                        ;; users that are allowed to do things on behalf of others
+                        :impersonators #{"poser" "other-impersonator"}}
  :database {:datomic-uri #config/env "COOK_DATOMIC_URI"}
  :zookeeper {:local? #config/env-bool "COOK_ZOOKEEPER_LOCAL"
              :connection #config/env "COOK_ZOOKEEPER"}
