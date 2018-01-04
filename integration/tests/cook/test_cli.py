@@ -13,7 +13,7 @@ from tests.cook import cli, util
 
 
 @pytest.mark.cli
-@pytest.mark.timeout(600)  # no individual test exceeds 10 minutes
+@pytest.mark.timeout(util.DEFAULT_TEST_TIMEOUT_SECS)  # individual test timeout
 class CookCliTest(unittest.TestCase):
     _multiprocess_can_split_ = True
 

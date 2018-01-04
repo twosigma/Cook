@@ -13,6 +13,8 @@ logger = logging.getLogger(__name__)
 session = importlib.import_module(os.getenv('COOK_SESSION_MODULE', 'requests')).Session()
 session.headers['User-Agent'] = f"Cook-Scheduler-Integration-Tests ({session.headers['User-Agent']})"
 
+DEFAULT_TEST_TIMEOUT_SECS = 600 # no individual test exceeds 10 minutes
+
 DEFAULT_TIMEOUT_MS = 120000
 
 
