@@ -1,20 +1,48 @@
 #!/usr/bin/env bash
 
-# Usage: run-integration.sh COOK_PORT_1 COOK_PORT_2 COOK_SLAVE_PORT
-
+# Usage: run-integration.sh [OPTIONS] ARGS...
+#
 # Runs the integration tests for cook scheduler in a docker container.
-# COOK_PORT_1 (Optional) - Port for a cook instance running in docker.
-# COOK_PORT_2 (Optional) - If COOK_MULTI_CLUSTER is set, port for a second cook instance
-#                          running in docker.
-# COOK_SLAVE_PORT (Optional) - If COOK_MASTER_SLAVE is set, port for a cook slave instance
-#                              running in docker.
+#
+# Options:
+#   --port NUMBER        Port for a cook instance running in docker.
+#   --port-2 NUMBER      If COOK_MULTI_CLUSTER is set, port for a second cook instance running in docker.
+#   --slave-port NUMBER  If COOK_MASTER_SLAVE is set, port for a cook slave instance running in docker.
+#   --working-copy       Mount working directory as a docker volume for faster development feedback loop.
+#
+# ARGS...                Any trailing arguments are passed through to the docker container,
+#                        overriding the default command used for integration testing.
 
 set -euf -o pipefail
 
 INTEGRATION_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && cd .. && pwd )"
-COOK_PORT=${1:-12321}
-COOK_PORT_2=${2:-22321}
-COOK_SLAVE_PORT=${2:-12322}
+
+COOK_PORT=12321
+COOK_PORT_2=22321
+COOK_SLAVE_PORT=12322
+DOCKER_VOLUME_ARGS=''
+
+while (( $# > 0 )); do
+   case "$1" in
+      --port)
+         COOK_PORT="$2"
+         shift 2
+         ;;
+      --port-2)
+         COOK_PORT_2="$2"
+         shift 2
+         ;;
+      --slave-port)
+         COOK_SLAVE_PORT="$2"
+         shift 2
+         ;;
+      --working-copy)
+         DOCKER_VOLUME_ARGS="-v ${INTEGRATION_DIR}:/opt/cook/integration"
+         shift
+         ;;
+      *) break
+   esac
+done
 
 NAME=cook-integration
 if [ "$(docker ps -aq -f name=${NAME})" ]
@@ -49,9 +77,9 @@ docker create \
        --name=cook-integration \
        -e "COOK_SCHEDULER_URL=${COOK_URL}" \
        -e "USER=root" \
-       ${COOK_MULTICLUSTER_ENV} \
-       -v ${INTEGRATION_DIR}:/opt/cook/integration \
-       cook-integration:latest
+       ${COOK_MULTICLUSTER_ENV} ${DOCKER_VOLUME_ARGS} \
+       cook-integration:latest \
+       "$@"
 
 # Connect to the default bridge network (for talking to minimesos)
 docker network connect bridge cook-integration

@@ -2,19 +2,20 @@ import dateutil.parser
 import json
 import logging
 import operator
+import pytest
 import subprocess
 import time
 import unittest
 import uuid
 
 from collections import Counter
-from nose.plugins.attrib import attr
 from retrying import retry
 
 from tests.cook import reasons
 from tests.cook import util
 
 
+@pytest.mark.timeout(600)  # no individual test exceeds 10 minutes
 class CookTest(unittest.TestCase):
     _multiprocess_can_split_ = True
 
@@ -397,7 +398,8 @@ class CookTest(unittest.TestCase):
         finally:
             util.kill_jobs(self.cook_url, [job_uuid])
 
-    @attr('memory_limit')
+    @pytest.mark.memlimit
+    @unittest.skipUnless(util.continuous_integration(), "Doesn't work in our local test environments")
     def test_memory_limit_exceeded_cook_python(self):
         job_executor_type = util.get_job_executor_type(self.cook_url)
         if job_executor_type == 'cook':
@@ -406,12 +408,14 @@ class CookTest(unittest.TestCase):
         else:
             self.logger.info("Skipping test_memory_limit_exceeded_cook_python, executor={}".format(job_executor_type))
 
-    @attr('memory_limit')
+    @pytest.mark.memlimit
+    @unittest.skipUnless(util.continuous_integration(), "Doesn't work in our local test environments")
     def test_memory_limit_exceeded_mesos_python(self):
         command = self.memory_limit_python_command()
         self.memory_limit_exceeded_helper(command, 'mesos')
 
-    @attr('memory_limit')
+    @pytest.mark.memlimit
+    @unittest.skipUnless(util.continuous_integration(), "Doesn't work in our local test environments")
     def test_memory_limit_exceeded_cook_script(self):
         job_executor_type = util.get_job_executor_type(self.cook_url)
         if job_executor_type == 'cook':
@@ -420,7 +424,8 @@ class CookTest(unittest.TestCase):
         else:
             self.logger.info("Skipping test_memory_limit_exceeded_cook_script, executor={}".format(job_executor_type))
 
-    @attr('memory_limit')
+    @pytest.mark.memlimit
+    @unittest.skipUnless(util.continuous_integration(), "Doesn't work in our local test environments")
     def test_memory_limit_exceeded_mesos_script(self):
         command = self.memory_limit_script_command()
         self.memory_limit_exceeded_helper(command, 'mesos')
@@ -895,7 +900,7 @@ class CookTest(unittest.TestCase):
                                  json={'jobs': [job1, job2]})
         self.assertEqual(resp.status_code, 500)
 
-    @attr('explicit')
+    @pytest.mark.xfail
     def test_constraints(self):
         """
         Marked as explicit due to:
@@ -1249,6 +1254,7 @@ class CookTest(unittest.TestCase):
         job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
         self.assertEqual('success', job['instances'][0]['status'])
 
+    @unittest.skipUnless(util.has_docker_service(), "Requires `docker inspect`")
     def test_docker_port_mapping(self):
         job_uuid, resp = util.submit_job(self.cook_url,
                                          command='python -m http.server 8080',

@@ -1,5 +1,6 @@
 import logging
 import os
+import pytest
 import time
 import unittest
 
@@ -8,6 +9,7 @@ from tests.cook import util
 
 @unittest.skipUnless(os.getenv('COOK_MASTER_SLAVE') is not None,
                      'Requires setting the COOK_MASTER_SLAVE environment variable')
+@pytest.mark.timeout(600)  # no individual test exceeds 10 minutes
 class MasterSlaveTest(unittest.TestCase):
     _multiprocess_can_split_ = True
 

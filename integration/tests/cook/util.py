@@ -1,6 +1,7 @@
 import importlib
 import logging
 import os
+import os.path
 import time
 import uuid
 from urllib.parse import urlencode
@@ -13,6 +14,14 @@ session = importlib.import_module(os.getenv('COOK_SESSION_MODULE', 'requests')).
 session.headers['User-Agent'] = f"Cook-Scheduler-Integration-Tests ({session.headers['User-Agent']})"
 
 DEFAULT_TIMEOUT_MS = 120000
+
+
+def continuous_integration():
+    return os.environ.get('CONTINUOUS_INTEGRATION')
+
+
+def has_docker_service():
+    return os.path.exists('/var/run/docker.sock')
 
 
 def get_in(dct, *keys):
