@@ -148,7 +148,7 @@ def format_share(share_map):
 
 def format_percent(n):
     """Formats n as a percentage"""
-    return f'{n*100}%'
+    return '{:.1%}'.format(n)
 
 
 def format_cluster_utilization(utilization_map):
