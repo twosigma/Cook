@@ -1,6 +1,8 @@
+import collections
 import json
-
 import sys
+
+from tabulate import tabulate
 
 from cook import http, colors
 from cook.format import format_job_memory
@@ -86,7 +88,7 @@ def print_as_json(query_result):
 def format_usage(usage_map):
     """Given a "usage map" with cpus, mem, and gpus, returns a formatted usage string"""
     cpus = usage_map['cpus']
-    s = f'Usage: {cpus} CPU{"s" if cpus > 1 else ""}, {format_job_memory(usage_map)} Mem'
+    s = f'Usage: {cpus} CPU{"s" if cpus > 1 else ""}, {format_job_memory(usage_map)} Memory'
     gpus = usage_map['gpus']
     if gpus > 0:
         s += f', {gpus} GPUs'
@@ -107,7 +109,7 @@ def format_share(share_map):
     if mem == sys.float_info.max:
         mem_share = 'No Memory Limit'
     else:
-        mem_share = f'{format_job_memory(share_map)} Mem'
+        mem_share = f'{format_job_memory(share_map)} Memory'
 
     if gpus == sys.float_info.max:
         gpu_share = 'No GPU Limit'
@@ -116,6 +118,18 @@ def format_share(share_map):
 
     s = f'Share: {cpu_share}, {mem_share}, {gpu_share}'
     return s
+
+
+def format_jobs_table(jobs):
+    """Given a collection of jobs, formats a table showing the most relevant job fields"""
+    rows = [collections.OrderedDict([("UUID", job['uuid']),
+                                     ("Name", job['name']),
+                                     ("CPUs", job['cpus']),
+                                     ("Memory", format_job_memory(job)),
+                                     ("GPUs", job['gpus'])])
+            for job in jobs]
+    job_table = tabulate(rows, headers='keys', tablefmt='plain')
+    return job_table
 
 
 def print_formatted(query_result):
@@ -141,8 +155,8 @@ def print_formatted(query_result):
                 print_info(f'\t- {colors.bold(group if group else "[ungrouped]")}')
                 print_info(f'\t  {format_usage(usage_map)}')
                 print_info('\t  Jobs:')
-                for job in group_usage['jobs']:
-                    print_info(f'\t\t- {job["name"]} ({job["uuid"]}) {format_usage(job)}')
+                for line in format_jobs_table(group_usage['jobs']).splitlines():
+                    print_info(f'\t\t{line}')
                 print_info('')
         print_info('')
 
