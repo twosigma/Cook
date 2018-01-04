@@ -85,29 +85,14 @@ export PATH=${PATH}:$(dirname ${CLI})
 cs --help
 
 # Run the integration tests
-# We use pytest's --lf option to rerun only the tests that failed previously
-# on each iteration of the loop. All tests are always run on the first iteration.
-# This should help us avoid the need to rerun the whole suite due to a flakey test.
-# We can also scrape the Travis logs to find which tests frequently flake.
 cd ${PROJECT_DIR}
 export COOK_MULTI_CLUSTER=
 export COOK_MASTER_SLAVE=
 export COOK_SLAVE_URL=http://localhost:12322
-for ((i=1; i<5; i++)); do
-    pytest -n4 -v --lf --color=no --timeout-method=thread --boxed -m "${PYTEST_MARKS}" && break
-    test_failures=true
-    failure_file="$(find .cache -name lastfailed)"
-    failure_count=$(tail -n+2 $failure_file | wc -l)
-    if [[ $failure_count > 3 ]]; then
-        echo "Too many failures ($failure_count), not retrying..."
-        break
-    fi
-    echo "Retrying tests due to failures (attempt $i)..."
-done
+pytest -n4 -v --color=no --timeout-method=thread --boxed -m "${PYTEST_MARKS}" || test_failures=true
 
 # If there were failures, dump the executor logs
 if [ "$test_failures" = true ]; then
-  echo "FAILURE: Exhausted test retry attempts"
   echo "Displaying executor logs"
   ${PROJECT_DIR}/../travis/show_executor_logs.sh
   exit 1
