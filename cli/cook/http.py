@@ -40,10 +40,10 @@ def __post(url, json_body):
     return session.post(url, json=json_body, timeout=timeouts)
 
 
-def __get(url, params=None):
+def __get(url, params=None, **kwargs):
     """Sends a GET with params to the given url"""
     logging.info(f'GET {url} with params {params}')
-    return session.get(url, params=params, timeout=timeouts)
+    return session.get(url, params=params, timeout=timeouts, **kwargs)
 
 
 def __delete(url, params=None):

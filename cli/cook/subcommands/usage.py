@@ -1,8 +1,6 @@
-import collections
 import json
+import logging
 import sys
-
-from tabulate import tabulate
 
 from cook import http, colors
 from cook.format import format_job_memory
@@ -11,15 +9,39 @@ from cook.util import guard_no_cluster, current_user, print_info
 
 
 def get_usage_on_cluster(cluster, user):
-    """Queries cluster for jobs with the given state / user / time / name"""
+    """Queries cluster for usage information for the given user"""
     params = {'user': user, 'group_breakdown': 'true'}
     usage_map = http.make_data_request(cluster, lambda: http.get(cluster, 'usage', params=params))
     if not usage_map:
-        raise Exception(f'Unable to retrieve usage information on {cluster["name"]} ({cluster["url"]}).')
+        print(f'Unable to retrieve usage information on {cluster["name"]} ({cluster["url"]}).')
+        return {'count': 0}
 
     share_map = http.make_data_request(cluster, lambda: http.get(cluster, 'share', params={'user': user}))
     if not share_map:
-        raise Exception(f'Unable to retrieve share information on {cluster["name"]} ({cluster["url"]}).')
+        print(f'Unable to retrieve share information on {cluster["name"]} ({cluster["url"]}).')
+        return {'count': 0}
+
+    settings_map = http.make_data_request(cluster, lambda: http.get(cluster, 'settings', params={}))
+    if not settings_map:
+        print(f'Unable to retrieve settings information on {cluster["name"]} ({cluster["url"]}).')
+        return {'count': 0}
+
+    resp = http.__get(f'http://{settings_map["mesos-master-hosts"][0]}:5050/redirect', allow_redirects=False)
+    if resp.status_code != 307:
+        print(f'Unable to find mesos leader on {cluster["name"]} ({cluster["url"]}).')
+        return {'count': 0}
+
+    mesos_leader_url = 'http:%s' % resp.headers['Location']
+    logging.info(f'Using mesos leader url {mesos_leader_url}')
+    resp = http.__get(f'{mesos_leader_url}/metrics/snapshot')
+    if resp.status_code != 200:
+        print(f'Unable to retrieve cluster utilization information on {cluster["name"]} ({cluster["url"]}).')
+        return {'count': 0}
+    else:
+        metrics_map = resp.json()
+        utilization_map = {'cpus': metrics_map['master/cpus_percent'],
+                           'mem': metrics_map['master/mem_percent'],
+                           'gpus': metrics_map['master/gpus_percent']}
 
     ungrouped_running_job_uuids = usage_map['ungrouped']['running_jobs']
     job_uuids_to_retrieve = ungrouped_running_job_uuids[:]
@@ -31,40 +53,44 @@ def get_usage_on_cluster(cluster, user):
         job_uuids_to_retrieve.extend(group['running_jobs'])
         group_uuid_to_name[group['uuid']] = group['name']
 
-    jobs = http.make_data_request(cluster, lambda: make_job_request(cluster, job_uuids_to_retrieve))
     applications = {}
-    for job in jobs:
-        application = job['application']['name'] if 'application' in job else None
-        if 'groups' in job:
-            group_uuids = job['groups']
-            group = f'{group_uuid_to_name[group_uuids[0]]} ({group_uuids[0]})' if group_uuids else None
-        else:
-            group = None
-
-        if application not in applications:
-            applications[application] = {'usage': {'cpus': 0, 'mem': 0, 'gpus': 0}, 'groups': {}}
-
-        applications[application]['usage']['cpus'] += job['cpus']
-        applications[application]['usage']['mem'] += job['mem']
-        applications[application]['usage']['gpus'] += job['gpus']
-
-        if group not in applications[application]['groups']:
-            applications[application]['groups'][group] = {'usage': {'cpus': 0, 'mem': 0, 'gpus': 0}, 'jobs': []}
-
-        applications[application]['groups'][group]['usage']['cpus'] += job['cpus']
-        applications[application]['groups'][group]['usage']['mem'] += job['mem']
-        applications[application]['groups'][group]['usage']['gpus'] += job['gpus']
-        job_map = {'uuid': job['uuid'],
-                   'name': job['name'],
-                   'cpus': job['cpus'],
-                   'mem': job['mem'],
-                   'gpus': job['gpus']}
-        applications[application]['groups'][group]['jobs'].append(job_map)
-
+    num_running_jobs = len(job_uuids_to_retrieve)
     query_result = {'usage': usage_map['total_usage'],
-                    'applications': applications,
-                    'count': len(jobs),
-                    'share': share_map}
+                    'count': num_running_jobs,
+                    'share': share_map,
+                    'cluster_utilization': utilization_map,
+                    'applications': applications}
+
+    if num_running_jobs > 0:
+        jobs = http.make_data_request(cluster, lambda: make_job_request(cluster, job_uuids_to_retrieve))
+        for job in jobs:
+            application = job['application']['name'] if 'application' in job else None
+            if 'groups' in job:
+                group_uuids = job['groups']
+                group = f'{group_uuid_to_name[group_uuids[0]]} ({group_uuids[0]})' if group_uuids else None
+            else:
+                group = None
+
+            if application not in applications:
+                applications[application] = {'usage': {'cpus': 0, 'mem': 0, 'gpus': 0}, 'groups': {}}
+
+            applications[application]['usage']['cpus'] += job['cpus']
+            applications[application]['usage']['mem'] += job['mem']
+            applications[application]['usage']['gpus'] += job['gpus']
+
+            if group not in applications[application]['groups']:
+                applications[application]['groups'][group] = {'usage': {'cpus': 0, 'mem': 0, 'gpus': 0}, 'jobs': []}
+
+            applications[application]['groups'][group]['usage']['cpus'] += job['cpus']
+            applications[application]['groups'][group]['usage']['mem'] += job['mem']
+            applications[application]['groups'][group]['usage']['gpus'] += job['gpus']
+            job_map = {'uuid': job['uuid'],
+                       'name': job['name'],
+                       'cpus': job['cpus'],
+                       'mem': job['mem'],
+                       'gpus': job['gpus']}
+            applications[application]['groups'][group]['jobs'].append(job_map)
+
     return query_result
 
 
@@ -88,8 +114,8 @@ def print_as_json(query_result):
 def format_usage(usage_map):
     """Given a "usage map" with cpus, mem, and gpus, returns a formatted usage string"""
     cpus = usage_map['cpus']
-    s = f'Usage: {cpus} CPU{"s" if cpus > 1 else ""}, {format_job_memory(usage_map)} Memory'
     gpus = usage_map['gpus']
+    s = f'Usage: {cpus} CPU{"s" if cpus > 1 else ""}, {format_job_memory(usage_map)} Memory'
     if gpus > 0:
         s += f', {gpus} GPUs'
     return s
@@ -120,16 +146,20 @@ def format_share(share_map):
     return s
 
 
-def format_jobs_table(jobs):
-    """Given a collection of jobs, formats a table showing the most relevant job fields"""
-    rows = [collections.OrderedDict([("UUID", job['uuid']),
-                                     ("Name", job['name']),
-                                     ("CPUs", job['cpus']),
-                                     ("Memory", format_job_memory(job)),
-                                     ("GPUs", job['gpus'])])
-            for job in jobs]
-    job_table = tabulate(rows, headers='keys', tablefmt='plain')
-    return job_table
+def format_percent(n):
+    """Formats n as a percentage"""
+    return f'{n*100}%'
+
+
+def format_cluster_utilization(utilization_map):
+    """Given a "cluster utilization" map with cpus, mem, and gpus, returns a formatted utilization string"""
+    cpus = utilization_map['cpus']
+    mem = utilization_map['mem']
+    gpus = utilization_map['gpus']
+    s = f'Cluster Utilization: {format_percent(cpus)} CPU, {format_percent(mem)} Memory'
+    if gpus > 0:
+        s += f', {format_percent(gpus)} GPU'
+    return s
 
 
 def print_formatted(query_result):
@@ -137,14 +167,16 @@ def print_formatted(query_result):
     for cluster, cluster_usage in query_result['clusters'].items():
         usage_map = cluster_usage['usage']
         share_map = cluster_usage['share']
+        utilization_map = cluster_usage['cluster_utilization']
         print_info(colors.bold(cluster))
         print_info(format_share(share_map))
         print_info(format_usage(usage_map))
+        print_info(format_cluster_utilization(utilization_map))
         applications = cluster_usage['applications']
         if applications:
             print_info('Applications:')
         else:
-            print_info('Nothing Running')
+            print_info(colors.waiting('Nothing Running'))
         for application, application_usage in applications.items():
             usage_map = application_usage['usage']
             print_info(f'- {colors.running(application if application else "[no application defined]")}')
@@ -152,11 +184,10 @@ def print_formatted(query_result):
             print_info('  Job Groups:')
             for group, group_usage in application_usage['groups'].items():
                 usage_map = group_usage['usage']
+                jobs = group_usage['jobs']
                 print_info(f'\t- {colors.bold(group if group else "[ungrouped]")}')
                 print_info(f'\t  {format_usage(usage_map)}')
-                print_info('\t  Jobs:')
-                for line in format_jobs_table(group_usage['jobs']).splitlines():
-                    print_info(f'\t\t{line}')
+                print_info(f'\t  Jobs: {len(jobs)}')
                 print_info('')
         print_info('')
 
