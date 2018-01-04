@@ -17,6 +17,7 @@ DEFAULT_TIMEOUT_MS = 120000
 
 
 def continuous_integration():
+    # Travis-CI sets this env variable automatically
     return os.environ.get('CONTINUOUS_INTEGRATION')
 
 

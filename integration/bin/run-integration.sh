@@ -8,7 +8,7 @@
 #   --port NUMBER        Port for a cook instance running in docker.
 #   --port-2 NUMBER      If COOK_MULTI_CLUSTER is set, port for a second cook instance running in docker.
 #   --slave-port NUMBER  If COOK_MASTER_SLAVE is set, port for a cook slave instance running in docker.
-#   --working-copy       Mount working directory as a docker volume for faster development feedback loop.
+#   --no-mount           Do not mount working directory as a docker volume (mounted by default).
 #
 # ARGS...                Any trailing arguments are passed through to the docker container,
 #                        overriding the default command used for integration testing.
@@ -20,7 +20,7 @@ INTEGRATION_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && cd .. && pwd )"
 COOK_PORT=12321
 COOK_PORT_2=22321
 COOK_SLAVE_PORT=12322
-DOCKER_VOLUME_ARGS=''
+DOCKER_VOLUME_ARGS="-v ${INTEGRATION_DIR}:/opt/cook/integration"
 
 while (( $# > 0 )); do
    case "$1" in
@@ -36,8 +36,8 @@ while (( $# > 0 )); do
          COOK_SLAVE_PORT="$2"
          shift 2
          ;;
-      --working-copy)
-         DOCKER_VOLUME_ARGS="-v ${INTEGRATION_DIR}:/opt/cook/integration"
+      --no-mount)
+         DOCKER_VOLUME_ARGS=''
          shift
          ;;
       *) break

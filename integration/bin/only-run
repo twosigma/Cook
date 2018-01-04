@@ -8,8 +8,10 @@ if len(sys.argv) < 2:
 target_names = sys.argv[1:]
 
 class FindTestsPlugin(object):
+
     def __init__(self):
         self.matched = []
+
     def pytest_collection_modifyitems(self, items):
         for target_name in target_names:
             suffix = ':' + target_name
