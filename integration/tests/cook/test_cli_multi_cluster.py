@@ -1,18 +1,19 @@
 import logging
 import os
+import pytest
 import subprocess
 import unittest
 import uuid
-from urllib.parse import urlparse
 
-from nose.plugins.attrib import attr
+from urllib.parse import urlparse
 
 from tests.cook import cli, util
 
 
-@attr(cli=True)
+@pytest.mark.cli
 @unittest.skipUnless(util.multi_cluster_tests_enabled(),
                      'Requires setting the COOK_MULTI_CLUSTER environment variable')
+@pytest.mark.timeout(util.DEFAULT_TEST_TIMEOUT_SECS)  # individual test timeout
 class MultiCookCliTest(unittest.TestCase):
     _multiprocess_can_split_ = True
 

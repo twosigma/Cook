@@ -1,18 +1,19 @@
 import json
 import logging
 import os
+import pytest
 import subprocess
 import time
 import unittest
 import uuid
-from urllib.parse import urlparse
 
-from nose.plugins.attrib import attr
+from urllib.parse import urlparse
 
 from tests.cook import cli, util
 
 
-@attr(cli=True)
+@pytest.mark.cli
+@pytest.mark.timeout(util.DEFAULT_TEST_TIMEOUT_SECS)  # individual test timeout
 class CookCliTest(unittest.TestCase):
     _multiprocess_can_split_ = True
 

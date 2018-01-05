@@ -23,7 +23,6 @@
          :leader-path "/cook-scheduler"
          :role "cook"
          :framework-id "cook-framework"}
- :executor {:command "curl http://downloader@172.17.0.1:12321/resource/cook-executor -o cook-executor && chmod +x cook-executor && echo 'Launching cook-executor\n' && ./cook-executor"}
  :unhandled-exceptions {:log-level :error}
  :metrics {:jmx true}
  :nrepl {:enabled? true

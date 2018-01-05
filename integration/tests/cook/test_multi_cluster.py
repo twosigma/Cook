@@ -1,4 +1,5 @@
 import os
+import pytest
 import unittest
 
 import logging
@@ -8,6 +9,7 @@ from tests.cook import util
 
 @unittest.skipUnless(os.getenv('COOK_MULTI_CLUSTER') is not None,
                      'Requires setting the COOK_MULTI_CLUSTER environment variable')
+@pytest.mark.timeout(util.DEFAULT_TEST_TIMEOUT_SECS)  # individual test timeout
 class MultiClusterTest(unittest.TestCase):
     _multiprocess_can_split_ = True
 

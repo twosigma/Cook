@@ -1,6 +1,7 @@
 import importlib
 import logging
 import os
+import os.path
 import time
 import uuid
 from urllib.parse import urlencode
@@ -12,7 +13,18 @@ logger = logging.getLogger(__name__)
 session = importlib.import_module(os.getenv('COOK_SESSION_MODULE', 'requests')).Session()
 session.headers['User-Agent'] = f"Cook-Scheduler-Integration-Tests ({session.headers['User-Agent']})"
 
+DEFAULT_TEST_TIMEOUT_SECS = 600 # no individual test exceeds 10 minutes
+
 DEFAULT_TIMEOUT_MS = 120000
+
+
+def continuous_integration():
+    # Travis-CI sets this env variable automatically
+    return os.environ.get('CONTINUOUS_INTEGRATION')
+
+
+def has_docker_service():
+    return os.path.exists('/var/run/docker.sock')
 
 
 def get_in(dct, *keys):
