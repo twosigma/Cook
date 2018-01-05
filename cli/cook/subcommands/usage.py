@@ -5,7 +5,7 @@ import sys
 from cook import http, colors
 from cook.format import format_job_memory
 from cook.querying import query_across_clusters, make_job_request
-from cook.util import guard_no_cluster, current_user, print_info
+from cook.util import guard_no_cluster, current_user, print_info, print_error
 
 
 def get_usage_on_cluster(cluster, user):
@@ -13,29 +13,29 @@ def get_usage_on_cluster(cluster, user):
     params = {'user': user, 'group_breakdown': 'true'}
     usage_map = http.make_data_request(cluster, lambda: http.get(cluster, 'usage', params=params))
     if not usage_map:
-        print(f'Unable to retrieve usage information on {cluster["name"]} ({cluster["url"]}).')
+        print_error(f'Unable to retrieve usage information on {cluster["name"]} ({cluster["url"]}).')
         return {'count': 0}
 
     share_map = http.make_data_request(cluster, lambda: http.get(cluster, 'share', params={'user': user}))
     if not share_map:
-        print(f'Unable to retrieve share information on {cluster["name"]} ({cluster["url"]}).')
+        print_error(f'Unable to retrieve share information on {cluster["name"]} ({cluster["url"]}).')
         return {'count': 0}
 
     settings_map = http.make_data_request(cluster, lambda: http.get(cluster, 'settings', params={}))
     if not settings_map:
-        print(f'Unable to retrieve settings information on {cluster["name"]} ({cluster["url"]}).')
+        print_error(f'Unable to retrieve settings information on {cluster["name"]} ({cluster["url"]}).')
         return {'count': 0}
 
     resp = http.__get(f'http://{settings_map["mesos-master-hosts"][0]}:5050/redirect', allow_redirects=False)
     if resp.status_code != 307:
-        print(f'Unable to find mesos leader on {cluster["name"]} ({cluster["url"]}).')
+        print_error(f'Unable to find mesos leader on {cluster["name"]} ({cluster["url"]}).')
         return {'count': 0}
 
     mesos_leader_url = 'http:%s' % resp.headers['Location']
     logging.info(f'Using mesos leader url {mesos_leader_url}')
     resp = http.__get(f'{mesos_leader_url}/metrics/snapshot')
     if resp.status_code != 200:
-        print(f'Unable to retrieve cluster utilization information on {cluster["name"]} ({cluster["url"]}).')
+        print_error(f'Unable to retrieve cluster utilization information on {cluster["name"]} ({cluster["url"]}).')
         return {'count': 0}
     else:
         metrics_map = resp.json()
@@ -84,12 +84,7 @@ def get_usage_on_cluster(cluster, user):
             applications[application]['groups'][group]['usage']['cpus'] += job['cpus']
             applications[application]['groups'][group]['usage']['mem'] += job['mem']
             applications[application]['groups'][group]['usage']['gpus'] += job['gpus']
-            job_map = {'uuid': job['uuid'],
-                       'name': job['name'],
-                       'cpus': job['cpus'],
-                       'mem': job['mem'],
-                       'gpus': job['gpus']}
-            applications[application]['groups'][group]['jobs'].append(job_map)
+            applications[application]['groups'][group]['jobs'].append(job['uuid'])
 
     return query_result
 
@@ -165,31 +160,32 @@ def format_cluster_utilization(utilization_map):
 def print_formatted(query_result):
     """Prints the query result as a hierarchical set of bullets"""
     for cluster, cluster_usage in query_result['clusters'].items():
-        usage_map = cluster_usage['usage']
-        share_map = cluster_usage['share']
-        utilization_map = cluster_usage['cluster_utilization']
-        print_info(colors.bold(cluster))
-        print_info(format_share(share_map))
-        print_info(format_usage(usage_map))
-        print_info(format_cluster_utilization(utilization_map))
-        applications = cluster_usage['applications']
-        if applications:
-            print_info('Applications:')
-        else:
-            print_info(colors.waiting('Nothing Running'))
-        for application, application_usage in applications.items():
-            usage_map = application_usage['usage']
-            print_info(f'- {colors.running(application if application else "[no application defined]")}')
-            print_info(f'  {format_usage(usage_map)}')
-            print_info('  Job Groups:')
-            for group, group_usage in application_usage['groups'].items():
-                usage_map = group_usage['usage']
-                jobs = group_usage['jobs']
-                print_info(f'\t- {colors.bold(group if group else "[ungrouped]")}')
-                print_info(f'\t  {format_usage(usage_map)}')
-                print_info(f'\t  Jobs: {len(jobs)}')
-                print_info('')
-        print_info('')
+        if 'usage' in cluster_usage:
+            usage_map = cluster_usage['usage']
+            share_map = cluster_usage['share']
+            utilization_map = cluster_usage['cluster_utilization']
+            print_info(colors.bold(cluster))
+            print_info(format_share(share_map))
+            print_info(format_usage(usage_map))
+            print_info(format_cluster_utilization(utilization_map))
+            applications = cluster_usage['applications']
+            if applications:
+                print_info('Applications:')
+            else:
+                print_info(colors.waiting('Nothing Running'))
+            for application, application_usage in applications.items():
+                usage_map = application_usage['usage']
+                print_info(f'- {colors.running(application if application else "[no application defined]")}')
+                print_info(f'  {format_usage(usage_map)}')
+                print_info('  Job Groups:')
+                for group, group_usage in application_usage['groups'].items():
+                    usage_map = group_usage['usage']
+                    jobs = group_usage['jobs']
+                    print_info(f'\t- {colors.bold(group if group else "[ungrouped]")}')
+                    print_info(f'\t  {format_usage(usage_map)}')
+                    print_info(f'\t  Jobs: {len(jobs)}')
+                    print_info('')
+            print_info('')
 
 
 def usage(clusters, args, _):
