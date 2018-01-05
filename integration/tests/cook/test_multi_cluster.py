@@ -13,12 +13,16 @@ from tests.cook import util
 class MultiClusterTest(unittest.TestCase):
     _multiprocess_can_split_ = True
 
+    @classmethod
+    def setUpClass(cls):
+        cls.cook_url_1 = util.retrieve_cook_url()
+        cls.cook_url_2 = util.retrieve_cook_url('COOK_SCHEDULER_URL_2', 'http://localhost:22321')
+        util.init_cook_session(cls.cook_url_1, cls.cook_url_2)
+
     def setUp(self):
-        self.cook_url_1 = util.retrieve_cook_url()
-        self.cook_url_2 = util.retrieve_cook_url('COOK_SCHEDULER_URL_2', 'http://localhost:22321')
+        self.cook_url_1 = type(self).cook_url_1
+        self.cook_url_2 = type(self).cook_url_2
         self.logger = logging.getLogger(__name__)
-        util.wait_for_cook(self.cook_url_1)
-        util.wait_for_cook(self.cook_url_2)
 
     def test_federated_query(self):
         # Submit to cluster #1

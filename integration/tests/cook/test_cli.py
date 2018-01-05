@@ -13,9 +13,15 @@ from tests.cook import cli, util
 
 
 @pytest.mark.cli
+@unittest.skipIf(util.http_basic_auth_enabled(), "Cook CLI does not currently support HTTP Basic Auth")
 @pytest.mark.timeout(util.DEFAULT_TEST_TIMEOUT_SECS)  # individual test timeout
 class CookCliTest(unittest.TestCase):
     _multiprocess_can_split_ = True
+
+    @classmethod
+    def setUpClass(cls):
+        cls.cook_url = util.retrieve_cook_url()
+        util.init_cook_session(cls.cook_url)
 
     def current_name(self):
         """Returns the name of the currently running test function"""
@@ -23,7 +29,7 @@ class CookCliTest(unittest.TestCase):
         return test_id.split('.')[-1]
 
     def setUp(self):
-        self.cook_url = util.retrieve_cook_url()
+        self.cook_url = type(self).cook_url
         self.logger = logging.getLogger(__name__)
 
     def test_basic_submit_and_wait(self):

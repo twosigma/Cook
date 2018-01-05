@@ -20,11 +20,15 @@ from tests.cook import util
 class CookTest(unittest.TestCase):
     _multiprocess_can_split_ = True
 
+    @classmethod
+    def setUpClass(cls):
+        cls.cook_url = util.retrieve_cook_url()
+        util.init_cook_session(cls.cook_url)
+
     def setUp(self):
-        self.cook_url = util.retrieve_cook_url()
+        self.cook_url = type(self).cook_url
         self.mesos_url = util.retrieve_mesos_url()
         self.logger = logging.getLogger(__name__)
-        util.wait_for_cook(self.cook_url)
 
     def test_scheduler_info(self):
         info = util.scheduler_info(self.cook_url)
