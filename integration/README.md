@@ -1,4 +1,4 @@
-# Integration tests for Cook scheduler
+# Integration tests for Cook Scheduler
 
 Our integration tests currently require Python 3.6.
 All dependencies are specified in [`requirements.txt`](./requirements.txt),
