@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import pty
 import re
 import shlex
 import subprocess
@@ -10,6 +11,9 @@ from fcntl import fcntl, F_GETFL, F_SETFL
 from tests.cook import util
 
 logger = logging.getLogger(__name__)
+
+# Manually create a TTY that we can use as the default STDIN
+_STDIN_TTY = pty.openpty()[1]
 
 
 def decode(b):
@@ -32,10 +36,13 @@ def sh(command, stdin=None, env=None, wait_for_exit=True):
     logger.info(command + (f' # stdin: {decode(stdin)}' if stdin else ''))
     command_args = shlex.split(command)
     if wait_for_exit:
-        cp = subprocess.run(command_args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, input=stdin, env=env)
+        # We manually attach stdin to a TTY if there is no piped input
+        # since the default stdin isn't guaranteed to be a TTY.
+        input_args = {'input': stdin} if stdin is not None else {'stdin': _STDIN_TTY}
+        cp = subprocess.run(command_args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env, **input_args)
         return cp
     else:
-        proc = subprocess.Popen(command_args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        proc = subprocess.Popen(command_args, stdin=_STDIN_TTY, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         # Get the current stdout, stderr flags
         stdout_flags = fcntl(proc.stdout, F_GETFL)
         stderr_flags = fcntl(proc.stderr, F_GETFL)
@@ -282,3 +289,18 @@ def cat_with_logging(uuid, path, cook_url):
     s = stdout(cp)
     logging.info(f'cat of {path}: {s}')
     return cp
+
+
+def wait_for_output_file(cook_url, job_uuid, name):
+    """Waits for a file with the given name for the given job to exist"""
+
+    def query():
+        cp, _ = ls(job_uuid, cook_url, parse_json=False)
+        return json.loads(stdout(cp)) if cp.returncode == 0 else []
+
+    def predicate(entries):
+        logging.debug(f'Job {job_uuid} has entries {entries}')
+        return ls_entry_by_name(entries, name)
+
+    response = util.wait_until(query, predicate)
+    return response

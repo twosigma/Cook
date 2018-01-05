@@ -1,8 +1,10 @@
 #!/bin/bash
+
 set -ev
 
-cd $PROJECT_DIR/../executor
-bin/build-docker.sh
-cp -rfv $PROJECT_DIR/../executor/dist/cook-executor $PROJECT_DIR/../travis/
-mkdir -p $PROJECT_DIR/../scheduler/resources/public/
-cp -rfv $PROJECT_DIR/../executor/dist/cook-executor $PROJECT_DIR/../scheduler/resources/public/
+SCHEDULER_EXECUTOR_DIR=$(dirname $PROJECT_DIR)/scheduler/resources/public
+
+cd $(dirname $PROJECT_DIR)/executor
+pip install -r requirements.txt
+./bin/prepare-executor.sh local $SCHEDULER_EXECUTOR_DIR
+tar -C $(dirname $PROJECT_DIR)/travis -xzf $SCHEDULER_EXECUTOR_DIR/cook-executor-local.tar.gz

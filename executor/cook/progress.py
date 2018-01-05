@@ -133,7 +133,7 @@ class ProgressWatcher(object):
         ----------
         progress_regex_string: string
             The progress regex to match against, it must return one or two capture groups.
-            The first capture group represent the progress percentage.
+            The first capture group represents the progress percentage.
             The second capture group, if present, represents the progress message.
         """
         self.target_file = output_name

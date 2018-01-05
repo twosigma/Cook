@@ -87,7 +87,7 @@
                          "COOK_GPU?" (-> offer
                                          (offer-resource-scalar "gpus")
                                          (or 0.0)
-                                         (> 0))}]
+                                         pos?)}]
     (merge mesos-attributes cook-attributes)))
 
 (timers/deftimer [cook-mesos scheduler handle-status-update-duration])
@@ -543,7 +543,7 @@
     (reify ConstraintEvaluator
       (getName [_] (str (if @needs-gpus? "" "non_") "gpu_host_constraint"))
       (evaluate [_ task-request target-vm task-tracker-state]
-        (let [has-gpus? (boolean (or (> (or (.getScalarValue (.getCurrAvailableResources target-vm) "gpus") 0.0) 0)
+        (let [has-gpus? (boolean (or (pos? (or (.getScalarValue (.getCurrAvailableResources target-vm) "gpus") 0.0))
                                      (some (fn gpu-task? [req]
                                              @(job-needs-gpus? (:job req)))
                                            (into (vec (.getRunningTasks target-vm))
@@ -730,7 +730,7 @@
                                       (map #(-> % .getRequest :job))))
         category->job-uuids (pc/map-vals #(set (map :job/uuid %)) category->jobs)]
     (log/debug "matched jobs:" (pc/map-vals count category->job-uuids))
-    (when (not (empty? matches))
+    (when (seq matches)
       (let [matched-normal-jobs-resource-requirements (-> category->jobs :normal util/sum-resources-of-jobs)]
         (meters/mark! matched-tasks-cpus (:cpus matched-normal-jobs-resource-requirements))
         (meters/mark! matched-tasks-mem (:mem matched-normal-jobs-resource-requirements))))

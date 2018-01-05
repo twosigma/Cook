@@ -1,0 +1,28 @@
+#!/usr/bin/env python
+
+import os, pytest, sys
+
+if len(sys.argv) < 2:
+    sys.exit("USAGE: {} TEST_NAMES...".format(sys.argv[0]))
+
+target_names = sys.argv[1:]
+
+class FindTestsPlugin(object):
+
+    def __init__(self):
+        self.matched = []
+
+    def pytest_collection_modifyitems(self, items):
+        for target_name in target_names:
+            suffix = ':' + target_name
+            for item in items:
+                if item.nodeid.endswith(suffix):
+                    self.matched.append(item.nodeid)
+
+find_tests = FindTestsPlugin()
+pytest.main(['-c/dev/null', '--collect-only', '-p', 'no:terminal'], plugins=[find_tests])
+
+if not find_tests.matched:
+    sys.exit("No tests found with the given names.")
+
+os.execvp('pytest', ['-c/dev/null', '-n0', '-sv'] + find_tests.matched)

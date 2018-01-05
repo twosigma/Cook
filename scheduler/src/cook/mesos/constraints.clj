@@ -14,9 +14,9 @@
 ;; limitations under the License.
 ;;
 (ns cook.mesos.constraints
-  (:require [clojure.tools.logging :as log]
+  (:require [clojure.set :as set]
+            [clojure.tools.logging :as log]
             [cook.mesos.group :as group]
-            [cook.mesos.util :as util]
             [swiss.arrows :refer :all])
   (:import com.netflix.fenzo.VirtualMachineLease))
 
@@ -190,7 +190,7 @@
   "Given a group and a job, finds the set of all the running instances that belong to the jobs in
    'group', but do not belong to 'job'"
   (-> (group/group->running-task-set db group)
-      (clojure.set/difference (set (:job/instance job)))))
+      (set/difference (set (:job/instance job)))))
 
 (defn get-cotasks-from-tracker-state
   "Returns all the Fenzo TaskTracker.ActiveTask (stored in task-tracker-state) that correspond to
@@ -213,7 +213,7 @@
    in the current cycle."
   [db group task-id same-cycle-task-ids task-tracker-state]
   (let [cotask-ids (disj
-                     (clojure.set/union
+                     (set/union
                        (group/group->running-task-id-set db group) ; Tasks that are in the database (running or scheduled)
                        same-cycle-task-ids) ; Tasks in same cycle
                      task-id)] ; Do not include this task-id
@@ -247,7 +247,7 @@
           cotask-hostnames (map #(get % "HOSTNAME") cohost-attr-maps)
           passes? (and target-hostname
                        ; cotask-hostnames does not contain target-hostname
-                       (not (some #{target-hostname} cotask-hostnames)))
+                       (not-any? #{target-hostname} cotask-hostnames))
           reason (if passes? "" (format "The hostname %s is being used by other instances in group %s"
                                         target-hostname (:group/uuid (:group this))))]
       [passes? reason])))
