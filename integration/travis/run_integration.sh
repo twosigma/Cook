@@ -11,6 +11,7 @@ export PROJECT_DIR=`pwd`
 PYTEST_MARKS=''
 COOK_AUTH=one-user
 COOK_EXECUTOR=mesos
+CONFIG_FILE=scheduler_travis_config.edn
 
 while (( $# > 0 )); do
   case "$1" in
@@ -30,10 +31,10 @@ done
 
 case "$COOK_AUTH" in
   http-basic)
-    CONFIG_FILE="scheduler_http_basic_config.edn"
+    export COOK_HTTP_BASIC_AUTH=true
     ;;
   one-user)
-    CONFIG_FILE="scheduler_config.edn"
+    export COOK_EXECUTOR_PORTION=1
     ;;
   *)
     echo "Unrecognized auth scheme: $COOK_AUTH"

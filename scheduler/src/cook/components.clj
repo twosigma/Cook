@@ -600,7 +600,7 @@
                                   (Integer/parseInt value)
                                   default))
       'config/env-int #(Integer/parseInt (env %))
-      'config/env-bool #(Boolean/parseBoolean (or (env %) "false"))}}
+      'config/env-bool #(Boolean/valueOf (env %))}}
     config))
 
 (defn -main
