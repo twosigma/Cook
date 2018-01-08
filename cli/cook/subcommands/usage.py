@@ -106,13 +106,18 @@ def print_as_json(query_result):
     print(json.dumps(query_result))
 
 
+def format_processing_units(n):
+    """Formats n as a number of CPUs/GPUs"""
+    return '{:.1f}'.format(n)
+
+
 def format_usage(usage_map):
     """Given a "usage map" with cpus, mem, and gpus, returns a formatted usage string"""
     cpus = usage_map['cpus']
     gpus = usage_map['gpus']
-    s = f'Usage: {cpus} CPU{"s" if cpus > 1 else ""}, {format_job_memory(usage_map)} Memory'
+    s = f'Usage: {format_processing_units(cpus)} CPU{"s" if cpus > 1 else ""}, {format_job_memory(usage_map)} Memory'
     if gpus > 0:
-        s += f', {gpus} GPUs'
+        s += f', {format_processing_units(gpus)} GPUs'
     return s
 
 
