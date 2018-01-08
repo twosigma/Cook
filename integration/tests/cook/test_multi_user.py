@@ -61,14 +61,13 @@ class MultiUserCookTest(unittest.TestCase):
                         job_uuid, resp = util.submit_job(self.cook_url, command='sleep 240', **job_resources)
                         self.assertEqual(resp.status_code, 201, resp.content)
                         all_job_uuids.append(job_uuid)
-            # Don't query until the job starts
+            # Don't query until the jobs are all running
             util.wait_for_jobs(self.cook_url, all_job_uuids, 'running')
             # Check the usage for each of our users
             for i, user in enumerate(users):
                 with user:
                     # Get the current usage
-                    util.wait_for_job(self.cook_url, job_uuid, 'running')
-                    resp = util.user_current_usage(self.cook_url, user=user1.name)
+                    resp = util.user_current_usage(self.cook_url, user=user.name)
                     self.assertEqual(resp.status_code, 200, resp.content)
                     usage_data = resp.json()
                     # Check that the response structure looks as expected

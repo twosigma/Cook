@@ -78,7 +78,7 @@ docker create \
     -e "COOK_DATOMIC_URI=${COOK_DATOMIC_URI}" \
     -e "COOK_LOG_FILE=log/cook-${COOK_PORT}.log" \
     -v ${DIR}/../log:/opt/cook/log \
-    cook-scheduler:latest ${COOK_CONFIG}
+    cook-scheduler:latest ${COOK_CONFIG:-}
 
 docker network connect bridge ${NAME}
 docker network connect cook_nw ${NAME}

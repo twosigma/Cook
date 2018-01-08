@@ -1,3 +1,4 @@
+import functools
 import importlib
 import itertools
 import logging
@@ -21,9 +22,6 @@ DEFAULT_TEST_TIMEOUT_SECS = 600
 # default time limit used by most wait_* utility functions
 # 2 minutes should be more than sufficient on most cases
 DEFAULT_TIMEOUT_MS = 120000
-
-# Cached data from Cook's /info endpoint
-_cook_info = None
 
 
 def continuous_integration():
@@ -94,16 +92,14 @@ def multi_cluster_tests_enabled():
     """
     return os.getenv('COOK_MULTI_CLUSTER') is not None
 
-
+@functools.lru_cache()
 def _cook_auth_scheme():
     """Get the authentication scheme name from the cook scheduler info endpoint"""
-    global _cook_info
-    if _cook_info is None:
-        cook_url = retrieve_cook_url()
-        _wait_for_cook(cook_url)
-        _cook_info = scheduler_info(cook_url)
-        logger.info(f"Cook's authentication scheme is {_cook_info['authentication-scheme']}")
-    return _cook_info['authentication-scheme']
+    cook_url = retrieve_cook_url()
+    _wait_for_cook(cook_url)
+    cook_info = scheduler_info(cook_url)
+    logger.info(f"Cook's authentication scheme is {cook_info['authentication-scheme']}")
+    return cook_info['authentication-scheme']
 
 
 def http_basic_auth_enabled():
@@ -203,6 +199,7 @@ def settings(cook_url):
     return session.get(f'{cook_url}/settings').json()
 
 
+@functools.lru_cache()
 def scheduler_info(cook_url):
     resp = session.get(f'{cook_url}/info', auth=None)
     assert resp.status_code == 200
