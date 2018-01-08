@@ -12,7 +12,7 @@ from tests.cook import cli, util
 
 @pytest.mark.cli
 @unittest.skipUnless(util.multi_cluster_tests_enabled(), 'Requires setting the COOK_MULTI_CLUSTER environment variable')
-@unittest.skipIf(util.http_basic_auth_enabled(), "Cook CLI does not currently support HTTP Basic Auth")
+@unittest.skipIf(util.http_basic_auth_enabled(), 'Cook CLI does not currently support HTTP Basic Auth')
 @pytest.mark.timeout(util.DEFAULT_TEST_TIMEOUT_SECS)  # individual test timeout
 class MultiCookCliTest(unittest.TestCase):
     _multiprocess_can_split_ = True

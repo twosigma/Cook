@@ -13,7 +13,7 @@ from tests.cook import cli, util
 
 
 @pytest.mark.cli
-@unittest.skipIf(util.http_basic_auth_enabled(), "Cook CLI does not currently support HTTP Basic Auth")
+@unittest.skipIf(util.http_basic_auth_enabled(), 'Cook CLI does not currently support HTTP Basic Auth')
 @pytest.mark.timeout(util.DEFAULT_TEST_TIMEOUT_SECS)  # individual test timeout
 class CookCliTest(unittest.TestCase):
     _multiprocess_can_split_ = True

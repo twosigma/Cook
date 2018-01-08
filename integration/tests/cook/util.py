@@ -87,7 +87,7 @@ default_user = User('root')
 
 def multi_cluster_tests_enabled():
     """
-    Returns true if the CONTINUOUS_INTEGRATION environment variable is set,
+    Returns true if the COOK_MULTI_CLUSTER environment variable is set,
     indicating that multiple cook scheduler instances are running.
     """
     return os.getenv('COOK_MULTI_CLUSTER') is not None
