@@ -94,6 +94,6 @@ pytest -n4 -v --color=no --timeout-method=thread --boxed -m "${PYTEST_MARKS}" ||
 # If there were failures, dump the executor logs
 if [ "$test_failures" = true ]; then
   echo "Displaying scheduler logs"
-  ${PROJECT_DIR}/../travis/show_scheduler_logs.sh
+  ${TRAVIS_BUILD_DIR}/travis/show_scheduler_logs.sh
   exit 1
 fi
