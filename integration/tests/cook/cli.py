@@ -304,3 +304,11 @@ def wait_for_output_file(cook_url, job_uuid, name):
 
     response = util.wait_until(query, predicate)
     return response
+
+
+def usage(user, cook_url):
+    """Invokes the usage subcommand"""
+    args = f'usage --user {user} --json'
+    cp = cli(args, cook_url)
+    out = stdout(cp)
+    return cp, json.loads(out)
