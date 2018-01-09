@@ -64,6 +64,8 @@ function wait_for_cook {
         sleep 2.0
     done
     echo "$(date +%H:%M:%S) Connected to Cook on ${COOK_PORT}!"
+    curl -s localhost:${COOK_PORT}/info
+    echo
 }
 export -f wait_for_cook
 
