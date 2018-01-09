@@ -1607,14 +1607,14 @@ class CookCliTest(unittest.TestCase):
 
         # Submit un-grouped jobs
         cp, uuids = cli.submit(command, self.cook_url, submit_flags='--cpus 0.1 --mem 16')
+        self.assertEqual(0, cp.returncode, cp.stderr)
         uuid_1 = uuids[0]
-        self.assertEqual(0, cp.returncode, cp.stderr)
         cp, uuids = cli.submit(command, self.cook_url, submit_flags='--cpus 0.1 --mem 16')
+        self.assertEqual(0, cp.returncode, cp.stderr)
         uuid_2 = uuids[0]
-        self.assertEqual(0, cp.returncode, cp.stderr)
         cp, uuids = cli.submit(command, self.cook_url, submit_flags='--cpus 0.1 --mem 16')
-        uuid_3 = uuids[0]
         self.assertEqual(0, cp.returncode, cp.stderr)
+        uuid_3 = uuids[0]
 
         # Submit grouped jobs
         guuid_1 = uuid.uuid4()

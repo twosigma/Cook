@@ -26,22 +26,21 @@ def get_usage_on_cluster(cluster, user):
         print_error(f'Unable to retrieve settings information on {cluster["name"]} ({cluster["url"]}).')
         return {'count': 0}
 
+    utilization_map = None
     resp = http.__get(f'http://{settings_map["mesos-master-hosts"][0]}:5050/redirect', allow_redirects=False)
     if resp.status_code != 307:
-        print_error(f'Unable to find mesos leader on {cluster["name"]} ({cluster["url"]}).')
-        return {'count': 0}
-
-    mesos_leader_url = 'http:%s' % resp.headers['Location']
-    logging.info(f'Using mesos leader url {mesos_leader_url}')
-    resp = http.__get(f'{mesos_leader_url}/metrics/snapshot')
-    if resp.status_code != 200:
-        print_error(f'Unable to retrieve cluster utilization information on {cluster["name"]} ({cluster["url"]}).')
-        return {'count': 0}
+        logging.warning(f'Unable to find mesos leader on {cluster["name"]} ({cluster["url"]}).')
     else:
-        metrics_map = resp.json()
-        utilization_map = {'cpus': metrics_map['master/cpus_percent'],
-                           'mem': metrics_map['master/mem_percent'],
-                           'gpus': metrics_map['master/gpus_percent'] if 'master/gpus_percent' in metrics_map else 0}
+        mesos_leader_url = 'http:%s' % resp.headers['Location']
+        logging.info(f'Using mesos leader url {mesos_leader_url}')
+        resp = http.__get(f'{mesos_leader_url}/metrics/snapshot')
+        if resp.status_code != 200:
+            logging.warning(f'Unable to retrieve cluster utilization on {cluster["name"]} ({cluster["url"]}).')
+        else:
+            metrics = resp.json()
+            utilization_map = {'cpus': metrics['master/cpus_percent'],
+                               'mem': metrics['master/mem_percent'],
+                               'gpus': metrics['master/gpus_percent'] if 'master/gpus_percent' in metrics else 0}
 
     ungrouped_running_job_uuids = usage_map['ungrouped']['running_jobs']
     job_uuids_to_retrieve = ungrouped_running_job_uuids[:]
@@ -153,13 +152,16 @@ def format_percent(n):
 
 def format_cluster_utilization(utilization_map):
     """Given a "cluster utilization" map with cpus, mem, and gpus, returns a formatted utilization string"""
-    cpus = utilization_map['cpus']
-    mem = utilization_map['mem']
-    gpus = utilization_map['gpus']
-    s = f'Cluster Utilization: {format_percent(cpus)} CPU, {format_percent(mem)} Memory'
-    if gpus > 0:
-        s += f', {format_percent(gpus)} GPU'
-    return s
+    if utilization_map:
+        cpus = utilization_map['cpus']
+        mem = utilization_map['mem']
+        gpus = utilization_map['gpus']
+        s = f'Cluster Utilization: {format_percent(cpus)} CPU, {format_percent(mem)} Memory'
+        if gpus > 0:
+            s += f', {format_percent(gpus)} GPU'
+        return s
+    else:
+        return colors.reason('Cluster Utilization Not Available')
 
 
 def print_formatted(query_result):
