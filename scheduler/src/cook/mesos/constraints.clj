@@ -187,6 +187,8 @@
 ;; Group host placement constraints
 
 (defn- get-running-cotasks-from-cache
+  "Looks up the currently running tasks in group from group-uuid->running-cotask-cache
+   and loads them from db if missing."
   [db group-uuid->running-cotask-cache group]
   (let [group-uuid (:group/uuid group)]
     (cache/lookup (swap! group-uuid->running-cotask-cache
