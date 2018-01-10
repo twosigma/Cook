@@ -68,15 +68,17 @@ def retrieve_cook_url(varname='COOK_SCHEDULER_URL', value='http://localhost:1232
 
 
 def retrieve_mesos_url(varname='MESOS_PORT', value='5050'):
-    mesos_port = os.getenv(varname, value)
-    cook_url = retrieve_cook_url()
-    wait_for_cook(cook_url)
-    mesos_master_hosts = settings(cook_url).get('mesos-master-hosts', ['localhost'])
-    resp = session.get('http://%s:%s/redirect' % (mesos_master_hosts[0], mesos_port), allow_redirects=False)
-    if resp.status_code != 307:
-        raise RuntimeError('Unable to find mesos leader, redirect endpoint returned %d' % resp.status_code)
-    mesos_url = 'http:%s' % resp.headers['Location']
-    logger.info('Using mesos url %s' % mesos_url)
+    mesos_url = os.getenv('COOK_MESOS_LEADER_URL')
+    if mesos_url is None:
+        mesos_port = os.getenv(varname, value)
+        cook_url = retrieve_cook_url()
+        wait_for_cook(cook_url)
+        mesos_master_hosts = settings(cook_url).get('mesos-master-hosts', ['localhost'])
+        resp = session.get('http://%s:%s/redirect' % (mesos_master_hosts[0], mesos_port), allow_redirects=False)
+        if resp.status_code != 307:
+            raise RuntimeError('Unable to find mesos leader, redirect endpoint returned %d' % resp.status_code)
+        mesos_url = 'http:%s' % resp.headers['Location']
+    logger.info(f'Using mesos url {mesos_url}')
     return mesos_url
 
 
@@ -660,6 +662,23 @@ def user_current_usage(cook_url, **kwargs):
     based on their currently running jobs.
     """
     return session.get('%s/usage' % cook_url, params=kwargs)
+
+
+def set_limit(cook_url, limit_type, user, mem=None, cpus=None, gpus=None, jobs=None, reason='testing'):
+    limits = {}
+    body = {'user': user, limit_type: limits}
+    if reason is not None: body['reason'] = reason
+    if mem is not None: limits['mem'] = mem
+    if cpus is not None: limits['cpus'] = cpus
+    if gpus is not None: limits['gpus'] = gpus
+    if jobs is not None: limits['jobs'] = jobs
+    return session.post(f'{cook_url}/{limit_type}', json=body)
+
+
+def reset_limit(cook_url, limit_type, user, reason='testing'):
+    params = {'user': user}
+    if reason is not None: params['reason'] = reason
+    return session.delete(f'{cook_url}/{limit_type}', params=params)
 
 
 def retrieve_progress_file_env(cook_url):

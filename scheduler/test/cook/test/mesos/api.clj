@@ -344,9 +344,11 @@
 
 (deftest retries-api
   (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
-        h (basic-handler conn)
+        is-authorized-fn (partial auth/is-authorized? {:authorization-fn 'cook.authorization/configfile-admins-auth-open-gets})
+        h (basic-handler conn :is-authorized-fn is-authorized-fn)
         uuid1 (str (UUID/randomUUID))
         uuid2 (str (UUID/randomUUID))
+        group-uuid (str (UUID/randomUUID))
         create-response (h {:request-method :post
                             :scheme :http
                             :uri "/rawscheduler"
@@ -356,7 +358,8 @@
                             {"jobs" [(merge (basic-job) {"uuid" uuid1
                                                          "max_retries" 42})
                                      (merge (basic-job) {"uuid" uuid2
-                                                         "max_retries" 30})]}})
+                                                         "max_retries" 30
+                                                         "group" group-uuid})]}})
         retry-req-attrs {:scheme :http
                          :uri "/retry"
                          :authorization/user "mforsyth"}]
@@ -419,7 +422,54 @@
                                                   :query-params {"job" uuid2}}))
             read-body2 (response->body-data read-resp2)]
         (is (= read-body1 50))
-        (is (= read-body2 33))))))
+        (is (= read-body2 33))))
+
+    (testing "retry a job not allowed for non-owner"
+      (let [update-resp (h (merge retry-req-attrs
+                                  {:authorization/user "non-owner"
+                                   :request-method :put
+                                   :body-params {"job" uuid1
+                                                 "increment" 3}}))
+            _ (is (== 403 (:status update-resp)))
+            read-resp (h (merge retry-req-attrs {:request-method :get
+                                                 :query-params {:job uuid1}}))
+            read-body (response->body-data read-resp)]
+        (is (= read-body 50))))
+
+    (testing "retry a job group incrementing retries (default failed-only? = true)"
+      (let [update-resp (h (merge retry-req-attrs
+                                  {:request-method :put
+                                   :body-params {"groups" [group-uuid]
+                                                 "increment" 3}}))
+            _ (is (<= 200 (:status update-resp) 299))
+            read-resp (h (merge retry-req-attrs {:request-method :get
+                                                 :query-params {:job uuid2}}))
+            read-body (response->body-data read-resp)]
+        (is (= read-body 33))))
+
+    (testing "retry a job group incrementing retries (failed-only? = false)"
+      (let [update-resp (h (merge retry-req-attrs
+                                  {:request-method :put
+                                   :body-params {"groups" [group-uuid]
+                                                 "increment" 3
+                                                 "failed_only" false}}))
+            _ (is (<= 200 (:status update-resp) 299))
+            read-resp (h (merge retry-req-attrs {:request-method :get
+                                                 :query-params {:job uuid2}}))
+            read-body (response->body-data read-resp)]
+        (is (= read-body 36))))
+
+    (testing "retry a job group not allowed for non-owner"
+      (let [update-resp (h (merge retry-req-attrs
+                                  {:authorization/user "non-owner"
+                                   :request-method :put
+                                   :body-params {"groups" [group-uuid]
+                                                 "increment" 3}}))
+            _ (is (== 403 (:status update-resp)))
+            read-resp (h (merge retry-req-attrs {:request-method :get
+                                                 :query-params {:job uuid2}}))
+            read-body (response->body-data read-resp)]
+        (is (= read-body 36))))))
 
 (deftest instance-cancelling
   (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")]

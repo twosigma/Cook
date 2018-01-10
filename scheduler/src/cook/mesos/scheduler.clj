@@ -575,12 +575,18 @@
    given a job, its resources, its task-id and a function assigned-cotask-getter. assigned-cotask-getter should be a
    function that takes a group uuid and returns a set of task-ids, which correspond to the tasks that will be assigned
    during the same Fenzo scheduling cycle as the newly created TaskRequest."
-  [db job & {:keys [resources task-id assigned-resources guuid->considerable-cotask-ids]
+  [db job & {:keys [resources task-id assigned-resources guuid->considerable-cotask-ids running-cotask-cache]
           :or {resources (util/job-ent->resources job)
                task-id (str (java.util.UUID/randomUUID))
                assigned-resources (atom nil)
-               guuid->considerable-cotask-ids (constantly #{})}}]
-  (let [constraints (constraints/make-fenzo-job-constraints job)
+               guuid->considerable-cotask-ids (constantly #{})
+               running-cotask-cache (atom (cache/fifo-cache-factory {} :threshold 1))}}]
+  (let [constraints (into (constraints/make-fenzo-job-constraints job)
+                          (remove nil?
+                                  (mapv (fn make-group-constraints [group]
+                                          (constraints/make-fenzo-group-constraint
+                                           db group #(guuid->considerable-cotask-ids (:group/uuid group)) running-cotask-cache))
+                                        (:group/_job job))))
         needs-gpus? (constraints/job-needs-gpus? job)
         scalar-requests (reduce (fn [result resource]
                                   (if-let [value (:resource/amount resource)]
@@ -608,9 +614,11 @@
         leases (mapv #(->VirtualMachineLeaseAdapter % t) offers)
         considerable->task-id (plumbing.core/map-from-keys (fn [_] (str (java.util.UUID/randomUUID))) considerable)
         guuid->considerable-cotask-ids (util/make-guuid->considerable-cotask-ids considerable->task-id)
+        running-cotask-cache (atom (cache/fifo-cache-factory {} :threshold (max 1 (count considerable))))
         ; Important that requests maintains the same order as considerable
         requests (mapv (fn [job]
-                         (make-task-request db job :task-id (considerable->task-id job) :guuid->considerable-cotask-ids guuid->considerable-cotask-ids))
+                         (make-task-request db job :task-id (considerable->task-id job) :guuid->considerable-cotask-ids guuid->considerable-cotask-ids
+                                            :running-cotask-cache running-cotask-cache))
                        considerable)
         ;; Need to lock on fenzo when accessing scheduleOnce because scheduleOnce and
         ;; task assigner can not be called at the same time.

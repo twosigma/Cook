@@ -1675,7 +1675,7 @@
     (or (first (for [guuid (::groups ctx)
                      :let [group (d/entity (db conn) [:group/uuid guuid])
                            job (-> group :group/job first)]
-                     :when (some-> job unauthorized-job?)]
+                     :when (some-> job :job/uuid unauthorized-job?)]
                  [false {::error (str "You are not authorized to retry jobs from group " guuid ".")}]))
         (when-let [unauthorized-jobs (->> ctx ::non-group-jobs (filter unauthorized-job?) seq)]
           [false {::error (->> unauthorized-jobs
@@ -1737,14 +1737,15 @@
 
 ;; /share and /quota
 (def UserParam {:user s/Str})
+(def ReasonParam {:reason s/Str})
+(def UserLimitChangeParams (merge UserParam ReasonParam))
 
 (def UserLimitsResponse
   {String s/Num})
 
 (defn set-limit-params
   [limit-type]
-  {:body-params (merge UserParam {limit-type {s/Keyword s/Num}
-                                  :reason s/Str})})
+  {:body-params (merge UserLimitChangeParams {limit-type {s/Keyword s/Num}})})
 
 (defn retrieve-user-limit
   [get-limit-fn conn ctx]
@@ -2281,7 +2282,7 @@
                                                    share/get-share share/set-share!
                                                    conn is-authorized-fn)}
              :delete {:summary "Reset a user's share to the default"
-                      :parameters {:query-params UserParam}
+                      :parameters {:query-params UserLimitChangeParams}
                       :handler (destroy-limit-handler :share share/retract-share! conn is-authorized-fn)}}))
 
         (c-api/context
@@ -2301,7 +2302,7 @@
                                                    quota/get-quota quota/set-quota!
                                                    conn is-authorized-fn)}
              :delete {:summary "Reset a user's quota to the default"
-                      :parameters {:query-params UserParam}
+                      :parameters {:query-params UserLimitChangeParams}
                       :handler (destroy-limit-handler :delete quota/retract-quota! conn is-authorized-fn)}}))
 
         (c-api/context

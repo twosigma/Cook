@@ -15,7 +15,8 @@
 ;;
 (ns cook.test.mesos.rebalancer
   (:use clojure.test)
-  (:require [clojure.data.priority-map :as pm]
+  (:require [clojure.core.cache :as cache]
+            [clojure.data.priority-map :as pm]
             [clojure.test.check.generators :as gen]
             [cook.mesos :as mesos]
             [cook.mesos.dru :as dru]
@@ -208,6 +209,7 @@
   (testing "test without group constraints"
     (let [datomic-uri "datomic:mem://test-compute-preemption-decision"
           conn (restore-fresh-database! datomic-uri)
+          cotask-cache (atom (cache/fifo-cache-factory {} :threshold 100))
           job1 (create-dummy-job conn :user "ljin" :memory 10.0 :ncpus 10.0)
           job2 (create-dummy-job conn :user "ljin" :memory 5.0  :ncpus 5.0)
           job3 (create-dummy-job conn :user "ljin" :memory 15.0 :ncpus 25.0)
@@ -291,7 +293,8 @@
                                                               rebalancer/compute-pending-normal-job-dru
                                                               [])
                                                      {:min-dru-diff 0.05 :safe-dru-threshold 1.0}
-                                                     (d/entity db job9))))
+                                                     (d/entity db job9)
+                                                     cotask-cache)))
 
       (is (= {:hostname "hostB" :dru Double/MAX_VALUE :task nil :mem 15.0 :cpus 15.0 :gpus 0.0}
              (rebalancer/compute-preemption-decision db offer-cache
@@ -302,7 +305,8 @@
                                                               rebalancer/compute-pending-normal-job-dru
                                                               [])
                                                      {:min-dru-diff 0.5 :safe-dru-threshold 1.0}
-                                                     (d/entity db job9))))
+                                                     (d/entity db job9)
+                                                     cotask-cache)))
 
       (is (= {:hostname "hostA" :dru Double/MAX_VALUE :task nil :mem 20.0 :cpus 20.0 :gpus 0.0}
              (rebalancer/compute-preemption-decision db offer-cache
@@ -314,7 +318,8 @@
                                                               rebalancer/compute-pending-normal-job-dru
                                                               [])
                                                      {:min-dru-diff 0.5 :safe-dru-threshold 1.0}
-                                                     (d/entity db job9))))
+                                                     (d/entity db job9)
+                                                     cotask-cache)))
 
       (is (= {:hostname "hostB" :dru 2.2 :task [task-ent4] :mem 35.0 :cpus 25.0 :gpus 0.0}
              (rebalancer/compute-preemption-decision db offer-cache
@@ -326,7 +331,8 @@
                                                               rebalancer/compute-pending-normal-job-dru
                                                               [])
                                                      {:min-dru-diff 0.0 :safe-dru-threshold 1.0}
-                                                     (d/entity db job9))))
+                                                     (d/entity db job9)
+                                                     cotask-cache)))
 
       (is (= {:hostname "hostB" :dru 2.2 :task [task-ent4] :mem 25.0 :cpus 15.0 :gpus 0.0}
              (rebalancer/compute-preemption-decision db offer-cache
@@ -337,7 +343,8 @@
                                                               rebalancer/compute-pending-normal-job-dru
                                                               [])
                                                      {:min-dru-diff 0.5 :safe-dru-threshold 1.0}
-                                                     (d/entity db job10))))
+                                                     (d/entity db job10)
+                                                     cotask-cache)))
 
       (is (= nil
              (rebalancer/compute-preemption-decision db offer-cache
@@ -348,7 +355,8 @@
                                                               rebalancer/compute-pending-normal-job-dru
                                                               [])
                                                      {:min-dru-diff 0.5 :safe-dru-threshold 1.0}
-                                                     (d/entity db job11))))
+                                                     (d/entity db job11)
+                                                     cotask-cache)))
 
       (is (= nil
              (rebalancer/compute-preemption-decision db offer-cache
@@ -359,7 +367,8 @@
                                                               rebalancer/compute-pending-normal-job-dru
                                                               [])
                                                      {:min-dru-diff 0.0 :safe-dru-threshold 1.0}
-                                                     (d/entity db job12))))
+                                                     (d/entity db job12)
+                                                     cotask-cache)))
 
       (is (= {:hostname "hostA" :dru Double/MAX_VALUE :task nil :mem 40.0 :cpus 40.0 :gpus 0.0}
              (rebalancer/compute-preemption-decision db offer-cache
@@ -370,7 +379,8 @@
                                                               rebalancer/compute-pending-normal-job-dru
                                                               [])
                                                      {:min-dru-diff 0.5 :safe-dru-threshold 1.0}
-                                                     (d/entity db job12))))
+                                                     (d/entity db job12)
+                                                     cotask-cache)))
 
       (is (= nil
              (rebalancer/compute-preemption-decision db offer-cache
@@ -381,7 +391,8 @@
                                                               rebalancer/compute-pending-normal-job-dru
                                                               [])
                                                      {:min-dru-diff 0.0 :safe-dru-threshold 1.0}
-                                                     (d/entity db job12))))
+                                                     (d/entity db job12)
+                                                     cotask-cache)))
 
       (is (= {:hostname "hostB" :dru 2.2 :task [task-ent4] :mem 55.0 :cpus 45.0 :gpus 0.0}
              (rebalancer/compute-preemption-decision db offer-cache
@@ -393,7 +404,8 @@
                                                               rebalancer/compute-pending-normal-job-dru
                                                               [])
                                                      {:min-dru-diff 0.5 :safe-dru-threshold 1.0}
-                                                     (d/entity db job12))))
+                                                     (d/entity db job12)
+                                                     cotask-cache)))
 
       (is (= nil
              (rebalancer/compute-preemption-decision db offer-cache
@@ -404,7 +416,8 @@
                                                               rebalancer/compute-pending-normal-job-dru
                                                               [])
                                                      {:min-dru-diff 0.5 :safe-dru-threshold 1.0}
-                                                     (d/entity db job13))))
+                                                     (d/entity db job13)
+                                                     cotask-cache)))
 
       (is (= nil
              (rebalancer/compute-preemption-decision db offer-cache
@@ -415,7 +428,8 @@
                                                               rebalancer/compute-pending-normal-job-dru
                                                               [])
                                                      {:min-dru-diff 2.0 :safe-dru-threshold 1.0}
-                                                     (d/entity db job13))))
+                                                     (d/entity db job13)
+                                                     cotask-cache)))
 
       (is (= nil
              (rebalancer/compute-preemption-decision db offer-cache
@@ -426,7 +440,8 @@
                                                               rebalancer/compute-pending-normal-job-dru
                                                               [])
                                                      {:min-dru-diff 0.5 :safe-dru-threshold 1.0}
-                                                     (d/entity db job14))))))
+                                                     (d/entity db job14)
+                                                     cotask-cache)))))
   (testing "test preemption with novel-host job constraint"
     (let [datomic-uri "datomic:mem://test-compute-preemption-decision"
           conn (restore-fresh-database! datomic-uri)
@@ -438,7 +453,8 @@
                        "sticks" {"HOSTNAME" "sticks"}
                        "bricks" {"HOSTNAME" "bricks"}
                        "rebar" {"HOSTNAME" "rebar"}}
-          offer-cache (init-offer-cache)]
+          offer-cache (init-offer-cache)
+          cotask-cache (atom (cache/fifo-cache-factory {} :threshold 100))]
       (share/set-share! conn "default" "new cluster settings"
                         :mem 10.0 :cpus 10.0 :gpus 10.0)
       ; Fill up hosts with preemptable tasks
@@ -464,7 +480,8 @@
                                                                             rebalancer/compute-pending-normal-job-dru
                                                                             [])
                                                                    {:min-dru-diff 0.05 :safe-dru-threshold 1.0}
-                                                                   (d/entity db pending-job)))))))
+                                                                   (d/entity db pending-job)
+                                                                   cotask-cache))))))
 
       (testing "try placing a job that has been preempted everywhere, but not failed on rebar"
         (let [pending-job (create-dummy-job conn :user "diego" :ncpus 1.0)
@@ -489,7 +506,8 @@
                                                                             rebalancer/compute-pending-normal-job-dru
                                                                             [])
                                                                    {:min-dru-diff 0.05 :safe-dru-threshold 1.0}
-                                                                   (d/entity db pending-job)))))))
+                                                                   (d/entity db pending-job)
+                                                                   cotask-cache))))))
       (testing "try placing an unconstrained job"
         (let [pending-job (create-dummy-job conn :user "diego" :ncpus 1.0)
               db (d/db conn)
@@ -504,7 +522,8 @@
                                                                           rebalancer/compute-pending-normal-job-dru
                                                                           [])
                                                                  {:min-dru-diff 0.05 :safe-dru-threshold 1.0}
-                                                                 (d/entity db pending-job))))))))))
+                                                                 (d/entity db pending-job)
+                                                                 cotask-cache)))))))))
 
   (testing "test preemption with unique host-placement group constraint"
     (let [datomic-uri "datomic:mem://test-compute-preemption-decision"
@@ -517,7 +536,8 @@
                        "sticks" {"HOSTNAME" "sticks"}
                        "bricks" {"HOSTNAME" "bricks"}
                        "rebar" {"HOSTNAME" "rebar"}}
-          offer-cache (init-offer-cache)]
+          offer-cache (init-offer-cache)
+          cotask-cache (atom (cache/fifo-cache-factory {} :threshold 100))]
       (share/set-share! conn "default" "new cluster settings"
                         :mem 10.0 :cpus 10.0 :gpus 1.0)
       ; Fill up hosts with preemptable tasks
@@ -541,7 +561,8 @@
                                                                             rebalancer/compute-pending-normal-job-dru
                                                                             [])
                                                                    {:min-dru-diff 0.05 :safe-dru-threshold 1.0}
-                                                                   (d/entity db pending-job)))))))
+                                                                   (d/entity db pending-job)
+                                                                   cotask-cache))))))
 
       (testing "try placing job with no unconstrained-hosts available"
         (let [; Make a group with all available hosts occupied
@@ -561,7 +582,8 @@
                                                                  rebalancer/compute-pending-normal-job-dru
                                                                  [])
                                                         {:min-dru-diff 0.05 :safe-dru-threshold 1.0}
-                                                        (d/entity db pending-job))))))))
+                                                        (d/entity db pending-job)
+                                                        cotask-cache)))))))
 
   (testing "test preemption with attribute-equals host-placement group constraint"
     (let [datomic-uri "datomic:mem://test-compute-preemption-decision"
@@ -576,7 +598,8 @@
                            "sticks" {"az" "east" "HOSTNAME" "sticks"}
                            "bricks" {"az" "east" "HOSTNAME" "bricks"}
                            "rebar" {"az" "west" "HOSTNAME" "rebar"}}
-          offer-cache (init-offer-cache)]
+          offer-cache (init-offer-cache)
+          cotask-cache (atom (cache/fifo-cache-factory {} :threshold 100))]
       (share/set-share! conn "default" "new cluster limits"
                         :mem 10.0 :cpus 10.0 :gpus 1.0)
       ; Fill up hosts with preemptable tasks
@@ -604,7 +627,8 @@
                                                                             rebalancer/compute-pending-normal-job-dru
                                                                             [])
                                                                    {:min-dru-diff 0.05 :safe-dru-threshold 1.0}
-                                                                   (d/entity db pending-job)))))))
+                                                                   (d/entity db pending-job)
+                                                                   cotask-cache))))))
 
       (testing "try placing job with no unconstrained-hosts available"
         (let [group-id (create-dummy-group conn :host-placement
@@ -627,7 +651,8 @@
                                                                  rebalancer/compute-pending-normal-job-dru
                                                                  [])
                                                         {:min-dru-diff 0.05 :safe-dru-threshold 1.0}
-                                                        (d/entity db pending-job))))))))
+                                                        (d/entity db pending-job)
+                                                        cotask-cache)))))))
 
   (testing "test preemption with balanced host-placement group constraint"
     (let [datomic-uri "datomic:mem://test-compute-preemption-decision"
@@ -648,7 +673,8 @@
                            "concrete" {"az" "east" "HOSTNAME" "concrete"}
                            "steel" {"az" "west" "HOSTNAME" "steel"}
                            "gold" {"az" "south" "HOSTNAME" "gold"}
-                           "titanium" {"az" "north" "HOSTNAME" "titanium"}}]
+                           "titanium" {"az" "north" "HOSTNAME" "titanium"}}
+          cotask-cache (atom (cache/fifo-cache-factory {} :threshold 100))]
 
       (testing "try placing job with one unconstrained-host available"
         (let [conn (restore-fresh-database! datomic-uri)
@@ -682,7 +708,8 @@
                                                       rebalancer/compute-pending-normal-job-dru
                                                       [])
                                              {:min-dru-diff 0.05 :safe-dru-threshold 1.0}
-                                             (d/entity db pending-job)))]
+                                             (d/entity db pending-job)
+                                             cotask-cache))]
             (is (true? (or (= "titanium" preempted-host) (= "rebar" preempted-host)))))))
 
       (testing "try placing job with two unconstrained hosts available, but one has already been preempted this cycle"
@@ -720,7 +747,8 @@
                                                       rebalancer/compute-pending-normal-job-dru
                                                       [task-preempted-this-cycle])
                                              {:min-dru-diff 0.05 :safe-dru-threshold 1.0}
-                                             (d/entity db pending-job)))]
+                                             (d/entity db pending-job)
+                                             cotask-cache))]
             (is (true? (or (= "bricks" preempted-host) (= "gold" preempted-host))))))))))
 
 (deftest test-next-state
