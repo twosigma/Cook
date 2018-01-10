@@ -1675,7 +1675,7 @@
     (or (first (for [guuid (::groups ctx)
                      :let [group (d/entity (db conn) [:group/uuid guuid])
                            job (-> group :group/job first)]
-                     :when (some-> job unauthorized-job?)]
+                     :when (some-> job :job/uuid unauthorized-job?)]
                  [false {::error (str "You are not authorized to retry jobs from group " guuid ".")}]))
         (when-let [unauthorized-jobs (->> ctx ::non-group-jobs (filter unauthorized-job?) seq)]
           [false {::error (->> unauthorized-jobs
