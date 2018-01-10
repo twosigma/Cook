@@ -4,12 +4,24 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.8.4] - 2018-01-10
+### Added
+- Added unauthenticated /info endpoint for retrieving basic setup information, from @DaoWen
+- Added metrics for message rates of Mesos status changes and framework updates, from @shamsimam
+### Changed
+- Fixed error in Kerberos middleware setup, from @DaoWen
+- Reclassified `MESOS_EXECUTOR_TERMINATED` as a mea-culpa error, from @shamsimam
+- Fixed bug preventing group retry updates by non-admin users, from @DaoWen
+- Fixed bug causing a 500 rather than a 404 for gets on non-existent groups, from @DaoWen
+- Re-enabled Fenzo group constraints, from @pschorf
+
 ## [1.8.3] - 2017-12-12
 ### Added
 - Added /instances endpoint for retrieving job instances, from @dposada
 - Added /jobs resource for retrieving jobs, from @dposada
 - Added /usage endpoint for displaying user resource usage, from @DaoWen
 - Added failed-only option for retry endpoint, from @DaoWen
+- Added check for required `reason` parameter on share and quota deletions, from @DaoWen
 ### Changed
 - Fixed authorization check on group endpoint, from @DaoWen
 - Disabled fenzo group constraints, from @pschorf
