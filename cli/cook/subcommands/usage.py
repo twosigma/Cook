@@ -31,7 +31,7 @@ def get_usage_on_cluster(cluster, user):
     if resp.status_code != 307:
         logging.warning(f'Unable to find mesos leader on {cluster["name"]} ({cluster["url"]}).')
     else:
-        mesos_leader_url = 'http:%s' % resp.headers['Location']
+        mesos_leader_url = f'http:{resp.headers["Location"]}'
         logging.info(f'Using mesos leader url {mesos_leader_url}')
         resp = http.__get(f'{mesos_leader_url}/metrics/snapshot')
         if resp.status_code != 200:
@@ -105,8 +105,8 @@ def print_as_json(query_result):
     print(json.dumps(query_result))
 
 
-def format_processing_units(n):
-    """Formats n as a number of CPUs/GPUs"""
+def format_cpus(n):
+    """Formats n as a number of CPUs"""
     return '{:.1f}'.format(n)
 
 
@@ -114,9 +114,9 @@ def format_usage(usage_map):
     """Given a "usage map" with cpus, mem, and gpus, returns a formatted usage string"""
     cpus = usage_map['cpus']
     gpus = usage_map['gpus']
-    s = f'Usage: {format_processing_units(cpus)} CPU{"s" if cpus > 1 else ""}, {format_job_memory(usage_map)} Memory'
+    s = f'Usage: {format_cpus(cpus)} CPU{"s" if cpus > 1 else ""}, {format_job_memory(usage_map)} Memory'
     if gpus > 0:
-        s += f', {format_processing_units(gpus)} GPUs'
+        s += f', {gpus} GPU{"s" if gpus > 1 else ""}'
     return s
 
 
