@@ -1505,31 +1505,28 @@ class CookTest(unittest.TestCase):
         # The largest job we can submit that actually fits on a slave
         max_cpus = min(max_slave_cpus, task_constraint_cpus)
         # The number of "big" jobs we need to submit before one will not be scheduled
-        num_big_jobs = max(1, math.floor(max_cpus / task_constraint_cpus))
+        num_big_jobs = max(1, math.floor(max_slave_cpus / task_constraint_cpus))
         # Use the rest of the machine, plus one half CPU so one of the large jobs won't fit
         canary_cpus = max_slave_cpus - (num_big_jobs * max_cpus) + 0.5
         group = {'uuid': str(uuid.uuid4()),
                  'host-placement': {'type': 'attribute-equals',
                                     'parameters': {'attribute': 'HOSTNAME'}}}
-        # First job - a canary job with high priority which uses canary_cpus cpus
+        # First, num_big_jobs jobs each with max_cpus cpus which will sleep to fill up a single host:
+        jobs = [util.minimal_job(group=group['uuid'],
+                                 priority=100,
+                                 cpus=max_cpus,
+                                 command='sleep 600')
+                for _ in range(num_big_jobs)]
+        # Second, a canary job which uses canary_cpus cpus which will not fit on the host.
+        # Due to priority, this should be scheduled after the other jobs
         canary = util.minimal_job(group=group['uuid'],
-                                  priority=100,
+                                  priority=1,
                                   cpus=canary_cpus,
                                   command='sleep 600')
-        # Second job - a big job with low priority using max_cpus cpus
-        # Based on the priority, canary should be scheduled ahead of big_job, but because
-        # of the host-placement constraint they have to be scheduled on the same host.
-        # The canary should be able to be scheduled, but big_job should never be scheduled.
-        jobs = [util.minimal_job(group=group['uuid'],
-                                 priority=1,
-                                 cpus=max_cpus)
-                for _ in range(num_big_jobs)]
         jobs.append(canary)
         uuids, resp = util.submit_jobs(self.cook_url, jobs, groups=[group])
         self.assertEqual(201, resp.status_code, resp.content)
         try:
-            util.wait_for_job(self.cook_url, canary['uuid'], 'running')
-
             def query():
                 unscheduled_jobs, _ = util.unscheduled_jobs(self.cook_url, *[j['uuid'] for j in jobs])
                 self.logger.info(f"unscheduled_jobs response: {unscheduled_jobs}")
