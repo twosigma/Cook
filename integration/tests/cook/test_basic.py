@@ -1497,3 +1497,30 @@ class CookTest(unittest.TestCase):
             self.assertGreaterEqual(usage_data['total_usage']['jobs'], job_count, usage_data)
         finally:
             util.kill_jobs(self.cook_url, job_uuids)
+
+    def test_user_limits_change(self):
+        user = 'limit_change_test_user'
+        # set user quota
+        resp = util.set_limit(self.cook_url, 'quota', user, cpus=20)
+        self.assertEqual(resp.status_code, 201, resp.text)
+        # set user quota fails (malformed) if no reason is given
+        resp = util.set_limit(self.cook_url, 'quota', user, cpus=10, reason=None)
+        self.assertEqual(resp.status_code, 400, resp.text)
+        # reset user quota back to default
+        resp = util.reset_limit(self.cook_url, 'quota', user)
+        self.assertEqual(resp.status_code, 204, resp.text)
+        # reset user quota fails (malformed) if no reason is given
+        resp = util.reset_limit(self.cook_url, 'quota', user, reason=None)
+        self.assertEqual(resp.status_code, 400, resp.text)
+        # set user share
+        resp = util.set_limit(self.cook_url, 'share', user, cpus=10)
+        self.assertEqual(resp.status_code, 201, resp.text)
+        # set user share fails (malformed) if no reason is given
+        resp = util.set_limit(self.cook_url, 'share', user, cpus=10, reason=None)
+        self.assertEqual(resp.status_code, 400, resp.text)
+        # reset user share back to default
+        resp = util.reset_limit(self.cook_url, 'share', user)
+        self.assertEqual(resp.status_code, 204, resp.text)
+        # reset user share fails (malformed) if no reason is given
+        resp = util.reset_limit(self.cook_url, 'share', user, reason=None)
+        self.assertEqual(resp.status_code, 400, resp.text)
