@@ -1194,8 +1194,10 @@ for a job. E.g. {:resources {:cpus 4 :mem 3} :constraints {\"unique_host_constra
     :reason/code 99002
     :reason/string "Mesos executor terminated"
     :reason/name :mesos-executor-terminated
-    :reason/mea-culpa? false
-    :reason/mesos-reason :reason-executor-terminated}
+    :reason/mea-culpa? true
+    :reason/mesos-reason :reason-executor-terminated
+    ;; unless configured otherwise, start counting more than 3 failures against the job's retry limit
+    :reason/failure-limit 3}
    {:db/id (d/tempid :db.part/user)
     :reason/code 99003
     :reason/string "Command exited non-zero"

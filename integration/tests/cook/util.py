@@ -1,6 +1,7 @@
 import importlib
 import logging
 import os
+import os.path
 import time
 import uuid
 from urllib.parse import urlencode
@@ -11,6 +12,19 @@ from retrying import retry
 logger = logging.getLogger(__name__)
 session = importlib.import_module(os.getenv('COOK_SESSION_MODULE', 'requests')).Session()
 session.headers['User-Agent'] = f"Cook-Scheduler-Integration-Tests ({session.headers['User-Agent']})"
+
+DEFAULT_TEST_TIMEOUT_SECS = 600 # no individual test exceeds 10 minutes
+
+DEFAULT_TIMEOUT_MS = 120000
+
+
+def continuous_integration():
+    # Travis-CI sets this env variable automatically
+    return os.environ.get('CONTINUOUS_INTEGRATION')
+
+
+def has_docker_service():
+    return os.path.exists('/var/run/docker.sock')
 
 
 def get_in(dct, *keys):
@@ -54,15 +68,17 @@ def retrieve_cook_url(varname='COOK_SCHEDULER_URL', value='http://localhost:1232
 
 
 def retrieve_mesos_url(varname='MESOS_PORT', value='5050'):
-    mesos_port = os.getenv(varname, value)
-    cook_url = retrieve_cook_url()
-    wait_for_cook(cook_url)
-    mesos_master_hosts = settings(cook_url).get('mesos-master-hosts', ['localhost'])
-    resp = session.get('http://%s:%s/redirect' % (mesos_master_hosts[0], mesos_port), allow_redirects=False)
-    if resp.status_code != 307:
-        raise RuntimeError('Unable to find mesos leader, redirect endpoint returned %d' % resp.status_code)
-    mesos_url = 'http:%s' % resp.headers['Location']
-    logger.info('Using mesos url %s' % mesos_url)
+    mesos_url = os.getenv('COOK_MESOS_LEADER_URL')
+    if mesos_url is None:
+        mesos_port = os.getenv(varname, value)
+        cook_url = retrieve_cook_url()
+        wait_for_cook(cook_url)
+        mesos_master_hosts = settings(cook_url).get('mesos-master-hosts', ['localhost'])
+        resp = session.get('http://%s:%s/redirect' % (mesos_master_hosts[0], mesos_port), allow_redirects=False)
+        if resp.status_code != 307:
+            raise RuntimeError('Unable to find mesos leader, redirect endpoint returned %d' % resp.status_code)
+        mesos_url = 'http:%s' % resp.headers['Location']
+    logger.info(f'Using mesos url {mesos_url}')
     return mesos_url
 
 
@@ -266,7 +282,7 @@ def multi_cluster_tests_enabled():
     return os.getenv('COOK_MULTI_CLUSTER') is not None
 
 
-def wait_until(query, predicate, max_wait_ms=60000, wait_interval_ms=1000):
+def wait_until(query, predicate, max_wait_ms=DEFAULT_TIMEOUT_MS, wait_interval_ms=1000):
     """
     Block until the predicate is true for the result of the provided query.
     `query` is a thunk (nullary callable) that may be called multiple times.
@@ -351,12 +367,12 @@ def group_detail_query(cook_url, group_uuid, assert_response=True):
     return response
 
 
-def wait_for_job(cook_url, job_id, status, max_wait_ms=120000):
+def wait_for_job(cook_url, job_id, status, max_wait_ms=DEFAULT_TIMEOUT_MS):
     """Wait for the given job's status to change to the specified value."""
     return wait_for_jobs(cook_url, [job_id], status, max_wait_ms)[0]
 
 
-def wait_for_jobs(cook_url, job_ids, status, max_wait_ms=120000):
+def wait_for_jobs(cook_url, job_ids, status, max_wait_ms=DEFAULT_TIMEOUT_MS):
     def query():
         return query_jobs(cook_url, True, uuid=job_ids)
 
@@ -370,7 +386,7 @@ def wait_for_jobs(cook_url, job_ids, status, max_wait_ms=120000):
     return response.json()
 
 
-def wait_for_exit_code(cook_url, job_id, max_wait_ms=60000):
+def wait_for_exit_code(cook_url, job_id, max_wait_ms=DEFAULT_TIMEOUT_MS):
     """
     Wait for the given job's exit_code field to appear.
     (Only supported by Cook Executor jobs.)
@@ -394,7 +410,7 @@ def wait_for_exit_code(cook_url, job_id, max_wait_ms=60000):
                 logger.info(f"Job {job_id} instance {inst['task_id']} has exit code {inst['exit_code']}.")
                 return True
 
-    response = wait_until(query, predicate, max_wait_ms=max_wait_ms, wait_interval_ms=250)
+    response = wait_until(query, predicate, max_wait_ms=max_wait_ms)
     return response.json()[0]
 
 
@@ -429,7 +445,7 @@ def wait_for_sandbox_directory(cook_url, job_id):
     return wait_until(query, predicate, max_wait_ms=max_wait_ms, wait_interval_ms=250)
 
 
-def wait_for_end_time(cook_url, job_id, max_wait_ms=2000):
+def wait_for_end_time(cook_url, job_id, max_wait_ms=DEFAULT_TIMEOUT_MS):
     """
     Wait for the given job's end_time field to appear in instance 0.
     Returns an up-to-date job description object on success,
@@ -452,7 +468,7 @@ def wait_for_end_time(cook_url, job_id, max_wait_ms=2000):
                 logger.info(f"Job {job_id} instance {inst['task_id']} has end_time {inst['end_time']}.")
                 return True
 
-    response = wait_until(query, predicate, max_wait_ms=max_wait_ms, wait_interval_ms=250)
+    response = wait_until(query, predicate, max_wait_ms=max_wait_ms)
     return response.json()[0]
 
 
@@ -480,7 +496,7 @@ def wait_for_output_url(cook_url, job_uuid):
         else:
             logger.info(f"Job {job['uuid']} had no output_url")
 
-    response = wait_until(query, predicate, max_wait_ms=120000)
+    response = wait_until(query, predicate)
     return response['instances'][0]
 
 
@@ -646,6 +662,23 @@ def user_current_usage(cook_url, **kwargs):
     based on their currently running jobs.
     """
     return session.get('%s/usage' % cook_url, params=kwargs)
+
+
+def set_limit(cook_url, limit_type, user, mem=None, cpus=None, gpus=None, jobs=None, reason='testing'):
+    limits = {}
+    body = {'user': user, limit_type: limits}
+    if reason is not None: body['reason'] = reason
+    if mem is not None: limits['mem'] = mem
+    if cpus is not None: limits['cpus'] = cpus
+    if gpus is not None: limits['gpus'] = gpus
+    if jobs is not None: limits['jobs'] = jobs
+    return session.post(f'{cook_url}/{limit_type}', json=body)
+
+
+def reset_limit(cook_url, limit_type, user, reason='testing'):
+    params = {'user': user}
+    if reason is not None: params['reason'] = reason
+    return session.delete(f'{cook_url}/{limit_type}', params=params)
 
 
 def retrieve_progress_file_env(cook_url):

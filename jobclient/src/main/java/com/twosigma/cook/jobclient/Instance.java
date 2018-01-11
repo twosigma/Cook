@@ -69,10 +69,13 @@ final public class Instance {
         private Long _startTime;
         private Long _endTime;
         private Status _status;
+        private Integer _progress;
+        private String _progressMessage;
         private Long _reasonCode;
         private Boolean _preempted;
         private String _outputURL;
         private String _hostName;
+        private Executor _executor;
 
         /**
          * The task id must be provided prior to {@code build()}. If the instance status is not
@@ -85,8 +88,8 @@ final public class Instance {
             if (_status == null) {
                 _status = Status.UNKNOWN;
             }
-            return new Instance(_taskID, _slaveID, _executorID, _startTime, _endTime, _status, _reasonCode,
-                    _preempted, _outputURL, _hostName);
+            return new Instance(_taskID, _slaveID, _executorID, _startTime, _endTime, _status, _progress,
+                _progressMessage,  _reasonCode, _preempted, _outputURL, _hostName, _executor);
         }
 
         /**
@@ -157,6 +160,28 @@ final public class Instance {
             return this;
         }
 
+        /**
+         * Set the the task progress percent for the task expected to build.
+         *
+         * @param progress {@link Integer} specifies the task progress percent.
+         * @return this builder.
+         */
+        public Builder setProgress(Integer progress) {
+            _progress = progress;
+            return this;
+        }
+
+        /**
+         * Set the the task progress message for the task expected to build.
+         *
+         * @param progressMessage {@link String} specifies the task progress message.
+         * @return this builder.
+         */
+        public Builder setProgressMessage(String progressMessage) {
+            _progressMessage = progressMessage;
+            return this;
+        }
+
         public Builder setReasonCode(Long reasonCode) {
             _reasonCode = reasonCode;
             return this;
@@ -196,6 +221,27 @@ final public class Instance {
             return this;
         }
 
+        /**
+         * Set the executor of the instance expected to build.
+         *
+         * @param executor {@link String} specifies executor for a job.
+         * @return this builder.
+         */
+        public Builder setExecutor(String executor) {
+            return setExecutor(Executor.fromString(executor));
+        }
+
+        /**
+         * Set the executor of the instance expected to build.
+         *
+         * @param executor {@link Executor} specifies executor for a job.
+         * @return this builder.
+         */
+        public Builder setExecutor(Executor executor) {
+            _executor = executor;
+            return this;
+        }
+
         public UUID getTaskID() {
             return _taskID;
         }
@@ -220,12 +266,31 @@ final public class Instance {
             return _status;
         }
 
+        /**
+         * @return the progress percent of the instance. It returns null if the progress percent is unavailable.
+         */
+        public Integer getProgress() {
+            return _progress;
+        }
+
+        /**
+         * @return the progress message associated with the instance. It returns null if the message is unavailable.
+         */
+        public String getProgressMessage() {
+            return _progressMessage;
+        }
+
+
         public String getOutputURL() {
             return _outputURL;
         }
 
         public String getHostName() {
             return _hostName;
+        }
+
+        public Executor getExecutor() {
+            return _executor;
         }
     }
 
@@ -238,23 +303,30 @@ final public class Instance {
     final private Long _startTime;
     final private Long _endTime;
     final private Status _status;
+    final private Integer _progress;
+    final private String _progressMessage;
     final private Long _reasonCode;
     final private Boolean _preempted;
     final private String _outputURL;
     final private String _hostName;
+    final private Executor _executor;
 
     private Instance(UUID taskID, String slaveID, String executorID, Long startTime, Long endTime,
-                     Status status, Long reasonCode, Boolean preempted, String outputURL, String hostName) {
+                     Status status, Integer progress, String progressMessage, Long reasonCode, Boolean preempted,
+                     String outputURL, String hostName, Executor executor) {
         _taskID = taskID;
         _slaveID = slaveID;
         _executorID = executorID;
         _startTime = startTime;
         _endTime = endTime;
         _status = status;
+        _progress = progress;
+        _progressMessage = progressMessage;
         _reasonCode = reasonCode;
         _preempted = preempted;
         _outputURL = outputURL;
         _hostName = hostName;
+        _executor = executor;
     }
 
     /**
@@ -267,8 +339,11 @@ final public class Instance {
      *      "slave_id" : "20150311-033720-1963923116-5050-4084-32",
      *      "end_time" : 1426632251828,
      *      "status" : "success",
+     *      "progress" : 20,
+     *      "progress_message" : "twenty percent done",
      *      "start_time" : 1426632249597,
      *      "hostname" : "server1.example.com",
+     *      "executor" : "mesos",
      *      "executor_id" : "f52fbacf-52a1-44a2-bda1-cbfa477cc163",
      *      "task_id" : "f52fbacf-52a1-44a2-bda1-cbfa477cc163",
      *      "preempted": false
@@ -305,7 +380,16 @@ final public class Instance {
             instanceBuilder.setSlaveID(json.getString("slave_id"));
             instanceBuilder.setExecutorID(json.getString("executor_id"));
             instanceBuilder.setHostName(json.getString("hostname"));
+            if (json.has("executor")) {
+                instanceBuilder.setExecutor(json.getString("executor"));
+            }
             instanceBuilder.setStatus(Status.fromString(json.getString("status")));
+            if (json.has("progress")) {
+                instanceBuilder.setProgress(json.getInt("progress"));
+            }
+            if (json.has("progress_message")) {
+                instanceBuilder.setProgressMessage(json.getString("progress_message"));
+            }
             instanceBuilder.setPreempted(json.getBoolean("preempted"));
             instanceBuilder.setStartTime(json.getLong("start_time"));
             if (json.has("end_time")) {
@@ -343,8 +427,9 @@ final public class Instance {
     public String toString() {
         return "Instance [_taskID=" + _taskID + ", _slaveID=" + _slaveID + ", _executorID="
                 + _executorID + ", _startTime=" + _startTime + ", _endTime=" + _endTime
-                + ", _status=" + _status + ", _reasonCode=" + _reasonCode + ", _preempted=" + _preempted
-                + ", _outputURL=" + _outputURL + ", _hostName=" + _hostName + "]";
+                + ", _status=" + _status + ", _progress=" + _progress + ", _progressMessage=" + _progressMessage
+                + ", _reasonCode=" + _reasonCode + ", _preempted=" + _preempted + ", _outputURL=" + _outputURL
+                + ", _hostName=" + _hostName + ", _executor=" + _executor + "]";
     }
 
     public UUID getTaskID() {
@@ -371,6 +456,20 @@ final public class Instance {
         return _status;
     }
 
+    /**
+     * @return the progress percent of the instance. It returns null if the progress percent is unavailable.
+     */
+    public Integer getProgress() {
+        return _progress;
+    }
+
+    /**
+     * @return the progress message associated with the instance. It returns null if the message is unavailable.
+     */
+    public String getProgressMessage() {
+        return _progressMessage;
+    }
+
     public Long getReasonCode() {
         return _reasonCode;
     }
@@ -385,6 +484,10 @@ final public class Instance {
 
     public String getHostName() {
         return _hostName;
+    }
+
+    public Executor getExecutor() {
+        return _executor;
     }
 
 

@@ -87,11 +87,13 @@
                          "COOK_GPU?" (-> offer
                                          (offer-resource-scalar "gpus")
                                          (or 0.0)
-                                         (> 0))}]
+                                         pos?)}]
     (merge mesos-attributes cook-attributes)))
 
 (timers/deftimer [cook-mesos scheduler handle-status-update-duration])
+(meters/defmeter [cook-mesos scheduler handle-status-update-rate])
 (timers/deftimer [cook-mesos scheduler handle-framework-message-duration])
+(meters/defmeter [cook-mesos scheduler handle-framework-message-rate])
 (meters/defmeter [cook-mesos scheduler tasks-killed-in-status-update])
 
 (meters/defmeter [cook-mesos scheduler tasks-completed])
@@ -541,7 +543,7 @@
     (reify ConstraintEvaluator
       (getName [_] (str (if @needs-gpus? "" "non_") "gpu_host_constraint"))
       (evaluate [_ task-request target-vm task-tracker-state]
-        (let [has-gpus? (boolean (or (> (or (.getScalarValue (.getCurrAvailableResources target-vm) "gpus") 0.0) 0)
+        (let [has-gpus? (boolean (or (pos? (or (.getScalarValue (.getCurrAvailableResources target-vm) "gpus") 0.0))
                                      (some (fn gpu-task? [req]
                                              @(job-needs-gpus? (:job req)))
                                            (into (vec (.getRunningTasks target-vm))
@@ -573,12 +575,18 @@
    given a job, its resources, its task-id and a function assigned-cotask-getter. assigned-cotask-getter should be a
    function that takes a group uuid and returns a set of task-ids, which correspond to the tasks that will be assigned
    during the same Fenzo scheduling cycle as the newly created TaskRequest."
-  [db job & {:keys [resources task-id assigned-resources guuid->considerable-cotask-ids]
+  [db job & {:keys [resources task-id assigned-resources guuid->considerable-cotask-ids running-cotask-cache]
           :or {resources (util/job-ent->resources job)
                task-id (str (java.util.UUID/randomUUID))
                assigned-resources (atom nil)
-               guuid->considerable-cotask-ids (constantly #{})}}]
-  (let [constraints (constraints/make-fenzo-job-constraints job)
+               guuid->considerable-cotask-ids (constantly #{})
+               running-cotask-cache (atom (cache/fifo-cache-factory {} :threshold 1))}}]
+  (let [constraints (into (constraints/make-fenzo-job-constraints job)
+                          (remove nil?
+                                  (mapv (fn make-group-constraints [group]
+                                          (constraints/make-fenzo-group-constraint
+                                           db group #(guuid->considerable-cotask-ids (:group/uuid group)) running-cotask-cache))
+                                        (:group/_job job))))
         needs-gpus? (constraints/job-needs-gpus? job)
         scalar-requests (reduce (fn [result resource]
                                   (if-let [value (:resource/amount resource)]
@@ -606,9 +614,11 @@
         leases (mapv #(->VirtualMachineLeaseAdapter % t) offers)
         considerable->task-id (plumbing.core/map-from-keys (fn [_] (str (java.util.UUID/randomUUID))) considerable)
         guuid->considerable-cotask-ids (util/make-guuid->considerable-cotask-ids considerable->task-id)
+        running-cotask-cache (atom (cache/fifo-cache-factory {} :threshold (max 1 (count considerable))))
         ; Important that requests maintains the same order as considerable
         requests (mapv (fn [job]
-                         (make-task-request db job :task-id (considerable->task-id job) :guuid->considerable-cotask-ids guuid->considerable-cotask-ids))
+                         (make-task-request db job :task-id (considerable->task-id job) :guuid->considerable-cotask-ids guuid->considerable-cotask-ids
+                                            :running-cotask-cache running-cotask-cache))
                        considerable)
         ;; Need to lock on fenzo when accessing scheduleOnce because scheduleOnce and
         ;; task assigner can not be called at the same time.
@@ -728,7 +738,7 @@
                                       (map #(-> % .getRequest :job))))
         category->job-uuids (pc/map-vals #(set (map :job/uuid %)) category->jobs)]
     (log/debug "matched jobs:" (pc/map-vals count category->job-uuids))
-    (when (not (empty? matches))
+    (when (seq matches)
       (let [matched-normal-jobs-resource-requirements (-> category->jobs :normal util/sum-resources-of-jobs)]
         (meters/mark! matched-tasks-cpus (:cpus matched-normal-jobs-resource-requirements))
         (meters/mark! matched-tasks-mem (:mem matched-normal-jobs-resource-requirements))))
@@ -1482,65 +1492,74 @@
   [configured-framework-id gpu-enabled? conn heartbeat-ch fenzo offers-chan match-trigger-chan handle-progress-message
    sandbox-publisher-state]
   (mesos/scheduler
-    (registered [this driver framework-id master-info]
-                (log/info "Registered with mesos with framework-id " framework-id)
-                (let [value (-> framework-id mesomatic.types/pb->data :value)]
-                  (when (not= configured-framework-id value)
-                    (let [message (str "The framework-id provided by Mesos (" value ") "
-                                       "does not match the one Cook is configured with (" configured-framework-id ")")]
-                      (log/error message)
-                      (throw (ex-info message {:framework-id-mesos value :framework-id-cook configured-framework-id})))))
-                (when (and gpu-enabled? (not (re-matches #"1\.\d+\.\d+" (:version master-info))))
-                  (binding [*out* *err*]
-                    (println "Cannot enable GPU support on pre-mesos 1.0. The version we found was " (:version master-info)))
-                  (log/error "Cannot enable GPU support on pre-mesos 1.0. The version we found was " (:version master-info))
-                  (Thread/sleep 1000)
-                  (System/exit 1))
-                ;; Use future because the thread that runs mesos/scheduler doesn't load classes correctly. for reasons.
-                ;; As Sophie says, you want to future proof your code.
-                (future
-                  (try
-                    (reconcile-jobs conn)
-                    (reconcile-tasks (db conn) driver configured-framework-id fenzo)
-                    (catch Exception e
-                      (log/error e "Reconciliation error")))))
-    (reregistered [this driver master-info]
-                  (log/info "Reregistered with new master")
-                  (future
-                    (try
-                      (reconcile-jobs conn)
-                      (reconcile-tasks (db conn) driver configured-framework-id fenzo)
-                      (catch Exception e
-                        (log/error e "Reconciliation error")))))
+    (registered
+      [this driver framework-id master-info]
+      (log/info "Registered with mesos with framework-id " framework-id)
+      (let [value (-> framework-id mesomatic.types/pb->data :value)]
+        (when (not= configured-framework-id value)
+          (let [message (str "The framework-id provided by Mesos (" value ") "
+                             "does not match the one Cook is configured with (" configured-framework-id ")")]
+            (log/error message)
+            (throw (ex-info message {:framework-id-mesos value :framework-id-cook configured-framework-id})))))
+      (when (and gpu-enabled? (not (re-matches #"1\.\d+\.\d+" (:version master-info))))
+        (binding [*out* *err*]
+          (println "Cannot enable GPU support on pre-mesos 1.0. The version we found was " (:version master-info)))
+        (log/error "Cannot enable GPU support on pre-mesos 1.0. The version we found was " (:version master-info))
+        (Thread/sleep 1000)
+        (System/exit 1))
+      ;; Use future because the thread that runs mesos/scheduler doesn't load classes correctly. for reasons.
+      ;; As Sophie says, you want to future proof your code.
+      (future
+        (try
+          (reconcile-jobs conn)
+          (reconcile-tasks (db conn) driver configured-framework-id fenzo)
+          (catch Exception e
+            (log/error e "Reconciliation error")))))
+    (reregistered
+      [this driver master-info]
+      (log/info "Reregistered with new master")
+      (future
+        (try
+          (reconcile-jobs conn)
+          (reconcile-tasks (db conn) driver configured-framework-id fenzo)
+          (catch Exception e
+            (log/error e "Reconciliation error")))))
     ;; Ignore this--we can just wait for new offers
-    (offer-rescinded [this driver offer-id]
-                     ;; TODO: Rescind the offer in fenzo
-                     )
-    (framework-message [this driver executor-id slave-id message]
-                       (try
-                         (let [{:strs [task-id type] :as parsed-message} (json/read-str (String. ^bytes message "UTF-8"))]
-                           (case type
-                             "directory" (sandbox/update-sandbox sandbox-publisher-state parsed-message)
-                             "heartbeat" (heartbeat/notify-heartbeat heartbeat-ch executor-id slave-id parsed-message)
-                             (async-in-order-processing
-                               task-id #(handle-framework-message conn handle-progress-message parsed-message))))
-                         (catch Exception e
-                           (log/error e "Unable to process framework message"
-                                      {:executor-id executor-id, :message message, :slave-id slave-id}))))
-    (disconnected [this driver]
-                  (log/error "Disconnected from the previous master"))
+    (offer-rescinded
+      [this driver offer-id]
+      (comment "TODO: Rescind the offer in fenzo"))
+    (framework-message
+      [this driver executor-id slave-id message]
+      (meters/mark! handle-framework-message-rate)
+      (try
+        (let [{:strs [task-id type] :as parsed-message} (json/read-str (String. ^bytes message "UTF-8"))]
+          (case type
+            "directory" (sandbox/update-sandbox sandbox-publisher-state parsed-message)
+            "heartbeat" (heartbeat/notify-heartbeat heartbeat-ch executor-id slave-id parsed-message)
+            (async-in-order-processing
+              task-id #(handle-framework-message conn handle-progress-message parsed-message))))
+        (catch Exception e
+          (log/error e "Unable to process framework message"
+                     {:executor-id executor-id, :message message, :slave-id slave-id}))))
+    (disconnected
+      [this driver]
+      (log/error "Disconnected from the previous master"))
     ;; We don't care about losing slaves or executors--only tasks
     (slave-lost [this driver slave-id])
     (executor-lost [this driver executor-id slave-id status])
-    (error [this driver message]
-           (meters/mark! mesos-error)
-           (log/error "Got a mesos error!!!!" message))
-    (resource-offers [this driver offers]
-                     (receive-offers offers-chan match-trigger-chan driver offers))
-    (status-update [this driver status]
-                   (let [task-id (-> status :task-id :value)]
-                     (async-in-order-processing
-                       task-id #(handle-status-update conn driver fenzo status))))))
+    (error
+      [this driver message]
+      (meters/mark! mesos-error)
+      (log/error "Got a mesos error!!!!" message))
+    (resource-offers
+      [this driver offers]
+      (receive-offers offers-chan match-trigger-chan driver offers))
+    (status-update
+      [this driver status]
+      (meters/mark! handle-status-update-rate)
+      (let [task-id (-> status :task-id :value)]
+        (async-in-order-processing
+          task-id #(handle-status-update conn driver fenzo status))))))
 
 (defn create-datomic-scheduler
   [conn driver-atom pending-jobs-atom offer-cache heartbeat-ch offer-incubate-time-ms mea-culpa-failure-limit

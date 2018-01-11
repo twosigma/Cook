@@ -2,7 +2,7 @@ from collections import defaultdict
 
 from cook import http, colors
 from cook.querying import print_no_data, parse_entity_refs, query_with_stdin_support
-from cook.util import print_info, guard_no_cluster
+from cook.util import print_info, guard_no_cluster, partition
 
 
 def guard_against_duplicates(query_result):
@@ -48,51 +48,58 @@ def guard_against_duplicates(query_result):
         raise Exception(message)
 
 
+def __kill_entities(cluster, uuids, endpoint, param):
+    """Attempts to kill the jobs / instances / groups with the given UUIDs on the given cluster"""
+    resp = http.delete(cluster, endpoint, params={param: uuids})
+    return resp.status_code == 204
+
+
+def kill_jobs(cluster, uuids):
+    """Attempts to kill the jobs with the given UUIDs"""
+    return __kill_entities(cluster, uuids, 'rawscheduler', 'job')
+
+
+def kill_instances(cluster, uuids):
+    """Attempts to kill the job instsances with the given UUIDs"""
+    return __kill_entities(cluster, uuids, 'rawscheduler', 'instance')
+
+
+def kill_groups(cluster, uuids):
+    """Attempts to kill the job groups with the given UUIDs"""
+    return __kill_entities(cluster, uuids, 'group', 'uuid')
+
+
 def kill_entities(query_result, clusters):
     """Attempts to kill the jobs / instances / groups with the given UUIDs"""
-    num_failures = 0
-    success_status_code = 204
+    kill_batch_size = 100
+    failed = []
+    succeeded = []
     clusters_by_name = {c['name']: c for c in clusters}
+
+    def __kill(cluster, uuids, kill_fn, entity_type):
+        if len(uuids) > 0:
+            for uuid_batch in partition(uuids, kill_batch_size):
+                success = kill_fn(cluster, uuid_batch)
+                batch = [{'cluster': cluster, 'type': entity_type, 'uuid': u} for u in uuid_batch]
+                (succeeded if success else failed).extend(batch)
+
     for cluster_name, entities in query_result['clusters'].items():
         cluster = clusters_by_name[cluster_name]
-
         job_uuids = [j['uuid'] for j in entities['jobs']] if 'jobs' in entities else []
         instance_uuids = [i['task_id'] for i, _ in entities['instances']] if 'instances' in entities else []
-        num_jobs = len(job_uuids)
-        num_instances = len(instance_uuids)
-        if num_jobs > 0 or num_instances > 0:
-            resp = http.delete(cluster, 'rawscheduler', params={'job': job_uuids, 'instance': instance_uuids})
-            if resp.status_code == success_status_code:
-                for job_uuid in job_uuids:
-                    print_info(f'Killed job {colors.bold(job_uuid)} on {colors.bold(cluster_name)}.')
-                for instance_uuid in instance_uuids:
-                    print_info(f'Killed job instance {colors.bold(instance_uuid)} on {colors.bold(cluster_name)}.')
-            else:
-                num_failures += (num_jobs + num_instances)
-                for job_uuid in job_uuids:
-                    print(colors.failed(f'Failed to kill job {job_uuid} on {cluster_name}.'))
-                for instance_uuid in instance_uuids:
-                    print(colors.failed(f'Failed to kill job instance {instance_uuid} on {cluster_name}.'))
+        group_uuids = [g['uuid'] for g in entities['groups']] if 'groups' in entities else []
+        __kill(cluster, job_uuids, kill_jobs, 'job')
+        __kill(cluster, instance_uuids, kill_instances, 'job instance')
+        __kill(cluster, group_uuids, kill_groups, 'job group')
 
-        if 'groups' in entities:
-            group_uuids = [g['uuid'] for g in entities['groups']]
-            num_groups = len(group_uuids)
-            if num_groups > 0:
-                resp = http.delete(cluster, 'group', params={'uuid': group_uuids})
-                if resp.status_code == success_status_code:
-                    for group_uuid in group_uuids:
-                        print_info(f'Killed job group {colors.bold(group_uuid)} on {colors.bold(cluster_name)}.')
-                else:
-                    num_failures += num_groups
-                    for group_uuid in group_uuids:
-                        print(colors.failed(f'Failed to kill job group {group_uuid} on {cluster_name}.'))
-
-    if num_failures > 1:
-        print_info(f'There were {colors.failed(str(num_failures))} kill failures.')
-    elif num_failures == 1:
-        print_info(f'There was {colors.failed("1")} kill failure.')
-
-    return num_failures
+    for item in succeeded:
+        print_info(f'Killed {item["type"]} {colors.bold(item["uuid"])} on {colors.bold(item["cluster"]["name"])}.')
+    for item in failed:
+        print(colors.failed(f'Failed to kill {item["type"]} {item["uuid"]} on {item["cluster"]["name"]}.'))
+    num_succeeded = len(succeeded)
+    num_failed = len(failed)
+    print_info(f'Successful: {num_succeeded}, Failed: {num_failed}')
+    return num_failed
 
 
 def kill(clusters, args, _):

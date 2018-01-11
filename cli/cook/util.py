@@ -130,3 +130,16 @@ def guard_no_cluster(clusters):
     """Throws if no clusters have been specified, either via configuration or via the command line"""
     if not clusters:
         raise Exception('You must specify at least one cluster.')
+
+
+def distinct(seq):
+    """Remove duplicate entries from a sequence. Maintains original order."""
+    seen = set()
+    seen_add = seen.add
+    return [x for x in seq if not (x in seen or seen_add(x))]
+
+
+def partition(l, n):
+    """Yield successive n-sized chunks from l"""
+    for i in range(0, len(l), n):
+        yield l[i:i + n]

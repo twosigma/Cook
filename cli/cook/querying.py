@@ -1,15 +1,15 @@
-import collections
 import concurrent
 import logging
 import os
 import sys
 from collections import defaultdict
 from concurrent import futures
+from functools import partial
 from operator import itemgetter
 from urllib.parse import urlparse, parse_qs
 
 from cook import http, colors, mesos, progress
-from cook.util import is_valid_uuid, wait_until, print_info
+from cook.util import is_valid_uuid, wait_until, print_info, distinct, partition
 
 
 class Types:
@@ -23,23 +23,11 @@ class Clusters:
     ALL = '*'
 
 
-def __distinct(seq):
-    """Remove duplicate entries from a sequence. Maintains original order."""
-    return collections.OrderedDict(zip(seq, seq)).keys()
-
-
-def query_cluster(cluster, uuids, pred, timeout, interval, make_request_fn, entity_type):
+def __query_cluster(cluster, uuids, pred, timeout, interval, make_request_fn, entity_type):
     """
     Queries the given cluster for the given uuids with
     an optional predicate, pred, that must be satisfied
     """
-    if len(uuids) == 0:
-        return []
-
-    # Cook will give us back two copies if the user asks for the same UUID twice, e.g.
-    # $ cs show d38ea6bd-8a26-4ddf-8a93-5926fa2991ce d38ea6bd-8a26-4ddf-8a93-5926fa2991ce
-    # Prevent this by calling distinct:
-    uuids = __distinct(uuids)
 
     def satisfy_pred():
         return pred(http.make_data_request(cluster, lambda: make_request_fn(cluster, uuids)))
@@ -68,6 +56,24 @@ def query_cluster(cluster, uuids, pred, timeout, interval, make_request_fn, enti
                 progress.update(index, colors.bold('Done'))
             else:
                 raise TimeoutError('Timeout waiting for response.')
+    return entities
+
+
+def query_cluster(cluster, uuids, pred, timeout, interval, make_request_fn, entity_type):
+    """Delegates to __query_cluster in batches of at most 100 UUIDs and combines the results"""
+    if len(uuids) == 0:
+        return []
+
+    # Cook will give us back two copies if the user asks for the same UUID twice, e.g.
+    # $ cs show d38ea6bd-8a26-4ddf-8a93-5926fa2991ce d38ea6bd-8a26-4ddf-8a93-5926fa2991ce
+    # Prevent this by calling distinct:
+    uuids = distinct(uuids)
+
+    entities = []
+    query_batch_size = 100
+    for uuid_batch in partition(uuids, query_batch_size):
+        entity_batch = __query_cluster(cluster, uuid_batch, pred, timeout, interval, make_request_fn, entity_type)
+        entities.extend(entity_batch)
     return entities
 
 
@@ -162,6 +168,7 @@ def query(clusters, entity_refs, pred_jobs=None, pred_instances=None, pred_group
     Uses query_across_clusters to make the /rawscheduler
     requests in parallel across the given clusters
     """
+
     def submit(cluster, executor):
         return executor.submit(query_entities, cluster, entity_refs, pred_jobs,
                                pred_instances, pred_groups, timeout, interval)
@@ -263,13 +270,22 @@ def resource_to_entity_type(resource):
     return entity_type
 
 
-def parse_entity_refs(clusters, ref_strings):
+def cluster_url_to_name(cluster_url, clusters):
     """
-    Given the collection of configured clusters and a collection of entity ref strings, returns a pair
-    where the first element is a list of corresponding entity ref maps, and the second element is the
-    subset of clusters that are of interest.
+    Given a cluster URL and the configured clusters, returns the
+    corresponding cluster name, or throws if none is found
+    """
+    matched_clusters = [c for c in clusters if c['url'].lower().rstrip('/') == cluster_url.lower()]
+    if len(matched_clusters) == 0:
+        raise Exception(f'There is no configured cluster that matches {cluster_url}.')
 
-    In the list of entity ref maps, each map has the following shape:
+    cluster_name = matched_clusters[0]['name']
+    return cluster_name
+
+
+def parse_entity_ref(ref_string, cluster_url_to_name_fn):
+    """
+    Returns a list of entity ref maps, where each map has the following shape:
 
       {'cluster': ..., 'type': ..., 'uuid': ...}
 
@@ -292,50 +308,60 @@ def parse_entity_refs(clusters, ref_strings):
 
     Throws if an invalid entity ref string is encountered.
     """
+    result = urlparse(ref_string)
+
+    if not result.path:
+        raise Exception(f'{ref_string} is not a valid entity reference.')
+
+    if not result.netloc:
+        if not is_valid_uuid(result.path):
+            raise Exception(f'{result.path} is not a valid UUID.')
+
+        return [{'cluster': Clusters.ALL, 'type': Types.ALL, 'uuid': result.path}]
+
+    path_parts = result.path.split('/')
+    num_path_parts = len(path_parts)
+    cluster_url = (f'{result.scheme}://' if result.scheme else '') + result.netloc
+
+    if num_path_parts < 2:
+        raise Exception(f'Unable to determine entity type and UUID from {ref_string}.')
+
+    if num_path_parts == 2 and not result.query:
+        raise Exception(f'Unable to determine UUID from {ref_string}.')
+
+    cluster_name = cluster_url_to_name_fn(cluster_url)
+    entity_type = resource_to_entity_type(path_parts[1])
+
+    if num_path_parts > 2:
+        return [{'cluster': cluster_name, 'type': entity_type, 'uuid': path_parts[2]}]
+
+    query_args = parse_qs(result.query)
+
+    if 'uuid' not in query_args:
+        raise Exception(f'Unable to determine UUID from {ref_string}.')
+
+    return [{'cluster': cluster_name, 'type': entity_type, 'uuid': uuid} for uuid in query_args['uuid']]
+
+
+def parse_entity_refs(clusters, ref_strings):
+    """
+    Given the collection of configured clusters and a collection of entity ref strings, returns a pair
+    where the first element is a list of corresponding entity ref maps, and the second element is the
+    subset of clusters that are of interest.
+    """
     entity_refs = []
     cluster_names_of_interest = set()
     all_cluster_names = set(c['name'] for c in clusters)
+
     for ref_string in ref_strings:
-        result = urlparse(ref_string)
-
-        if not result.path:
-            raise Exception(f'{ref_string} is not a valid entity reference.')
-
-        if not result.netloc:
-            if not is_valid_uuid(result.path):
-                raise Exception(f'{result.path} is not a valid UUID.')
-
-            entity_refs.append({'cluster': Clusters.ALL, 'type': Types.ALL, 'uuid': result.path})
-            cluster_names_of_interest = all_cluster_names
-        else:
-            path_parts = result.path.split('/')
-            num_path_parts = len(path_parts)
-            cluster_url = (f'{result.scheme}://' if result.scheme else '') + result.netloc
-            matched_clusters = [c for c in clusters if c['url'].lower().rstrip('/') == cluster_url.lower()]
-
-            if num_path_parts < 2:
-                raise Exception(f'Unable to determine entity type and UUID from {ref_string}.')
-
-            if num_path_parts == 2 and not result.query:
-                raise Exception(f'Unable to determine UUID from {ref_string}.')
-
-            if len(matched_clusters) == 0:
-                raise Exception(f'There is no configured cluster that matches {ref_string}.')
-
-            cluster_name = matched_clusters[0]['name']
-            entity_type = resource_to_entity_type(path_parts[1])
-            cluster_names_of_interest.add(cluster_name)
-
-            if num_path_parts > 2:
-                entity_refs.append({'cluster': cluster_name, 'type': entity_type, 'uuid': path_parts[2]})
+        parsed_refs = parse_entity_ref(ref_string, partial(cluster_url_to_name, clusters=clusters))
+        entity_refs.extend(parsed_refs)
+        for entity_ref in parsed_refs:
+            cluster_name = entity_ref['cluster']
+            if cluster_name == Clusters.ALL:
+                cluster_names_of_interest = all_cluster_names
             else:
-                query_args = parse_qs(result.query)
-
-                if 'uuid' not in query_args:
-                    raise Exception(f'Unable to determine UUID from {ref_string}.')
-
-                for uuid in query_args['uuid']:
-                    entity_refs.append({'cluster': cluster_name, 'type': entity_type, 'uuid': uuid})
+                cluster_names_of_interest.add(cluster_name)
 
     clusters_of_interest = [c for c in clusters if c['name'] in cluster_names_of_interest]
     return entity_refs, clusters_of_interest

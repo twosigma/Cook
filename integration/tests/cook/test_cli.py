@@ -1,20 +1,26 @@
 import json
 import logging
 import os
+import pytest
 import subprocess
 import time
 import unittest
 import uuid
-from urllib.parse import urlparse
 
-from nose.plugins.attrib import attr
+from urllib.parse import urlparse
 
 from tests.cook import cli, util
 
 
-@attr(cli=True)
+@pytest.mark.cli
+@pytest.mark.timeout(util.DEFAULT_TEST_TIMEOUT_SECS)  # individual test timeout
 class CookCliTest(unittest.TestCase):
     _multiprocess_can_split_ = True
+
+    def current_name(self):
+        """Returns the name of the currently running test function"""
+        test_id = self.id()
+        return test_id.split('.')[-1]
 
     def setUp(self):
         self.cook_url = util.retrieve_cook_url()
@@ -414,7 +420,7 @@ class CookCliTest(unittest.TestCase):
         return cp, jobs
 
     def test_list_by_state(self):
-        name = str(uuid.uuid4())
+        name = f'{self.current_name()}_{uuid.uuid4()}'
 
         # Submit a job that will never run
         raw_job = {'command': 'ls', 'name': name, 'constraints': [['HOSTNAME', 'EQUALS', 'will not get scheduled']]}
@@ -579,15 +585,15 @@ class CookCliTest(unittest.TestCase):
         self.assertIn(uuids[0], jobs[0]['uuid'])
 
     def test_ssh_job_uuid(self):
-        cp, uuids = cli.submit('ls', self.cook_url)
+        cp, uuids = cli.submit('ls', self.cook_url, submit_flags=f'--name {self.current_name()}')
         self.assertEqual(0, cp.returncode, cp.stderr)
-        instance = util.wait_for_instance(self.cook_url, uuids[0])
+        instance = util.wait_for_output_url(self.cook_url, uuids[0])
         hostname = instance['hostname']
         env = os.environ
         env['CS_SSH'] = 'echo'
         cp = cli.ssh(uuids[0], self.cook_url, env=env)
         stdout = cli.stdout(cp)
-        self.assertEqual(0, cp.returncode, stdout)
+        self.assertEqual(0, cp.returncode, cli.decode(cp.stderr))
         self.assertIn(f'Attempting ssh for job instance {instance["task_id"]}', stdout)
         self.assertIn('Executing ssh', stdout)
         self.assertIn(hostname, stdout)
@@ -628,15 +634,15 @@ class CookCliTest(unittest.TestCase):
         self.assertIn('You provided a job group uuid', cli.decode(cp.stderr))
 
     def test_ssh_instance_uuid(self):
-        cp, uuids = cli.submit('ls', self.cook_url)
+        cp, uuids = cli.submit('ls', self.cook_url, submit_flags=f'--name {self.current_name()}')
         self.assertEqual(0, cp.returncode, cp.stderr)
-        instance = util.wait_for_instance(self.cook_url, uuids[0])
+        instance = util.wait_for_output_url(self.cook_url, uuids[0])
         hostname = instance['hostname']
         env = os.environ
         env['CS_SSH'] = 'echo'
         cp = cli.ssh(instance['task_id'], self.cook_url, env=env)
         stdout = cli.stdout(cp)
-        self.assertEqual(0, cp.returncode, stdout)
+        self.assertEqual(0, cp.returncode, cli.decode(cp.stderr))
         self.assertIn('Executing ssh', stdout)
         self.assertIn(hostname, stdout)
         self.assertIn(f'-t {hostname} cd', stdout)
@@ -713,10 +719,11 @@ class CookCliTest(unittest.TestCase):
     def test_tail_follow(self):
         sleep_seconds_between_lines = 0.5
         cp, uuids = cli.submit(
-            f'bash -c \'for i in {{1..30}}; do echo $i >> bar; sleep {sleep_seconds_between_lines}; done\'',
-            self.cook_url)
+            f'bash -c \'for i in {{1..300}}; do echo $i >> bar; sleep {sleep_seconds_between_lines}; done\'',
+            self.cook_url, submit_flags=f'--name {self.current_name()}')
         self.assertEqual(0, cp.returncode, cp.stderr)
         util.wait_for_instance(self.cook_url, uuids[0])
+        util.wait_for_output_url(self.cook_url, uuids[0])
         proc = cli.tail(uuids[0], 'bar', self.cook_url,
                         f'--follow --sleep-interval {sleep_seconds_between_lines}',
                         wait_for_exit=False)
@@ -756,9 +763,10 @@ class CookCliTest(unittest.TestCase):
         def entry(name):
             return cli.ls_entry_by_name(entries, name)
 
-        cp, uuids = cli.submit('"mkdir foo; echo 123 > foo/bar; echo 45678 > baz; mkdir empty"', self.cook_url)
+        cp, uuids = cli.submit('"mkdir foo; echo 123 > foo/bar; echo 45678 > baz; mkdir empty"',
+                               self.cook_url, submit_flags=f'--name {self.current_name()}')
         self.assertEqual(0, cp.returncode, cp.stderr)
-        util.wait_for_job(self.cook_url, uuids[0], 'completed')
+        cli.wait_for_output_file(self.cook_url, uuids[0], 'empty')
 
         # Path that doesn't exist
         cp, entries = cli.ls(uuids[0], self.cook_url, 'qux', parse_json=False)
@@ -825,10 +833,10 @@ class CookCliTest(unittest.TestCase):
         def entry(name):
             return cli.ls_entry_by_name(entries, name)
 
-        cp, uuids = cli.submit('"touch t?.sh; touch [ab]*; touch {b,c,est}; touch \'*\'; touch \'t*\'"', self.cook_url)
+        cp, uuids = cli.submit('"touch t?.sh; touch [ab]*; touch {b,c,est}; touch \'*\'; touch \'t*\'; touch done"',
+                               self.cook_url, submit_flags=f'--name {self.current_name()}')
         self.assertEqual(0, cp.returncode, cp.stderr)
-        util.wait_for_job(self.cook_url, uuids[0], 'completed')
-        self.assertEqual(0, cp.returncode, cp.stderr)
+        cli.wait_for_output_file(self.cook_url, uuids[0], 'done')
 
         path = 't?.sh'
         cp, _ = cli.ls(uuids[0], self.cook_url, path, parse_json=False)
@@ -896,7 +904,7 @@ class CookCliTest(unittest.TestCase):
         self.assertEqual(0, bar['size'])
 
     def test_ls_empty_root_directory(self):
-        cp, uuids = cli.submit("'rm -r * && rm -r .*'", self.cook_url)
+        cp, uuids = cli.submit("'rm -r * && rm -r .*'", self.cook_url, submit_flags=f'--name {self.current_name()}')
         self.assertEqual(0, cp.returncode, cp.stderr)
         util.wait_for_job(self.cook_url, uuids[0], 'completed')
         self.assertEqual(0, cp.returncode, cp.stderr)
@@ -924,10 +932,10 @@ class CookCliTest(unittest.TestCase):
     def test_show_progress_message(self):
         executor = util.get_job_executor_type(self.cook_url)
         line = util.progress_line(self.cook_url, 99, 'We are so close!')
-        cp, uuids = cli.submit(f'echo "{line}"', self.cook_url, submit_flags=f'--executor {executor}')
+        cp, uuids = cli.submit(f'echo "{line}"', self.cook_url, submit_flags=f'--executor {executor} '
+                                                                             f'--name {self.current_name()}')
         self.assertEqual(0, cp.returncode, cp.stderr)
-        util.wait_for_job(self.cook_url, uuids[0], 'completed')
-        self.assertEqual(0, cp.returncode, cp.stderr)
+        util.wait_for_instance(self.cook_url, uuids[0])
         cp, jobs = cli.show_jobs(uuids, self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual(executor, jobs[0]['instances'][0]['executor'])
@@ -960,10 +968,10 @@ class CookCliTest(unittest.TestCase):
                                'echo "Done" >> progress.txt\'',
                                self.cook_url,
                                submit_flags=f'--executor {executor} '
-                                            f'--env {progress_file_env}=progress.txt')
+                                            f'--env {progress_file_env}=progress.txt '
+                                            f'--name {self.current_name()}')
         self.assertEqual(0, cp.returncode, cp.stderr)
-        util.wait_for_job(self.cook_url, uuids[0], 'completed')
-        self.assertEqual(0, cp.returncode, cp.stderr)
+        util.wait_for_instance(self.cook_url, uuids[0])
         cp, jobs = cli.show_jobs(uuids, self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual(executor, jobs[0]['instances'][0]['executor'])
@@ -1123,7 +1131,8 @@ class CookCliTest(unittest.TestCase):
 
     def test_submit_with_command_prefix(self):
         # Specifying command prefix
-        cp, uuids = cli.submit('"exit ${FOO:-1}"', self.cook_url, submit_flags='--command-prefix "FOO=0; "')
+        cp, uuids = cli.submit('"exit ${FOO:-1}"', self.cook_url, submit_flags=f'--command-prefix "FOO=0; " '
+                                                                               f'--name {self.current_name()}')
         self.assertEqual(0, cp.returncode, cp.stderr)
         cp = cli.wait(uuids, self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
@@ -1135,7 +1144,8 @@ class CookCliTest(unittest.TestCase):
         config = {'defaults': {'submit': {}}}
         with cli.temp_config_file(config) as path:
             flags = '--config %s' % path
-            cp, uuids = cli.submit('"exit ${FOO:-1}"', self.cook_url, flags=flags)
+            cp, uuids = cli.submit('"exit ${FOO:-1}"', self.cook_url, flags=flags,
+                                   submit_flags=f'--name {self.current_name()}')
             self.assertEqual(0, cp.returncode, cp.stderr)
             cp = cli.wait(uuids, self.cook_url)
             self.assertEqual(0, cp.returncode, cp.stderr)
@@ -1147,7 +1157,8 @@ class CookCliTest(unittest.TestCase):
         config = {'defaults': {'submit': {'command-prefix': 'export FOO=0; '}}}
         with cli.temp_config_file(config) as path:
             flags = '--config %s' % path
-            cp, uuids = cli.submit('"exit ${FOO:-1}"', self.cook_url, flags=flags)
+            cp, uuids = cli.submit('"exit ${FOO:-1}"', self.cook_url, flags=flags,
+                                   submit_flags=f'--name {self.current_name()}')
             self.assertEqual(0, cp.returncode, cp.stderr)
             cp = cli.wait(uuids, self.cook_url)
             self.assertEqual(0, cp.returncode, cp.stderr)
@@ -1423,61 +1434,170 @@ class CookCliTest(unittest.TestCase):
         self.assertEqual(2, cp.returncode, cp.stderr)
         self.assertIn('not allowed with argument', cli.decode(cp.stderr))
 
-    def test_piping_from_jobs_to_kill(self):
+    def test_piping_from_jobs_to_kill_show_wait(self):
         name = uuid.uuid4()
-        cp, uuids = cli.submit_stdin(['sleep 300'] * 3, self.cook_url, submit_flags=f'--name {name}')
+        num_jobs = 101
+
+        # Submit a batch of jobs
+        cp, uuids = cli.submit_stdin(['ls'] * num_jobs, self.cook_url,
+                                     submit_flags=f'--name {name} --cpus 0.01 --mem 16')
         self.assertEqual(0, cp.returncode, cp.stderr)
+
+        # List the jobs
         user = util.get_user(self.cook_url, uuids[0])
-        jobs_flags = f'--user {user} --name {name} --running --waiting'
+        jobs_flags = f'--user {user} --name {name} --all --limit {num_jobs}'
         cp, jobs = cli.jobs_json(self.cook_url, jobs_flags)
         self.assertEqual(0, cp.returncode, cp.stderr)
-        self.assertEqual(3, len(jobs))
+        self.assertEqual(num_jobs, len(jobs))
+
+        # Pipe from jobs to kill
         cs = f'{cli.command()} --url {self.cook_url}'
         command = f'{cs} jobs {jobs_flags} -1 | {cs} kill'
         self.logger.info(command)
-        cp = subprocess.run(command, shell=True)
+        cp = subprocess.run(command, shell=True, stdout=subprocess.PIPE)
         self.assertEqual(0, cp.returncode, cp.stderr)
-        cp, jobs = cli.jobs_json(self.cook_url, jobs_flags)
-        self.assertEqual(0, cp.returncode, cp.stderr)
-        self.assertEqual(0, len(jobs))
-        cp, jobs = cli.jobs_json(self.cook_url, f'--user {user} --name {name} --failed')
-        self.assertEqual(0, cp.returncode, cp.stderr)
-        self.assertEqual(3, len(jobs))
+        self.assertIn(f'Successful: {num_jobs}, Failed: 0', cli.stdout(cp))
 
-    def test_piping_from_jobs_to_show(self):
-        name = uuid.uuid4()
-        cp, uuids = cli.submit_stdin(['ls'] * 3, self.cook_url, submit_flags=f'--name {name}')
+        # All jobs should now be completed
+        cp, jobs = cli.jobs_json(self.cook_url, f'--user {user} --name {name} --completed --limit {num_jobs}')
         self.assertEqual(0, cp.returncode, cp.stderr)
-        user = util.get_user(self.cook_url, uuids[0])
-        jobs_flags = f'--user {user} --name {name} --all'
-        cp, jobs = cli.jobs_json(self.cook_url, jobs_flags)
-        self.assertEqual(0, cp.returncode, cp.stderr)
-        self.assertEqual(3, len(jobs))
+        self.assertEqual(num_jobs, len(jobs))
+
+        # Pipe from jobs to show
         cs = f'{cli.command()} --url {self.cook_url}'
         command = f'{cs} jobs {jobs_flags} -1 | {cs} show --json'
         self.logger.info(command)
         cp = subprocess.run(command, shell=True, stdout=subprocess.PIPE)
         self.assertEqual(0, cp.returncode, cp.stderr)
         jobs = json.loads(cli.stdout(cp))['clusters'][self.cook_url]['jobs']
-        self.assertEqual(3, len(jobs), json.dumps(jobs, indent=2))
+        self.assertEqual(num_jobs, len(jobs))
         self.assertEqual(sorted(uuids), sorted([j['uuid'] for j in jobs]))
 
-    def test_piping_from_jobs_to_wait(self):
-        name = uuid.uuid4()
-        cp, uuids = cli.submit_stdin(['ls'] * 3, self.cook_url, submit_flags=f'--name {name}')
-        self.assertEqual(0, cp.returncode, cp.stderr)
-        user = util.get_user(self.cook_url, uuids[0])
-        jobs_flags = f'--user {user} --name {name} --all'
-        cp, jobs = cli.jobs_json(self.cook_url, jobs_flags)
-        self.assertEqual(0, cp.returncode, cp.stderr)
-        self.assertEqual(3, len(jobs))
-        cs = f'{cli.command()} --url {self.cook_url}'
+        # Pipe from jobs to wait
         command = f'{cs} jobs {jobs_flags} -1 | {cs} wait'
         self.logger.info(command)
-        cp = subprocess.run(command, shell=True)
+        cp = subprocess.run(command, shell=True, stdout=subprocess.PIPE)
         self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertIn('Waiting for 100 jobs', cli.stdout(cp))
+        self.assertIn(f'Waiting for {num_jobs-100} job', cli.stdout(cp))
 
-    def test_show_interesting_uuid(self):
+    def test_show_non_v4_uuid(self):
         cp = cli.show(['019c34c3-13b3-b370-01a5-d1ecc9071249'], self.cook_url)
+        if cp.returncode == 1:
+            self.assertIn('No matching data found', cli.stdout(cp), cp.stderr)
+        else:
+            self.assertEqual(0, cp.returncode, cp.stderr)
+
+    def test_cat_basic(self):
+        cp, uuids = cli.submit('bash -c "for i in {1..10}; do echo $i >> foo; done"', self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        cp = cli.wait(uuids, self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        # Ask for the file we wrote to
+        cp = cli.cat_with_logging(uuids[0], 'foo', self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertEqual('\n'.join([str(i) for i in range(1, 11)]) + '\n', cli.decode(cp.stdout))
+        # Ask for a file that doesn't exist
+        cp = cli.cat(uuids[0], uuid.uuid4(), self.cook_url)
         self.assertEqual(1, cp.returncode, cp.stderr)
-        self.assertIn('No matching data found', cli.stdout(cp), cp.stderr)
+        self.assertIn('file was not found', cli.decode(cp.stderr))
+
+    def test_cat_no_newlines(self):
+        cp, uuids = cli.submit('bash -c \'for i in {1..100}; do printf "$i " >> foo; done\'', self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        cp = cli.wait(uuids, self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        cp = cli.cat(uuids[0], 'foo', self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertEqual(' '.join([str(i) for i in range(1, 101)]) + ' ', cli.decode(cp.stdout))
+
+    def test_cat_large_file(self):
+        iterations = 20
+        cp, uuids = cli.submit('bash -c \'printf "hello\\nworld\\n" > file.txt; '
+                               f'for i in {{1..{iterations}}}; do '
+                               'cat file.txt file.txt > file2.txt && '
+                               'mv file2.txt file.txt; done\'',
+                               self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        cp = cli.wait(uuids, self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        cp = cli.cat(uuids[0], 'file.txt', self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertEqual('hello\nworld\n' * pow(2, iterations), cli.decode(cp.stdout))
+
+    def test_cat_large_file_no_newlines(self):
+        iterations = 18
+        cp, uuids = cli.submit('bash -c \'printf "helloworld" > file.txt; '
+                               f'for i in {{1..{iterations}}}; do '
+                               'cat file.txt file.txt > file2.txt && '
+                               'mv file2.txt file.txt; done\'',
+                               self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        cp = cli.wait(uuids, self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        cp = cli.cat(uuids[0], 'file.txt', self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertEqual('helloworld' * pow(2, iterations), cli.decode(cp.stdout))
+
+    def test_cat_zero_byte_file(self):
+        cp, uuids = cli.submit('touch file.txt', self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        cp = cli.wait(uuids, self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        cp = cli.cat(uuids[0], 'file.txt', self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertEqual('', cli.decode(cp.stdout))
+
+    def test_cat_invalid_entity_ref_string(self):
+        cp = cli.cat('foo', 'file.txt', self.cook_url)
+        self.assertEqual(2, cp.returncode, cp.stderr)
+        self.assertIn('error: argument target-entity', cli.decode(cp.stderr))
+
+    def test_cat_empty_path(self):
+        cp = cli.cat(uuid.uuid4(), '""', self.cook_url)
+        self.assertEqual(2, cp.returncode, cp.stderr)
+        self.assertIn('error: argument path', cli.decode(cp.stderr))
+
+    def test_cat_group_uuid(self):
+        group_uuid = uuid.uuid4()
+        cp, uuids = cli.submit('ls', self.cook_url, submit_flags=f'--group {group_uuid}')
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        cp = cli.cat(group_uuid, 'stdout', self.cook_url)
+        self.assertEqual(1, cp.returncode, cp.stdout)
+        self.assertIn('You provided a job group uuid', cli.decode(cp.stderr))
+
+    def test_cat_bogus_uuid(self):
+        bogus_uuid = uuid.uuid4()
+        cp = cli.cat(bogus_uuid, 'stdout', self.cook_url)
+        self.assertEqual(1, cp.returncode, cp.stdout)
+        self.assertIn('No matching data found', cli.decode(cp.stderr))
+
+    def test_cat_job_with_no_instances(self):
+        raw_job = {'command': 'ls', 'constraints': [['HOSTNAME', 'EQUALS', 'will not get scheduled']]}
+        cp, uuids = cli.submit(stdin=cli.encode(json.dumps(raw_job)), cook_url=self.cook_url, submit_flags='--raw')
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        waiting_uuid = uuids[0]
+        try:
+            cp = cli.cat(waiting_uuid, 'stdout', self.cook_url)
+            self.assertEqual(1, cp.returncode, cp.stdout)
+            self.assertIn('currently has no instances', cli.decode(cp.stderr))
+        finally:
+            util.kill_jobs(self.cook_url, jobs=[waiting_uuid])
+
+    def test_cat_with_broken_pipe(self):
+        iterations = 20
+        cp, uuids = cli.submit('bash -c \'printf "hello\\nworld\\n" > file.txt; '
+                               f'for i in {{1..{iterations}}}; do '
+                               'cat file.txt file.txt > file2.txt && '
+                               'mv file2.txt file.txt; done\'',
+                               self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        cp = cli.wait(uuids, self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        cs = f'{cli.command()} --url {self.cook_url}'
+        command = f'{cs} cat {uuids[0]} file.txt | head'
+        self.logger.info(command)
+        cp = subprocess.run(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertEqual('hello\nworld\n' * 5, cli.decode(cp.stdout))
+        self.assertEqual('', cli.decode(cp.stderr))

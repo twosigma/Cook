@@ -74,7 +74,7 @@
   (let [new-offers (filter (comp seq :resources)
                            (map make-offer (vals slave-id->host)))
         new-offers (filter (fn [{:keys [resources]}]
-                             (some #(> (get % :scalar 0) 0) resources))
+                             (some #(pos? (get % :scalar 0)) resources))
                            new-offers)]
     [new-offers
      (-> state
@@ -216,16 +216,15 @@
   ([state task-id scheduler driver task-state]
    (log/debug "Completing task" {:task-id task-id :state task-state :task (get-in state [:task-id->task task-id])})
    (if-let [task (get-in state [:task-id->task task-id])]
-     (do
-       (let [task->complete-status (get-in state [:config :task->complete-status]) 
-             task-state (or task-state (task->complete-status task))]
-         (.statusUpdate scheduler driver (mesos-type/->pb :TaskStatus
-                                                          {:task-id {:value task-id}
-                                                           :state task-state}))
-         (-> state
-             (update :task-id->task #(dissoc % task-id))
-             (update-in [:slave-id->host (:value (:slave-id task)) :available-resources]
-                        #(combine-resources (:resources task) %)))))
+     (let [task->complete-status (get-in state [:config :task->complete-status])
+           task-state (or task-state (task->complete-status task))]
+       (.statusUpdate scheduler driver (mesos-type/->pb :TaskStatus
+                                                        {:task-id {:value task-id}
+                                                         :state task-state}))
+       (-> state
+           (update :task-id->task #(dissoc % task-id))
+           (update-in [:slave-id->host (:value (:slave-id task)) :available-resources]
+                      #(combine-resources (:resources task) %))))
      state)))
 
 (defn complete-tasks!

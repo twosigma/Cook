@@ -388,7 +388,7 @@
                                    (do
                                      (log/info "Using kerberos middleware")
                                      (with-meta
-                                       (lazy-load-var 'cook.spnego/require-gss)
+                                       @(lazy-load-var 'cook.spnego/require-gss)
                                        {:json-value "kerberos"}))
                                    :else (throw (ex-info "Missing authorization configuration" {}))))
      :rate-limit (fnk [[:config {rate-limit nil}]]
