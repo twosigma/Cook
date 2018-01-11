@@ -844,7 +844,7 @@
                                      (map str)))))
         instances (map #(fetch-instance-map db %1 retrieve-sandbox-directory-from-agent) (:job/instance job))
         submit-time (when (:job/submit-time job) ; due to a bug, submit time may not exist for some jobs
-                (.getTime (:job/submit-time job)))
+                     (.getTime (:job/submit-time job)))
         job-map {:command (:job/command job)
                  :constraints constraints
                  :cpus (:cpus resources)
@@ -2043,12 +2043,12 @@
                 (timers/time!
                   list-endpoint
                   (let [{states ::states
-                        user ::user
-                        start-ms ::start-ms
-                        end-ms ::end-ms
-                        since-hours-ago ::since-hours-ago
-                        limit ::limit
-                        name-filter-fn ::name-filter-fn} ctx
+                         user ::user
+                         start-ms ::start-ms
+                         end-ms ::end-ms
+                         since-hours-ago ::since-hours-ago
+                         limit ::limit
+                         name-filter-fn ::name-filter-fn} ctx
                         start-ms' (or start-ms (- end-ms (-> since-hours-ago t/hours t/in-millis)))
                         start (Date. start-ms')
                         end (Date. end-ms)
@@ -2400,4 +2400,3 @@
     (format-params/wrap-restful-params {:formats [:json-kw]
                                         :handle-error c-mw/handle-req-error})
     (streaming-json-middleware)))
-
