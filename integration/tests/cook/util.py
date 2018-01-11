@@ -157,7 +157,7 @@ def retrieve_mesos_url(varname='MESOS_PORT', value='5050'):
     if mesos_url is None:
         mesos_port = os.getenv(varname, value)
         cook_url = retrieve_cook_url()
-        wait_for_cook(cook_url)
+        _wait_for_cook(cook_url)
         mesos_master_hosts = settings(cook_url).get('mesos-master-hosts', ['localhost'])
         resp = session.get('http://%s:%s/redirect' % (mesos_master_hosts[0], mesos_port), allow_redirects=False)
         if resp.status_code != 307:
