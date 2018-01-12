@@ -1,5 +1,4 @@
 import json
-import logging
 import sys
 
 from cook import http, colors
@@ -26,22 +25,6 @@ def get_usage_on_cluster(cluster, user):
         print_error(f'Unable to retrieve settings information on {cluster["name"]} ({cluster["url"]}).')
         return {'count': 0}
 
-    utilization_map = None
-    resp = http.__get(f'http://{settings_map["mesos-master-hosts"][0]}:5050/redirect', allow_redirects=False)
-    if resp.status_code != 307:
-        logging.warning(f'Unable to find mesos leader on {cluster["name"]} ({cluster["url"]}).')
-    else:
-        mesos_leader_url = f'http:{resp.headers["Location"]}'
-        logging.info(f'Using mesos leader url {mesos_leader_url}')
-        resp = http.__get(f'{mesos_leader_url}/metrics/snapshot')
-        if resp.status_code != 200:
-            logging.warning(f'Unable to retrieve cluster utilization on {cluster["name"]} ({cluster["url"]}).')
-        else:
-            metrics = resp.json()
-            utilization_map = {'cpus': metrics['master/cpus_percent'],
-                               'mem': metrics['master/mem_percent'],
-                               'gpus': metrics['master/gpus_percent'] if 'master/gpus_percent' in metrics else 0}
-
     ungrouped_running_job_uuids = usage_map['ungrouped']['running_jobs']
     job_uuids_to_retrieve = ungrouped_running_job_uuids[:]
     grouped = usage_map['grouped']
@@ -57,7 +40,6 @@ def get_usage_on_cluster(cluster, user):
     query_result = {'usage': usage_map['total_usage'],
                     'count': num_running_jobs,
                     'share': share_map,
-                    'cluster_utilization': utilization_map,
                     'applications': applications}
 
     if num_running_jobs > 0:
@@ -150,31 +132,15 @@ def format_percent(n):
     return '{:.1%}'.format(n)
 
 
-def format_cluster_utilization(utilization_map):
-    """Given a "cluster utilization" map with cpus, mem, and gpus, returns a formatted utilization string"""
-    if utilization_map:
-        cpus = utilization_map['cpus']
-        mem = utilization_map['mem']
-        gpus = utilization_map['gpus']
-        s = f'Cluster Utilization: {format_percent(cpus)} CPU, {format_percent(mem)} Memory'
-        if gpus > 0:
-            s += f', {format_percent(gpus)} GPU'
-        return s
-    else:
-        return colors.reason('Cluster Utilization Not Available')
-
-
 def print_formatted(query_result):
     """Prints the query result as a hierarchical set of bullets"""
     for cluster, cluster_usage in query_result['clusters'].items():
         if 'usage' in cluster_usage:
             usage_map = cluster_usage['usage']
             share_map = cluster_usage['share']
-            utilization_map = cluster_usage['cluster_utilization']
             print_info(colors.bold(cluster))
             print_info(format_share(share_map))
             print_info(format_usage(usage_map))
-            print_info(format_cluster_utilization(utilization_map))
             applications = cluster_usage['applications']
             if applications:
                 print_info('Applications:')
