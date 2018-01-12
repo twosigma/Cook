@@ -8,6 +8,6 @@ export PROJECT_DIR=`pwd`
 lein with-profiles +test deps
 
 # Install the current version of the jobclient
-cd ${PROJECT_DIR}/../jobclient
+cd ${TRAVIS_BUILD_DIR}/jobclient
 lein do clean, compile, install
 cd ${PROJECT_DIR}

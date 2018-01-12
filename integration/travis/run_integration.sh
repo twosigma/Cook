@@ -1,12 +1,60 @@
 #!/bin/bash
 
-# Relies on the COOK_EXECUTOR environment variable to choose which edn file to load.
-# When set to 1, the Cook executor is enabled.
-# Else, the Mesos Command executor is used.
+# Usage: ./run_integration [OPTIONS...]
+#   --auth={http-basic,one-user}    Use the specified authentication scheme. Default is one-user.
+#   --executor={cook,mesos}         Use the specified job executor. Default is mesos.
 
 set -ev
 
+export PROJECT_DIR=`pwd`
+
 PYTEST_MARKS=''
+COOK_AUTH=one-user
+COOK_EXECUTOR=mesos
+CONFIG_FILE=scheduler_travis_config.edn
+
+while (( $# > 0 )); do
+  case "$1" in
+    --auth=*)
+      COOK_AUTH="${1#--auth=}"
+      shift
+      ;;
+    --executor=*)
+      COOK_EXECUTOR="${1#--executor=}"
+      shift
+      ;;
+    *)
+      echo "Unrecognized option: $1"
+      exit 1
+  esac
+done
+
+case "$COOK_AUTH" in
+  http-basic)
+    export COOK_HTTP_BASIC_AUTH=true
+    ;;
+  one-user)
+    export COOK_EXECUTOR_PORTION=1
+    ;;
+  *)
+    echo "Unrecognized auth scheme: $COOK_AUTH"
+    exit 1
+esac
+
+case "$COOK_EXECUTOR" in
+  cook)
+    echo "$(date +%H:%M:%S) Cook executor has been enabled"
+    COOK_EXECUTOR_COMMAND="${TRAVIS_BUILD_DIR}/travis/cook-executor-local/cook-executor-local"
+    # Build cook-executor
+    ${TRAVIS_BUILD_DIR}/travis/build_cook_executor.sh
+    ;;
+  mesos)
+    COOK_EXECUTOR_COMMAND=""
+    ;;
+  *)
+    echo "Unrecognized executor: $EXECUTOR"
+    exit 1
+esac
 
 function wait_for_cook {
     COOK_PORT=${1:-12321}
@@ -16,24 +64,13 @@ function wait_for_cook {
         sleep 2.0
     done
     echo "$(date +%H:%M:%S) Connected to Cook on ${COOK_PORT}!"
+    curl -s localhost:${COOK_PORT}/info
+    echo
 }
 export -f wait_for_cook
 
-export PROJECT_DIR=`pwd`
-
-CONFIG_FILE="scheduler_config.edn"
-COOK_EXECUTOR_COMMAND=""
-if [ "${COOK_EXECUTOR}" = "1" ]
-then
-  echo "$(date +%H:%M:%S) Cook executor has been enabled"
-  COOK_EXECUTOR_COMMAND="${TRAVIS_BUILD_DIR}/travis/cook-executor-local/cook-executor-local"
-fi
-
-# Build cook-executor
-${PROJECT_DIR}/../travis/build_cook_executor.sh
-
 # Start minimesos
-cd ${PROJECT_DIR}/../travis
+cd ${TRAVIS_BUILD_DIR}/travis
 ./minimesos up
 $(./minimesos info | grep MINIMESOS)
 export COOK_ZOOKEEPER="${MINIMESOS_ZOOKEEPER_IP}:2181"
@@ -43,7 +80,7 @@ export MINIMESOS_ZOOKEEPER=${MINIMESOS_ZOOKEEPER%;}
 
 # Start three cook schedulers. We want one cluster with two cooks to run MasterSlaveTest, and a second cluster to run MultiClusterTest.
 # The basic tests will run against cook-framework-1
-cd ${PROJECT_DIR}/../scheduler
+cd ${TRAVIS_BUILD_DIR}/scheduler
 ## on travis, ports on 172.17.0.1 are bindable from the host OS, and are also
 ## available for processes inside minimesos containers to connect to
 export COOK_EXECUTOR_COMMAND=${COOK_EXECUTOR_COMMAND}
@@ -56,7 +93,7 @@ LIBPROCESS_IP=172.17.0.1 COOK_DATOMIC="datomic:mem://cook-jobs" COOK_PORT=22321 
 timeout 180s bash -c "wait_for_cook 12321" || curl_error=true
 if [ "$curl_error" = true ]; then
   echo "$(date +%H:%M:%S) Timed out waiting for cook to start listening, displaying cook log"
-  cat ${PROJECT_DIR}/../scheduler/log/cook-12321.log
+  cat ${TRAVIS_BUILD_DIR}/scheduler/log/cook-12321.log
   exit 1
 fi
 
@@ -66,18 +103,18 @@ LIBPROCESS_IP=172.17.0.1 COOK_DATOMIC="datomic:free://localhost:4334/cook-jobs" 
 timeout 180s bash -c "wait_for_cook 12322" || curl_error=true
 if [ "$curl_error" = true ]; then
   echo "$(date +%H:%M:%S) Timed out waiting for cook to start listening, displaying cook log"
-  cat ${PROJECT_DIR}/../scheduler/log/cook-12322.log
+  cat ${TRAVIS_BUILD_DIR}/scheduler/log/cook-12322.log
   exit 1
 fi
 timeout 180s bash -c "wait_for_cook 22321" || curl_error=true
 if [ "$curl_error" = true ]; then
     echo "$(date +%H:%M:%S) Timed out waiting for cook to start listening, displaying cook log"
-    cat ${PROJECT_DIR}/../scheduler/log/cook-22321.log
+    cat ${TRAVIS_BUILD_DIR}/scheduler/log/cook-22321.log
     exit 1
 fi
 
 # Install the CLI
-cd ${PROJECT_DIR}/../cli
+cd ${TRAVIS_BUILD_DIR}/cli
 python --version
 pip install -e .
 CLI=$(pyenv which cs)

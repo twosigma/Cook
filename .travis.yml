@@ -26,16 +26,16 @@ env:
     - CLJ_HTTP_ASYNC_POOL_TEST_DURATION_MULTIPLIER=5
     - PYENV_ROOT=$HOME/.pyenv  # ensure that pyenv is using our local cache for its install root
   matrix:
-    - COOK_EXECUTOR='1' TEST_DIR=executor DEPS_CMD='travis/setup.sh' TEST_CMD='travis/run_tests.sh'
-    - COOK_EXECUTOR='1' TEST_DIR=scheduler DEPS_CMD='travis/setup.sh' TEST_CMD='lein test :all-but-benchmark'
-    - COOK_EXECUTOR='1' TEST_DIR=scheduler DEPS_CMD='lein with-profiles +test deps' TEST_CMD='lein test :benchmark'
-    - COOK_EXECUTOR='1' TEST_DIR=jobclient DEPS_CMD='mvn dependency:resolve' TEST_CMD='mvn test'
-    - COOK_EXECUTOR='1' TEST_DIR=simulator DEPS_CMD='travis/prepare_simulation.sh' TEST_CMD='travis/run_simulation.sh'
-    - COOK_EXECUTOR='1' TEST_DIR=integration DEPS_CMD='travis/prepare_integration.sh' TEST_CMD='travis/run_integration.sh'
-    - COOK_EXECUTOR='0' TEST_DIR=integration DEPS_CMD='travis/prepare_integration.sh' TEST_CMD='travis/run_integration.sh'
+    - TEST_DIR=executor DEPS_CMD='travis/setup.sh' TEST_CMD='travis/run_tests.sh'
+    - TEST_DIR=scheduler DEPS_CMD='travis/setup.sh' TEST_CMD='lein test :all-but-benchmark'
+    - TEST_DIR=scheduler DEPS_CMD='lein with-profiles +test deps' TEST_CMD='lein test :benchmark'
+    - TEST_DIR=jobclient DEPS_CMD='mvn dependency:resolve' TEST_CMD='mvn test'
+    - TEST_DIR=simulator DEPS_CMD='travis/prepare_simulation.sh' TEST_CMD='travis/run_simulation.sh'
+    - TEST_DIR=integration DEPS_CMD='travis/prepare_integration.sh' TEST_CMD='travis/run_integration.sh --executor=cook'
+    - TEST_DIR=integration DEPS_CMD='travis/prepare_integration.sh' TEST_CMD='travis/run_integration.sh --auth=http-basic'
 matrix:
     fast_finish: true
     allow_failures:
-      - env: COOK_EXECUTOR='1' TEST_DIR=scheduler DEPS_CMD='lein with-profiles +test deps' TEST_CMD='lein test :benchmark'
+      - env: TEST_DIR=scheduler DEPS_CMD='lein with-profiles +test deps' TEST_CMD='lein test :benchmark'
 before_script: (cd $TEST_DIR && $DEPS_CMD)
 script: cd $TEST_DIR && $TEST_CMD

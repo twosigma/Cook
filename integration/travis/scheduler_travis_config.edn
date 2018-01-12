@@ -1,6 +1,15 @@
 {:port #config/env-int "COOK_PORT"
  :hostname "172.17.0.1"
- :authorization {:one-user "vagrant"}
+ :authorization {;; Note that internally, Cook will select :http-basic if it's set to true,
+                 ;; and fall back to :one-user only if :http-basic is false.
+                 :http-basic #config/env-bool "COOK_HTTP_BASIC_AUTH"
+                 :one-user "root"}
+ :authorization-config {;; What function should be used to perform user authorization?
+                        ;; See the docstring in cook.authorization for details.
+                        :authorization-fn cook.authorization/configfile-admins-auth-open-gets
+                        ;; These users have admin privileges when using configfile-admins-auth;
+                        ;; e.g., they can view and modify other users' jobs.
+                        :admins #{"root" "travis"}}
  :database {:datomic-uri #config/env "COOK_DATOMIC"}
  :zookeeper {:connection #config/env "COOK_ZOOKEEPER"
              :local? #config/env-bool "COOK_ZOOKEEPER_LOCAL"
@@ -21,7 +30,7 @@
          :framework-id #config/env "COOK_FRAMEWORK_ID"}
  :executor {:command #config/env "COOK_EXECUTOR_COMMAND"
             :environment {"EXECUTOR_DEFAULT_PROGRESS_OUTPUT_NAME" "stdout"}
-            :portion 0.25}
+            :portion #config/env-int-default ["COOK_EXECUTOR_PORTION" 0]}
  :agent-query-cache {:ttl-ms 1000}
  :unhandled-exceptions {:log-level :error}
  :metrics {:jmx true}

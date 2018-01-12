@@ -13,12 +13,17 @@ from tests.cook import util
 class MasterSlaveTest(unittest.TestCase):
     _multiprocess_can_split_ = True
 
+    @classmethod
+    def setUpClass(cls):
+        cls.master_url = util.retrieve_cook_url()
+        cls.slave_url = util.retrieve_cook_url('COOK_SLAVE_URL', 'http://localhost:12322')
+        cls.logger = logging.getLogger(__name__)
+        util.init_cook_session(cls.master_url, cls.slave_url)
+
     def setUp(self):
-        self.master_url = util.retrieve_cook_url()
-        self.slave_url = util.retrieve_cook_url('COOK_SLAVE_URL', 'http://localhost:12322')
+        self.master_url = type(self).master_url
+        self.slave_url = type(self).slave_url
         self.logger = logging.getLogger(__name__)
-        util.wait_for_cook(self.master_url)
-        util.wait_for_cook(self.slave_url)
 
     def test_get_queue(self):
         job_uuid, resp = util.submit_job(self.master_url, constraints=[["HOSTNAME",
