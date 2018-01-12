@@ -120,7 +120,7 @@ class CookCliTest(unittest.TestCase):
         self.assertEqual(0, cp_verbose.returncode, cp_verbose.stderr)
         self.assertTrue(len(cp_verbose.stderr) > len(cp.stderr))
 
-    def test_usage(self):
+    def test_usage_information(self):
         cp = cli.cli('')
         self.assertEqual(0, cp.returncode, cp.stderr)
         stdout = cli.stdout(cp)
@@ -1601,6 +1601,107 @@ class CookCliTest(unittest.TestCase):
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual('hello\nworld\n' * 5, cli.decode(cp.stdout))
         self.assertEqual('', cli.decode(cp.stderr))
+
+    def test_usage(self):
+        command = 'sleep 300'
+
+        # Submit un-grouped jobs
+        cp, uuids = cli.submit(command, self.cook_url, submit_flags='--cpus 0.1 --mem 16')
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        uuid_1 = uuids[0]
+        cp, uuids = cli.submit(command, self.cook_url, submit_flags='--cpus 0.1 --mem 16')
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        uuid_2 = uuids[0]
+        cp, uuids = cli.submit(command, self.cook_url, submit_flags='--cpus 0.1 --mem 16')
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        uuid_3 = uuids[0]
+
+        # Submit grouped jobs
+        guuid_1 = uuid.uuid4()
+        cp, uuids = cli.submit_stdin([command, command, command], self.cook_url,
+                                     submit_flags=f'--group-name foo --group {guuid_1} --cpus 0.1 --mem 16')
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertEqual(3, len(uuids))
+        uuid_4, uuid_5, uuid_6 = uuids
+
+        # Submit grouped jobs with a custom application
+        guuid_2 = uuid.uuid4()
+        custom_application = str(uuid.uuid4())
+        cp, uuids = cli.submit_stdin([command, command, command], self.cook_url,
+                                     submit_flags='--group-name qux '
+                                                  f'--group {guuid_2} '
+                                                  f'--application-name {custom_application} '
+                                                  '--application-version does-not-matter '
+                                                  '--cpus 0.1 '
+                                                  '--mem 16')
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertEqual(3, len(uuids))
+        uuid_7, uuid_8, uuid_9 = uuids
+        all_uuids = [uuid_1, uuid_2, uuid_3, uuid_4, uuid_5, uuid_6, uuid_7, uuid_8, uuid_9]
+        try:
+            # Wait for all jobs to be running
+            util.wait_for_jobs(self.cook_url, all_uuids, 'running')
+
+            # Invoke cs usage
+            user = util.get_user(self.cook_url, uuids[0])
+            cp, usage = cli.usage(user, self.cook_url)
+            self.assertEqual(0, cp.returncode, cp.stderr)
+            self.logger.info(f'Usage map: {json.dumps(usage, indent=2)}')
+            cluster_usage = usage['clusters'][self.cook_url]
+            total_usage = cluster_usage['usage']
+            share = cluster_usage['share']
+            utilization = cluster_usage['cluster_utilization']
+            applications = cluster_usage['applications']
+            cs_usage = applications['cook-scheduler-cli']['usage']
+            ungrouped_usage = applications['cook-scheduler-cli']['groups']['null']['usage']
+            ungrouped_jobs = applications['cook-scheduler-cli']['groups']['null']['jobs']
+            group_1 = f'foo ({guuid_1})'
+            grouped_usage = applications['cook-scheduler-cli']['groups'][group_1]['usage']
+            grouped_jobs = applications['cook-scheduler-cli']['groups'][group_1]['jobs']
+            custom_application_usage = applications[custom_application]['usage']
+            group_2 = f'qux ({guuid_2})'
+            custom_application_grouped_usage = applications[custom_application]['groups'][group_2]['usage']
+            custom_application_grouped_jobs = applications[custom_application]['groups'][group_2]['jobs']
+
+            # Check the output data
+            self.assertLessEqual(round(0.1 * 9, 1), round(total_usage['cpus'], 1))
+            self.assertLessEqual(round(16 * 9, 1), round(total_usage['mem'], 1))
+            self.assertLessEqual(0, total_usage['gpus'])
+            self.assertLessEqual(9, usage['count'])
+            self.assertLessEqual(0, share['cpus'])
+            self.assertLessEqual(0, share['mem'])
+            self.assertLessEqual(0, share['gpus'])
+            self.assertLessEqual(0, utilization['cpus'])
+            self.assertLessEqual(0, utilization['mem'])
+            self.assertLessEqual(0, utilization['gpus'])
+            self.assertLessEqual(round(0.1 * 6, 1), round(cs_usage['cpus'], 1))
+            self.assertLessEqual(round(16 * 6, 1), round(cs_usage['mem'], 1))
+            self.assertLessEqual(0, cs_usage['gpus'])
+            self.assertLessEqual(round(0.1 * 3, 1), round(ungrouped_usage['cpus'], 1))
+            self.assertLessEqual(round(16 * 3, 1), round(ungrouped_usage['mem'], 1))
+            self.assertLessEqual(0, ungrouped_usage['gpus'])
+            self.assertIn(uuid_1, ungrouped_jobs)
+            self.assertIn(uuid_2, ungrouped_jobs)
+            self.assertIn(uuid_3, ungrouped_jobs)
+            self.assertEqual(round(0.1 * 3, 1), round(grouped_usage['cpus'], 1))
+            self.assertEqual(round(16 * 3, 1), round(grouped_usage['mem'], 1))
+            self.assertEqual(0, grouped_usage['gpus'])
+            self.assertEqual(3, len(grouped_jobs))
+            self.assertIn(uuid_4, grouped_jobs)
+            self.assertIn(uuid_5, grouped_jobs)
+            self.assertIn(uuid_6, grouped_jobs)
+            self.assertEqual(round(0.1 * 3, 1), round(custom_application_usage['cpus'], 1))
+            self.assertEqual(round(16 * 3, 1), round(custom_application_usage['mem'], 1))
+            self.assertEqual(0, custom_application_usage['gpus'])
+            self.assertEqual(round(0.1 * 3, 1), round(custom_application_grouped_usage['cpus'], 1))
+            self.assertEqual(round(16 * 3, 1), round(custom_application_grouped_usage['mem'], 1))
+            self.assertEqual(0, custom_application_grouped_usage['gpus'])
+            self.assertEqual(3, len(custom_application_grouped_jobs))
+            self.assertIn(uuid_7, custom_application_grouped_jobs)
+            self.assertIn(uuid_8, custom_application_grouped_jobs)
+            self.assertIn(uuid_9, custom_application_grouped_jobs)
+        finally:
+            util.kill_jobs(self.cook_url, jobs=all_uuids)
 
     def test_avoid_exit_on_connection_error(self):
         name = uuid.uuid4()

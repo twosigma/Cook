@@ -121,6 +121,12 @@ The `cat` command accepts a job or instance uuid and a path, and outputs the con
 As with `tail`, the path is relative to the sandbox directory on the Mesos agent where the instance runs.
 When given a job instance uuid, it will choose the most recently started instance's agent to tail files.
 
+#### `usage`
+
+The `usage` command allows you to list cluster share and usage for a particular user.
+In addition to totals, it displays a breakdown of usage by application and job group.
+As with `show`, `usage` will list usage across all configured clusters.
+
 ### Examples
 
 Simple job creation:
