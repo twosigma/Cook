@@ -5,8 +5,9 @@ import logging
 import signal
 import sys
 
-from cook import colors, util
+from cook import util
 from cook.cli import run
+from cook.util import print_error
 
 
 def main(args=None):
@@ -18,7 +19,7 @@ def main(args=None):
         sys.exit(result)
     except Exception as e:
         logging.exception('exception when running with %s' % args)
-        print(colors.failed(str(e)), file=sys.stderr)
+        print_error(str(e))
         sys.exit(1)
 
 
