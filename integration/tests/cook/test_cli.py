@@ -1702,3 +1702,17 @@ class CookCliTest(unittest.TestCase):
             self.assertIn(uuid_9, custom_application_grouped_jobs)
         finally:
             util.kill_jobs(self.cook_url, jobs=all_uuids)
+
+    def test_avoid_exit_on_connection_error(self):
+        name = uuid.uuid4()
+        cp, uuids = cli.submit('ls', self.cook_url, submit_flags=f'--name {name}')
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        user = util.get_user(self.cook_url, uuids[0])
+        config = {'clusters': [{'name': 'foo', 'url': self.cook_url},
+                               {'name': 'bar', 'url': 'http://localhost:99999'}]}
+        with cli.temp_config_file(config) as path:
+            flags = f'--config {path}'
+            cp, jobs = cli.jobs_json(flags=flags, jobs_flags=f'--name {name} --all --user {user}')
+            self.assertEqual(0, cp.returncode, cp.stderr)
+            self.assertEqual(uuids[0], jobs[0]['uuid'])
+            self.assertIn('Encountered connection error with bar', cli.decode(cp.stderr))

@@ -174,10 +174,10 @@ def jobs(cook_url=None, jobs_flags=None, flags=None):
     return cp
 
 
-def jobs_json(cook_url=None, jobs_flags=None):
+def jobs_json(cook_url=None, jobs_flags=None, flags=None):
     """Invokes the jobs subcommand with --json"""
     jobs_flags = f'{jobs_flags} --json' if jobs_flags else '--json'
-    cp = jobs(cook_url, jobs_flags=jobs_flags)
+    cp = jobs(cook_url, jobs_flags=jobs_flags, flags=flags)
     response = json.loads(stdout(cp))
     job_list = [job for entities in response['clusters'].values() for job in entities['jobs']]
     return cp, job_list
