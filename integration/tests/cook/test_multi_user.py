@@ -2,9 +2,9 @@ import logging
 import pytest
 import unittest
 
-from tests.cook import util
+from tests.cook import reasons, util
 
-@unittest.skipUnless(util.multi_user_tests_enabled(), "Requires using multi-user coniguration (e.g., BasicAuth) for Cook Scheduler")
+@unittest.skipUnless(util.multi_user_tests_enabled(), 'Requires using multi-user coniguration (e.g., BasicAuth) for Cook Scheduler')
 @pytest.mark.timeout(util.DEFAULT_TEST_TIMEOUT_SECS)  # individual test timeout
 class MultiUserCookTest(unittest.TestCase):
     _multiprocess_can_split_ = True
@@ -22,14 +22,15 @@ class MultiUserCookTest(unittest.TestCase):
     def test_job_delete_permission(self):
         user1, user2 = self.user_factory.new_users(2)
         with user1:
-            job_uuid, resp = util.submit_job(self.cook_url, command='sleep 10')
+            job_uuid, resp = util.submit_job(self.cook_url, command='sleep 30')
         try:
-            self.logger.debug(f"User 1: {user1.name}")
             self.assertEqual(resp.status_code, 201, resp.text)
             with user2:
                 util.kill_jobs(self.cook_url, [job_uuid], expected_status_code=403)
             with user1:
                 util.kill_jobs(self.cook_url, [job_uuid])
+            job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
+            self.assertEqual('failed', job['state'])
         finally:
             util.kill_jobs(self.cook_url, [job_uuid])
 
@@ -38,14 +39,15 @@ class MultiUserCookTest(unittest.TestCase):
         with user1:
             group_spec = util.minimal_group()
             group_uuid = group_spec['uuid']
-            job_uuid, resp = util.submit_job(self.cook_url, command='sleep 10', group=group_uuid)
+            job_uuid, resp = util.submit_job(self.cook_url, command='sleep 30', group=group_uuid)
         try:
-            self.logger.debug(f"User 1: {user1.name}")
             self.assertEqual(resp.status_code, 201, resp.text)
             with user2:
                 util.kill_groups(self.cook_url, [group_uuid], expected_status_code=403)
             with user1:
                 util.kill_groups(self.cook_url, [group_uuid])
+            job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
+            self.assertEqual('failed', job['state'])
         finally:
             util.kill_jobs(self.cook_url, [job_uuid])
 
