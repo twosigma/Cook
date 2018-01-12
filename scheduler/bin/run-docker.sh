@@ -5,7 +5,7 @@
 #   --auth={http-basic,one-user}    Use the specified authentication scheme. Default is one-user.
 #   --executor={cook,mesos}         Use the specified job executor. Default is cook.
 
-set -ev
+set -e
 
 # Defaults (overridable via environment)
 : ${COOK_PORT:=12321}
