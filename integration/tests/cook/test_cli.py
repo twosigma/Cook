@@ -1656,7 +1656,6 @@ class CookCliTest(unittest.TestCase):
             cluster_usage = usage['clusters'][self.cook_url]
             total_usage = cluster_usage['usage']
             share = cluster_usage['share']
-            utilization = cluster_usage['cluster_utilization']
             applications = cluster_usage['applications']
             cs_usage = applications['cook-scheduler-cli']['usage']
             ungrouped_usage = applications['cook-scheduler-cli']['groups']['null']['usage']
@@ -1677,9 +1676,6 @@ class CookCliTest(unittest.TestCase):
             self.assertLessEqual(0, share['cpus'])
             self.assertLessEqual(0, share['mem'])
             self.assertLessEqual(0, share['gpus'])
-            self.assertLessEqual(0, utilization['cpus'])
-            self.assertLessEqual(0, utilization['mem'])
-            self.assertLessEqual(0, utilization['gpus'])
             self.assertLessEqual(round(0.1 * 6, 1), round(cs_usage['cpus'], 1))
             self.assertLessEqual(round(16 * 6, 1), round(cs_usage['mem'], 1))
             self.assertLessEqual(0, cs_usage['gpus'])
