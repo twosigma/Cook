@@ -91,6 +91,8 @@ def make_data_request(cluster, make_request_fn):
         resp = make_request_fn()
         if resp.status_code == 200:
             return resp.json()
+        elif resp.status_code == 401:
+            print_error(f'Authentication failed on {cluster["name"]} ({cluster["url"]}).')
     except requests.exceptions.ConnectionError as ce:
         logging.exception(ce)
         print_error(f'Encountered connection error with {cluster["name"]} ({cluster["url"]}).')
