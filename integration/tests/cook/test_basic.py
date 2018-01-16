@@ -1716,6 +1716,8 @@ class CookTest(unittest.TestCase):
         self.assertEqual(resp.status_code, 400, resp.text)
 
     def test_submit_with_no_name(self):
+        # We need to manually set the 'uuid' to avoid having the
+        # job name automatically set by the submit_job function
         job_with_no_name = {'uuid': str(uuid.uuid4()),
                             'command': 'ls',
                             'cpus': 0.1,
