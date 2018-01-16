@@ -35,7 +35,7 @@
            com.google.protobuf.ByteString
            java.io.ByteArrayOutputStream
            java.net.ServerSocket
-           java.util.UUID
+           (java.util Date UUID)
            java.util.concurrent.ExecutionException
            (javax.servlet ServletOutputStream ServletResponse)
            org.apache.curator.test.TestingServer))
@@ -165,10 +165,10 @@
 
     (testing "delete of invalid instance"
       (let [delete-response (h {:request-method :delete
-                      :scheme :http
-                      :uri "/rawscheduler"
-                      :authorization/user "dgrnbrg"
-                      :query-params {"job" (str (UUID/randomUUID))}})]
+                                :scheme :http
+                                :uri "/rawscheduler"
+                                :authorization/user "dgrnbrg"
+                                :query-params {"job" (str (UUID/randomUUID))}})]
         (is (<= 400 (:status delete-response) 499))
         (is (str/includes? (response->body-data delete-response) "didn't correspond to a job"))))
 
@@ -1568,3 +1568,19 @@
   (is ((api/name-filter-str->name-filter-fn "a*c") "abc"))
   (is ((api/name-filter-str->name-filter-fn "a*c") "ac"))
   (is (not ((api/name-filter-str->name-filter-fn "a*c") "zacd"))))
+
+(deftest test-fetch-job-with-no-name
+  (let [conn (restore-fresh-database! "datomic:mem://test-fetch-job-with-no-name")
+        job-uuid (UUID/randomUUID)
+        job-txn-no-name {:db/id (d/tempid :db.part/user)
+                         :job/max-retries 1
+                         :job/state :job.state/waiting
+                         :job/uuid job-uuid}]
+    @(d/transact conn [job-txn-no-name])
+    (let [db (db conn)
+          job-entity (d/entity db [:job/uuid job-uuid])
+          job-map-for-api (api/fetch-job-map db nil nil job-uuid)]
+      (is (= job-uuid (:job/uuid job-entity)))
+      (is (nil? (:job/name job-entity)))
+      (is (= job-uuid (:uuid job-map-for-api)))
+      (is (= "cookjob" (:name job-map-for-api))))))
