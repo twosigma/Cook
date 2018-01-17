@@ -1,15 +1,15 @@
-import dateutil.parser
 import json
 import logging
-import math
 import operator
-import pytest
 import subprocess
 import time
 import unittest
 import uuid
-
 from collections import Counter
+
+import dateutil.parser
+import math
+import pytest
 from retrying import retry
 
 from tests.cook import reasons
@@ -39,7 +39,7 @@ class CookTest(unittest.TestCase):
         self.assertIn('version', info, info_details)
         self.assertEqual(len(info), 4, info_details)
         try:
-            timestamp = dateutil.parser.parse(info['start-time'])
+            dateutil.parser.parse(info['start-time'])
         except:
             self.fail(f"Unable to parse start time: {info_details}")
 
@@ -63,9 +63,10 @@ class CookTest(unittest.TestCase):
             self.assertIsNotNone(job['instances'][0]['sandbox_directory'], message)
 
     def test_no_cook_executor_on_subsequent_instances(self):
-        job_uuid, resp = util.submit_job(self.cook_url, command='exit 1', max_retries=10) # should launch many instances
+        job_uuid, resp = util.submit_job(self.cook_url, command='exit 1',
+                                         max_retries=10)  # should launch many instances
         self.assertEqual(resp.status_code, 201, msg=resp.content)
-        try: # try to get at least 5 instances
+        try:  # try to get at least 5 instances
             util.wait_until(lambda: util.load_job(self.cook_url, job_uuid),
                             lambda job: len(job['instances']) > 4)
         except BaseException as e:
@@ -73,7 +74,7 @@ class CookTest(unittest.TestCase):
         job = util.load_job(self.cook_url, job_uuid)
         message = json.dumps(job, sort_keys=True)
         later_job_instances = sorted(job['instances'], key=operator.itemgetter('start_time'))[1:]
-        self.assertGreater(len(later_job_instances), 0, message) # happy with at least 1 in case the scheduler is slow
+        self.assertGreater(len(later_job_instances), 0, message)  # happy with at least 1 in case the scheduler is slow
         for i, job_instance in enumerate(later_job_instances):
             message = 'Trailing instance {}: {}'.format(i, json.dumps(job_instance, sort_keys=True))
             if 'reason_string' in job_instance:
@@ -339,7 +340,8 @@ class CookTest(unittest.TestCase):
         finally:
             util.kill_jobs(self.cook_url, [job_uuid])
 
-    def memory_limit_python_command(self):
+    @staticmethod
+    def memory_limit_python_command():
         """Generates a python command that incrementally allocates large strings that cause the python process to
         request more memory than it is allocated."""
         command = 'python3 -c ' \
@@ -358,7 +360,8 @@ class CookTest(unittest.TestCase):
                   ' sys.stdout.write(\'Done.\\n\'); "'
         return command
 
-    def memory_limit_script_command(self):
+    @staticmethod
+    def memory_limit_script_command():
         """Generates a script command that incrementally allocates large strings that cause the process to
         request more memory than it is allocated."""
         command = 'random_string() { ' \
@@ -1579,7 +1582,7 @@ class CookTest(unittest.TestCase):
         instance = util.load_instance(self.cook_url, instance_uuid)
         self.assertEqual(instance_uuid, instance['task_id'])
         self.assertEqual(job_uuid, instance['job']['uuid'])
-        
+
     def test_user_usage_basic(self):
         job_resources = {'cpus': 0.1, 'mem': 123}
         job_uuid, resp = util.submit_job(self.cook_url, command='sleep 120', **job_resources)
@@ -1641,8 +1644,12 @@ class CookTest(unittest.TestCase):
             breakdowns_total = Counter(usage_data['ungrouped']['usage'])
             for grouping in usage_data['grouped']:
                 breakdowns_total += Counter(grouping['usage'])
-            self.assertAlmostEqual(usage_data['total_usage']['mem'], breakdowns_total['mem'], places=4, msg=usage_data)
-            self.assertAlmostEqual(usage_data['total_usage']['cpus'], breakdowns_total['cpus'], places=4, msg=usage_data)
+            self.assertAlmostEqual(usage_data['total_usage']['mem'],
+                                   breakdowns_total['mem'],
+                                   places=4, msg=usage_data)
+            self.assertAlmostEqual(usage_data['total_usage']['cpus'],
+                                   breakdowns_total['cpus'],
+                                   places=4, msg=usage_data)
             self.assertEqual(usage_data['total_usage']['gpus'], breakdowns_total['gpus'], usage_data)
             self.assertEqual(usage_data['total_usage']['jobs'], breakdowns_total['jobs'], usage_data)
         finally:
@@ -1707,3 +1714,17 @@ class CookTest(unittest.TestCase):
         # reset user share fails (malformed) if no reason is given
         resp = util.reset_limit(self.cook_url, 'share', user, reason=None)
         self.assertEqual(resp.status_code, 400, resp.text)
+
+    def test_submit_with_no_name(self):
+        # We need to manually set the 'uuid' to avoid having the
+        # job name automatically set by the submit_job function
+        job_with_no_name = {'uuid': str(uuid.uuid4()),
+                            'command': 'ls',
+                            'cpus': 0.1,
+                            'mem': 16,
+                            'max-retries': 1}
+        job_uuid, resp = util.submit_job(self.cook_url, **job_with_no_name)
+        self.assertEqual(resp.status_code, 201, msg=resp.content)
+        scheduler_default_job_name = 'cookjob'
+        job = util.load_job(self.cook_url, job_uuid)
+        self.assertEqual(scheduler_default_job_name, job['name'])
