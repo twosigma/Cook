@@ -1728,3 +1728,11 @@ class CookTest(unittest.TestCase):
         scheduler_default_job_name = 'cookjob'
         job = util.load_job(self.cook_url, job_uuid)
         self.assertEqual(scheduler_default_job_name, job['name'])
+
+    def test_submit_with_status(self):
+        # The Java job client used to send the status field on job submission.
+        # At some point, that changed, but we still allow it for backwards compat.
+        job_uuid, resp = util.submit_job(self.cook_url, status='not a real status')
+        self.assertEqual(resp.status_code, 201, msg=resp.content)
+        job = util.load_job(self.cook_url, job_uuid)
+        self.assertIn(job['status'], ['running', 'waiting', 'completed'])
