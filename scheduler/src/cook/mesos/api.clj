@@ -286,6 +286,11 @@
              (s/optional-key :max-runtime) PosInt
              (s/optional-key :name) JobName
              (s/optional-key :priority) JobPriority
+             ;; The Java job client used to send the
+             ;; status field on job submission. At some
+             ;; point, that changed, but we will keep
+             ;; allowing it here for backwards compat.
+             (s/optional-key :status) s/Str
              (s/optional-key :uris) [UriRequest])))
 
 (def JobRequest
@@ -298,6 +303,7 @@
   For example, it can include descriptions of instances for the job."
   (-> JobRequestMap
       (dissoc (s/optional-key :group))
+      (dissoc (s/optional-key :status))
       (merge {:framework-id (s/maybe s/Str)
               :retries-remaining NonNegInt
               :status s/Str
