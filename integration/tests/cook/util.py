@@ -24,6 +24,8 @@ DEFAULT_TEST_TIMEOUT_SECS = 600
 # 2 minutes should be more than sufficient on most cases
 DEFAULT_TIMEOUT_MS = 120000
 
+# Name of our custom HTTP header for user impersonation
+IMPERSONATION_HEADER = 'X-Cook-Impersonate'
 
 def continuous_integration():
     """Returns true if the CONTINUOUS_INTEGRATION environment variable is set, as done by Travis-CI."""
@@ -55,8 +57,6 @@ class _AuthenticatedUser(object):
     to conveniently set a user for a sequence of commands.
     """
 
-    __IMPERSONATION_HEADER = 'X-Cook-Impersonate'
-
     def __init__(self, name, impersonatee=None):
         self.name = name
         self.impersonatee = impersonatee
@@ -69,17 +69,17 @@ class _AuthenticatedUser(object):
     def __enter__(self):
         logger.debug(f'Switching to user {self.name}')
         if self.impersonatee:
-            self.previous_impersonatee = session.headers.get(__IMPERSONATION_HEADER)
-            session.headers[__IMPERSONATION_HEADER] = self.impersonatee
+            self.previous_impersonatee = session.headers.get(IMPERSONATION_HEADER)
+            session.headers[IMPERSONATION_HEADER] = self.impersonatee
 
     def __exit__(self, ex_type, ex_val, ex_trace):
         logger.debug(f'Switching back from user {self.name}')
         if self.impersonatee:
             if self.previous_impersonatee:
-                session.headers[__IMPERSONATION_HEADER] = self.previous_impersonatee
+                session.headers[IMPERSONATION_HEADER] = self.previous_impersonatee
                 self.previous_impersonatee = None
             else:
-                del session.headers[__IMPERSONATION_HEADER]
+                del session.headers[IMPERSONATION_HEADER]
 
 
 class _BasicAuthUser(_AuthenticatedUser):
