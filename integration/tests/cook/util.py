@@ -4,6 +4,7 @@ import itertools
 import logging
 import os
 import os.path
+import subprocess
 import time
 import uuid
 from urllib.parse import urlencode
@@ -34,9 +35,22 @@ def has_docker_service():
     return os.path.exists('/var/run/docker.sock')
 
 
-class User(object):
+# Default user for multi-user test runs
+_default_user_name = 'root'
+_default_admin_name = 'root'
+_default_impersonator_name = 'poser'
+
+def _get_default_user_name():
+    return os.getenv('USER', _default_user_name)
+
+# Shell command used to obtain Kerberos credentials for a given test user
+_kerberos_missing_cmd =  'echo "MISSING COOK_KERBEROS_TEST_AUTH_CMD" && exit 1'
+_kerberos_auth_cmd = os.getenv('COOK_KERBEROS_TEST_AUTH_CMD', _kerberos_missing_cmd)
+
+
+class _BasicAuthUser(object):
     """
-    Object representing a Cook user, which holds authentication details.
+    Object representing a Cook user with HTTP Basic Auth credentials.
     User objects can be used with python's `with` blocks
     to conveniently set a user for a sequence of commands.
     """
@@ -48,17 +62,49 @@ class User(object):
 
     def __enter__(self):
         global session
-        logger.debug(f"Switching to user {self.name}")
+        logger.debug(f'Switching to user {self.name}')
         assert self.previous_auth is None
         self.previous_auth = session.auth
         session.auth = self.auth
 
     def __exit__(self, ex_type, ex_val, ex_trace):
         global session
-        logger.debug(f"Switching back from user {self.name}")
+        logger.debug(f'Switching back from user {self.name}')
         assert self.previous_auth is not None
         session.auth = self.previous_auth
         self.previous_auth = None
+
+
+class _KerberosUser(object):
+    """
+    Object representing a Cook user with Kerberos credentials.
+    User objects can be used with python's `with` blocks
+    to conveniently set a user for a sequence of commands.
+    """
+
+    def __init__(self, name):
+        self.name = name
+        subcommand = (_kerberos_auth_cmd
+                      .replace('{{COOK_USER}}', name)
+                      .replace('{{COOK_SCHEDULER_URL}}', retrieve_cook_url()))
+        self.auth_token = subprocess.check_output(subcommand, shell=True).rstrip()
+        self.previous_token = None
+
+    def __enter__(self):
+        global session
+        logger.debug(f'Switching to user {self.name}')
+        assert self.previous_token is None
+        self.previous_token = session.headers.get('Authorization')
+        session.headers['Authorization'] = self.auth_token
+
+    def __exit__(self, ex_type, ex_val, ex_trace):
+        global session
+        logger.debug(f'Switching back from user {self.name}')
+        if self.previous_token is None:
+            del session.headers['Authorization']
+        else:
+            session.headers['Authorization'] = self.previous_token
+            self.previous_token = None
 
 
 class UserFactory(object):
@@ -68,21 +114,44 @@ class UserFactory(object):
     """
 
     def __init__(self, test_handle):
-        test_id = test_handle.id()
-        base_name = test_id[test_id.rindex('.test_')+6:].lower()
-        self.__user_generator = ( f'{base_name}_{i}' for i in range(1000000) )
+        # Select the authentication scheme
+        if http_basic_auth_enabled():
+            self.user_class = _BasicAuthUser
+        elif kerberos_enabled():
+            self.user_class = _KerberosUser
+        else:
+            raise NotImplementedError(f'Unsupported user authentication scheme: {_cook_auth_scheme()}')
+        # Set up generator for new user objects
+        if test_handle:
+            test_id = test_handle.id()
+            test_base_name = test_id[test_id.rindex('.test_')+6:].lower()
+            base_name = os.getenv('COOK_TEST_USER_PREFIX', f'{test_base_name}_')
+            self.__user_generator = (f'{base_name}{i}' for i in range(1000000))
 
     def new_user(self):
-        """Return a fresh User object."""
-        return User(next(self.__user_generator))
+        """Return a fresh user object."""
+        return self.user_class(next(self.__user_generator))
 
     def new_users(self, count=None):
-        """Return a sequence of `count` fresh User objects."""
-        return map(User, itertools.islice(self.__user_generator, 0, count))
+        """Return a sequence of `count` fresh user objects."""
+        return map(self.user_class, itertools.islice(self.__user_generator, 0, count))
 
+    @functools.lru_cache()
+    def default(self):
+        """Return the default user"""
+        return self.user_class(_get_default_user_name())
 
-# Default user for multi-user test runs
-default_user = User('root')
+    @functools.lru_cache()
+    def admin(self):
+        """Return the administrator user"""
+        name = os.getenv('COOK_ADMIN_USER_NAME', _default_admin_name)
+        return self.user_class(name)
+
+    @functools.lru_cache()
+    def impersonator(self):
+        """Return the impersonator user"""
+        name = os.getenv('COOK_IMPERSONATOR_USER_NAME', _default_impersonator_name)
+        return self.user_class(name)
 
 
 def multi_cluster_tests_enabled():
@@ -91,6 +160,7 @@ def multi_cluster_tests_enabled():
     indicating that multiple cook scheduler instances are running.
     """
     return os.getenv('COOK_MULTI_CLUSTER') is not None
+
 
 @functools.lru_cache()
 def _cook_auth_scheme():
@@ -107,9 +177,14 @@ def http_basic_auth_enabled():
     return 'http-basic' == _cook_auth_scheme()
 
 
+def kerberos_enabled():
+    """Returns true if Cook was configured to use the Kerberos authentication scheme."""
+    return 'kerberos' == _cook_auth_scheme()
+
+
 def multi_user_tests_enabled():
     """Returns true if Cook was configured to support multiple users."""
-    return http_basic_auth_enabled()
+    return http_basic_auth_enabled() or kerberos_enabled()
 
 
 def get_in(dct, *keys):
@@ -146,12 +221,14 @@ def is_valid_uuid(uuid_to_test, version=4):
     return str(uuid_obj) == uuid_to_test
 
 
+@functools.lru_cache()
 def retrieve_cook_url(varname='COOK_SCHEDULER_URL', value='http://localhost:12321'):
     cook_url = os.getenv(varname, value)
     logger.info('Using cook url %s' % cook_url)
     return cook_url
 
 
+@functools.lru_cache()
 def retrieve_mesos_url(varname='MESOS_PORT', value='5050'):
     mesos_url = os.getenv('COOK_MESOS_LEADER_URL')
     if mesos_url is None:
@@ -192,7 +269,7 @@ def init_cook_session(*cook_urls):
     for cook_url in cook_urls:
         _wait_for_cook(cook_url)
     if http_basic_auth_enabled():
-        session.auth = default_user.auth
+        session.auth = UserFactory(None).default().auth
 
 
 def settings(cook_url):
@@ -288,7 +365,7 @@ def kill_groups(cook_url, groups, assert_response=True, expected_status_code=204
 
 def submit_job(cook_url, **kwargs):
     """Create and submit a single job"""
-    uuids, resp = submit_jobs(cook_url, kwargs, 1)
+    uuids, resp = submit_jobs(cook_url, job_specs=[kwargs])
     return uuids[0], resp
 
 
@@ -516,7 +593,7 @@ def wait_for_sandbox_directory(cook_url, job_id):
     job_id = unpack_uuid(job_id)
 
     cook_settings = settings(cook_url)
-    cache_ttl_ms = get_in(cook_settings, 'agent-query-cache', 'ttl-ms')
+    cache_ttl_ms = cook_settings['agent-query-cache']['ttl-ms']
     max_wait_ms = min(4 * cache_ttl_ms, 4 * 60 * 1000)
 
     def query():
