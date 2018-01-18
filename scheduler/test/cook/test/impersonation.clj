@@ -71,10 +71,10 @@
       (is (true? (is-authorized? admin-user :read nil {:item :queue})))
 
       ; impersonated random users can't touch other's job
-      (is (false? (is-authorized? "foo" :create impersonator-user test-job)))
-      (is (false? (is-authorized? "bar" :read impersonator-user test-job)))
-      (is (false? (is-authorized? "baz" :update impersonator-user test-job)))
-      (is (false? (is-authorized? "frob" :destroy impersonator-user test-job)))
+      (is (not (is-authorized? "foo" :create impersonator-user test-job)))
+      (is (not (is-authorized? "bar" :read impersonator-user test-job)))
+      (is (not (is-authorized? "baz" :update impersonator-user test-job)))
+      (is (not (is-authorized? "frob" :destroy impersonator-user test-job)))
 
       ; but random impersonated gets are OK
       (is (true? (is-authorized? "froo" :get impersonator-user test-job)))
@@ -93,18 +93,18 @@
 
       ; impersonated admin can read--but not write--user quotas
       (is (true? (is-authorized? admin-user :get impersonator-user {:item :quota})))
-      (is (false? (is-authorized? admin-user :create impersonator-user {:item :quota})))
-      (is (false? (is-authorized? admin-user :update impersonator-user {:item :quota})))
-      (is (false? (is-authorized? admin-user :destroy impersonator-user {:item :quota})))
+      (is (not (is-authorized? admin-user :create impersonator-user {:item :quota})))
+      (is (not (is-authorized? admin-user :update impersonator-user {:item :quota})))
+      (is (not (is-authorized? admin-user :destroy impersonator-user {:item :quota})))
 
       ; impersonated admin can read--but not write--user shares
       (is (true? (is-authorized? admin-user :get impersonator-user {:item :share})))
-      (is (false? (is-authorized? admin-user :create impersonator-user {:item :share})))
-      (is (false? (is-authorized? admin-user :update impersonator-user {:item :share})))
-      (is (false? (is-authorized? admin-user :destroy impersonator-user {:item :share})))
+      (is (not (is-authorized? admin-user :create impersonator-user {:item :share})))
+      (is (not (is-authorized? admin-user :update impersonator-user {:item :share})))
+      (is (not (is-authorized? admin-user :destroy impersonator-user {:item :share})))
 
       ; impersonated admin can read user usage
       (is (true? (is-authorized? admin-user :get impersonator-user {:item :usage})))
 
       ; impersonated admin can't read queue endpoint
-      (is (false? (is-authorized? admin-user :read impersonator-user {:item :queue}))))))
+      (is (not (is-authorized? admin-user :read impersonator-user {:item :queue}))))))
