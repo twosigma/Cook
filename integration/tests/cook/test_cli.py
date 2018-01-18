@@ -610,10 +610,13 @@ class CookCliTest(unittest.TestCase):
         raw_job = {'command': 'ls', 'constraints': [['HOSTNAME', 'EQUALS', 'will not get scheduled']]}
         cp, uuids = cli.submit(stdin=cli.encode(json.dumps(raw_job)), cook_url=self.cook_url, submit_flags='--raw')
         self.assertEqual(0, cp.returncode, cp.stderr)
-        util.wait_for_job(self.cook_url, uuids[0], 'waiting')
-        cp = cli.ssh(uuids[0], self.cook_url)
-        self.assertEqual(1, cp.returncode, cp.stdout)
-        self.assertIn('currently has no instances', cli.decode(cp.stderr))
+        try:
+            util.wait_for_job(self.cook_url, uuids[0], 'waiting')
+            cp = cli.ssh(uuids[0], self.cook_url)
+            self.assertEqual(1, cp.returncode, cp.stdout)
+            self.assertIn('currently has no instances', cli.decode(cp.stderr))
+        finally:
+            util.kill_jobs(self.cook_url, uuids)
 
     def test_ssh_invalid_uuid(self):
         cp = cli.ssh(uuid.uuid4(), self.cook_url)
