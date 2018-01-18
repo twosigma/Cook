@@ -19,97 +19,92 @@
             [cook.impersonation :as imp]
             [cook.mesos.api :as api]))
 
-(def test-job-owner "the-job-owner")
-(def test-job {:owner test-job-owner :item :job})
-
-(def impersonator-user "the-impersonator")
-(def impersonator-job {:owner impersonator-user :item :job})
-
-(def admin-user "admin")
-
-(def auth-settings
-  {:authorization-fn 'cook.authorization/configfile-admins-auth-open-gets
-   :admins #{"admin" "other-admin"}})
-
-(def is-authorized? (imp/impersonation-authorized-wrapper auth/is-authorized? auth-settings))
-
 (deftest impersonated-is-authorized
-  (testing "that is-authorized? function performs correctly with impersonated users"
+  (let [test-job-owner "the-job-owner"
+        test-job {:owner test-job-owner :item :job}
+        impersonator-user "the-impersonator"
+        impersonator-job {:owner impersonator-user :item :job}
+        admin-user "admin"
+        auth-settings {:authorization-fn 'cook.authorization/configfile-admins-auth-open-gets
+                       :admins #{admin-user "other-admin"}}
+        is-authorized? (imp/impersonation-authorized-wrapper auth/is-authorized? auth-settings)]
 
-    ; random users can't touch other's job
-    (is (false? (is-authorized? "foo" :create nil test-job)))
-    (is (false? (is-authorized? "bar" :read nil test-job)))
-    (is (false? (is-authorized? "baz" :update nil test-job)))
-    (is (false? (is-authorized? "frob" :destroy nil test-job)))
+    (testing "is-authorized? function performs correctly with impersonated users"
 
-    ; but random gets are OK
-    (is (true? (is-authorized? "froo" :get impersonator-user test-job)))
+      ; random users can't touch other's job
+      (is (not (is-authorized? "foo" :create nil test-job)))
+      (is (not (is-authorized? "bar" :read nil test-job)))
+      (is (not (is-authorized? "baz" :update nil test-job)))
+      (is (not (is-authorized? "frob" :destroy nil test-job)))
 
-    ; job owner can modify their own job
-    (is (true? (is-authorized? test-job-owner :create nil test-job)))
-    (is (true? (is-authorized? test-job-owner :read nil test-job)))
-    (is (true? (is-authorized? test-job-owner :update nil test-job)))
-    (is (true? (is-authorized? test-job-owner :destroy nil test-job)))
+      ; but random gets are OK
+      (is (true? (is-authorized? "froo" :get impersonator-user test-job)))
 
-    ; admin can modify other's job
-    (is (true? (is-authorized? admin-user :create nil test-job)))
-    (is (true? (is-authorized? admin-user :read nil test-job)))
-    (is (true? (is-authorized? admin-user :update nil test-job)))
-    (is (true? (is-authorized? admin-user :destroy nil test-job)))
+      ; job owner can modify their own job
+      (is (true? (is-authorized? test-job-owner :create nil test-job)))
+      (is (true? (is-authorized? test-job-owner :read nil test-job)))
+      (is (true? (is-authorized? test-job-owner :update nil test-job)))
+      (is (true? (is-authorized? test-job-owner :destroy nil test-job)))
 
-    ; admin can read and write user quotas
-    (is (true? (is-authorized? admin-user :get nil {:item :quota})))
-    (is (true? (is-authorized? admin-user :create nil {:item :quota})))
-    (is (true? (is-authorized? admin-user :update nil {:item :quota})))
-    (is (true? (is-authorized? admin-user :destroy nil {:item :quota})))
+      ; admin can modify other's job
+      (is (true? (is-authorized? admin-user :create nil test-job)))
+      (is (true? (is-authorized? admin-user :read nil test-job)))
+      (is (true? (is-authorized? admin-user :update nil test-job)))
+      (is (true? (is-authorized? admin-user :destroy nil test-job)))
 
-    ; admin can read and write user shares
-    (is (true? (is-authorized? admin-user :get nil {:item :share})))
-    (is (true? (is-authorized? admin-user :create nil {:item :share})))
-    (is (true? (is-authorized? admin-user :update nil {:item :share})))
-    (is (true? (is-authorized? admin-user :destroy nil {:item :share})))
+      ; admin can read and write user quotas
+      (is (true? (is-authorized? admin-user :get nil {:item :quota})))
+      (is (true? (is-authorized? admin-user :create nil {:item :quota})))
+      (is (true? (is-authorized? admin-user :update nil {:item :quota})))
+      (is (true? (is-authorized? admin-user :destroy nil {:item :quota})))
 
-    ; admin can read user usage
-    (is (true? (is-authorized? admin-user :get nil {:item :usage})))
+      ; admin can read and write user shares
+      (is (true? (is-authorized? admin-user :get nil {:item :share})))
+      (is (true? (is-authorized? admin-user :create nil {:item :share})))
+      (is (true? (is-authorized? admin-user :update nil {:item :share})))
+      (is (true? (is-authorized? admin-user :destroy nil {:item :share})))
 
-    ; admin can read queue endpoint
-    (is (true? (is-authorized? admin-user :read nil {:item :queue})))
+      ; admin can read user usage
+      (is (true? (is-authorized? admin-user :get nil {:item :usage})))
 
-    ; impersonated random users can't touch other's job
-    (is (false? (is-authorized? "foo" :create impersonator-user test-job)))
-    (is (false? (is-authorized? "bar" :read impersonator-user test-job)))
-    (is (false? (is-authorized? "baz" :update impersonator-user test-job)))
-    (is (false? (is-authorized? "frob" :destroy impersonator-user test-job)))
+      ; admin can read queue endpoint
+      (is (true? (is-authorized? admin-user :read nil {:item :queue})))
 
-    ; but random impersonated gets are OK
-    (is (true? (is-authorized? "froo" :get impersonator-user test-job)))
+      ; impersonated random users can't touch other's job
+      (is (false? (is-authorized? "foo" :create impersonator-user test-job)))
+      (is (false? (is-authorized? "bar" :read impersonator-user test-job)))
+      (is (false? (is-authorized? "baz" :update impersonator-user test-job)))
+      (is (false? (is-authorized? "frob" :destroy impersonator-user test-job)))
 
-    ; impersonated job owner can modify their own job
-    (is (true? (is-authorized? test-job-owner :create impersonator-user test-job)))
-    (is (true? (is-authorized? test-job-owner :read impersonator-user test-job)))
-    (is (true? (is-authorized? test-job-owner :update impersonator-user test-job)))
-    (is (true? (is-authorized? test-job-owner :destroy impersonator-user test-job)))
+      ; but random impersonated gets are OK
+      (is (true? (is-authorized? "froo" :get impersonator-user test-job)))
 
-    ; impersonated admin can modify other's job
-    (is (true? (is-authorized? admin-user :create impersonator-user test-job)))
-    (is (true? (is-authorized? admin-user :read impersonator-user test-job)))
-    (is (true? (is-authorized? admin-user :update impersonator-user test-job)))
-    (is (true? (is-authorized? admin-user :destroy impersonator-user test-job)))
+      ; impersonated job owner can modify their own job
+      (is (true? (is-authorized? test-job-owner :create impersonator-user test-job)))
+      (is (true? (is-authorized? test-job-owner :read impersonator-user test-job)))
+      (is (true? (is-authorized? test-job-owner :update impersonator-user test-job)))
+      (is (true? (is-authorized? test-job-owner :destroy impersonator-user test-job)))
 
-    ; impersonated admin can read--but not write--user quotas
-    (is (true? (is-authorized? admin-user :get impersonator-user {:item :quota})))
-    (is (false? (is-authorized? admin-user :create impersonator-user {:item :quota})))
-    (is (false? (is-authorized? admin-user :update impersonator-user {:item :quota})))
-    (is (false? (is-authorized? admin-user :destroy impersonator-user {:item :quota})))
+      ; impersonated admin can modify other's job
+      (is (true? (is-authorized? admin-user :create impersonator-user test-job)))
+      (is (true? (is-authorized? admin-user :read impersonator-user test-job)))
+      (is (true? (is-authorized? admin-user :update impersonator-user test-job)))
+      (is (true? (is-authorized? admin-user :destroy impersonator-user test-job)))
 
-    ; impersonated admin can read--but not write--user shares
-    (is (true? (is-authorized? admin-user :get impersonator-user {:item :share})))
-    (is (false? (is-authorized? admin-user :create impersonator-user {:item :share})))
-    (is (false? (is-authorized? admin-user :update impersonator-user {:item :share})))
-    (is (false? (is-authorized? admin-user :destroy impersonator-user {:item :share})))
+      ; impersonated admin can read--but not write--user quotas
+      (is (true? (is-authorized? admin-user :get impersonator-user {:item :quota})))
+      (is (false? (is-authorized? admin-user :create impersonator-user {:item :quota})))
+      (is (false? (is-authorized? admin-user :update impersonator-user {:item :quota})))
+      (is (false? (is-authorized? admin-user :destroy impersonator-user {:item :quota})))
 
-    ; impersonated admin can read user usage
-    (is (true? (is-authorized? admin-user :get impersonator-user {:item :usage})))
+      ; impersonated admin can read--but not write--user shares
+      (is (true? (is-authorized? admin-user :get impersonator-user {:item :share})))
+      (is (false? (is-authorized? admin-user :create impersonator-user {:item :share})))
+      (is (false? (is-authorized? admin-user :update impersonator-user {:item :share})))
+      (is (false? (is-authorized? admin-user :destroy impersonator-user {:item :share})))
 
-    ; impersonated admin can't read queue endpoint
-    (is (false? (is-authorized? admin-user :read impersonator-user {:item :queue})))))
+      ; impersonated admin can read user usage
+      (is (true? (is-authorized? admin-user :get impersonator-user {:item :usage})))
+
+      ; impersonated admin can't read queue endpoint
+      (is (false? (is-authorized? admin-user :read impersonator-user {:item :queue}))))))

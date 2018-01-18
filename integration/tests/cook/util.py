@@ -55,6 +55,8 @@ class _AuthenticatedUser(object):
     to conveniently set a user for a sequence of commands.
     """
 
+    __IMPERSONATION_HEADER = 'X-Cook-Impersonate'
+
     def __init__(self, name, impersonatee=None):
         self.name = name
         self.impersonatee = impersonatee
@@ -67,17 +69,17 @@ class _AuthenticatedUser(object):
     def __enter__(self):
         logger.debug(f'Switching to user {self.name}')
         if self.impersonatee:
-            self.previous_impersonatee = session.headers.get('X-Cook-Impersonate')
-            session.headers['X-Cook-Impersonate'] = self.impersonatee
+            self.previous_impersonatee = session.headers.get(__IMPERSONATION_HEADER)
+            session.headers[__IMPERSONATION_HEADER] = self.impersonatee
 
     def __exit__(self, ex_type, ex_val, ex_trace):
         logger.debug(f'Switching back from user {self.name}')
         if self.impersonatee:
             if self.previous_impersonatee:
-                session.headers['X-Cook-Impersonate'] = self.previous_impersonatee
+                session.headers[__IMPERSONATION_HEADER] = self.previous_impersonatee
                 self.previous_impersonatee = None
             else:
-                del session.headers['X-Cook-Impersonate']
+                del session.headers[__IMPERSONATION_HEADER]
 
 
 class _BasicAuthUser(_AuthenticatedUser):

@@ -14,7 +14,7 @@
 ;; limitations under the License.
 ;;
 (ns cook.impersonation
-  "Support for services impersonating a user, performing Cook actions the user's behalf."
+  "Support for services impersonating a user, performing Cook actions on the user's behalf."
   (:require [clojure.string]
             [clojure.tools.logging :as log]
             [cook.util]
@@ -56,9 +56,8 @@
                "performing" verb "on" (str object) "...")
     (log/debug "[is-impersonatable?] Settings are:" settings)
     (and (or (nil? impersonator)
-             (if-let [verb->impersonatable? (object-type->verb->impersonatable? item)]
-               (verb->impersonatable? verb)
-               false))
+             (when-let [verb->impersonatable? (object-type->verb->impersonatable? item)]
+               (verb->impersonatable? verb)))
          (is-authorized-fn settings user verb impersonator object))))
 
 (defn create-impersonation-middleware

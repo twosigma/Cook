@@ -26,11 +26,11 @@
             [congestion.middleware :refer (wrap-rate-limit ip-rate-limit)]
             [congestion.storage :as storage]
             [cook.curator :as curator]
-            [cook.util :as util]
             [cook.impersonation :refer (impersonation-authorized-wrapper)]
+            [cook.util :as util]
             [metrics.jvm.core :as metrics-jvm]
             [metrics.ring.instrument :refer (instrument)]
-            [plumbing.core :refer (fnk letk)]
+            [plumbing.core :refer (fnk)]
             [plumbing.graph :as graph]
             [ring.middleware.cookies :refer (wrap-cookies)]
             [ring.middleware.params :refer (wrap-params)]
@@ -397,7 +397,7 @@
                                        {:json-value "kerberos"}))
                                    :else (throw (ex-info "Missing authorization configuration" {}))))
      :impersonation-middleware (fnk [[:config {authorization-config nil}]]
-                                    (letk [[{impersonators nil}] authorization-config]
+                                    (let [{impersonators :impersonators} authorization-config]
                                       (with-meta
                                         ((lazy-load-var 'cook.impersonation/create-impersonation-middleware) impersonators)
                                         {:json-value "config-impersonation"})))

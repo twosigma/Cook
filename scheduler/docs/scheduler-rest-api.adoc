@@ -559,6 +559,8 @@ You may specify a set of *authorized impersonators* in your Cook Scheduler confi
 The set is placed under `:authorization-config` `:impersonators`.
 An authorized impersonator may perform most Cook Scheduler actions on behalf of other users;
 e.g., create a new job, retrying a group of jobs, or querying current share limits.
+This feature may be useful to services built on top of the Cook Scheduler,
+which would need authorization to manipulate Cook jobs on behalf of its users.
 
 An impersonated request is the same as a normal request, but with the additon of a special header: `X-Cook-Impersonate`.
 The value associated with this header should be the username (or Kerberos principal) of the user to be impersonated.
