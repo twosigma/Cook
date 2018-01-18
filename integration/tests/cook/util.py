@@ -57,46 +57,21 @@ class _AuthenticatedUser(object):
 
     def __init__(self, name, impersonatee=None):
         self.name = name
-
-    def __enter__(self):
-        logger.debug(f'Switching to user {self.name}')
-
-    def __exit__(self, ex_type, ex_val, ex_trace):
-        logger.debug(f'Switching back from user {self.name}')
-
-
-class _BasicAuthUser(_AuthenticatedUser):
-    """
-    Object representing a Cook user with HTTP Basic Auth credentials.
-    """
-
-    def __init__(self, name):
-        super().__init__(name)
-        self.auth = (name, '')
-        self.previous_auth = None
         self.impersonatee = impersonatee
         self.previous_impersonatee = None
 
     def impersonating(self, other_user):
-        other_username = other_user.name if isinstance(other_user, User) else other_user
-        return User(self.name, impersonatee=other_username)
+        other_username = other_user.name if isinstance(other_user, _AuthenticatedUser) else other_user
+        return type(self)(self.name, impersonatee=other_username)
 
     def __enter__(self):
-        global session
-        super().__enter__()
-        assert self.previous_auth is None
-        self.previous_auth = session.auth
-        session.auth = self.auth
+        logger.debug(f'Switching to user {self.name}')
         if self.impersonatee:
             self.previous_impersonatee = session.headers.get('X-Cook-Impersonate')
             session.headers['X-Cook-Impersonate'] = self.impersonatee
 
     def __exit__(self, ex_type, ex_val, ex_trace):
-        global session
-        super().__exit__(ex_type, ex_val, ex_trace)
-        assert self.previous_auth is not None
-        session.auth = self.previous_auth
-        self.previous_auth = None
+        logger.debug(f'Switching back from user {self.name}')
         if self.impersonatee:
             if self.previous_impersonatee:
                 session.headers['X-Cook-Impersonate'] = self.previous_impersonatee
@@ -105,13 +80,38 @@ class _BasicAuthUser(_AuthenticatedUser):
                 del session.headers['X-Cook-Impersonate']
 
 
+class _BasicAuthUser(_AuthenticatedUser):
+    """
+    Object representing a Cook user with HTTP Basic Auth credentials.
+    """
+
+    def __init__(self, name, impersonatee=None):
+        super().__init__(name, impersonatee)
+        self.auth = (name, '')
+        self.previous_auth = None
+
+    def __enter__(self):
+        global session
+        super().__enter__()
+        assert self.previous_auth is None
+        self.previous_auth = session.auth
+        session.auth = self.auth
+
+    def __exit__(self, ex_type, ex_val, ex_trace):
+        global session
+        super().__exit__(ex_type, ex_val, ex_trace)
+        assert self.previous_auth is not None
+        session.auth = self.previous_auth
+        self.previous_auth = None
+
+
 class _KerberosUser(_AuthenticatedUser):
     """
     Object representing a Cook user with Kerberos credentials.
     """
 
-    def __init__(self, name):
-        super().__init__(name)
+    def __init__(self, name, impersonatee=None):
+        super().__init__(name, impersonatee)
         subcommand = (_kerberos_auth_cmd
                       .replace('{{COOK_USER}}', name)
                       .replace('{{COOK_SCHEDULER_URL}}', retrieve_cook_url()))
@@ -154,7 +154,7 @@ class UserFactory(object):
             test_id = test_handle.id()
             test_base_name = test_id[test_id.rindex('.test_')+6:].lower()
             base_name = os.getenv('COOK_TEST_USER_PREFIX', f'{test_base_name}_')
-            self.__user_generator = ( f'{base_name}{i}' for i in range(1000000) )
+            self.__user_generator = (f'{base_name}{i}' for i in range(1000000))
 
     def new_user(self):
         """Return a fresh user object."""
