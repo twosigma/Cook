@@ -8,7 +8,6 @@ from tests.cook import util
 @pytest.mark.impersonation
 @unittest.skipUnless(util.multi_user_tests_enabled(), 'Requires using multi-user coniguration (e.g., BasicAuth) for Cook Scheduler')
 class ImpersonationCookTest(unittest.TestCase):
-    _multiprocess_can_split_ = True
 
     @classmethod
     def setUpClass(cls):
