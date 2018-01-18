@@ -18,7 +18,8 @@ class ImpersonationCookTest(unittest.TestCase):
         self.cook_url = type(self).cook_url
         self.logger = logging.getLogger(__name__)
         self.user_factory = util.UserFactory(self)
-        self.poser = util.User('poser')
+        self.admin = self.user_factory.admin()
+        self.poser = self.user_factory.impersonator()
 
     def test_impersonated_job_delete(self):
         user1, user2 = self.user_factory.new_users(2)
@@ -48,17 +49,15 @@ class ImpersonationCookTest(unittest.TestCase):
             with user1:
                 util.kill_jobs(self.cook_url, [job_uuid])
         finally:
-            # default user should be an admin, and can kill all the jobs
-            util.kill_jobs(self.cook_url, [job_uuid])
+            with self.admin:
+                util.kill_jobs(self.cook_url, [job_uuid])
 
     def test_admin_cannot_impersonate(self):
         user1 = self.user_factory.new_user()
         job_uuids = []
-        # the default user should have admin rights
-        admin = util.default_user
         try:
             # admin can create jobs
-            with admin:
+            with self.admin:
                 job_uuid, resp = util.submit_job(self.cook_url, command='sleep 1')
                 self.assertEqual(resp.status_code, 201, resp.text)
                 job_uuids.append(job_uuid)
@@ -68,20 +67,18 @@ class ImpersonationCookTest(unittest.TestCase):
                 self.assertEqual(resp.status_code, 201, resp.text)
                 job_uuids.append(job_uuid)
             # admin cannot impersonate others creating jobs (not an authorized impersonator)
-            with admin.impersonating(user1):
+            with self.admin.impersonating(user1):
                 job_uuid, resp = util.submit_job(self.cook_url, command='sleep 1')
                 self.assertEqual(resp.status_code, 403, resp.text)
         finally:
-            # default user should be an admin, and can kill all the jobs
-            util.kill_jobs(self.cook_url, [j for j in job_uuids if j])
+            with self.admin:
+                util.kill_jobs(self.cook_url, [j for j in job_uuids if j])
 
     def test_cannot_impersonate_admin_endpoints(self):
         user1 = self.user_factory.new_user()
         job_uuids = []
-        # the default user should have admin rights
-        admin = util.default_user
         # admin can do admin things
-        with admin:
+        with self.admin:
             # read queue endpoint
             resp = util.query_queue(self.cook_url)
             self.assertEqual(resp.status_code, 200, resp.text)
@@ -98,7 +95,7 @@ class ImpersonationCookTest(unittest.TestCase):
             resp = util.reset_limit(self.cook_url, 'share', user1.name)
             self.assertEqual(resp.status_code, 204, resp.text)
         # impersonator cannot indirectly do admin things
-        with self.poser.impersonating(admin):
+        with self.poser.impersonating(self.admin):
             # read queue endpoint
             resp = util.query_queue(self.cook_url)
             self.assertEqual(resp.status_code, 403, resp.text)
