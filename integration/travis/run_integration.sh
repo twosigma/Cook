@@ -113,13 +113,8 @@ if [ "$curl_error" = true ]; then
     exit 1
 fi
 
-# Install the CLI
-cd ${TRAVIS_BUILD_DIR}/cli
-python --version
-pip install -e .
-CLI=$(pyenv which cs)
-export PATH=${PATH}:$(dirname ${CLI})
-cs --help
+# Ensure the Cook Scheduler CLI is available
+command -v cs
 
 # Run the integration tests
 cd ${PROJECT_DIR}
