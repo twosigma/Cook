@@ -48,55 +48,42 @@ _kerberos_missing_cmd =  'echo "MISSING COOK_KERBEROS_TEST_AUTH_CMD" && exit 1'
 _kerberos_auth_cmd = os.getenv('COOK_KERBEROS_TEST_AUTH_CMD', _kerberos_missing_cmd)
 
 
-class _AuthenticatedUser(object):
+class _BasicAuthUser(object):
     """
-    Object representing a Cook user, which holds authentication details.
+    Object representing a Cook user with HTTP Basic Auth credentials.
     User objects can be used with python's `with` blocks
     to conveniently set a user for a sequence of commands.
     """
 
     def __init__(self, name):
         self.name = name
-
-    def __enter__(self):
-        logger.debug(f'Switching to user {self.name}')
-
-    def __exit__(self, ex_type, ex_val, ex_trace):
-        logger.debug(f'Switching back from user {self.name}')
-
-
-class _BasicAuthUser(_AuthenticatedUser):
-    """
-    Object representing a Cook user with HTTP Basic Auth credentials.
-    """
-
-    def __init__(self, name):
-        super().__init__(name)
         self.auth = (name, '')
         self.previous_auth = None
 
     def __enter__(self):
         global session
-        super().__enter__()
+        logger.debug(f'Switching to user {self.name}')
         assert self.previous_auth is None
         self.previous_auth = session.auth
         session.auth = self.auth
 
     def __exit__(self, ex_type, ex_val, ex_trace):
         global session
-        super().__exit__(ex_type, ex_val, ex_trace)
+        logger.debug(f'Switching back from user {self.name}')
         assert self.previous_auth is not None
         session.auth = self.previous_auth
         self.previous_auth = None
 
 
-class _KerberosUser(_AuthenticatedUser):
+class _KerberosUser(object):
     """
     Object representing a Cook user with Kerberos credentials.
+    User objects can be used with python's `with` blocks
+    to conveniently set a user for a sequence of commands.
     """
 
     def __init__(self, name):
-        super().__init__(name)
+        self.name = name
         subcommand = (_kerberos_auth_cmd
                       .replace('{{COOK_USER}}', name)
                       .replace('{{COOK_SCHEDULER_URL}}', retrieve_cook_url()))
@@ -105,14 +92,14 @@ class _KerberosUser(_AuthenticatedUser):
 
     def __enter__(self):
         global session
-        super().__enter__()
+        logger.debug(f'Switching to user {self.name}')
         assert self.previous_token is None
         self.previous_token = session.headers.get('Authorization')
         session.headers['Authorization'] = self.auth_token
 
     def __exit__(self, ex_type, ex_val, ex_trace):
         global session
-        super().__exit__(ex_type, ex_val, ex_trace)
+        logger.debug(f'Switching back from user {self.name}')
         if self.previous_token is None:
             del session.headers['Authorization']
         else:
@@ -139,7 +126,7 @@ class UserFactory(object):
             test_id = test_handle.id()
             test_base_name = test_id[test_id.rindex('.test_')+6:].lower()
             base_name = os.getenv('COOK_TEST_USER_PREFIX', f'{test_base_name}_')
-            self.__user_generator = ( f'{base_name}{i}' for i in range(1000000) )
+            self.__user_generator = (f'{base_name}{i}' for i in range(1000000))
 
     def new_user(self):
         """Return a fresh user object."""
