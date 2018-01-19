@@ -35,7 +35,7 @@
   :java-source-paths ["java"]
 
   :profiles
-  {:defaults
+  {:default
    [:base :system :user :provided :dev :foo :bar]
 
    :uberjar
