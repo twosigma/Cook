@@ -35,40 +35,7 @@
   :java-source-paths ["java"]
 
   :profiles
-  {:default
-   [:base :system :user :provided :dev :foo :bar]
-
-   :uberjar
-   {:aot [cook.components]}
-
-   :dev
-   {:dependencies [[clj-http-fake "1.0.1"]
-                   [criterium "0.4.4"]
-                   [org.mockito/mockito-core "1.10.19"]
-                   [twosigma/cook-jobclient "0.1.2-SNAPSHOT"]
-                   [org.clojure/test.check "0.6.1"]
-                   [log4j/log4j "1.2.17" :exclusions [javax.mail/mail
-                                                      javax.jms/jms
-                                                      com.sun.jdmk/jmxtools
-                                                      com.sun.jmx/jmxri]]
-                   [ring/ring-jetty-adapter "1.5.0"]]
-    :jvm-opts ["-Xms2G"
-               "-XX:-OmitStackTraceInFastThrow"
-               "-Xmx2G"
-               "-Dcom.sun.management.jmxremote.authenticate=false"
-               "-Dcom.sun.management.jmxremote.ssl=false"]
-    :resource-paths ["test-resources"]
-    :source-paths []}
-
-   :test-console
-   {:jvm-opts ["-Dcook.test.logging.console"]}
-
-   :docker
-   ; avoid calling javac in docker
-   ; (.java sources are only used for unit test support)
-   {:java-source-paths ^:replace []}
-
-   :foo
+  {:foo
    {:dependencies [[org.clojure/clojure "1.8.0"]
 
                    ;;Data marshalling
@@ -173,7 +140,43 @@
                                  org.slf4j/slf4j-api
                                  org.slf4j/slf4j-simple]]
                    [org.slf4j/slf4j-log4j12 "1.7.12"]
-                   [wyegelwe/mesomatic "1.0.1-r0-SNAPSHOT"]]}}
+                   [wyegelwe/mesomatic "1.0.1-r0-SNAPSHOT"]]}
+
+   :uberjar
+   {:aot [cook.components]}
+
+   :dev
+   {:dependencies [[clj-http-fake "1.0.1"]
+                   [criterium "0.4.4"]
+                   [org.mockito/mockito-core "1.10.19"]
+                   [twosigma/cook-jobclient "0.1.2-SNAPSHOT"]
+                   [org.clojure/test.check "0.6.1"]
+                   [log4j/log4j "1.2.17" :exclusions [javax.mail/mail
+                                                      javax.jms/jms
+                                                      com.sun.jdmk/jmxtools
+                                                      com.sun.jmx/jmxri]]
+                   [ring/ring-jetty-adapter "1.5.0"]]
+    :jvm-opts ["-Xms2G"
+               "-XX:-OmitStackTraceInFastThrow"
+               "-Xmx2G"
+               "-Dcom.sun.management.jmxremote.authenticate=false"
+               "-Dcom.sun.management.jmxremote.ssl=false"]
+    :resource-paths ["test-resources"]
+    :source-paths []}
+
+   :test-console
+   {:jvm-opts ["-Dcook.test.logging.console"]}
+
+   :docker
+   ; avoid calling javac in docker
+   ; (.java sources are only used for unit test support)
+   {:java-source-paths ^:replace []}}
+
+  :aliases {"deps" ["with-profile" "+foo,+bar" "deps"]
+            "jar" ["with-profile" "+foo,+bar" "jar"]
+            "run" ["with-profile" "+foo,+bar" "run"]
+            "test" ["with-profile" "+foo,+bar" "test"]
+            "uberjar" ["with-profile" "+foo,+bar" "uberjar"]}
 
   :plugins [[lein-print "0.1.0"]]
 
