@@ -24,6 +24,8 @@ DEFAULT_TEST_TIMEOUT_SECS = 600
 # 2 minutes should be more than sufficient on most cases
 DEFAULT_TIMEOUT_MS = 120000
 
+# Name of our custom HTTP header for user impersonation
+IMPERSONATION_HEADER = 'X-Cook-Impersonate'
 
 def continuous_integration():
     """Returns true if the CONTINUOUS_INTEGRATION environment variable is set, as done by Travis-CI."""
@@ -48,42 +50,70 @@ _kerberos_missing_cmd =  'echo "MISSING COOK_KERBEROS_TEST_AUTH_CMD" && exit 1'
 _kerberos_auth_cmd = os.getenv('COOK_KERBEROS_TEST_AUTH_CMD', _kerberos_missing_cmd)
 
 
-class _BasicAuthUser(object):
+class _AuthenticatedUser(object):
     """
-    Object representing a Cook user with HTTP Basic Auth credentials.
+    Object representing a Cook user, which holds authentication details.
     User objects can be used with python's `with` blocks
     to conveniently set a user for a sequence of commands.
     """
 
-    def __init__(self, name):
+    def __init__(self, name, impersonatee=None):
         self.name = name
+        self.impersonatee = impersonatee
+        self.previous_impersonatee = None
+
+    def impersonating(self, other_user):
+        other_username = other_user.name if isinstance(other_user, _AuthenticatedUser) else other_user
+        return type(self)(self.name, impersonatee=other_username)
+
+    def __enter__(self):
+        logger.debug(f'Switching to user {self.name}')
+        if self.impersonatee:
+            self.previous_impersonatee = session.headers.get(IMPERSONATION_HEADER)
+            session.headers[IMPERSONATION_HEADER] = self.impersonatee
+
+    def __exit__(self, ex_type, ex_val, ex_trace):
+        logger.debug(f'Switching back from user {self.name}')
+        if self.impersonatee:
+            if self.previous_impersonatee:
+                session.headers[IMPERSONATION_HEADER] = self.previous_impersonatee
+                self.previous_impersonatee = None
+            else:
+                del session.headers[IMPERSONATION_HEADER]
+
+
+class _BasicAuthUser(_AuthenticatedUser):
+    """
+    Object representing a Cook user with HTTP Basic Auth credentials.
+    """
+
+    def __init__(self, name, impersonatee=None):
+        super().__init__(name, impersonatee)
         self.auth = (name, '')
         self.previous_auth = None
 
     def __enter__(self):
         global session
-        logger.debug(f'Switching to user {self.name}')
+        super().__enter__()
         assert self.previous_auth is None
         self.previous_auth = session.auth
         session.auth = self.auth
 
     def __exit__(self, ex_type, ex_val, ex_trace):
         global session
-        logger.debug(f'Switching back from user {self.name}')
+        super().__exit__(ex_type, ex_val, ex_trace)
         assert self.previous_auth is not None
         session.auth = self.previous_auth
         self.previous_auth = None
 
 
-class _KerberosUser(object):
+class _KerberosUser(_AuthenticatedUser):
     """
     Object representing a Cook user with Kerberos credentials.
-    User objects can be used with python's `with` blocks
-    to conveniently set a user for a sequence of commands.
     """
 
-    def __init__(self, name):
-        self.name = name
+    def __init__(self, name, impersonatee=None):
+        super().__init__(name, impersonatee)
         subcommand = (_kerberos_auth_cmd
                       .replace('{{COOK_USER}}', name)
                       .replace('{{COOK_SCHEDULER_URL}}', retrieve_cook_url()))
@@ -92,14 +122,14 @@ class _KerberosUser(object):
 
     def __enter__(self):
         global session
-        logger.debug(f'Switching to user {self.name}')
+        super().__enter__()
         assert self.previous_token is None
         self.previous_token = session.headers.get('Authorization')
         session.headers['Authorization'] = self.auth_token
 
     def __exit__(self, ex_type, ex_val, ex_trace):
         global session
-        logger.debug(f'Switching back from user {self.name}')
+        super().__exit__(ex_type, ex_val, ex_trace)
         if self.previous_token is None:
             del session.headers['Authorization']
         else:
@@ -832,6 +862,11 @@ def user_current_usage(cook_url, **kwargs):
     based on their currently running jobs.
     """
     return session.get('%s/usage' % cook_url, params=kwargs)
+
+
+def query_queue(cook_url):
+    """Get current jobs via the queue endpoint (admin-only)"""
+    return session.get(f'{cook_url}/queue')
 
 
 def set_limit(cook_url, limit_type, user, mem=None, cpus=None, gpus=None, jobs=None, reason='testing'):

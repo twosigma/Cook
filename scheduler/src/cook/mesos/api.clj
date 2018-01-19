@@ -1074,8 +1074,9 @@
   [conn is-authorized-fn ctx job-uuid]
   (let [request-user (get-in ctx [:request :authorization/user])
         job-user (:job/user (d/entity (db conn) [:job/uuid job-uuid]))
+        impersonator (get-in ctx [:request :authorization/impersonator])
         request-method (get-in ctx [:request :request-method])]
-    (is-authorized-fn request-user request-method {:owner job-user :item :job})))
+    (is-authorized-fn request-user request-method impersonator {:owner job-user :item :job})))
 
 (defn job-request-allowed?
   ([conn is-authorized-fn ctx uuids]
@@ -1284,8 +1285,9 @@
 (defn job-create-allowed?
   "Returns true if the user is authorized to :create jobs."
   [is-authorized-fn {:keys [request]}]
-  (let [request-user (:authorization/user request)]
-    (if (is-authorized-fn request-user :create {:owner request-user :item :job})
+  (let [request-user (:authorization/user request)
+        impersonator (:authorization/impersonator request)]
+    (if (is-authorized-fn request-user :create impersonator {:owner request-user :item :job})
       true
       [false {::error "You are not authorized to create jobs"}])))
 
@@ -1396,8 +1398,10 @@
                        group-user (fn [guuid] (-> (d/entity (db conn) [:group/uuid guuid])
                                                   :group/job first :job/user))
                        request-method (get-in ctx [:request :request-method])
+                       impersonator (get-in ctx [:request :authorization/impersonator])
                        authorized? (fn [guuid] (is-authorized-fn user
                                                                  request-method
+                                                                 impersonator
                                                                  {:owner (group-user guuid) :item :job}))
                        {authorized-guuids true unauthorized-guuids false} (group-by authorized? guuids)]
                    (if (or (empty? unauthorized-guuids) (::allow-partial-results? ctx))
@@ -1449,8 +1453,9 @@
                    (catch Exception e
                      [true {::error (str (.getMessage e))}])))
    :allowed? (fn [ctx]
-               (let [user (get-in ctx [:request :authorization/user])]
-                 (if (is-authorized-fn user :read {:owner ::system :item :queue})
+               (let [user (get-in ctx [:request :authorization/user])
+                     impersonator (get-in ctx [:request :authorization/impersonator])]
+                 (if (is-authorized-fn user :read impersonator {:owner ::system :item :queue})
                    true
                    (do
                      (log/info user " has failed auth")
@@ -1496,8 +1501,9 @@
                    (catch Exception e
                      [true {::error (str (.getMessage e))}])))
    :allowed? (fn [ctx]
-               (let [user (get-in ctx [:request :authorization/user])]
-                 (if (is-authorized-fn user :read {:owner ::system :item :running})
+               (let [user (get-in ctx [:request :authorization/user])
+                     impersonator (get-in ctx [:request :authorization/impersonator])]
+                 (if (is-authorized-fn user :read impersonator {:owner ::system :item :running})
                    true
                    [false {::error "Unauthorized"}])))
    :handle-forbidden render-error
@@ -1670,14 +1676,15 @@
         [false ctx']))))
 
 (defn user-can-retry-job?
-  [conn is-authorized-fn request-user job]
+  [conn is-authorized-fn request-user impersonator job]
   (let [job-owner (:job/user (d/entity (db conn) [:job/uuid job]))]
-    (is-authorized-fn request-user :retry {:owner job-owner :item :job})))
+    (is-authorized-fn request-user :retry impersonator {:owner job-owner :item :job})))
 
 (defn check-retry-allowed
   [conn is-authorized-fn ctx]
   (let [request-user (get-in ctx [:request :authorization/user])
-        unauthorized-job? #(not (user-can-retry-job? conn is-authorized-fn request-user %))]
+        impersonator (get-in ctx [:request :authorization/impersonator])
+        unauthorized-job? #(not (user-can-retry-job? conn is-authorized-fn request-user impersonator %))]
     (or (first (for [guuid (::groups ctx)
                      :let [group (d/entity (db conn) [:group/uuid guuid])
                            job (-> group :group/job first)]
@@ -1763,8 +1770,9 @@
 (defn check-limit-allowed
   [limit-type is-authorized-fn ctx]
   (let [request-user (get-in ctx [:request :authorization/user])
+        impersonator (get-in ctx [:request :authorization/impersonator])
         request-method (get-in ctx [:request :request-method])]
-    (if-not (is-authorized-fn request-user request-method {:owner ::system :item limit-type})
+    (if-not (is-authorized-fn request-user request-method impersonator {:owner ::system :item limit-type})
       [false {::error (str "You are not authorized to access " (name limit-type) " information")}]
       true)))
 
@@ -2028,9 +2036,10 @@
                       since-hours-ago ::since-hours-ago
                       start-ms ::start-ms
                       end-ms ::end-ms} ctx
-                     request-user (get-in ctx [:request :authorization/user])]
+                     request-user (get-in ctx [:request :authorization/user])
+                     impersonator (get-in ctx [:request :authorization/impersonator])]
                  (cond
-                   (not (is-authorized-fn request-user :get {:owner user :item :job}))
+                   (not (is-authorized-fn request-user :get impersonator {:owner user :item :job}))
                    [false {::error (str "You are not authorized to list jobs for " user)}]
 
                    (not (<= 0 since-hours-ago 168))

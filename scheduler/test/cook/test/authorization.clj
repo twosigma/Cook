@@ -139,22 +139,22 @@
 
 (deftest is-authorized
   (testing "is-authorized? selects the auth function defined in the settings correctly"
-    (is (true? (auth/is-authorized? open-auth-settings "foo" :create test-job)))
-    (is (true? (auth/is-authorized? open-auth-settings "bar" :read test-job)))
-    (is (true? (auth/is-authorized? open-auth-settings "baz" :update test-job)))
-    (is (true? (auth/is-authorized? open-auth-settings "frob" :destroy test-job)))
+    (is (true? (auth/is-authorized? open-auth-settings "foo" :create nil test-job)))
+    (is (true? (auth/is-authorized? open-auth-settings "bar" :read nil test-job)))
+    (is (true? (auth/is-authorized? open-auth-settings "baz" :update nil test-job)))
+    (is (true? (auth/is-authorized? open-auth-settings "frob" :destroy nil test-job)))
 
-    (is (false? (auth/is-authorized? configfile-admins-settings "foo" :create test-job)))
-    (is (false? (auth/is-authorized? configfile-admins-settings "bar" :read test-job)))
-    (is (false? (auth/is-authorized? configfile-admins-settings "baz" :update test-job)))
-    (is (false? (auth/is-authorized? configfile-admins-settings "frob" :destroy test-job)))
+    (is (false? (auth/is-authorized? configfile-admins-settings "foo" :create nil test-job)))
+    (is (false? (auth/is-authorized? configfile-admins-settings "bar" :read nil test-job)))
+    (is (false? (auth/is-authorized? configfile-admins-settings "baz" :update nil test-job)))
+    (is (false? (auth/is-authorized? configfile-admins-settings "frob" :destroy nil test-job)))
 
-    (is (true? (auth/is-authorized? configfile-admins-settings test-job-owner :create test-job)))
-    (is (true? (auth/is-authorized? configfile-admins-settings test-job-owner :read test-job)))
-    (is (true? (auth/is-authorized? configfile-admins-settings test-job-owner :update test-job)))
-    (is (true? (auth/is-authorized? configfile-admins-settings test-job-owner :destroy test-job)))
+    (is (true? (auth/is-authorized? configfile-admins-settings test-job-owner :create nil test-job)))
+    (is (true? (auth/is-authorized? configfile-admins-settings test-job-owner :read nil test-job)))
+    (is (true? (auth/is-authorized? configfile-admins-settings test-job-owner :update nil test-job)))
+    (is (true? (auth/is-authorized? configfile-admins-settings test-job-owner :destroy nil test-job)))
 
-    (is (true? (auth/is-authorized? configfile-admins-settings admin-user :create test-job)))
-    (is (true? (auth/is-authorized? configfile-admins-settings admin-user :read test-job)))
-    (is (true? (auth/is-authorized? configfile-admins-settings admin-user :update test-job)))
-    (is (true? (auth/is-authorized? configfile-admins-settings admin-user :destroy test-job)))))
+    (is (true? (auth/is-authorized? configfile-admins-settings admin-user :create nil test-job)))
+    (is (true? (auth/is-authorized? configfile-admins-settings admin-user :read nil test-job)))
+    (is (true? (auth/is-authorized? configfile-admins-settings admin-user :update nil test-job)))
+    (is (true? (auth/is-authorized? configfile-admins-settings admin-user :destroy nil test-job)))))

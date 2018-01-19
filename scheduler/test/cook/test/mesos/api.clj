@@ -23,6 +23,7 @@
             [clojure.walk :refer [keywordize-keys]]
             [cook.authorization :as auth]
             [cook.components :as components]
+            [cook.impersonation :as imp]
             [cook.mesos.api :as api]
             [cook.mesos.reason :as reason]
             [cook.mesos.scheduler :as sched]
@@ -1490,29 +1491,42 @@
   object, and nobody else to do anything. It is intended for unit testing only."
   [special-user]
   (fn dummy-auth
-    ([user verb object]
-     (dummy-auth {} user verb object))
-    ([settings user verb object]
+    ([user verb impersonator object]
+     (dummy-auth {} user verb impersonator object))
+    ([settings user verb impersonator object]
      (= user special-user))))
 
 (defn- submit-job
   "Simulates a job submission request using the provided handler and user"
-  [handler user]
-  (let [job (basic-job)]
-    (assoc
-      (handler {:request-method :post
-                :scheme :http
-                :uri "/rawscheduler"
-                :headers {"Content-Type" "application/json"}
-                :authorization/user user
-                :body-params {"jobs" [job]}})
-      :uuid (get job "uuid"))))
+  ([handler user] (submit-job handler user nil))
+  ([handler user impersonator]
+   (let [job (basic-job)]
+     (assoc
+       (handler {:request-method :post
+                 :scheme :http
+                 :uri "/rawscheduler"
+                 :headers {"Content-Type" "application/json"}
+                 :authorization/user user
+                 :authorization/impersonator impersonator
+                 :body-params {"jobs" [job]}})
+       :uuid (get job "uuid")))))
 
 (deftest test-job-create-authorization
   (let [conn (restore-fresh-database! "datomic:mem://test-job-create-authorization")
         handler (basic-handler conn :is-authorized-fn (dummy-auth-factory "alice"))]
     (is (= 201 (:status (submit-job handler "alice"))))
     (is (= 403 (:status (submit-job handler "bob"))))))
+
+(deftest test-impersonation-authorization
+  (let [conn (restore-fresh-database! "datomic:mem://test-job-create-authorization")
+        auth-fn (-> "alice" (dummy-auth-factory) (imp/impersonation-authorized-wrapper {}))
+        handler (basic-handler conn :is-authorized-fn auth-fn)]
+    ; should work w/o impersonator
+    (is (= 201 (:status (submit-job handler "alice"))))
+    (is (= 403 (:status (submit-job handler "bob"))))
+    ; should give same results with an authorized impersonator
+    (is (= 201 (:status (submit-job handler "alice" "carol"))))
+    (is (= 403 (:status (submit-job handler "bob" "carol"))))))
 
 (deftest test-list-jobs-by-time
   (let [conn (restore-fresh-database! "datomic:mem://test-list-jobs")

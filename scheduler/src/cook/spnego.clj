@@ -17,6 +17,7 @@
   (:require [clojure.data.codec.base64 :as b64]
             [clojure.string :as str]
             [clojure.string :refer (split lower-case)]
+            [cook.util]
             [ring.util.response :refer (header status response)])
   (:import [org.ietf.jgss GSSManager GSSCredential Oid]))
 
@@ -86,7 +87,7 @@
           (let [princ (gss-get-princ gss_context)]
             (cond-> (-> req
                         (assoc :krb5-authenticated-princ princ
-                               :authorization/user (first (str/split princ #"@" 2)))
+                               :authorization/user (cook.util/principal->username princ))
                         (rh))
               token (header "WWW-Authenticate" token)))
           (response-401-negotiate)))

@@ -26,6 +26,7 @@
             [congestion.middleware :refer (wrap-rate-limit ip-rate-limit)]
             [congestion.storage :as storage]
             [cook.curator :as curator]
+            [cook.impersonation :refer (impersonation-authorized-wrapper)]
             [cook.util :as util]
             [metrics.jvm.core :as metrics-jvm]
             [metrics.ring.instrument :refer (instrument)]
@@ -244,8 +245,8 @@
   (graph/eager-compile
     {:mesos-datomic mesos-datomic
      :route full-routes
-     :http-server (fnk [[:settings server-port authorization-middleware leader-reports-unhealthy [:rate-limit user-limit]] [:route view]
-                        mesos-leadership-atom]
+     :http-server (fnk [[:settings server-port authorization-middleware impersonation-middleware
+                         leader-reports-unhealthy [:rate-limit user-limit]] [:route view] mesos-leadership-atom]
                     (log/info "Launching http server")
                     (let [rate-limit-storage (storage/local-storage)
                           jetty ((lazy-load-var 'qbits.jet.server/run-jetty)
@@ -256,6 +257,7 @@
                                                        tell-jetty-about-usename
                                                        (wrap-rate-limit {:storage rate-limit-storage
                                                                          :limit user-limit})
+                                                       impersonation-middleware
                                                        (conditional-auth-bypass authorization-middleware)
                                                        wrap-stacktrace
                                                        wrap-no-cache
@@ -362,8 +364,11 @@
      :server-port (fnk [[:config port]]
                     port)
      :is-authorized-fn (fnk [[:config {authorization-config default-authorization}]]
-                         (partial (lazy-load-var 'cook.authorization/is-authorized?)
-                                  authorization-config))
+                            (let [auth-fn @(lazy-load-var 'cook.authorization/is-authorized?)]
+                              ; we only wrap the authorization function if we have impersonators configured
+                              (if (-> authorization-config :impersonators seq)
+                                (impersonation-authorized-wrapper auth-fn authorization-config)
+                                (partial auth-fn authorization-config))))
      :authorization-middleware (fnk [[:config [:authorization {one-user false} {kerberos false} {http-basic false}]]]
                                  (cond
                                    http-basic
@@ -391,6 +396,11 @@
                                        @(lazy-load-var 'cook.spnego/require-gss)
                                        {:json-value "kerberos"}))
                                    :else (throw (ex-info "Missing authorization configuration" {}))))
+     :impersonation-middleware (fnk [[:config {authorization-config nil}]]
+                                    (let [{impersonators :impersonators} authorization-config]
+                                      (with-meta
+                                        ((lazy-load-var 'cook.impersonation/create-impersonation-middleware) impersonators)
+                                        {:json-value "config-impersonation"})))
      :rate-limit (fnk [[:config {rate-limit nil}]]
                    (let [{:keys [user-limit-per-m]
                           :or {user-limit-per-m 600}} rate-limit]

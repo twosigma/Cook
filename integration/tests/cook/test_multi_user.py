@@ -8,7 +8,6 @@ from tests.cook import reasons, util
 @unittest.skipUnless(util.multi_user_tests_enabled(), 'Requires using multi-user coniguration (e.g., BasicAuth) for Cook Scheduler')
 @pytest.mark.timeout(util.DEFAULT_TEST_TIMEOUT_SECS)  # individual test timeout
 class MultiUserCookTest(unittest.TestCase):
-    _multiprocess_can_split_ = True
 
     @classmethod
     def setUpClass(cls):

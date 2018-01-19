@@ -551,6 +551,24 @@ $ curl -u: --negotiate "$cook_uri/usage?user=$user&group_breakdown=true"
 {"total_usage":{"cpus":2.0,"mem":512.0,"gpus":0.0,"jobs":2},"grouped":[{"group":{"uuid":"d250d3ed-f397-47b6-9a71-173871e81c63","name":"cookgroup","running_jobs":["ba9b69a7-5fce-4047-a484-167290134322"]},"usage":{"cpus":1.0,"mem":256.0,"gpus":0.0,"jobs":1}}],"ungrouped":{"running_jobs":["81a23761-25c8-4714-a72f-3e0057ecbab6"],"usage":{"cpus":1.0,"mem":256.0,"gpus":0.0,"jobs":1}}}
 ----
 
+[impersonation]
+
+=== User Impersonation
+
+You may specify a set of *authorized impersonators* in your Cook Scheduler configuration file.
+The set is placed under `:authorization-config` `:impersonators`.
+An authorized impersonator may perform most Cook Scheduler actions on behalf of other users;
+e.g., create a new job, retrying a group of jobs, or querying current share limits.
+This feature may be useful to services built on top of the Cook Scheduler,
+which would need authorization to manipulate Cook jobs on behalf of its users.
+
+An impersonated request is the same as a normal request, but with the additon of a special header: `X-Cook-Impersonate`.
+The value associated with this header should be the username (or Kerberos principal) of the user to be impersonated.
+The scheduler will check both that the impersonating user is authorized to perform impersonated actions,
+and that the impersonated user is allowed to perform the desired action.
+However, some administrative functions are not allowed via impersonation;
+e.g., an impersonator cannot impersonate an admin to change a user's quota.
+
 [swagger]
 
 === Swagger Specification

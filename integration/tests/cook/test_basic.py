@@ -18,7 +18,6 @@ from tests.cook import util
 
 @pytest.mark.timeout(util.DEFAULT_TEST_TIMEOUT_SECS)  # individual test timeout
 class CookTest(unittest.TestCase):
-    _multiprocess_can_split_ = True
 
     @classmethod
     def setUpClass(cls):
@@ -1234,7 +1233,7 @@ class CookTest(unittest.TestCase):
             self.assertEqual(201, resp.status_code, resp.content)
 
             def query_queue():
-                return util.session.get('%s/queue' % self.cook_url)
+                return util.query_queue(self.cook_url)
 
             def queue_predicate(resp):
                 return any([job['job/uuid'] == job_uuid for job in resp.json()['normal']])
