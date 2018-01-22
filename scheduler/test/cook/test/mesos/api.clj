@@ -525,7 +525,7 @@
 
 (deftest quota-api
   (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
-        h (basic-handler conn :cpus 128)
+        h (basic-handler conn :gpus-enabled true)
         quota-req-attrs {:scheme :http
                          :uri "/quota"
                          :authorization/user "mforsyth"
@@ -554,8 +554,15 @@
             get-body (response->body-data get-resp)]
         (is (= get-body update-body))))
 
-    (testing "quota is checked on job submission"
-      (let [job (assoc (basic-job) "cpus" 32.0)
+    (testing "gpu quota is checked on job submission"
+      (let [job (assoc (basic-job) "gpus" 3.0)
+            job-resp (h (merge quota-req-attrs
+                               {:uri "/rawscheduler"
+                                :authorization/user "foo"
+                                :request-method :post
+                                :body-params {"jobs" [job]}}))]
+        (is (<= 200 (:status job-resp) 299)))
+      (let [job (assoc (basic-job) "gpus" 4.0)
             job-resp (h (merge quota-req-attrs
                                {:uri "/rawscheduler"
                                 :authorization/user "foo"

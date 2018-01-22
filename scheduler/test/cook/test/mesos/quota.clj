@@ -33,6 +33,12 @@
     (quota/set-quota! conn "u4" "no jobs allowed" :count 0)
     (quota/set-quota! conn "default" "lock most users down" :cpus 1.0 :mem 2.0 :gpus 1.0)
     (let [db (db conn)]
+      (testing "set and query zero job count"
+        (is (= {:count 0
+                :cpus 1.0 :mem 2.0 :gpus 1.0} (quota/get-quota db "u4"))))
+      (testing "set and query zero gpus"
+        (is (= {:count Double/MAX_VALUE
+                :cpus 1.0 :mem 2.0 :gpus 0.0} (quota/get-quota db "u3"))))
       (testing "set and query."
         (is (= {:count Double/MAX_VALUE
                 :cpus 5.0 :mem 10.0 :gpus 1.0} (quota/get-quota db "u2"))))

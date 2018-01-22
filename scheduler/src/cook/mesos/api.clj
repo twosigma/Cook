@@ -1313,8 +1313,8 @@
         user-quota (quota/get-quota db user)
         errors (for [job (::jobs ctx)
                      resource resource-keys
-                     :let [job-usage (get job resource 0)
-                           quota-val (get user-quota resource)]
+                     :let [job-usage (-> job (get resource 0) double)
+                           quota-val (-> user-quota (get resource) double)]
                      :when (> job-usage quota-val)]
                  (format "Job %s exceeds quota for %s: %f > %f"
                          (:uuid job) (name resource) job-usage quota-val))]

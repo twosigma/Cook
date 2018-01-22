@@ -115,6 +115,10 @@ class MultiUserCookTest(unittest.TestCase):
             with user:
                 _, resp = util.submit_job(self.cook_url)
                 self.assertEqual(resp.status_code, 201, msg=resp.text)
+            # Can't set negative quota
+            with admin:
+                resp = util.set_limit(self.cook_url, 'quota', user.name, cpus=-4)
+                self.assertEqual(resp.status_code, 400, resp.text)
         finally:
             with admin:
                 util.reset_limit(self.cook_url, 'quota', user.name)
@@ -146,6 +150,10 @@ class MultiUserCookTest(unittest.TestCase):
             with user:
                 _, resp = util.submit_job(self.cook_url)
                 self.assertEqual(resp.status_code, 201, msg=resp.text)
+            # Can't set negative quota
+            with admin:
+                resp = util.set_limit(self.cook_url, 'quota', user.name, mem=-128)
+                self.assertEqual(resp.status_code, 400, resp.text)
         finally:
             with admin:
                 util.reset_limit(self.cook_url, 'quota', user.name)
@@ -168,6 +176,10 @@ class MultiUserCookTest(unittest.TestCase):
             with user:
                 _, resp = util.submit_job(self.cook_url)
                 self.assertEqual(resp.status_code, 201, msg=resp.text)
+            # Can't set negative quota
+            with admin:
+                resp = util.set_limit(self.cook_url, 'quota', user.name, count=-1)
+                self.assertEqual(resp.status_code, 400, resp.text)
         finally:
             with admin:
                 util.reset_limit(self.cook_url, 'quota', user.name)
