@@ -5,8 +5,9 @@ import unittest
 
 from tests.cook import util
 
-@pytest.mark.impersonation
+@pytest.mark.multi_user
 @unittest.skipUnless(util.multi_user_tests_enabled(), 'Requires using multi-user coniguration (e.g., BasicAuth) for Cook Scheduler')
+@pytest.mark.timeout(util.DEFAULT_TEST_TIMEOUT_SECS)  # individual test timeout
 class ImpersonationCookTest(unittest.TestCase):
 
     @classmethod
