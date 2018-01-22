@@ -870,6 +870,11 @@ def query_queue(cook_url):
 
 
 def set_limit(cook_url, limit_type, user, mem=None, cpus=None, gpus=None, count=None, reason='testing'):
+    """
+    Set resource limits for the given user.
+    The limit_type parameter should be either 'share' or 'quota', specifying which type of limit is being set.
+    Any subset of the mem, cpus, gpus and count (job-count) limits can be specified.
+    """
     limits = {}
     body = {'user': user, limit_type: limits}
     if reason is not None: body['reason'] = reason
@@ -882,6 +887,10 @@ def set_limit(cook_url, limit_type, user, mem=None, cpus=None, gpus=None, count=
 
 
 def reset_limit(cook_url, limit_type, user, reason='testing'):
+    """
+    Resets resource limits for the given user to the default for the cluster.
+    The limit_type parameter should be either 'share' or 'quota', specifying which type of limit is being reset.
+    """
     params = {'user': user}
     if reason is not None: params['reason'] = reason
     return session.delete(f'{cook_url}/{limit_type}', params=params)
