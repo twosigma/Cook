@@ -122,7 +122,13 @@
   :java-source-paths ["java"]
 
   :profiles
-  {:bar
+  {
+   ; The :oss profile exists so that Cook can be built using a more
+   ; appropriate set of dependencies for a specific environment than the
+   ; ones defined here. For example, one could drop in the datomic-pro
+   ; library instead of the datomic-free library, by using a
+   ; profiles.clj file that defines a profile which pulls in datomic-pro.
+   :oss
    {:dependencies [[cheshire "5.3.1"]
                    [com.datomic/datomic-free "0.9.5206"
                     :exclusions [org.slf4j/slf4j-api
@@ -170,11 +176,15 @@
    ; (.java sources are only used for unit test support)
    {:java-source-paths ^:replace []}}
 
-  :aliases {"deps" ["with-profile" "+bar" "deps"]
-            "jar" ["with-profile" "+bar" "jar"]
-            "run" ["with-profile" "+bar" "run"]
-            "test" ["with-profile" "+bar" "test"]
-            "uberjar" ["with-profile" "+bar" "uberjar"]}
+  ; We define :aliases to pull in the :oss profile on the commonly
+  ; used commands so that developers don't have to remember to use
+  ; with-profile. The :displace metadata keyword allows these
+  ; aliases to be "overriden" by other profiles if needed.
+  :aliases ^:displace {"deps" ["with-profile" "+oss" "deps"]
+                       "jar" ["with-profile" "+oss" "jar"]
+                       "run" ["with-profile" "+oss" "run"]
+                       "test" ["with-profile" "+oss" "test"]
+                       "uberjar" ["with-profile" "+oss" "uberjar"]}
 
   :plugins [[lein-print "0.1.0"]]
 
