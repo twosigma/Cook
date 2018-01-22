@@ -55,6 +55,7 @@
                  [org.clojure/tools.logging "0.2.6"]
                  [clj-logging-config "1.9.10"
                   :exclusions [log4j]]
+                 [org.slf4j/slf4j-log4j12 "1.7.12"]
                  [com.draines/postal "1.11.0"
                   :exclusions [commons-codec]]
                  [prismatic/plumbing "0.5.3"]
@@ -129,15 +130,19 @@
 
   :profiles
   {
+   ; By default, activate the :oss profile (explained below)
    :default [:base :system :user :provided :dev :oss]
 
-   ; The :oss profile exists so that Cook can be built using a more
-   ; appropriate set of dependencies for a specific environment than the
-   ; ones defined here. For example, one could drop in the datomic-pro
-   ; library instead of the datomic-free library, by using a
-   ; profiles.clj file that defines a profile which pulls in datomic-pro.
+   ; The :oss profile exists so that Cook can be built with a more
+   ; appropriate set of dependencies for a specific environment than
+   ; the ones defined here (by using `lein with-profile -oss` ...)
    :oss
-   {:dependencies [[com.datomic/datomic-free "0.9.5206"
+   {:dependencies [
+                   ; For example, one could drop in the datomic-pro
+                   ; library instead of the datomic-free library, by
+                   ; using a profiles.clj file that defines a profile
+                   ; which pulls in datomic-pro
+                   [com.datomic/datomic-free "0.9.5206"
                     :exclusions [org.slf4j/slf4j-api
                                  com.fasterxml.jackson.core/jackson-core
                                  org.slf4j/jcl-over-slf4j
@@ -145,7 +150,8 @@
                                  org.slf4j/log4j-over-slf4j
                                  org.slf4j/slf4j-nop
                                  joda-time]]
-                   [org.slf4j/slf4j-log4j12 "1.7.12"]
+                   ; Similarly, one could use an older version of the
+                   ; mesomatic library in environments that require it
                    [wyegelwe/mesomatic "1.0.1-r0-SNAPSHOT"]]}
 
    :uberjar
