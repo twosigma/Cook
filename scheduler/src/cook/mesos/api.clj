@@ -108,8 +108,13 @@
 (def ZeroInt
   (s/both s/Int (s/pred zero? 'zero?)))
 
-(def PosNum
+(s/defschema PosNum
+  "Positive number (float or int)"
   (s/both s/Num (s/pred pos? 'pos?)))
+
+(s/defschema NonNegNum
+  "Non-negative number (float or int)"
+  (s/both s/Num (s/pred (comp not neg?) 'non-negative?)))
 
 (def PosInt
   (s/both s/Int (s/pred pos? 'pos?)))
@@ -1291,6 +1296,33 @@
       true
       [false {::error "You are not authorized to create jobs"}])))
 
+(defn no-job-exceeds-quota?
+  "Check if any of the submitted jobs exceed the user's total quota,
+   in which case the job would never be schedulable (unless the quota is increased).
+
+   If none of the jobs individually seem to exceed the user's quota, returns true;
+   otherwise, the following error structure is returned:
+
+     [false {::error \"...\"}]
+
+  where \"...\" is a detailed error string describing the quota bounds exceeded."
+  [conn ctx]
+  (let [db (db conn)
+        resource-keys [:cpus :mem :gpus]
+        user (get-in ctx [:request :authorization/user])
+        user-quota (quota/get-quota db user)
+        errors (for [job (::jobs ctx)
+                     resource resource-keys
+                     :let [job-usage (-> job (get resource 0) double)
+                           quota-val (-> user-quota (get resource) double)]
+                     :when (> job-usage quota-val)]
+                 (format "Job %s exceeds quota for %s: %f > %f"
+                         (:uuid job) (name resource) job-usage quota-val))]
+    (cond
+      (zero? (:count user-quota)) [false {::error "User quota is set to zero jobs."}]
+      (seq errors) [false {::error (str/join "\n" errors)}]
+      :else true)))
+
 ;;; On POST; JSON blob that looks like:
 ;;; {"jobs": [{"command": "echo hello world",
 ;;;            "uuid": "123898485298459823985",
@@ -1333,7 +1365,9 @@
                 (let [db (d/db conn)
                       existing (filter (partial job-exists? db) (map :uuid (::jobs ctx)))]
                   [(seq existing) {::existing existing}]))
-
+     ;; We want to return a 422 (unprocessable entity) if the requested resources
+     ;; for a single job exceed the user's total resource quota.
+     :processable? (partial no-job-exceeds-quota? conn)
      ;; To ensure compatibility with existing clients,
      ;; we need to return 409 (conflict) when a client POSTs a Job UUID that already exists.
      ;; Liberator normally only supports 409 responses to PUT requests, so we need to override
@@ -1758,7 +1792,7 @@
 
 (defn set-limit-params
   [limit-type]
-  {:body-params (merge UserLimitChangeParams {limit-type {s/Keyword s/Num}})})
+  {:body-params (merge UserLimitChangeParams {limit-type {s/Keyword NonNegNum}})})
 
 (defn retrieve-user-limit
   [get-limit-fn conn ctx]

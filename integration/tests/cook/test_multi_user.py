@@ -32,7 +32,8 @@ class MultiUserCookTest(unittest.TestCase):
             job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
             self.assertEqual('failed', job['state'])
         finally:
-            util.kill_jobs(self.cook_url, [job_uuid])
+            with user1:
+                util.kill_jobs(self.cook_url, [job_uuid])
 
     def test_group_delete_permission(self):
         user1, user2 = self.user_factory.new_users(2)
@@ -49,7 +50,8 @@ class MultiUserCookTest(unittest.TestCase):
             job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
             self.assertEqual('failed', job['state'])
         finally:
-            util.kill_jobs(self.cook_url, [job_uuid])
+            with user1:
+                util.kill_jobs(self.cook_url, [job_uuid])
 
     def test_multi_user_usage(self):
         users = self.user_factory.new_users(6)
@@ -83,4 +85,102 @@ class MultiUserCookTest(unittest.TestCase):
         finally:
             # Terminate all of the jobs
             if all_job_uuids:
-                util.kill_jobs(self.cook_url, all_job_uuids)
+                with self.user_factory.admin():
+                    util.kill_jobs(self.cook_url, all_job_uuids)
+
+    def test_job_cpu_quota(self):
+        admin = self.user_factory.admin()
+        user = self.user_factory.new_user()
+        try:
+            # User with no quota can't submit jobs
+            with admin:
+                resp = util.set_limit(self.cook_url, 'quota', user.name, cpus=0)
+                self.assertEqual(resp.status_code, 201, resp.text)
+            with user:
+                _, resp = util.submit_job(self.cook_url)
+                self.assertEqual(resp.status_code, 422, msg=resp.text)
+            # User with tiny quota can't submit bigger jobs, but can submit tiny jobs
+            with admin:
+                resp = util.set_limit(self.cook_url, 'quota', user.name, cpus=0.25)
+                self.assertEqual(resp.status_code, 201, resp.text)
+            with user:
+                _, resp = util.submit_job(self.cook_url, cpus=0.5)
+                self.assertEqual(resp.status_code, 422, msg=resp.text)
+                _, resp = util.submit_job(self.cook_url, cpus=0.25)
+                self.assertEqual(resp.status_code, 201, msg=resp.text)
+            # Reset user's quota back to default, then user can submit jobs again
+            with admin:
+                resp = util.reset_limit(self.cook_url, 'quota', user.name)
+                self.assertEqual(resp.status_code, 204, resp.text)
+            with user:
+                _, resp = util.submit_job(self.cook_url)
+                self.assertEqual(resp.status_code, 201, msg=resp.text)
+            # Can't set negative quota
+            with admin:
+                resp = util.set_limit(self.cook_url, 'quota', user.name, cpus=-4)
+                self.assertEqual(resp.status_code, 400, resp.text)
+        finally:
+            with admin:
+                util.reset_limit(self.cook_url, 'quota', user.name)
+
+    def test_job_mem_quota(self):
+        admin = self.user_factory.admin()
+        user = self.user_factory.new_user()
+        try:
+            # User with no quota can't submit jobs
+            with admin:
+                resp = util.set_limit(self.cook_url, 'quota', user.name, mem=0)
+                self.assertEqual(resp.status_code, 201, resp.text)
+            with user:
+                _, resp = util.submit_job(self.cook_url)
+                self.assertEqual(resp.status_code, 422, msg=resp.text)
+            # User with tiny quota can't submit bigger jobs, but can submit tiny jobs
+            with admin:
+                resp = util.set_limit(self.cook_url, 'quota', user.name, mem=10)
+                self.assertEqual(resp.status_code, 201, resp.text)
+            with user:
+                _, resp = util.submit_job(self.cook_url, mem=11)
+                self.assertEqual(resp.status_code, 422, msg=resp.text)
+                _, resp = util.submit_job(self.cook_url, mem=10)
+                self.assertEqual(resp.status_code, 201, msg=resp.text)
+            # Reset user's quota back to default, then user can submit jobs again
+            with admin:
+                resp = util.reset_limit(self.cook_url, 'quota', user.name)
+                self.assertEqual(resp.status_code, 204, resp.text)
+            with user:
+                _, resp = util.submit_job(self.cook_url)
+                self.assertEqual(resp.status_code, 201, msg=resp.text)
+            # Can't set negative quota
+            with admin:
+                resp = util.set_limit(self.cook_url, 'quota', user.name, mem=-128)
+                self.assertEqual(resp.status_code, 400, resp.text)
+        finally:
+            with admin:
+                util.reset_limit(self.cook_url, 'quota', user.name)
+
+    def test_job_count_quota(self):
+        admin = self.user_factory.admin()
+        user = self.user_factory.new_user()
+        try:
+            # User with no quota can't submit jobs
+            with admin:
+                resp = util.set_limit(self.cook_url, 'quota', user.name, count=0)
+                self.assertEqual(resp.status_code, 201, resp.text)
+            with user:
+                _, resp = util.submit_job(self.cook_url)
+                self.assertEqual(resp.status_code, 422, msg=resp.text)
+            # Reset user's quota back to default, then user can submit jobs again
+            with admin:
+                resp = util.reset_limit(self.cook_url, 'quota', user.name)
+                self.assertEqual(resp.status_code, 204, resp.text)
+            with user:
+                _, resp = util.submit_job(self.cook_url)
+                self.assertEqual(resp.status_code, 201, msg=resp.text)
+            # Can't set negative quota
+            with admin:
+                resp = util.set_limit(self.cook_url, 'quota', user.name, count=-1)
+                self.assertEqual(resp.status_code, 400, resp.text)
+        finally:
+            with admin:
+                util.reset_limit(self.cook_url, 'quota', user.name)
+
