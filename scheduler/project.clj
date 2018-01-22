@@ -20,6 +20,7 @@
 
                  ;;Data marshalling
                  [org.clojure/data.codec "0.1.0"]
+                 ^:displace [cheshire "5.3.1"]
                  [byte-streams "0.1.4"]
                  [org.clojure/data.json "0.2.2"]
                  [com.taoensso/nippy "2.8.0"
@@ -44,6 +45,11 @@
                  [org.clojure/data.priority-map "0.0.5"]
                  [swiss-arrows "1.0.0"]
                  [riddley "0.1.10"]
+                 ^:displace [com.netflix.fenzo/fenzo-core "0.10.0"
+                             :exclusions [org.apache.mesos/mesos
+                                          com.fasterxml.jackson.core/jackson-core
+                                          org.slf4j/slf4j-api
+                                          org.slf4j/slf4j-simple]]
 
                  ;;Logging
                  [org.clojure/tools.logging "0.2.6"]
@@ -123,14 +129,15 @@
 
   :profiles
   {
+   :default [:base :system :user :provided :dev :oss]
+
    ; The :oss profile exists so that Cook can be built using a more
    ; appropriate set of dependencies for a specific environment than the
    ; ones defined here. For example, one could drop in the datomic-pro
    ; library instead of the datomic-free library, by using a
    ; profiles.clj file that defines a profile which pulls in datomic-pro.
    :oss
-   {:dependencies [[cheshire "5.3.1"]
-                   [com.datomic/datomic-free "0.9.5206"
+   {:dependencies [[com.datomic/datomic-free "0.9.5206"
                     :exclusions [org.slf4j/slf4j-api
                                  com.fasterxml.jackson.core/jackson-core
                                  org.slf4j/jcl-over-slf4j
@@ -138,11 +145,6 @@
                                  org.slf4j/log4j-over-slf4j
                                  org.slf4j/slf4j-nop
                                  joda-time]]
-                   [com.netflix.fenzo/fenzo-core "0.10.0"
-                    :exclusions [org.apache.mesos/mesos
-                                 com.fasterxml.jackson.core/jackson-core
-                                 org.slf4j/slf4j-api
-                                 org.slf4j/slf4j-simple]]
                    [org.slf4j/slf4j-log4j12 "1.7.12"]
                    [wyegelwe/mesomatic "1.0.1-r0-SNAPSHOT"]]}
 
@@ -175,16 +177,6 @@
    ; avoid calling javac in docker
    ; (.java sources are only used for unit test support)
    {:java-source-paths ^:replace []}}
-
-  ; We define :aliases to pull in the :oss profile on the commonly
-  ; used commands so that developers don't have to remember to use
-  ; with-profile. The :displace metadata keyword allows these
-  ; aliases to be "overriden" by other profiles if needed.
-  :aliases ^:displace {"deps" ["with-profile" "+oss" "deps"]
-                       "jar" ["with-profile" "+oss" "jar"]
-                       "run" ["with-profile" "+oss" "run"]
-                       "test" ["with-profile" "+oss" "test"]
-                       "uberjar" ["with-profile" "+oss" "uberjar"]}
 
   :plugins [[lein-print "0.1.0"]]
 
