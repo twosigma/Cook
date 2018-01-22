@@ -88,7 +88,7 @@ class MultiUserCookTest(unittest.TestCase):
                 with self.user_factory.admin():
                     util.kill_jobs(self.cook_url, all_job_uuids)
 
-    def test_job_too_much_cpu(self):
+    def test_job_cpu_quota(self):
         admin = self.user_factory.admin()
         user = self.user_factory.new_user()
         try:
@@ -123,7 +123,7 @@ class MultiUserCookTest(unittest.TestCase):
             with admin:
                 util.reset_limit(self.cook_url, 'quota', user.name)
 
-    def test_job_too_much_mem(self):
+    def test_job_mem_quota(self):
         admin = self.user_factory.admin()
         user = self.user_factory.new_user()
         try:
@@ -158,7 +158,7 @@ class MultiUserCookTest(unittest.TestCase):
             with admin:
                 util.reset_limit(self.cook_url, 'quota', user.name)
 
-    def test_job_no_quota(self):
+    def test_job_count_quota(self):
         admin = self.user_factory.admin()
         user = self.user_factory.new_user()
         try:
