@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.10.0] - 2018-01-22
+### Added
+- Added user-impersonation functionality to support services running on top of Cook Scheduler, from @DaoWen
+### Changed
+- Jobs that exceed a user's total resource quota are rejected rather than waiting indefinitely, from @DaoWen
+
 ## [1.9.0] - 2018-01-10
 ### Added
 - Added unauthenticated /info endpoint for retrieving basic setup information, from @DaoWen
