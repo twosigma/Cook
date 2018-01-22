@@ -16,6 +16,93 @@
 (defproject cook "1.9.1-SNAPSHOT"
   :description "This launches jobs on a Mesos cluster with fair sharing and preemption"
   :license {:name "Apache License, Version 2.0"}
+  :dependencies [[org.clojure/clojure "1.8.0"]
+
+                 ;;Data marshalling
+                 [org.clojure/data.codec "0.1.0"]
+                 [byte-streams "0.1.4"]
+                 [org.clojure/data.json "0.2.2"]
+                 [com.taoensso/nippy "2.8.0"
+                  :exclusions [org.clojure/tools.reader]]
+                 [circleci/clj-yaml "0.5.5"]
+                 [camel-snake-kebab "0.4.0"]
+                 [com.rpl/specter "1.0.1"]
+
+                 ;;Utility
+                 [amalloy/ring-buffer "1.1"]
+                 [listora/ring-congestion "0.1.2"]
+                 [lonocloud/synthread "1.0.4"]
+                 [org.clojure/tools.namespace "0.2.4"]
+                 [org.clojure/core.cache "0.6.4"]
+                 [org.clojure/core.memoize "0.5.8"]
+                 [clj-time "0.9.0"]
+                 [org.clojure/core.async "0.3.442" :exclusions [org.clojure/tools.reader]]
+                 [org.clojure/tools.cli "0.3.5"]
+                 [prismatic/schema "1.1.3"]
+                 [clojure-miniprofiler "0.4.0"]
+                 [jarohen/chime "0.1.6"]
+                 [org.clojure/data.priority-map "0.0.5"]
+                 [swiss-arrows "1.0.0"]
+                 [riddley "0.1.10"]
+
+                 ;;Logging
+                 [org.clojure/tools.logging "0.2.6"]
+                 [clj-logging-config "1.9.10"
+                  :exclusions [log4j]]
+                 [com.draines/postal "1.11.0"
+                  :exclusions [commons-codec]]
+                 [prismatic/plumbing "0.5.3"]
+                 [log4j "1.2.17"]
+                 [instaparse "1.4.0"]
+                 [org.codehaus.jsr166-mirror/jsr166y "1.7.0"]
+                 [clj-pid "0.1.1"]
+                 [jarohen/chime "0.1.6"]
+
+                 ;;Networking
+                 [clj-http "2.0.0"]
+                 [io.netty/netty "3.10.1.Final"]
+                 [cc.qbits/jet "0.6.4" :exclusions [org.eclipse.jetty/jetty-io
+                                                    org.eclipse.jetty/jetty-security
+                                                    org.eclipse.jetty/jetty-server
+                                                    org.eclipse.jetty/jetty-http
+                                                    cheshire]]
+                 [org.eclipse.jetty/jetty-server "9.2.6.v20141205"]
+                 [org.eclipse.jetty/jetty-security "9.2.6.v20141205"]
+
+
+                 ;;Metrics
+                 [metrics-clojure "2.6.1"
+                  :exclusions [io.netty/netty org.clojure/clojure]]
+                 [metrics-clojure-ring "2.3.0" :exclusions [com.codahale.metrics/metrics-core
+                                                            org.clojure/clojure io.netty/netty]]
+                 [metrics-clojure-jvm "2.6.1"]
+                 [io.dropwizard.metrics/metrics-graphite "3.1.2"]
+                 [com.aphyr/metrics3-riemann-reporter "0.4.0"]
+                 [riemann-clojure-client "0.4.1"]
+
+                 ;;External system integrations
+                 [me.raynes/conch "0.5.2"]
+                 [org.clojure/tools.nrepl "0.2.3"]
+
+                 ;;Ring
+                 [ring/ring-core "1.4.0"]
+                 [ring/ring-devel "1.4.0" :exclusions [org.clojure/tools.namespace]]
+                 [compojure "1.4.0"]
+                 [metosin/compojure-api "1.1.8"]
+                 [hiccup "1.0.5"]
+                 [ring/ring-json "0.2.0"]
+                 [ring-edn "0.1.0"]
+                 [com.duelinmarkers/ring-request-logging "0.2.0"]
+                 [liberator "0.15.0"]
+
+                 ;;Databases
+                 [org.apache.curator/curator-framework "2.7.1"
+                  :exclusions [io.netty/netty]]
+                 [org.apache.curator/curator-recipes "2.7.1"
+                  :exclusions [org.slf4j/slf4j-log4j12
+                               org.slf4j/log4j
+                               log4j]]
+                 [org.apache.curator/curator-test "2.7.1"]]
 
   :repositories {"maven2" {:url "https://files.couchbase.com/maven2/"}
                  "sonatype-oss-public" "https://oss.sonatype.org/content/groups/public/"}
@@ -35,96 +122,7 @@
   :java-source-paths ["java"]
 
   :profiles
-  {:foo
-   {:dependencies [[org.clojure/clojure "1.8.0"]
-
-                   ;;Data marshalling
-                   [org.clojure/data.codec "0.1.0"]
-                   [byte-streams "0.1.4"]
-                   [org.clojure/data.json "0.2.2"]
-                   [com.taoensso/nippy "2.8.0"
-                    :exclusions [org.clojure/tools.reader]]
-                   [circleci/clj-yaml "0.5.5"]
-                   [camel-snake-kebab "0.4.0"]
-                   [com.rpl/specter "1.0.1"]
-
-                   ;;Utility
-                   [amalloy/ring-buffer "1.1"]
-                   [listora/ring-congestion "0.1.2"]
-                   [lonocloud/synthread "1.0.4"]
-                   [org.clojure/tools.namespace "0.2.4"]
-                   [org.clojure/core.cache "0.6.4"]
-                   [org.clojure/core.memoize "0.5.8"]
-                   [clj-time "0.9.0"]
-                   [org.clojure/core.async "0.3.442" :exclusions [org.clojure/tools.reader]]
-                   [org.clojure/tools.cli "0.3.5"]
-                   [prismatic/schema "1.1.3"]
-                   [clojure-miniprofiler "0.4.0"]
-                   [jarohen/chime "0.1.6"]
-                   [org.clojure/data.priority-map "0.0.5"]
-                   [swiss-arrows "1.0.0"]
-                   [riddley "0.1.10"]
-
-                   ;;Logging
-                   [org.clojure/tools.logging "0.2.6"]
-                   [clj-logging-config "1.9.10"
-                    :exclusions [log4j]]
-                   [com.draines/postal "1.11.0"
-                    :exclusions [commons-codec]]
-                   [prismatic/plumbing "0.5.3"]
-                   [log4j "1.2.17"]
-                   [instaparse "1.4.0"]
-                   [org.codehaus.jsr166-mirror/jsr166y "1.7.0"]
-                   [clj-pid "0.1.1"]
-                   [jarohen/chime "0.1.6"]
-
-                   ;;Networking
-                   [clj-http "2.0.0"]
-                   [io.netty/netty "3.10.1.Final"]
-                   [cc.qbits/jet "0.6.4" :exclusions [org.eclipse.jetty/jetty-io
-                                                      org.eclipse.jetty/jetty-security
-                                                      org.eclipse.jetty/jetty-server
-                                                      org.eclipse.jetty/jetty-http
-                                                      cheshire]]
-                   [org.eclipse.jetty/jetty-server "9.2.6.v20141205"]
-                   [org.eclipse.jetty/jetty-security "9.2.6.v20141205"]
-
-
-                   ;;Metrics
-                   [metrics-clojure "2.6.1"
-                    :exclusions [io.netty/netty org.clojure/clojure]]
-                   [metrics-clojure-ring "2.3.0" :exclusions [com.codahale.metrics/metrics-core
-                                                              org.clojure/clojure io.netty/netty]]
-                   [metrics-clojure-jvm "2.6.1"]
-                   [io.dropwizard.metrics/metrics-graphite "3.1.2"]
-                   [com.aphyr/metrics3-riemann-reporter "0.4.0"]
-                   [riemann-clojure-client "0.4.1"]
-
-                   ;;External system integrations
-                   [me.raynes/conch "0.5.2"]
-                   [org.clojure/tools.nrepl "0.2.3"]
-
-                   ;;Ring
-                   [ring/ring-core "1.4.0"]
-                   [ring/ring-devel "1.4.0" :exclusions [org.clojure/tools.namespace]]
-                   [compojure "1.4.0"]
-                   [metosin/compojure-api "1.1.8"]
-                   [hiccup "1.0.5"]
-                   [ring/ring-json "0.2.0"]
-                   [ring-edn "0.1.0"]
-                   [com.duelinmarkers/ring-request-logging "0.2.0"]
-                   [liberator "0.15.0"]
-
-                   ;;Databases
-                   [org.apache.curator/curator-framework "2.7.1"
-                    :exclusions [io.netty/netty]]
-                   [org.apache.curator/curator-recipes "2.7.1"
-                    :exclusions [org.slf4j/slf4j-log4j12
-                                 org.slf4j/log4j
-                                 log4j]]
-                   [org.apache.curator/curator-test "2.7.1"]]}
-
-   :bar
+  {:bar
    {:dependencies [[cheshire "5.3.1"]
                    [com.datomic/datomic-free "0.9.5206"
                     :exclusions [org.slf4j/slf4j-api
@@ -172,11 +170,11 @@
    ; (.java sources are only used for unit test support)
    {:java-source-paths ^:replace []}}
 
-  :aliases {"deps" ["with-profile" "+foo,+bar" "deps"]
-            "jar" ["with-profile" "+foo,+bar" "jar"]
-            "run" ["with-profile" "+foo,+bar" "run"]
-            "test" ["with-profile" "+foo,+bar" "test"]
-            "uberjar" ["with-profile" "+foo,+bar" "uberjar"]}
+  :aliases {"deps" ["with-profile" "+bar" "deps"]
+            "jar" ["with-profile" "+bar" "jar"]
+            "run" ["with-profile" "+bar" "run"]
+            "test" ["with-profile" "+bar" "test"]
+            "uberjar" ["with-profile" "+bar" "uberjar"]}
 
   :plugins [[lein-print "0.1.0"]]
 
@@ -199,5 +197,4 @@
              "-XX:NumberOfGCLogFiles=20"
              "-XX:GCLogFileSize=128M"
              "-XX:+PrintGCDateStamps"
-             "-XX:+HeapDumpOnOutOfMemoryError"
-             ])
+             "-XX:+HeapDumpOnOutOfMemoryError"])
