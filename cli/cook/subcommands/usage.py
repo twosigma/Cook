@@ -20,11 +20,6 @@ def get_usage_on_cluster(cluster, user):
         print_error(f'Unable to retrieve share information on {cluster["name"]} ({cluster["url"]}).')
         return {'count': 0}
 
-    settings_map = http.make_data_request(cluster, lambda: http.get(cluster, 'settings', params={}))
-    if not settings_map:
-        print_error(f'Unable to retrieve settings information on {cluster["name"]} ({cluster["url"]}).')
-        return {'count': 0}
-
     ungrouped_running_job_uuids = usage_map['ungrouped']['running_jobs']
     job_uuids_to_retrieve = ungrouped_running_job_uuids[:]
     grouped = usage_map['grouped']
