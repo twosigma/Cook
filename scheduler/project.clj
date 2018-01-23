@@ -20,7 +20,7 @@
 
                  ;;Data marshalling
                  [org.clojure/data.codec "0.1.0"]
-                 [cheshire "5.3.1"]
+                 ^:displace [cheshire "5.3.1"]
                  [byte-streams "0.1.4"]
                  [org.clojure/data.json "0.2.2"]
                  [com.taoensso/nippy "2.8.0"
@@ -45,11 +45,11 @@
                  [org.clojure/data.priority-map "0.0.5"]
                  [swiss-arrows "1.0.0"]
                  [riddley "0.1.10"]
-                 [com.netflix.fenzo/fenzo-core "0.10.0"
-                  :exclusions [org.apache.mesos/mesos
-                               com.fasterxml.jackson.core/jackson-core
-                               org.slf4j/slf4j-api
-                               org.slf4j/slf4j-simple]]
+                 ^:displace [com.netflix.fenzo/fenzo-core "0.10.0"
+                             :exclusions [org.apache.mesos/mesos
+                                          com.fasterxml.jackson.core/jackson-core
+                                          org.slf4j/slf4j-api
+                                          org.slf4j/slf4j-simple]]
 
                  ;;Logging
                  [org.clojure/tools.logging "0.2.6"]
@@ -89,7 +89,6 @@
 
                  ;;External system integrations
                  [me.raynes/conch "0.5.2"]
-                 [wyegelwe/mesomatic "1.0.1-r0-SNAPSHOT"]
                  [org.clojure/tools.nrepl "0.2.3"]
 
                  ;;Ring
@@ -104,21 +103,12 @@
                  [liberator "0.15.0"]
 
                  ;;Databases
-                 [com.datomic/datomic-free "0.9.5206"
-                  :exclusions [org.slf4j/slf4j-api
-                               com.fasterxml.jackson.core/jackson-core
-                               org.slf4j/jcl-over-slf4j
-                               org.slf4j/jul-to-slf4j
-                               org.slf4j/log4j-over-slf4j
-                               org.slf4j/slf4j-nop
-                               joda-time]]
                  [org.apache.curator/curator-framework "2.7.1"
                   :exclusions [io.netty/netty]]
                  [org.apache.curator/curator-recipes "2.7.1"
                   :exclusions [org.slf4j/slf4j-log4j12
                                org.slf4j/log4j
-                               log4j
-                               ]]
+                               log4j]]
                  [org.apache.curator/curator-test "2.7.1"]]
 
   :repositories {"maven2" {:url "https://files.couchbase.com/maven2/"}
@@ -139,7 +129,32 @@
   :java-source-paths ["java"]
 
   :profiles
-  {:uberjar
+  {
+   ; By default, activate the :oss profile (explained below)
+   :default [:base :system :user :provided :dev :oss]
+
+   ; The :oss profile exists so that Cook can be built with a more
+   ; appropriate set of dependencies for a specific environment than
+   ; the ones defined here (by using `lein with-profile -oss` ...)
+   :oss
+   {:dependencies [
+                   ; For example, one could drop in the datomic-pro
+                   ; library instead of the datomic-free library, by
+                   ; using a profiles.clj file that defines a profile
+                   ; which pulls in datomic-pro
+                   [com.datomic/datomic-free "0.9.5206"
+                    :exclusions [org.slf4j/slf4j-api
+                                 com.fasterxml.jackson.core/jackson-core
+                                 org.slf4j/jcl-over-slf4j
+                                 org.slf4j/jul-to-slf4j
+                                 org.slf4j/log4j-over-slf4j
+                                 org.slf4j/slf4j-nop
+                                 joda-time]]
+                   ; Similarly, one could use an older version of the
+                   ; mesomatic library in environments that require it
+                   [wyegelwe/mesomatic "1.0.1-r0-SNAPSHOT"]]}
+
+   :uberjar
    {:aot [cook.components]}
 
    :dev
@@ -190,5 +205,4 @@
              "-XX:NumberOfGCLogFiles=20"
              "-XX:GCLogFileSize=128M"
              "-XX:+PrintGCDateStamps"
-             "-XX:+HeapDumpOnOutOfMemoryError"
-             ])
+             "-XX:+HeapDumpOnOutOfMemoryError"])
