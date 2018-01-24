@@ -3,7 +3,7 @@
   <groupId>twosigma</groupId>
   <artifactId>cook-jobclient</artifactId>
   <packaging>jar</packaging>
-  <version>0.2.0-SNAPSHOT</version>
+  <version>0.1.2-SNAPSHOT</version>
   <name>cook-jobclient</name>
   <description>A Java API for connecting to the Cook scheduler, submitting, and monitoring jobs.</description>
   <licenses>
@@ -11,6 +11,9 @@
       <name>Apache License, Version 2.0</name>
     </license>
   </licenses>
+  <properties>
+      <jmockit.version>1.18</jmockit.version>
+  </properties>
   <build>
       <directory>target</directory>
       <outputDirectory>target/classes</outputDirectory>
@@ -43,30 +46,16 @@
                   <target>1.7</target>
               </configuration>
           </plugin>
+          <plugin>
+              <groupId>org.apache.maven.plugins</groupId>
+              <artifactId>maven-surefire-plugin</artifactId>
+              <version>2.20.1</version>
+              <configuration>
+                  <argLine>-javaagent:${env.HOME}/.m2/repository/org/jmockit/jmockit/${jmockit.version}/jmockit-${jmockit.version}.jar</argLine>
+              </configuration>
+          </plugin>
       </plugins>
   </build>
-  <repositories>
-    <repository>
-      <id>central</id>
-      <url>https://repo1.maven.org/maven2/</url>
-      <snapshots>
-        <enabled>false</enabled>
-      </snapshots>
-      <releases>
-        <enabled>true</enabled>
-      </releases>
-    </repository>
-    <repository>
-      <id>clojars</id>
-      <url>https://clojars.org/repo/</url>
-      <snapshots>
-        <enabled>true</enabled>
-      </snapshots>
-      <releases>
-        <enabled>true</enabled>
-      </releases>
-    </repository>
-  </repositories>
   <dependencyManagement>
     <dependencies/>
   </dependencyManagement>
@@ -90,17 +79,18 @@
       <groupId>log4j</groupId>
       <artifactId>log4j</artifactId>
       <version>1.2.17</version>
-  </dependency>
-  <dependency>
+    </dependency>
+    <dependency>
       <groupId>org.jmockit</groupId>
       <artifactId>jmockit</artifactId>
-      <version>1.18</version>
+      <version>${jmockit.version}</version>
+      <scope>test</scope>
     </dependency>
-
     <dependency>
       <groupId>junit</groupId>
       <artifactId>junit</artifactId>
       <version>4.12</version>
+      <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>commons-io</groupId>
