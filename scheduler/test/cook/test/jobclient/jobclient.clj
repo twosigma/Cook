@@ -213,4 +213,29 @@
                               group (make-group :uuid guuid :name gname)]
                           (-> jc (.submitWithGroups (ArrayList. []) (ArrayList. [group])))
 
-                          (is (= (-> jc (.queryGroup guuid) (.getName)) gname)))))))
+                          (is (= (-> jc (.queryGroup guuid) (.getName)) gname))))
+
+                      (testing "Test impersonated job submit and abort"
+                        (let [juuid (UUID/randomUUID)
+                              command "job-command"
+                              user "impersonated-user"
+                              job (make-job :uuid juuid :command command)
+                              jchan (async/chan 1)
+                              jlistener (make-job-listener #(async/>!! jchan %))]
+                          (-> jc (.impersonating user) (.submit (ArrayList. [job]) jlistener))
+                          (change-job-state conn juuid :job.state/completed)
+                          (is (= (-> (async/<!! jchan) (.getUser)) user))
+                          (-> jc (.impersonating user) (.abort (ArrayList. [juuid])))))
+
+                      (testing "Test impersonated submission of 1 group, multiple jobs"
+                        (let [guuid (UUID/randomUUID)
+                              juuids (repeatedly 5 #(UUID/randomUUID))
+                              user "impersonated-user"
+                              gname "group-name"
+                              group (make-group :uuid guuid :name gname)
+                              jobs (map #(make-job :uuid % :group group) juuids)
+                              _ (-> jc (.impersonating user) (.submitWithGroups (ArrayList. jobs) (ArrayList. [group])))
+                              retrieved-jobs (.queryJobs jc juuids)]
+                          (is (= (count juuids) (count retrieved-jobs)))
+                          (doseq [job (.values retrieved-jobs)]
+                            (is (= (.getUser job) user))))))))
