@@ -27,9 +27,11 @@ matrix:
   fast_finish: true
 
   include:
-    - env: NAME='Cook Scheduler unit tests'
+    - env: NAME='Cook Scheduler and JobClient unit tests'
       before_script: cd scheduler && ./travis/setup.sh
-      script: lein test :all-but-benchmark
+      script:
+        - pushd ../jobclient && mvn test
+        - popd && lein with-profile +test test :all-but-benchmark
 
     - env: NAME='Cook Scheduler integration tests with HTTP Basic Auth'
       services: docker
@@ -50,13 +52,9 @@ matrix:
       script: ./travis/run_simulation.sh
 
     - env: NAME='Cook Scheduler benchmark tests'
-      before_script: cd scheduler && lein with-profiles +test deps
-      script: lein test :benchmark
+      before_script: cd scheduler && ./travis/setup.sh
+      script: lein with-profile +test test :benchmark
 
     - env: NAME='Cook Executor tests'
       before_script: cd executor && ./travis/setup.sh
       script: ./travis/run_tests.sh
-
-    - env: NAME='Cook JobClient unit tests'
-      before_script: cd jobclient && mvn dependency:resolve
-      script: mvn test

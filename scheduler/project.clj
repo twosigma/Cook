@@ -158,11 +158,7 @@
    {:aot [cook.components]}
 
    :dev
-   {:dependencies [[clj-http-fake "1.0.1"]
-                   [criterium "0.4.4"]
-                   [org.mockito/mockito-core "1.10.19"]
-                   [twosigma/cook-jobclient "0.1.2-SNAPSHOT"]
-                   [org.clojure/test.check "0.6.1"]
+   {:dependencies [[criterium "0.4.4"]
                    [log4j/log4j "1.2.17" :exclusions [javax.mail/mail
                                                       javax.jms/jms
                                                       com.sun.jdmk/jmxtools
@@ -176,8 +172,14 @@
     :resource-paths ["test-resources"]
     :source-paths []}
 
+   :test
+   {:dependencies [[criterium "0.4.4"]
+                   [org.clojure/test.check "0.6.1"]
+                   [org.mockito/mockito-core "1.10.19"]
+                   [twosigma/cook-jobclient "0.1.2-SNAPSHOT"]]}
+
    :test-console
-   {:jvm-opts ["-Dcook.test.logging.console"]}
+   [:test {:jvm-opts ["-Dcook.test.logging.console"]}]
 
    :docker
    ; avoid calling javac in docker

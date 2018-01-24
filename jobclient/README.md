@@ -46,4 +46,13 @@ public class HostPlacementExample {
 }
 ``` 
 
+# Running the Tests
+
+The easiest way to run the JobClient unit tests is to use Maven:
+
+```bash
+mvn dependency:resolve
+mvn test
+```
+
 &copy; Two Sigma Open Source, LLC
