@@ -568,7 +568,6 @@ final public class Job {
             _user = user;
             return this;
         }
-
     }
 
     final private UUID _uuid;
