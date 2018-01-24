@@ -86,14 +86,20 @@ If need it to bind to another port, you can specify that with the `:local-port` 
   `max-size` is the maximum number of elements in the cache before the LRU eviction semantics apply. The default is 1000.
   `ttl-ms` is the default time in milliseconds that entries are allowed to reside in the cache. The default is 60000, i.e. 1 minute.
 
-`:sandbox-publisher`::
+`:sandbox-syncer`::
   The Cook scheduler throttles the rate at which it publishes task sandbox directories.
   This allows us to handle high rate of incoming progress messages in a graceful manner.
-  `sandbox-publisher` is a map with the following possible keys: `publish-batch-size` and `publish-interval-ms`.
+  `sandbox-syncer` is a map with the following possible keys: `max-consecutive-sync-failure`, `publish-batch-size`, `publish-interval-ms` and `sync-interval-ms`.
+  The `max-consecutive-sync-failure` represents the maximum number of failures before sandbox sync is not retried on that agent.
+  The default value is  15.
   The `publish-batch-size` is an integer representing the number of facts that are updated in individual datomic instance sandbox directory update transactions.
   The default value is 100.
   The `publish-interval-ms` is an integer representing the number of millisecond intervals at which sandbox directories updates will be published to datomic.
   The default value is 2500.
+  The `sync-interval-ms` represents the intervals at which the sandbox syncer triggers state lookup on pending mesos agents.
+  This value should ideally be lower than the agent-query-cache ttl-ms.
+  The default value is 15000, i.e. 15 seconds.
+
 
 [[mesos_config]]
 ==== Mesos Configuration

@@ -800,12 +800,11 @@
 
 (defn fetch-instance-map
   "Converts the instance entity to a map representing the instance fields."
-  [db instance retrieve-sandbox-directory-from-agent]
+  [db instance]
   (let [hostname (:instance/hostname instance)
         task-id (:instance/task-id instance)
         executor (:instance/executor instance)
-        sandbox-directory (or (:instance/sandbox-directory instance)
-                              (retrieve-sandbox-directory-from-agent hostname task-id))
+        sandbox-directory (:instance/sandbox-directory instance)
         url-path (retrieve-url-path hostname task-id sandbox-directory)
         start (:instance/start-time instance)
         mesos-start (:instance/mesos-start-time instance)
@@ -837,7 +836,7 @@
             sandbox-directory (assoc :sandbox_directory sandbox-directory))))
 
 (defn fetch-job-map
-  [db framework-id retrieve-sandbox-directory-from-agent job-uuid]
+  [db framework-id job-uuid]
   (let [job (d/entity db [:job/uuid job-uuid])
         resources (util/job-ent->resources job)
         groups (:group/_job job)
@@ -853,7 +852,7 @@
                          (map (fn [{:keys [attribute operator pattern]}]
                                 (->> [attribute (str/upper-case (name operator)) pattern]
                                      (map str)))))
-        instances (map #(fetch-instance-map db %1 retrieve-sandbox-directory-from-agent) (:job/instance job))
+        instances (map #(fetch-instance-map db %1) (:job/instance job))
         submit-time (when (:job/submit-time job) ; due to a bug, submit time may not exist for some jobs
                      (.getTime (:job/submit-time job)))
         job-map {:command (:job/command job)
@@ -1107,11 +1106,11 @@
       [true exist-data])))
 
 (defn render-jobs-for-response-deprecated
-  [conn framework-id retrieve-sandbox-directory-from-agent ctx]
-  (mapv (partial fetch-job-map (db conn) framework-id retrieve-sandbox-directory-from-agent) (::jobs ctx)))
+  [conn framework-id ctx]
+  (mapv (partial fetch-job-map (db conn) framework-id) (::jobs ctx)))
 
 (defn render-jobs-for-response
-  [conn framework-id retrieve-sandbox-directory-from-agent ctx]
+  [conn framework-id ctx]
   (let [db (db conn)
 
         fetch-group
@@ -1122,16 +1121,16 @@
 
         fetch-job
         (fn fetch-job [job-uuid]
-          (let [job (fetch-job-map db framework-id retrieve-sandbox-directory-from-agent job-uuid)
+          (let [job (fetch-job-map db framework-id job-uuid)
                 groups (mapv fetch-group (:groups job))]
             (assoc job :groups groups)))]
 
     (mapv fetch-job (::jobs ctx))))
 
 (defn render-instances-for-response
-  [conn framework-id retrieve-sandbox-directory-from-agent ctx]
+  [conn framework-id ctx]
   (let [db (db conn)
-        fetch-job (partial fetch-job-map db framework-id retrieve-sandbox-directory-from-agent)
+        fetch-job (partial fetch-job-map db framework-id)
         job-uuids (::jobs ctx)
         jobs (mapv fetch-job job-uuids)
         instance-uuids (set (::instances ctx))]
@@ -1159,13 +1158,13 @@
 
 ;;; On GET; use repeated job argument
 (defn read-jobs-handler-deprecated
-  [conn framework-id is-authorized-fn retrieve-sandbox-directory-from-agent]
+  [conn framework-id is-authorized-fn]
   (base-cook-handler
     {:allowed-methods [:get]
      :malformed? check-job-params-present
      :allowed? (partial job-request-allowed? conn is-authorized-fn)
      :exists? (partial retrieve-jobs conn)
-     :handle-ok (fn [ctx] (render-jobs-for-response-deprecated conn framework-id retrieve-sandbox-directory-from-agent ctx))}))
+     :handle-ok (fn [ctx] (render-jobs-for-response-deprecated conn framework-id ctx))}))
 
 (defn read-jobs-handler
   [conn is-authorized-fn resource-attrs]
@@ -1177,16 +1176,16 @@
            resource-attrs)))
 
 (defn read-jobs-handler-multiple
-  [conn framework-id is-authorized-fn retrieve-sandbox-directory-from-agent]
-  (let [handle-ok (partial render-jobs-for-response conn framework-id retrieve-sandbox-directory-from-agent)]
+  [conn framework-id is-authorized-fn]
+  (let [handle-ok (partial render-jobs-for-response conn framework-id)]
     (read-jobs-handler conn is-authorized-fn {:handle-ok handle-ok})))
 
 (defn read-jobs-handler-single
-  [conn framework-id is-authorized-fn retrieve-sandbox-directory-from-agent]
+  [conn framework-id is-authorized-fn]
   (let [handle-ok
         (fn handle-ok [ctx]
           (first
-            (render-jobs-for-response conn framework-id retrieve-sandbox-directory-from-agent ctx)))]
+            (render-jobs-for-response conn framework-id ctx)))]
     (read-jobs-handler conn is-authorized-fn {:handle-ok handle-ok})))
 
 (defn instance-request-exists?
@@ -1206,13 +1205,13 @@
            resource-attrs)))
 
 (defn read-instances-handler-multiple
-  [conn framework-id is-authorized-fn retrieve-sandbox-directory-from-agent]
-  (let [handle-ok (partial render-instances-for-response conn framework-id retrieve-sandbox-directory-from-agent)]
+  [conn framework-id is-authorized-fn]
+  (let [handle-ok (partial render-instances-for-response conn framework-id)]
     (base-read-instances-handler conn is-authorized-fn {:handle-ok handle-ok})))
 
 (defn read-instances-handler-single
-  [conn framework-id is-authorized-fn retrieve-sandbox-directory-from-agent]
-  (let [handle-ok (->> (partial render-instances-for-response conn framework-id retrieve-sandbox-directory-from-agent)
+  [conn framework-id is-authorized-fn]
+  (let [handle-ok (->> (partial render-instances-for-response conn framework-id)
                        (comp first))]
     (base-read-instances-handler conn is-authorized-fn {:handle-ok handle-ok})))
 
@@ -2027,7 +2026,7 @@
       #(re-matches pattern %))))
 
 (defn list-resource
-  [db framework-id is-authorized-fn retrieve-sandbox-directory-from-agent]
+  [db framework-id is-authorized-fn]
   (liberator/resource
     :available-media-types ["application/json"]
     :allowed-methods [:get]
@@ -2110,7 +2109,7 @@
                         job-uuids (if (nil? limit)
                                     job-uuids
                                     (take limit job-uuids))
-                        jobs (mapv (partial fetch-job-map db framework-id retrieve-sandbox-directory-from-agent) job-uuids)]
+                        jobs (mapv (partial fetch-job-map db framework-id) job-uuids)]
                     (histograms/update! list-request-param-time-range-ms (- end-ms start-ms'))
                     (histograms/update! list-request-param-limit limit)
                     (histograms/update! list-response-job-count (count jobs))
@@ -2220,8 +2219,7 @@
     gpu-enabled? :mesos-gpu-enabled
     :as settings}
    leader-selector
-   mesos-leadership-atom
-   retrieve-sandbox-directory-from-agent]
+   mesos-leadership-atom]
   (->
     (routes
       (c-api/api
@@ -2242,8 +2240,7 @@
                                     :description "The jobs and their instances were returned."}
                                400 {:description "Non-UUID values were passed as jobs."}
                                403 {:description "The supplied UUIDs don't correspond to valid jobs."}}
-                   :handler (read-jobs-handler-deprecated conn framework-id is-authorized-fn
-                                                          retrieve-sandbox-directory-from-agent)}
+                   :handler (read-jobs-handler-deprecated conn framework-id is-authorized-fn)}
              :post {:summary "Schedules one or more jobs."
                     :parameters {:body-params RawSchedulerRequest}
                     :responses {201 {:description "The jobs were successfully scheduled."}
@@ -2266,8 +2263,7 @@
                                     :description "The job was returned."}
                                400 {:description "A non-UUID value was passed."}
                                403 {:description "The supplied UUID doesn't correspond to a valid job."}}
-                   :handler (read-jobs-handler-single conn framework-id is-authorized-fn
-                                                      retrieve-sandbox-directory-from-agent)}}))
+                   :handler (read-jobs-handler-single conn framework-id is-authorized-fn)}}))
 
         (c-api/context
           "/jobs" []
@@ -2278,8 +2274,7 @@
                                     :description "The jobs were returned."}
                                400 {:description "Non-UUID values were passed."}
                                403 {:description "The supplied UUIDs don't correspond to valid jobs."}}
-                   :handler (read-jobs-handler-multiple conn framework-id is-authorized-fn
-                                                        retrieve-sandbox-directory-from-agent)}}))
+                   :handler (read-jobs-handler-multiple conn framework-id is-authorized-fn)}}))
 
         (c-api/context
           "/info" []
@@ -2299,8 +2294,7 @@
                                     :description "The job instance was returned."}
                                400 {:description "A non-UUID value was passed."}
                                403 {:description "The supplied UUID doesn't correspond to a valid job instance."}}
-                   :handler (read-instances-handler-single conn framework-id is-authorized-fn
-                                                           retrieve-sandbox-directory-from-agent)}}))
+                   :handler (read-instances-handler-single conn framework-id is-authorized-fn)}}))
 
         (c-api/context
           "/instances" []
@@ -2311,8 +2305,7 @@
                                     :description "The job instances were returned."}
                                400 {:description "Non-UUID values were passed."}
                                403 {:description "The supplied UUIDs don't correspond to valid job instances."}}
-                   :handler (read-instances-handler-multiple conn framework-id is-authorized-fn
-                                                             retrieve-sandbox-directory-from-agent)}}))
+                   :handler (read-instances-handler-multiple conn framework-id is-authorized-fn)}}))
 
         (c-api/context
           "/share" []
@@ -2445,7 +2438,7 @@
       (ANY "/running" []
         (running-jobs conn is-authorized-fn))
       (ANY "/list" []
-        (list-resource (db conn) framework-id is-authorized-fn retrieve-sandbox-directory-from-agent)))
+        (list-resource (db conn) framework-id is-authorized-fn)))
     (format-params/wrap-restful-params {:formats [:json-kw]
                                         :handle-error c-mw/handle-req-error})
     (streaming-json-middleware)))

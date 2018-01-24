@@ -624,7 +624,8 @@ def wait_for_sandbox_directory(cook_url, job_id):
 
     cook_settings = settings(cook_url)
     cache_ttl_ms = cook_settings['agent-query-cache']['ttl-ms']
-    max_wait_ms = min(4 * cache_ttl_ms, 4 * 60 * 1000)
+    sync_interval_ms = cook_settings['sandbox-syncer']['sync-interval-ms']
+    max_wait_ms = min(4 * max(cache_ttl_ms, sync_interval_ms), 4 * 60 * 1000)
 
     def query():
         response = query_jobs(cook_url, True, uuid=[job_id])
