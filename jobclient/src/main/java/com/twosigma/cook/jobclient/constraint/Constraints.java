@@ -17,6 +17,7 @@ package com.twosigma.cook.jobclient.constraint;
 
 import com.google.common.base.Preconditions;
 import org.json.JSONArray;
+import org.json.JSONException;
 
 /**
  * A constraint in Cook could be one of the following three forms
@@ -55,7 +56,8 @@ public class Constraints {
      *                   See {@link Constraint}.
      * @return the parsed constraint.
      */
-    public static Constraint parseFrom(JSONArray constraint) {
+    public static Constraint parseFrom(JSONArray constraint)
+        throws JSONException {
         Operator operator = Operator.fromString(constraint.getString(1));
         switch (operator) {
             case EQUALS:
