@@ -1104,6 +1104,11 @@ public class JobClient implements Closeable, JobClientInterface {
                 + ", _statusUpdateInterval=" + _statusUpdateInterval + "]";
     }
 
+    /**
+     * Create a {@link JobClientProxy} for submitting requests on behalf of another user.
+     * @param impersonatedUser specifies the authentication principal of the user to be impersonated.
+     * @return a {@link JobClientProxy} that can perform impersonated requests.
+     */
     public JobClientProxy impersonating(String impersonatedUser) {
         return new ImpersonationProxy(impersonatedUser);
     }
