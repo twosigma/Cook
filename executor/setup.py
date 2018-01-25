@@ -3,6 +3,13 @@
 
 from setuptools import setup
 
+test_deps=[
+    'pytest==3.3.1',
+    'pytest-timeout==1.2.1',
+    'pytest-xdist==1.20.1'
+]
+
+extras = { 'test': test_deps }
 
 setup(
     name='cook-executor',
@@ -13,10 +20,8 @@ setup(
     keywords='cook-executor',
     packages=['cook'],
     test_suite='tests',
-    tests_require=[
-        'nose>=1.0'
-    ],
-    setup_requires=['nose>=1.0'],
+    tests_require=test_deps,
+    extras_require=extras,
     install_requires=['psutil==5.4.1', 'pymesos==0.2.15'],
     entry_points={
         'console_scripts': [

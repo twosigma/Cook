@@ -100,17 +100,17 @@ Some of the executor configurations are sent to the Cook executor as the followi
 
 ### Tests
 
-The cook executor uses `nose`.
+The cook executor uses `pytest`.
 To install test dependencies and run the executor test suite, run:
 
 ```bash
-$ python setup.py nosetests
+$ pytest
 ```
 
 If you want to run a single test and see the log messages as they occur, you can run, for example:
 
 ```bash
-$ nosetests tests.test_executor:ExecutorTest.test_get_task_id --nologcapture
+$ pytest -svk test_get_task_id
 ```
 
 ### Troubleshooting

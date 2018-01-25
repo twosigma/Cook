@@ -1,9 +1,11 @@
 #!/bin/bash
 
-# Runs the nosetests for the executor
+# Runs the Cook Executor tests
 
 export PROJECT_DIR=`pwd`
 cd ${PROJECT_DIR}
 
 python --version
-python setup.py nosetests --attr '!explicit'
+pytest --version
+
+pytest -n4
