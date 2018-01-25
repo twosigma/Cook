@@ -139,7 +139,7 @@ def _send_signal_to_process_tree(root_process_id, signal_to_send):
                 num_processes_killed += 1
             else:
                 signal_sent_to_all_processes_successfully = False
-        except ProcessLookupError:
+        except psutil.NoSuchProcess:
             logging.info('Unable to send {} as could not find process (id: {})'.format(signal_name, loop_process_id))
         except Exception:
             logging.exception('Error in sending {} to process (id: {})'.format(signal_name, loop_process_id))
