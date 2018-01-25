@@ -17,6 +17,7 @@
 package com.twosigma.cook.jobclient.constraint;
 
 import org.json.JSONArray;
+import org.json.JSONException;
 
 /**
  * The interface to specify a constraint in Cook
@@ -38,7 +39,7 @@ public interface Constraint {
     /**
      * @return this constraint as a JSONArray.
      */
-    JSONArray toJson();
+    JSONArray toJson() throws JSONException;
 
     /**
      * @return the attribute of this constraint.
