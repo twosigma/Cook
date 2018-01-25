@@ -1105,11 +1105,11 @@ public class JobClient implements Closeable, JobClientInterface {
     }
 
     /**
-     * Create a {@link ImpersonationProxy} for submitting requests on behalf of another user.
+     * Create a proxy to this {@link JobClient} for submitting requests on behalf of another user.
      * @param impersonatedUser specifies the authentication principal of the user to be impersonated.
-     * @return a {@link ImpersonationProxy} that can perform impersonated requests.
+     * @return a {@link JobClientInterface} that can perform impersonated requests.
      */
-    public ImpersonationProxy impersonating(String impersonatedUser) {
+    public JobClientInterface impersonating(String impersonatedUser) {
         return new ImpersonationProxy(impersonatedUser);
     }
 
@@ -1117,7 +1117,7 @@ public class JobClient implements Closeable, JobClientInterface {
      * A proxy to the enclosing {@link JobClient},
      * which injects impersonation requirements into relevant requests.
      */
-    public class ImpersonationProxy implements JobClientInterface {
+    private class ImpersonationProxy implements JobClientInterface {
 
         private final String _impersonatedUser;
 
