@@ -94,9 +94,11 @@ import org.apache.log4j.Logger;
  *
  * @author wzhao
  */
-public class JobClient implements Closeable {
+public class JobClient implements Closeable, JobClientInterface {
 
     private static final Logger _log = Logger.getLogger(JobClient.class);
+
+    protected static final String COOK_IMPERSONATE_HEADER = "X-Cook-Impersonate";
 
     /**
      * A builder for the {@link JobClient}.
@@ -559,36 +561,31 @@ public class JobClient implements Closeable {
         return scheduledExecutorService;
     }
 
-    /**
-     * Submit a list of jobs to Cook scheduler. It will <br>
-     * -- firstly associate each job with the provided {@link JobListener}<br>
-     * -- secondly submit these jobs to Cook scheduler and track them until they complete.
-     *
-     * @param jobs The list of jobs expected to submit.
-     * @param listener specifies an instance of {@link JobListener} listening all job status updates.
-     * @throws JobClientException
-     */
+    @Override
     public void submit(List<Job> jobs, JobListener listener)
         throws JobClientException {
-        // It is ok to change the listeners map even if the actual submission fails because it won't
-        // update the internal status map {@code _activeUUIDTOJob}.
-        for (Job job : jobs) {
-            _jobUUIDToListener.put(job.getUUID(), listener);
-        }
-        submit(jobs);
+        submit(jobs, listener, null);
+    }
+
+    @Override
+    public void submitWithGroups(List<Job> jobs, List<Group> groups)
+        throws JobClientException {
+        submitWithGroups(jobs, groups, null, null);
     }
 
     /**
-     * Submits jobs and groups to Cook scheduler and start to track the jobs until they complete. Note that jobs
-     * submitted through this API will not be listened by any listener.
-     *
-     * @param jobs specifies a list of {@link Job}s to be submitted.
-     * @param groups specifies a list of {@link Group}s to be submitted.
-     * @return the response string from Cook scheduler rest endpoint.
-     * @throws JobClientException
+     * @see #submitWithGroups(List, List, GroupListener)
      */
-    public void submitWithGroups(List<Job> jobs, List<Group> groups)
+    private void submitWithGroups(List<Job> jobs, List<Group> groups, GroupListener listener, String impersonatedUser)
         throws JobClientException {
+        // It is ok to change the listeners map even if the actual submission fails because it won't
+        // update the internal status map {@code _activeUUIDTOJob}.
+        if (listener != null) {
+            for (Group group : groups) {
+                _groupUUIDToListener.put(group.getUUID(), listener);
+            }
+        }
+
         JSONObject json = new JSONObject();
         try {
             JSONObject groupsJSON = Group.jsonizeGroups(groups);
@@ -599,7 +596,8 @@ public class JobClient implements Closeable {
             throw new JobClientException("Can not jsonize jobs or groups to submit.", e);
         }
         HttpResponse httpResponse;
-        HttpRequestBase httpRequest = makeHttpPost(_jobURI, json);
+        HttpRequestBase httpRequest = makeHttpPost(_jobURI, json, impersonatedUser);
+
         try {
             httpResponse = executeWithRetries(httpRequest, 5, 10);
         } catch (IOException e) {
@@ -666,24 +664,11 @@ public class JobClient implements Closeable {
                     + statusLine.getReasonPhrase() + ", " + statusLine.getStatusCode() + " Body is " + response, null);
         }
     }
-    /**
-     * Submit a list of jobs and groups to Cook scheduler. It will <br>
-     * -- firstly associate each job with the provided {@link JobListener}<br>
-     * -- secondly submit these jobs to Cook scheduler and track them until they complete.
-     *
-     * @param jobs The list of jobs to be submitted.
-     * @param groups The list of groups to be submitted.
-     * @param listener specifies an instance of {@link JobListener} listening all job status updates.
-     * @throws JobClientException
-     */
+
+    @Override
     public void submitWithGroups(List<Job> jobs, List<Group> groups, GroupListener listener)
         throws JobClientException {
-        // It is ok to change the listeners map even if the actual submission fails because it won't
-        // update the internal status map {@code _activeUUIDTOJob}.
-        for (Group group : groups) {
-            _groupUUIDToListener.put(group.getUUID(), listener);
-        }
-        submitWithGroups(jobs, groups);
+        submitWithGroups(jobs, groups, listener, null);
     }
 
     private JobClientException releaseAndCreateException(HttpRequestBase httpRequest, HttpResponse httpResponse, final String msg, final Throwable cause) {
@@ -717,27 +702,51 @@ public class JobClient implements Closeable {
      * @throws URISyntaxException
      */
     public static HttpPost makeHttpPost(URI uri, JSONObject params) {
+        return makeHttpPost(uri, params, null);
+    }
+
+    private static <R extends HttpRequestBase> R addImpersonation(R request, String impersonatedUser) {
+        if (impersonatedUser != null) {
+            request.addHeader(COOK_IMPERSONATE_HEADER, impersonatedUser);
+        }
+        return request;
+    }
+
+    /**
+     * @see #makeHttpPost(URI, JSONObject)
+     */
+    private static HttpPost makeHttpPost(URI uri, JSONObject params, String impersonatedUser) {
         try {
             StringEntity input = new StringEntity(params.toString());
             input.setContentType("application/json");
             HttpPost request = new HttpPost(uri);
             request.setEntity(input);
+            addImpersonation(request, impersonatedUser);
             return request;
         } catch (UnsupportedEncodingException e) {
             throw new RuntimeException(e);
         }
     }
 
-    /**
-     * Submit a list of jobs to Cook scheduler and start to track these jobs until they complete. Note that jobs
-     * submitted through this API will not be listened by any listener.
-     *
-     * @param jobs specifies a list of {@link Job}s to be submitted.
-     * @return the response string from Cook scheduler rest endpoint.
-     * @throws JobClientException
-     */
+    @Override
     public void submit(List<Job> jobs)
         throws JobClientException {
+        submit(jobs, null, null);
+    }
+
+    /**
+     * @see #submit(List, JobListener).
+     */
+    private void submit(List<Job> jobs, JobListener listener, String impersonatedUser)
+        throws JobClientException {
+        // It is ok to change the listeners map even if the actual submission fails because it won't
+        // update the internal status map {@code _activeUUIDTOJob}.
+        if (listener != null) {
+            for (Job job : jobs) {
+                _jobUUIDToListener.put(job.getUUID(), listener);
+            }
+        }
+
         JSONObject json;
         try {
             json = Job.jsonizeJob(jobs);
@@ -745,7 +754,8 @@ public class JobClient implements Closeable {
             throw new JobClientException("Can not jsonize jobs to submit.", e);
         }
         HttpResponse httpResponse;
-        HttpRequestBase httpRequest = makeHttpPost(_jobURI, json);
+        HttpRequestBase httpRequest = makeHttpPost(_jobURI, json, impersonatedUser);
+
         try {
             httpResponse = executeWithRetries(httpRequest, 5, 10);
         } catch (IOException e) {
@@ -810,15 +820,7 @@ public class JobClient implements Closeable {
         }
     }
 
-    /**
-     * Query jobs for a given list of job {@link UUID}s. If the list size is larger that the
-     * {@code _batchRequestSize}, it will partition the list into smaller lists and query them
-     * respectively and return all query results together.
-     *
-     * @param uuids specifies a list of job {@link UUID}s expected to query.
-     * @return a {@link ImmutableMap} from job {@link UUID} to {@link Job}.
-     * @throws JobClientException
-     */
+    @Override
     public Map<UUID, Job> queryJobs(Collection<UUID> uuids)
         throws JobClientException {
         final List<NameValuePair> allParams = new ArrayList<NameValuePair>(uuids.size());
@@ -880,12 +882,7 @@ public class JobClient implements Closeable {
         return queryJobs(uuids);
     }
 
-    /**
-     * Query a group for a group's jobs.
-     * @param group specifies a group, whose jobs will be queried.
-     * @return a {@link ImmutableMap} from job {@link UUID} to {@link Job}.
-     * @throws JobClientException
-     */
+    @Override
     public Map<UUID, Job> queryGroupJobs(Group group)
         throws JobClientException {
         ArrayList<UUID> uuids = new ArrayList<UUID>();
@@ -895,12 +892,7 @@ public class JobClient implements Closeable {
         return queryJobs(uuids);
     }
 
-    /**
-     * Query a group for its status.
-     * @param guuid specifies the group to be queried.
-     * @return a {@link Group} status.
-     * @throws JobClientException
-     */
+    @Override
     public Group queryGroup(UUID guuid)
         throws JobClientException {
         if (_groupURI == null) {
@@ -949,12 +941,7 @@ public class JobClient implements Closeable {
         return result;
     }
 
-    /**
-     * Query a collection of groups for their status.
-     * @param guuids specifies the uuids of the {@link Group}s to be queried.
-     * @return a map of {@link UUID}s to {@link Group}s.
-     * @throws JobClientException
-     */
+    @Override
     public Map<UUID, Group> queryGroups(Collection<UUID> guuids)
         throws JobClientException {
         if (_groupURI == null) {
@@ -1009,14 +996,16 @@ public class JobClient implements Closeable {
 
     }
 
-    /**
-     * Abort jobs for a given list of job {@link UUID}s. If the size of the list is larger that the
-     * {@code _batchRequestSize}, it will partition the list into smaller lists to abort separately.
-     *
-     * @param uuids specifies a list of job {@link UUID}s expected to abort.
-     * @throws JobClientException
-     */
+    @Override
     public void abort(Collection<UUID> uuids)
+        throws JobClientException {
+        abort(uuids, null);
+    }
+
+    /**
+     * @see #abort(Collection)
+     */
+    private void abort(Collection<UUID> uuids, String impersonatedUser)
         throws JobClientException {
         final List<NameValuePair> allParams = new ArrayList<NameValuePair>(uuids.size());
         for (UUID uuid : uuids) {
@@ -1029,12 +1018,13 @@ public class JobClient implements Closeable {
                 URIBuilder uriBuilder = new URIBuilder(_jobURI);
                 uriBuilder.addParameters(params);
                 httpRequest =  new HttpDelete(uriBuilder.build());
+                addImpersonation(httpRequest, impersonatedUser);
             } catch (URISyntaxException e) {
                 throw releaseAndCreateException(null, null, "Can not submit DELETE request " + params + " via uri " + _jobURI, e);
             }
             HttpResponse httpResponse;
             try {
-                httpResponse = _httpClient.execute(httpRequest);
+                httpResponse = executeWithRetries(httpRequest, 5, 10);
             } catch (IOException e) {
                 throw releaseAndCreateException(httpRequest, null, "Can not submit DELETE request " + params + " via uri " + _jobURI, e);
             }
@@ -1112,5 +1102,81 @@ public class JobClient implements Closeable {
         return "JobClient [_jobURI=" + _jobURI + ", _httpClient=" + _httpClient + ", _listenerService=" + _listenerService
                 + ", _activeUUIDToJob=" + _activeUUIDToJob + ", _batchSubmissionLimit=" + _batchRequestSize
                 + ", _statusUpdateInterval=" + _statusUpdateInterval + "]";
+    }
+
+    /**
+     * Create a proxy to this {@link JobClient} for submitting requests on behalf of another user.
+     * @param impersonatedUser specifies the authentication principal of the user to be impersonated.
+     * @return a {@link JobClientInterface} that can perform impersonated requests.
+     */
+    public JobClientInterface impersonating(String impersonatedUser) {
+        return new ImpersonationProxy(impersonatedUser);
+    }
+
+    /**
+     * A proxy to the enclosing {@link JobClient},
+     * which injects impersonation requirements into relevant requests.
+     */
+    private class ImpersonationProxy implements JobClientInterface {
+
+        private final String _impersonatedUser;
+
+        protected ImpersonationProxy(String impersonatedUser) {
+            _impersonatedUser = impersonatedUser;
+        }
+
+        @Override
+        public void submit(List<Job> jobs, JobListener listener)
+            throws JobClientException {
+            JobClient.this.submit(jobs, listener, _impersonatedUser);
+        }
+
+        @Override
+        public void submitWithGroups(List<Job> jobs, List<Group> groups)
+            throws JobClientException {
+            JobClient.this.submitWithGroups(jobs, groups, null, _impersonatedUser);
+        }
+
+        @Override
+        public void submitWithGroups(List<Job> jobs, List<Group> groups, GroupListener listener)
+            throws JobClientException {
+            JobClient.this.submitWithGroups(jobs, groups, listener, _impersonatedUser);
+        }
+
+        @Override
+        public void submit(List<Job> jobs)
+            throws JobClientException {
+            JobClient.this.submit(jobs, null, _impersonatedUser);
+        }
+
+        @Override
+        public Map<UUID, Job> queryJobs(Collection<UUID> uuids)
+            throws JobClientException {
+            return JobClient.this.queryJobs(uuids);
+        }
+
+        @Override
+        public Map<UUID, Job> queryGroupJobs(Group group)
+            throws JobClientException {
+            return JobClient.this.queryGroupJobs(group);
+        }
+
+        @Override
+        public Group queryGroup(UUID guuid)
+            throws JobClientException {
+            return JobClient.this.queryGroup(guuid);
+        }
+
+        @Override
+        public Map<UUID, Group> queryGroups(Collection<UUID> guuids)
+            throws JobClientException {
+            return JobClient.this.queryGroups(guuids);
+        }
+
+        @Override
+        public void abort(Collection<UUID> uuids)
+            throws JobClientException {
+            JobClient.this.abort(uuids, _impersonatedUser);
+        }
     }
 }

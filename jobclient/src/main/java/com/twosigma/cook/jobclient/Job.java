@@ -100,6 +100,7 @@ final public class Job {
         private Application _application;
         private String _progressOutputFile;
         private String _progressRegexString;
+        private String _user;
 
         /**
          * Prior to {@code build()}, command, memory and cpus for a job must be provided.<br>
@@ -138,7 +139,7 @@ final public class Job {
             }
             return new Job(_uuid, _name, _command, _executor, _memory, _cpus, _retries, _maxRuntime, _expectedRuntime, _status,
                     _priority, _isMeaCulpaRetriesDisabled, _instances, _env, _uris, _container, _labels, _constraints,
-                    _groups, _application, _progressOutputFile, _progressRegexString);
+                    _groups, _application, _progressOutputFile, _progressRegexString, _user);
         }
 
         /**
@@ -556,6 +557,17 @@ final public class Job {
             _progressRegexString = progressRegexString;
             return this;
         }
+
+        /**
+         * Set the user of the job expected to build.
+         *
+         * @param user {@link String} specifies the user for a job.
+         * @return this builder.
+         */
+        public Builder setUser(String user) {
+            _user = user;
+            return this;
+        }
     }
 
     final private UUID _uuid;
@@ -582,12 +594,13 @@ final public class Job {
     final private Application _application;
     final private String _progressOutputFile;
     final private String _progressRegexString;
+    final private String _user;
 
     private Job(UUID uuid, String name, String command, Executor executor, Double memory, Double cpus, Integer retries,
                 Long maxRuntime, Long expectedRuntime, Status status, Integer priority, Boolean isMeaCulpaRetriesDisabled,
                 List<Instance> instances, Map<String, String> env, List<FetchableURI> uris, JSONObject container,
                 Map<String, String> labels, Set<Constraint> constraints, List<UUID> groups, Application application,
-                String progressOutputFile, String progressRegexString) {
+                String progressOutputFile, String progressRegexString, String user) {
         _uuid = uuid;
         _name = name;
         _command = command;
@@ -606,6 +619,7 @@ final public class Job {
         _application = application;
         _progressOutputFile = progressOutputFile;
         _progressRegexString = progressRegexString;
+        _user = user;
         // This take the string representation of the JSON object and then parses it again which is inefficient but
         // that is most convenient way to deep copy a JSONObject and make this Job instance immutable.
         if (container != null) {
@@ -719,6 +733,13 @@ final public class Job {
      */
     public List<FetchableURI> getUris() {
         return _uris;
+    }
+
+    /**
+     * @return the job user.
+     */
+    public String getUser() {
+        return _user;
     }
 
     /**
@@ -982,6 +1003,9 @@ final public class Job {
             if (json.has("name")) {
                 jobBuilder.setName(json.getString("name"));
             }
+            if (json.has("user")) {
+                jobBuilder.setUser(json.getString("user"));
+            }
             jobBuilder.setRetries(json.getInt("max_retries"));
             jobBuilder.setMaxRuntime(json.getLong("max_runtime"));
             if (json.has("container")) {
@@ -1064,7 +1088,7 @@ final public class Job {
                     + ", _memory=" + _memory + ", _cpus=" + _cpus + ", _retries=" + _retries
                     + ", _maxRuntime=" + _maxRuntime + ", _status=" + _status + ", _priority=" + _priority
                     + ", _progressOutputFile=" + _progressOutputFile + ", _progressRegexString=" + _progressRegexString
-                    + ", _isMeaCulpaRetriesDisabled" + _isMeaCulpaRetriesDisabled + "]");
+                    + ", _isMeaCulpaRetriesDisabled=" + _isMeaCulpaRetriesDisabled + ", _user=" + _user + "]");
         stringBuilder.append('\n');
         for (Instance instance : getInstances()) {
             stringBuilder.append(instance.toString()).append('\n');

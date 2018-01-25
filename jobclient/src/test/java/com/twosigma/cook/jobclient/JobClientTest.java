@@ -27,9 +27,11 @@ import mockit.integration.junit4.JMockit;
 
 import org.apache.http.client.HttpClient;
 import org.apache.commons.io.IOUtils;
+import org.apache.http.Header;
 import org.apache.http.HttpResponse;
 import org.apache.http.ProtocolVersion;
 import org.apache.http.client.ClientProtocolException;
+import org.apache.http.client.methods.HttpDelete;
 import org.apache.http.client.methods.HttpPost;
 import org.apache.http.client.methods.HttpRequestBase;
 import org.apache.http.entity.BasicHttpEntity;
@@ -51,21 +53,38 @@ import com.google.common.collect.Lists;
 @RunWith(JMockit.class)
 public class JobClientTest {
     private Job _initializedJob;
+    private Job _initializedImpersonatedJob;
 
     private JobClient _client;
 
     private JobListener _listener;
 
     private static class MockHttpClient extends MockUp<JobClient> {
+        private String buildResponseMessage(HttpRequestBase request) {
+            final Header impersonationHeader = request.getFirstHeader(JobClient.COOK_IMPERSONATE_HEADER);
+            if (null != impersonationHeader) {
+                return String.format("test impersonated %s", impersonationHeader.getValue());
+            } else {
+                return "test reason";
+            }
+        }
+
         @Mock
         public HttpResponse executeWithRetries(HttpRequestBase request, int ignore1, long ignore2) throws IOException {
             final ProtocolVersion protocolVersion = new ProtocolVersion("HTTP", 1, 1);
             final BasicHttpEntity httpEntity = new BasicHttpEntity();
             httpEntity.setContent(IOUtils.toInputStream("hello", "UTF-8"));
+            final String msg = buildResponseMessage(request);
             // Test http post for submitting jobs.
             if (request instanceof HttpPost) {
                 final BasicStatusLine statusLine =
-                        new BasicStatusLine(protocolVersion, 201, "test reason");
+                        new BasicStatusLine(protocolVersion, 201, msg);
+                final BasicHttpResponse response = new BasicHttpResponse(statusLine);
+                response.setEntity(httpEntity);
+                return response;
+            } else if (request instanceof HttpDelete) {
+                final BasicStatusLine statusLine =
+                        new BasicStatusLine(protocolVersion, 204, msg);
                 final BasicHttpResponse response = new BasicHttpResponse(statusLine);
                 response.setEntity(httpEntity);
                 return response;
@@ -87,6 +106,9 @@ public class JobClientTest {
         jobBuilder.setExpectedRuntime(10000L);
         _initializedJob = jobBuilder.build();
 
+        jobBuilder.setUUID(UUID.randomUUID());
+        _initializedImpersonatedJob = jobBuilder.build();
+
         // Create the job client.
         JobClient.Builder builder = new JobClient.Builder();
         _listener = new JobListener() {
@@ -106,5 +128,11 @@ public class JobClientTest {
     @Test
     public void test() throws JobClientException {
         _client.submit(Lists.newArrayList(_initializedJob), _listener);
+    }
+
+    @Test
+    public void testImpersonation() throws JobClientException {
+        _client.impersonating("foo").submit(Lists.newArrayList(_initializedImpersonatedJob), _listener);
+        _client.impersonating("foo").abort(Lists.newArrayList(_initializedImpersonatedJob.getUUID()));
     }
 }

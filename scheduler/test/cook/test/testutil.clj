@@ -20,6 +20,7 @@
             [clojure.core.async :as async]
             [clojure.core.cache :as cache]
             [clojure.tools.logging :as log]
+            [cook.impersonation :refer (create-impersonation-middleware)]
             [cook.mesos.api :as api]
             [cook.mesos.schema :as schema]
             [datomic.api :as d :refer (q db)]
@@ -33,6 +34,7 @@
   "Runs a minimal cook scheduler server for testing inside a thread. Note that it is not properly kerberized."
   [conn port]
   (let [authorized-fn (fn [w x y z] true)
+        user (System/getProperty "user.name")
         api-handler (wrap-params
                       (api/main-handler conn
                                         "my-framework-id"
@@ -42,9 +44,11 @@
                                          :task-constraints {:cpus 12 :memory-gb 100 :retry-limit 200}}
                                         (Object.)
                                         (atom true)))
+        ; Add impersonation handler (current user is authorized to impersonate)
+        api-handler-impersonation ((create-impersonation-middleware #{user}) api-handler)
         ; Mock kerberization, not testing that
         api-handler-kerb (fn [req]
-                           (api-handler (assoc req :authorization/user (System/getProperty "user.name"))))
+                           (api-handler-impersonation (assoc req :authorization/user user)))
         exit-chan (async/chan)]
     (async/thread
       (let [server (run-jetty {:port port :ring-handler api-handler-kerb :join? false})]
