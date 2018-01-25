@@ -16,6 +16,7 @@
 package com.twosigma.cook.jobclient.constraint;
 
 import org.json.JSONArray;
+import org.json.JSONException;
 
 import java.util.Objects;
 
@@ -58,7 +59,8 @@ final class OneToOneConstraint implements Constraint {
     }
 
     @Override
-    public JSONArray toJson() {
+    public JSONArray toJson()
+        throws JSONException {
         JSONArray jsonArray = new JSONArray();
         jsonArray.put(0, _attribute);
         jsonArray.put(1, _operator.toString());
