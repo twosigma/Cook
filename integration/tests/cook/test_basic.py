@@ -1250,6 +1250,7 @@ class CookTest(unittest.TestCase):
         finally:
             util.kill_jobs(self.cook_url, [job_uuid])
 
+    @pytest.mark.docker
     def test_basic_docker_job(self):
         job_uuid, resp = util.submit_job(
             self.cook_url,
@@ -1261,6 +1262,7 @@ class CookTest(unittest.TestCase):
         job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
         self.assertEqual('success', job['instances'][0]['status'])
 
+    @pytest.mark.docker
     @unittest.skipUnless(util.has_docker_service(), "Requires `docker inspect`")
     def test_docker_port_mapping(self):
         job_uuid, resp = util.submit_job(self.cook_url,
