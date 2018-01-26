@@ -107,6 +107,18 @@ class _BasicAuthUser(_AuthenticatedUser):
         self.previous_auth = None
 
 
+@functools.lru_cache()
+def _generate_kerberos_ticket_for_user(username):
+    """
+    Get a Kerberos authentication ticket for the given user.
+    Depends on COOK_KERBEROS_TEST_AUTH_CMD being set in the environment.
+    """
+    subcommand = (_kerberos_auth_cmd
+                  .replace('{{COOK_USER}}', username)
+                  .replace('{{COOK_SCHEDULER_URL}}', retrieve_cook_url()))
+    return subprocess.check_output(subcommand, shell=True).rstrip()
+
+
 class _KerberosUser(_AuthenticatedUser):
     """
     Object representing a Cook user with Kerberos credentials.
@@ -117,7 +129,7 @@ class _KerberosUser(_AuthenticatedUser):
         subcommand = (_kerberos_auth_cmd
                       .replace('{{COOK_USER}}', name)
                       .replace('{{COOK_SCHEDULER_URL}}', retrieve_cook_url()))
-        self.auth_token = subprocess.check_output(subcommand, shell=True).rstrip()
+        self.auth_token = _generate_kerberos_ticket_for_user(name)
         self.previous_token = None
 
     def __enter__(self):
