@@ -9,6 +9,7 @@ from threading import Event, Timer
 
 import os
 import pymesos as pm
+import pytest
 
 import cook
 import cook.config as cc
@@ -519,6 +520,9 @@ class ExecutorTest(unittest.TestCase):
         command = 'echo "Hello World"; exit 1'
         self.manage_task_runner(command, assertions)
 
+    # FIXME - remove the xfail mark once the issue with this test crashing is resolved:
+    # https://github.com/twosigma/Cook/issues/678
+    @pytest.mark.xfail
     def test_manage_task_terminated(self):
         def assertions(driver, task_id, sandbox_directory):
             expected_statuses = [{'task_id': {'value': task_id}, 'state': cook.TASK_STARTING},
