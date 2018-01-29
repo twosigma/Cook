@@ -186,7 +186,7 @@
                    (assoc "state" "failed" "status" "completed"))
                (first followup-read-body)))
         (is (<= 200 (:status delete-response) 299))
-        (is (= "No content." (response->body-data delete-response)))))))
+        (is (= "No content." (:body delete-response)))))))
 
 (deftest descriptive-state
   (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
@@ -494,7 +494,7 @@
         (is (not initial-instance-cancelled?))
         (is (<= 200 (:status cancel-resp) 299))
         (is (= "application/json" (get-in cancel-resp [:headers "Content-Type"])))
-        (is (= "No content." (response->body-data cancel-resp)))
+        (is (= "No content." (:body cancel-resp)))
         (is followup-instance-cancelled?)))
 
     (testing "set cancelled on completed instance"
@@ -518,7 +518,7 @@
         (is (not initial-instance-cancelled?))
         (is (<= 200 (:status cancel-resp) 299))
         (is (= "application/json" (get-in cancel-resp [:headers "Content-Type"])))
-        (is (= "No content." (response->body-data cancel-resp)))
+        (is (= "No content." (:body cancel-resp)))
         (is followup-instance-cancelled?)))))
 
 
