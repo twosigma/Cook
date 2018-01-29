@@ -93,7 +93,7 @@
   "Sets the value of the counter to the new value.
    A data race is possible if two threads invoke this function concurrently."
   [counter value]
-  (--> counter
+  (->> counter
        counters/value
        (- value)
        (counters/inc! counter)))
