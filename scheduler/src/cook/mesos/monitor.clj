@@ -24,16 +24,10 @@
             [cook.mesos.util :as util]
             [datomic.api :as d :refer (q)]
             [metatransaction.core :refer (db)]
+            [metrics.counters :as counters]
             [riemann.client :as riemann]))
 
-;;; ===========================================================================
-
-;; template of riemann event
-(def event
-  {:host (.getHostName (java.net.InetAddress/getLocalHost))
-   :ttl 180})
-
-(defn get-job-stats
+(defn- get-job-stats
   "Query all jobs for the given job state, e.g. :job.state/running or
    :job.state/waiting and produce basic stats per user.
 
@@ -57,7 +51,7 @@
                    {user stats})))
          (reduce (partial merge-with (partial merge-with +)) {}))))
 
-(defn add-aggregated-stats
+(defn- add-aggregated-stats
   "Given a map from users to their stats, associcate a special user
    \"all\" for the sum of all users stats."
   [db stats]
@@ -68,7 +62,7 @@
     {"all" (zipmap (conj (util/get-all-resource-types db) :count)
                    (repeat 0.0))}))
 
-(defn get-starved-job-stats
+(defn- get-starved-job-stats
   "Return a map from starved users ONLY to their stats where a stats is a map
    from stats types to amounts."
   ([db]
@@ -76,9 +70,10 @@
                           (get-job-stats db :job.state/running)
                           (get-job-stats db :job.state/waiting)))
   ([db running-stats waiting-stats]
-   (let [promised-resources (share/get-share db "promised")
+   (let [promised-resources (fn [user]
+                              (share/get-share db user [:cpus :mem]))
          compute-starvation (fn [user]
-                              (->> (merge-with - promised-resources (get running-stats user))
+                              (->> (merge-with - (promised-resources user) (get running-stats user))
                                    (merge-with min (get waiting-stats user))))]
      ;; Loop over waiting users.
      (loop [[user & users] (keys waiting-stats)
@@ -89,26 +84,43 @@
            (if (every? true? (map (fn [[resource amount]]
                                     (< (or (resource used-resources) 0.0)
                                        amount))
-                                  promised-resources))
+                                  (promised-resources user)))
              (recur users (assoc starved-stats user (compute-starvation user)))
              (recur users starved-stats)))
          starved-stats)))))
 
-(defn make-stats-events
-  "Return a list of riemann events for jobs with the given state, e.g. running,
-   waiting and starved. These events can be used by (riemann/send-events ...)."
-  [db state stats]
-  (->> stats
-       (add-aggregated-stats db)
-       (mapcat (fn [[user stats]]
-                 (map (fn [[type amount]]
-                        (assoc event
-                               :service (apply format "cook scheduler %s %s %s"
-                                               (map name [state user type]))
-                               :metric amount))
-                      stats)))))
+(defn- set-counter
+  "Sets the value of the counter to the new value.
+   A data race is possible if two threads invoke this function concurrently."
+  [counter value]
+  (--> counter
+       counters/value
+       (- value)
+       (counters/inc! counter)))
 
-(defn make-user-stats-events
+(defn- set-stats-counters
+  "Sets counters for jobs with the given state, e.g. running, waiting and starved."
+  [db state stats]
+  (dorun
+    (->> stats
+         (add-aggregated-stats db)
+         (mapcat (fn [[user stats]]
+                   (map (fn [[type amount]]
+                          (-> [state user (name type)]
+                              counters/counter
+                              (set-counter amount)))
+                        stats))))))
+
+(defn set-user-counter
+  "Given a state (e.g. starved) and a value, sets the corresponding counter."
+  [state value]
+  (-> [state "users" "count"]
+      counters/counter
+      (set-counter value)))
+
+(defn- set-user-stats-counters
+  "Queries the database for running and waiting jobs per user, and sets
+  counters for running, waiting, starved, hungry and satisifed users."
   [db]
   (let [running-stats (get-job-stats db :job.state/running)
         waiting-stats (get-job-stats db :job.state/waiting)
@@ -118,40 +130,24 @@
         satisfied-users (difference running-users waiting-users)
         starved-users (set (keys starved-stats))
         hungry-users (difference waiting-users starved-users)]
-    (conj
-      (reduce into
-              []
-              [(make-stats-events db "running" running-stats)
-               (make-stats-events db "waiting" waiting-stats)
-               (make-stats-events db "starved" starved-stats)])
-      (assoc event
-             :service "cook scheduler total users count"
-             :metric (count (union running-users waiting-users)))
-      (assoc event
-             :service "cook scheduler starved users count"
-             :metric (count starved-users))
-      (assoc event
-             :service "cook scheduler hungry users count"
-             :metric (count hungry-users))
-      (assoc event
-             :service "cook scheduler satisfied users count"
-             :metric (count satisfied-users)))))
+    (set-stats-counters db "running" running-stats)
+    (set-stats-counters db "waiting" waiting-stats)
+    (set-stats-counters db "starved" starved-stats)
+    (set-user-counter "total" (count (union running-users waiting-users)))
+    (set-user-counter "starved" (count starved-users))
+    (set-user-counter "hungry" (count hungry-users))
+    (set-user-counter "satisfied" (count satisfied-users))))
 
-(defn riemann-reporter
-  "Send various events to riemann.
+(defn start-collecting-stats
+  "Starts a periodic timer to collect stats about running, waiting, and starved jobs per user.
 
-   Return a function which can be used to stop sending riemann events if invoked."
-  [mesos-conn & {:keys [interval riemann-host riemann-port]
+   Return a function which can be used to stop collecting stats if invoked."
+  [mesos-conn & {:keys [interval]
                  :or {interval 20000}}]
-  (log/info "Starting riemann reporter for scheduler.")
-  (when riemann-host
-    (let [riemann-client (-> (riemann/tcp-client :host riemann-host :port riemann-port)
-                             (riemann/batch-client 32))]
-      (chime-at (periodic/periodic-seq (time/now) (time/millis interval))
-                (fn [time]
-                  (let [mesos-db (db mesos-conn)
-                        events (make-user-stats-events mesos-db)]
-                    (log/debug (format "Sending %s monitor events ..." (count events)))
-                    (riemann/send-events riemann-client events)))
-                {:error-handler (fn [ex]
-                                  (log/error ex "Sending riemann events failed!"))}))))
+  (log/info "Starting stats collection for scheduler.")
+  (chime-at (periodic/periodic-seq (time/now) (time/millis interval))
+            (fn [_]
+              (let [mesos-db (db mesos-conn)]
+                (set-user-stats-counters mesos-db)))
+            {:error-handler (fn [ex]
+                              (log/error ex "Setting user stats counters failed!"))}))

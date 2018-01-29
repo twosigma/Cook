@@ -241,8 +241,7 @@
                                     (mesomatic.scheduler/start! driver)
                                     (reset! current-driver driver)
 
-                                    (when riemann-host
-                                      (cook.mesos.monitor/riemann-reporter mesos-datomic-conn :riemann-host riemann-host :riemann-port riemann-port))
+                                    (cook.mesos.monitor/start-collecting-stats mesos-datomic-conn)
                                     #_(cook.mesos.scheduler/reconciler mesos-datomic-conn driver)
                                     (cook.mesos.scheduler/lingering-task-killer mesos-datomic-conn driver task-constraints lingering-task-trigger-chan)
                                     (cook.mesos.scheduler/straggler-handler mesos-datomic-conn driver straggler-trigger-chan)
