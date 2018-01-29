@@ -46,6 +46,7 @@ class CookTest(unittest.TestCase):
         job_executor_type = util.get_job_executor_type(self.cook_url)
         job_uuid, resp = util.submit_job(self.cook_url, executor=job_executor_type)
         self.assertEqual(resp.status_code, 201, msg=resp.content)
+        self.assertEqual(resp.content, str.encode(f"submitted jobs {job_uuid}"))
         job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
         self.assertEqual('success', job['instances'][0]['status'])
         self.assertEqual(False, job['disable_mea_culpa_retries'])
