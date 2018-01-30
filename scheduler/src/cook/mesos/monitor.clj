@@ -47,7 +47,7 @@
                        stats (-> job-ent
                                  util/job-ent->resources
                                  (select-keys [:cpus :mem])
-                                 (assoc :count 1))]
+                                 (assoc :jobs 1))]
                    {user stats})))
          (reduce (partial merge-with (partial merge-with +)) {}))))
 
@@ -59,7 +59,7 @@
     (->> (vals stats)
          (apply merge-with +)
          (assoc stats "all"))
-    {"all" (zipmap (conj (util/get-all-resource-types db) :count)
+    {"all" (zipmap (conj (util/get-all-resource-types db) :jobs)
                    (repeat 0.0))}))
 
 (defn- get-starved-job-stats
@@ -114,7 +114,7 @@
 (defn set-user-counter
   "Given a state (e.g. starved) and a value, sets the corresponding counter."
   [state value]
-  (-> [state "users" "count"]
+  (-> [state "users"]
       counters/counter
       (set-counter value)))
 
