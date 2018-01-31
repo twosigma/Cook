@@ -92,7 +92,7 @@ which will be replaced with the Cook Scheduler URL being used by the current tes
 The command must print (to `stdout`) the `Authorization` header value for the target user.
 
 * `COOK_MAX_TEST_USERS`:
-Setting this environment variable limits the number of test user allocated to each test runner process.
+Setting this environment variable limits the number of test users allocated to each test runner process.
 This is most likely necessary in any scenario where users are actually authenticated by the underlying OS.
 
 ## Credits
