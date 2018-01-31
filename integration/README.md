@@ -91,9 +91,9 @@ and `{{COOK_SCHEDULER_URL}}`,
 which will be replaced with the Cook Scheduler URL being used by the current tests.
 The command must print (to `stdout`) the `Authorization` header value for the target user.
 
-When using Kerberos, multi-user integration tests must *not* be run in parallel.
-This restriction is due to only having 10 unique test user names,
-which are reused across each of the multi-user tests.
+* `COOK_MAX_TEST_USERS`:
+Setting this environment variable limits the number of test users allocated to each test runner process.
+This is most likely necessary in any scenario where users are actually authenticated by the underlying OS.
 
 ## Credits
 

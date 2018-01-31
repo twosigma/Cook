@@ -27,9 +27,10 @@ DEFAULT_TIMEOUT_MS = 120000
 # Name of our custom HTTP header for user impersonation
 IMPERSONATION_HEADER = 'X-Cook-Impersonate'
 
+
 def continuous_integration():
     """Returns true if the CONTINUOUS_INTEGRATION environment variable is set, as done by Travis-CI."""
-    return os.environ.get('CONTINUOUS_INTEGRATION')
+    return os.getenv('CONTINUOUS_INTEGRATION')
 
 
 def has_docker_service():
@@ -42,8 +43,40 @@ _default_user_name = 'root'
 _default_admin_name = 'root'
 _default_impersonator_name = 'poser'
 
+
 def _get_default_user_name():
     return os.getenv('USER', _default_user_name)
+
+
+@functools.lru_cache()
+def _test_user_ids():
+    """
+    Get the numeric user suffixes for this test worker.
+    Returns the range 0 to 1 million if COOK_MAX_TEST_USERS is not set.
+    If this is a distributed run with a limited number of users,
+    e.g., 10 per worker, then this function returns range(0, 10) for worker 0,
+    or range(20, 30) for worker 2.
+    """
+    pytest_worker = os.getenv('PYTEST_XDIST_WORKER')
+    max_test_users = int(os.getenv('COOK_MAX_TEST_USERS', 0))
+    if pytest_worker and max_test_users:
+        pytest_worker_id = int(pytest_worker[2:]) # e.g., "gw4" -> 4
+        test_user_min_id = max_test_users * pytest_worker_id
+        test_user_max_id = test_user_min_id + max_test_users
+        return range(test_user_min_id, test_user_max_id)
+    else:
+        return range(1000000)
+
+
+def _test_user_names(test_name_prefix=None):
+    """
+    Returns a generator of unique test user names, with form {PREFIX}{ID}.
+    The COOK_TEST_USER_PREFIX environment variable is used by default;
+    otherwise, the test_name_prefix value is used as the PREFIX.
+    """
+    name_prefix = os.getenv('COOK_TEST_USER_PREFIX', test_name_prefix)
+    return (f'{name_prefix}{i}' for i in _test_user_ids())
+
 
 # Shell command used to obtain Kerberos credentials for a given test user
 _kerberos_missing_cmd =  'echo "MISSING COOK_KERBEROS_TEST_AUTH_CMD" && exit 1'
@@ -107,17 +140,6 @@ class _BasicAuthUser(_AuthenticatedUser):
         self.previous_auth = None
 
 
-@functools.lru_cache()
-def _generate_kerberos_ticket_for_user(username):
-    """
-    Get a Kerberos authentication ticket for the given user.
-    Depends on COOK_KERBEROS_TEST_AUTH_CMD being set in the environment.
-    """
-    subcommand = (_kerberos_auth_cmd
-                  .replace('{{COOK_USER}}', username)
-                  .replace('{{COOK_SCHEDULER_URL}}', retrieve_cook_url()))
-    return subprocess.check_output(subcommand, shell=True).rstrip()
-
 
 class _KerberosUser(_AuthenticatedUser):
     """
@@ -129,8 +151,19 @@ class _KerberosUser(_AuthenticatedUser):
         subcommand = (_kerberos_auth_cmd
                       .replace('{{COOK_USER}}', name)
                       .replace('{{COOK_SCHEDULER_URL}}', retrieve_cook_url()))
-        self.auth_token = _generate_kerberos_ticket_for_user(name)
+        self.auth_token = self._generate_kerberos_ticket_for_user(name)
         self.previous_token = None
+
+    @functools.lru_cache()
+    def _generate_kerberos_ticket_for_user(self, username):
+        """
+        Get a Kerberos authentication ticket for the given user.
+        Depends on COOK_KERBEROS_TEST_AUTH_CMD being set in the environment.
+        """
+        subcommand = (_kerberos_auth_cmd
+                      .replace('{{COOK_USER}}', username)
+                      .replace('{{COOK_SCHEDULER_URL}}', retrieve_cook_url()))
+        return subprocess.check_output(subcommand, shell=True).rstrip()
 
     def __enter__(self):
         global session
@@ -167,8 +200,7 @@ class UserFactory(object):
         if test_handle:
             test_id = test_handle.id()
             test_base_name = test_id[test_id.rindex('.test_')+6:].lower()
-            base_name = os.getenv('COOK_TEST_USER_PREFIX', f'{test_base_name}_')
-            self.__user_generator = (f'{base_name}{i}' for i in range(1000000))
+            self.__user_generator = _test_user_names(test_base_name)
 
     def new_user(self):
         """Return a fresh user object."""
@@ -176,7 +208,7 @@ class UserFactory(object):
 
     def new_users(self, count=None):
         """Return a sequence of `count` fresh user objects."""
-        return map(self.user_class, itertools.islice(self.__user_generator, 0, count))
+        return [self.user_class(x) for x in itertools.islice(self.__user_generator, 0, count)]
 
     @functools.lru_cache()
     def default(self):
