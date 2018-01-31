@@ -181,8 +181,6 @@
    task-constraints         -- map, constraints on task. See scheduler/docs/configuration.adoc for more details
    executor                 -- cook executor config includes command, default-progress-regex-string, environment,
                                      log-level, message-length, progress-sample-interval-ms and uri.
-   riemann-host             -- str, dns name of riemann
-   riemann-port             -- int, port for riemann
    mesos-pending-jobs-atom  -- atom, Populate (and update) list of pending jobs into atom
    offer-cache              -- atom, map from host to most recent offer. Used to get attributes
    gpu-enabled?             -- boolean, whether cook will schedule gpus
@@ -193,7 +191,7 @@
    sandbox-syncer-state     -- map, representing the sandbox syncer object"
   [{:keys [curator-framework executor-config fenzo-config framework-id get-mesos-utilization gpu-enabled? make-mesos-driver-fn
            mea-culpa-failure-limit mesos-datomic-conn mesos-datomic-mult mesos-leadership-atom mesos-pending-jobs-atom
-           offer-cache offer-incubate-time-ms progress-config rebalancer-config riemann-host riemann-port
+           offer-cache offer-incubate-time-ms progress-config rebalancer-config
            sandbox-syncer-state server-config task-constraints trigger-chans zk-prefix]}]
   (let [{:keys [fenzo-fitness-calculator fenzo-floor-iterations-before-reset fenzo-floor-iterations-before-warn
                 fenzo-max-jobs-considered fenzo-scaleback good-enough-fitness]} fenzo-config
