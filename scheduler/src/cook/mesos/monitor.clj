@@ -19,13 +19,12 @@
             [clj-time.periodic :as periodic]
             [clojure.set :refer (union difference)]
             [clojure.tools.logging :as log]
-            [cook.datomic :refer (transact-with-retries)]
             [cook.mesos.share :as share]
             [cook.mesos.util :as util]
             [datomic.api :as d :refer (q)]
             [metatransaction.core :refer (db)]
-            [metrics.counters :as counters]
-            [riemann.client :as riemann]))
+            [metrics.core :as metrics]
+            [metrics.counters :as counters]))
 
 (defn- get-job-stats
   "Query all jobs for the given job state, e.g. :job.state/running or
@@ -107,9 +106,7 @@
         users-to-clear (difference previous-users current-users)]
     (run! (fn [user]
             (run! (fn [[type _]]
-                    (-> [state user (name type)]
-                        counters/counter
-                        counters/clear!))
+                    (metrics/remove-metric [state user (name type)]))
                   (get previous-stats user)))
           users-to-clear)))
 
