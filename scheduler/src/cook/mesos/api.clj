@@ -1141,13 +1141,14 @@
       (-> instance
           (assoc :job (select-keys job [:uuid :name :status :state :user]))))))
 
+;; We store the start-up time (ISO-8601) for reporting on the /info endpoint
+(def start-up-time (tf/unparse iso-8601-format (t/now)))
+
 (defn cook-info-handler
   "Handler for the /info endpoint"
   [settings]
   (let [auth-middleware (:authorization-middleware settings)
-        auth-scheme (str (or (-> auth-middleware meta :json-value) auth-middleware))
-        ;; We store the start-up time (ISO-8601) for reporting on the /info endpoint
-        start-up-time (tf/unparse iso-8601-format (t/now))]
+        auth-scheme (str (or (-> auth-middleware meta :json-value) auth-middleware))]
     (base-cook-handler
       {:allowed-methods [:get]
        :handle-ok (fn get-info-handler [_]
