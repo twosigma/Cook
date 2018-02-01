@@ -64,13 +64,13 @@
   "Return a map from starved users ONLY to their stats where a stats is a map
    from stats types to amounts."
   ([db running-stats waiting-stats]
-   (let [promised-resources (fn [user]
-                              (share/get-share db user [:cpus :mem]))
+   (let [waiting-users (keys waiting-stats)
+         shares (share/get-shares db waiting-users [:cpus :mem])
+         promised-resources (fn [user] (get shares user))
          compute-starvation (fn [user]
                               (->> (merge-with - (promised-resources user) (get running-stats user))
                                    (merge-with min (get waiting-stats user))))]
-     ;; Loop over waiting users.
-     (loop [[user & users] (keys waiting-stats)
+     (loop [[user & users] waiting-users
             starved-stats {}]
        (if user
          (let [used-resources (get running-stats user)]
