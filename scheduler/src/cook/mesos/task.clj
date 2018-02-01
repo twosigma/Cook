@@ -85,6 +85,9 @@
         environment (cond-> (assoc (util/job-ent->env job-ent)
                               "COOK_JOB_UUID" (-> job-ent :job/uuid str))
                             group-uuid (assoc "COOK_JOB_GROUP_UUID" (str group-uuid))
+                            (:cpus resources) (assoc "COOK_JOB_CPUS" (-> resources :cpus int str))
+                            (:gpus resources) (assoc "COOK_JOB_GPUS" (-> resources :gpus int str))
+                            (:mem resources) (assoc "COOK_JOB_MEM_MB" (-> resources :mem int str))
                             cook-executor? (merge (build-executor-environment executor-config job-ent)))
         labels (util/job-ent->label job-ent)
         command {:environment environment
