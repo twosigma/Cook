@@ -63,10 +63,6 @@
 (defn- get-starved-job-stats
   "Return a map from starved users ONLY to their stats where a stats is a map
    from stats types to amounts."
-  ([db]
-   (get-starved-job-stats db
-                          (get-job-stats db :job.state/running)
-                          (get-job-stats db :job.state/waiting)))
   ([db running-stats waiting-stats]
    (let [promised-resources (fn [user]
                               (share/get-share db user [:cpus :mem]))
