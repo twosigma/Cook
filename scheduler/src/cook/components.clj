@@ -90,7 +90,8 @@
                            fenzo-floor-iterations-before-warn fenzo-max-jobs-considered fenzo-scaleback
                            good-enough-fitness hostname mea-culpa-failure-limit mesos-failover-timeout mesos-framework-name
                            mesos-gpu-enabled mesos-leader-path mesos-master mesos-master-hosts mesos-principal
-                           mesos-role offer-incubate-time-ms progress rebalancer riemann server-port task-constraints]
+                           mesos-role offer-incubate-time-ms progress rebalancer riemann server-port task-constraints
+                           user-metrics-interval-seconds]
                           curator-framework framework-id mesos-datomic mesos-datomic-mult mesos-leadership-atom
                           mesos-offer-cache mesos-pending-jobs-atom sandbox-syncer-state]
                       (log/info "Initializing mesos scheduler")
@@ -127,13 +128,12 @@
                              :offer-incubate-time-ms offer-incubate-time-ms
                              :progress-config progress
                              :rebalancer-config rebalancer
-                             :riemann-host (:host riemann)
-                             :riemann-port (:port riemann)
                              :sandbox-syncer-state sandbox-syncer-state
                              :server-config {:hostname hostname
                                              :server-port server-port}
                              :task-constraints task-constraints
                              :trigger-chans trigger-chans
+                             :user-metrics-interval-seconds user-metrics-interval-seconds
                              :zk-prefix mesos-leader-path})
                           (catch ClassNotFoundException e
                             (log/warn e "Not loading mesos support...")
@@ -548,6 +548,9 @@
      :console-metrics (fnk [[:config [:metrics {console false}]]]
                         (when console
                           ((lazy-load-var 'cook.reporter/console-reporter))))
+
+     :user-metrics-interval-seconds (fnk [[:config [:metrics {user-metrics-interval-seconds 20}]]]
+                                      user-metrics-interval-seconds)
 
      :rebalancer (fnk [[:config {rebalancer nil}]]
                    (merge {:interval-seconds 300

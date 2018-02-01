@@ -138,6 +138,7 @@
   "Queries the database for running and waiting jobs per user, and sets
   counters for running, waiting, starved, hungry and satisifed users."
   [db state->previous-stats-atom]
+  (log/info "Querying database for running and waiting jobs per user")
   (let [running-stats (get-job-stats db :job.state/running)
         waiting-stats (get-job-stats db :job.state/waiting)
         starved-stats (get-starved-job-stats db running-stats waiting-stats)
@@ -145,26 +146,33 @@
         waiting-users (set (keys waiting-stats))
         satisfied-users (difference running-users waiting-users)
         starved-users (set (keys starved-stats))
-        hungry-users (difference waiting-users starved-users)]
+        hungry-users (difference waiting-users starved-users)
+        total-count (count (union running-users waiting-users))
+        starved-count (count starved-users)
+        hungry-count (count hungry-users)
+        satisfied-count (count satisfied-users)]
     (set-user-counters! db "running" running-stats state->previous-stats-atom)
     (set-user-counters! db "waiting" waiting-stats state->previous-stats-atom)
     (set-user-counters! db "starved" starved-stats state->previous-stats-atom)
-    (set-total-counter! "total" (count (union running-users waiting-users)))
-    (set-total-counter! "starved" (count starved-users))
-    (set-total-counter! "hungry" (count hungry-users))
-    (set-total-counter! "satisfied" (count satisfied-users))))
+    (set-total-counter! "total" total-count)
+    (set-total-counter! "starved" starved-count)
+    (set-total-counter! "hungry" hungry-count)
+    (set-total-counter! "satisfied" satisfied-count)
+    (log/info "User stats: total" total-count "starved" starved-count
+              "hungry" hungry-count "satisfied" satisfied-count)))
 
 (defn start-collecting-stats
   "Starts a periodic timer to collect stats about running, waiting, and starved jobs per user.
 
    Return a function which can be used to stop collecting stats if invoked."
-  [mesos-conn & {:keys [interval]
-                 :or {interval 20000}}]
-  (log/info "Starting stats collection for scheduler.")
-  (let [state->previous-stats-atom (atom {})]
-    (chime-at (periodic/periodic-seq (time/now) (time/millis interval))
-              (fn [_]
-                (let [mesos-db (db mesos-conn)]
-                  (set-stats-counters! mesos-db state->previous-stats-atom)))
-              {:error-handler (fn [ex]
-                                (log/error ex "Setting user stats counters failed!"))})))
+  [mesos-conn interval-seconds]
+  (if interval-seconds
+    (let [state->previous-stats-atom (atom {})]
+      (log/info "Starting user stats collection at intervals of" interval-seconds "seconds")
+      (chime-at (periodic/periodic-seq (time/now) (time/seconds interval-seconds))
+                (fn [_]
+                  (let [mesos-db (db mesos-conn)]
+                    (set-stats-counters! mesos-db state->previous-stats-atom)))
+                {:error-handler (fn [ex]
+                                  (log/error ex "Setting user stats counters failed!"))}))
+    (log/info "User stats collection is disabled")))
