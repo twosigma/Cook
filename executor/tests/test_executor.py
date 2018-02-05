@@ -523,6 +523,7 @@ class ExecutorTest(unittest.TestCase):
     # FIXME - remove the xfail mark once the issue with this test crashing is resolved:
     # https://github.com/twosigma/Cook/issues/678
     @pytest.mark.xfail
+    @unittest.skip('This test crashes occasionally')
     def test_manage_task_terminated(self):
         def assertions(driver, task_id, sandbox_directory):
             expected_statuses = [{'task_id': {'value': task_id}, 'state': cook.TASK_STARTING},

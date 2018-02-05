@@ -1375,6 +1375,7 @@ class CookTest(unittest.TestCase):
         finally:
             util.kill_jobs(self.cook_url, [job_uuid_1])
 
+    @pytest.mark.xfail(reason='Sometimes fails on Travis')
     def test_unique_host_constraint(self):
         state = util.get_mesos_state(self.mesos_url)
         num_hosts = len(state['slaves'])

@@ -47,7 +47,7 @@
             [schema.core :as s]
             [swiss.arrows :refer :all])
   (:import (clojure.lang Atom Var)
-           com.codahale.metrics.riemann.RiemannReporter
+           com.codahale.metrics.ScheduledReporter
            (java.io OutputStreamWriter)
            (java.net ServerSocket URLEncoder)
            (java.util Date UUID)
@@ -1968,7 +1968,7 @@
     (instance? Minutes v) (str v)
     (instance? ServerSocket v) (str v)
     (instance? Var v) (str v)
-    (instance? RiemannReporter v) (str v)
+    (instance? ScheduledReporter v) (str v)
     :else v))
 
 (defn settings-handler

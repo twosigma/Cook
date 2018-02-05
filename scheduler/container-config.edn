@@ -38,7 +38,8 @@
                   :extract true
                   :value #config/env "COOK_EXECUTOR"}}
  :unhandled-exceptions {:log-level :error}
- :metrics {:jmx true}
+ :metrics {:jmx true
+           :user-metrics-interval-seconds 60}
  :nrepl {:enabled? true
          :port #config/env-int "COOK_NREPL_PORT"}
  :log {:file #config/env "COOK_LOG_FILE"

@@ -88,14 +88,15 @@
 
    This function minimize db calls by locally caching the results for the default-user
    share and all the available resource-types."
-  [db users]
-  (timers/time!
-    get-shares-duration
-    (let [all-resource-types (util/get-all-resource-types db)
-          type->default (-> (fn [type] (get-share-by-type db type default-user Double/MAX_VALUE))
-                            (pc/map-from-keys all-resource-types))]
-      (-> (fn [user] (get-share db user all-resource-types type->default))
-          (pc/map-from-keys users)))))
+  ([db users]
+   (get-shares db users (util/get-all-resource-types db)))
+  ([db users resource-types]
+   (timers/time!
+     get-shares-duration
+     (let [type->default (-> (fn [type] (get-share-by-type db type default-user Double/MAX_VALUE))
+                             (pc/map-from-keys resource-types))]
+       (-> (fn [user] (get-share db user resource-types type->default))
+           (pc/map-from-keys users))))))
 
 (defn share-history
   "Return changes to a user's own share, in the form

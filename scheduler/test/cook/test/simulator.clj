@@ -140,8 +140,6 @@
           :offer-incubate-time-ms offer-incubate-time-ms#
           :progress-config progress-config#
           :rebalancer-config rebalancer-config#
-          :riemann-host (:riemann-host ~scheduler-config)
-          :riemann-port (:riemann-port ~scheduler-config)
           :sandbox-syncer-state sandbox-syncer-state#
           :server-config host-settings#
           :task-constraints task-constraints#
