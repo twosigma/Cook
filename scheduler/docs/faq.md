@@ -30,12 +30,12 @@ the job is only launched once, set `max-retries: 1` and `disable-mea-culpa-retri
 ## Does Cook set any environment variables before running a task?
 
 The following environment variables are set by Cook before running a task:
-- COOK_JOB_UUID: represents the UUID of the Job the task belongs to.
-- COOK_JOB_GROUP_UUID: represents the UUID of the Group the task belongs to.
-- COOK_JOB_CPUS: represents the amount of `cpus` configured in the Job. It can be a fractional number.
-- COOK_JOB_GPUS: represents the amount of `gpus` configured in the Job. It can be a fractional number.
-- COOK_JOB_MEM_MB: represents the amount of `mem` (in megabytes) configured in the Job. It can be a fractional number.
+- `COOK_JOB_UUID`: represents the UUID of the job the task belongs to.
+- `COOK_JOB_GROUP_UUID`: represents the UUID of the job group the task belongs to.
+- `COOK_JOB_CPUS`: represents the amount of `cpus` configured in the job. It can be a fractional number.
+- `COOK_JOB_GPUS`: represents the amount of `gpus` configured in the job. It can be a fractional number.
+- `COOK_JOB_MEM_MB`: represents the amount of `mem` (in megabytes) configured in the job. It can be a fractional number.
 
 Any environment variables configured in the Job are also included.
-In addition, when running an Instance using the Cook Executor, the executor configurations are passed as environment variables.
+In addition, when running an instance using the Cook Executor, the [executor configurations](configuration.adoc#cook_executor) are passed as environment variables.
 
