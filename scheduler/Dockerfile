@@ -30,4 +30,4 @@ COPY . /opt/cook/
 # Run cook
 EXPOSE 12321
 ENTRYPOINT ["lein", "with-profiles", "+docker", "run"]
-CMD ["container-config.edn"]
+CMD ["config.edn"]
