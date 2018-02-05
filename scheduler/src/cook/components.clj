@@ -18,6 +18,7 @@
             [clojure.core.cache :as cache]
             [clojure.edn :as edn]
             [clojure.pprint :refer (pprint)]
+            [clojure.stacktrace :as stacktrace]
             [clojure.string :as str]
             [clojure.tools.logging :as log]
             [compojure.core :refer (GET POST routes context)]
@@ -592,7 +593,8 @@
               overrides))
      (catch Throwable t
        (.println System/err "Failed to initialize logging!")
-       (.printCauseTrace t)
+       (stacktrace/print-cause-trace t)
+       (println "Exiting.")
        (System/exit 1)))))
 
 (def pre-configuration
@@ -628,7 +630,9 @@
     (let [config-format (try
                           (com.google.common.io.Files/getFileExtension config)
                           (catch Throwable t
-                            (.println System/err (str "Failed to start Cook" t))
+                            (.println System/err "Failed to start Cook")
+                            (stacktrace/print-cause-trace t)
+                            (println "Exiting.")
                             (System/exit 1)))
           literal-config (try
                            {:config
@@ -638,7 +642,9 @@
                                 (.println System/err (str "Invalid config file format " config-format))
                                 (System/exit 1)))}
                            (catch Throwable t
-                             (.println System/err (str "Failed to start Cook" t))
+                             (.println System/err "Failed to start Cook")
+                             (stacktrace/print-cause-trace t)
+                             (println "Exiting.")
                              (System/exit 1)))]
       (pre-configuration literal-config)
       (.println System/err "Configured logging")
