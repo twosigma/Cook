@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.11.0] - 2018-02-05
+### Added
+- Added timely sandbox directory updates for tasks that are not executed by the cook executor, from @shamsimam
+- Added environment variables that contain the resources requested by the job, from @shamsimam
+### Changed
+- Converted monitor Riemann events to codahale metrics, from @dposada
+### Fixed
+- Fixed string encoding on `/rawscheduler` POST, from @pschorf
+- The `start-time` timestamp on `/info` no longer re-evaluates to `now` on each request, from @DaoWen
+
 ## [1.10.0] - 2018-01-22
 ### Added
 - Added user-impersonation functionality to support services running on top of Cook Scheduler, from @DaoWen
