@@ -85,7 +85,6 @@
                  [metrics-clojure-jvm "2.6.1"]
                  [io.dropwizard.metrics/metrics-graphite "3.1.2"]
                  [com.aphyr/metrics3-riemann-reporter "0.4.0"]
-                 [riemann-clojure-client "0.4.1"]
 
                  ;;External system integrations
                  [me.raynes/conch "0.5.2"]
