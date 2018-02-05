@@ -330,7 +330,9 @@
             db (d/db conn)
             job-ent (d/entity db job)
             framework-id {:value "framework-id"}
-            environment {"COOK_JOB_UUID" (-> job-ent :job/uuid str)}
+            environment {"COOK_JOB_CPUS" "1.0"
+                         "COOK_JOB_MEM_MB" "10.0"
+                         "COOK_JOB_UUID" (-> job-ent :job/uuid str)}
             task-metadata (task/job->task-metadata db framework-id executor job-ent task-id)]
         (is (= {:command {:value "run-my-command", :environment environment, :user "test-user", :uris []}
                 :container nil
@@ -355,7 +357,9 @@
             job-ent (d/entity db job)
             group-ent (d/entity db group-ent-id)
             framework-id {:value "framework-id"}
-            environment {"COOK_JOB_GROUP_UUID" (-> group-ent :group/uuid str)
+            environment {"COOK_JOB_CPUS" "1.0"
+                         "COOK_JOB_GROUP_UUID" (-> group-ent :group/uuid str)
+                         "COOK_JOB_MEM_MB" "10.0"
                          "COOK_JOB_UUID" (-> job-ent :job/uuid str)}
             task-metadata (task/job->task-metadata db framework-id executor job-ent task-id)]
         (is (= {:command {:value "run-my-command", :environment environment, :user "test-user", :uris []}
@@ -379,7 +383,9 @@
             db (d/db conn)
             job-ent (d/entity db job)
             framework-id {:value "framework-id"}
-            environment {"COOK_JOB_UUID" (-> job-ent :job/uuid str)}
+            environment {"COOK_JOB_CPUS" "1.0"
+                         "COOK_JOB_MEM_MB" "10.0"
+                         "COOK_JOB_UUID" (-> job-ent :job/uuid str)}
             task-metadata (task/job->task-metadata db framework-id executor job-ent task-id)]
         (is (= {:command {:value "run-my-command", :environment environment, :user "test-user", :uris []}
                 :container nil
@@ -402,7 +408,9 @@
             db (d/db conn)
             job-ent (d/entity db job)
             framework-id {:value "framework-id"}
-            environment {"COOK_JOB_UUID" (-> job-ent :job/uuid str)
+            environment {"COOK_JOB_CPUS" "1.0"
+                         "COOK_JOB_MEM_MB" "10.0"
+                         "COOK_JOB_UUID" (-> job-ent :job/uuid str)
                          "EXECUTOR_LOG_LEVEL" (:log-level executor)
                          "EXECUTOR_MAX_MESSAGE_LENGTH" (:max-message-length executor)
                          "PROGRESS_REGEX_STRING" (:default-progress-regex-string executor)
@@ -430,12 +438,15 @@
       (let [task-id (str (UUID/randomUUID))
             group-ent-id (tu/create-dummy-group conn)
             job (tu/create-dummy-job conn :command "run-my-command" :custom-executor? false :executor :executor/cook
-                                     :group group-ent-id :job-state :job.state/running :user "test-user" )
+                                     :group group-ent-id :gpus 1000 :job-state :job.state/running :user "test-user")
             db (d/db conn)
             group-ent (d/entity db group-ent-id)
             job-ent (d/entity db job)
             framework-id {:value "framework-id"}
-            environment {"COOK_JOB_GROUP_UUID" (-> group-ent :group/uuid str)
+            environment {"COOK_JOB_CPUS" "1.0"
+                         "COOK_JOB_GROUP_UUID" (-> group-ent :group/uuid str)
+                         "COOK_JOB_GPUS" "1000.0"
+                         "COOK_JOB_MEM_MB" "10.0"
                          "COOK_JOB_UUID" (-> job-ent :job/uuid str)
                          "EXECUTOR_LOG_LEVEL" (:log-level executor)
                          "EXECUTOR_MAX_MESSAGE_LENGTH" (:max-message-length executor)
@@ -467,7 +478,9 @@
             db (d/db conn)
             job-ent (d/entity db job)
             framework-id {:value "framework-id"}
-            environment {"COOK_JOB_UUID" (-> job-ent :job/uuid str)}
+            environment {"COOK_JOB_CPUS" "1.0"
+                         "COOK_JOB_MEM_MB" "10.0"
+                         "COOK_JOB_UUID" (-> job-ent :job/uuid str)}
             task-metadata (task/job->task-metadata db framework-id {} job-ent task-id)]
         (is (= {:command {:environment environment
                           :uris []
@@ -501,7 +514,9 @@
             db (d/db conn)
             job-ent (d/entity db job)
             framework-id {:value "framework-id"}
-            environment {"COOK_JOB_UUID" (-> job-ent :job/uuid str)}
+            environment {"COOK_JOB_CPUS" "1.0"
+                         "COOK_JOB_MEM_MB" "10.0"
+                         "COOK_JOB_UUID" (-> job-ent :job/uuid str)}
             task-metadata (task/job->task-metadata db framework-id {} job-ent task-id)]
         (is (= {:command {:environment environment
                           :uris []
@@ -533,11 +548,14 @@
                                                  :container/volumes []}
                                      :custom-executor? false
                                      :job-state :job.state/running
+                                     :memory 200
                                      :user "test-user")
             db (d/db conn)
             job-ent (d/entity db job)
             framework-id {:value "framework-id"}
-            environment {"COOK_JOB_UUID" (-> job-ent :job/uuid str)}
+            environment {"COOK_JOB_CPUS" "1.0"
+                         "COOK_JOB_MEM_MB" "200.0"
+                         "COOK_JOB_UUID" (-> job-ent :job/uuid str)}
             task-metadata (task/job->task-metadata db framework-id {} job-ent task-id)]
         (is (= {:command {:environment environment
                           :uris []
@@ -553,7 +571,7 @@
                 :labels {}
                 :name (format "dummy_job_%s_%s" (:job/user job-ent) task-id)
                 :num-ports 0
-                :resources {:cpus 1.0, :mem 10.0}
+                :resources {:cpus 1.0, :mem 200.0}
                 :task-id task-id}
                (dissoc task-metadata :data)))
         (is (= (pr-str {:instance "0"}) (-> task-metadata :data (String. "UTF-8"))))))))

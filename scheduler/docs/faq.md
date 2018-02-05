@@ -26,3 +26,16 @@ can simply query cook with the intended job uuid to see if it exists
 Cook has the concept of "mea-culpa" retries, for instance when a job is killed due to pre-emption. Some users may prefer for jobs to
 just fail in this case instead of attempting to restart it (e.g. when a job is not idempotent.) To prevent this behavior and ensure
 the job is only launched once, set `max-retries: 1` and `disable-mea-culpa-retries: true`.
+
+## Does Cook set any environment variables before running a task?
+
+The following environment variables are set by Cook before running a task:
+- `COOK_JOB_UUID`: represents the UUID of the job the task belongs to.
+- `COOK_JOB_GROUP_UUID`: represents the UUID of the job group the task belongs to.
+- `COOK_JOB_CPUS`: represents the amount of `cpus` configured in the job. It can be a fractional number.
+- `COOK_JOB_GPUS`: represents the amount of `gpus` configured in the job. It can be a fractional number.
+- `COOK_JOB_MEM_MB`: represents the amount of `mem` (in megabytes) configured in the job. It can be a fractional number.
+
+Any environment variables configured in the Job are also included.
+In addition, when running an instance using the Cook Executor, the [executor configurations](configuration.adoc#cook_executor) are passed as environment variables.
+
