@@ -3,7 +3,7 @@
  :authorization {;; Note that internally, Cook will select :http-basic if it's set to true,
                  ;; and fall back to :one-user only if :http-basic is false.
                  :http-basic #config/env-bool "COOK_HTTP_BASIC_AUTH"
-                 :one-user "root"}
+                 :one-user #config/env "COOK_ONE_USER_AUTH"}
  :authorization-config {;; What function should be used to perform user authorization?
                         ;; See the docstring in cook.authorization for details.
                         :authorization-fn cook.authorization/configfile-admins-auth-open-gets

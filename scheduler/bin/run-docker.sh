@@ -125,6 +125,7 @@ docker create \
     -e "COOK_DATOMIC_URI=${COOK_DATOMIC_URI}" \
     -e "COOK_LOG_FILE=log/cook-${COOK_PORT}.log" \
     -e "COOK_HTTP_BASIC_AUTH=${COOK_HTTP_BASIC_AUTH:-false}" \
+    -e "COOK_ONE_USER_AUTH=root" \
     -e "COOK_EXECUTOR_PORTION=${COOK_EXECUTOR_PORTION:-0}" \
     -v ${DIR}/../log:/opt/cook/log \
     cook-scheduler:latest ${COOK_CONFIG:-}
