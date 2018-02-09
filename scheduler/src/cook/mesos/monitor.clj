@@ -21,8 +21,7 @@
             [clojure.tools.logging :as log]
             [cook.mesos.share :as share]
             [cook.mesos.util :as util]
-            [datomic.api :as d :refer (q)]
-            [metatransaction.core :refer (db)]
+            [datomic.api :as d :refer (db, q)]
             [metrics.core :as metrics]
             [metrics.counters :as counters]))
 
@@ -33,12 +32,10 @@
    Return a map from users to their stats where a stats is a map from stats
    types to amounts."
   [db state]
-  (let [job-ents (->> (q '[:find ?j
-                           :in $ ?state
-                           :where
-                           [?j :job/state ?state]]
-                         db state)
-                      (map #(d/entity db (first %))))]
+  (let [job-ents (case state
+                   :job.state/waiting (util/get-pending-job-ents db)
+                   :job.state/running (util/get-running-job-ents db)
+                   (throw (ex-info "Encountered unexpected job state" {:state state})))]
     (->> job-ents
          ;; Produce a list of maps from user's name to his stats.
          (mapv (fn [job-ent]

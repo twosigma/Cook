@@ -418,6 +418,20 @@
             db user)
          (map (partial d/entity db)))))
 
+(timers/deftimer [cook-mesos scheduler get-running-jobs-duration])
+
+(defn get-running-job-ents
+  "Returns all running job entities."
+  [db]
+  (timers/time!
+    get-running-jobs-duration
+    (->> (q '[:find [?j ...]
+              :in $
+              :where
+              [?j :job/state :job.state/running]]
+            db)
+         (map (partial d/entity db)))))
+
 (defn job-allowed-to-start?
   "Converts the DB function :job/allowed-to-start? into a predicate"
   [db job]
