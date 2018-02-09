@@ -21,7 +21,7 @@
             [clojure.tools.logging :as log]
             [cook.mesos.share :as share]
             [cook.mesos.util :as util]
-            [datomic.api :as d :refer (db, q)]
+            [datomic.api :as d :refer (q)]
             [metrics.core :as metrics]
             [metrics.counters :as counters]))
 
@@ -50,7 +50,7 @@
 (defn- add-aggregated-stats
   "Given a map from users to their stats, associcate a special user
    \"all\" for the sum of all users stats."
-  [db stats]
+  [stats]
   (if (seq stats)
     (->> (vals stats)
          (apply merge-with +)
@@ -105,7 +105,7 @@
 
 (defn- set-user-counters!
   "Sets counters for jobs with the given state, e.g. running, waiting and starved."
-  [db state stats state->previous-stats-atom]
+  [state stats state->previous-stats-atom]
   (clear-old-counters! state stats state->previous-stats-atom)
   (swap! state->previous-stats-atom #(assoc % state stats))
   (run!
@@ -115,7 +115,7 @@
                   counters/counter
                   (set-counter! amount)))
             stats))
-    (add-aggregated-stats db stats)))
+    (add-aggregated-stats stats)))
 
 (defn set-total-counter!
   "Given a state (e.g. starved) and a value, sets the corresponding counter."
@@ -141,9 +141,9 @@
         starved-count (count starved-users)
         hungry-count (count hungry-users)
         satisfied-count (count satisfied-users)]
-    (set-user-counters! db "running" running-stats state->previous-stats-atom)
-    (set-user-counters! db "waiting" waiting-stats state->previous-stats-atom)
-    (set-user-counters! db "starved" starved-stats state->previous-stats-atom)
+    (set-user-counters! "running" running-stats state->previous-stats-atom)
+    (set-user-counters! "waiting" waiting-stats state->previous-stats-atom)
+    (set-user-counters! "starved" starved-stats state->previous-stats-atom)
     (set-total-counter! "total" total-count)
     (set-total-counter! "starved" starved-count)
     (set-total-counter! "hungry" hungry-count)
@@ -161,7 +161,7 @@
       (log/info "Starting user stats collection at intervals of" interval-seconds "seconds")
       (chime-at (periodic/periodic-seq (time/now) (time/seconds interval-seconds))
                 (fn [_]
-                  (let [mesos-db (db mesos-conn)]
+                  (let [mesos-db (d/db mesos-conn)]
                     (set-stats-counters! mesos-db state->previous-stats-atom)))
                 {:error-handler (fn [ex]
                                   (log/error ex "Setting user stats counters failed!"))}))
