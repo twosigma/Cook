@@ -36,7 +36,8 @@
 (def sandbox-updater-publish-rate (meters/meter ["cook-mesos" "scheduler" "sandbox-updater-publish-rate"]))
 (def sandbox-updater-tx-duration (timers/timer ["cook-mesos" "scheduler" "sandbox-updater-tx-duration"]))
 (def sandbox-updater-tx-rate (meters/meter ["cook-mesos" "scheduler" "sandbox-updater-tx-rate"]))
-(def sandbox-updater-unfiltered-count (counters/counter ["cook-mesos" "scheduler" "sandbox-updater-unfiltered-count"]))
+(def sandbox-updater-unprocessed-count (counters/counter ["cook-mesos" "scheduler" "sandbox-updater-unprocessed-count"]))
+(def sandbox-updater-unprocessed-entries (histograms/histogram ["cook-mesos" "scheduler" "sandbox-updater-unprocessed-entries"]))
 
 (defn- counter-reset
   "Resets the value of the counter to the provided value.
@@ -186,7 +187,7 @@
   (swap! unprocessed-task-id->sandbox-atom
          (fn [unprocessed-task-id->sandbox-in-atom]
            (let [result-map (merge unprocessed-task-id->sandbox-in-atom task-id->sandbox-directory)]
-             (counter-reset sandbox-updater-unfiltered-count (count result-map))
+             (counter-reset sandbox-updater-unprocessed-count (count result-map))
              result-map))))
 
 (defn- remove-processed-task-ids!
@@ -195,7 +196,7 @@
   (swap! unprocessed-task-id->sandbox-atom
          (fn [unprocessed-task-id->sandbox-in-atom]
            (let [result-map (apply dissoc unprocessed-task-id->sandbox-in-atom processed-task-ids)]
-             (counter-reset sandbox-updater-unfiltered-count (count result-map))
+             (counter-reset sandbox-updater-unprocessed-count (count result-map))
              result-map))))
 
 (defn refresh-agent-cache-entry
@@ -300,6 +301,7 @@
   [{:keys [datomic-conn task-id->sandbox-agent unprocessed-task-id->sandbox-atom]} filter-batch-size]
   (let [unprocessed-task-id->sandbox @unprocessed-task-id->sandbox-atom]
     (log/info "Found" (count unprocessed-task-id->sandbox) "tasks to process for presence of sandbox directories")
+    (histograms/update! sandbox-updater-unprocessed-entries (count unprocessed-task-id->sandbox))
     (when (seq unprocessed-task-id->sandbox)
       (doseq [unprocessed-task-ids (partition-all filter-batch-size (keys unprocessed-task-id->sandbox))]
         (let [unprocessed-task-id->sandbox (select-keys unprocessed-task-id->sandbox unprocessed-task-ids)]
