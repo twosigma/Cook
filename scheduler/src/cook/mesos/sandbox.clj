@@ -301,13 +301,14 @@
   (let [unprocessed-task-id->sandbox @unprocessed-task-id->sandbox-atom]
     (log/info "Found" (count unprocessed-task-id->sandbox) "tasks to process for presence of sandbox directories")
     (when (seq unprocessed-task-id->sandbox)
-      (let [unprocessed-task-id->sandbox-partitions (partition-all filter-batch-size unprocessed-task-id->sandbox)]
-        (doseq [unprocessed-task-id->sandbox-partition unprocessed-task-id->sandbox-partitions]
-          (let [unprocessed-task-ids (keys unprocessed-task-id->sandbox-partition)]
-            (remove-processed-task-ids! unprocessed-task-id->sandbox-atom unprocessed-task-ids))
+      (doseq [unprocessed-task-ids (partition-all filter-batch-size (keys unprocessed-task-id->sandbox))]
+        (let [unprocessed-task-id->sandbox (select-keys unprocessed-task-id->sandbox unprocessed-task-ids)]
+          ;; eagerly empty the unprocessed tasks ids map, they will be repopulated later even if we error out
+          (remove-processed-task-ids! unprocessed-task-id->sandbox-atom unprocessed-task-ids)
+          ;; propagate filtered tasks to the task-id->sandbox-agent
           (let [filtered-task-id->sandbox-directory (remove-task-ids-with-sandbox datomic-conn unprocessed-task-id->sandbox)]
             (log/info "Filtered" (count filtered-task-id->sandbox-directory) "tasks without sandbox directories from"
-                      (count unprocessed-task-id->sandbox) "tasks")
+                      (count unprocessed-task-ids) "tasks")
             (when (seq filtered-task-id->sandbox-directory)
               (send task-id->sandbox-agent aggregate-sandbox filtered-task-id->sandbox-directory))))))))
 

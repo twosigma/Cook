@@ -359,7 +359,7 @@
                             agent-query-cache))
      :sandbox-syncer (fnk [[:config {sandbox-syncer nil}]]
                        (merge
-                         {:filter-batch-size 1000
+                         {:filter-batch-size 2000
                           ;; The default should ideally be lower than the sync-interval-ms
                           :filter-interval-ms 5000
                           :max-consecutive-sync-failure 15
