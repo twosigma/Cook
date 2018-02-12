@@ -66,7 +66,10 @@
     (when-not ns
       (throw (ex-info "Can only load vars that are ns-qualified!" {})))
     (require (symbol ns))
-    (resolve var-sym)))
+    (let [resolved (resolve var-sym)]
+      (if resolved
+        resolved
+        (throw (ex-info "Unable to resolve var, is it valid?" {:var-sym var-sym}))))))
 
 (def raw-scheduler-routes
   {:scheduler (fnk [mesos mesos-datomic mesos-leadership-atom mesos-pending-jobs-atom framework-id settings]
@@ -91,7 +94,7 @@
                            fenzo-floor-iterations-before-warn fenzo-max-jobs-considered fenzo-scaleback
                            good-enough-fitness hostname mea-culpa-failure-limit mesos-failover-timeout mesos-framework-name
                            mesos-gpu-enabled mesos-leader-path mesos-master mesos-master-hosts mesos-principal
-                           mesos-role offer-incubate-time-ms progress rebalancer riemann server-port task-constraints
+                           mesos-role offer-incubate-time-ms optimizer progress rebalancer riemann server-port task-constraints
                            user-metrics-interval-seconds]
                           curator-framework framework-id mesos-datomic mesos-datomic-mult mesos-leadership-atom
                           mesos-offer-cache mesos-pending-jobs-atom sandbox-syncer-state]
@@ -127,6 +130,7 @@
                              :mesos-pending-jobs-atom mesos-pending-jobs-atom
                              :offer-cache mesos-offer-cache
                              :offer-incubate-time-ms offer-incubate-time-ms
+                             :optimizer-config optimizer   
                              :progress-config progress
                              :rebalancer-config rebalancer
                              :sandbox-syncer-state sandbox-syncer-state
@@ -557,6 +561,19 @@
                    (merge {:interval-seconds 300
                            :dru-scale 1.0}
                           rebalancer))
+                       
+     :optimizer (fnk [[:config {optimizer nil}]]
+                     ;; TODO include a datomic connection to config so we can write purchase decisions
+                     (let [optimizer-config
+                           (merge {:host-feed {:create-fn 'cook.mesos.optimizer/create-dummy-host-feed
+                                               :config {}}
+                                   :optimizer {:create-fn 'cook.mesos.optimizer/create-dummy-optimizer
+                                               :config {}}
+                                   :schedule-consumer {:create-fn 'cook.mesos.optimizer/create-dummy-consumer
+                                                       :config {}}
+                                   :optimizer-interval-seconds 30}
+                                  optimizer)]
+                       optimizer-config))
 
      :nrepl-server (fnk [[:config [:nrepl {enabled? false} {port 0}]]]
                      (when enabled?

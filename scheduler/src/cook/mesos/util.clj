@@ -91,7 +91,7 @@
 
 (defn entity->map
   "Takes a datomic entity and converts it along with any nested entities
-  into clojure maps"
+   into clojure maps"
   ([entity db]
    (entity->map (d/entity db (:db/id entity))))
   ([entity]
@@ -121,7 +121,6 @@
                         hash-set))]
        (cond-> job
          group (assoc :group/_job group))))))
-
 
 (defn remove-datomic-namespacing
   "Takes a map from datomic (pull) and removes the namespace
