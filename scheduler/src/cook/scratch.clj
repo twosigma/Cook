@@ -169,25 +169,37 @@
   "Updates the provided stats map with the data from the provided task entity"
   [stats task-ent]
   (let [job-ent (:job/_instance task-ent)
-        state (:instance/status task-ent)
         user (:job/user job-ent)
         resources (util/job-ent->resources job-ent)
         hours (-> task-ent util/task-run-time .toDurationMillis (/ 1000) (/ 60) (/ 60))]
     (-> stats
-        (update-in [state user :cpu-hours] #(+ (or % 0) (* hours (:cpus resources))))
-        (update-in [state user :mem-hours] #(+ (or % 0) (* hours (:mem resources)))))))
+        (update-in [user :cpu-hours] #(+ (or % 0) (* hours (:cpus resources))))
+        (update-in [user :mem-hours] #(+ (or % 0) (* hours (:mem resources)))))))
 
-(defn get-completed-task-data
+(defn get-completed-tasks
+  "Gets all tasks that completed in the specified time range and with the
+  specified status. Assumes that tasks complete within 14 days of starting."
+  [db end-time-start end-time-end instance-status]
+  (let [start-entity-id (d/entid-at db :db.part/user (.toDate (t/minus end-time-start (t/days 14))))
+        end-entity-id (d/entid-at db :db.part/user (.toDate (t/plus end-time-end (t/hours 1))))
+        instance-status-entid (d/entid db instance-status)
+        instance-status-attribute-entid (d/entid db :instance/status)
+        end-time-start-millis (.getTime (.toDate end-time-start))
+        end-time-end-millis (.getTime (.toDate end-time-end))]
+    (->> (d/seek-datoms db :avet :instance/status instance-status-entid start-entity-id)
+         (take-while #(and
+                        (< (.e %) end-entity-id)
+                        (= (.a %) instance-status-attribute-entid)
+                        (= (.v %) instance-status-entid)))
+         (map #(.e %))
+         (map (partial d/entity db))
+         (filter #(<= end-time-start-millis (.getTime (:instance/end-time %))))
+         (filter #(< (.getTime (:instance/end-time %)) end-time-end-millis)))))
+
+(defn get-completed-task-stats
   "Returns a map from status -> user -> stats"
-  [db start end]
-  (let [task-ents
-        (->> (q '[:find [?i ...]
-                  :in $ [?status ...] ?start ?end
-                  :where
-                  [?i :instance/status ?status]
-                  [?i :instance/end-time ?t]
-                  [(<= ?start ?t)]
-                  [(< ?t ?end)]]
-                db [:instance.status/failed :instance.status/success] (.toDate start) (.toDate end))
-             (map (partial d/entity db)))]
-    (reduce update-stats {} task-ents)))
+  [db end-time-start end-time-end]
+  (let [failed-tasks (get-completed-tasks db end-time-start end-time-end :instance.status/failed)
+        success-tasks (get-completed-tasks db end-time-start end-time-end :instance.status/success)]
+    {:failed  (reduce update-stats {} failed-tasks)
+     :success (reduce update-stats {} success-tasks)}))
