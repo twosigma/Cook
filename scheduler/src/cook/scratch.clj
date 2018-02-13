@@ -171,11 +171,12 @@
   (let [job-ent (:job/_instance task-ent)
         user (:job/user job-ent)
         resources (util/job-ent->resources job-ent)
-        hours (-> task-ent util/task-run-time .toDurationMillis (/ 1000) (/ 60) (/ 60))]
+        millis (-> task-ent util/task-run-time .toDurationMillis)
+        hours (-> millis (/ 1000) (/ 60) (/ 60))]
     (-> stats
         (update-in [user :cpu-hours] #(+ (or % 0) (* hours (:cpus resources))))
         (update-in [user :mem-hours] #(+ (or % 0) (* hours (:mem resources))))
-        (update-in [user :hours] #(+ (or % 0) hours)))))
+        (update-in [user :millis] #(+ (or % 0) millis)))))
 
 (defn get-completed-tasks
   "Gets all tasks that completed in the specified time range and with the specified
