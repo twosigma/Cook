@@ -171,12 +171,14 @@
   (let [job-ent (:job/_instance task-ent)
         user (:job/user job-ent)
         resources (util/job-ent->resources job-ent)
-        millis (-> task-ent util/task-run-time .toDurationMillis)
-        hours (-> millis (/ 1000) (/ 60) (/ 60))]
+        run-time (-> task-ent util/task-run-time)
+        hours (-> run-time .toDurationMillis (/ 1000) (/ 60) (/ 60))]
     (-> stats
-        (update-in [user :cpu-hours] #(+ (or % 0) (* hours (:cpus resources))))
-        (update-in [user :mem-hours] #(+ (or % 0) (* hours (:mem resources))))
-        (update-in [user :millis] #(+ (or % 0) millis)))))
+        (conj (assoc resources
+                :user user
+                :run-time run-time
+                :cpu-hours (* hours (:cpus resources))
+                :mem-hours (* hours (:mem resources)))))))
 
 (defn get-completed-tasks
   "Gets all tasks that completed in the specified time range and with the specified
@@ -198,10 +200,44 @@
          (filter #(<= end-time-start-millis (.getTime (:instance/end-time %))))
          (filter #(< (.getTime (:instance/end-time %)) end-time-end-millis)))))
 
+(defn percentile
+  "Calculates the p-th percentile of the values in coll
+  (where 0 < p <= 100), using the Nearest Rank method:
+  https://en.wikipedia.org/wiki/Percentile#The_Nearest_Rank_method
+  Assumes that coll is sorted (see percentiles below for context)"
+  [coll p]
+  (if (or (empty? coll) (not (number? p)) (<= p 0) (> p 100))
+    nil
+    (nth coll
+         (-> p
+             (/ 100)
+             (* (count coll))
+             (Math/ceil)
+             (dec)))))
+
+(defn percentiles
+  "Calculates the p-th percentiles of the values in coll for
+  each p in p-list (where 0 < p <= 100), and returns a map of
+  p -> value"
+  [coll & p-list]
+  (let [sorted (sort coll)]
+    (into {} (map (fn [p] [p (percentile sorted p)]) p-list))))
+
+(defn generate-stats
+  "TODO(DPO)"
+  [task-entries]
+  (let [percentiles #(percentiles % 50 75 95 99 100)]
+    {:run-time  (percentiles (->> task-entries (map :run-time) (map #(.toDurationMillis %))))
+     :cpu-hours (percentiles (->> task-entries (map :cpu-hours)))
+     :mem-hours (percentiles (->> task-entries (map :mem-hours)))}))
+
 (defn get-completed-task-stats
   "Returns a map from status -> user -> stats"
   [db end-time-start end-time-end max-run-time]
   (let [failed-tasks (get-completed-tasks db end-time-start end-time-end :instance.status/failed max-run-time)
-        success-tasks (get-completed-tasks db end-time-start end-time-end :instance.status/success max-run-time)]
-    {:failed  (reduce update-stats {} failed-tasks)
-     :success (reduce update-stats {} success-tasks)}))
+        success-tasks (get-completed-tasks db end-time-start end-time-end :instance.status/success max-run-time)
+        failed (reduce update-stats [] failed-tasks)
+        success (reduce update-stats [] success-tasks)
+        ]
+    {:failed  (generate-stats failed)
+     :success (generate-stats success)}))
