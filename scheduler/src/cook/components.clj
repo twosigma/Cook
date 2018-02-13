@@ -428,7 +428,8 @@
                                                     :log-level "INFO"
                                                     :max-message-length 512
                                                     :portion 0.0
-                                                    :progress-sample-interval-ms (* 1000 60 5)}
+                                                    :progress-sample-interval-ms (* 1000 60 5)
+                                                    :retry-limit 5}
                            default-uri-config {:cache true
                                                :executable true
                                                :extract false}

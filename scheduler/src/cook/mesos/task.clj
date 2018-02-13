@@ -38,10 +38,11 @@
    a. Cook executor has not been explicitly disabled,
    b. This is going to be the first instance of the job, and
    c. The job UUID hash mod 100 yields less than portion percent."
-  [job-ent portion]
+  [job-ent portion retry-limit]
   (and (nil? (:job/executor job-ent))
-       (zero? (count (:job/instance job-ent)))
-       portion
+       (number? retry-limit)
+       (> retry-limit (count (:job/instance job-ent)))
+       (number? portion)
        (> (* portion 100) (-> job-ent :job/uuid hash (mod 100)))))
 
 (defn use-cook-executor?
@@ -51,11 +52,11 @@
    2. The Cook executor command has been configured,
    3. Either :job/executor is explicitly enabled
       Or: the job is a cook-executor candidate (see cook-executor-candidate?)."
-  [job-ent {:keys [command portion]}]
+  [job-ent {:keys [command portion retry-limit]}]
   (and (not (use-custom-executor? job-ent))
        command
        (or (= :executor/cook (:job/executor job-ent))
-           (cook-executor-candidate? job-ent portion))))
+           (cook-executor-candidate? job-ent portion retry-limit))))
 
 (defn build-executor-environment
   "Build the environment for the cook executor."

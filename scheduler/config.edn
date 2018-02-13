@@ -33,6 +33,7 @@
  :executor {:command #config/env "COOK_EXECUTOR_COMMAND"
             :environment {"EXECUTOR_DEFAULT_PROGRESS_OUTPUT_NAME" "stdout"}
             :portion #config/env-int "COOK_EXECUTOR_PORTION"
+            :retry-limit 5
             :uri {:cache false
                   :executable false
                   :extract true
