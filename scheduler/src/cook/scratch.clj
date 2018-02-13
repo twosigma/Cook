@@ -177,10 +177,10 @@
         (update-in [user :mem-hours] #(+ (or % 0) (* hours (:mem resources)))))))
 
 (defn get-completed-tasks
-  "Gets all tasks that completed in the specified time range and with the
-  specified status. Assumes that tasks complete within 14 days of starting."
-  [db end-time-start end-time-end instance-status]
-  (let [start-entity-id (d/entid-at db :db.part/user (.toDate (t/minus end-time-start (t/days 14))))
+  "Gets all tasks that completed in the specified time range and with the specified
+  status. Assumes that tasks complete within max-run-time of starting."
+  [db end-time-start end-time-end instance-status max-run-time]
+  (let [start-entity-id (d/entid-at db :db.part/user (.toDate (t/minus end-time-start max-run-time)))
         end-entity-id (d/entid-at db :db.part/user (.toDate (t/plus end-time-end (t/hours 1))))
         instance-status-entid (d/entid db instance-status)
         instance-status-attribute-entid (d/entid db :instance/status)
@@ -198,8 +198,8 @@
 
 (defn get-completed-task-stats
   "Returns a map from status -> user -> stats"
-  [db end-time-start end-time-end]
-  (let [failed-tasks (get-completed-tasks db end-time-start end-time-end :instance.status/failed)
-        success-tasks (get-completed-tasks db end-time-start end-time-end :instance.status/success)]
+  [db end-time-start end-time-end max-run-time]
+  (let [failed-tasks (get-completed-tasks db end-time-start end-time-end :instance.status/failed max-run-time)
+        success-tasks (get-completed-tasks db end-time-start end-time-end :instance.status/success max-run-time)]
     {:failed  (reduce update-stats {} failed-tasks)
      :success (reduce update-stats {} success-tasks)}))
