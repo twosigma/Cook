@@ -96,6 +96,8 @@
 (meters/defmeter [cook-mesos scheduler handle-framework-message-rate])
 (meters/defmeter [cook-mesos scheduler tasks-killed-in-status-update])
 
+(timers/deftimer [cook-mesos scheduler generate-user-usage-map-duration])
+
 (meters/defmeter [cook-mesos scheduler tasks-completed])
 (meters/defmeter [cook-mesos scheduler tasks-completed-mem])
 (meters/defmeter [cook-mesos scheduler tasks-completed-cpus])
@@ -707,13 +709,15 @@
 (defn generate-user-usage-map
   "Returns a mapping from user to usage stats"
   [unfiltered-db]
-  (->> (util/get-running-task-ents unfiltered-db)
-       (map :job/_instance)
-       (group-by :job/user)
-       (pc/map-vals (fn [jobs]
-                      (->> jobs
-                           (map job->usage)
-                           (reduce (partial merge-with +)))))))
+  (timers/time!
+    generate-user-usage-map-duration
+    (->> (util/get-running-task-ents unfiltered-db)
+         (map :job/_instance)
+         (group-by :job/user)
+         (pc/map-vals (fn [jobs]
+                        (->> jobs
+                             (map job->usage)
+                             (reduce (partial merge-with +))))))))
 
 (defn category->pending-jobs->category->considerable-jobs
   "Limit the pending jobs to considerable jobs based on usage and quota.
