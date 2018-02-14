@@ -106,8 +106,8 @@
   (let [queue (future (get-queue))
         running (future (get-running))
         offers (future (get-offers))
-        host-infos (future (get-available-host-info host-feed))
-        _ (s/validate [HostInfo] @host-infos)
+        host-infos (get-available-host-info host-feed)
+        _ (s/validate [HostInfo] host-infos)
         schedule (produce-schedule optimizer @queue @running @offers @host-infos)]
     (s/validate Schedule schedule)))
 
