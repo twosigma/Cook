@@ -237,8 +237,15 @@
   (let [task-entries (map task->task-entry tasks)
         stats (generate-stats task-entries)
         user->tasks (group-by :user task-entries)
-        user-stats (into {} (map (fn [[k v]] [k (generate-stats v)]) user->tasks))]
-    (assoc stats :users user-stats)))
+        user-stats (into {} (map (fn [[u ts]] [u (generate-stats ts)]) user->tasks))
+        leaders (fn [k]
+                  (->> user-stats
+                       (map (fn [[u m]] [(get-in m [k :total]) u]))
+                       (sort-by #(* -1 (first %)))
+                       (take 5)))]
+    (assoc stats :users user-stats
+                 :cpu-seconds-leaders (leaders :cpu-seconds)
+                 :mem-seconds-leaders (leaders :mem-seconds))))
 
 (defn get-completed-task-stats
   "Returns a map from status -> user -> stats"
