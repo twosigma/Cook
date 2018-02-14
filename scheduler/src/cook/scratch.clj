@@ -165,20 +165,19 @@
         (create-job conn host instance-status start-time end-time :user user :job-state :job.state/completed)))
     (range 100)))
 
-(defn update-stats
+(defn task->task-entry
   "Updates the provided stats map with the data from the provided task entity"
-  [stats task-ent]
+  [task-ent]
   (let [job-ent (:job/_instance task-ent)
         user (:job/user job-ent)
         resources (util/job-ent->resources job-ent)
         run-time (-> task-ent util/task-run-time)
-        hours (-> run-time .toDurationMillis (/ 1000) (/ 60) (/ 60))]
-    (-> stats
-        (conj (assoc resources
-                :user user
-                :run-time run-time
-                :cpu-hours (* hours (:cpus resources))
-                :mem-hours (* hours (:mem resources)))))))
+        seconds (-> run-time .toDuration .getStandardSeconds)]
+    (assoc resources
+      :user user
+      :run-time run-time
+      :cpu-seconds (* seconds (:cpus resources))
+      :mem-seconds (* seconds (:mem resources)))))
 
 (defn get-completed-tasks
   "Gets all tasks that completed in the specified time range and with the specified
@@ -224,20 +223,23 @@
     (into {} (map (fn [p] [p (percentile sorted p)]) p-list))))
 
 (defn generate-stats
-  "TODO(DPO)"
+  "Generates statistics based on the provided task entries"
   [task-entries]
-  (let [percentiles #(percentiles % 50 75 95 99 100)]
-    {:run-time  (percentiles (->> task-entries (map :run-time) (map #(.toDurationMillis %))))
-     :cpu-hours (percentiles (->> task-entries (map :cpu-hours)))
-     :mem-hours (percentiles (->> task-entries (map :mem-hours)))}))
+  (let [stats #(percentiles % 50 75 95 99 100)]
+    {:count            (count task-entries)
+     :run-time-seconds (stats (->> task-entries
+                                   (map :run-time)
+                                   (map #(.toDuration %))
+                                   (map #(.getStandardSeconds %))))
+     :cpu-seconds      (stats (->> task-entries (map :cpu-seconds)))
+     :mem-seconds      (stats (->> task-entries (map :mem-seconds)))}))
 
 (defn get-completed-task-stats
   "Returns a map from status -> user -> stats"
   [db end-time-start end-time-end max-run-time]
   (let [failed-tasks (get-completed-tasks db end-time-start end-time-end :instance.status/failed max-run-time)
         success-tasks (get-completed-tasks db end-time-start end-time-end :instance.status/success max-run-time)
-        failed (reduce update-stats [] failed-tasks)
-        success (reduce update-stats [] success-tasks)
-        ]
-    {:failed  (generate-stats failed)
-     :success (generate-stats success)}))
+        failed-entries (map task->task-entry failed-tasks)
+        success-entries (map task->task-entry success-tasks)]
+    {:failed  (generate-stats failed-entries)
+     :success (generate-stats success-entries)}))
