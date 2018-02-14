@@ -287,7 +287,7 @@
 (def ^:const job-states #{"running" "waiting" "completed"})
 (def ^:const instance-states #{"success" "failed"})
 
-;; get-completed-jobs-by-user is a bit opaque because it is
+;; get-jobs-by-user-and-state-and-submit is a bit opaque because it is
 ;; reaching into datomic internals. Here is a quick explanation.
 ;; seek-datoms provides a pointer into the raw datomic indices 
 ;; that we can then seek through. We set the pointer to look
@@ -298,41 +298,46 @@
 ;; are set at the same time, in "real" time. This means that
 ;; jobs submitted after `start` will have been created after
 ;; expanded start
+(defn get-jobs-by-user-and-state-and-submit
+  "Returns all jobs for a particular user in the specified timeframe, without a custom executor"
+  [db user start end state-keyword]
+  (let [;; Expand the time range so that clock skew between cook
+        ;; and datomic doesn't cause us to miss jobs
+        ;; 1 hour was picked because a skew larger than that would be
+        ;; suspicious
+        expanded-start (Date. (- (.getTime start)
+                                 (-> 1 t/hours t/in-millis)))
+        expanded-end (Date. (+ (.getTime end)
+                               (-> 1 t/hours t/in-millis)))
+        entid-start (d/entid-at db :db.part/user expanded-start)
+        entid-end (d/entid-at db :db.part/user expanded-end)
+        job-user-entid (d/entid db :job/user)]
+    (->> (d/seek-datoms db :avet :job/user user entid-start)
+         (take-while #(and (< (:e %) entid-end)
+                           (= (:a %) job-user-entid)
+                           (= (:v %) user)))
+         (map #(:e %))
+         (map (partial d/entity db))
+         (filter #(<= (.getTime start) (.getTime (:job/submit-time %))))
+         (filter #(< (.getTime (:job/submit-time %)) (.getTime end)))
+         (filter #(= state-keyword (:job/state %)))
+         (filter #(not (:job/custom-executor %))))))
+
+;; This differs from the get-active-jobs-by-user-and-state is also looking up based on task state.
 (defn get-completed-jobs-by-user
   "Returns all completed job entities for a particular user
-   in the specified timeframe, without a custom executor."
+   in the specified timeframe, without a custom executor. Supports looking up based
+   on task state 'success' and 'failed' if passed into 'state'"
   [db user start end limit state name-filter-fn]
   (timers/time!
     get-completed-jobs-by-user-duration
-    (let [;; Expand the time range so that clock skew between cook
-          ;; and datomic doesn't cause us to miss jobs
-          ;; 1 hour was picked because a skew larger than that would be
-          ;; suspicious
-          expanded-start (Date. (- (.getTime start)
-                                   (-> 1 t/hours t/in-millis)))
-          expanded-end (Date. (+ (.getTime end)
-                                 (-> 1 t/hours t/in-millis)))
-          jobs
-          (->> (d/seek-datoms db :avet :job/user user (d/entid-at db :db.part/user expanded-start))
-               (take-while #(and (< (.e %) (d/entid-at db :db.part/user expanded-end))
-                                 (= (.a %) (d/entid db :job/user))
-                                 (= (.v %) user)))
-               (map #(.e %))
-               (map (partial d/entity db))
-               (filter #(<= (.getTime start) (.getTime (:job/submit-time %))))
-               (filter #(< (.getTime (:job/submit-time %)) (.getTime end)))
-               (filter #(= :job.state/completed (:job/state %)))
-               (filter #(not (:job/custom-executor %))))]
-      (->>
-        (cond->> jobs
-                 (instance-states state) (filter #(= state (job-ent->state %)))
-                 name-filter-fn (filter #(name-filter-fn (:job/name %))))
-        (take limit)))))
+    (->>
+      (cond->> (get-jobs-by-user-and-state-and-submit db user start end :job.state/completed)
+               (instance-states state) (filter #(= state (job-ent->state %)))
+               name-filter-fn (filter #(name-filter-fn (:job/name %))))
+      (take limit))))
 
-;; This is a separate query from completed jobs because most running/waiting jobs
-;; will be at the end of the time range, so the query is somewhat inefficent.
-;; The standard datomic query performs reasonably well on the smaller set of
-;; running and waiting jobs, so it's implemented that way to keep things simple.
+;; This query looks for all jobs by job state only (i.e., no 'success' or 'failed')
 (defn get-active-jobs-by-user-and-state
   "Returns all jobs for a particular user in the specified state
    and timeframe, without a custom executor.
@@ -341,22 +346,11 @@
   [db user start end state name-filter-fn]
   (let [state-keyword (case state
                         "running" :job.state/running
-                        "waiting" :job.state/waiting)
-        jobs
-        (timers/time!
-          (timers/timer ["cook-mesos" "scheduler" (str "get-" (name state) "-jobs-by-user-duration")])
-          (->> (q '[:find [?j ...]
-                    :in $ ?user ?state ?start ?end
-                    :where
-                    [?j :job/state ?state]
-                    [?j :job/user ?user]
-                    [?j :job/submit-time ?t]
-                    [(<= ?start ?t)]
-                    [(< ?t ?end)]
-                    [?j :job/custom-executor false]]
-                  db user state-keyword start end)
-               (map (partial d/entity db))))]
-    (cond->> jobs name-filter-fn (filter #(name-filter-fn (:job/name %))))))
+                        "waiting" :job.state/waiting)]
+    (timers/time!
+      (timers/timer ["cook-mesos" "scheduler" (str "get-" (name state) "-jobs-by-user-duration")])
+      (cond->> (get-jobs-by-user-and-state-and-submit db user start end state-keyword)
+               name-filter-fn (filter #(name-filter-fn (:job/name %)))))))
 
 (defn get-jobs-by-user-and-states
   "Returns all jobs for a particular user in the specified states
@@ -367,9 +361,11 @@
                               (get-completed-jobs-by-user db user start end limit state name-filter-fn)
                               (get-active-jobs-by-user-and-state db user start end state name-filter-fn)))
         jobs-by-state (mapcat get-jobs-by-state states)]
-    (->> jobs-by-state
-         (sort-by :job/submit-time)
-         (take limit))))
+    (timers/time!
+      (timers/timer ["cook-mesos" "scheduler" "get-jobs-by-user-and-states-duration"])
+      (->> jobs-by-state
+           (sort-by :job/submit-time)
+           (take limit)))))
 
 
 (defn jobs-by-user-and-state
