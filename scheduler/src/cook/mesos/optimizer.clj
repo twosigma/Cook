@@ -108,7 +108,7 @@
         offers (future (get-offers))
         host-infos (get-available-host-info host-feed)
         _ (s/validate [HostInfo] host-infos)
-        schedule (produce-schedule optimizer @queue @running @offers @host-infos)]
+        schedule (produce-schedule optimizer @queue @running @offers host-infos)]
     (s/validate Schedule schedule)))
 
 (defn start-optimizer-cycles!
