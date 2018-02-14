@@ -8,11 +8,6 @@ The optimizer is provided with the current queue, the jobs that are running, the
 There are plans to support more plug-ins such as expected demand in the future.
 With these  inputs, the optimizer produces a 'schedule' of suggestions of what hosts to purchase and matches of jobs and hosts at different time horizons.
 
-The schedule is passed to a pluggable schedule consumer which may make take actions using the schedule.
 There are plans to have the schedule be feed to the matcher so that it may treat the suggestions of the optimizer as soft constraints.
-
-The architecture looks like:
-
-![Optimizer architecture](scheduler/docs/images/optimizer_architecture.png)
 
 The specification of pluggable pieces can be found in [optimizer.clj](scheduler/src/cook/mesos/optimizer.clj).

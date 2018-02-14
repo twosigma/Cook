@@ -9,24 +9,16 @@
   (let [host {:count 1
               :instance-type "small"
               :cpus 1
-              :mem 1000
-              :time-to-start  (-> 30 t/seconds t/in-millis)}
+              :mem 1000}
         host-feed (reify optimizer/HostFeed
                          (get-available-host-info [this]
                            [host]))
         optimizer (reify optimizer/Optimizer
                           (produce-schedule [this queue running available [host-info & host-infos]]
-                            {0 {:suggested-purchases {host-info 2}
-                                :suggested-matches {host-info (map :job/uuid queue)}}}))
-        consumer (reify optimizer/ScheduleConsumer
-                   (consume-schedule [this schedule]
-                     (is (= (count schedule) 1))
-                     (is (= (first (keys (get-in schedule [0 :suggested-matches])))
-                            host))))
+                            {0 {:suggested-matches {host-info (map :job/uuid queue)}}})) 
         queue [{:job/uuid (java.util.UUID/randomUUID)} {:job/uuid (java.util.UUID/randomUUID)}]]
-    (async/<!! (optimizer/optimizer-cycle! (fn get-queue [] queue)
+    (optimizer/optimizer-cycle! (fn get-queue [] queue)
                                 (fn get-running [] [])
                                 (fn get-offers [] [])
                                 host-feed
-                                optimizer
-                                consumer))))
+                                optimizer)))

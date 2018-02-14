@@ -40,15 +40,12 @@
 
 ;; Elements missing:
 ;;   1. Attributes (chip set, az, ..) -- have a combinitorial problem here
-;;   2. Price
-;;   3. Prob preemption in 10 minutes increments (or something like that
 (def HostInfo
   {:count NonNegInt
    :instance-type s/Str
    :cpus PosNum
    :mem PosNum
-   (s/optional-key :gpus) PosNum
-   :time-to-start TimePeriodMs})
+   (s/optional-key :gpus) PosNum})
 
 (defprotocol HostFeed
   "Protocol defining a service to get information on hosts that can be purchased."
@@ -56,8 +53,7 @@
                                    to HostInfo schema above"))
 
 (def Schedule
-  {TimePeriodMs {:suggested-matches {HostInfo [s/Uuid]}
-                 :suggested-purchases {HostInfo NonNegInt}}})
+  {TimePeriodMs {:suggested-matches {HostInfo [s/Uuid]}}})
 
 (defprotocol Optimizer
   "Protocol defining a tool to produce a schedule to execute"
@@ -70,21 +66,16 @@
                      queue -- Ordered list of jobs to run (see cook.mesos.schema job)
                      running -- Set of tasks running (see cook.mesos.schema instance)
                      available -- Set of offers outstanding
-                     host-infos -- Host infos from HostFeed"))
-
-(defprotocol ScheduleConsumer
-  "Protocol defining a consumer of the optimizer's schedule.
-   An examples is a component to take the schedules suggested
-   purchases and execute on them"
-  ;;Question to self: Should this be run its own thread or let it kick off a thread
-  (consume-schedule [this schedule]
-                    "Act on the schedule passed in.
-                     It is expected this function has side effects
-                     and it will be run in a separate thread"))
+                     host-infos -- Host infos from HostFeed
+                     
+                     Returns:
+                     A schedule: a map where the keys are milliseconds in the future 
+                     and  the values are recommendations to take at that point in the future"))
 
 (defn create-dummy-host-feed
   "Returns an instance of HostFeed which returns an empty list of hosts"
   [_]
+  (log/info "Creating dummy host feed")
   (reify HostFeed
     (get-available-host-info [this]
       [])))
@@ -92,21 +83,15 @@
 (defn create-dummy-optimizer
   "Returns an instance of Optimizer which returns an empty schedule"
   [_]
+  (log/info "Creating dummy optimizer")
   (reify Optimizer
     (produce-schedule [this queue running available host-infos]
-      {0 {:suggested-purchases {} :suggested-matches {}}})))
-
-(defn create-dummy-consumer
-  "Returns an instance of ScheduleConsumer which does nothing"
-  [_]
-  (reify ScheduleConsumer
-    (consume-schedule [this schedule])))
+      {0 {:suggested-matches {}}})))
 
 (defn optimizer-cycle!
   "Starts a cycle that:
    1. Gets queue, running, offer and purchasable host info
    2. Calls the `optimizer` to get a schedule
-   3. Passes the schedule to each of the consumers
 
    Parameters:
    get-queue -- fn, no args fn that returns ordered list of jobs to run
@@ -114,25 +99,17 @@
    get-offers -- fn, no args fn that returns a set of offers
    host-feed -- instance of HostFeed
    optimizer -- instance of Optimizer
-   schedule-consumer -- instance of ScheduleConsumer
    interval -- joda-time period
 
    Raises an exception if there was a problem in the execution"
-  [get-queue get-running get-offers host-feed optimizer schedule-consumer]
+  [get-queue get-running get-offers host-feed optimizer]
   (let [queue (future (get-queue))
         running (future (get-running))
         offers (future (get-offers))
         host-infos (future (get-available-host-info host-feed))
         _ (s/validate [HostInfo] @host-infos)
         schedule (produce-schedule optimizer @queue @running @offers @host-infos)]
-    (s/validate Schedule schedule)
-    (async/thread
-      (try
-        (consume-schedule schedule-consumer schedule)
-        (catch Exception e
-          (log/warn e "Error consuming schedule"))))
-    ;; TODO: should we block on consumers finishing?
-    ))
+    (s/validate Schedule schedule)))
 
 (defn start-optimizer-cycles!
   "Every interval, call `optimizer-cycle!`.
@@ -142,8 +119,7 @@
   (let [construct (fn construct [{:keys [create-fn config] :as c}]
                     ((lazy-load-var create-fn) config))
         host-feed (-> optimizer-config :host-feed construct)
-        optimizer (-> optimizer-config :optimizer construct)
-        schedule-consumer (-> optimizer-config :schedule-consumer construct)]
+        optimizer (-> optimizer-config :optimizer construct)]
     (log/info "Optimizer constructed")
     (util/chime-at-ch trigger-chan
                       (fn []
@@ -152,7 +128,6 @@
                                           get-running
                                           get-offers
                                           host-feed
-                                          optimizer
-                                          schedule-consumer))
+                                          optimizer))
                       {:error-handler (fn [e]
                                         (log/warn e "Error running optimizer"))})))

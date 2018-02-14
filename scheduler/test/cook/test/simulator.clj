@@ -303,9 +303,7 @@
         opt-config {:host-feed {:create-fn 'cook.mesos.optimizer/create-dummy-host-feed
                                 :config {}}
                     :optimizer {:create-fn 'cook.mesos.optimizer/create-dummy-optimizer
-                                :config {}}
-                    :schedule-consumer {:create-fn 'cook.mesos.optimizer/create-dummy-consumer
-                                        :config {}}}
+                                :config {}}}
         scheduler-config (merge (:scheduler-config config)
                                 {:optimizer-config opt-config}
                                 {:trigger-chans {:rank-trigger-chan ranker-trigger-chan
@@ -593,7 +591,7 @@
   (not (seq (trace-diffs trace-a trace-b))))
 
 (deftest test-simulator
-  (time (let [users ["a" "b" "c" "d"]
+  (let [users ["a" "b" "c" "d"]
         jobs (-> (for [minute (range 5)
                        sim-i (range (+ (rand-int 50) 30))]
                    (create-trace-job (+ (rand-int 1200000) 600000) ; 1 to 20 minutes
@@ -618,12 +616,12 @@
                 (trace-host i host-mem host-cpus))
         cycle-step-ms 30000
         config {:shares [{:user "default" :mem (/ host-mem 10) :cpus (/ host-cpus 10) :gpus 1.0}]
-               :scheduler-config {:rebalancer-config {:max-preemption 1.0}
-                                  :fenzo-config {:fenzo-max-jobs-considered 200}}}
+                :scheduler-config {:rebalancer-config {:max-preemption 1.0}
+                                   :fenzo-config {:fenzo-max-jobs-considered 200}}}
         out-trace-a (simulate hosts jobs cycle-step-ms config)
         out-trace-b (simulate hosts jobs cycle-step-ms config)]
     (is (> (count out-trace-a) 0))
     (is (> (count out-trace-b) 0))
     (is (traces-equivalent? out-trace-a out-trace-b)
         {:diffs (sort-by (comp :submit-time first second)
-                         (trace-diffs out-trace-a out-trace-b))}))))
+                         (trace-diffs out-trace-a out-trace-b))})))

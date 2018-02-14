@@ -569,8 +569,6 @@
                                                :config {}}
                                    :optimizer {:create-fn 'cook.mesos.optimizer/create-dummy-optimizer
                                                :config {}}
-                                   :schedule-consumer {:create-fn 'cook.mesos.optimizer/create-dummy-consumer
-                                                       :config {}}
                                    :optimizer-interval-seconds 30}
                                   optimizer)]
                        optimizer-config))
