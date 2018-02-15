@@ -232,16 +232,17 @@
     {:count            (count task-entries)
      :run-time-seconds (stats (map :run-time-seconds task-entries))
      :cpu-seconds      (stats (map :cpu-seconds task-entries))
-     :mem-seconds      (stats (map :mem-seconds task-entries))
-     :reasons          (frequencies (map :reason task-entries))}))
+     :mem-seconds      (stats (map :mem-seconds task-entries))}))
 
 (defn generate-all-stats
   "Generates both aggregate and per-user statistics for the provided tasks"
   [tasks]
   (let [task-entries (map task->task-entry tasks)
         stats (generate-stats task-entries)
-        user->tasks (group-by :user task-entries)
-        user-stats (into {} (map (fn [[u ts]] [u (generate-stats ts)]) user->tasks))
+        user->tasks (->> task-entries (group-by (fn [t] [(:user t) (:reason t)])))
+        user-stats (->> user->tasks
+                        (map (fn [[ur ts]] [ur (generate-stats ts)]))
+                        (into {}))
         leaders (fn [k]
                   (->> user-stats
                        (map (fn [[u m]] [(get-in m [k :total]) u]))
