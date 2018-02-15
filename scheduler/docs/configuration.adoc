@@ -308,7 +308,6 @@ An example configuration looks like:
             :log-level "INFO"
             :max-message-length 512
             :progress-sample-interval-ms 1000
-            :retry-limit 5
             :uri {:cache true
                   :executable true
                   :extract false
@@ -345,11 +344,6 @@ The configuration values are defined as follows:
   The interval in ms after which to send progress updates.
   Care should be taken to avoid setting this value too low as it can end up causing a high rate of message transfer between the executor and the scheduler.
   The default is (1000 * 60 * 5), i.e. 5 minutes.
-
-`:retry-limit`::
-  When trying to run a job, the number of attempts after which the Cook Executor will not be used, even if it was explicitly requested.
-  Instead, the Mesos Executor will be used to run all subsequent instances of the job.
-  The default is 5, i.e. the 6th instance onwards will be scheduled using the Mesos Executor.
 
 `:uri`::
   A description of the `uri` used to download the executor executable.
