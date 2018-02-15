@@ -20,7 +20,8 @@
             [cook.mesos.util :as util]
             [cook.test.testutil :as testutil]
             [datomic.api :as d :refer (q)]
-            [metatransaction.core :refer (db)]))
+            [metatransaction.core :refer (db)]
+            [plumbing.core :as pc]))
 
 (comment
   ;; Mark instance failed.
@@ -229,33 +230,35 @@
   "Generates statistics based on the provided task entries"
   [task-entries]
   (let [stats #(assoc (percentiles % 50 75 95 99 100) :total (reduce + %))]
-    {:count            (count task-entries)
+    {:count (count task-entries)
      :run-time-seconds (stats (map :run-time-seconds task-entries))
-     :cpu-seconds      (stats (map :cpu-seconds task-entries))
-     :mem-seconds      (stats (map :mem-seconds task-entries))}))
+     :cpu-seconds (stats (map :cpu-seconds task-entries))
+     :mem-seconds (stats (map :mem-seconds task-entries))}))
 
 (defn generate-all-stats
   "Generates both aggregate and per-user statistics for the provided tasks"
   [tasks]
   (let [task-entries (map task->task-entry tasks)
-        stats (generate-stats task-entries)
-        user->tasks (->> task-entries (group-by (fn [t] [(:user t) (:reason t)])))
-        user-stats (->> user->tasks
-                        (map (fn [[ur ts]] [ur (generate-stats ts)]))
-                        (into {}))
-        leaders (fn [k]
-                  (->> user-stats
-                       (map (fn [[u m]] [(get-in m [k :total]) u]))
-                       (sort-by #(* -1 (first %)))
-                       (take 5)))]
-    (assoc stats :users user-stats
-                 :cpu-seconds-leaders (leaders :cpu-seconds)
-                 :mem-seconds-leaders (leaders :mem-seconds))))
+        overall-stats (generate-stats task-entries)
+        user-reason->tasks (->> task-entries (group-by (fn [t] [(:user t) (:reason t)])))
+        user-reason-stats (pc/map-vals generate-stats user-reason->tasks)
+        user-reason-leaders (fn [k]
+                              (->> user-reason-stats
+                                   (map (fn [[u m]] [(get-in m [k :total]) u]))
+                                   (sort-by #(* -1 (first %)))
+                                   (take 10)))
+        reason->tasks (->> task-entries (group-by :reason))
+        reason-stats (pc/map-vals generate-stats reason->tasks)]
+    {:overall {:stats overall-stats}
+     :by-user-and-reason {:stats user-reason-stats
+                          :cpu-seconds-leaders (user-reason-leaders :cpu-seconds)
+                          :mem-seconds-leaders (user-reason-leaders :mem-seconds)}
+     :by-reason {:stats reason-stats}}))
 
 (defn get-completed-task-stats
   "Returns a map from status -> user -> stats"
   [db end-time-start end-time-end max-run-time]
   (let [failed-tasks (get-completed-tasks db end-time-start end-time-end max-run-time :instance.status/failed)
         success-tasks (get-completed-tasks db end-time-start end-time-end max-run-time :instance.status/success)]
-    {:failed  (generate-all-stats failed-tasks)
+    {:failed (generate-all-stats failed-tasks)
      :success (generate-all-stats success-tasks)}))
