@@ -209,17 +209,13 @@
         pending-sync-agent (agent pending-sync-initial-state)
         task-id->sandbox-agent (agent {})
         item-unavailable (future :unavailable)
+        unprocessed-task-id->sandbox-atom (atom {})
         publisher-state {:datomic-conn db-conn
                          :mesos-agent-query-cache mesos-agent-query-cache
                          :pending-sync-agent pending-sync-agent
-                         :task-id->sandbox-agent task-id->sandbox-agent}
-        refresh-agent-cache-helper #(sandbox/refresh-agent-cache-entry publisher-state framework-id %)
-        task-ids-with-sandbox-in-db ["task2.host1" "task2.host2" "task2.host3" "task3.host3"]]
-
-    (doseq [task-id task-ids-with-sandbox-in-db]
-      (tu/create-dummy-instance db-conn (tu/create-dummy-job db-conn)
-                                :sandbox-directory (str "path/to/" task-id "/directory")
-                                :task-id task-id ))
+                         :task-id->sandbox-agent task-id->sandbox-agent
+                         :unprocessed-task-id->sandbox-atom unprocessed-task-id->sandbox-atom}
+        refresh-agent-cache-helper #(sandbox/refresh-agent-cache-entry publisher-state framework-id %)]
 
     (with-redefs [sandbox/retrieve-sandbox-directories-on-agent
                   (fn [_ hostname]
@@ -240,9 +236,12 @@
         (is (= :unavailable @(cache/lookup @mesos-agent-query-cache "badhost" item-unavailable)))
         (is (= {"task1.host1" "/path/to/1/host1/sandbox"
                 "task1.host2" "/path/to/1/host2/sandbox"
+                "task2.host1" "/path/to/2/host1/sandbox"
+                "task2.host2" "/path/to/2/host2/sandbox"
                 "task3.host1" "/path/to/3/host1/sandbox"
                 "task3.host2" "/path/to/3/host2/sandbox"}
-               @task-id->sandbox-agent))
+               @unprocessed-task-id->sandbox-atom))
+        (is (= {} @task-id->sandbox-agent))
         (is (= (update pending-sync-initial-state :pending-sync-hosts
                        (fn [pending-sync-hosts] (-> pending-sync-hosts
                                                     (disj "host2"))))
@@ -259,9 +258,14 @@
         (is (= {"task1.host1" "/path/to/1/host1/sandbox"
                 "task1.host2" "/path/to/1/host2/sandbox"
                 "task1.host3" "/path/to/1/host3/sandbox"
+                "task2.host1" "/path/to/2/host1/sandbox"
+                "task2.host2" "/path/to/2/host2/sandbox"
+                "task2.host3" "/path/to/2/host3/sandbox"
                 "task3.host1" "/path/to/3/host1/sandbox"
-                "task3.host2" "/path/to/3/host2/sandbox"}
-               @task-id->sandbox-agent))
+                "task3.host2" "/path/to/3/host2/sandbox"
+                "task3.host3" "/path/to/3/host3/sandbox"}
+               @unprocessed-task-id->sandbox-atom))
+        (is (= {} @task-id->sandbox-agent))
         (is (= (-> pending-sync-initial-state
                    (update :pending-sync-hosts (fn [pending-sync-hosts] (-> pending-sync-hosts (disj "host2"))))
                    (update :host->consecutive-failures dissoc "host3"))
@@ -278,9 +282,14 @@
         (is (= {"task1.host1" "/path/to/1/host1/sandbox"
                 "task1.host2" "/path/to/1/host2/sandbox"
                 "task1.host3" "/path/to/1/host3/sandbox"
+                "task2.host1" "/path/to/2/host1/sandbox"
+                "task2.host2" "/path/to/2/host2/sandbox"
+                "task2.host3" "/path/to/2/host3/sandbox"
                 "task3.host1" "/path/to/3/host1/sandbox"
-                "task3.host2" "/path/to/3/host2/sandbox"}
-               @task-id->sandbox-agent))
+                "task3.host2" "/path/to/3/host2/sandbox"
+                "task3.host3" "/path/to/3/host3/sandbox"}
+               @unprocessed-task-id->sandbox-atom))
+        (is (= {} @task-id->sandbox-agent))
         (is (= (-> pending-sync-initial-state
                    (update :pending-sync-hosts
                            (fn [pending-sync-hosts] (-> pending-sync-hosts (disj "host2") (conj "badhost"))))
@@ -299,9 +308,14 @@
         (is (= {"task1.host1" "/path/to/1/host1/sandbox"
                 "task1.host2" "/path/to/1/host2/sandbox"
                 "task1.host3" "/path/to/1/host3/sandbox"
+                "task2.host1" "/path/to/2/host1/sandbox"
+                "task2.host2" "/path/to/2/host2/sandbox"
+                "task2.host3" "/path/to/2/host3/sandbox"
                 "task3.host1" "/path/to/3/host1/sandbox"
-                "task3.host2" "/path/to/3/host2/sandbox"}
-               @task-id->sandbox-agent))
+                "task3.host2" "/path/to/3/host2/sandbox"
+                "task3.host3" "/path/to/3/host3/sandbox"}
+               @unprocessed-task-id->sandbox-atom))
+        (is (= {} @task-id->sandbox-agent))
         (is (= (-> pending-sync-initial-state
                    (update :pending-sync-hosts
                            (fn [pending-sync-hosts] (-> pending-sync-hosts (disj "host2") (conj "badhost" "host3"))))
@@ -324,6 +338,7 @@
                                                           "host1" "host2" "host4" "host6"}}
         pending-sync-agent (agent pending-sync-initial-state)
         task-id->sandbox-agent (agent {})
+        unprocessed-task-id->sandbox-atom (atom {})
         sync-interval-ms 2
         max-consecutive-sync-failure 10
         sync-first-batch-latch (CountDownLatch. 3)
@@ -343,7 +358,8 @@
       (let [publisher-state {:datomic-conn db-conn
                              :mesos-agent-query-cache mesos-agent-query-cache
                              :pending-sync-agent pending-sync-agent
-                             :task-id->sandbox-agent task-id->sandbox-agent}
+                             :task-id->sandbox-agent task-id->sandbox-agent
+                             :unprocessed-task-id->sandbox-atom unprocessed-task-id->sandbox-atom}
             syncer-cancel-fn (sandbox/start-host-sandbox-syncer
                                publisher-state sync-interval-ms max-consecutive-sync-failure)]
         (try
@@ -373,8 +389,9 @@
             (is (= 2 (count host->consecutive-failures)))
             (is (>= 3 (get host->consecutive-failures "badhost1" 0)))
             (is (>= 1 (get host->consecutive-failures "badhost2" 0))))
+          (is (= {} @task-id->sandbox-agent))
           (is (= {"task.host2" "/path/to/host2/sandbox", "task.host4" "/path/to/host4/sandbox"}
-                 @task-id->sandbox-agent))
+                 @unprocessed-task-id->sandbox-atom))
           (is (= #{"badhost1" "badhost2" "badhost3" "host2" "host4"}
                  (set @synced-hosts-atom)))
           (is (= 5 @retrieve-sandbox-directories-on-agent-counter))
@@ -382,20 +399,86 @@
           (finally
             (syncer-cancel-fn)))))))
 
+(deftest test-process-unprocessed-task-ids
+  (let [db-conn (tu/restore-fresh-database! "datomic:mem://test-process-unprocessed-task-ids")
+        filter-batch-size 3
+        task-id->sandbox-agent (agent {})
+        unprocessed-task-id->sandbox-atom (atom {})
+        publisher-state {:datomic-conn db-conn
+                         :task-id->sandbox-agent task-id->sandbox-agent
+                         :unprocessed-task-id->sandbox-atom unprocessed-task-id->sandbox-atom}
+        task-ids-with-sandbox-in-db ["task2.host1" "task2.host2" "task2.host3" "task3.host3"]]
+
+    (doseq [task-id task-ids-with-sandbox-in-db]
+      (tu/create-dummy-instance db-conn (tu/create-dummy-job db-conn)
+                                :sandbox-directory (str "path/to/" task-id "/directory")
+                                :task-id task-id))
+
+    (let [unprocessed-task-id->sandbox
+          (->> (for [task (range 4)
+                     host (range 4)]
+                 (str "task" task ".host" host))
+               (pc/map-from-keys (fn [name] (str "path/to/" name "/directory"))))]
+
+      (reset! unprocessed-task-id->sandbox-atom unprocessed-task-id->sandbox)
+
+      (await task-id->sandbox-agent)
+      (is (= {} @task-id->sandbox-agent))
+
+      (sandbox/process-unprocessed-task-ids publisher-state filter-batch-size)
+      (is (= {} @unprocessed-task-id->sandbox-atom))
+
+      (await task-id->sandbox-agent)
+      (is (= (apply dissoc unprocessed-task-id->sandbox task-ids-with-sandbox-in-db) @task-id->sandbox-agent)))))
+
+(deftest test-start-unprocessed-entries-processor
+  (let [filter-batch-size 10
+        filter-interval-ms 20
+        unprocessed-task-id->sandbox {"task-1" "sandbox-1"
+                                      "task-2" "sandbox-2"
+                                      "task-3" "sandbox-3"
+                                      "task-100000" "sandbox-100000"}
+        unprocessed-task-id->sandbox-atom (atom unprocessed-task-id->sandbox)
+        publisher-state {:unprocessed-task-id->sandbox-atom unprocessed-task-id->sandbox-atom}
+        call-counter (atom 0)
+        cron-thrice-latch (CountDownLatch. 3)]
+    (with-redefs [sandbox/process-unprocessed-task-ids
+                  (fn [in-publisher-state in-partition-size]
+                    (is (= (-> publisher-state keys set) (-> in-publisher-state keys set)))
+                    (is (= filter-batch-size in-partition-size))
+                    (.countDown cron-thrice-latch)
+                    (swap! call-counter inc)
+                    (-> publisher-state
+                        :unprocessed-task-id->sandbox-atom
+                        (swap! dissoc (str "task-" @call-counter))))]
+      (let [processor-cancel-fn (sandbox/start-unprocessed-entries-processor
+                                  publisher-state filter-batch-size filter-interval-ms)]
+        (try
+          (.await cron-thrice-latch 10 TimeUnit/SECONDS)
+          (is (zero? (.getCount cron-thrice-latch)))
+          (is (= {"task-100000" "sandbox-100000"} @unprocessed-task-id->sandbox-atom))
+
+          (finally
+            (processor-cancel-fn)))))))
+
 (deftest test-prepare-sandbox-publisher
   (with-redefs [sandbox/retrieve-sandbox-directories-on-agent
                 (fn [_ hostname]
                   {(str "task." hostname) (str "/path/to/" hostname "/sandbox")})]
     (let [db-conn (tu/restore-fresh-database! "datomic:mem://test-start-sandbox-publisher")
+          filter-batch-size 10
+          filter-interval-ms 10
           publish-batch-size 20
           publish-interval-ms 10
           sync-interval-ms 10000
           max-consecutive-sync-failure 10
           framework-id "test-framework-id"
           mesos-agent-query-cache (atom (cache/fifo-cache-factory {} :threshold 2))
-          {:keys [publisher-cancel-fn syncer-cancel-fn task-id->sandbox-agent] :as sandbox-state}
-          (sandbox/prepare-sandbox-publisher framework-id db-conn publish-batch-size publish-interval-ms
-                                             sync-interval-ms max-consecutive-sync-failure mesos-agent-query-cache)]
+          sandbox-state (sandbox/prepare-sandbox-publisher
+                          framework-id db-conn filter-batch-size filter-interval-ms publish-batch-size publish-interval-ms
+                          sync-interval-ms max-consecutive-sync-failure mesos-agent-query-cache)
+          {:keys [processor-cancel-fn publisher-cancel-fn syncer-cancel-fn task-id->sandbox-agent
+                  unprocessed-task-id->sandbox-atom]} sandbox-state]
 
       (try
         (->> {"sandbox-directory" "/path/to/sandbox", "task-id" "task-1", "type" "directory"}
@@ -403,8 +486,9 @@
         @(sandbox/sync-agent-sandboxes sandbox-state framework-id "host1")
         (await task-id->sandbox-agent)
 
-        (is (= {"task-1" "/path/to/sandbox", "task.host1" "/path/to/host1/sandbox"}
-               @task-id->sandbox-agent))
+        (is (= {"task-1" "/path/to/sandbox"} @task-id->sandbox-agent))
+        (is (= {"task.host1" "/path/to/host1/sandbox"} @unprocessed-task-id->sandbox-atom))
         (finally
+          (processor-cancel-fn)
           (publisher-cancel-fn)
           (syncer-cancel-fn))))))
