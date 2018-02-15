@@ -138,13 +138,14 @@
 
 (defn create-job
   "Creates a new job with one instance"
-  [conn host instance-status start-time end-time & args]
+  [conn host instance-status start-time end-time reason & args]
   (let [job (apply testutil/create-dummy-job (cons conn args))
         inst (testutil/create-dummy-instance conn job
                                              :instance-status instance-status
                                              :hostname host
                                              :start-time start-time
-                                             :end-time end-time)]
+                                             :end-time end-time
+                                             :reason reason)]
     [job inst]))
 
 (defn rand-str
@@ -161,8 +162,9 @@
             instance-status (rand-nth [:instance.status/failed :instance.status/success])
             user (rand-nth ["alice" "bob" "claire" "doug" "emily" "frank" "gloria" "henry"])
             start-time (.toDate (t/ago (t/minutes (inc (rand-int 120)))))
-            end-time (.toDate (t/now))]
-        (create-job conn host instance-status start-time end-time :user user :job-state :job.state/completed)))
+            end-time (.toDate (t/now))
+            reason (:reason/name (rand-nth (cook.mesos.reason/all-known-reasons (db conn))))]
+        (create-job conn host instance-status start-time end-time reason :user user :job-state :job.state/completed)))
     (range 100)))
 
 (defn task->task-entry
@@ -177,7 +179,8 @@
       :user user
       :run-time-seconds seconds
       :cpu-seconds (* seconds (:cpus resources))
-      :mem-seconds (* seconds (:mem resources)))))
+      :mem-seconds (* seconds (:mem resources))
+      :reason (get-in task-ent [:instance/reason :reason/string]))))
 
 (defn get-completed-tasks
   "Gets all tasks that completed in the specified time range and with the specified
@@ -229,7 +232,8 @@
     {:count            (count task-entries)
      :run-time-seconds (stats (map :run-time-seconds task-entries))
      :cpu-seconds      (stats (map :cpu-seconds task-entries))
-     :mem-seconds      (stats (map :mem-seconds task-entries))}))
+     :mem-seconds      (stats (map :mem-seconds task-entries))
+     :reasons          (frequencies (map :reason task-entries))}))
 
 (defn generate-all-stats
   "Generates both aggregate and per-user statistics for the provided tasks"
