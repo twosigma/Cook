@@ -71,18 +71,29 @@ class CookTest(unittest.TestCase):
                             lambda job: len(job['instances']) > 4)
         except BaseException as e:
             self.logger.debug("Didn't reach desired instance count: {}".format(e))
+
         job = util.load_job(self.cook_url, job_uuid)
-        message = json.dumps(job, sort_keys=True)
-        later_job_instances = sorted(job['instances'], key=operator.itemgetter('start_time'))[1:]
-        self.assertGreater(len(later_job_instances), 0, message)  # happy with at least 1 in case the scheduler is slow
-        for i, job_instance in enumerate(later_job_instances):
+        self.logger.debug("num job instances is {}".format(len(job['instances'])))
+        job_instances = sorted(job['instances'], key=operator.itemgetter('start_time'))
+        for i, job_instance in enumerate(job_instances):
             message = 'Trailing instance {}: {}'.format(i, json.dumps(job_instance, sort_keys=True))
             if 'reason_string' in job_instance:
                 self.assertEqual('failed', job_instance['status'], message)
                 self.assertEqual('Command exited non-zero', job_instance['reason_string'], message)
             else:
                 self.assertIn(job_instance['status'], ['running', 'unknown'], message)
-            self.assertEqual('mesos', job_instance['executor'], message)
+
+        retry_limit = util.get_in(util.settings(self.cook_url), 'executor', 'retry-limit')
+        self.logger.debug("cook executor retry limit is {}".format(retry_limit))
+        if retry_limit is None:
+            self.logger.debug("Cook executor is not configured (retry-limit is None)")
+        elif retry_limit >= len(job_instances):
+            self.logger.debug("Not enough instances to verify Mesos executor on subsequent instances")
+        else:
+            later_job_instances = job_instances[retry_limit:]
+            for i, job_instance in enumerate(later_job_instances):
+                message = 'Trailing instance {}: {}'.format(i, json.dumps(job_instance, sort_keys=True))
+                self.assertEqual('mesos', job_instance['executor'], message)
 
     def test_disable_mea_culpa(self):
         job_uuid, resp = util.submit_job(self.cook_url, disable_mea_culpa_retries=True)

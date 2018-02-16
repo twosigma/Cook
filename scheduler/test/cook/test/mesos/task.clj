@@ -585,34 +585,45 @@
   (testing "custom-executor not configured"
     (let [job-ent {}
           executor-config {:command "cook-executor"
+                           :portion 0.25
+                           :retry-limit 1}]
+      (is (not (task/use-cook-executor? job-ent executor-config)))))
+
+  (testing "custom-executor retry-limit not configured"
+    (let [job-ent {:job/custom-executor true}
+          executor-config {:command "cook-executor"
                            :portion 0.25}]
       (is (not (task/use-cook-executor? job-ent executor-config)))))
 
   (testing "custom-executor enabled"
     (let [job-ent {:job/custom-executor true}
           executor-config {:command "cook-executor"
-                           :portion 0.25}]
+                           :portion 0.25
+                           :retry-limit 1}]
       (is (not (task/use-cook-executor? job-ent executor-config)))))
 
   (testing "custom-executor enabled and cook-executor enabled [faulty state]"
     (let [job-ent {:job/custom-executor true
                    :job/executor :executor/cook}
           executor-config {:command "cook-executor"
-                           :portion 0.25}]
+                           :portion 0.25
+                           :retry-limit 1}]
       (is (not (task/use-cook-executor? job-ent executor-config)))))
 
   (testing "custom-executor disabled and cook-executor enabled"
     (let [job-ent {:job/custom-executor false
                    :job/executor :executor/cook}
           executor-config {:command "cook-executor"
-                           :portion 0.25}]
+                           :portion 0.25
+                           :retry-limit 1}]
       (is (task/use-cook-executor? job-ent executor-config))))
 
   (testing "custom-executor disabled and cook-executor disabled"
     (let [job-ent {:job/custom-executor false
                    :job/executor :executor/mesos}
           executor-config {:command "cook-executor"
-                           :portion 0.25}]
+                           :portion 0.25
+                           :retry-limit 1}]
       (is (not (task/use-cook-executor? job-ent executor-config)))))
 
   (testing "custom-executor disabled and coin toss favorable"
@@ -620,7 +631,8 @@
           job-ent {:job/custom-executor false
                    :job/uuid job-uuid}
           executor-config {:command "cook-executor"
-                           :portion 0.25}]
+                           :portion 0.25
+                           :retry-limit 1}]
       (with-redefs [hash (fn [obj] (is (= job-uuid obj)) 10)]
         (is (task/use-cook-executor? job-ent executor-config)))))
 
@@ -629,7 +641,8 @@
           job-ent {:job/custom-executor false
                    :job/uuid job-uuid}
           executor-config {:command "cook-executor"
-                           :portion 0.25}]
+                           :portion 0.25
+                           :retry-limit 1}]
       (with-redefs [hash (fn [obj] (is (= job-uuid obj)) 90)]
         (is (not (task/use-cook-executor? job-ent executor-config))))))
 
@@ -638,11 +651,26 @@
           job-uuid (str (UUID/randomUUID))
           job-ent {:job/custom-executor false
                    :job/instance [instance-1]
-                   :job/uuid job-uuid}
-          executor-config {:command "cook-executor"
-                           :portion 0.25}]
+                   :job/uuid job-uuid}]
       (with-redefs [hash (fn [obj] (is (= job-uuid obj)) 10)]
-        (is (not (task/use-cook-executor? job-ent executor-config))))))
+        (is (->> {:command "cook-executor"
+                  :portion 0.25}
+                 (task/use-cook-executor? job-ent)
+                 not))
+        (is (->> {:command "cook-executor"
+                  :portion 0.25
+                  :retry-limit 0}
+                 (task/use-cook-executor? job-ent)
+                 not))
+        (is (->> {:command "cook-executor"
+                  :portion 0.25
+                  :retry-limit 1}
+                 (task/use-cook-executor? job-ent)
+                 not))
+        (is (->> {:command "cook-executor"
+                  :portion 0.25
+                  :retry-limit 2}
+                 (task/use-cook-executor? job-ent))))))
 
   (testing "custom-executor disabled, coin toss favorable with multiple instances"
     (let [instance-1 {:instance/executor-id "foo"}
@@ -651,11 +679,26 @@
           job-uuid (str (UUID/randomUUID))
           job-ent {:job/custom-executor false
                    :job/instance [instance-1 instance-2 instance-3]
-                   :job/uuid job-uuid}
-          executor-config {:command "cook-executor"
-                           :portion 0.25}]
+                   :job/uuid job-uuid}]
       (with-redefs [hash (fn [obj] (is (= job-uuid obj)) 10)]
-        (is (not (task/use-cook-executor? job-ent executor-config)))))))
+        (is (->> {:command "cook-executor"
+                  :portion 0.25}
+                 (task/use-cook-executor? job-ent)
+                 not))
+        (is (->> {:command "cook-executor"
+                  :portion 0.25
+                  :retry-limit 2}
+                 (task/use-cook-executor? job-ent)
+                 not))
+        (is (->> {:command "cook-executor"
+                  :portion 0.25
+                  :retry-limit 3}
+                 (task/use-cook-executor? job-ent)
+                 not))
+        (is (->> {:command "cook-executor"
+                  :portion 0.25
+                  :retry-limit 4}
+                 (task/use-cook-executor? job-ent)))))))
 
 (deftest test-build-executor-environment
   (testing "default values"
