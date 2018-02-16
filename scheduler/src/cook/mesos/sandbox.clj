@@ -19,6 +19,8 @@
             [clj-time.core :as time]
             [clj-time.periodic :as periodic]
             [clojure.core.cache :as cache]
+            [clojure.set :as set]
+            [clojure.string :as str]
             [clojure.tools.logging :as log]
             [datomic.api :as d]
             [metrics.counters :as counters]
@@ -29,8 +31,6 @@
 (def sandbox-aggregator-message-rate (meters/meter ["cook-mesos" "scheduler" "sandbox-aggregator-message-rate"]))
 (def sandbox-aggregator-pending-count (counters/counter ["cook-mesos" "scheduler" "sandbox-aggregator-pending-count"]))
 (def sandbox-pending-sync-host-count (counters/counter ["cook-mesos" "scheduler" "sandbox-pending-sync-host-count"]))
-(def sandbox-updater-filter-duration (timers/timer ["cook-mesos" "scheduler" "sandbox-updater-filter-duration"]))
-(def sandbox-updater-filter-entries (histograms/histogram ["cook-mesos" "scheduler" "sandbox-updater-filter-entries"]))
 (def sandbox-updater-pending-entries (histograms/histogram ["cook-mesos" "scheduler" "sandbox-updater-pending-entries"]))
 (def sandbox-updater-publish-duration (timers/timer ["cook-mesos" "scheduler" "sandbox-updater-publish-duration"]))
 (def sandbox-updater-publish-rate (meters/meter ["cook-mesos" "scheduler" "sandbox-updater-publish-rate"]))
@@ -38,14 +38,6 @@
 (def sandbox-updater-tx-rate (meters/meter ["cook-mesos" "scheduler" "sandbox-updater-tx-rate"]))
 (def sandbox-updater-unprocessed-count (counters/counter ["cook-mesos" "scheduler" "sandbox-updater-unprocessed-count"]))
 (def sandbox-updater-unprocessed-entries (histograms/histogram ["cook-mesos" "scheduler" "sandbox-updater-unprocessed-entries"]))
-
-(defn- counter-reset
-  "Resets the value of the counter to the provided value.
-   Note: This function is not thread safe, it can introduce data races when called in parallel."
-  [the-counter new-value]
-  (counters/clear! the-counter)
-  (when-not (zero? new-value)
-    (counters/inc! the-counter new-value)))
 
 (defn agent->task-id->sandbox
   "Returns the sandbox in the current agent state."
@@ -57,7 +49,8 @@
    Since we expect instances to have the same sandbox, we do not check for value equality."
   [task-id->sandbox published-task-id->sandbox]
   (let [task-id->sandbox' (apply dissoc task-id->sandbox (keys published-task-id->sandbox))]
-    (counter-reset sandbox-aggregator-pending-count (count task-id->sandbox'))
+    (counters/clear! sandbox-aggregator-pending-count)
+    (counters/inc! sandbox-aggregator-pending-count (count task-id->sandbox'))
     task-id->sandbox'))
 
 (defn aggregate-sandbox
@@ -158,78 +151,93 @@
             (contains? #{:success :threshold} reason)
             (update :host->consecutive-failures dissoc hostname))))
 
-(defn- remove-task-ids-with-sandbox
-  "Filters the task-ids which have a sandbox directory from task-id->sandbox."
-  [datomic-conn task-id->sandbox]
-  (letfn [(retrieve-task-ids-with-sandbox [datomic-db task-ids]
-            (d/q '[:find [?t ...]
-                   :in $ [?t ...]
-                   :where
-                   [?e :instance/task-id ?t]
-                   [?e :instance/sandbox-directory ?s]]
-                 datomic-db task-ids))
-          (remove-task-id-with-sandbox [task-id->sandbox task-id]
-            (dissoc! task-id->sandbox task-id))
-          (update-filter-entries-histogram! [task-id->sandbox]
-            (histograms/update! sandbox-updater-filter-entries (count task-id->sandbox))
-            task-id->sandbox)]
-    (timers/time!
-      sandbox-updater-filter-duration
-      (->> (keys task-id->sandbox)
-           (retrieve-task-ids-with-sandbox (d/db datomic-conn))
-           (reduce remove-task-id-with-sandbox (transient task-id->sandbox))
-           persistent!
-           update-filter-entries-histogram!))))
-
 (defn- aggregate-unprocessed-task-ids!
-  "Aggregates the unprocessed task-id->sandbox-directory into the unprocessed-task-id->sandbox-atom."
-  [unprocessed-task-id->sandbox-atom task-id->sandbox-directory]
-  (swap! unprocessed-task-id->sandbox-atom
-         (fn [unprocessed-task-id->sandbox-in-atom]
-           (let [result-map (merge unprocessed-task-id->sandbox-in-atom task-id->sandbox-directory)]
-             (counter-reset sandbox-updater-unprocessed-count (count result-map))
-             result-map))))
+  "Aggregates the unprocessed task-id into the unprocessed-host->task-ids-atom for a given host."
+  [unprocessed-host->task-ids-atom host task-id]
+  (swap! unprocessed-host->task-ids-atom
+         (fn [unprocessed-host->task-ids-in-atom]
+           (let [unprocessed-task-ids (get unprocessed-host->task-ids-in-atom host #{})]
+             (if-not (contains? unprocessed-task-ids task-id)
+               (do
+                 (counters/inc! sandbox-updater-unprocessed-count)
+                 (->> task-id
+                      (conj unprocessed-task-ids)
+                      (assoc unprocessed-host->task-ids-in-atom host)))
+               unprocessed-host->task-ids-in-atom))))
+  (histograms/update! sandbox-updater-unprocessed-entries (counters/value sandbox-updater-unprocessed-count)))
 
 (defn- remove-processed-task-ids!
-  "Removes the processed-task-ids from the unprocessed-task-id->sandbox-atom."
-  [unprocessed-task-id->sandbox-atom processed-task-ids]
-  (swap! unprocessed-task-id->sandbox-atom
-         (fn [unprocessed-task-id->sandbox-in-atom]
-           (let [result-map (apply dissoc unprocessed-task-id->sandbox-in-atom processed-task-ids)]
-             (counter-reset sandbox-updater-unprocessed-count (count result-map))
-             result-map))))
+  "Removes the processed-task-ids from the unprocessed-host->task-ids-atom for a given host."
+  [unprocessed-host->task-ids-atom host task-ids]
+  (swap! unprocessed-host->task-ids-atom
+         (fn [unprocessed-host->task-ids-in-atom]
+           (let [unprocessed-task-ids (get unprocessed-host->task-ids-in-atom host #{})
+                 unprocessed-task-ids' (set/difference unprocessed-task-ids task-ids)]
+             (if (not= unprocessed-task-ids unprocessed-task-ids')
+               (do
+                 (->> (- (count unprocessed-task-ids') (count unprocessed-task-ids))
+                      (counters/inc! sandbox-updater-unprocessed-count))
+                 (if (seq unprocessed-task-ids')
+                   (assoc unprocessed-host->task-ids-in-atom host unprocessed-task-ids')
+                   (dissoc unprocessed-host->task-ids-in-atom host)))
+               unprocessed-host->task-ids-in-atom))))
+  (histograms/update! sandbox-updater-unprocessed-entries (counters/value sandbox-updater-unprocessed-count)))
+
+(defn- process-task-id->sandbox-directory-on-host
+  "Processes the result of the indexed task-id->sandbox-directory on a host.
+   First, the tasks which have pending sandbox directory requests are filtered based on existing requests.
+   The filtered version of tasks without sandbox directories is then synced into the task-id->sandbox-agent."
+  [{:keys [task-id->sandbox-agent unprocessed-host->task-ids-atom]} host unprocessed-task-ids-prev task-id->sandbox-directory]
+  (let [filtered-task-id->sandbox-directory (->> (get @unprocessed-host->task-ids-atom host)
+                                                 (set/union unprocessed-task-ids-prev)
+                                                 (select-keys task-id->sandbox-directory))
+        filtered-task-ids (->> filtered-task-id->sandbox-directory
+                               keys
+                               set)]
+    (log/info "Found" (count task-id->sandbox-directory) "task(s) on" host "of which"
+              (count filtered-task-id->sandbox-directory) "are task(s) with sandbox directory requests")
+    (when-let [missing-task-ids (seq (set/difference unprocessed-task-ids-prev filtered-task-ids))]
+      (log/info "No sandbox directories found on" host "for" (count missing-task-ids) "requested task(s):"
+                (str/join "," missing-task-ids)))
+    (->> (set/union unprocessed-task-ids-prev filtered-task-ids)
+         (remove-processed-task-ids! unprocessed-host->task-ids-atom host))
+    (send task-id->sandbox-agent aggregate-sandbox filtered-task-id->sandbox-directory)))
 
 (defn refresh-agent-cache-entry
   "If the entry for the specified agent is not cached:
    - Triggers building an indexed version of all task-id to sandbox directory for the specified agent;
-   - After the indexed version is built, the tasks are aggregated for further processing:
-     -- A separate thread (see start-unprocessed-entries-processor) removes the tasks with sandbox directories.
-     -- The filtered version of tasks without sandbox directories is then synced into the task-id->sandbox-agent.
-   The function call is a no-op if the specified agent already exists in the cache."
-  [{:keys [mesos-agent-query-cache pending-sync-agent unprocessed-task-id->sandbox-atom]} framework-id agent-hostname]
+   - After the indexed version is built, the tasks which have pending sandbox directory requests are filtered;
+   - The filtered version of tasks without sandbox directories is then synced into the task-id->sandbox-agent.
+   If the specified agent already exists in the cache, only the task-id is inserted into the
+   unprocessed-host->task-ids-atom to be processed in the future."
+  [{:keys [mesos-agent-query-cache pending-sync-agent unprocessed-host->task-ids-atom] :as publisher-state}
+   framework-id host task-id]
   (try
-    (let [run (delay
+    (when task-id
+      (aggregate-unprocessed-task-ids! unprocessed-host->task-ids-atom host task-id))
+    (let [unprocessed-task-ids-current (get @unprocessed-host->task-ids-atom host)
+          run (delay
                 (try
-                  (let [task-id->sandbox-directory (retrieve-sandbox-directories-on-agent framework-id agent-hostname)]
-                    (log/info "Found" (count task-id->sandbox-directory) "tasks on" agent-hostname)
-                    (aggregate-unprocessed-task-ids! unprocessed-task-id->sandbox-atom task-id->sandbox-directory)
-                    (send pending-sync-agent clear-pending-sync-hostname agent-hostname :success)
+                  (let [task-id->sandbox-directory (retrieve-sandbox-directories-on-agent framework-id host)]
+                    (process-task-id->sandbox-directory-on-host
+                      publisher-state host unprocessed-task-ids-current task-id->sandbox-directory)
+                    (send pending-sync-agent clear-pending-sync-hostname host :success)
                     :success)
                   (catch Exception e
-                    (log/error e "Failed to get mesos agent state on" agent-hostname)
-                    (send pending-sync-agent aggregate-pending-sync-hostname agent-hostname :error)
+                    (log/error e "Failed to get mesos agent state on" host)
+                    (send pending-sync-agent aggregate-pending-sync-hostname host :error)
                     :error)))
           cs (swap! mesos-agent-query-cache
                     (fn mesos-agent-query-cache-swap-fn [c]
-                      (if (cache/has? c agent-hostname)
+                      (if (cache/has? c host)
                         (do
-                          (send pending-sync-agent aggregate-pending-sync-hostname agent-hostname :pending)
-                          (cache/hit c agent-hostname))
-                        (cache/miss c agent-hostname run))))
-          val (cache/lookup cs agent-hostname)]
+                          (send pending-sync-agent aggregate-pending-sync-hostname host :pending)
+                          (cache/hit c host))
+                        (cache/miss c host run))))
+          val (cache/lookup cs host)]
       (if val @val @run))
     (catch Exception e
-      (log/error e "Failed to refresh mesos agent state" {:agent agent-hostname}))))
+      (log/error e "Failed to refresh mesos agent state" {:host host}))))
 
 (defn update-sandbox
   "Sends a message to the agent to update the sandbox information."
@@ -238,11 +246,14 @@
     (send task-id->sandbox-agent aggregate-sandbox task-id sandbox-directory)))
 
 (defn sync-agent-sandboxes
-  "Asynchronously triggers state syncing from the mesos agent."
-  [publisher-state framework-id agent-hostname]
-  (when (and framework-id agent-hostname)
-    (future
-      (refresh-agent-cache-entry publisher-state framework-id agent-hostname))))
+  "Asynchronously triggers state syncing from the mesos agent.
+   task-id may be nil, which means the sync was triggered for previously pending tasks on the host."
+  ([publisher-state framework-id agent-hostname]
+   (sync-agent-sandboxes publisher-state framework-id agent-hostname nil))
+  ([publisher-state framework-id agent-hostname task-id]
+   (when (and framework-id agent-hostname)
+     (future
+       (refresh-agent-cache-entry publisher-state framework-id agent-hostname task-id)))))
 
 (defn start-sandbox-publisher
   "Launches a timer task that triggers publishing of the task-id->sandbox state to datomic.
@@ -294,37 +305,6 @@
     {:error-handler (fn start-host-sandbox-syncer-error-handler [ex]
                       (log/error ex "Sync of sandbox directories on pending hosts failed"))}))
 
-(defn process-unprocessed-task-ids
-  "Processes the entries in unprocessed-task-id->sandbox-atom, removes the tasks that have sandbox entries in datomic,
-   and publishes them to task-id->sandbox-agent. The entries are processed in batches of size filter-batch-size to
-   reduce the overhead in making datomic queries."
-  [{:keys [datomic-conn task-id->sandbox-agent unprocessed-task-id->sandbox-atom]} filter-batch-size]
-  (let [unprocessed-task-id->sandbox @unprocessed-task-id->sandbox-atom]
-    (log/info "Found" (count unprocessed-task-id->sandbox) "tasks to process for presence of sandbox directories")
-    (histograms/update! sandbox-updater-unprocessed-entries (count unprocessed-task-id->sandbox))
-    (when (seq unprocessed-task-id->sandbox)
-      (doseq [unprocessed-task-ids (partition-all filter-batch-size (keys unprocessed-task-id->sandbox))]
-        (let [unprocessed-task-id->sandbox (select-keys unprocessed-task-id->sandbox unprocessed-task-ids)]
-          ;; eagerly empty the unprocessed tasks ids map, they will be repopulated later even if we error out
-          (remove-processed-task-ids! unprocessed-task-id->sandbox-atom unprocessed-task-ids)
-          ;; propagate filtered tasks to the task-id->sandbox-agent
-          (let [filtered-task-id->sandbox-directory (remove-task-ids-with-sandbox datomic-conn unprocessed-task-id->sandbox)]
-            (log/info "Filtered" (count filtered-task-id->sandbox-directory) "tasks without sandbox directories from"
-                      (count unprocessed-task-ids) "tasks")
-            (when (seq filtered-task-id->sandbox-directory)
-              (send task-id->sandbox-agent aggregate-sandbox filtered-task-id->sandbox-directory))))))))
-
-(defn start-unprocessed-entries-processor
-  "Launches a timer task that triggers syncing of sandbox directories of any pending hosts."
-  [publisher-state filter-batch-size filter-interval-ms]
-  (log/info "Starting unprocessed entries processor at intervals of" filter-interval-ms "ms")
-  (chime/chime-at
-    (periodic/periodic-seq (time/now) (time/millis filter-interval-ms))
-    (fn start-unprocessed-entries-processor-task [_]
-      (process-unprocessed-task-ids publisher-state filter-batch-size))
-    {:error-handler (fn start-unprocessed-entries-processor-error-handler [ex]
-                      (log/error ex "Filtering tasks with sandbox directories failed"))}))
-
 (defn prepare-sandbox-publisher
   "This function initializes the sandbox publisher as well as helper functions to send individual
    sandbox entries and trigger sandbox syncing of all tasks on a mesos agent.
@@ -332,25 +312,22 @@
    :mesos-agent-query-cache - the cache that throttles the state sync calls to the mesos agents.
    :publisher-cancel-fn - fn that take no arguments and that terminates the publisher.
    :task-id->sandbox-agent - The agent that manages the task-id->sandbox aggregation and publishing."
-  [framework-id datomic-conn filter-batch-size filter-interval-ms publish-batch-size publish-interval-ms
-   sync-interval-ms max-consecutive-sync-failure mesos-agent-query-cache]
+  [framework-id datomic-conn publish-batch-size publish-interval-ms sync-interval-ms max-consecutive-sync-failure
+   mesos-agent-query-cache]
   (let [pending-sync-agent (agent {:framework-id framework-id
                                    :host->consecutive-failures {}
                                    :pending-sync-hosts #{}}) ;; stores the names of hosts pending sync
         task-id->sandbox-agent (agent {}) ;; stores all the pending task-id->sandbox state
-        unprocessed-task-id->sandbox-atom (atom {}) ;; stores all pending task-id->sandbox entries that have not yet been filtered
+        unprocessed-host->task-ids-atom (atom {}) ;; stores all pending task-id->sandbox entries that have not yet been filtered
         publisher-state {:datomic-conn datomic-conn
                          :mesos-agent-query-cache mesos-agent-query-cache
                          :pending-sync-agent pending-sync-agent
                          :task-id->sandbox-agent task-id->sandbox-agent
-                         :unprocessed-task-id->sandbox-atom unprocessed-task-id->sandbox-atom}
-        processor-cancel-fn (start-unprocessed-entries-processor
-                              publisher-state filter-batch-size filter-interval-ms)
+                         :unprocessed-host->task-ids-atom unprocessed-host->task-ids-atom}
         publisher-cancel-fn (start-sandbox-publisher
                               task-id->sandbox-agent datomic-conn publish-batch-size publish-interval-ms)
         syncer-cancel-fn (start-host-sandbox-syncer
                            publisher-state sync-interval-ms max-consecutive-sync-failure)]
     (assoc publisher-state
-      :processor-cancel-fn processor-cancel-fn
       :publisher-cancel-fn publisher-cancel-fn
       :syncer-cancel-fn syncer-cancel-fn)))

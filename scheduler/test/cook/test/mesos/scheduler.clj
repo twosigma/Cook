@@ -894,7 +894,7 @@
                                                :state state}]
                                      task))
         synced-agents-atom (atom [])
-        sync-agent-sandboxes-fn (fn sync-agent-sandboxes-fn [hostname]
+        sync-agent-sandboxes-fn (fn sync-agent-sandboxes-fn [hostname _]
                                   (swap! synced-agents-atom conj hostname))]
 
     (testing "Mesos task death"
@@ -2035,21 +2035,18 @@
                   (fn [_ _]
                     (pc/map-from-keys #(str "/sandbox/for/" %) @executing-tasks-atom))]
       (let [framework-id "test-framework-id"
-            filter-batch-size 10
-            filter-interval-ms 10
             publish-batch-size 10
             publish-interval-ms 20
             sync-interval-ms 20
             max-consecutive-sync-failure 5
             agent-query-cache (-> {} (cache/ttl-cache-factory :ttl cache-timeout-ms) atom)
-            {:keys [pending-sync-agent processor-cancel-fn publisher-cancel-fn syncer-cancel-fn task-id->sandbox-agent]
-             :as sandbox-syncer-state}
+            {:keys [pending-sync-agent publisher-cancel-fn syncer-cancel-fn task-id->sandbox-agent] :as sandbox-syncer-state}
             (sandbox/prepare-sandbox-publisher
-              framework-id db-conn filter-batch-size filter-interval-ms publish-batch-size publish-interval-ms
-              sync-interval-ms max-consecutive-sync-failure agent-query-cache)
+              framework-id db-conn publish-batch-size publish-interval-ms sync-interval-ms max-consecutive-sync-failure
+              agent-query-cache)
             sync-agent-sandboxes-fn
-            (fn [hostname]
-              (sandbox/sync-agent-sandboxes sandbox-syncer-state framework-id hostname))]
+            (fn [hostname task-id]
+              (sandbox/sync-agent-sandboxes sandbox-syncer-state framework-id hostname task-id))]
         (try
           (-> (dotimes [n num-jobs]
                 (let [task-id (get-task-id n)]
@@ -2079,7 +2076,6 @@
               (is (= (str "/sandbox/for/" task-id) (:instance/sandbox-directory instance-ent)))))
 
           (finally
-            (processor-cancel-fn)
             (publisher-cancel-fn)
             (syncer-cancel-fn)))))))
 
