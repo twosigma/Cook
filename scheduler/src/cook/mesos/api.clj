@@ -29,6 +29,7 @@
             [cook.mesos.reason :as reason]
             [cook.mesos.schema :refer [constraint-operators host-placement-types straggler-handling-types]]
             [cook.mesos.share :as share]
+            [cook.mesos.task-stats :as task-stats]
             [cook.mesos.unscheduled :as unscheduled]
             [cook.mesos.util :as util]
             [cook.mesos]
@@ -2154,6 +2155,63 @@
                                   :reasons (job-reasons conn job)})
                        (::jobs ctx)))}))
 
+;;
+;; /stats/instances
+;;
+
+(def HistogramStats
+  {:percentiles {(s/required-key 50) NonNegNum
+                 (s/required-key 75) NonNegNum
+                 (s/required-key 95) NonNegNum
+                 (s/required-key 99) NonNegNum
+                 (s/required-key 100) NonNegNum}
+   :total NonNegNum})
+
+(def TaskStats
+  {(s/optional-key :count) NonNegInt
+   (s/optional-key :run-time-seconds) HistogramStats
+   (s/optional-key :cpu-seconds) HistogramStats
+   (s/optional-key :mem-seconds) HistogramStats})
+
+(def UserLeaders
+  {s/Str NonNegNum})
+
+(def TaskStatsResponse
+  {:overall TaskStats
+   :by-reason {s/Any TaskStats}
+   :by-user-and-reason {s/Str {s/Any TaskStats}}
+   :leaders {:cpu-seconds UserLeaders
+             :mem-seconds UserLeaders}})
+
+(def TaskStatsParams
+  {:status s/Str
+   :start s/Str
+   :end s/Str})
+
+(defn task-stats-handler
+  [conn is-authorized-fn]
+  (base-cook-handler
+    {:allowed-methods [:get]
+     :allowed?
+     (fn [ctx]
+       (let [user (get-in ctx [:request :authorization/user])
+             impersonator (get-in ctx [:request :authorization/impersonator])]
+         (if (is-authorized-fn user :read impersonator {:owner ::system :item :stats})
+           true
+           [false {::error "Unauthorized"}])))
+     :handle-ok
+     (fn [ctx]
+       (let [params (-> ctx :request :params)]
+         (task-stats/get-stats conn
+                               (case (:status params)
+                                 "failed" :instance.status/failed
+                                 "success" :instance.status/success
+                                 "running" :instance.status/running
+                                 "unknown" :instance.status/unknown
+                                 (throw (ex-info "Encountered unexpected status" params)))
+                               (tf/parse (:start params))
+                               (tf/parse (:end params)))))}))
+
 (defn- streaming-json-encoder
   "Takes as input the response body which can be converted into JSON,
   and returns a function which takes a ServletResponse and writes the JSON
@@ -2434,7 +2492,20 @@
                    :responses {200 {:schema UnscheduledJobResponse
                                     :description "Reasons the job isn't being scheduled."}
                                400 {:description "Invalid request format."}
-                               404 {:description "The UUID doesn't correspond to a job."}}}})))
+                               404 {:description "The UUID doesn't correspond to a job."}}}}))
+
+        (c-api/context
+          "/stats/instances" []
+          (c-api/resource
+            {:produces ["application/json"],
+             :responses {200 {:schema TaskStatsResponse
+                              :description "Task stats calculated."}
+                         401 {:description "Not authorized to read stats."}
+                         403 {:description "Invalid request format."}}
+             :get {:summary "Query statistics for instances started in a time range."
+                   :parameters {:query-params TaskStatsParams}
+                   :handler (task-stats-handler conn is-authorized-fn)}})))
+
       (ANY "/queue" []
         (waiting-jobs mesos-pending-jobs-fn is-authorized-fn mesos-leadership-atom leader-selector))
       (ANY "/running" []

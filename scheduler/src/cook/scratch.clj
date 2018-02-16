@@ -17,11 +17,9 @@
   (:require [clj-time.core :as t]
             [cook.datomic :refer (transact-with-retries)]
             [cook.mesos.scheduler :as sched]
-            [cook.mesos.util :as util]
             [cook.test.testutil :as testutil]
             [datomic.api :as d :refer (q)]
-            [metatransaction.core :refer (db)]
-            [plumbing.core :as pc]))
+            [metatransaction.core :refer (db)]))
 
 (comment
   ;; Mark instance failed.
@@ -167,98 +165,3 @@
             reason (:reason/name (rand-nth (cook.mesos.reason/all-known-reasons (db conn))))]
         (create-job conn host instance-status start-time end-time reason :user user :job-state :job.state/completed)))
     (range 100)))
-
-(defn task->task-entry
-  "Updates the provided stats map with the data from the provided task entity"
-  [task-ent]
-  (let [job-ent (:job/_instance task-ent)
-        user (:job/user job-ent)
-        resources (util/job-ent->resources job-ent)
-        run-time (-> task-ent util/task-run-time)
-        seconds (-> run-time .toDuration .getStandardSeconds)]
-    (assoc resources
-      :user user
-      :run-time-seconds seconds
-      :cpu-seconds (* seconds (:cpus resources))
-      :mem-seconds (* seconds (:mem resources))
-      :reason (get-in task-ent [:instance/reason :reason/string]))))
-
-(defn get-completed-tasks
-  "Gets all tasks that completed in the specified time range and with the specified
-  status. Assumes that tasks complete within max-run-time of starting."
-  [db end-time-start end-time-end max-run-time instance-status]
-  (let [start-entity-id (d/entid-at db :db.part/user (.toDate (t/minus end-time-start max-run-time)))
-        end-entity-id (d/entid-at db :db.part/user (.toDate (t/plus end-time-end (t/hours 1))))
-        instance-status-entid (d/entid db instance-status)
-        instance-status-attribute-entid (d/entid db :instance/status)
-        end-time-start-millis (.getTime (.toDate end-time-start))
-        end-time-end-millis (.getTime (.toDate end-time-end))]
-    (->> (d/seek-datoms db :avet :instance/status instance-status-entid start-entity-id)
-         (take-while #(and
-                        (< (.e %) end-entity-id)
-                        (= (.a %) instance-status-attribute-entid)
-                        (= (.v %) instance-status-entid)))
-         (map #(.e %))
-         (map (partial d/entity db))
-         (filter #(<= end-time-start-millis (.getTime (:instance/end-time %))))
-         (filter #(< (.getTime (:instance/end-time %)) end-time-end-millis)))))
-
-(defn percentile
-  "Calculates the p-th percentile of the values in coll
-  (where 0 < p <= 100), using the Nearest Rank method:
-  https://en.wikipedia.org/wiki/Percentile#The_Nearest_Rank_method
-  Assumes that coll is sorted (see percentiles below for context)"
-  [coll p]
-  (if (or (empty? coll) (not (number? p)) (<= p 0) (> p 100))
-    nil
-    (nth coll
-         (-> p
-             (/ 100)
-             (* (count coll))
-             (Math/ceil)
-             (dec)))))
-
-(defn percentiles
-  "Calculates the p-th percentiles of the values in coll for
-  each p in p-list (where 0 < p <= 100), and returns a map of
-  p -> value"
-  [coll & p-list]
-  (let [sorted (sort coll)]
-    (into {} (map (fn [p] [p (percentile sorted p)]) p-list))))
-
-(defn generate-stats
-  "Generates statistics based on the provided task entries"
-  [task-entries]
-  (let [stats #(assoc (percentiles % 50 75 95 99 100) :total (reduce + %))]
-    {:count (count task-entries)
-     :run-time-seconds (stats (map :run-time-seconds task-entries))
-     :cpu-seconds (stats (map :cpu-seconds task-entries))
-     :mem-seconds (stats (map :mem-seconds task-entries))}))
-
-(defn generate-all-stats
-  "Generates both aggregate and per-user statistics for the provided tasks"
-  [tasks]
-  (let [task-entries (map task->task-entry tasks)
-        overall-stats (generate-stats task-entries)
-        user-reason->tasks (->> task-entries (group-by (fn [t] [(:user t) (:reason t)])))
-        user-reason-stats (pc/map-vals generate-stats user-reason->tasks)
-        user-reason-leaders (fn [k]
-                              (->> user-reason-stats
-                                   (map (fn [[u m]] [(get-in m [k :total]) u]))
-                                   (sort-by #(* -1 (first %)))
-                                   (take 10)))
-        reason->tasks (->> task-entries (group-by :reason))
-        reason-stats (pc/map-vals generate-stats reason->tasks)]
-    {:overall {:stats overall-stats}
-     :by-user-and-reason {:stats user-reason-stats
-                          :cpu-seconds-leaders (user-reason-leaders :cpu-seconds)
-                          :mem-seconds-leaders (user-reason-leaders :mem-seconds)}
-     :by-reason {:stats reason-stats}}))
-
-(defn get-completed-task-stats
-  "Returns a map from status -> user -> stats"
-  [db end-time-start end-time-end max-run-time]
-  (let [failed-tasks (get-completed-tasks db end-time-start end-time-end max-run-time :instance.status/failed)
-        success-tasks (get-completed-tasks db end-time-start end-time-end max-run-time :instance.status/success)]
-    {:failed (generate-all-stats failed-tasks)
-     :success (generate-all-stats success-tasks)}))
