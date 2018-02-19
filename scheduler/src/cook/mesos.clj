@@ -147,7 +147,7 @@
   "Creates a map of of the trigger channels expected by `start-mesos-scheduler`
    Each channel receives chime triggers at particular intervals and it is
    possible to send additional events as desired"
-  [rebalancer-config progress-config
+  [rebalancer-config progress-config optimizer-config
    {:keys [timeout-interval-minutes]
     :or {timeout-interval-minutes 1}
     :as task-constraints}]
@@ -159,7 +159,7 @@
     {:cancelled-task-trigger-chan (prepare-trigger-chan (time/seconds 3))
      :lingering-task-trigger-chan (prepare-trigger-chan (time/minutes timeout-interval-minutes))
      :match-trigger-chan (prepare-trigger-chan (time/seconds 1))
-     :optimizer-trigger-chan (prepare-trigger-chan (time/seconds 10))
+     :optimizer-trigger-chan (prepare-trigger-chan (time/seconds (:optimizer-interval-seconds optimizer-config 10)))
      :progress-updater-trigger-chan (prepare-trigger-chan (time/millis (:publish-interval-ms progress-config)))
      :rank-trigger-chan (prepare-trigger-chan (time/seconds 5))
      :rebalancer-trigger-chan (prepare-trigger-chan (time/seconds (:interval-seconds rebalancer-config)))

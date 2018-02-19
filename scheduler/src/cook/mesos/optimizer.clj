@@ -24,9 +24,9 @@
             [clojure.tools.logging :as log]
             [cook.util :refer [lazy-load-var]]
             [cook.mesos.util :as util]
-            [com.rpl.specter :as sp]
             [datomic.api :as d :refer (q)]
             [schema.core :as s]))
+
 (def PosNum
   (s/both s/Num (s/pred pos? 'pos?)))
 
@@ -109,7 +109,8 @@
         host-infos (get-available-host-info host-feed)
         _ (s/validate [HostInfo] host-infos)
         schedule (produce-schedule optimizer @queue @running @offers host-infos)]
-    (s/validate Schedule schedule)))
+    (s/validate Schedule schedule)
+    schedule))
 
 (defn start-optimizer-cycles!
   "Every interval, call `optimizer-cycle!`.

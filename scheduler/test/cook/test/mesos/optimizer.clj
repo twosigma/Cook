@@ -16,9 +16,12 @@
         optimizer (reify optimizer/Optimizer
                           (produce-schedule [this queue running available [host-info & host-infos]]
                             {0 {:suggested-matches {host-info (map :job/uuid queue)}}})) 
-        queue [{:job/uuid (java.util.UUID/randomUUID)} {:job/uuid (java.util.UUID/randomUUID)}]]
-    (optimizer/optimizer-cycle! (fn get-queue [] queue)
-                                (fn get-running [] [])
-                                (fn get-offers [] [])
-                                host-feed
-                                optimizer)))
+        queue [{:job/uuid (java.util.UUID/randomUUID)} {:job/uuid (java.util.UUID/randomUUID)}]
+        schedule (optimizer/optimizer-cycle! (fn get-queue [] queue)
+                                             (fn get-running [] [])
+                                             (fn get-offers [] [])
+                                             host-feed
+                                             optimizer)]
+    (is (= (count schedule) 1))
+    (is (= (first (keys (get-in schedule [0 :suggested-matches])))
+           host))))

@@ -120,10 +120,10 @@
          host-settings# {:server-port 12321 :hostname "localhost"}
          mesos-leadership-atom# (atom false)
          fenzo-config# (merge default-fenzo-config (:fenzo-config ~scheduler-config))
-         trigger-chans# (or (:trigger-chans ~scheduler-config)
-                            (c/make-trigger-chans rebalancer-config# progress-config# task-constraints#))
          optimizer-config# (or (:optimizer-config ~scheduler-config)
-                               {})]
+                               {})
+         trigger-chans# (or (:trigger-chans ~scheduler-config)
+                            (c/make-trigger-chans rebalancer-config# progress-config# optimizer-config# task-constraints#))]
      (try
        (c/start-mesos-scheduler
          {:curator-framework curator-framework#
@@ -615,7 +615,7 @@
         hosts (for [i (range num-hosts)]
                 (trace-host i host-mem host-cpus))
         cycle-step-ms 30000
-        config {:shares [{:user "default" :mem (/ host-mem 10) :cpus (/ host-cpus 10) :gpus 1.0}]
+        config {:shares [{:cpus (/ host-cpus 10) :gpus 1.0 :mem (/ host-mem 10) :user "default"}]
                 :scheduler-config {:rebalancer-config {:max-preemption 1.0}
                                    :fenzo-config {:fenzo-max-jobs-considered 200}}}
         out-trace-a (simulate hosts jobs cycle-step-ms config)

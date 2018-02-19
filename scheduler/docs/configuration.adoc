@@ -271,7 +271,7 @@ Optionally, you can include a "rebalancer" stanza.  If you do, on startup, Cook 
 
 The link:optimizer.md[optimizer] is a component that can make more global decisions about the cluster, job placement and autoscaling.
 By default, Cook will use a no-op optimizer. To plug in an implementation, add the optional "optimizer" stanza. The three pluggable pieces,
-host-feed, optimizer and schedule-consumer, each have the same structure to configure. A :create-fn:: key which is a namespaced symbol
+host-feed, and optimizer, each have the same structure to configure. A :create-fn:: key which is a namespaced symbol
 on the class path and a :config:: key which is an arbitrary map. See the example below.
 
  :host-feed::
@@ -279,9 +279,6 @@ on the class path and a :config:: key which is an arbitrary map. See the example
 
  :optimizer::
     The implementation for the optimizer to use. The optimizer accepts the output of the host feed, the queue, the running tasks and the available offers and outputs a schedule of suggestions.
-
- :schedule-consumer::
-    The implementation for the schedule-consumer. The schedule consumer accepts the schedule from the optimizer and acts on it.
 
  :optimizer-interval-seconds::
     The interval to run the optimizer, in seconds. The default is 30.
@@ -296,8 +293,6 @@ Example optimizer config:
                          :config {}}
              :optimizer {:create-fn cook.mesos.optimizer/create-dummy-optimizer
                          :config {}}
-             :schedule-consumer {:create-fn cook.mesos.optimizer/create-dummy-consumer
-                                 :config {}}
              :optimizer-interval-seconds 30}
  ; ... snip ...
 }

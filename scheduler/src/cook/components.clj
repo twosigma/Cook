@@ -107,7 +107,7 @@
                                                            :mesos-framework-name mesos-framework-name
                                                            :gpus-enabled? mesos-gpu-enabled})
                             get-mesos-utilization-fn (partial (lazy-load-var 'cook.mesos/get-mesos-utilization) mesos-master-hosts)
-                            trigger-chans ((lazy-load-var 'cook.mesos/make-trigger-chans) rebalancer progress task-constraints)]
+                            trigger-chans ((lazy-load-var 'cook.mesos/make-trigger-chans) rebalancer progress optimizer task-constraints)]
                         (try
                           (Class/forName "org.apache.mesos.Scheduler")
                           ((lazy-load-var 'cook.mesos/start-mesos-scheduler)
