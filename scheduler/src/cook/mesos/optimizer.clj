@@ -22,24 +22,13 @@
             [clj-time.periodic :as periodic]
             [clojure.core.async :as async]
             [clojure.tools.logging :as log]
-            [cook.util :refer [lazy-load-var]]
+            [cook.util :refer [lazy-load-var PosNum PosInt NonNegInt]]
             [cook.mesos.util :as util]
             [datomic.api :as d :refer (q)]
             [schema.core :as s]))
 
-(def PosNum
-  (s/both s/Num (s/pred pos? 'pos?)))
-
-(def PosInt
-  (s/both s/Int (s/pred pos? 'pos?)))
-
-(def NonNegInt
-  (s/both s/Int (s/pred #(<= 0 %) 'pos?)))
-
 (def TimePeriodMs NonNegInt)
 
-;; Elements missing:
-;;   1. Attributes (chip set, az, ..) -- have a combinitorial problem here
 (def HostInfo
   {:count NonNegInt
    :instance-type s/Str
@@ -53,7 +42,23 @@
                                    to HostInfo schema above"))
 
 (def Schedule
+  "Schedule returned by optimizer. Each TimePeriodMs is some milliseconds into the future the optimizer
+   recommendation map applies.
+   The optimizer recommendation map currently only has one key, :suggested-matches which has the matches
+   recommended as a value. The matches recommended are structured as a map from the host type in question
+   to a list of job UUIDs the optimizer recommends scheduling
+
+   Example schedule:
+   {0 {:suggested-matches {{:count 10, :instance-type :mem-optimized, :cpus 10, :mem 200000}
+                           [#uuid \"1db521d2-b1d5-41b4-9a93-a7e12abd940b\"]
+                           {:count 100, :instance-type :cpu-optimized, :cpus 40, :mem 60000}
+                           [#uuid \"5ac521d2-b1d5-41b4-9a93-a7e12abd4326\"]}}
+    60000 {:suggested-matches {{:count 10, :instance-type :mem-optimized, :cpus 10, :mem 200000}
+                               [#uuid \"724521d2-b1d5-41b4-9a93-a7e12abd940b\"]
+                               {:count 100, :instance-type :cpu-optimized, :cpus 40, :mem 60000}
+                               [#uuid \"adc521d2-b1d5-41b4-9a93-a7e12abd4326\"]}}}"
   {TimePeriodMs {:suggested-matches {HostInfo [s/Uuid]}}})
+
 
 (defprotocol Optimizer
   "Protocol defining a tool to produce a schedule to execute"
@@ -67,9 +72,9 @@
                      running -- Set of tasks running (see cook.mesos.schema instance)
                      available -- Set of offers outstanding
                      host-infos -- Host infos from HostFeed
-                     
+
                      Returns:
-                     A schedule: a map where the keys are milliseconds in the future 
+                     A schedule: a map where the keys are milliseconds in the future
                      and  the values are recommendations to take at that point in the future"))
 
 (defn create-dummy-host-feed

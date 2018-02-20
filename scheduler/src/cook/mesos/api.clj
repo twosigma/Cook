@@ -32,7 +32,7 @@
             [cook.mesos.unscheduled :as unscheduled]
             [cook.mesos.util :as util]
             [cook.mesos]
-            [cook.util]
+            [cook.util :refer [ZeroInt PosNum NonNegNum PosInt NonNegInt PosDouble UserName NonEmptyString]]
             [datomic.api :as d :refer [q]]
             [liberator.core :as liberator]
             [liberator.util :refer [combine]]
@@ -104,32 +104,6 @@
                 (update k :k ->snake_case)
                 (->snake_case k)))
             schema))
-
-(def ZeroInt
-  (s/both s/Int (s/pred zero? 'zero?)))
-
-(s/defschema PosNum
-  "Positive number (float or int)"
-  (s/both s/Num (s/pred pos? 'pos?)))
-
-(s/defschema NonNegNum
-  "Non-negative number (float or int)"
-  (s/both s/Num (s/pred (comp not neg?) 'non-negative?)))
-
-(def PosInt
-  (s/both s/Int (s/pred pos? 'pos?)))
-
-(def NonNegInt
-  (s/both s/Int (s/pred (comp not neg?) 'non-negative?)))
-
-(def PosDouble
-  (s/both double (s/pred pos? 'pos?)))
-
-(def UserName
-  (s/both s/Str (s/pred #(re-matches #"\A[a-z][a-z0-9_-]{0,62}[a-z0-9]\z" %) 'lowercase-alphanum?)))
-
-(def NonEmptyString
-  (s/both s/Str (s/pred #(not (zero? (count %))) 'not-empty-string)))
 
 (def iso-8601-format (:date-time tf/formatters))
 

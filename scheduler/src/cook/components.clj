@@ -563,7 +563,6 @@
                           rebalancer))
                        
      :optimizer (fnk [[:config {optimizer nil}]]
-                     ;; TODO include a datomic connection to config so we can write purchase decisions
                      (let [optimizer-config
                            (merge {:host-feed {:create-fn 'cook.mesos.optimizer/create-dummy-host-feed
                                                :config {}}
