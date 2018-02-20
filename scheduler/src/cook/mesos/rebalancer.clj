@@ -382,12 +382,22 @@
             :to-make-room-for pending-job)]
     [state nil]))
 
+(defn reserve-hosts! [state preemption-decisions]
+  (let [multiple-tasks (filter #(< 1 (count (:task %))) preemption-decisions)
+        reservations (into {} (map (fn [d] [(:job/uuid (:to-make-room-for d))
+                                            (:hostname d)])
+                                   multiple-tasks))]
+    (swap! state (fn [{:keys [jobs-launched]}]
+                   {:reservations (apply dissoc reservations jobs-launched)
+                    :jobs-launched #{}}))))
+
 (defn rebalance
   "Takes a db, a list of pending job entities, a map of spare resources and params.
    Returns a list of pending job entities to run and a list of task entities to preempt
 
    category is :normal or :gpu, depending on which type of job we're working with"
-  [db offer-cache pending-job-ents host->spare-resources {:keys [max-preemption category] :as params}]
+  [db offer-cache pending-job-ents host->spare-resources rebalancer-reservation-atom
+   {:keys [max-preemption category] :as params}]
   (let [timer (timers/start rebalance-duration)
         jobs-to-make-room-for (->> pending-job-ents
                                    (filter (partial util/job-allowed-to-start? db))
@@ -414,7 +424,7 @@
           (timers/stop timer)
           (histograms/update! task-counts-to-preempt (count (mapcat :task preemption-decisions)))
           (histograms/update! job-counts-to-run (count preemption-decisions))
-
+          (reserve-hosts! rebalancer-reservation-atom preemption-decisions)
           preemption-decisions)))))
 
 (defn- prep-job-ent-for-printing
@@ -430,12 +440,15 @@
         (select-keys [:db/id :instance/task-id])
         (assoc :job (prep-job-ent-for-printing job-ent)))))
 
+
+
 (defn rebalance!
-  [conn driver offer-cache pending-job-ents host->spare-resources params]
+  [conn driver offer-cache pending-job-ents host->spare-resources rebalancer-reservation-atom
+   params]
   (try
     (log/info "Rebalancing...Params:" params)
     (let [db (mt/db conn)
-          preemption-decisions (rebalance db offer-cache pending-job-ents host->spare-resources params)]
+          preemption-decisions (rebalance db offer-cache pending-job-ents host->spare-resources rebalancer-reservation-atom params)]
       (doseq [{job-ent-to-make-room-for :to-make-room-for
                task-ents-to-preempt :task} preemption-decisions]
         ;; Ensure that uuids are loaded in entity
@@ -445,6 +458,7 @@
         (log/info "Preempting tasks to make room for waiting job"
                   {:to-make-room-for (prep-job-ent-for-printing job-ent-to-make-room-for)
                    :to-preempt (map prep-task-ent-for-printing task-ents-to-preempt)})
+        
         ;; If a task has no id, it must be a synthetic task.
         ;; This means that on one iteration of (compute-next-state-and-preemption-decision),
         ;; the rebalancer decided to make room for a certain hypothetical task,
@@ -503,7 +517,8 @@
 
 (defn start-rebalancer!
   [{:keys [config conn driver get-mesos-utilization pending-jobs-atom offer-cache
-           trigger-chan view-incubating-offers view-mature-offers]}]
+           trigger-chan view-incubating-offers view-mature-offers
+           rebalancer-reservation-atom]}]
   (binding [metrics-dru-scale (:dru-scale config)]
     (update-datomic-params-from-config! conn config)
     (util/chime-at-ch
@@ -521,12 +536,14 @@
           (when (and (seq params)
                      (> utilization (:min-utilization-threshold params)))
             (let [{normal-pending-jobs :normal gpu-pending-jobs :gpu} @pending-jobs-atom]
-              (rebalance! conn driver offer-cache normal-pending-jobs host->spare-resources (assoc params
-                                                                                                   :compute-pending-job-dru compute-pending-normal-job-dru
-                                                                                                   :category :normal))
-              (rebalance! conn driver offer-cache gpu-pending-jobs host->spare-resources (assoc params
-                                                                                                :compute-pending-job-dru compute-pending-gpu-job-dru
-                                                                                                :category :gpu))))))
+              (rebalance! conn driver offer-cache normal-pending-jobs host->spare-resources
+                          rebalancer-reservation-atom
+                          (assoc params :compute-pending-job-dru compute-pending-normal-job-dru
+                                        :category :normal))
+              (rebalance! conn driver offer-cache gpu-pending-jobs host->spare-resources
+                          rebalancer-reservation-atom
+                          (assoc params :compute-pending-job-dru compute-pending-gpu-job-dru
+                                        :category :gpu))))))
         {:error-handler (fn [ex] (log/error ex "Rebalance failed"))})
       #(async/close! trigger-chan)))
 

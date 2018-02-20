@@ -334,7 +334,7 @@
         framework-id (str "framework-id-" (UUID/randomUUID))
         fenzo-maker #(sched/make-fenzo-scheduler nil 100000 nil 1)] ; The params are for offer declining, which should never happen
     (testing "Consume no schedule cases"
-      (are [schedule offers] (= [] (:matches (sched/match-offer-to-schedule (db c) (fenzo-maker) schedule offers)))
+      (are [schedule offers] (= [] (:matches (sched/match-offer-to-schedule (db c) (fenzo-maker) schedule offers (atom {}))))
                              [] (offer-maker 0 0)
                              [] (offer-maker 2 2000)
                              schedule (offer-maker 0 0)
@@ -345,7 +345,7 @@
       ;; We're looking for one task to get assigned
       (are [offers] (= 1 (count (mapcat :tasks
                                         (:matches (sched/match-offer-to-schedule
-                                                    (db c) (fenzo-maker) schedule offers)))))
+                                                    (db c) (fenzo-maker) schedule offers (atom {}))))))
                     (offer-maker 1 1000)
                     (offer-maker 1.5 1500)))
     (testing "Consume full schedule cases"
@@ -353,7 +353,7 @@
       (are [offers] (= (count schedule)
                        (count (mapcat :tasks
                                       (:matches (sched/match-offer-to-schedule
-                                                  (db c) (fenzo-maker) schedule offers)))))
+                                                  (db c) (fenzo-maker) schedule offers (atom {}))))))
                     (offer-maker 4 4000)
                     (offer-maker 5 5000)))))
 
@@ -392,7 +392,7 @@
         high-priority (map #(d/entity (d/db conn) %) high-priority-ids)
         considerable (concat high-priority low-priority)]
     (testing "Scheduling order respected?"
-      (let [schedule (sched/match-offer-to-schedule (d/db conn) fenzo considerable [(offer-maker 1.0 "empty_host")])]
+      (let [schedule (sched/match-offer-to-schedule (d/db conn) fenzo considerable [(offer-maker 1.0 "empty_host")] (atom {}))]
         (is (= {"empty_host" ["high-priority"]}
                (->> schedule
                     :matches
@@ -402,7 +402,6 @@
                     (map (partial apply hash-map))
                     (cons concat)
                     (apply merge-with))))))))
-
 
 (deftest test-get-user->used-resources
   (let [uri "datomic:mem://test-get-used-resources"
@@ -1473,7 +1472,10 @@
         offer-6 (offer-maker 10 4096 10)
         offer-7 (offer-maker 20 4096 5)
         offer-8 (offer-maker 30 16384 1)
-        run-handle-resource-offers! (fn [num-considerable offers & {:keys [user-quota user->usage]}]
+        offer-9 (offer-maker 100 200000 0)
+        run-handle-resource-offers! (fn [num-considerable offers & {:keys [user-quota user->usage rebalancer-reservation-atom job-name->uuid]
+                                                                    :or {rebalancer-reservation-atom (atom {})
+                                                                         job-name->uuid {}}}]
                                       (reset! launched-offer-ids-atom [])
                                       (reset! launched-job-ids-atom [])
                                       (let [conn (restore-fresh-database! uri)
@@ -1481,12 +1483,19 @@
                                             driver-atom (atom nil)
                                             ^TaskScheduler fenzo (sched/make-fenzo-scheduler driver-atom 1500 nil 0.8)
                                             group-ent-id (create-dummy-group conn)
-                                            job-1 (d/entity test-db (create-dummy-job conn :group group-ent-id :name "job-1" :ncpus 3 :memory 2048))
-                                            job-2 (d/entity test-db (create-dummy-job conn :group group-ent-id :name "job-2" :ncpus 13 :memory 1024))
-                                            job-3 (d/entity test-db (create-dummy-job conn :group group-ent-id :name "job-3" :ncpus 7 :memory 4096))
-                                            job-4 (d/entity test-db (create-dummy-job conn :group group-ent-id :name "job-4" :ncpus 11 :memory 1024))
-                                            job-5 (d/entity test-db (create-dummy-job conn :group group-ent-id :name "job-5" :ncpus 5 :memory 2048 :gpus 2))
-                                            job-6 (d/entity test-db (create-dummy-job conn :group group-ent-id :name "job-6" :ncpus 19 :memory 1024 :gpus 4))
+                                            get-uuid (fn [name] (get job-name->uuid name (d/squuid)))
+                                            job-1 (d/entity test-db (create-dummy-job conn :uuid (get-uuid "job-1")
+                                                                                      :group group-ent-id :name "job-1" :ncpus 3 :memory 2048))
+                                            job-2 (d/entity test-db (create-dummy-job conn :uuid (get-uuid "job-2")
+                                                                                      :group group-ent-id :name "job-2" :ncpus 13 :memory 1024))
+                                            job-3 (d/entity test-db (create-dummy-job conn :uuid (get-uuid "job-3")
+                                                                                      :group group-ent-id :name "job-3" :ncpus 7 :memory 4096))
+                                            job-4 (d/entity test-db (create-dummy-job conn :uuid (get-uuid "job-4")
+                                                                                      :group group-ent-id :name "job-4" :ncpus 11 :memory 1024))
+                                            job-5 (d/entity test-db (create-dummy-job conn :uuid (get-uuid "job-5")
+                                                                                      :group group-ent-id :name "job-5" :ncpus 5 :memory 2048 :gpus 2))
+                                            job-6 (d/entity test-db (create-dummy-job conn :uuid (get-uuid "job-6")
+                                                                                      :group group-ent-id :name "job-6" :ncpus 19 :memory 1024 :gpus 4))
                                             entity->map (fn [entity]
                                                           (util/job-ent->map entity (d/db conn)))
                                             category->pending-jobs (->> {:normal [job-1 job-2 job-3 job-4] :gpu [job-5 job-6]}
@@ -1495,7 +1504,7 @@
                                             user->usage (or user->usage {test-user {:count 1, :cpus 2, :mem 1024, :gpus 0}})
                                             user->quota (or user-quota {test-user {:count 10, :cpus 50, :mem 32768, :gpus 10}})
                                             result (sched/handle-resource-offers! conn driver fenzo framework-id executor category->pending-jobs-atom (init-offer-cache)
-                                                                                  user->usage user->quota num-considerable offers-chan offers)]
+                                                                                  user->usage user->quota num-considerable offers-chan offers rebalancer-reservation-atom)]
                                         (async/>!! offers-chan :end-marker)
                                         result))]
 
@@ -1623,7 +1632,34 @@
         (is (= :end-marker (async/<!! offers-chan)))
         (is (= 2 (count @launched-offer-ids-atom)))
         (is (= 2 (count @launched-job-ids-atom)))
-        (is (= #{"job-1" "job-5"} (set @launched-job-ids-atom)))))))
+        (is (= #{"job-1" "job-5"} (set @launched-job-ids-atom)))))
+
+    (testing "will not launch jobs on reserved host"
+      (let [num-considerable 10
+            offers [offer-1]
+            initial-reservation-state {:reservations {(UUID/randomUUID) (:hostname offer-1)}}
+            rebalancer-reservation-atom (atom initial-reservation-state)]
+        (is (run-handle-resource-offers! num-considerable offers :rebalancer-reservation-atom rebalancer-reservation-atom))
+        (is (= 0 (count @launched-job-ids-atom)))
+        (is (= initial-reservation-state @rebalancer-reservation-atom))))
+
+    (testing "only launches reserved jobs on reserved host"
+      (let [num-considerable 10
+            offers [offer-9] ; large enough to launch jobs 1, 2, 3, and 4
+            job-1-uuid (d/squuid)
+            job-2-uuid (d/squuid)
+            initial-reservation-state {:reservations {job-1-uuid (:hostname offer-9)
+                                                      job-2-uuid (:hostname offer-9)}}
+            rebalancer-reservation-atom (atom initial-reservation-state)]
+        (is (run-handle-resource-offers! num-considerable offers :rebalancer-reservation-atom rebalancer-reservation-atom
+                                         :job-name->uuid {"job-1" job-1-uuid "job-2" job-2-uuid}))
+        (is (= :end-marker (async/<!! offers-chan)))
+        (is (= 2 (count @launched-job-ids-atom)))
+        (is (= #{"job-1" "job-2"} (set @launched-job-ids-atom)))
+        (is (= {:reservations {}
+                :launched-jobs #{job-1-uuid job-2-uuid}}
+               @rebalancer-reservation-atom))))))
+
 
 (def dummy-fitness-calculator
   "This calculator simply returns 0.0 for every Fenzo fitness calculation."

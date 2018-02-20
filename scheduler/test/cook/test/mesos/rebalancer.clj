@@ -1069,6 +1069,7 @@
           preemption-decisions (rebalancer/rebalance db offer-cache
                                                      pending-job-ents 
                                                      available-resources 
+                                                     (atom {})
                                                      params)
           pending-job-ents-to-run (map :to-make-room-for preemption-decisions)
           task-ents-to-preempt (mapcat :task preemption-decisions)]
@@ -1121,6 +1122,7 @@
             pending-job-ents (util/get-pending-job-ents db)
             [pending-job-ents-to-run task-ents-to-preempt] (time (rebalancer/rebalance db offer-cache
                                                                                        pending-job-ents {}
+                                                                                       (atom {})
                                                                                        {:max-preemption 128
                                                                                         :safe-dru-threshold 1.0
                                                                                         :min-dru-diff 0.5
@@ -1152,6 +1154,112 @@
     (testing "unrecognized config params discarded"
       (rebalancer/update-datomic-params-from-config! conn {:foo "bar" :ding 2})
       (is (= (rebalancer/read-datomic-params conn) merged-params))))))
+
+(deftest test-rebalance-host-reservation
+  (testing "reserves host for multiple preemptions"
+    (let [datomic-uri "datomic:mem://test-rebalance-host-reservation"
+          conn (restore-fresh-database! datomic-uri)
+          params {:max-preemption 128 :safe-dru-threshold 1.0 :min-dru-diff 0.0 :category :normal}
+          offer-cache (init-offer-cache)
+          job1 (create-dummy-job conn :user "user1" :memory 6.0 :ncpus 6.0)
+          job2 (create-dummy-job conn :user "user1" :memory 6.0 :ncpus 6.0)
+          job4 (create-dummy-job conn :user "user2" :memory 10.0 :ncpus 10.0)
+          task1 (create-dummy-instance conn
+                                       job1
+                                       :instance-status :instance.status/running
+                                       :hostname "hostA")
+          task2 (create-dummy-instance conn
+                                       job2
+                                       :instance-status :instance.status/running
+                                       :hostname "hostA")
+          reservations (atom {})]
+      (share/set-share! conn "user1"
+                        "test update"
+                        :mem 1.0 :cpus 1.0)
+      (share/set-share! conn "user2"
+                        "big user"
+                        :mem 10.0 :cpus 10.0)
+      (let [db (d/db conn)
+            [{:keys [hostname task to-make-room-for]}]
+            (rebalancer/rebalance db
+                                  offer-cache
+                                  (util/get-pending-job-ents db)
+                                  {"hostA" {:cpus 0.0 :mem 0.0 :gpus 0.0}}
+                                  reservations
+                                  params)]
+        (is (= "hostA" hostname))
+        (is (= job4 (:db/id to-make-room-for)))
+        (is (= [task1 task2] (map :db/id task)))
+        (is (= {(:job/uuid (d/entity db job4)) "hostA"}
+               (:reservations @reservations)))
+        (is (= [] (:jobs-launched @reservations))))))
+  (testing "does not reserve host for single preempted task"
+    (let [datomic-uri "datomic:mem://test-rebalance-host-reservation-single"
+          conn (restore-fresh-database! datomic-uri)
+          params {:max-preemption 128 :safe-dru-threshold 1.0 :min-dru-diff 0.0 :category :normal}
+          offer-cache (init-offer-cache)
+          job1 (create-dummy-job conn :user "user1" :memory 6.0 :ncpus 6.0)
+          job2 (create-dummy-job conn :user "user2" :memory 1.0 :ncpus 1.0)
+          task1 (create-dummy-instance conn
+                                       job1
+                                       :instance-status :instance.status/running
+                                       :hostname "hostA")
+          reservations (atom {})]
+      (share/set-share! conn "user1"
+                        "test update"
+                        :mem 1.0 :cpus 1.0)
+      (share/set-share! conn "user2"
+                        "test update"
+                        :mem 1.0 :cpus 1.0)
+      (let [db (d/db conn)
+            [{:keys [hostname task to-make-room-for]}]
+            (rebalancer/rebalance db
+                                  offer-cache
+                                  (util/get-pending-job-ents db)
+                                  {"hostA" {:cpus 0.0 :mem 0.0 :gpus 0.0}}
+                                  reservations
+                                  params)]
+        (is (= "hostA" hostname))
+        (is (= job2 (:db/id to-make-room-for)))
+        (is (= [task1] (map :db/id task)))
+        (is (= {} (:reservations @reservations)))
+        (is (= [] (:jobs-launched @reservations))))))
+  (testing "does not reserve host for job already launched"
+    (let [datomic-uri "datomic:mem://test-rebalance-host-reservation"
+          conn (restore-fresh-database! datomic-uri)
+          params {:max-preemption 128 :safe-dru-threshold 1.0 :min-dru-diff 0.0 :category :normal}
+          offer-cache (init-offer-cache)
+          job1 (create-dummy-job conn :user "user1" :memory 6.0 :ncpus 6.0)
+          job2 (create-dummy-job conn :user "user1" :memory 6.0 :ncpus 6.0)
+          job4 (create-dummy-job conn :user "user2" :memory 10.0 :ncpus 10.0)
+          task1 (create-dummy-instance conn
+                                       job1
+                                       :instance-status :instance.status/running
+                                       :hostname "hostA")
+          task2 (create-dummy-instance conn
+                                       job2
+                                       :instance-status :instance.status/running
+                                       :hostname "hostA")
+          reservations (atom {:jobs-launched [(:job/uuid (d/entity (d/db conn) job4))]})]
+      (share/set-share! conn "user1"
+                        "test update"
+                        :mem 1.0 :cpus 1.0)
+      (share/set-share! conn "user2"
+                        "big user"
+                        :mem 10.0 :cpus 10.0)
+      (let [db (d/db conn)
+            [{:keys [hostname task to-make-room-for]}]
+            (rebalancer/rebalance db
+                                  offer-cache
+                                  (util/get-pending-job-ents db)
+                                  {"hostA" {:cpus 0.0 :mem 0.0 :gpus 0.0}}
+                                  reservations
+                                  params)]
+        (is (= "hostA" hostname))
+        (is (= job4 (:db/id to-make-room-for)))
+        (is (= [task1 task2] (map :db/id task)))
+        (is (= {} (:reservations @reservations)))
+        (is (= [] (:jobs-launched @reservations)))))))
 
 
 (comment (run-tests))

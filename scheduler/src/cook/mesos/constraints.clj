@@ -114,6 +114,18 @@
   (let [needs-gpus? (job-needs-gpus? job)]
     (->gpu-host-constraint job needs-gpus?)))
 
+(defrecord rebalancer-reservation-constraint [reserved-hosts]
+  JobConstraint
+  (job-constraint-name [this] (get-class-name this))
+  (job-constraint-evaluate
+    [this _ vm-attributes]
+    (let [target-hostname (get vm-attributes "HOSTNAME")]
+      [(not (contains? reserved-hosts target-hostname))
+       "Host was reserved for rebalancing"]))
+  (job-constraint-evaluate
+    [this _ vm-attributes _]
+    (job-constraint-evaluate this _ vm-attributes)))
+
 (defrecord user-defined-constraint [constraints]
   JobConstraint
   (job-constraint-name [this] (get-class-name this))
@@ -172,6 +184,16 @@
   (for [constraint-constructor job-constraint-constructors
         :let [constraint (constraint-constructor job)]]
     (fenzoize-job-constraint constraint)))
+
+(defn build-rebalancer-reservation-constraint
+  "Constructs a rebalancer-reservation-constraint"
+  [job job-uuid->reserved-hostname]
+  (let [reserved-hosts (-> (hash-set)
+                           (into (vals job-uuid->reserved-hostname))
+                           (disj (job-uuid->reserved-hostname (:job/uuid job))))]
+    (-> reserved-hosts
+        ->rebalancer-reservation-constraint
+        fenzoize-job-constraint)))
 
 (defn make-rebalancer-job-constraints
   "Returns a sequence of all job constraints for 'job', in rebalancer-compatible (rebalancer.clj)

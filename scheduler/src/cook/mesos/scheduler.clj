@@ -579,18 +579,21 @@
    given a job, its resources, its task-id and a function assigned-cotask-getter. assigned-cotask-getter should be a
    function that takes a group uuid and returns a set of task-ids, which correspond to the tasks that will be assigned
    during the same Fenzo scheduling cycle as the newly created TaskRequest."
-  [db job & {:keys [resources task-id assigned-resources guuid->considerable-cotask-ids running-cotask-cache]
+  [db job & {:keys [resources task-id assigned-resources guuid->considerable-cotask-ids running-cotask-cache job-uuid->reserved-host]
           :or {resources (util/job-ent->resources job)
                task-id (str (java.util.UUID/randomUUID))
                assigned-resources (atom nil)
                guuid->considerable-cotask-ids (constantly #{})
-               running-cotask-cache (atom (cache/fifo-cache-factory {} :threshold 1))}}]
-  (let [constraints (into (constraints/make-fenzo-job-constraints job)
+               running-cotask-cache (atom (cache/fifo-cache-factory {} :threshold 1))
+               job-uuid->reserved-host {}}}]
+  (let [constraints (-> (constraints/make-fenzo-job-constraints job)
+                        (into
                           (remove nil?
                                   (mapv (fn make-group-constraints [group]
                                           (constraints/make-fenzo-group-constraint
                                            db group #(guuid->considerable-cotask-ids (:group/uuid group)) running-cotask-cache))
                                         (:group/_job job))))
+                        (conj (constraints/build-rebalancer-reservation-constraint job job-uuid->reserved-host)))
         needs-gpus? (constraints/job-needs-gpus? job)
         scalar-requests (reduce (fn [result resource]
                                   (if-let [value (:resource/amount resource)]
@@ -608,7 +611,7 @@
 
    Returns {:matches (list of tasks that got matched to the offer)
             :failures (list of unmatched tasks, and why they weren't matched)}"
-  [db ^TaskScheduler fenzo considerable offers]
+  [db ^TaskScheduler fenzo considerable offers rebalancer-reservation-atom]
   (log/debug "Matching" (count offers) "offers to" (count considerable) "jobs with fenzo")
   (log/debug "offers to scheduleOnce" offers)
   (log/debug "tasks to scheduleOnce" considerable)
@@ -619,10 +622,12 @@
         considerable->task-id (plumbing.core/map-from-keys (fn [_] (str (java.util.UUID/randomUUID))) considerable)
         guuid->considerable-cotask-ids (util/make-guuid->considerable-cotask-ids considerable->task-id)
         running-cotask-cache (atom (cache/fifo-cache-factory {} :threshold (max 1 (count considerable))))
+        job-uuid->reserved-host (or (:reservations @rebalancer-reservation-atom) {})
         ; Important that requests maintains the same order as considerable
         requests (mapv (fn [job]
                          (make-task-request db job :task-id (considerable->task-id job) :guuid->considerable-cotask-ids guuid->considerable-cotask-ids
-                                            :running-cotask-cache running-cotask-cache))
+                                            :running-cotask-cache running-cotask-cache
+                                            :job-uuid->reserved-host job-uuid->reserved-host))
                        considerable)
         ;; Need to lock on fenzo when accessing scheduleOnce because scheduleOnce and
         ;; task assigner can not be called at the same time.
@@ -831,10 +836,21 @@
                 (getTaskAssigner)
                 (call task-request hostname))))))))
 
+(defn- update-host-reservations [rebalancer-reservation-atom matches]
+  (let [matched-uuids (->> matches
+                          (mapcat #(-> % :tasks))
+                          (map #(-> % .getRequest :job))
+                          (map :job/uuid)
+                          (into (hash-set)))]
+    (swap! rebalancer-reservation-atom (fn [{:keys [launched-jobs reservations]}]
+                                         {:reservations (apply dissoc reservations matched-uuids)
+                                          :launched-jobs (into matched-uuids launched-jobs)}))))
+
 (defn handle-resource-offers!
   "Gets a list of offers from mesos. Decides what to do with them all--they should all
    be accepted or rejected at the end of the function."
-  [conn driver ^TaskScheduler fenzo framework-id executor-config category->pending-jobs-atom offer-cache user->usage user->quota num-considerable offers-chan offers]
+  [conn driver ^TaskScheduler fenzo framework-id executor-config category->pending-jobs-atom offer-cache user->usage user->quota num-considerable offers-chan offers
+   rebalancer-reservation-atom]
   (log/debug "invoked handle-resource-offers!")
   (let [offer-stash (atom nil)] ;; This is a way to ensure we never lose offers fenzo assigned if an error occurs in the middle of processing
     ;; TODO: It is possible to have an offer expire by mesos because we recycle it a bunch of times.
@@ -850,7 +866,7 @@
                                               db category->pending-jobs user->quota user->usage num-considerable))
               {:keys [matches failures]} (timers/time!
                                            handle-resource-offer!-match-duration
-                                           (match-offer-to-schedule db fenzo (reduce into [] (vals category->considerable-jobs)) offers))
+                                           (match-offer-to-schedule db fenzo (reduce into [] (vals category->considerable-jobs)) offers rebalancer-reservation-atom))
               _ (log/debug "got matches:" matches)
               offers-scheduled (for [{:keys [leases]} matches
                                      lease leases]
@@ -879,6 +895,7 @@
               (swap! category->pending-jobs-atom remove-matched-jobs-from-pending-jobs category->job-uuids)
               (log/debug "updated category->pending-jobs:" @category->pending-jobs-atom)
               (launch-matched-tasks! matches conn db driver fenzo framework-id executor-config)
+              (update-host-reservations rebalancer-reservation-atom matches)
               matched-normal-considerable-jobs-head?)))
         (catch Throwable t
           (meters/mark! handle-resource-offer!-errors)
@@ -910,7 +927,7 @@
   [conn driver-atom fenzo framework-id executor-config pending-jobs-atom offer-cache
    max-considerable scaleback
    floor-iterations-before-warn floor-iterations-before-reset
-   trigger-chan]
+   trigger-chan rebalancer-reservation-atom]
   (let [chan-length 100
         offers-chan (async/chan (async/buffer chan-length))
         resources-atom (atom (view-incubating-offers fenzo))]
@@ -956,7 +973,7 @@
                                                  (cache/miss c slave-id attrs)))))
                       _ (log/debug "Passing following offers to handle-resource-offers!" offers)
                       user->quota (quota/create-user->quota-fn (d/db conn))
-                      matched-head? (handle-resource-offers! conn @driver-atom fenzo framework-id executor-config pending-jobs-atom offer-cache @user->usage-future user->quota num-considerable offers-chan offers)]
+                      matched-head? (handle-resource-offers! conn @driver-atom fenzo framework-id executor-config pending-jobs-atom offer-cache @user->usage-future user->quota num-considerable offers-chan offers rebalancer-reservation-atom)]
                   (when (seq offers)
                     (reset! resources-atom (view-incubating-offers fenzo)))
                   ;; This check ensures that, although we value Fenzo's optimizations,
@@ -1567,10 +1584,10 @@
             task-id #(handle-status-update conn driver fenzo sync-agent-sandboxes-fn status)))))))
 
 (defn create-datomic-scheduler
-  [conn driver-atom pending-jobs-atom offer-cache heartbeat-ch offer-incubate-time-ms mea-culpa-failure-limit
-   fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset
-   fenzo-fitness-calculator task-constraints gpu-enabled? good-enough-fitness framework-id sandbox-syncer-state
-   executor-config progress-config trigger-chans]
+  [{:keys [conn driver-atom pending-jobs-atom offer-cache heartbeat-ch offer-incubate-time-ms mea-culpa-failure-limit
+           fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset
+           fenzo-fitness-calculator task-constraints gpu-enabled? good-enough-fitness framework-id sandbox-syncer-state
+           executor-config progress-config trigger-chans rebalancer-reservation-atom]}]
 
   (persist-mea-culpa-failure-limit! conn mea-culpa-failure-limit)
 
@@ -1578,7 +1595,8 @@
         fenzo (make-fenzo-scheduler driver-atom offer-incubate-time-ms fenzo-fitness-calculator good-enough-fitness)
         [offers-chan resources-atom]
         (make-offer-handler conn driver-atom fenzo framework-id executor-config pending-jobs-atom offer-cache fenzo-max-jobs-considered
-                            fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset match-trigger-chan)
+                            fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset match-trigger-chan
+                            rebalancer-reservation-atom)
         {:keys [batch-size]} progress-config
         {:keys [progress-state-chan]} (progress-update-transactor progress-updater-trigger-chan batch-size conn)
         progress-aggregator-chan (progress-update-aggregator progress-config progress-state-chan)
