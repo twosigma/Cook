@@ -712,6 +712,27 @@ def wait_for_end_time(cook_url, job_id, max_wait_ms=DEFAULT_TIMEOUT_MS):
     return response.json()[0]
 
 
+def wait_for_running_instance(cook_url, job_id, max_wait_ms=DEFAULT_TIMEOUT_MS):
+    """Waits for the job with the given job_id to have a running instance"""
+    job_id = unpack_uuid(job_id)
+
+    def query():
+        return query_jobs(cook_url, True, uuid=[job_id])
+
+    def predicate(resp):
+        job = resp.json()[0]
+        if not job['instances']:
+            logger.info(f"Job {job_id} has no instances.")
+        else:
+            inst = job['instances'][0]
+            status = inst['status']
+            logger.info(f"Job {job_id} instance {inst['task_id']} has status {status}, expected running.")
+            return status == 'running'
+
+    response = wait_until(query, predicate, max_wait_ms=max_wait_ms)
+    return response.json()[0]['instances'][0]
+
+
 def get_mesos_state(mesos_url):
     """
     Queries the state.json from mesos

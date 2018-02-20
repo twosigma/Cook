@@ -1750,8 +1750,7 @@ class CookTest(unittest.TestCase):
         self.assertEqual(resp.status_code, 201, msg=resp.content)
         job_uuids = [job_uuid_1, job_uuid_2, job_uuid_3]
         try:
-            util.wait_for_jobs(self.cook_url, job_uuids, 'running')
-            instances = [util.wait_for_instance(self.cook_url, j) for j in job_uuids]
+            instances = [util.wait_for_running_instance(self.cook_url, j) for j in job_uuids]
             start_time = min(i['start_time'] for i in instances)
             end_time = max(i['start_time'] for i in instances)
             stats = util.get_instance_stats(self.cook_url,
