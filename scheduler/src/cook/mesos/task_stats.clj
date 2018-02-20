@@ -36,22 +36,25 @@
 
 (defn- get-tasks
   "Gets all tasks that started in the specified time range and with the specified status."
-  [db instance-status start end]
+  [db instance-status start end name-filter-fn]
   (let [start-entity-id (d/entid-at db :db.part/user (.toDate (t/minus start (t/hours 1))))
         end-entity-id (d/entid-at db :db.part/user (.toDate (t/plus end (t/hours 1))))
         instance-status-entid (d/entid db instance-status)
         instance-status-attribute-entid (d/entid db :instance/status)
         start-millis (.getTime (.toDate start))
-        end-millis (.getTime (.toDate end))]
-    (->> (d/seek-datoms db :avet :instance/status instance-status-entid start-entity-id)
-         (take-while #(and
-                        (< (.e %) end-entity-id)
-                        (= (.a %) instance-status-attribute-entid)
-                        (= (.v %) instance-status-entid)))
-         (map #(.e %))
-         (map (partial d/entity db))
-         (filter #(<= start-millis (.getTime (:instance/start-time %))))
-         (filter #(< (.getTime (:instance/start-time %)) end-millis)))))
+        end-millis (.getTime (.toDate end))
+        tasks
+        (->> (d/seek-datoms db :avet :instance/status instance-status-entid start-entity-id)
+             (take-while #(and
+                            (< (.e %) end-entity-id)
+                            (= (.a %) instance-status-attribute-entid)
+                            (= (.v %) instance-status-entid)))
+             (map #(.e %))
+             (map (partial d/entity db))
+             (filter #(<= start-millis (.getTime (:instance/start-time %))))
+             (filter #(< (.getTime (:instance/start-time %)) end-millis)))]
+    (cond->> tasks
+             name-filter-fn (filter #(name-filter-fn (-> % :job/_instance :job/name))))))
 
 (defn- percentile
   "Calculates the p-th percentile of the values in coll
@@ -114,6 +117,6 @@
 (defn get-stats
   "Returns a map containing task stats for tasks
   with the given status from the provided time range"
-  [conn instance-status start end]
-  (let [tasks (get-tasks (d/db conn) instance-status start end)]
+  [conn instance-status start end name-filter-fn]
+  (let [tasks (get-tasks (d/db conn) instance-status start end name-filter-fn)]
     (generate-all-stats tasks)))

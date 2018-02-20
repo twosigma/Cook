@@ -2186,7 +2186,8 @@
 (def TaskStatsParams
   {:status s/Str
    :start s/Str
-   :end s/Str})
+   :end s/Str
+   :name s/Str})
 
 (defn task-stats-handler
   [conn is-authorized-fn]
@@ -2203,14 +2204,10 @@
      (fn [ctx]
        (let [params (-> ctx :request :params)]
          (task-stats/get-stats conn
-                               (case (:status params)
-                                 "failed" :instance.status/failed
-                                 "success" :instance.status/success
-                                 "running" :instance.status/running
-                                 "unknown" :instance.status/unknown
-                                 (throw (ex-info "Encountered unexpected status" params)))
+                               (keyword "instance.status" (:status params))
                                (tf/parse (:start params))
-                               (tf/parse (:end params)))))}))
+                               (tf/parse (:end params))
+                               (name-filter-str->name-filter-fn (:name params)))))}))
 
 (defn- streaming-json-encoder
   "Takes as input the response body which can be converted into JSON,
