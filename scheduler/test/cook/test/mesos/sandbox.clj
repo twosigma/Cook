@@ -323,6 +323,46 @@
                            (fn [pending-sync-hosts] (-> pending-sync-hosts (disj "host2") (conj "badhost" "host3"))))
                    (update :host->consecutive-failures dissoc "host3")
                    (update :host->consecutive-failures assoc "badhost" 1))
+               @pending-sync-agent))))
+
+    (with-redefs [sandbox/retrieve-sandbox-directories-on-agent
+                  (fn [_ hostname]
+                    ;; insert items into unprocessed-host->task-ids-atom to simulate new pending tasks
+                    (swap! unprocessed-host->task-ids-atom
+                           (fn [host->task-ids]
+                             (update host->task-ids hostname
+                                     #(conj %1 (str "task3." hostname) (str "task4." hostname)))))
+                    {(str "task1." hostname) (str "/path/to/1/" hostname "/sandbox")
+                     (str "task2." hostname) (str "/path/to/2/" hostname "/sandbox")
+                     (str "task3." hostname) (str "/path/to/3/" hostname "/sandbox")})]
+
+      (testing "new host remains pending when new pending tasks are inserted"
+        (refresh-agent-cache-helper "host5" "task1.host5")
+        (await task-id->sandbox-agent)
+        (await pending-sync-agent)
+        (is (= :unavailable @(cache/lookup @mesos-agent-query-cache "host1" item-unavailable)))
+        (is (= :unavailable @(cache/lookup @mesos-agent-query-cache "host2" item-unavailable)))
+        (is (= :unavailable @(cache/lookup @mesos-agent-query-cache "host3" item-unavailable)))
+        (is (= :success @(cache/lookup @mesos-agent-query-cache "host5" item-unavailable)))
+        (is (= :error @(cache/lookup @mesos-agent-query-cache "badhost" item-unavailable)))
+        (is (= {"badhost" #{"task5.badhost"}
+                "host3" #{"task1.host3"}
+                "host5" #{"task4.host5"}}
+               @unprocessed-host->task-ids-atom))
+        (is (= {"task1.host1" "/path/to/1/host1/sandbox"
+                "task1.host2" "/path/to/1/host2/sandbox"
+                "task1.host3" "/path/to/1/host3/sandbox"
+                "task1.host5" "/path/to/1/host5/sandbox"
+                "task2.host1" "/path/to/2/host1/sandbox"
+                "task2.host2" "/path/to/2/host2/sandbox"
+                "task2.host3" "/path/to/2/host3/sandbox"
+                "task3.host1" "/path/to/3/host1/sandbox"
+                "task3.host2" "/path/to/3/host2/sandbox"
+                "task3.host5" "/path/to/3/host5/sandbox"}
+               @task-id->sandbox-agent))
+        (is (= {:framework-id "test-framework-id",
+                :host->consecutive-failures {"badhost" 1},
+                :pending-sync-hosts #{"badhost" "host3" "host5"}}
                @pending-sync-agent))))))
 
 (deftest test-start-host-sandbox-syncer

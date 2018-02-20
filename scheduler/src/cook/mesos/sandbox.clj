@@ -215,13 +215,16 @@
   (try
     (when task-id
       (aggregate-unprocessed-task-ids! unprocessed-host->task-ids-atom host task-id))
-    (let [unprocessed-task-ids-current (get @unprocessed-host->task-ids-atom host)
+    (let [unprocessed-task-ids (get @unprocessed-host->task-ids-atom host)
           run (delay
                 (try
                   (let [task-id->sandbox-directory (retrieve-sandbox-directories-on-agent framework-id host)]
                     (process-task-id->sandbox-directory-on-host
-                      publisher-state host unprocessed-task-ids-current task-id->sandbox-directory)
+                      publisher-state host unprocessed-task-ids task-id->sandbox-directory)
                     (send pending-sync-agent clear-pending-sync-hostname host :success)
+                    (when-let [unprocessed-task-ids-new (get @unprocessed-host->task-ids-atom host)]
+                      (log/info host "has" (count unprocessed-task-ids-new) "pending tasks even after a state lookup")
+                      (send pending-sync-agent aggregate-pending-sync-hostname host :pending))
                     :success)
                   (catch Exception e
                     (log/error e "Failed to get mesos agent state on" host)
