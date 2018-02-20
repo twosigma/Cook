@@ -1039,7 +1039,7 @@
                                        [task-id])))
                                  (remove nil?))]
         (when (not= (count running-tasks) (count processed-tasks))
-          (log/info "Skipping reconciling" (- (count running-tasks) (count processed-tasks)) "tasks"))
+          (log/error "Skipping reconciling" (- (count running-tasks) (count processed-tasks)) "tasks"))
         (doseq [ts (partition-all 50 processed-tasks)]
           (log/info "Reconciling" (count ts) "tasks, including task" (first ts))
           (mesos/reconcile-tasks driver (mapv (fn [[task-id status slave-id]]
