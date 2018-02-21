@@ -20,6 +20,7 @@
             [cook.mesos.schema :as schema]
             [clojure.core.async :as async]
             [clojure.core.cache :as cache]
+            [clojure.tools.logging :as log]
             [datomic.api :as d :refer (q)]
             [metatransaction.core :refer (db)]
             [metrics.timers :as timers]
@@ -108,19 +109,24 @@
                       (remove (partial = :group/job)))]
   (defn job-ent->map
     "Convert a job entity to a map.
-     This also loads the associated group without the nested jobs in the group and converts it to a map."
+     This also loads the associated group without the nested jobs in the group and converts it to a map.
+     Returns nil if there was an error while converting the job entity to a map."
     ([job db]
      (job-ent->map (d/entity db (:db/id job))))
     ([job]
-     (let [group-ent (first (:group/_job job))
-           job (entity->map job)
-           group (when group-ent
-                   (->> group-keys
-                        (pc/map-from-keys (fn [k] (entity->map (get group-ent k))))
-                        ; The :group/job key normally returns a set, so let's do the same for compatibility
-                        hash-set))]
-       (cond-> job
-         group (assoc :group/_job group))))))
+     (try
+       (let [group-ent (first (:group/_job job))
+             job (entity->map job)
+             group (when group-ent
+                     (->> group-keys
+                          (pc/map-from-keys (fn [k] (entity->map (get group-ent k))))
+                          ; The :group/job key normally returns a set, so let's do the same for compatibility
+                          hash-set))]
+         (cond-> job
+                 group (assoc :group/_job group)))
+       (catch Exception e
+         ;; not logging the stacktrace as it adds noise and can cause the log files to blow up in size
+         (log/error "Error while converting job entity to a map" {:job job :message (.getMessage e)}))))))
 
 
 (defn remove-datomic-namespacing

@@ -1025,24 +1025,28 @@
     (when (seq running-tasks)
       (log/info "Preparing to reconcile" (count running-tasks) "tasks")
       ;; TODO: When turning on periodic reconcilation, probably want to move this to startup
-      (doseq [[task-id] running-tasks
-              :let [task-ent (d/entity db [:instance/task-id task-id])
-                    hostname (:instance/hostname task-ent)
-                    job (util/job-ent->map (:job/_instance task-ent))
-                    task-request (make-task-request db job :task-id task-id)]]
-        ;; Need to lock on fenzo when accessing taskAssigner because taskAssigner and
-        ;; scheduleOnce can not be called at the same time.
-        (locking fenzo
-          (.. fenzo
-              (getTaskAssigner)
-              (call task-request hostname))))
-      (doseq [ts (partition-all 50 running-tasks)]
-        (log/info "Reconciling" (count ts) "tasks, including task" (first ts))
-        (mesos/reconcile-tasks driver (mapv (fn [[task-id status slave-id]]
-                                              {:task-id {:value task-id}
-                                               :state (sched->mesos status)
-                                               :slave-id {:value slave-id}})
-                                            ts)))
+      (let [processed-tasks (->> (for [[task-id] running-tasks
+                                       :let [task-ent (d/entity db [:instance/task-id task-id])
+                                             hostname (:instance/hostname task-ent)]]
+                                   (when-let [job (util/job-ent->map (:job/_instance task-ent))]
+                                     (let [task-request (make-task-request db job :task-id task-id)]
+                                       ;; Need to lock on fenzo when accessing taskAssigner because taskAssigner and
+                                       ;; scheduleOnce can not be called at the same time.
+                                       (locking fenzo
+                                         (.. fenzo
+                                             (getTaskAssigner)
+                                             (call task-request hostname)))
+                                       [task-id])))
+                                 (remove nil?))]
+        (when (not= (count running-tasks) (count processed-tasks))
+          (log/error "Skipping reconciling" (- (count running-tasks) (count processed-tasks)) "tasks"))
+        (doseq [ts (partition-all 50 processed-tasks)]
+          (log/info "Reconciling" (count ts) "tasks, including task" (first ts))
+          (mesos/reconcile-tasks driver (mapv (fn [[task-id status slave-id]]
+                                                {:task-id {:value task-id}
+                                                 :state (sched->mesos status)
+                                                 :slave-id {:value slave-id}})
+                                              ts))))
       (log/info "Finished reconciling all tasks"))))
 
 (timers/deftimer [cook-mesos scheduler reconciler-duration])
@@ -1358,7 +1362,8 @@
       (let [jobs (->> (sort-jobs-by-dru-category unfiltered-db)
                       ;; Apply the offensive job filter first before taking.
                       (pc/map-vals offensive-job-filter)
-                      (pc/map-vals #(map util/job-ent->map %)))]
+                      (pc/map-vals #(map util/job-ent->map %))
+                      (pc/map-vals #(remove nil? %)))]
         (log/debug "Total number of pending jobs is:" (apply + (map count (vals jobs)))
                    "The first 20 pending normal jobs:" (take 20 (:normal jobs))
                    "The first 5 pending gpu jobs:" (take 5 (:gpu jobs)))
