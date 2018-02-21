@@ -26,13 +26,13 @@
         user (:job/user job-ent)
         resources (util/job-ent->resources job-ent)
         run-time (-> task-ent util/task-run-time)
-        seconds (-> run-time .toDuration .getMillis (/ 1000.0))]
+        run-time-seconds (-> run-time .toDuration .getMillis (/ 1000.0))]
     (assoc resources
-      :user user
-      :run-time-seconds seconds
-      :cpu-seconds (* seconds (:cpus resources))
-      :mem-seconds (* seconds (:mem resources))
-      :reason (get-in task-ent [:instance/reason :reason/string]))))
+      :cpu-seconds (* run-time-seconds (:cpus resources))
+      :mem-seconds (* run-time-seconds (:mem resources))
+      :reason (get-in task-ent [:instance/reason :reason/string])
+      :run-time-seconds run-time-seconds
+      :user user)))
 
 (defn- get-tasks
   "Gets all tasks that started in the specified time range and with the specified status."
@@ -86,9 +86,9 @@
     (let [stats (fn [xs] {:percentiles (percentiles xs 50 75 95 99 100)
                           :total (reduce + xs)})]
       {:count (count task-entries)
-       :run-time-seconds (stats (map :run-time-seconds task-entries))
        :cpu-seconds (stats (map :cpu-seconds task-entries))
-       :mem-seconds (stats (map :mem-seconds task-entries))})
+       :mem-seconds (stats (map :mem-seconds task-entries))
+       :run-time-seconds (stats (map :run-time-seconds task-entries))})
     {}))
 
 (defn- generate-all-stats
@@ -108,11 +108,11 @@
                        (take 10)
                        (map (fn [[n u]] [u n]))
                        (into {})))]
-    {:overall overall-stats
-     :by-reason reason-stats
+    {:by-reason reason-stats
      :by-user-and-reason user-reason-stats
      :leaders {:cpu-seconds (leaders :cpu-seconds)
-               :mem-seconds (leaders :mem-seconds)}}))
+               :mem-seconds (leaders :mem-seconds)}
+     :overall overall-stats}))
 
 (defn get-stats
   "Returns a map containing task stats for tasks

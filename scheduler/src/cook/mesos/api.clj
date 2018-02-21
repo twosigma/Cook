@@ -2160,34 +2160,34 @@
 ;;
 
 (def HistogramStats
-  {:percentiles {(s/required-key 50) NonNegNum
-                 (s/required-key 75) NonNegNum
-                 (s/required-key 95) NonNegNum
-                 (s/required-key 99) NonNegNum
-                 (s/required-key 100) NonNegNum}
+  {:percentiles {(s/required-key 50) s/Num
+                 (s/required-key 75) s/Num
+                 (s/required-key 95) s/Num
+                 (s/required-key 99) s/Num
+                 (s/required-key 100) s/Num}
    :total NonNegNum})
 
 (def TaskStats
   {(s/optional-key :count) NonNegInt
-   (s/optional-key :run-time-seconds) HistogramStats
    (s/optional-key :cpu-seconds) HistogramStats
-   (s/optional-key :mem-seconds) HistogramStats})
+   (s/optional-key :mem-seconds) HistogramStats}
+   (s/optional-key :run-time-seconds) HistogramStats)
 
 (def UserLeaders
   {s/Str NonNegNum})
 
 (def TaskStatsResponse
-  {:overall TaskStats
-   :by-reason {s/Any TaskStats}
+  {:by-reason {s/Any TaskStats}
    :by-user-and-reason {s/Str {s/Any TaskStats}}
    :leaders {:cpu-seconds UserLeaders
-             :mem-seconds UserLeaders}})
+             :mem-seconds UserLeaders}}
+   :overall TaskStats)
 
 (def TaskStatsParams
-  {:status s/Str
+  {:status (s/enum "unknown" "running" "success" "failed")
    :start s/Str
    :end s/Str
-   :name s/Str})
+   :name (s/constrained s/Str valid-name-filter?)})
 
 (defn task-stats-handler
   [conn is-authorized-fn]
