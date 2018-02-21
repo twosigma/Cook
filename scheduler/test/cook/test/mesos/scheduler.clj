@@ -1637,7 +1637,7 @@
     (testing "will not launch jobs on reserved host"
       (let [num-considerable 10
             offers [offer-1]
-            initial-reservation-state {:reservations {(UUID/randomUUID) (:hostname offer-1)}}
+            initial-reservation-state {:job-uuid->reserved-host {(UUID/randomUUID) (:hostname offer-1)}}
             rebalancer-reservation-atom (atom initial-reservation-state)]
         (is (run-handle-resource-offers! num-considerable offers :rebalancer-reservation-atom rebalancer-reservation-atom))
         (is (= 0 (count @launched-job-ids-atom)))
@@ -1648,16 +1648,16 @@
             offers [offer-9] ; large enough to launch jobs 1, 2, 3, and 4
             job-1-uuid (d/squuid)
             job-2-uuid (d/squuid)
-            initial-reservation-state {:reservations {job-1-uuid (:hostname offer-9)
-                                                      job-2-uuid (:hostname offer-9)}}
+            initial-reservation-state {:job-uuid->reserved-host {job-1-uuid (:hostname offer-9)
+                                                                 job-2-uuid (:hostname offer-9)}}
             rebalancer-reservation-atom (atom initial-reservation-state)]
         (is (run-handle-resource-offers! num-considerable offers :rebalancer-reservation-atom rebalancer-reservation-atom
                                          :job-name->uuid {"job-1" job-1-uuid "job-2" job-2-uuid}))
         (is (= :end-marker (async/<!! offers-chan)))
         (is (= 2 (count @launched-job-ids-atom)))
         (is (= #{"job-1" "job-2"} (set @launched-job-ids-atom)))
-        (is (= {:reservations {}
-                :launched-jobs #{job-1-uuid job-2-uuid}}
+        (is (= {:job-uuid->reserved-host {}
+                :launched-job-uuids #{job-1-uuid job-2-uuid}}
                @rebalancer-reservation-atom))))))
 
 

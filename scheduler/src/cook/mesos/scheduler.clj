@@ -587,13 +587,13 @@
                running-cotask-cache (atom (cache/fifo-cache-factory {} :threshold 1))
                job-uuid->reserved-host {}}}]
   (let [constraints (-> (constraints/make-fenzo-job-constraints job)
+                        (conj (constraints/build-rebalancer-reservation-constraint job job-uuid->reserved-host))
                         (into
                           (remove nil?
                                   (mapv (fn make-group-constraints [group]
                                           (constraints/make-fenzo-group-constraint
                                            db group #(guuid->considerable-cotask-ids (:group/uuid group)) running-cotask-cache))
-                                        (:group/_job job))))
-                        (conj (constraints/build-rebalancer-reservation-constraint job job-uuid->reserved-host)))
+                                        (:group/_job job)))))
         needs-gpus? (constraints/job-needs-gpus? job)
         scalar-requests (reduce (fn [result resource]
                                   (if-let [value (:resource/amount resource)]
@@ -622,12 +622,14 @@
         considerable->task-id (plumbing.core/map-from-keys (fn [_] (str (java.util.UUID/randomUUID))) considerable)
         guuid->considerable-cotask-ids (util/make-guuid->considerable-cotask-ids considerable->task-id)
         running-cotask-cache (atom (cache/fifo-cache-factory {} :threshold (max 1 (count considerable))))
-        job-uuid->reserved-host (or (:reservations @rebalancer-reservation-atom) {})
+        job-uuid->reserved-host (or (:job-uuid->reserved-host @rebalancer-reservation-atom) {})
         ; Important that requests maintains the same order as considerable
         requests (mapv (fn [job]
-                         (make-task-request db job :task-id (considerable->task-id job) :guuid->considerable-cotask-ids guuid->considerable-cotask-ids
+                         (make-task-request db job
+                                            :guuid->considerable-cotask-ids guuid->considerable-cotask-ids
+                                            :job-uuid->reserved-host job-uuid->reserved-host
                                             :running-cotask-cache running-cotask-cache
-                                            :job-uuid->reserved-host job-uuid->reserved-host))
+                                            :task-id (considerable->task-id job)))
                        considerable)
         ;; Need to lock on fenzo when accessing scheduleOnce because scheduleOnce and
         ;; task assigner can not be called at the same time.
@@ -836,15 +838,15 @@
                 (getTaskAssigner)
                 (call task-request hostname))))))))
 
-(defn- update-host-reservations [rebalancer-reservation-atom matches]
-  (let [matched-uuids (->> matches
+(defn update-host-reservations! [rebalancer-reservation-atom matches]
+  (let [matched-job-uuids (->> matches
                           (mapcat #(-> % :tasks))
                           (map #(-> % .getRequest :job))
                           (map :job/uuid)
                           (into (hash-set)))]
-    (swap! rebalancer-reservation-atom (fn [{:keys [launched-jobs reservations]}]
-                                         {:reservations (apply dissoc reservations matched-uuids)
-                                          :launched-jobs (into matched-uuids launched-jobs)}))))
+    (swap! rebalancer-reservation-atom (fn [{:keys [job-uuid->reserved-host launched-job-uuids]}]
+                                         {:job-uuid->reserved-host (apply dissoc job-uuid->reserved-host matched-job-uuids)
+                                          :launched-job-uuids (into matched-job-uuids launched-job-uuids)}))))
 
 (defn handle-resource-offers!
   "Gets a list of offers from mesos. Decides what to do with them all--they should all
@@ -895,7 +897,7 @@
               (swap! category->pending-jobs-atom remove-matched-jobs-from-pending-jobs category->job-uuids)
               (log/debug "updated category->pending-jobs:" @category->pending-jobs-atom)
               (launch-matched-tasks! matches conn db driver fenzo framework-id executor-config)
-              (update-host-reservations rebalancer-reservation-atom matches)
+              (update-host-reservations! rebalancer-reservation-atom matches)
               matched-normal-considerable-jobs-head?)))
         (catch Throwable t
           (meters/mark! handle-resource-offer!-errors)

@@ -382,14 +382,20 @@
             :to-make-room-for pending-job)]
     [state nil]))
 
-(defn reserve-hosts! [state preemption-decisions]
-  (let [multiple-tasks (filter #(< 1 (count (:task %))) preemption-decisions)
-        reservations (into {} (map (fn [d] [(:job/uuid (:to-make-room-for d))
-                                            (:hostname d)])
-                                   multiple-tasks))]
-    (swap! state (fn [{:keys [jobs-launched]}]
-                   {:reservations (apply dissoc reservations jobs-launched)
-                    :jobs-launched #{}}))))
+(defn reserve-hosts!
+  "Reserves all hosts in preemption-decisions which will preempt more than one task"
+  [rebalancer-reservation-atom preemption-decisions]
+  (let [multiple-task-decisions (filter #(< 1 (count (:task %))) preemption-decisions)
+        reservations (->> multiple-task-decisions
+                          (map (fn [d] [(:job/uuid (:to-make-room-for d))
+                                        (:hostname d)]))
+                          (into {}))]
+    (swap! rebalancer-reservation-atom (fn [{:keys [launched-job-uuids]}]
+                                        ; In case one of the jobs the rebalancer has launched already while computing
+                                        ; the pre-emption decisions, remove it's reservation from the map. Then
+                                        ; we can clear the launched-job-uuids set.
+                                         {:job-uuid->reserved-host (apply dissoc reservations launched-job-uuids)
+                                          :launched-job-uuids #{}}))))
 
 (defn rebalance
   "Takes a db, a list of pending job entities, a map of spare resources and params.
@@ -517,8 +523,7 @@
 
 (defn start-rebalancer!
   [{:keys [config conn driver get-mesos-utilization pending-jobs-atom offer-cache
-           trigger-chan view-incubating-offers view-mature-offers
-           rebalancer-reservation-atom]}]
+           rebalancer-reservation-atom trigger-chan view-incubating-offers view-mature-offers]}]
   (binding [metrics-dru-scale (:dru-scale config)]
     (update-datomic-params-from-config! conn config)
     (util/chime-at-ch

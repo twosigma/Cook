@@ -219,25 +219,25 @@
                                         (sched/create-datomic-scheduler
                                          {:conn mesos-datomic-conn
                                           :driver-atom current-driver
-                                          :pending-jobs-atom mesos-pending-jobs-atom
-                                          :offer-cache offer-cache
-                                          :heartbeat-ch mesos-heartbeat-chan
-                                          :offer-incubate-time-ms offer-incubate-time-ms
-                                          :mea-culpa-failure-limit mea-culpa-failure-limit
+                                          :executor-config executor-config
+                                          :fenzo-fitness-calculator fenzo-fitness-calculator
+                                          :fenzo-floor-iterations-before-reset fenzo-floor-iterations-before-reset
+                                          :fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-warn
                                           :fenzo-max-jobs-considered fenzo-max-jobs-considered
                                           :fenzo-scaleback fenzo-scaleback
-                                          :fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-warn
-                                          :fenzo-floor-iterations-before-reset fenzo-floor-iterations-before-reset
-                                          :fenzo-fitness-calculator fenzo-fitness-calculator
-                                          :task-constraints task-constraints
-                                          :gpu-enabled? gpu-enabled?
-                                          :good-enough-fitness good-enough-fitness
                                           :framework-id framework-id
-                                          :sandbox-syncer-state sandbox-syncer-state
-                                          :executor-config executor-config
+                                          :good-enough-fitness good-enough-fitness
+                                          :gpu-enabled? gpu-enabled?
+                                          :heartbeat-ch mesos-heartbeat-chan
+                                          :mea-culpa-failure-limit mea-culpa-failure-limit
+                                          :offer-cache offer-cache
+                                          :offer-incubate-time-ms offer-incubate-time-ms
+                                          :pending-jobs-atom mesos-pending-jobs-atom
                                           :progress-config progress-config
-                                          :trigger-chans trigger-chans
-                                          :rebalancer-reservation-atom rebalancer-reservation-atom})
+                                          :rebalancer-reservation-atom rebalancer-reservation-atom
+                                          :sandbox-syncer-state sandbox-syncer-state
+                                          :task-constraints task-constraints
+                                          :trigger-chans trigger-chans})
                                         driver (make-mesos-driver-fn scheduler framework-id)]
                                     (mesomatic.scheduler/start! driver)
                                     (reset! current-driver driver)

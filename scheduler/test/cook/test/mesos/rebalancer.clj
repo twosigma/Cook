@@ -21,11 +21,14 @@
             [cook.mesos :as mesos]
             [cook.mesos.dru :as dru]
             [cook.mesos.rebalancer :as rebalancer :refer (->State)]
+            [cook.mesos.scheduler :as sched]
             [cook.mesos.share :as share]
             [cook.mesos.util :as util]
             [cook.test.testutil :refer (restore-fresh-database! create-dummy-job create-dummy-instance
                                                                 create-dummy-group init-offer-cache)]
-            [datomic.api :as d :refer (q)]))
+            [datomic.api :as d :refer (q)])
+  (:import [com.netflix.fenzo SimpleAssignmentResult
+                              TaskRequest]))
 
 (defn create-running-job
   [conn host & args]
@@ -1191,8 +1194,8 @@
         (is (= job4 (:db/id to-make-room-for)))
         (is (= [task1 task2] (map :db/id task)))
         (is (= {(:job/uuid (d/entity db job4)) "hostA"}
-               (:reservations @reservations)))
-        (is (= [] (:jobs-launched @reservations))))))
+               (:job-uuid->reserved-host @reservations)))
+        (is (= #{} (:launched-job-uuids @reservations))))))
   (testing "does not reserve host for single preempted task"
     (let [datomic-uri "datomic:mem://test-rebalance-host-reservation-single"
           conn (restore-fresh-database! datomic-uri)
@@ -1222,8 +1225,8 @@
         (is (= "hostA" hostname))
         (is (= job2 (:db/id to-make-room-for)))
         (is (= [task1] (map :db/id task)))
-        (is (= {} (:reservations @reservations)))
-        (is (= [] (:jobs-launched @reservations))))))
+        (is (= {} (:job-uuid->reserved-host @reservations)))
+        (is (= #{} (:launched-job-uuids @reservations))))))
   (testing "does not reserve host for job already launched"
     (let [datomic-uri "datomic:mem://test-rebalance-host-reservation"
           conn (restore-fresh-database! datomic-uri)
@@ -1240,7 +1243,7 @@
                                        job2
                                        :instance-status :instance.status/running
                                        :hostname "hostA")
-          reservations (atom {:jobs-launched [(:job/uuid (d/entity (d/db conn) job4))]})]
+          reservations (atom {:launched-job-uuids [(:job/uuid (d/entity (d/db conn) job4))]})]
       (share/set-share! conn "user1"
                         "test update"
                         :mem 1.0 :cpus 1.0)
@@ -1258,8 +1261,58 @@
         (is (= "hostA" hostname))
         (is (= job4 (:db/id to-make-room-for)))
         (is (= [task1 task2] (map :db/id task)))
-        (is (= {} (:reservations @reservations)))
-        (is (= [] (:jobs-launched @reservations)))))))
+        (is (= {} (:job-uuid->reserved-host @reservations)))
+        (is (= #{} (:launched-job-uuids @reservations)))))))
 
+(deftest test-reserve-hosts
+  (testing "only reserves hosts with multiple preemptions"
+    (let [decisions [{:task ["a" "b"]
+                      :hostname "hostA"
+                      :to-make-room-for {:job/uuid "jobA"}}
+                     {:task ["c"]
+                      :hostname "hostB"
+                      :to-make-room-for {:job/uuid "jobB"}}]
+          rebalancer-reservation-atom (atom {})]
+      (rebalancer/reserve-hosts! rebalancer-reservation-atom decisions)
+      (is (= #{} (:launched-job-uuids @rebalancer-reservation-atom)))
+      (is (= {"jobA" "hostA"} (:job-uuid->reserved-host @rebalancer-reservation-atom)))))
+
+  (testing "does not reserve hosts for jobs that have already launched"
+    (let [decisions [{:task ["a" "b"]
+                      :hostname "hostA"
+                      :to-make-room-for {:job/uuid "jobA"}}]
+          rebalancer-reservation-atom (atom {:launched-job-uuids #{"jobA"}})]
+      (rebalancer/reserve-hosts! rebalancer-reservation-atom decisions)
+      (is (= #{} (:launched-job-uuids @rebalancer-reservation-atom)))
+      (is (= {} (:job-uuid->reserved-host @rebalancer-reservation-atom))))))
+
+(deftest test-reserve-hosts-integration
+  (testing "does not reserve another host after launching job"
+    (let [datomic-uri "datomic:mem://test-reserve-hosts-integration"
+          conn (restore-fresh-database! datomic-uri)
+          job-id (create-dummy-job conn :user "user1" :memory 6.0 :ncpus 6.0)
+          job (d/entity (d/db conn) job-id)
+          first-decision [{:task ["a" "b"]
+                           :hostname "hostA"
+                           :to-make-room-for job}]
+          second-decision [{:task ["a" "b"]
+                            :hostname "hostB"
+                            :to-make-room-for job}]
+          ^TaskRequest task-request (sched/make-task-request (d/db conn) job)
+          match [{:tasks [(SimpleAssignmentResult. [] nil task-request)]}]
+          rebalancer-reservation-atom (atom {})]
+      (rebalancer/reserve-hosts! rebalancer-reservation-atom first-decision)
+      (is (= {(:job/uuid job) "hostA"} (:job-uuid->reserved-host @rebalancer-reservation-atom)))
+      (is (= #{} (:launched-job-uuids @rebalancer-reservation-atom)))
+
+      (sched/update-host-reservations! rebalancer-reservation-atom match)
+      (is (= {} (:job-uuid->reserved-host @rebalancer-reservation-atom)))
+      (is (= #{(:job/uuid job)} (:launched-job-uuids @rebalancer-reservation-atom)))
+
+      (rebalancer/reserve-hosts! rebalancer-reservation-atom second-decision)
+      (is (= {}) (:job-uuid->reserved-host @rebalancer-reservation-atom))
+      (is (= #{}) (:launched-job-uuids @rebalancer-reservation-atom)))))
 
 (comment (run-tests))
+
+
