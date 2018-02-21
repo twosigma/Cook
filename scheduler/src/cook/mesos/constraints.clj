@@ -187,13 +187,10 @@
 
 (defn build-rebalancer-reservation-constraint
   "Constructs a rebalancer-reservation-constraint"
-  [job job-uuid->reserved-hostname]
-  (let [reserved-hosts (-> (hash-set)
-                           (into (vals job-uuid->reserved-hostname))
-                           (disj (job-uuid->reserved-hostname (:job/uuid job))))]
-    (-> reserved-hosts
-        ->rebalancer-reservation-constraint
-        fenzoize-job-constraint)))
+  [reserved-hosts]
+  (-> reserved-hosts
+      ->rebalancer-reservation-constraint
+      fenzoize-job-constraint))
 
 (defn make-rebalancer-job-constraints
   "Returns a sequence of all job constraints for 'job', in rebalancer-compatible (rebalancer.clj)

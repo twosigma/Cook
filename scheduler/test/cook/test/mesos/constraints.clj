@@ -140,8 +140,7 @@
         job-id (create-dummy-job conn :user "pschorf" :ncpus 5.0 :memory 5.0)
         db (d/db conn)
         job (d/entity db job-id)
-        reserved-hosts {(:job/uuid job) "hostA"
-                        "jobB" "hostB"}
+        reserved-hosts #{"hostB"}
         hostA-offer #mesomatic.types.Offer{:id #mesomatic.types.OfferID {:value "my-offer-id"}
                                            :framework-id framework-id
                                            :slave-id #mesomatic.types.SlaveID{:value "my-slave-id"},
@@ -162,8 +161,7 @@
                                                        #mesomatic.types.Resource{:name "ports", :type :value-ranges, :scalar 0.0, :ranges [#mesomatic.types.ValueRange{:begin 31000, :end 32000}], :set #{}, :role "*"}],
                                            :attributes [],
                                            :executor-ids []}
-        constraint (constraints/build-rebalancer-reservation-constraint job reserved-hosts)
-        ]
+        constraint (constraints/build-rebalancer-reservation-constraint reserved-hosts)]
     (is (not (.isSuccessful
               (.evaluate constraint
                          (sched/make-task-request db job-id)

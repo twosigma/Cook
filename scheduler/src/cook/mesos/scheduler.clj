@@ -579,15 +579,15 @@
    given a job, its resources, its task-id and a function assigned-cotask-getter. assigned-cotask-getter should be a
    function that takes a group uuid and returns a set of task-ids, which correspond to the tasks that will be assigned
    during the same Fenzo scheduling cycle as the newly created TaskRequest."
-  [db job & {:keys [resources task-id assigned-resources guuid->considerable-cotask-ids running-cotask-cache job-uuid->reserved-host]
+  [db job & {:keys [resources task-id assigned-resources guuid->considerable-cotask-ids reserved-hosts running-cotask-cache]
           :or {resources (util/job-ent->resources job)
                task-id (str (java.util.UUID/randomUUID))
                assigned-resources (atom nil)
                guuid->considerable-cotask-ids (constantly #{})
                running-cotask-cache (atom (cache/fifo-cache-factory {} :threshold 1))
-               job-uuid->reserved-host {}}}]
+               reserved-hosts #{}}}]
   (let [constraints (-> (constraints/make-fenzo-job-constraints job)
-                        (conj (constraints/build-rebalancer-reservation-constraint job job-uuid->reserved-host))
+                        (conj (constraints/build-rebalancer-reservation-constraint reserved-hosts))
                         (into
                           (remove nil?
                                   (mapv (fn make-group-constraints [group]
@@ -623,10 +623,12 @@
         guuid->considerable-cotask-ids (util/make-guuid->considerable-cotask-ids considerable->task-id)
         running-cotask-cache (atom (cache/fifo-cache-factory {} :threshold (max 1 (count considerable))))
         job-uuid->reserved-host (or (:job-uuid->reserved-host @rebalancer-reservation-atom) {})
+        reserved-hosts (into (hash-set) (vals job-uuid->reserved-host))
         ; Important that requests maintains the same order as considerable
         requests (mapv (fn [job]
                          (make-task-request db job
                                             :guuid->considerable-cotask-ids guuid->considerable-cotask-ids
+                                            :reserved-hosts (disj reserved-hosts (job-uuid->reserved-host (:job/uuid job)))
                                             :job-uuid->reserved-host job-uuid->reserved-host
                                             :running-cotask-cache running-cotask-cache
                                             :task-id (considerable->task-id job)))
@@ -840,10 +842,10 @@
 
 (defn update-host-reservations! [rebalancer-reservation-atom matches]
   (let [matched-job-uuids (->> matches
-                          (mapcat #(-> % :tasks))
-                          (map #(-> % .getRequest :job))
-                          (map :job/uuid)
-                          (into (hash-set)))]
+                               (mapcat #(-> % :tasks))
+                               (map #(-> % .getRequest :job))
+                               (map :job/uuid)
+                               (into (hash-set)))]
     (swap! rebalancer-reservation-atom (fn [{:keys [job-uuid->reserved-host launched-job-uuids]}]
                                          {:job-uuid->reserved-host (apply dissoc job-uuid->reserved-host matched-job-uuids)
                                           :launched-job-uuids (into matched-job-uuids launched-job-uuids)}))))
