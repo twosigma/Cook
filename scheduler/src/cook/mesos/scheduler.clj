@@ -252,7 +252,7 @@
              (when (and (#{:task-starting :task-running} task-state)
                         (not= :executor/cook (:instance/executor instance-ent)))
                ;; cook executor tasks should automatically get sandbox directory updates
-               (sync-agent-sandboxes-fn (:instance/hostname instance-ent)))
+               (sync-agent-sandboxes-fn (:instance/hostname instance-ent) task-id))
              ;; (println "update:" task-id task-state job instance instance-status prior-job-state)
              (log/debug "Transacting updated state for instance" instance "to status" instance-status)
              ;; The database can become inconsistent if we make multiple calls to :instance/update-state in a single
@@ -1495,7 +1495,7 @@
   "Creates the mesos scheduler which processes status updates asynchronously but in order of receipt."
   [configured-framework-id gpu-enabled? conn heartbeat-ch fenzo offers-chan match-trigger-chan handle-progress-message
    sandbox-syncer-state]
-  (let [sync-agent-sandboxes-fn #(sandbox/sync-agent-sandboxes sandbox-syncer-state configured-framework-id %)]
+  (let [sync-agent-sandboxes-fn #(sandbox/sync-agent-sandboxes sandbox-syncer-state configured-framework-id %1 %2)]
     (mesos/scheduler
       (registered
         [this driver framework-id master-info]
