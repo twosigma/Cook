@@ -1196,6 +1196,7 @@
         (is (= {(:job/uuid (d/entity db job4)) "hostA"}
                (:job-uuid->reserved-host @reservations)))
         (is (= #{} (:launched-job-uuids @reservations))))))
+
   (testing "does not reserve host for single preempted task"
     (let [datomic-uri "datomic:mem://test-rebalance-host-reservation-single"
           conn (restore-fresh-database! datomic-uri)
@@ -1227,6 +1228,7 @@
         (is (= [task1] (map :db/id task)))
         (is (= {} (:job-uuid->reserved-host @reservations)))
         (is (= #{} (:launched-job-uuids @reservations))))))
+
   (testing "does not reserve host for job already launched"
     (let [datomic-uri "datomic:mem://test-rebalance-host-reservation"
           conn (restore-fresh-database! datomic-uri)
@@ -1314,5 +1316,3 @@
       (is (= #{}) (:launched-job-uuids @rebalancer-reservation-atom)))))
 
 (comment (run-tests))
-
-

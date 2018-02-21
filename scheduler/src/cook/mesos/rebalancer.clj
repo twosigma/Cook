@@ -391,9 +391,9 @@
                                         (:hostname d)]))
                           (into {}))]
     (swap! rebalancer-reservation-atom (fn [{:keys [launched-job-uuids]}]
-                                        ; In case one of the jobs the rebalancer has launched already while computing
-                                        ; the pre-emption decisions, remove it's reservation from the map. Then
-                                        ; we can clear the launched-job-uuids set.
+                                        ; In case one of the jobs the rebalancer has decided to reserve a host for
+                                        ; launched while computing the pre-emption decisions, remove it's
+                                        ; reservation from the map. Then we can clear the launched-job-uuids set.
                                          {:job-uuid->reserved-host (apply dissoc reservations launched-job-uuids)
                                           :launched-job-uuids #{}}))))
 

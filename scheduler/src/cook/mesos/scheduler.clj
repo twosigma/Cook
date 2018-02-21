@@ -629,7 +629,6 @@
                          (make-task-request db job
                                             :guuid->considerable-cotask-ids guuid->considerable-cotask-ids
                                             :reserved-hosts (disj reserved-hosts (job-uuid->reserved-host (:job/uuid job)))
-                                            :job-uuid->reserved-host job-uuid->reserved-host
                                             :running-cotask-cache running-cotask-cache
                                             :task-id (considerable->task-id job)))
                        considerable)
@@ -840,7 +839,11 @@
                 (getTaskAssigner)
                 (call task-request hostname))))))))
 
-(defn update-host-reservations! [rebalancer-reservation-atom matches]
+(defn update-host-reservations!
+  "Updates the rebalancer-reservation-atom with the result of the match cycle.
+   - Releases reservations for jobs that were matched
+   - Adds matched job uuids to the launched-job-uuids list"
+  [rebalancer-reservation-atom matches]
   (let [matched-job-uuids (->> matches
                                (mapcat #(-> % :tasks))
                                (map #(-> % .getRequest :job))

@@ -1484,18 +1484,44 @@
                                             ^TaskScheduler fenzo (sched/make-fenzo-scheduler driver-atom 1500 nil 0.8)
                                             group-ent-id (create-dummy-group conn)
                                             get-uuid (fn [name] (get job-name->uuid name (d/squuid)))
-                                            job-1 (d/entity test-db (create-dummy-job conn :uuid (get-uuid "job-1")
-                                                                                      :group group-ent-id :name "job-1" :ncpus 3 :memory 2048))
-                                            job-2 (d/entity test-db (create-dummy-job conn :uuid (get-uuid "job-2")
-                                                                                      :group group-ent-id :name "job-2" :ncpus 13 :memory 1024))
-                                            job-3 (d/entity test-db (create-dummy-job conn :uuid (get-uuid "job-3")
-                                                                                      :group group-ent-id :name "job-3" :ncpus 7 :memory 4096))
-                                            job-4 (d/entity test-db (create-dummy-job conn :uuid (get-uuid "job-4")
-                                                                                      :group group-ent-id :name "job-4" :ncpus 11 :memory 1024))
-                                            job-5 (d/entity test-db (create-dummy-job conn :uuid (get-uuid "job-5")
-                                                                                      :group group-ent-id :name "job-5" :ncpus 5 :memory 2048 :gpus 2))
-                                            job-6 (d/entity test-db (create-dummy-job conn :uuid (get-uuid "job-6")
-                                                                                      :group group-ent-id :name "job-6" :ncpus 19 :memory 1024 :gpus 4))
+                                            job-1 (d/entity test-db (create-dummy-job conn
+                                                                                      :uuid (get-uuid "job-1")
+                                                                                      :group group-ent-id
+                                                                                      :name "job-1"
+                                                                                      :ncpus 3
+                                                                                      :memory 2048))
+                                            job-2 (d/entity test-db (create-dummy-job conn
+                                                                                      :uuid (get-uuid "job-2")
+                                                                                      :group group-ent-id
+                                                                                      :name "job-2"
+                                                                                      :ncpus 13
+                                                                                      :memory 1024))
+                                            job-3 (d/entity test-db (create-dummy-job conn
+                                                                                      :uuid (get-uuid "job-3")
+                                                                                      :group group-ent-id
+                                                                                      :name "job-3"
+                                                                                      :ncpus 7
+                                                                                      :memory 4096))
+                                            job-4 (d/entity test-db (create-dummy-job conn
+                                                                                      :uuid (get-uuid "job-4")
+                                                                                      :group group-ent-id
+                                                                                      :name "job-4"
+                                                                                      :ncpus 11
+                                                                                      :memory 1024))
+                                            job-5 (d/entity test-db (create-dummy-job conn
+                                                                                      :uuid (get-uuid "job-5")
+                                                                                      :group group-ent-id
+                                                                                      :name "job-5"
+                                                                                      :ncpus 5
+                                                                                      :memory 2048
+                                                                                      :gpus 2))
+                                            job-6 (d/entity test-db (create-dummy-job conn
+                                                                                      :uuid (get-uuid "job-6")
+                                                                                      :group group-ent-id
+                                                                                      :name "job-6"
+                                                                                      :ncpus 19
+                                                                                      :memory 1024
+                                                                                      :gpus 4))
                                             entity->map (fn [entity]
                                                           (util/job-ent->map entity (d/db conn)))
                                             category->pending-jobs (->> {:normal [job-1 job-2 job-3 job-4] :gpu [job-5 job-6]}
