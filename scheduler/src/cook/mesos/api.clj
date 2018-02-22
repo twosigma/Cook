@@ -16,6 +16,7 @@
 (ns cook.mesos.api
   (:require [camel-snake-kebab.core :refer [->snake_case ->kebab-case]]
             [cheshire.core :as cheshire]
+            [clj-time.coerce :as tc]
             [clj-time.core :as t]
             [clj-time.format :as tf]
             [clojure.set :as set]
@@ -2170,8 +2171,8 @@
 (def TaskStats
   {(s/optional-key :count) NonNegInt
    (s/optional-key :cpu-seconds) HistogramStats
-   (s/optional-key :mem-seconds) HistogramStats}
-   (s/optional-key :run-time-seconds) HistogramStats)
+   (s/optional-key :mem-seconds) HistogramStats
+   (s/optional-key :run-time-seconds) HistogramStats})
 
 (def UserLeaders
   {s/Str NonNegNum})
@@ -2180,14 +2181,16 @@
   {:by-reason {s/Any TaskStats}
    :by-user-and-reason {s/Str {s/Any TaskStats}}
    :leaders {:cpu-seconds UserLeaders
-             :mem-seconds UserLeaders}}
-   :overall TaskStats)
+             :mem-seconds UserLeaders}
+   :overall TaskStats})
 
 (def TaskStatsParams
-  {:status (s/enum "unknown" "running" "success" "failed")
+  {:status s/Str
    :start s/Str
    :end s/Str
-   :name (s/constrained s/Str valid-name-filter?)})
+   (s/optional-key :name) s/Str})
+
+(timers/deftimer [cook-scheduler handler stats-instances-endpoint])
 
 (defn task-stats-handler
   [conn is-authorized-fn]
@@ -2200,14 +2203,42 @@
          (if (is-authorized-fn user :read impersonator {:owner ::system :item :stats})
            true
            [false {::error "Unauthorized"}])))
+     :malformed?
+     (fn [ctx]
+       (let [{:keys [status start end name]} (-> ctx :request :params)
+             allowed-instance-statuses #{"unknown" "running" "success" "failed"}
+             parse-time (fn parse-time [s]
+                          (or (tf/parse s)
+                              (tc/from-long (Long/parseLong s))))
+             start-time (parse-time start)
+             end-time (parse-time end)
+             interval (t/interval start-time end-time)]
+         (cond
+           (not (allowed-instance-statuses status))
+           [true {::error (str "unsupported status " status ", must be one of: " allowed-instance-statuses)}]
+
+           (not (valid-name-filter? name))
+           [true {::error
+                  (str "unsupported name filter " name
+                       ", can only contain alphanumeric characters, '.', '-', '_', and '*' as a wildcard")}]
+
+           (< 31 (t/in-days interval))
+           [true {::error (str "time interval " interval ", must be less than or equal to 31 days")}]
+
+           :else
+           (try
+             [false {::status (keyword "instance.status" status)
+                     ::start start-time
+                     ::end end-time
+                     ::name-filter-fn (name-filter-str->name-filter-fn name)}]
+             (catch NumberFormatException e
+               [true {::error (.toString e)}])))))
      :handle-ok
      (fn [ctx]
-       (let [params (-> ctx :request :params)]
-         (task-stats/get-stats conn
-                               (keyword "instance.status" (:status params))
-                               (tf/parse (:start params))
-                               (tf/parse (:end params))
-                               (name-filter-str->name-filter-fn (:name params)))))}))
+       (timers/time!
+         stats-instances-endpoint
+         (let [{status ::status, start ::start, end ::end, name-filter-fn ::name-filter-fn} ctx]
+           (task-stats/get-stats conn status start end name-filter-fn))))}))
 
 (defn- streaming-json-encoder
   "Takes as input the response body which can be converted into JSON,

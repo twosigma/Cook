@@ -974,7 +974,7 @@ def retrieve_progress_file_env(cook_url):
 def get_instance_stats(cook_url, **kwargs):
     """Gets instance stats using the provided kwargs as query params"""
     resp = session.get(f'{cook_url}/stats/instances', params=kwargs)
-    return resp.json()
+    return resp.json(), resp
 
 
 def to_iso(time_millis):
