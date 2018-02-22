@@ -121,7 +121,7 @@
     [this _ vm-attributes]
     (let [target-hostname (get vm-attributes "HOSTNAME")]
       [(not (contains? reserved-hosts target-hostname))
-       "Host is reserved for rebalancing"]))
+       "Host is temporarily reserved"]))
   (job-constraint-evaluate
     [this _ vm-attributes _]
     (job-constraint-evaluate this _ vm-attributes)))
