@@ -1,3 +1,4 @@
+numpy==1.14.0
 pip==9.0.1; python_version >= '3.6'
 pytest==3.3.1
 pytest-timeout==1.2.1

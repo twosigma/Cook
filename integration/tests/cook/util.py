@@ -7,8 +7,10 @@ import os.path
 import subprocess
 import time
 import uuid
+from datetime import datetime
 from urllib.parse import urlencode
 
+import numpy
 import requests
 from retrying import retry
 
@@ -60,7 +62,7 @@ def _test_user_ids():
     pytest_worker = os.getenv('PYTEST_XDIST_WORKER')
     max_test_users = int(os.getenv('COOK_MAX_TEST_USERS', 0))
     if pytest_worker and max_test_users:
-        pytest_worker_id = int(pytest_worker[2:]) # e.g., "gw4" -> 4
+        pytest_worker_id = int(pytest_worker[2:])  # e.g., "gw4" -> 4
         test_user_min_id = max_test_users * pytest_worker_id
         test_user_max_id = test_user_min_id + max_test_users
         return range(test_user_min_id, test_user_max_id)
@@ -79,7 +81,7 @@ def _test_user_names(test_name_prefix=None):
 
 
 # Shell command used to obtain Kerberos credentials for a given test user
-_kerberos_missing_cmd =  'echo "MISSING COOK_KERBEROS_TEST_AUTH_CMD" && exit 1'
+_kerberos_missing_cmd = 'echo "MISSING COOK_KERBEROS_TEST_AUTH_CMD" && exit 1'
 _kerberos_auth_cmd = os.getenv('COOK_KERBEROS_TEST_AUTH_CMD', _kerberos_missing_cmd)
 
 
@@ -140,7 +142,6 @@ class _BasicAuthUser(_AuthenticatedUser):
         self.previous_auth = None
 
 
-
 class _KerberosUser(_AuthenticatedUser):
     """
     Object representing a Cook user with Kerberos credentials.
@@ -148,9 +149,7 @@ class _KerberosUser(_AuthenticatedUser):
 
     def __init__(self, name, impersonatee=None):
         super().__init__(name, impersonatee)
-        subcommand = (_kerberos_auth_cmd
-                      .replace('{{COOK_USER}}', name)
-                      .replace('{{COOK_SCHEDULER_URL}}', retrieve_cook_url()))
+        self.auth = None
         self.auth_token = self._generate_kerberos_ticket_for_user(name)
         self.previous_token = None
 
@@ -199,7 +198,7 @@ class UserFactory(object):
         # Set up generator for new user objects
         if test_handle:
             test_id = test_handle.id()
-            test_base_name = test_id[test_id.rindex('.test_')+6:].lower()
+            test_base_name = test_id[test_id.rindex('.test_') + 6:].lower()
             self.__user_generator = _test_user_names(test_base_name)
 
     def new_user(self):
@@ -522,10 +521,6 @@ def load_instance(cook_url, instance_uuid, assert_response=True):
     return load_resource(cook_url, 'instances', instance_uuid, assert_response)
 
 
-def multi_cluster_tests_enabled():
-    return os.getenv('COOK_MULTI_CLUSTER') is not None
-
-
 def wait_until(query, predicate, max_wait_ms=DEFAULT_TIMEOUT_MS, wait_interval_ms=1000):
     """
     Block until the predicate is true for the result of the provided query.
@@ -717,6 +712,27 @@ def wait_for_end_time(cook_url, job_id, max_wait_ms=DEFAULT_TIMEOUT_MS):
     return response.json()[0]
 
 
+def wait_for_running_instance(cook_url, job_id, max_wait_ms=DEFAULT_TIMEOUT_MS):
+    """Waits for the job with the given job_id to have a running instance"""
+    job_id = unpack_uuid(job_id)
+
+    def query():
+        return query_jobs(cook_url, True, uuid=[job_id])
+
+    def predicate(resp):
+        job = resp.json()[0]
+        if not job['instances']:
+            logger.info(f"Job {job_id} has no instances.")
+        else:
+            inst = job['instances'][0]
+            status = inst['status']
+            logger.info(f"Job {job_id} instance {inst['task_id']} has status {status}, expected running.")
+            return status == 'running'
+
+    response = wait_until(query, predicate, max_wait_ms=max_wait_ms)
+    return response.json()[0]['instances'][0]
+
+
 def get_mesos_state(mesos_url):
     """
     Queries the state.json from mesos
@@ -788,6 +804,7 @@ def wait_for_instance(cook_url, job_uuid):
     """Waits for the job with the given job_uuid to have a single instance, and returns the instance uuid"""
     job = wait_until(lambda: load_job(cook_url, job_uuid), lambda j: len(j['instances']) == 1)
     instance = job['instances'][0]
+    instance['parent'] = job
     return instance
 
 
@@ -922,11 +939,16 @@ def set_limit(cook_url, limit_type, user, mem=None, cpus=None, gpus=None, count=
     """
     limits = {}
     body = {'user': user, limit_type: limits}
-    if reason is not None: body['reason'] = reason
-    if mem is not None: limits['mem'] = mem
-    if cpus is not None: limits['cpus'] = cpus
-    if gpus is not None: limits['gpus'] = gpus
-    if count is not None: limits['count'] = count
+    if reason is not None:
+        body['reason'] = reason
+    if mem is not None:
+        limits['mem'] = mem
+    if cpus is not None:
+        limits['cpus'] = cpus
+    if gpus is not None:
+        limits['gpus'] = gpus
+    if count is not None:
+        limits['count'] = count
     logger.debug(f'Setting {user} {limit_type} to {limits}: {body}')
     return session.post(f'{cook_url}/{limit_type}', json=body)
 
@@ -937,7 +959,8 @@ def reset_limit(cook_url, limit_type, user, reason='testing'):
     The limit_type parameter should be either 'share' or 'quota', specifying which type of limit is being reset.
     """
     params = {'user': user}
-    if reason is not None: params['reason'] = reason
+    if reason is not None:
+        params['reason'] = reason
     return session.delete(f'{cook_url}/{limit_type}', params=params)
 
 
@@ -946,3 +969,19 @@ def retrieve_progress_file_env(cook_url):
     cook_settings = settings(cook_url)
     default_value = 'EXECUTOR_PROGRESS_OUTPUT_FILE'
     return get_in(cook_settings, 'executor', 'environment', 'EXECUTOR_PROGRESS_OUTPUT_FILE_ENV') or default_value
+
+
+def get_instance_stats(cook_url, **kwargs):
+    """Gets instance stats using the provided kwargs as query params"""
+    resp = session.get(f'{cook_url}/stats/instances', params=kwargs)
+    return resp.json(), resp
+
+
+def to_iso(time_millis):
+    """Converts the given time since epoch in millis to an ISO 8601 string"""
+    return datetime.utcfromtimestamp(time_millis / 1000).isoformat()
+
+
+def percentile(a, q):
+    """Returns the qth percentile of a"""
+    return numpy.percentile(a, q, interpolation='higher')

@@ -14,9 +14,10 @@
 ;; limitations under the License.
 ;;
 (ns cook.scratch
-  (:require [cook.datomic :refer (transact-with-retries)]
-            [cook.mesos.monitor :refer (riemann-reporter)]
+  (:require [clj-time.core :as t]
+            [cook.datomic :refer (transact-with-retries)]
             [cook.mesos.scheduler :as sched]
+            [cook.test.testutil :as testutil]
             [datomic.api :as d :refer (q)]
             [metatransaction.core :refer (db)]))
 
@@ -114,17 +115,17 @@
         db (d/db conn)
         one-week-ago (- (.getTime (java.util.Date.)) (* 7 24 60 60 1000))
         job-eids (->>
-                      (q '[:find ?j ?start-time
-                           :where
-                           [?j :job/instance ?i]
-                           [?j :job/state :job.state/running]
-                           [?i :instance/start-time ?start-time]
-                           [?i :instance/status :instance.status/running]]
-                         db)
-                      (filter (fn [[j start-time]]
-                                (<=(.getTime start-time) one-week-ago)))
-                      (sort-by second)
-                      (map first))
+                   (q '[:find ?j ?start-time
+                        :where
+                        [?j :job/instance ?i]
+                        [?j :job/state :job.state/running]
+                        [?i :instance/start-time ?start-time]
+                        [?i :instance/status :instance.status/running]]
+                      db)
+                   (filter (fn [[j start-time]]
+                             (<= (.getTime start-time) one-week-ago)))
+                   (sort-by second)
+                   (map first))
         txns (map (fn [job-eid]
                     [:db/add job-eid :job/state :job.state/completed])
                   job-eids)]
@@ -133,3 +134,34 @@
   ;; Retract quota.
   (let [conn (d/connect "datomic:riak://db.example.com:8098/datomic/mesos-jobs?interface=http")]
     (sched/retract-quota! conn "testuser")))
+
+(defn create-job
+  "Creates a new job with one instance"
+  [conn host instance-status start-time end-time reason & args]
+  (let [job (apply testutil/create-dummy-job (cons conn args))
+        inst (testutil/create-dummy-instance conn job
+                                             :instance-status instance-status
+                                             :hostname host
+                                             :start-time start-time
+                                             :end-time end-time
+                                             :reason reason)]
+    [job inst]))
+
+(defn rand-str
+  "Returns a random string of length len"
+  [len]
+  (apply str (take len (repeatedly #(char (+ (rand 26) 65))))))
+
+(defn populate-dummy-data
+  "Populates 100 jobs, each with one completed instance, with some random fields"
+  [conn]
+  (run!
+    (fn [_]
+      (let [host (rand-str 16)
+            instance-status (rand-nth [:instance.status/failed :instance.status/success])
+            user (rand-nth ["alice" "bob" "claire" "doug" "emily" "frank" "gloria" "henry"])
+            start-time (.toDate (t/ago (t/minutes (inc (rand-int 120)))))
+            end-time (.toDate (t/now))
+            reason (:reason/name (rand-nth (cook.mesos.reason/all-known-reasons (db conn))))]
+        (create-job conn host instance-status start-time end-time reason :user user :job-state :job.state/completed)))
+    (range 100)))
