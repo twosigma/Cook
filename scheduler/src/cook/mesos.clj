@@ -260,7 +260,9 @@
                                                                               :view-incubating-offers view-incubating-offers})
                                     (when (seq optimizer-config)
                                       (cook.mesos.optimizer/start-optimizer-cycles! (fn get-queue []
-                                                                                      ;; TODO Use filters scheduler uses
+                                                                                      ;; TODO Use filter of queue that scheduler uses to filter to considerable.
+                                                                                      ;;      Specifically, think about filtering to jobs that are waiting and 
+                                                                                      ;;      think about how to handle quota 
                                                                                       @mesos-pending-jobs-atom)
                                                                                     (fn get-running []
                                                                                       (cook.mesos.util/get-running-task-ents (d/db mesos-datomic-conn)))

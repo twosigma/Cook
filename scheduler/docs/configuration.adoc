@@ -271,7 +271,7 @@ Optionally, you can include a "rebalancer" stanza.  If you do, on startup, Cook 
 
 The link:optimizer.md[optimizer] is a component that can make more global decisions about the cluster, job placement and autoscaling.
 By default, Cook will use a no-op optimizer. To plug in an implementation, add the optional "optimizer" stanza. The two pluggable pieces,
-host-feed, and optimizer, each have the same structure to configure. A :create-fn:: key which is a namespaced symbol
+host-feed and optimizer, each have the same structure to configure. A :create-fn:: key which is a namespaced symbol
 on the class path and a :config:: key which is an arbitrary map. See the example below.
 
  :host-feed::
@@ -292,7 +292,7 @@ on the class path and a :config:: key which is an arbitrary map. See the example
  :optimizer::
     The implementation for the optimizer to use. The optimizer accepts the output of the host feed, the queue, the running tasks and the available offers and outputs a schedule of suggestions.
 
-A schedule is a map from T milliseconds in the future to a map of optimizer recommendations. Each recommendation map can contain multiple keys, currently, only one, :suggested-matches. The value of :suggested-matches is a map from a host type map described above to a list of job uuids that the optimizers recommends matching onto that host type at this point in the future.
+A schedule is a map from T milliseconds in the future to a map of optimizer recommendations. Each recommendation map can contain multiple keys, currently, only one, :suggested-matches. The value of :suggested-matches is a map from a host type map described above to a list of job uuids that the optimizer recommends matching onto that host type at this point in the future.
 
  :optimizer-interval-seconds::
     The interval to run the optimizer, in seconds. The default is 30.
