@@ -131,3 +131,52 @@
                          (getCurrAvailableResources [_]  (sched/->VirtualMachineLeaseAdapter non-gpu-offer 0)))
                        nil))
         "non GPU task on non GPU host should succeed"))))
+
+
+(deftest test-rebalancer-reservation-constraint
+  (let [framework-id #mesomatic.types.FrameworkID{:value "my-framework-id"}
+        uri "datomic:mem://test-rebalancer-reservation-constraint"
+        conn (restore-fresh-database! uri)
+        job-id (create-dummy-job conn :user "pschorf" :ncpus 5.0 :memory 5.0)
+        db (d/db conn)
+        job (d/entity db job-id)
+        reserved-hosts #{"hostB"}
+        hostA-offer #mesomatic.types.Offer{:id #mesomatic.types.OfferID {:value "my-offer-id"}
+                                           :framework-id framework-id
+                                           :slave-id #mesomatic.types.SlaveID{:value "my-slave-id"},
+                                           :hostname "hostA",
+                                           :resources [#mesomatic.types.Resource{:name "cpus", :type :value-scalar, :scalar 40.0, :ranges [], :set #{}, :role "*"}
+                                                       #mesomatic.types.Resource{:name "mem", :type :value-scalar, :scalar 5000.0, :ranges [], :set #{}, :role "*"}
+                                                       #mesomatic.types.Resource{:name "disk", :type :value-scalar, :scalar 6000.0, :ranges [], :set #{}, :role "*"}
+                                                       #mesomatic.types.Resource{:name "ports", :type :value-ranges, :scalar 0.0, :ranges [#mesomatic.types.ValueRange{:begin 31000, :end 32000}], :set #{}, :role "*"}],
+                                           :attributes [],
+                                           :executor-ids []}
+        hostB-offer #mesomatic.types.Offer{:id #mesomatic.types.OfferID {:value "my-offer-id"}
+                                           :framework-id framework-id
+                                           :slave-id #mesomatic.types.SlaveID{:value "my-slave-id"},
+                                           :hostname "hostB",
+                                           :resources [#mesomatic.types.Resource{:name "cpus", :type :value-scalar, :scalar 40.0, :ranges [], :set #{}, :role "*"}
+                                                       #mesomatic.types.Resource{:name "mem", :type :value-scalar, :scalar 5000.0, :ranges [], :set #{}, :role "*"}
+                                                       #mesomatic.types.Resource{:name "disk", :type :value-scalar, :scalar 6000.0, :ranges [], :set #{}, :role "*"}
+                                                       #mesomatic.types.Resource{:name "ports", :type :value-ranges, :scalar 0.0, :ranges [#mesomatic.types.ValueRange{:begin 31000, :end 32000}], :set #{}, :role "*"}],
+                                           :attributes [],
+                                           :executor-ids []}
+        constraint (constraints/build-rebalancer-reservation-constraint reserved-hosts)]
+    (is (not (.isSuccessful
+              (.evaluate constraint
+                         (sched/make-task-request db job-id)
+                         (reify com.netflix.fenzo.VirtualMachineCurrentState
+                           (getHostname [_] "hostB")
+                           (getRunningTasks [_] [])
+                           (getTasksCurrentlyAssigned [_] [])
+                           (getCurrAvailableResources [_]  (sched/->VirtualMachineLeaseAdapter hostB-offer 0)))
+                         nil))))
+    (is (.isSuccessful
+         (.evaluate constraint
+                    (sched/make-task-request db job-id)
+                    (reify com.netflix.fenzo.VirtualMachineCurrentState
+                      (getHostname [_] "hostA")
+                      (getRunningTasks [_] [])
+                      (getTasksCurrentlyAssigned [_] [])
+                      (getCurrAvailableResources [_]  (sched/->VirtualMachineLeaseAdapter hostA-offer 0)))
+                    nil)))))

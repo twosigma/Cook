@@ -205,6 +205,7 @@
         datomic-report-chan (async/chan (async/sliding-buffer 4096))
         mesos-heartbeat-chan (async/chan (async/buffer 4096))
         current-driver (atom nil)
+        rebalancer-reservation-atom (atom {})
         leader-selector (LeaderSelector.
                           curator-framework
                           zk-prefix
@@ -219,26 +220,27 @@
                                 (try
                                   (let [{:keys [scheduler view-incubating-offers]}
                                         (sched/create-datomic-scheduler
-                                          mesos-datomic-conn
-                                          current-driver
-                                          mesos-pending-jobs-atom
-                                          offer-cache
-                                          mesos-heartbeat-chan
-                                          offer-incubate-time-ms
-                                          mea-culpa-failure-limit
-                                          fenzo-max-jobs-considered
-                                          fenzo-scaleback
-                                          fenzo-floor-iterations-before-warn
-                                          fenzo-floor-iterations-before-reset
-                                          fenzo-fitness-calculator
-                                          task-constraints
-                                          gpu-enabled?
-                                          good-enough-fitness
-                                          framework-id
-                                          sandbox-syncer-state
-                                          executor-config
-                                          progress-config
-                                          trigger-chans)
+                                         {:conn mesos-datomic-conn
+                                          :driver-atom current-driver
+                                          :executor-config executor-config
+                                          :fenzo-fitness-calculator fenzo-fitness-calculator
+                                          :fenzo-floor-iterations-before-reset fenzo-floor-iterations-before-reset
+                                          :fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-warn
+                                          :fenzo-max-jobs-considered fenzo-max-jobs-considered
+                                          :fenzo-scaleback fenzo-scaleback
+                                          :framework-id framework-id
+                                          :good-enough-fitness good-enough-fitness
+                                          :gpu-enabled? gpu-enabled?
+                                          :heartbeat-ch mesos-heartbeat-chan
+                                          :mea-culpa-failure-limit mea-culpa-failure-limit
+                                          :offer-cache offer-cache
+                                          :offer-incubate-time-ms offer-incubate-time-ms
+                                          :pending-jobs-atom mesos-pending-jobs-atom
+                                          :progress-config progress-config
+                                          :rebalancer-reservation-atom rebalancer-reservation-atom
+                                          :sandbox-syncer-state sandbox-syncer-state
+                                          :task-constraints task-constraints
+                                          :trigger-chans trigger-chans})
                                         driver (make-mesos-driver-fn scheduler framework-id)]
                                     (mesomatic.scheduler/start! driver)
                                     (reset! current-driver driver)
@@ -256,6 +258,7 @@
                                                                               :get-mesos-utilization get-mesos-utilization
                                                                               :offer-cache offer-cache
                                                                               :pending-jobs-atom mesos-pending-jobs-atom
+                                                                              :rebalancer-reservation-atom rebalancer-reservation-atom
                                                                               :trigger-chan rebalancer-trigger-chan
                                                                               :view-incubating-offers view-incubating-offers})
                                     (when (seq optimizer-config)
