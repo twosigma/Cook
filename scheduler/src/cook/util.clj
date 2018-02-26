@@ -20,7 +20,8 @@
             [clojure.java.io :as io :refer [reader file]]
             [clojure.tools.logging :as log]
             [postal.core :as postal]
-            [postal.core :as postal])
+            [postal.core :as postal]
+            [schema.core :as s])
   (:use [clojure-miniprofiler :as miniprofiler]
         [clojure.java.shell :only [sh]]
         [clojure.pprint :only [pp pprint]]
@@ -307,7 +308,7 @@
   "When an exception isn't caught anywhere, this installs a global handler.
    It will log the exception at the given log-level (:error is recommended),
    and it will send an email to the address specified by the email-config.
-   
+
    email-config comes from the postal library. Usually, you'll specify
    a map like:
    {:to [\"admin@example.com\"]
@@ -333,3 +334,30 @@
       (throw (ex-info "Can only load vars that are ns-qualified!" {})))
     (require (symbol ns))
     (resolve var-sym)))
+
+(def ZeroInt
+  (s/both s/Int (s/pred zero? 'zero?)))
+
+(s/defschema PosNum
+  "Positive number (float or int)"
+  (s/both s/Num (s/pred pos? 'pos?)))
+
+(s/defschema NonNegNum
+  "Non-negative number (float or int)"
+  (s/both s/Num (s/pred (comp not neg?) 'non-negative?)))
+
+(def PosInt
+  (s/both s/Int (s/pred pos? 'pos?)))
+
+(def NonNegInt
+  (s/both s/Int (s/pred (comp not neg?) 'non-negative?)))
+
+(def PosDouble
+  (s/both double (s/pred pos? 'pos?)))
+
+(def UserName
+  (s/both s/Str (s/pred #(re-matches #"\A[a-z][a-z0-9_-]{0,62}[a-z0-9]\z" %) 'lowercase-alphanum?)))
+
+(def NonEmptyString
+  (s/both s/Str (s/pred #(not (zero? (count %))) 'not-empty-string)))
+

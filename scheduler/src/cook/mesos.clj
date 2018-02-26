@@ -25,8 +25,10 @@
             [cook.datomic :refer (transact-with-retries)]
             [cook.mesos.heartbeat]
             [cook.mesos.monitor]
+            [cook.mesos.optimizer]
             [cook.mesos.rebalancer]
             [cook.mesos.scheduler :as sched]
+            [cook.mesos.util]
             [cook.util]
             [datomic.api :as d :refer (q)]
             [mesomatic.scheduler]
@@ -145,7 +147,7 @@
   "Creates a map of of the trigger channels expected by `start-mesos-scheduler`
    Each channel receives chime triggers at particular intervals and it is
    possible to send additional events as desired"
-  [rebalancer-config progress-config
+  [rebalancer-config progress-config optimizer-config
    {:keys [timeout-interval-minutes]
     :or {timeout-interval-minutes 1}
     :as task-constraints}]
@@ -157,6 +159,7 @@
     {:cancelled-task-trigger-chan (prepare-trigger-chan (time/seconds 3))
      :lingering-task-trigger-chan (prepare-trigger-chan (time/minutes timeout-interval-minutes))
      :match-trigger-chan (prepare-trigger-chan (time/seconds 1))
+     :optimizer-trigger-chan (prepare-trigger-chan (time/seconds (:optimizer-interval-seconds optimizer-config 10)))
      :progress-updater-trigger-chan (prepare-trigger-chan (time/millis (:publish-interval-ms progress-config)))
      :rank-trigger-chan (prepare-trigger-chan (time/seconds 5))
      :rebalancer-trigger-chan (prepare-trigger-chan (time/seconds (:interval-seconds rebalancer-config)))
@@ -192,12 +195,12 @@
    user-metrics-interval-seconds -- long, time in seconds between collecting and counting per-user job metrics"
   [{:keys [curator-framework executor-config fenzo-config framework-id get-mesos-utilization gpu-enabled? make-mesos-driver-fn
            mea-culpa-failure-limit mesos-datomic-conn mesos-datomic-mult mesos-leadership-atom mesos-pending-jobs-atom
-           offer-cache offer-incubate-time-ms progress-config rebalancer-config
+           offer-cache offer-incubate-time-ms optimizer-config progress-config rebalancer-config
            sandbox-syncer-state server-config task-constraints trigger-chans user-metrics-interval-seconds zk-prefix]}]
   (let [{:keys [fenzo-fitness-calculator fenzo-floor-iterations-before-reset fenzo-floor-iterations-before-warn
                 fenzo-max-jobs-considered fenzo-scaleback good-enough-fitness]} fenzo-config
-        {:keys [cancelled-task-trigger-chan lingering-task-trigger-chan rebalancer-trigger-chan
-                straggler-trigger-chan]} trigger-chans
+        {:keys [cancelled-task-trigger-chan lingering-task-trigger-chan optimizer-trigger-chan
+                rebalancer-trigger-chan straggler-trigger-chan]} trigger-chans
         {:keys [hostname server-port]} server-config
         datomic-report-chan (async/chan (async/sliding-buffer 4096))
         mesos-heartbeat-chan (async/chan (async/buffer 4096))
@@ -255,6 +258,17 @@
                                                                               :pending-jobs-atom mesos-pending-jobs-atom
                                                                               :trigger-chan rebalancer-trigger-chan
                                                                               :view-incubating-offers view-incubating-offers})
+                                    (when (seq optimizer-config)
+                                      (cook.mesos.optimizer/start-optimizer-cycles! (fn get-queue []
+                                                                                      ;; TODO Use filter of queue that scheduler uses to filter to considerable.
+                                                                                      ;;      Specifically, think about filtering to jobs that are waiting and 
+                                                                                      ;;      think about how to handle quota 
+                                                                                      @mesos-pending-jobs-atom)
+                                                                                    (fn get-running []
+                                                                                      (cook.mesos.util/get-running-task-ents (d/db mesos-datomic-conn)))
+                                                                                    view-incubating-offers
+                                                                                    optimizer-config
+                                                                                    optimizer-trigger-chan))
                                     (counters/inc! mesos-leader)
                                     (async/tap mesos-datomic-mult datomic-report-chan)
                                     (cook.mesos.scheduler/monitor-tx-report-queue datomic-report-chan mesos-datomic-conn current-driver)

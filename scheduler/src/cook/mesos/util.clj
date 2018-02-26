@@ -92,7 +92,7 @@
 
 (defn entity->map
   "Takes a datomic entity and converts it along with any nested entities
-  into clojure maps"
+   into clojure maps"
   ([entity db]
    (entity->map (d/entity db (:db/id entity))))
   ([entity]
@@ -127,7 +127,6 @@
        (catch Exception e
          ;; not logging the stacktrace as it adds noise and can cause the log files to blow up in size
          (log/error "Error while converting job entity to a map" {:job job :message (.getMessage e)}))))))
-
 
 (defn remove-datomic-namespacing
   "Takes a map from datomic (pull) and removes the namespace

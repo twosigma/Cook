@@ -78,7 +78,7 @@ If need it to bind to another port, you can specify that with the `:local-port` 
   The value of this key is a set of usernames who should be considered administrators when using the `configfile-admins-auth` authorization-fn.
 
 `:rate-limit`::
-  Configure rate limits for the scheduler. `rate-limit` is a map with two possible keys, `user-limit-per-m`. `user-limit-per-m` is the max requests a single user can send in a minute. The default is 600 requests. 
+  Configure rate limits for the scheduler. `rate-limit` is a map with two possible keys, `user-limit-per-m`. `user-limit-per-m` is the max requests a single user can send in a minute. The default is 600 requests.
 
 `:agent-query-cache`::
   Configure the cache used to store sandbox locations of tasks on different mesos agents.
@@ -179,14 +179,14 @@ We'll look at the three authentication mechanisms supported:
 
 `:http-basic`::
   Most organizations will want to use HTTP Basic authentication.
-  Cook allows you to configure how the user name and password are configured. 
+  Cook allows you to configure how the user name and password are configured.
   Currently, Cook supports specifying the logins in the config file or using no validation
   This also makes it super easy to get started:
   to use HTTP Basic, simply use `{:http-basic true}` as your `:authorization`.
-  This will use no validation. 
+  This will use no validation.
   To use config-file validation, set `:authorization` to:
   `{:http-basic {:validation :config-file :valid-logins #{["user" "password"] ["user2" "password2"]}}}`
-  
+
 
 `:kerberos`::
   If you have Kerberos at your organization, then you can use it to authenticate users with Cook.
@@ -229,7 +229,7 @@ Example: +
   If Cook has been allowing Fenzo to see only 1 job for this number of iterations, it measn that the cluster is essentially down.  In this case, Cook will log an error message and then reset the number of jobs Fenzo can see to the value of "fenzo-max-jobs-considered" (see above).
 
 :fenzo-fitness-calculator::
-  By default, Cook will have Fenzo attempt to bin-pack using a combination of memory and CPU when choosing which hosts will field which tasks.  By choosing a different option in fenzo-fitness-calculator, you can specify that Fenzo should use a different implemention of https://github.com/Netflix/Fenzo/blob/master/fenzo-core/src/main/java/com/netflix/fenzo/VMTaskFitnessCalculator.java[VMTaskFitnessCalculator].  This value can either refer to a static member of a Java class on the classpath (e.g. "com.netflix.fenzo.plugins.BinPackingFitnessCalculators/cpuMemBinPacker", the default), or a namespaced clojure symbol (e.g. "cook.mesos.scheduler/dummy-fitness-calculator") 
+  By default, Cook will have Fenzo attempt to bin-pack using a combination of memory and CPU when choosing which hosts will field which tasks.  By choosing a different option in fenzo-fitness-calculator, you can specify that Fenzo should use a different implemention of https://github.com/Netflix/Fenzo/blob/master/fenzo-core/src/main/java/com/netflix/fenzo/VMTaskFitnessCalculator.java[VMTaskFitnessCalculator].  This value can either refer to a static member of a Java class on the classpath (e.g. "com.netflix.fenzo.plugins.BinPackingFitnessCalculators/cpuMemBinPacker", the default), or a namespaced clojure symbol (e.g. "cook.mesos.scheduler/dummy-fitness-calculator")
 
 `:task-constraints`::
   This option is a map that allows you to configure limits for tasks, to ensure that impossible-to-schedule tasks and tasks that run forever won't bog down your cluster.
@@ -266,6 +266,51 @@ Optionally, you can include a "rebalancer" stanza.  If you do, on startup, Cook 
   To obtain useful DRU metrics in this situation, you can either adjust your share
   settings (recommended), or increase the dru-scale setting to e.g. 10^300.
 
+[[optimizer]]
+==== Optimizer configuration
+
+The link:optimizer.md[optimizer] is a component that can make more global decisions about the cluster, job placement and autoscaling.
+By default, Cook will use a no-op optimizer. To plug in an implementation, add the optional "optimizer" stanza. The two pluggable pieces,
+host-feed and optimizer, each have the same structure to configure. A :create-fn:: key which is a namespaced symbol
+on the class path and a :config:: key which is an arbitrary map. See the example below.
+
+ :host-feed::
+    The implementation for the host feed to use. The host feed returns a list of maps where each map describes a host type that can be purchased. Each map should include the following keys:
+
+ * :count::
+    The number of hosts available of that type. Should be a non-negative integer
+ * :instance-type::
+    The name of the host type. Should be a string
+ * :cpus::
+    The number of cpus available for the particular host type. Should be a postive number
+ * :mem::
+    The amount of memory available for the host type, in MB. Should be a positive number
+ * :gpu::
+    (Optional) The number of GPUs available for the host type. Should be a positive number
+
+
+ :optimizer::
+    The implementation for the optimizer to use. The optimizer accepts the output of the host feed, the queue, the running tasks and the available offers and outputs a schedule of suggestions.
+
+A schedule is a map from T milliseconds in the future to a map of optimizer recommendations. Each recommendation map can contain multiple keys, currently, only one, :suggested-matches. The value of :suggested-matches is a map from a host type map described above to a list of job uuids that the optimizer recommends matching onto that host type at this point in the future.
+
+ :optimizer-interval-seconds::
+    The interval to run the optimizer, in seconds. The default is 30.
+
+Example optimizer config:
++
+[source,edn]
+----
+{
+ ; ... snip ...
+ :optimizer {:host-feed {:create-fn cook.mesos.optimizer/create-dummy-host-feed
+                         :config {}}
+             :optimizer {:create-fn cook.mesos.optimizer/create-dummy-optimizer
+                         :config {}}
+             :optimizer-interval-seconds 30}
+ ; ... snip ...
+}
+----
 
 [[task_constraints]]
 ==== Task Constraints
@@ -286,7 +331,7 @@ Optionally, you can include a "rebalancer" stanza.  If you do, on startup, Cook 
 `:cpus`::
   This is just like `:memory-gb`, but for CPUs.
   You should make sure this is small enough that users can't accidentally submit tasks that are too big for your slaves.
-  
+
 `:retry-limit`::
   This limits the number of retries a job is allowed to request. Something in the low tens is often more than sufficient.
 

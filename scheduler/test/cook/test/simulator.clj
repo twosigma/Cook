@@ -95,7 +95,7 @@
          zk-prefix# (or (:zk-prefix ~scheduler-config)
                         "/cook")
          offer-incubate-time-ms# (or (:offer-incubate-time-ms ~scheduler-config)
-                                    1000)
+                                     1000)
          mea-culpa-failure-limit# (or (:mea-culpa-failure-limit ~scheduler-config)
                                       5)
          task-constraints# (merge default-task-constraints (:task-constraints ~scheduler-config))
@@ -120,8 +120,10 @@
          host-settings# {:server-port 12321 :hostname "localhost"}
          mesos-leadership-atom# (atom false)
          fenzo-config# (merge default-fenzo-config (:fenzo-config ~scheduler-config))
+         optimizer-config# (or (:optimizer-config ~scheduler-config)
+                               {})
          trigger-chans# (or (:trigger-chans ~scheduler-config)
-                            (c/make-trigger-chans rebalancer-config# progress-config# task-constraints#))]
+                            (c/make-trigger-chans rebalancer-config# progress-config# optimizer-config# task-constraints#))]
      (try
        (c/start-mesos-scheduler
          {:curator-framework curator-framework#
@@ -138,6 +140,7 @@
           :mesos-pending-jobs-atom pending-jobs-atom#
           :offer-cache offer-cache#
           :offer-incubate-time-ms offer-incubate-time-ms#
+          :optimizer-config optimizer-config#
           :progress-config progress-config#
           :rebalancer-config rebalancer-config#
           :sandbox-syncer-state sandbox-syncer-state#
@@ -201,9 +204,9 @@
   "Returns a seq of task entities from the db"
   [mesos-db]
   (->> (d/q '[:find [?i ...]
-         :where
-         [?i :instance/task-id _]]
-       mesos-db)
+              :where
+              [?i :instance/task-id _]]
+            mesos-db)
        (map (partial d/entity mesos-db))))
 
 (defn submit-job
@@ -268,6 +271,8 @@
   [coll]
   (= coll (sort coll)))
 
+()
+
 ;; TODO need way of setting share
 (defn simulate
   "Starts cook scheduler connected to a mock of mesos and submits jobs in the
@@ -281,9 +286,10 @@
         mesos-datomic-conn (restore-fresh-database! (str "datomic:mem://mock-mesos"))
         offer-trigger-chan (async/chan)
         complete-trigger-chan (async/chan)
-		ranker-trigger-chan (async/chan)
+        ranker-trigger-chan (async/chan)
         matcher-trigger-chan (async/chan)
         rebalancer-trigger-chan (async/chan)
+        optimizer-trigger-chan (async/chan)
         state-atom (atom {})
         make-mesos-driver-fn (fn [scheduler _]
                                (mm/mesos-mock mesos-hosts offer-trigger-chan scheduler
@@ -294,10 +300,16 @@
         initial-time (System/currentTimeMillis)
         config (merge {:shares [{:user "default" :mem 4000.0 :cpus 4.0 :gpus 1.0}]}
                       config)
+        opt-config {:host-feed {:create-fn 'cook.mesos.optimizer/create-dummy-host-feed
+                                :config {}}
+                    :optimizer {:create-fn 'cook.mesos.optimizer/create-dummy-optimizer
+                                :config {}}}
         scheduler-config (merge (:scheduler-config config)
+                                {:optimizer-config opt-config}
                                 {:trigger-chans {:rank-trigger-chan ranker-trigger-chan
                                                  :match-trigger-chan matcher-trigger-chan
                                                  :rebalancer-trigger-chan rebalancer-trigger-chan
+                                                 :optimizer-trigger-chan optimizer-trigger-chan
                                                  ;; Don't care about these yet
                                                  :straggler-trigger-chan (async/chan)
                                                  :lingering-task-trigger-chan (async/chan)
@@ -324,6 +336,7 @@
                 flush-complete-chan (async/chan)
                 match-complete-chan (async/chan)
                 rank-complete-chan (async/chan)
+                optimizer-complete-chan (async/chan)
                 rebalancer-complete-chan (async/chan)]
             (when-not (sorted-order? (map :submit-time-ms submission-batch))
               (throw (ex-info "Trace jobs are expected to be sorted by submit-time-ms"
@@ -390,6 +403,9 @@
             (async/<!! rank-complete-chan)
             (log/info "Rank complete")
 
+            (async/>!! optimizer-trigger-chan optimizer-complete-chan)
+            (async/<!! optimizer-complete-chan)
+
             ;; Match
             (log/info "Starting match")
             (org.joda.time.DateTimeUtils/setCurrentMillisFixed (inc (.getTime (tc/to-date (t/now)))))
@@ -403,6 +419,7 @@
                         50
                         60000)
             (log/info "Match complete")
+
 
             (when (seq trace)
               (recur (drop (count submission-batch) trace)
@@ -592,12 +609,15 @@
                                          :memory 10000
                                          :ncpus 3)))
         jobs (sort-by :submit-time-ms jobs)
-        hosts (for [i (range 120)]
-                (trace-host i 20000.0 20.0))
+        num-hosts 120
+        host-mem 20000.0
+        host-cpus 20.0
+        hosts (for [i (range num-hosts)]
+                (trace-host i host-mem host-cpus))
         cycle-step-ms 30000
-        config {:shares [{:user "default" :mem 2000.0 :cpus 2.0 :gpus 1.0}]
-               :scheduler-config {:rebalancer-config {:max-preemption 1.0}
-                                  :fenzo-config {:fenzo-max-jobs-considered 200}}}
+        config {:shares [{:cpus (/ host-cpus 10) :gpus 1.0 :mem (/ host-mem 10) :user "default"}]
+                :scheduler-config {:rebalancer-config {:max-preemption 1.0}
+                                   :fenzo-config {:fenzo-max-jobs-considered 200}}}
         out-trace-a (simulate hosts jobs cycle-step-ms config)
         out-trace-b (simulate hosts jobs cycle-step-ms config)]
     (is (> (count out-trace-a) 0))
