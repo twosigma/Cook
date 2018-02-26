@@ -183,7 +183,7 @@
         update-histo! (fn update-histo! [s v]
                         (histograms/update!
                           (histograms/histogram
-                            ["cook-mesos" "scheduler" (str "hist-task-fail-" s "-reason-" reason)])
+                            ["cook-mesos" "scheduler" "hist-task-fail" reason s])
                           v))]
     (update-histo! "times" instance-runtime)
     (update-histo! "cpu-times" (* instance-runtime cpus))
