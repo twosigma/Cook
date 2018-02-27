@@ -14,7 +14,7 @@
             [clojure.tools.logging :as log]
             [clojure.walk :refer (keywordize-keys)]
             [com.rpl.specter :refer (transform ALL MAP-VALS MAP-KEYS select FIRST)]
-            [cook.components :refer (init-logger)]
+            [cook.config :refer (init-logger)]
             [cook.mesos :as c]
             [cook.mesos.mesos-mock :as mm]
             [cook.mesos.share :as share]

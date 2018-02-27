@@ -1702,7 +1702,7 @@
   (testing "java class on classpath"
     (is (instance? VMTaskFitnessCalculator
                    (sched/config-string->fitness-calculator
-                     cook.components/default-fitness-calculator))))
+                     cook.config/default-fitness-calculator))))
 
   (testing "bad input"
     (is (thrown? IllegalArgumentException (sched/config-string->fitness-calculator "not-a-valid-anything"))))
