@@ -20,12 +20,12 @@
             [clojure.stacktrace :as stacktrace]
             [clojure.string :as str]
             [clojure.tools.logging :as log]
+            [congestion.limits :refer (RateLimit)]
             [cook.impersonation :refer (impersonation-authorized-wrapper)]
             [cook.util :as util]
             [plumbing.core :refer (fnk)]
             [plumbing.graph :as graph])
   (:import (com.google.common.io Files)
-           (congestion.limits RateLimit)
            (java.net InetAddress)
            (org.apache.log4j DailyRollingFileAppender Logger PatternLayout)))
 

@@ -18,7 +18,6 @@
             [clojure.tools.logging :as log]
             [compojure.core :refer (GET POST routes context)]
             [compojure.route :as route]
-            [congestion.limits :refer (RateLimit)]
             [congestion.middleware :refer (wrap-rate-limit ip-rate-limit)]
             [congestion.storage :as storage]
             [cook.config :as config]
