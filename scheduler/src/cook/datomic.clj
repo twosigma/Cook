@@ -17,8 +17,8 @@
   (:require [clojure.core.async :as async]
             [clojure.pprint :refer (pprint)]
             [clojure.tools.logging :as log]
-            [cook.util :refer (deftraced)]
-            [datomic.api :as d :refer (q)]))
+            [datomic.api :as d :refer (q)])
+  (:import (java.util.concurrent BlockingQueue TimeUnit)))
 
 (defn create-tx-report-mult
   "Takes a datomic connection, and returns a core.async mult that can
@@ -33,8 +33,8 @@
                (try
                  (while @running
                    (try
-                     (when-let [e (.poll ^java.util.concurrent.BlockingQueue report-q
-                                         1 java.util.concurrent.TimeUnit/SECONDS)]
+                     (when-let [e (.poll ^BlockingQueue report-q
+                                         1 TimeUnit/SECONDS)]
                        (case (async/alt!!
                                [[inner-chan e]] :wrote
                                ;; The value for :default is eagerly evaluated, unlike for other clauses
@@ -42,7 +42,7 @@
                                :priority true)
                          :dropped (log/error "dropped item from tx-report-mult--maybe there's a slow consumer?")
                          nil))
-                     (catch InterruptedException e nil)))
+                     (catch InterruptedException _ nil)))
                  (catch Exception e
                    (log/error e "tx report queue tap got borked. That's bad."))))]
     [mult
@@ -80,15 +80,3 @@
          (async/<! (async/timeout sleep))
          (recur sched))))))
 
-(deftraced pq
-  "Executes a datomic query under miniprofiler"
-  {:custom-timing ["datomic" "query"
-                   (fn [query & _] (with-out-str (pprint query)))]}
-  ([query] (q query))
-  ([query a] (q query a))
-  ([query a b] (q query a b))
-  ([query a b c] (q query a b c))
-  ([query a b c d] (q query a b c d))
-  ([query a b c d e] (q query a b c d e))
-  ([query a b c d e f] (q query a b c d e f))
-  ([query a b c d e f & rest] (apply q query a b c d e f rest)))

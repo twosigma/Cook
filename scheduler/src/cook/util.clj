@@ -15,46 +15,15 @@
 ;;
 (ns cook.util
   (:refer-clojure :exclude [cast merge empty split replace])
-  (:require [clj-http.client :as client]
-            [clojure.core.memoize :as memo]
-            [clojure.java.io :as io :refer [reader file]]
+  (:require [clojure.java.io :as io :refer [reader file]]
             [clojure.tools.logging :as log]
             [postal.core :as postal]
-            [postal.core :as postal]
             [schema.core :as s])
-  (:use [clojure-miniprofiler :as miniprofiler]
-        [clojure.java.shell :only [sh]]
+  (:use [clojure.java.shell :only [sh]]
         [clojure.pprint :only [pp pprint]]
         [clojure.string :only [join split replace]]
-        [clojure.tools.macro :as macro]
-        [clojure.tools.namespace.dependency]))
-
-(def deployment-users #{"tsram"})
-
-(defmacro assert-not-null
-  "Simple macro to assert that the argument is not null, and if it is,
-  it throws an exception that includes the argument in the message."
-  [form]
-  `(when (nil? ~form)
-     (throw (ex-info (str '~form " cannot be null") {}))))
-
-(defn add-duration-to-findate
-  "Takes a duration from `parse-duration` and a FinDate
-   and adds the duration to the FinDate."
-  [findate duration]
-  (reduce (fn [findate [field amount]]
-            (.addDays findate field amount))
-          findate
-          duration))
-
-(defn subtract-duration-from-findate
-  "Takes a duration from `parse-duration` and a FinDate
-   and adds the duration to the FinDate."
-  [findate duration]
-  (reduce (fn [findate [field amount]]
-            (.addDays findate field (- amount)))
-          findate
-          duration))
+        [clojure.tools.namespace.dependency])
+  (:import (java.util.concurrent.atomic AtomicLong)))
 
 (defmacro try-timeout
   "Evaluates an expression in a separate thread and kills it if it takes too long"
@@ -76,7 +45,7 @@
            (do (.stop action-thread#)
                ~failure))))
 
-(defonce thread-counter (java.util.concurrent.atomic.AtomicLong.))
+(defonce thread-counter (AtomicLong.))
 
 (defmacro thread
   "Runs the body in a new thread"
@@ -84,7 +53,7 @@
   `(.start (Thread. (fn* [] ~@body)
                     (str "cook-util-"
                          (.getAndIncrement
-                           ^java.util.concurrent.atomic.AtomicLong thread-counter)))))
+                           ^AtomicLong thread-counter)))))
 
 (defn quantile
   [coll]
@@ -103,153 +72,6 @@
   (let [s-coll (sort coll)]
     [(first s-coll)
      (last s-coll)]))
-
-(defn get-app-locator-impl
-  [marathon timeout appid]
-  (try
-    (let [tasks-url (clojure.string/join "/" [marathon "v2" "apps" appid "tasks"])
-          response (client/get tasks-url {:as :json
-                                          :spnego-auth true
-                                          :socket-timeout timeout
-                                          :conn-timeout timeout})
-          tasks-data (:body response)
-          task (rand-nth (:tasks tasks-data))]
-      [(:host task) (:ports task)])
-    (catch clojure.lang.ExceptionInfo e
-      (if (= 404 (get-in (.getData e) [:object :status]))
-        (throw (ex-info "App not found." {:appid appid :noemail true}))
-        (throw e)))))
-
-(defn get-app-locator
-  "Given a marathon uri, returns an app locator function that:
-
-   Queries the marathon tasks endpoint for the given appid, chooses a random task,
-   returns the host the task is running on and the port(s) the task is using.
-
-   The GET request is memoized with a ttl of 10s to reduce the burden on Marathon when
-   we have many submissions.
-
-   Optionally takes a timeout to use when contacting the given Marathon, default
-   timeout is 1 minute
-
-   Returns [host [& ports]]"
-  [marathon & {:keys [timeout] :or {timeout (* 1000 60)}}]
-  (memo/ttl
-    (partial get-app-locator-impl marathon timeout)
-    :ttl/threshold 10000))
-
-(defmacro deftraced
-  "Creates a miniprofiler-traced version of a function.  Use like defn
-  to wrap your function in clojure-miniprofiler/trace with the
-  function's namespace and name as the trace name.
-
-  Optionally, you can add the metadata key :untraced to provide a name
-  for the untraced version of the function, if you need to use that in
-  some contexts.  By default, the untraced version is not bound to
-  anything public.
-
-  Optionally, you can provide in the metadata
-  map :custom-timing [call-type execute-type command-string-fn].  The
-  call-type and execute-type should be strings, command-string-fn will
-  be called with the created function's arguments and should return a
-  string.  These three values will be provided to
-  clojure-miniprofiler/custom-timing instead of using
-  clojure-miniprofiler/trace (which is the default behavior).
-
-  Example:
-
-      (deftraced ^{:untraced foo-bare}
-        foo
-        ([x] (+ x 2))
-        ([x y] (* x y)))
-
-  is roughly equivalent to:
-
-      (defn foo-bare
-        ([x] (+ x 2))
-        ([x y] (* x y)))
-      (defn foo [& args]
-        (clojure-miniprofiler/trace
-         \"my-ns/foo\"
-         (apply foo-bare args)))
-
-  Example:
-
-      (deftraced ^{:custom-timing [\"datomic\" \"query\" #(str %2)]}
-        run-db-query
-        [db query]
-        (q query db))
-
-  is roughly equivalent to:
-
-      (defn run-db-query
-        [db query]
-        (clojure-miniprofiler/custom-timing
-         \"datomic\" \"query\" (str query)
-         (q query db)))
-  "
-  [symb & args]
-  (let [[symb body] (macro/name-with-attributes symb args)
-        single-arity? (vector? (first body))
-        ;; Handle possibly single-arity case, this is a degenerate
-        ;; case of multiple-arity.
-        arity-forms (if single-arity? (list body) body)
-        max-fixed-arity (->> arity-forms
-                             (map first)
-                             (filter #(not-any? (partial = '&) %))
-                             (map count)
-                             (reduce max 0))
-        [call-type execute-type command-string-fn] (:custom-timing (meta symb))
-        untraced-gensym (gensym "deftraced-untraced-fn")]
-    `(let [~untraced-gensym (fn ~@body)]
-       ;; def the untraced symbol name, with most of the metadata we want.
-       ~(when-let [untraced-symbol (:untraced (meta symb))]
-          `(def ~(with-meta untraced-symbol
-                            (dissoc (meta symb) :untraced :custom-timing))
-             ~untraced-gensym))
-
-       ;; Create the actual symbol.  We map each arity to a body
-       ;; which will execute untraced-internal inside a
-       ;; miniprofiler block.
-       (defn ~symb
-         ~@(map
-             (fn [arity]
-               (let [arglist (first arity)
-                     trace-name (apply str
-                                       (concat
-                                         (list *ns* "/" symb)
-                                         (when-not single-arity?
-                                           (list "-arity_" (count arity)))))]
-                 (if (some (partial = '&) arglist)
-                   ;; Binding forms with & must be passed through
-                   ;; with apply, no way around it.
-                   (let [fixed-args (vec (repeatedly max-fixed-arity gensym))
-                         rest-sym (gensym "rest")
-                         variadic-arglist (conj fixed-args '& rest-sym)]
-                     `(~variadic-arglist
-                        ~(if call-type
-                           `(miniprofiler/custom-timing
-                              ~call-type ~execute-type (apply ~command-string-fn ~@fixed-args ~rest-sym)
-                              (apply ~untraced-gensym ~@fixed-args ~rest-sym))
-                           `(miniprofiler/trace
-                              ~trace-name
-                              (apply ~untraced-gensym ~@fixed-args ~rest-sym)))))
-                   (let [arglist' (repeatedly (count arglist) gensym)]
-                     ;; Because a form in arglist may destructure,
-                     ;; we shouldn't use it directly.  Instead,
-                     ;; gensym a name for it here, and let the
-                     ;; inner function do the destructuring.
-                     ;; arglist' is simply enough gensyms for this
-                     ;; arity.
-                     `(~(vec arglist')
-                        ~(if call-type
-                           `(miniprofiler/custom-timing
-                              ~call-type ~execute-type (~command-string-fn ~@arglist')
-                              (~untraced-gensym ~@arglist'))
-                           `(miniprofiler/trace
-                              ~trace-name
-                              (~untraced-gensym ~@arglist'))))))))
-             arity-forms)))))
 
 (defn exponential-seq
   "Return a lazy-seq sequence of
@@ -271,7 +93,7 @@
   [resource-name]
   (try
     (slurp (io/resource resource-name))
-    (catch Exception e
+    (catch Exception _
       nil)))
 
 (def commit (delay (or (resource "git-log")
@@ -326,14 +148,16 @@
                                      (assoc :body stacktrace)))))))))
 
 (defn lazy-load-var
-  "Takes a symbol name of a var, requires the ns if not yet required, and
-   returns the var."
+  "Takes a symbol name of a var, requires the ns if not yet required, and returns the var."
   [var-sym]
   (let [ns (namespace var-sym)]
     (when-not ns
       (throw (ex-info "Can only load vars that are ns-qualified!" {})))
     (require (symbol ns))
-    (resolve var-sym)))
+    (let [resolved (resolve var-sym)]
+      (if resolved
+        resolved
+        (throw (ex-info "Unable to resolve var, is it valid?" {:var-sym var-sym}))))))
 
 (def ZeroInt
   (s/both s/Int (s/pred zero? 'zero?)))

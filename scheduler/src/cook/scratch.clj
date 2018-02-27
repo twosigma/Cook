@@ -165,3 +165,25 @@
             reason (:reason/name (rand-nth (cook.mesos.reason/all-known-reasons (db conn))))]
         (create-job conn host instance-status start-time end-time reason :user user :job-state :job.state/completed)))
     (range 100)))
+
+(comment
+  ;; Here are some helpful fragments for changing debug levels, especially with datomic
+  (require 'datomic.api)
+  (log4j-conf/set-logger! :level :debug)
+
+  (do
+    (log4j-conf/set-loggers! (org.apache.log4j.Logger/getRootLogger)
+                             {:level :info :out (org.apache.log4j.FileAppender.
+                                                  (org.apache.log4j.PatternLayout.
+                                                    "%d{ISO8601} %-5p %c [%t] - %m%n")
+                                                  "debug.log")}
+                             ["datomic.peer"]
+                             {:level :warn})
+    (log/info "confirm we're online"))
+
+  (log4j-conf/set-loggers! (org.apache.log4j.Logger/getRootLogger)
+                           {:level :info :out (org.apache.log4j.ConsoleAppender.
+                                                (org.apache.log4j.PatternLayout.
+                                                  "%d{ISO8601} %-5p %c [%t] - %m%n"))}
+                           ["datomic.peer"]
+                           {:level :warn}))
