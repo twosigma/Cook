@@ -505,19 +505,22 @@
 
 
 (defn task->feature-vector
-      "Vector of comparable features of a task.
-       Last two elements are aribitary tie breakers.
-       Use :db/id because they guarantee uniqueness for different entities
-       (:db/id task) is not sufficient because synthetic task entities don't have :db/id
-       This assumes there are at most one synthetic task for a job, otherwise uniqueness invariant will break"
-      [task]
-      (let [task->feature-vector-miss
-            (fn [task]
-                [(- (:job/priority (:job/_instance task) default-job-priority))
-                 (:instance/start-time task (java.util.Date. Long/MAX_VALUE))
-                 (:db/id task)
-                 (:db/id (:job/_instance task))])]
-           (lookup-cache-datomic-entity! task->feature-vector-cache task->feature-vector-miss task)))
+  "Vector of comparable features of a task.
+   Last two elements are aribitary tie breakers.
+   Use :db/id because they guarantee uniqueness for different entities
+   (:db/id task) is not sufficient because synthetic task entities don't have :db/id
+   This assumes there are at most one synthetic task for a job, otherwise uniqueness invariant will break"
+  [task]
+  (let [task->feature-vector-miss
+        (fn [task]
+          [(- (:job/priority (:job/_instance task) default-job-priority))
+           (:instance/start-time task (java.util.Date. Long/MAX_VALUE))
+           (:db/id task)
+           (:db/id (:job/_instance task))])
+        extract-key
+        (fn [item]
+          (or (:db/id item) (:db/id (:job/_instance item))))]
+    (lookup-cache! task->feature-vector-cache extract-key task->feature-vector-miss task)))
 
 (defn same-user-task-comparator
   "Comparator to order same user's tasks"
