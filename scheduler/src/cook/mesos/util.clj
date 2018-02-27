@@ -527,16 +527,9 @@
   ([]
    (same-user-task-comparator []))
   ([tasks]
-    ;; Pre-compute the feature-vector for tasks we expect to see to improve performance
-    ;; This is done because accessing fields in datomic entities is much slower than
-    ;; a map access, even when accessing multiple times.
-    ;; Don't want to complicate the function by caching new values in the event we see them
-   (let [task-ent->feature-vector (pc/map-from-keys task->feature-vector tasks)]
      (fn [task1 task2]
-       (compare (or (task-ent->feature-vector task1)
-                    (task->feature-vector task1))
-                (or (task-ent->feature-vector task2)
-                    (task->feature-vector task2)))))))
+       (compare (task->feature-vector task1)
+                (task->feature-vector task2)))))
 
 (defn retry-job!
   "Sets :job/max-retries to the given value for the given job UUID.
