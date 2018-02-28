@@ -23,6 +23,7 @@
             [congestion.limits :refer (RateLimit)]
             [cook.impersonation :refer (impersonation-authorized-wrapper)]
             [cook.util :as util]
+            [mount.core :as mount]
             [plumbing.core :refer (fnk)]
             [plumbing.graph :as graph])
   (:import (com.google.common.io Files)
@@ -31,7 +32,8 @@
            (org.apache.curator.test TestingServer)
            (org.apache.log4j DailyRollingFileAppender Logger PatternLayout)))
 
-(defn- env ^String
+(defn- env
+  ^String
   [name]
   (System/getenv name))
 
@@ -81,9 +83,9 @@
   "This configures logging and exception handling, to make the configuration phase simpler to understand"
   (graph/eager-compile
     {:exception-handler (fnk [[:config [:unhandled-exceptions {log-level :error} {email nil}]]]
-                             ((util/lazy-load-var 'cook.util/install-email-on-exception-handler) log-level email))
+                          ((util/lazy-load-var 'cook.util/install-email-on-exception-handler) log-level email))
      :logging (fnk [[:config log]]
-                   (init-logger log))}))
+                (init-logger log))}))
 
 (def default-authorization {:authorization-fn 'cook.authorization/open-auth})
 (def default-fitness-calculator "com.netflix.fenzo.plugins.BinPackingFitnessCalculators/cpuMemBinPacker")
@@ -319,31 +321,35 @@
                          (throw (ex-info "You enabled nrepl but didn't configure a port. Please configure a port in your config file." {})))
                        ((util/lazy-load-var 'clojure.tools.nrepl.server/start-server) :port port)))}))
 
+(defn read-config
+  "Given a config file path, reads the config and returns the map"
+  [config-file-path]
+  (when-not (.exists (File. ^String config-file-path))
+    (.println System/err (str "The config file doesn't appear to exist: " config-file-path)))
+  (.println System/err (str "Reading config from file: " config-file-path))
+  (let [config-format
+        (try
+          (Files/getFileExtension config-file-path)
+          (catch Throwable t
+            (.println System/err "Failed to get config file extension")
+            (stacktrace/print-cause-trace t)
+            (throw t)))]
+    (try
+      (case config-format
+        "edn" (read-edn-config (slurp config-file-path))
+        (do
+          (.println System/err (str "Invalid config file format " config-format))
+          (throw (ex-info "Invalid config file format" {:config-format config-format}))))
+      (catch Throwable t
+        (.println System/err "Failed to read edn config")
+        (stacktrace/print-cause-trace t)
+        (throw t)))))
+
 (defn init-settings
-  "Given a config file path, parses the file and initializes and returns the settings map"
-  [config]
-  (println "Cook" @util/version "( commit" @util/commit ")")
-  (when-not (.exists (File. ^String config))
-    (.println System/err (str "The config file doesn't appear to exist: " config)))
-  (.println System/err (str "Reading config from file: " config))
+  "Given a 'raw' config map, initializes and returns the settings map"
+  [config-map]
   (try
-    (let [config-format (try
-                          (Files/getFileExtension config)
-                          (catch Throwable t
-                            (.println System/err "Failed to get config file extension")
-                            (stacktrace/print-cause-trace t)
-                            (throw t)))
-          literal-config (try
-                           {:config
-                            (case config-format
-                              "edn" (read-edn-config (slurp config))
-                              (do
-                                (.println System/err (str "Invalid config file format " config-format))
-                                (throw (ex-info "Invalid config file format" {:config-format config-format}))))}
-                           (catch Throwable t
-                             (.println System/err "Failed to read edn config")
-                             (stacktrace/print-cause-trace t)
-                             (throw t)))]
+    (let [literal-config {:config config-map}]
       (pre-configuration literal-config)
       (.println System/err "Configured logging")
       (log/info "Configured logging")
@@ -354,3 +360,6 @@
     (catch Throwable t
       (log/error t "Failed to initialize settings")
       (throw t))))
+
+(mount/defstate config
+                :start (init-settings (mount/args)))

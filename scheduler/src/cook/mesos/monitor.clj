@@ -19,11 +19,14 @@
             [clj-time.periodic :as periodic]
             [clojure.set :refer (union difference)]
             [clojure.tools.logging :as log]
+            [cook.config :refer (config)]
+            [cook.datomic :as datomic]
             [cook.mesos.share :as share]
             [cook.mesos.util :as util]
             [datomic.api :as d :refer (q)]
             [metrics.core :as metrics]
-            [metrics.counters :as counters]))
+            [metrics.counters :as counters]
+            [mount.core :as mount]))
 
 (defn- get-job-stats
   "Query all jobs for the given job state, e.g. :job.state/running or
@@ -166,3 +169,8 @@
                 {:error-handler (fn [ex]
                                   (log/error ex "Setting user stats counters failed!"))}))
     (log/info "User stats collection is disabled")))
+
+(mount/defstate stats-collector
+                :start {:cancel! (start-collecting-stats datomic/conn
+                                                         (-> config :settings :user-metrics-interval-seconds))}
+                :stop ((:cancel! stats-collector)))

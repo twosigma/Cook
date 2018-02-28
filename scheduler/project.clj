@@ -108,7 +108,10 @@
                   :exclusions [org.slf4j/slf4j-log4j12
                                org.slf4j/log4j
                                log4j]]
-                 [org.apache.curator/curator-test "2.7.1"]]
+                 [org.apache.curator/curator-test "2.7.1"]
+
+                 ;; Dependency management
+                 [mount "0.1.12"]]
 
   :repositories {"maven2" {:url "https://files.couchbase.com/maven2/"}
                  "sonatype-oss-public" "https://oss.sonatype.org/content/groups/public/"}
