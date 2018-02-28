@@ -26,13 +26,17 @@
             [plumbing.core :refer (fnk)]
             [plumbing.graph :as graph])
   (:import (com.google.common.io Files)
+           (java.io File)
            (java.net InetAddress)
+           (org.apache.curator.test TestingServer)
            (org.apache.log4j DailyRollingFileAppender Logger PatternLayout)))
 
-(defn- env [name]
+(defn- env ^String
+  [name]
   (System/getenv name))
 
-(defn read-edn-config [config]
+(defn read-edn-config
+  [config]
   (edn/read-string
     {:readers
      {'config/env #(env %)
@@ -52,10 +56,9 @@
                              "com.netflix.fenzo.TaskScheduler" :warn
                              "com.netflix.fenzo.AssignableVirtualMachine" :warn}}))
   ([{:keys [file] :or {file "log/cook.log"} {:keys [default] :or {default :info} :as overrides} :levels}]
+   (println "Initializing logging")
    (try
-     (.. (Logger/getRootLogger)
-         (getLoggerRepository)
-         (resetConfiguration))
+     (-> (Logger/getRootLogger) .getLoggerRepository .resetConfiguration)
      (let [overrides (->> overrides
                           (filter (comp string? key))
                           (mapcat (fn [[logger level]]
@@ -77,7 +80,7 @@
 (def pre-configuration
   "This configures logging and exception handling, to make the configuration phase simpler to understand"
   (graph/eager-compile
-    {:exception-handler (fnk [[:config [:unhandled-exceptions {log-level :error} {email nil}]] logging]
+    {:exception-handler (fnk [[:config [:unhandled-exceptions {log-level :error} {email nil}]]]
                              ((util/lazy-load-var 'cook.util/install-email-on-exception-handler) log-level email))
      :logging (fnk [[:config log]]
                    (init-logger log))}))
@@ -89,9 +92,9 @@
   RateLimit
   (get-key [self req]
     (str (.getName (type self)) id "-" (:authorization/user req)))
-  (get-quota [self req]
+  (get-quota [_ _]
     quota)
-  (get-ttl [self req]
+  (get-ttl [_ _]
     ttl))
 
 (def config-settings
@@ -200,7 +203,7 @@
      :zookeeper-server (fnk [[:config [:zookeeper {local? false}]] local-zk-port]
                          (when local?
                            (log/info "Created local ZooKeeper; not yet started")
-                           (org.apache.curator.test.TestingServer. local-zk-port false)))
+                           (TestingServer. ^Integer local-zk-port false)))
      :zookeeper (fnk [[:config [:zookeeper {local? false} {connection nil}]] local-zk-port]
                   (cond
                     local? (str "localhost:" local-zk-port)
@@ -320,7 +323,7 @@
   "Given a config file path, parses the file and initializes and returns the settings map"
   [config]
   (println "Cook" @util/version "( commit" @util/commit ")")
-  (when-not (.exists (java.io.File. config))
+  (when-not (.exists (File. ^String config))
     (.println System/err (str "The config file doesn't appear to exist: " config)))
   (.println System/err (str "Reading config from file: " config))
   (try
