@@ -288,7 +288,7 @@
 (defn -main
   "Entry point for Cook. Initializes configuration settings,
   instruments the JVM, and starts up the scheduler and API."
-  [config]
+  [config & _]
   (try
     (let [settings (config/init-settings config)
           _ (metrics-jvm/instrument-jvm)
