@@ -530,7 +530,7 @@
       trigger-chan
       (fn trigger-rebalance-iteration []
         (log/info "Rebalance cycle starting")
-        (let [params (read-datomic-params conn)
+        (let [{:keys [min-utilization-threshold] :as params} (read-datomic-params conn)
               utilization (get-mesos-utilization)
               host->spare-resources (->> (view-incubating-offers)
                                          (map (fn [v]
@@ -539,7 +539,8 @@
                                                               [:cpus :mem :gpus])]))
                                          (into {}))]
           (if (and (seq params)
-                   (> utilization (:min-utilization-threshold params)))
+                   min-utilization-threshold
+                   (> utilization min-utilization-threshold))
             (let [{normal-pending-jobs :normal gpu-pending-jobs :gpu} @pending-jobs-atom]
               (rebalance! conn driver offer-cache normal-pending-jobs host->spare-resources
                           rebalancer-reservation-atom
@@ -551,7 +552,7 @@
                                         :compute-pending-job-dru compute-pending-gpu-job-dru)))
             (log/info "Rebalance iteration is a no-op"
                       {:mesos-utilization (str utilization)
-                       :min-utilization-threshold (str (:min-utilization-threshold params))}))))
+                       :min-utilization-threshold (str min-utilization-threshold)}))))
       {:error-handler (fn [ex] (log/error ex "Rebalance failed"))})
     #(async/close! trigger-chan)))
 
