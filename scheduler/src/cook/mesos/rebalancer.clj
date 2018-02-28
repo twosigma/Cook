@@ -550,7 +550,7 @@
                           rebalancer-reservation-atom
                           (assoc params :category :gpu
                                         :compute-pending-job-dru compute-pending-gpu-job-dru)))
-            (log/info "Rebalance iteration is a no-op"
+            (log/info "Skipping rebalancing due to low cluster utilization"
                       {:mesos-utilization (str utilization)
                        :min-utilization-threshold (str min-utilization-threshold)}))))
       {:error-handler (fn [ex] (log/error ex "Rebalance failed"))})
