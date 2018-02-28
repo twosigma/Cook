@@ -522,13 +522,13 @@
               recognized-params))]))))
 
 (defn start-rebalancer!
-  [{:keys [config conn driver get-mesos-utilization pending-jobs-atom offer-cache
-           rebalancer-reservation-atom trigger-chan view-incubating-offers view-mature-offers]}]
+  [{:keys [config conn driver get-mesos-utilization offer-cache pending-jobs-atom
+           rebalancer-reservation-atom trigger-chan view-incubating-offers]}]
   (binding [metrics-dru-scale (:dru-scale config)]
     (update-datomic-params-from-config! conn config)
     (util/chime-at-ch
       trigger-chan
-      (fn []
+      (fn trigger-rebalance-iteration []
         (log/info "Rebalance cycle starting")
         (let [params (read-datomic-params conn)
               utilization (get-mesos-utilization)
@@ -538,19 +538,22 @@
                                                  (select-keys (keywordize-keys (:resources v))
                                                               [:cpus :mem :gpus])]))
                                          (into {}))]
-          (when (and (seq params)
-                     (> utilization (:min-utilization-threshold params)))
+          (if (and (seq params)
+                   (> utilization (:min-utilization-threshold params)))
             (let [{normal-pending-jobs :normal gpu-pending-jobs :gpu} @pending-jobs-atom]
               (rebalance! conn driver offer-cache normal-pending-jobs host->spare-resources
                           rebalancer-reservation-atom
-                          (assoc params :compute-pending-job-dru compute-pending-normal-job-dru
-                                        :category :normal))
+                          (assoc params :category :normal
+                                        :compute-pending-job-dru compute-pending-normal-job-dru))
               (rebalance! conn driver offer-cache gpu-pending-jobs host->spare-resources
                           rebalancer-reservation-atom
-                          (assoc params :compute-pending-job-dru compute-pending-gpu-job-dru
-                                        :category :gpu))))))
-        {:error-handler (fn [ex] (log/error ex "Rebalance failed"))})
-      #(async/close! trigger-chan)))
+                          (assoc params :category :gpu
+                                        :compute-pending-job-dru compute-pending-gpu-job-dru)))
+            (log/info "Rebalance iteration is a no-op"
+                      {:mesos-utilization (str utilization)
+                       :min-utilization-threshold (str (:min-utilization-threshold params))}))))
+      {:error-handler (fn [ex] (log/error ex "Rebalance failed"))})
+    #(async/close! trigger-chan)))
 
 (comment
   ; Useful function to simulate preemptions
