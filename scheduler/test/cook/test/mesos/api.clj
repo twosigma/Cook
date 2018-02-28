@@ -22,7 +22,7 @@
             [clojure.string :as str]
             [clojure.walk :refer [keywordize-keys]]
             [cook.authorization :as auth]
-            [cook.components :as components]
+            [cook.config :as config]
             [cook.impersonation :as imp]
             [cook.mesos.api :as api]
             [cook.mesos.reason :as reason]
@@ -1321,7 +1321,7 @@
   (let [socket (ServerSocket.)]
     (is (= {:foo (str socket)} (api/stringify {:foo socket})))
     (.close socket))
-  (let [settings (components/config-settings (minimal-config))]
+  (let [settings (config/config-settings (minimal-config))]
     (is (thrown? JsonGenerationException (cheshire/generate-string settings)))
     (is (cheshire/generate-string (api/stringify settings)))))
 

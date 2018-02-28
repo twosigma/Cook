@@ -24,7 +24,7 @@
             [clojure.edn :as edn]
             [clojure.string :as str]
             [clojure.tools.logging :as log]
-            [cook.components :refer (default-fitness-calculator)]
+            [cook.config :refer (default-fitness-calculator)]
             [cook.datomic :refer (transact-with-retries)]
             [cook.mesos.constraints :as constraints]
             [cook.mesos.dru :as dru]

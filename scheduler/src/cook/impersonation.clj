@@ -50,7 +50,7 @@
     [^String user
      ^Keyword verb
      ^String impersonator
-     {:keys [owner item] :as object}]
+     {:keys [item] :as object}]
     (log/debug "[is-impersonatable?] Checking whether user" impersonator
                "may impersonate user" user
                "performing" verb "on" (str object) "...")
