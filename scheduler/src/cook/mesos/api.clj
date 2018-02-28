@@ -42,6 +42,7 @@
             [mesomatic.scheduler]
             [metatransaction.core :refer [db]]
             [metrics.histograms :as histograms]
+            [metrics.meters :as meters]
             [metrics.timers :as timers]
             [plumbing.core :refer [map-from-vals map-keys map-vals mapply]]
             [ring.middleware.format-params :as format-params]
@@ -1211,6 +1212,8 @@
     x
     [x]))
 
+(meters/defmeter [cook-mesos scheduler jobs-created])
+
 (defn create-jobs!
   "Based on the context, persists the specified jobs, along with their groups,
   to Datomic.
@@ -1253,6 +1256,7 @@
              (into job-txns)
              (into group-txns)))
 
+      (meters/mark! jobs-created (count jobs))
       {::results (str/join
                    \space (concat ["submitted jobs"]
                                   (map (comp str :uuid) jobs)
