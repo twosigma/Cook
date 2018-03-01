@@ -18,8 +18,11 @@
   (:require [clojure.core.async :as async]
             [cook.curator :as curator]
             [cook.datomic]
+            [cook.mesos :as mesos]
+            [cook.mesos.scheduler :as sched]
+            [cook.mesos.schema :as schem]
             [datomic.api :as d :refer (q db)])
-  (:import [org.apache.curator.framework CuratorFrameworkFactory]
+  (:import [org.apache.curator.framework CuratorFrameworkFactory CuratorFramework]
            [org.apache.curator.retry BoundedExponentialBackoffRetry]
            [org.apache.curator.test TestingServer]))
 
