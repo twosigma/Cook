@@ -14,16 +14,17 @@
 ;; limitations under the License.
 ;;
 (ns cook.test.mesos.monitor
-  (:require [clojure.test :refer :all]
+  (:require [clj-time.core :as time]
+            [clojure.test :refer :all]
             [cook.mesos :as mesos]
             [cook.mesos.api :as api]
             [cook.mesos.monitor :as monitor]
             [cook.mesos.share :as share]
-            [cook.test.testutil :refer [restore-fresh-database!]]
+            [cook.test.testutil :refer [restore-fresh-database! setup]]
             [datomic.api :as d :refer [db]]
-            [metrics.counters :as counters]
-            [metrics.core :as metrics])
-  (:import (java.util UUID)))
+            [metrics.counters :as counters])
+  (:import (java.util UUID)
+           (org.joda.time Interval)))
 
 (deftest test-set-stats-counters!
   (let [conn (restore-fresh-database! "datomic:mem://test-set-stats-counters!")
@@ -266,3 +267,17 @@
     (is (= 0 (counter ["starved" "users"])))
     (is (= 0 (counter ["hungry" "users"])))
     (is (= 1 (counter ["satisfied" "users"])))))
+
+(deftest test-start-collecting-stats
+  (setup :config {:metrics {:user-metrics-interval-seconds 1}})
+  (let [period (atom nil)
+        millis-between (fn [a b]
+                         (-> a
+                             ^Interval (time/interval b)
+                             .toDuration
+                             .getMillis))]
+    (with-redefs [chime/chime-at (fn [p _ _] (reset! period p))]
+      (monitor/start-collecting-stats)
+      (is (= 1000 (millis-between (first @period) (second @period))))
+      (is (= 1000 (millis-between (second @period) (nth @period 2))))
+      (is (= 1000 (millis-between (nth @period 2) (nth @period 3)))))))
