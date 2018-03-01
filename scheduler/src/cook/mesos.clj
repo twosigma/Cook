@@ -107,20 +107,14 @@
     scheduler framework-id]
    (apply mesomatic.scheduler/scheduler-driver
           scheduler
-          (merge
-            {:user ""
-             :name (str mesos-framework-name "-" @cook.util/version "-" @cook.util/commit)
-             :checkpoint true}
-            (when mesos-role
-              {:role mesos-role})
-            (when mesos-principal
-              {:principal mesos-principal})
-            (when gpu-enabled?
-              {:capabilities [{:type :framework-capability-gpu-resources}]})
-            (when mesos-failover-timeout
-              {:failover-timeout mesos-failover-timeout})
-            (when framework-id
-              {:id {:value framework-id}}))
+          (cond-> {:checkpoint true
+                   :name (str mesos-framework-name "-" @cook.util/version "-" @cook.util/commit)
+                   :user ""}
+                  framework-id (assoc :id {:value framework-id})
+                  gpu-enabled? (assoc :capabilities [{:type :framework-capability-gpu-resources}])
+                  mesos-failover-timeout (assoc :failover-timeout mesos-failover-timeout)
+                  mesos-principal (assoc :principal mesos-principal)
+                  mesos-role (assoc :role mesos-role))
           mesos-master
           (when mesos-principal
             [{:principal mesos-principal}]))))
