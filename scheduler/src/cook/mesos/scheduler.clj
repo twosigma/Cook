@@ -787,12 +787,12 @@
 
 (defn- update-match-with-task-metadata-seq
   "Updates the match with an entry for the task metadata for all tasks."
-  [{:keys [tasks] :as match} db framework-id executor-config]
-  (let [task-metadata-seq (->> tasks
-                               ;; sort-by makes task-txns created in matches->task-txns deterministic
-                               (sort-by (comp :job/uuid :job #(.getRequest ^TaskAssignmentResult %)) )
-                               (map (partial task/TaskAssignmentResult->task-metadata db framework-id executor-config)))]
-    (assoc match :task-metadata-seq task-metadata-seq)))
+  [{:keys [tasks] :as match} db framework-id executor-config mesos-run-as-user]
+  (->> tasks
+       ;; sort-by makes task-txns created in matches->task-txns deterministic
+       (sort-by (comp :job/uuid :job #(.getRequest ^TaskAssignmentResult %)))
+       (map (partial task/TaskAssignmentResult->task-metadata db framework-id executor-config mesos-run-as-user))
+       (assoc match :task-metadata-seq)))
 
 (defn- matches->task-txns
   "Converts matches to a task transactions."
@@ -822,8 +822,8 @@
 
 (defn- launch-matched-tasks!
   "Updates the state of matched tasks in the database and then launches them."
-  [matches conn db driver fenzo framework-id executor-config]
-  (let [matches (map #(update-match-with-task-metadata-seq % db framework-id executor-config) matches)
+  [matches conn db driver fenzo framework-id executor-config mesos-run-as-user]
+  (let [matches (map #(update-match-with-task-metadata-seq % db framework-id executor-config mesos-run-as-user) matches)
         task-txns (matches->task-txns matches)]
     ;; Note that this transaction can fail if a job was scheduled
     ;; during a race. If that happens, then other jobs that should
@@ -876,8 +876,8 @@
 (defn handle-resource-offers!
   "Gets a list of offers from mesos. Decides what to do with them all--they should all
    be accepted or rejected at the end of the function."
-  [conn driver ^TaskScheduler fenzo framework-id executor-config category->pending-jobs-atom offer-cache user->usage user->quota num-considerable offers-chan offers
-   rebalancer-reservation-atom]
+  [conn driver ^TaskScheduler fenzo framework-id executor-config category->pending-jobs-atom mesos-run-as-user
+   user->usage user->quota num-considerable offers-chan offers rebalancer-reservation-atom]
   (log/debug "invoked handle-resource-offers!")
   (let [offer-stash (atom nil)] ;; This is a way to ensure we never lose offers fenzo assigned if an error occurs in the middle of processing
     ;; TODO: It is possible to have an offer expire by mesos because we recycle it a bunch of times.
@@ -921,7 +921,7 @@
             (do
               (swap! category->pending-jobs-atom remove-matched-jobs-from-pending-jobs category->job-uuids)
               (log/debug "updated category->pending-jobs:" @category->pending-jobs-atom)
-              (launch-matched-tasks! matches conn db driver fenzo framework-id executor-config)
+              (launch-matched-tasks! matches conn db driver fenzo framework-id executor-config mesos-run-as-user)
               (update-host-reservations! rebalancer-reservation-atom matches)
               matched-normal-considerable-jobs-head?)))
         (catch Throwable t
@@ -951,10 +951,9 @@
 (counters/defcounter [cook-mesos scheduler offer-chan-depth])
 
 (defn make-offer-handler
-  [conn driver-atom fenzo framework-id executor-config pending-jobs-atom offer-cache
-   max-considerable scaleback
-   floor-iterations-before-warn floor-iterations-before-reset
-   trigger-chan rebalancer-reservation-atom]
+  [conn driver-atom fenzo framework-id executor-config pending-jobs-atom offer-cache max-considerable scaleback
+   floor-iterations-before-warn floor-iterations-before-reset trigger-chan rebalancer-reservation-atom
+   mesos-run-as-user]
   (let [chan-length 100
         offers-chan (async/chan (async/buffer chan-length))
         resources-atom (atom (view-incubating-offers fenzo))]
@@ -1000,7 +999,7 @@
                                                  (cache/miss c slave-id attrs)))))
                       _ (log/debug "Passing following offers to handle-resource-offers!" offers)
                       user->quota (quota/create-user->quota-fn (d/db conn))
-                      matched-head? (handle-resource-offers! conn @driver-atom fenzo framework-id executor-config pending-jobs-atom offer-cache @user->usage-future user->quota num-considerable offers-chan offers rebalancer-reservation-atom)]
+                      matched-head? (handle-resource-offers! conn @driver-atom fenzo framework-id executor-config pending-jobs-atom mesos-run-as-user @user->usage-future user->quota num-considerable offers-chan offers rebalancer-reservation-atom)]
                   (when (seq offers)
                     (reset! resources-atom (view-incubating-offers fenzo)))
                   ;; This check ensures that, although we value Fenzo's optimizations,
@@ -1616,19 +1615,21 @@
             task-id #(handle-status-update conn driver fenzo sync-agent-sandboxes-fn status)))))))
 
 (defn create-datomic-scheduler
-  [{:keys [conn driver-atom pending-jobs-atom offer-cache heartbeat-ch offer-incubate-time-ms mea-culpa-failure-limit
-           fenzo-max-jobs-considered fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset
-           fenzo-fitness-calculator task-constraints gpu-enabled? good-enough-fitness framework-id sandbox-syncer-state
-           executor-config progress-config trigger-chans rebalancer-reservation-atom]}]
+  [{:keys [conn driver-atom executor-config fenzo-fitness-calculator fenzo-floor-iterations-before-reset
+           fenzo-floor-iterations-before-warn fenzo-max-jobs-considered fenzo-scaleback framework-id good-enough-fitness
+           gpu-enabled? heartbeat-ch mea-culpa-failure-limit mesos-run-as-user offer-cache offer-incubate-time-ms
+           pending-jobs-atom progress-config rebalancer-reservation-atom sandbox-syncer-state task-constraints
+           trigger-chans]}]
 
   (persist-mea-culpa-failure-limit! conn mea-culpa-failure-limit)
 
   (let [{:keys [match-trigger-chan progress-updater-trigger-chan rank-trigger-chan]} trigger-chans
         fenzo (make-fenzo-scheduler driver-atom offer-incubate-time-ms fenzo-fitness-calculator good-enough-fitness)
         [offers-chan resources-atom]
-        (make-offer-handler conn driver-atom fenzo framework-id executor-config pending-jobs-atom offer-cache fenzo-max-jobs-considered
-                            fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset match-trigger-chan
-                            rebalancer-reservation-atom)
+        (make-offer-handler
+          conn driver-atom fenzo framework-id executor-config pending-jobs-atom offer-cache fenzo-max-jobs-considered
+          fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset match-trigger-chan
+          rebalancer-reservation-atom mesos-run-as-user)
         {:keys [batch-size]} progress-config
         {:keys [progress-state-chan]} (progress-update-transactor progress-updater-trigger-chan batch-size conn)
         progress-aggregator-chan (progress-update-aggregator progress-config progress-state-chan)

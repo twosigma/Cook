@@ -78,7 +78,8 @@
                            fenzo-floor-iterations-before-warn fenzo-max-jobs-considered fenzo-scaleback
                            good-enough-fitness hostname mea-culpa-failure-limit mesos-failover-timeout mesos-framework-name
                            mesos-gpu-enabled mesos-leader-path mesos-master mesos-master-hosts mesos-principal
-                           mesos-role offer-incubate-time-ms optimizer progress rebalancer server-port task-constraints]
+                           mesos-role mesos-run-as-user offer-incubate-time-ms optimizer progress rebalancer server-port
+                           task-constraints]
                           curator-framework framework-id mesos-datomic-mult mesos-leadership-atom
                           mesos-offer-cache mesos-pending-jobs-atom sandbox-syncer-state]
                       (log/info "Initializing mesos scheduler")
@@ -111,6 +112,7 @@
                              :mesos-datomic-mult mesos-datomic-mult
                              :mesos-leadership-atom mesos-leadership-atom
                              :mesos-pending-jobs-atom mesos-pending-jobs-atom
+                             :mesos-run-as-user mesos-run-as-user
                              :offer-cache mesos-offer-cache
                              :offer-incubate-time-ms offer-incubate-time-ms
                              :optimizer-config optimizer

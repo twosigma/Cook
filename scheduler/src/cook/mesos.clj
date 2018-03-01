@@ -106,20 +106,14 @@
     scheduler framework-id]
    (apply mesomatic.scheduler/scheduler-driver
           scheduler
-          (merge
-            {:user ""
-             :name (str mesos-framework-name "-" @cook.util/version "-" @cook.util/commit)
-             :checkpoint true}
-            (when mesos-role
-              {:role mesos-role})
-            (when mesos-principal
-              {:principal mesos-principal})
-            (when gpu-enabled?
-              {:capabilities [{:type :framework-capability-gpu-resources}]})
-            (when mesos-failover-timeout
-              {:failover-timeout mesos-failover-timeout})
-            (when framework-id
-              {:id {:value framework-id}}))
+          (cond-> {:checkpoint true
+                   :name (str mesos-framework-name "-" @cook.util/version "-" @cook.util/commit)
+                   :user ""}
+                  framework-id (assoc :id {:value framework-id})
+                  gpu-enabled? (assoc :capabilities [{:type :framework-capability-gpu-resources}])
+                  mesos-failover-timeout (assoc :failover-timeout mesos-failover-timeout)
+                  mesos-principal (assoc :principal mesos-principal)
+                  mesos-role (assoc :role mesos-role))
           mesos-master
           (when mesos-principal
             [{:principal mesos-principal}]))))
@@ -193,7 +187,7 @@
    sandbox-syncer-state          -- map, representing the sandbox syncer object"
   [{:keys [curator-framework executor-config fenzo-config framework-id get-mesos-utilization gpu-enabled? make-mesos-driver-fn
            mea-culpa-failure-limit mesos-datomic-conn mesos-datomic-mult mesos-leadership-atom mesos-pending-jobs-atom
-           offer-cache offer-incubate-time-ms optimizer-config progress-config rebalancer-config
+           mesos-run-as-user offer-cache offer-incubate-time-ms optimizer-config progress-config rebalancer-config
            sandbox-syncer-state server-config task-constraints trigger-chans zk-prefix]}]
   (let [{:keys [fenzo-fitness-calculator fenzo-floor-iterations-before-reset fenzo-floor-iterations-before-warn
                 fenzo-max-jobs-considered fenzo-scaleback good-enough-fitness]} fenzo-config
@@ -231,6 +225,7 @@
                                           :gpu-enabled? gpu-enabled?
                                           :heartbeat-ch mesos-heartbeat-chan
                                           :mea-culpa-failure-limit mea-culpa-failure-limit
+                                          :mesos-run-as-user mesos-run-as-user
                                           :offer-cache offer-cache
                                           :offer-incubate-time-ms offer-incubate-time-ms
                                           :pending-jobs-atom mesos-pending-jobs-atom

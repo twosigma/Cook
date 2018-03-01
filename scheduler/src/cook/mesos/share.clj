@@ -24,8 +24,14 @@
 (def default-user "default")
 
 (defn- resource-type->datomic-resource-type
+  "Converts the resource type to a datomic resource type keyword, e.g. :cpus to :resource.type/cpus"
   [type]
   (keyword "resource.type" (name type)))
+
+(defn- datomic-resource-type->resource-type
+  "Converts the datomic resource type to a resource type keyword, e.g. :resource.type/cpus to :cpus"
+  [type]
+  (keyword (name type)))
 
 (defn- retract-share-by-type!
   [conn type user]
@@ -44,27 +50,30 @@
                    [[:db.fn/retractEntity resource]])
       (log/warn "Resource" type "for user" user "does not exist, could not retract"))))
 
-(defn- get-share-by-type
-  "Query a user's pre-defined share by type (e.g. :cpus, :mem, :gpus).
+(defn get-share-by-types
+  "Query a user's pre-defined share by types (e.g. [:cpus, :mem, :gpus]).
+   Returns a map from resource type to amount (double value).
 
-   If a user's pre-defined share is NOT defined, return either:
-   1. the explicitly provided default value, or
+   If a user's pre-defined share is NOT defined for a specific resource type, return either:
+   1. the explicitly provided default value in type->share, or
    2. the share for the \"default\" user. If there is NO \"default\"
       value for a specific type, return Double.MAX_VALUE."
-  ([db type user]
-   (or (get-share-by-type db type user nil)
-       (get-share-by-type db type default-user Double/MAX_VALUE)))
-  ([db type user default]
-   (let [query '[:find ?a
-                 :in $ ?u ?t
-                 :where
-                 [?e :share/user ?u]
-                 [?e :share/resource ?r]
-                 [?r :resource/type ?t]
-                 [?r :resource/amount ?a]]
-         datomic-resource-type (resource-type->datomic-resource-type type)]
-     (or (ffirst (q query db user datomic-resource-type))
-         default))))
+  [db user types type->share]
+  (let [query '[:find ?t ?a
+                :in $ ?u [?t ...]
+                :where
+                [?e :share/user ?u]
+                [?e :share/resource ?r]
+                [?r :resource/type ?t]
+                [?r :resource/amount ?a]]
+        datomic-resource-types (map resource-type->datomic-resource-type types)
+        default-type->share (pc/map-from-keys
+                              (fn [type] (get type->share type Double/MAX_VALUE))
+                              types)]
+    (->> (q query db user datomic-resource-types)
+         (into {})
+         (pc/map-keys datomic-resource-type->resource-type)
+         (merge default-type->share))))
 
 (defn get-share
   "Query a user's pre-defined share.
@@ -75,11 +84,10 @@
   ([db user]
    (get-share db user (util/get-all-resource-types db)))
   ([db user resource-types]
-   (pc/map-from-keys (fn get-share-3p-helper [type] (get-share-by-type db type user))
-                     resource-types))
+   (let [type->default (get-share-by-types db default-user resource-types {})]
+     (get-share db user resource-types type->default)))
   ([db user resource-types type->default]
-   (pc/map-from-keys (fn get-share-4p-helper [type] (get-share-by-type db type user (type->default type)))
-                     resource-types)))
+   (get-share-by-types db user resource-types type->default)))
 
 (timers/deftimer [cook-mesos share get-shares-duration])
 
@@ -93,8 +101,7 @@
   ([db users resource-types]
    (timers/time!
      get-shares-duration
-     (let [type->default (-> (fn [type] (get-share-by-type db type default-user Double/MAX_VALUE))
-                             (pc/map-from-keys resource-types))]
+     (let [type->default (get-share db default-user resource-types {})]
        (-> (fn [user] (get-share db user resource-types type->default))
            (pc/map-from-keys users))))))
 
