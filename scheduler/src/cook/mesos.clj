@@ -243,6 +243,7 @@
                                     (mesomatic.scheduler/start! driver)
                                     (reset! current-driver driver)
 
+                                    (cook.mesos.monitor/start-collecting-stats)
                                     (cook.mesos.scheduler/lingering-task-killer mesos-datomic-conn driver task-constraints lingering-task-trigger-chan)
                                     (cook.mesos.scheduler/straggler-handler mesos-datomic-conn driver straggler-trigger-chan)
                                     (cook.mesos.scheduler/cancelled-task-killer mesos-datomic-conn driver cancelled-task-trigger-chan)

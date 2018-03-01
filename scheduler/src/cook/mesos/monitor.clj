@@ -25,8 +25,7 @@
             [cook.mesos.util :as util]
             [datomic.api :as d :refer (q)]
             [metrics.core :as metrics]
-            [metrics.counters :as counters]
-            [mount.core :as mount]))
+            [metrics.counters :as counters]))
 
 (defn- get-job-stats
   "Query all jobs for the given job state, e.g. :job.state/running or
@@ -158,19 +157,15 @@
   "Starts a periodic timer to collect stats about running, waiting, and starved jobs per user.
 
    Return a function which can be used to stop collecting stats if invoked."
-  [mesos-conn interval-seconds]
-  (if interval-seconds
-    (let [state->previous-stats-atom (atom {})]
-      (log/info "Starting user stats collection at intervals of" interval-seconds "seconds")
-      (chime-at (periodic/periodic-seq (time/now) (time/seconds interval-seconds))
-                (fn [_]
-                  (let [mesos-db (d/db mesos-conn)]
-                    (set-stats-counters! mesos-db state->previous-stats-atom)))
-                {:error-handler (fn [ex]
-                                  (log/error ex "Setting user stats counters failed!"))}))
-    (log/info "User stats collection is disabled")))
-
-(mount/defstate stats-collector
-                :start {:cancel! (start-collecting-stats datomic/conn
-                                                         (-> config :settings :user-metrics-interval-seconds))}
-                :stop ((:cancel! stats-collector)))
+  []
+  (let [interval-seconds (-> config :settings :user-metrics-interval-seconds)]
+    (if interval-seconds
+      (let [state->previous-stats-atom (atom {})]
+        (log/info "Starting user stats collection at intervals of" interval-seconds "seconds")
+        (chime-at (periodic/periodic-seq (time/now) (time/seconds interval-seconds))
+                  (fn [_]
+                    (let [mesos-db (d/db datomic/conn)]
+                      (set-stats-counters! mesos-db state->previous-stats-atom)))
+                  {:error-handler (fn [ex]
+                                    (log/error ex "Setting user stats counters failed!"))}))
+      (log/info "User stats collection is disabled"))))

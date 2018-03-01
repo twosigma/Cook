@@ -157,7 +157,15 @@
                    [wyegelwe/mesomatic "1.0.1-r0-SNAPSHOT"]]}
 
    :uberjar
-   {:aot [cook.components]}
+   {:aot [cook.components]
+    :dependencies [[com.datomic/datomic-free "0.9.5206"
+                    :exclusions [org.slf4j/slf4j-api
+                                 com.fasterxml.jackson.core/jackson-core
+                                 org.slf4j/jcl-over-slf4j
+                                 org.slf4j/jul-to-slf4j
+                                 org.slf4j/log4j-over-slf4j
+                                 org.slf4j/slf4j-nop
+                                 joda-time]]]}
 
    :dev
    {:dependencies [[criterium "0.4.4"]

@@ -24,7 +24,6 @@
             [cook.curator :as curator]
             [cook.datomic :as datomic]
             [cook.impersonation :refer (impersonation-authorized-wrapper)]
-            [cook.mesos]
             [cook.util :as util]
             [metrics.jvm.core :as metrics-jvm]
             [metrics.ring.instrument :refer (instrument)]
@@ -249,7 +248,7 @@
                        (log/info "Using framework id:" framework-id)
                        framework-id))
      :mesos-datomic-mult (fnk []
-                           (first ((util/lazy-load-var 'cook.datomic/create-tx-report-mult))))
+                           (first ((util/lazy-load-var 'cook.datomic/create-tx-report-mult) datomic/conn)))
      :local-zookeeper (fnk [[:settings zookeeper-server]]
                         (when zookeeper-server
                           (log/info "Starting local ZK server")
