@@ -138,7 +138,7 @@ We'll look at the configurable options in turn:
 
 `:run-as-user`::
   When configured, this sets the user that Cook will override and set as the user to run tasks on Mesos with.
-  You can omit this property, in which case the user configured in the job will be used as user to run specific jobs on Mesos.
+  You can omit this property, in which case the user configured in the job will be used as the user to run the job (the default behavior).
   Cook's scheduling algorithm continues to use the user specified in the job to compute job schedules.
 
 `:framework-name`::
