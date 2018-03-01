@@ -20,15 +20,14 @@
             [cook.config :refer (config)]
             [cook.util :as util]
             [datomic.api :as d :refer (q)]
-            [mount.core :as mount]
-            [plumbing.core :refer (defnk)])
+            [mount.core :as mount])
   (:import (clojure.lang Agent)
            (datomic Connection)
            (java.util.concurrent BlockingQueue TimeUnit)))
 
-(defnk create-connection
+(defn create-connection
   "Creates and returns a connection to the given Datomic URI"
-  [[:settings mesos-datomic-uri]]
+  [{{:keys [mesos-datomic-uri]} :settings}]
   ((util/lazy-load-var 'datomic.api/create-database) mesos-datomic-uri)
   (let [conn ((util/lazy-load-var 'datomic.api/connect) mesos-datomic-uri)]
     (doseq [txn (deref (util/lazy-load-var 'cook.mesos.schema/work-item-schema))]
