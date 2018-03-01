@@ -74,7 +74,7 @@
 
 (defn job->task-metadata
   "Takes a job entity, returns task metadata"
-  [db framework-id executor-config job-ent task-id]
+  [db framework-id executor-config mesos-run-as-user job-ent task-id]
   (let [resources (util/job-ent->resources job-ent)
         container (util/job-ent->container db job-ent)
         ;; If the custom-executor attr isn't set, we default to using a custom
@@ -95,7 +95,7 @@
                  :uris (cond-> (:uris resources [])
                                (and cook-executor? (get-in executor-config [:uri :value]))
                                (conj (:uri executor-config)))
-                 :user (:job/user job-ent)
+                 :user (or mesos-run-as-user (:job/user job-ent))
                  :value (if cook-executor? (:command executor-config) (:job/command job-ent))}
         ;; executor-key configure whether this is a command or custom executor
         executor-key (cond
@@ -135,9 +135,9 @@
 
 (defn TaskAssignmentResult->task-metadata
   "Organizes the info Fenzo has already told us about the task we need to run"
-  [db framework-id executor-config ^TaskAssignmentResult task-result]
+  [db framework-id executor-config mesos-run-as-user ^TaskAssignmentResult task-result]
   (let [{:keys [job task-id] :as task-request} (.getRequest task-result)]
-    (merge (job->task-metadata db framework-id executor-config job task-id)
+    (merge (job->task-metadata db framework-id executor-config mesos-run-as-user job task-id)
            {:hostname (.getHostname task-result)
             :ports-assigned (vec (sort (.getAssignedPorts task-result)))
             :task-request task-request})))

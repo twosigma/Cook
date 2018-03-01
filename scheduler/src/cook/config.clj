@@ -259,6 +259,10 @@
                         principal)
      :mesos-role (fnk [[:config [:mesos {role "*"}]]]
                    role)
+     :mesos-run-as-user (fnk [[:config [:mesos {run-as-user nil}]]]
+                          (when run-as-user
+                            (log/info "Tasks launched in Mesos will ignore user specified in the job and run as" run-as-user))
+                          run-as-user)
      :mesos-framework-name (fnk [[:config [:mesos {framework-name "Cook"}]]]
                              framework-name)
      :mesos-framework-id (fnk [[:config [:mesos {framework-id nil}]]]

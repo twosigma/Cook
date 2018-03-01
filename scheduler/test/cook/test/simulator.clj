@@ -138,6 +138,7 @@
           :mesos-datomic-mult mesos-mult#
           :mesos-leadership-atom mesos-leadership-atom#
           :mesos-pending-jobs-atom pending-jobs-atom#
+          :mesos-run-as-user nil
           :offer-cache offer-cache#
           :offer-incubate-time-ms offer-incubate-time-ms#
           :optimizer-config optimizer-config#

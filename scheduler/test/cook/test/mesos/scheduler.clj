@@ -1529,8 +1529,10 @@
                                             category->pending-jobs-atom (atom category->pending-jobs)
                                             user->usage (or user->usage {test-user {:count 1, :cpus 2, :mem 1024, :gpus 0}})
                                             user->quota (or user-quota {test-user {:count 10, :cpus 50, :mem 32768, :gpus 10}})
-                                            result (sched/handle-resource-offers! conn driver fenzo framework-id executor category->pending-jobs-atom (init-offer-cache)
-                                                                                  user->usage user->quota num-considerable offers-chan offers rebalancer-reservation-atom)]
+                                            mesos-run-as-user nil
+                                            result (sched/handle-resource-offers!
+                                                     conn driver fenzo framework-id executor category->pending-jobs-atom mesos-run-as-user
+                                                     user->usage user->quota num-considerable offers-chan offers rebalancer-reservation-atom)]
                                         (async/>!! offers-chan :end-marker)
                                         result))]
 
