@@ -189,7 +189,7 @@
    user-metrics-interval-seconds -- long, time in seconds between collecting and counting per-user job metrics"
   [{:keys [curator-framework executor-config fenzo-config framework-id get-mesos-utilization gpu-enabled? make-mesos-driver-fn
            mea-culpa-failure-limit mesos-datomic-conn mesos-datomic-mult mesos-leadership-atom mesos-pending-jobs-atom
-           offer-cache offer-incubate-time-ms optimizer-config progress-config rebalancer-config
+           mesos-run-as-user offer-cache offer-incubate-time-ms optimizer-config progress-config rebalancer-config
            sandbox-syncer-state server-config task-constraints trigger-chans user-metrics-interval-seconds zk-prefix]}]
   (let [{:keys [fenzo-fitness-calculator fenzo-floor-iterations-before-reset fenzo-floor-iterations-before-warn
                 fenzo-max-jobs-considered fenzo-scaleback good-enough-fitness]} fenzo-config
@@ -227,6 +227,7 @@
                                           :gpu-enabled? gpu-enabled?
                                           :heartbeat-ch mesos-heartbeat-chan
                                           :mea-culpa-failure-limit mea-culpa-failure-limit
+                                          :mesos-run-as-user mesos-run-as-user
                                           :offer-cache offer-cache
                                           :offer-incubate-time-ms offer-incubate-time-ms
                                           :pending-jobs-atom mesos-pending-jobs-atom
