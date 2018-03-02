@@ -322,7 +322,8 @@
                   :uri {:cache true
                         :executable true
                         :extract false
-                        :value "file:///path/to/cook-executor"}}]
+                        :value "file:///path/to/cook-executor"}}
+        mesos-run-as-user nil]
 
     (testing "custom-executor with simple job"
       (let [task-id (str (UUID/randomUUID))
@@ -332,21 +333,40 @@
             framework-id {:value "framework-id"}
             environment {"COOK_JOB_CPUS" "1.0"
                          "COOK_JOB_MEM_MB" "10.0"
-                         "COOK_JOB_UUID" (-> job-ent :job/uuid str)}
-            task-metadata (task/job->task-metadata db framework-id executor job-ent task-id)]
-        (is (= {:command {:value "run-my-command", :environment environment, :user "test-user", :uris []}
-                :container nil
-                :environment environment
-                :executor :executor/custom
-                :executor-key :custom-executor
-                :framework-id framework-id
-                :labels {}
-                :name (format "dummy_job_%s_%s" (:job/user job-ent) task-id)
-                :num-ports 0
-                :resources {:cpus 1.0, :mem 10.0}
-                :task-id task-id}
-               (dissoc task-metadata :data)))
-        (is (= (pr-str {:instance "0"}) (-> task-metadata :data (String. "UTF-8"))))))
+                         "COOK_JOB_UUID" (-> job-ent :job/uuid str)}]
+
+        (testing "mesos-run-as-user absent"
+          (let [task-metadata (task/job->task-metadata db framework-id executor mesos-run-as-user job-ent task-id)]
+            (is (= {:command {:value "run-my-command", :environment environment, :user "test-user", :uris []}
+                    :container nil
+                    :environment environment
+                    :executor :executor/custom
+                    :executor-key :custom-executor
+                    :framework-id framework-id
+                    :labels {}
+                    :name (format "dummy_job_%s_%s" (:job/user job-ent) task-id)
+                    :num-ports 0
+                    :resources {:cpus 1.0, :mem 10.0}
+                    :task-id task-id}
+                   (dissoc task-metadata :data)))
+            (is (= (pr-str {:instance "0"}) (-> task-metadata :data (String. "UTF-8"))))))
+
+        (testing "mesos-run-as-user present"
+          (let [mesos-run-as-user "mesos-run-as-user"
+                task-metadata (task/job->task-metadata db framework-id executor mesos-run-as-user job-ent task-id)]
+            (is (= {:command {:value "run-my-command", :environment environment, :user mesos-run-as-user, :uris []}
+                    :container nil
+                    :environment environment
+                    :executor :executor/custom
+                    :executor-key :custom-executor
+                    :framework-id framework-id
+                    :labels {}
+                    :name (format "dummy_job_%s_%s" (:job/user job-ent) task-id)
+                    :num-ports 0
+                    :resources {:cpus 1.0, :mem 10.0}
+                    :task-id task-id}
+                   (dissoc task-metadata :data)))
+            (is (= (pr-str {:instance "0"}) (-> task-metadata :data (String. "UTF-8"))))))))
 
     (testing "custom-executor with simple job in a group"
       (let [task-id (str (UUID/randomUUID))
@@ -361,7 +381,7 @@
                          "COOK_JOB_GROUP_UUID" (-> group-ent :group/uuid str)
                          "COOK_JOB_MEM_MB" "10.0"
                          "COOK_JOB_UUID" (-> job-ent :job/uuid str)}
-            task-metadata (task/job->task-metadata db framework-id executor job-ent task-id)]
+            task-metadata (task/job->task-metadata db framework-id executor mesos-run-as-user job-ent task-id)]
         (is (= {:command {:value "run-my-command", :environment environment, :user "test-user", :uris []}
                 :container nil
                 :environment environment
@@ -386,7 +406,7 @@
             environment {"COOK_JOB_CPUS" "1.0"
                          "COOK_JOB_MEM_MB" "10.0"
                          "COOK_JOB_UUID" (-> job-ent :job/uuid str)}
-            task-metadata (task/job->task-metadata db framework-id executor job-ent task-id)]
+            task-metadata (task/job->task-metadata db framework-id executor mesos-run-as-user job-ent task-id)]
         (is (= {:command {:value "run-my-command", :environment environment, :user "test-user", :uris []}
                 :container nil
                 :environment environment
@@ -415,7 +435,7 @@
                          "EXECUTOR_MAX_MESSAGE_LENGTH" (:max-message-length executor)
                          "PROGRESS_REGEX_STRING" (:default-progress-regex-string executor)
                          "PROGRESS_SAMPLE_INTERVAL_MS" (:progress-sample-interval-ms executor)}
-            task-metadata (task/job->task-metadata db framework-id executor job-ent task-id)]
+            task-metadata (task/job->task-metadata db framework-id executor mesos-run-as-user job-ent task-id)]
         (is (= {:command {:environment environment
                           :uris [(:uri executor)]
                           :user "test-user"
@@ -452,7 +472,7 @@
                          "EXECUTOR_MAX_MESSAGE_LENGTH" (:max-message-length executor)
                          "PROGRESS_REGEX_STRING" (:default-progress-regex-string executor)
                          "PROGRESS_SAMPLE_INTERVAL_MS" (:progress-sample-interval-ms executor)}
-            task-metadata (task/job->task-metadata db framework-id executor job-ent task-id)]
+            task-metadata (task/job->task-metadata db framework-id executor mesos-run-as-user job-ent task-id)]
         (is (= {:command {:environment environment
                           :uris [(:uri executor)]
                           :user "test-user"
@@ -481,7 +501,7 @@
             environment {"COOK_JOB_CPUS" "1.0"
                          "COOK_JOB_MEM_MB" "10.0"
                          "COOK_JOB_UUID" (-> job-ent :job/uuid str)}
-            task-metadata (task/job->task-metadata db framework-id {} job-ent task-id)]
+            task-metadata (task/job->task-metadata db framework-id {} mesos-run-as-user job-ent task-id)]
         (is (= {:command {:environment environment
                           :uris []
                           :user "test-user"
@@ -517,7 +537,7 @@
             environment {"COOK_JOB_CPUS" "1.0"
                          "COOK_JOB_MEM_MB" "10.0"
                          "COOK_JOB_UUID" (-> job-ent :job/uuid str)}
-            task-metadata (task/job->task-metadata db framework-id {} job-ent task-id)]
+            task-metadata (task/job->task-metadata db framework-id {} mesos-run-as-user job-ent task-id)]
         (is (= {:command {:environment environment
                           :uris []
                           :user "test-user"
@@ -556,7 +576,7 @@
             environment {"COOK_JOB_CPUS" "1.0"
                          "COOK_JOB_MEM_MB" "200.0"
                          "COOK_JOB_UUID" (-> job-ent :job/uuid str)}
-            task-metadata (task/job->task-metadata db framework-id {} job-ent task-id)]
+            task-metadata (task/job->task-metadata db framework-id {} mesos-run-as-user job-ent task-id)]
         (is (= {:command {:environment environment
                           :uris []
                           :user "test-user"

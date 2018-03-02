@@ -136,6 +136,11 @@ We'll look at the configurable options in turn:
   This sets the role that Cook will connect to Mesos with. Default: `*`
   You can omit this property unless you've enabled security features in Mesos. The value should be in authorized list for the current `:principal` in `register_frameworks` Action in Mesos Authorization file. See http://mesos.apache.org/documentation/latest/authorization/ for details.
 
+`:run-as-user`::
+  When configured, this sets the user that Cook will override and set as the user to run tasks on Mesos with.
+  You can omit this property, in which case the user configured in the job will be used as the user to run the job (the default behavior).
+  Cook's scheduling algorithm continues to use the user specified in the job to compute job schedules.
+
 `:framework-name`::
   This sets part of the name of the framework that Cook will register to Mesos. Default: Cook
   When connecting to Mesos, Cook will use a framework name like "YourFrameworkName-e254483".  It will append the current git hash to the value you specify here.
