@@ -58,7 +58,6 @@
                              "com.netflix.fenzo.TaskScheduler" :warn
                              "com.netflix.fenzo.AssignableVirtualMachine" :warn}}))
   ([{:keys [file] :or {file "log/cook.log"} {:keys [default] :or {default :info} :as overrides} :levels}]
-   (println "Initializing logging")
    (try
      (-> (Logger/getRootLogger) .getLoggerRepository .resetConfiguration)
      (let [overrides (->> overrides
@@ -355,7 +354,6 @@
   (try
     (let [literal-config {:config config-map}]
       (pre-configuration literal-config)
-      (.println System/err "Configured logging")
       (log/info "Configured logging")
       (log/info "Cook" @util/version "( commit" @util/commit ")")
       (let [settings {:settings (config-settings literal-config)}]

@@ -19,7 +19,7 @@
             [cook.mesos.mesos-mock :as mm]
             [cook.mesos.share :as share]
             [cook.mesos.util :as util]
-            [cook.test.testutil :refer (restore-fresh-database! poll-until)]
+            [cook.test.testutil :refer (restore-fresh-database! poll-until setup)]
             [datomic.api :as d]
             [plumbing.core :refer (map-vals map-keys map-from-vals)])
   (:import org.apache.curator.framework.CuratorFrameworkFactory
@@ -125,9 +125,9 @@
          trigger-chans# (or (:trigger-chans ~scheduler-config)
                             (c/make-trigger-chans rebalancer-config# progress-config# optimizer-config# task-constraints#))]
      (try
+       (setup :config {:executor executor-config#})
        (c/start-mesos-scheduler
          {:curator-framework curator-framework#
-          :executor-config executor-config#
           :fenzo-config fenzo-config#
           :framework-id framework-id#
           :get-mesos-utilization get-mesos-utilization#

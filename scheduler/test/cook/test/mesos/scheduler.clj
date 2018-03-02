@@ -28,7 +28,8 @@
             [cook.mesos.scheduler :as sched]
             [cook.mesos.share :as share]
             [cook.mesos.util :as util]
-            [cook.test.testutil :refer (restore-fresh-database! create-dummy-group create-dummy-job create-dummy-instance init-offer-cache poll-until)]
+            [cook.test.testutil :refer [restore-fresh-database! create-dummy-group create-dummy-job
+                                        create-dummy-instance init-offer-cache poll-until setup]]
             [criterium.core :as crit]
             [datomic.api :as d :refer (q db)]
             [mesomatic.scheduler :as msched]
@@ -1531,10 +1532,11 @@
                                             user->quota (or user-quota {test-user {:count 10, :cpus 50, :mem 32768, :gpus 10}})
                                             mesos-run-as-user nil
                                             result (sched/handle-resource-offers!
-                                                     conn driver fenzo framework-id executor category->pending-jobs-atom mesos-run-as-user
+                                                     conn driver fenzo framework-id category->pending-jobs-atom mesos-run-as-user
                                                      user->usage user->quota num-considerable offers-chan offers rebalancer-reservation-atom)]
                                         (async/>!! offers-chan :end-marker)
                                         result))]
+    (setup :config {:executor executor})
 
     (testing "enough offers for all normal jobs"
       (let [num-considerable 10

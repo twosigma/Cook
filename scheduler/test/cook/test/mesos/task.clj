@@ -5,7 +5,7 @@
             [clojure.string :as str]
             [cook.mesos.scheduler :as sched]
             [cook.mesos.task :as task]
-            [cook.test.testutil :as tu]
+            [cook.test.testutil :as tu :refer (setup)]
             [datomic.api :as d]
             [mesomatic.types :as mtypes])
   (:import (java.util UUID)))
@@ -324,6 +324,7 @@
                         :extract false
                         :value "file:///path/to/cook-executor"}}
         mesos-run-as-user nil]
+    (setup :config {:executor executor})
 
     (testing "custom-executor with simple job"
       (let [task-id (str (UUID/randomUUID))
@@ -336,7 +337,7 @@
                          "COOK_JOB_UUID" (-> job-ent :job/uuid str)}]
 
         (testing "mesos-run-as-user absent"
-          (let [task-metadata (task/job->task-metadata db framework-id executor mesos-run-as-user job-ent task-id)]
+          (let [task-metadata (task/job->task-metadata db framework-id mesos-run-as-user job-ent task-id)]
             (is (= {:command {:value "run-my-command", :environment environment, :user "test-user", :uris []}
                     :container nil
                     :environment environment
@@ -353,7 +354,7 @@
 
         (testing "mesos-run-as-user present"
           (let [mesos-run-as-user "mesos-run-as-user"
-                task-metadata (task/job->task-metadata db framework-id executor mesos-run-as-user job-ent task-id)]
+                task-metadata (task/job->task-metadata db framework-id mesos-run-as-user job-ent task-id)]
             (is (= {:command {:value "run-my-command", :environment environment, :user mesos-run-as-user, :uris []}
                     :container nil
                     :environment environment
@@ -381,7 +382,7 @@
                          "COOK_JOB_GROUP_UUID" (-> group-ent :group/uuid str)
                          "COOK_JOB_MEM_MB" "10.0"
                          "COOK_JOB_UUID" (-> job-ent :job/uuid str)}
-            task-metadata (task/job->task-metadata db framework-id executor mesos-run-as-user job-ent task-id)]
+            task-metadata (task/job->task-metadata db framework-id mesos-run-as-user job-ent task-id)]
         (is (= {:command {:value "run-my-command", :environment environment, :user "test-user", :uris []}
                 :container nil
                 :environment environment
@@ -406,7 +407,7 @@
             environment {"COOK_JOB_CPUS" "1.0"
                          "COOK_JOB_MEM_MB" "10.0"
                          "COOK_JOB_UUID" (-> job-ent :job/uuid str)}
-            task-metadata (task/job->task-metadata db framework-id executor mesos-run-as-user job-ent task-id)]
+            task-metadata (task/job->task-metadata db framework-id mesos-run-as-user job-ent task-id)]
         (is (= {:command {:value "run-my-command", :environment environment, :user "test-user", :uris []}
                 :container nil
                 :environment environment
@@ -435,7 +436,7 @@
                          "EXECUTOR_MAX_MESSAGE_LENGTH" (:max-message-length executor)
                          "PROGRESS_REGEX_STRING" (:default-progress-regex-string executor)
                          "PROGRESS_SAMPLE_INTERVAL_MS" (:progress-sample-interval-ms executor)}
-            task-metadata (task/job->task-metadata db framework-id executor mesos-run-as-user job-ent task-id)]
+            task-metadata (task/job->task-metadata db framework-id mesos-run-as-user job-ent task-id)]
         (is (= {:command {:environment environment
                           :uris [(:uri executor)]
                           :user "test-user"
@@ -472,7 +473,7 @@
                          "EXECUTOR_MAX_MESSAGE_LENGTH" (:max-message-length executor)
                          "PROGRESS_REGEX_STRING" (:default-progress-regex-string executor)
                          "PROGRESS_SAMPLE_INTERVAL_MS" (:progress-sample-interval-ms executor)}
-            task-metadata (task/job->task-metadata db framework-id executor mesos-run-as-user job-ent task-id)]
+            task-metadata (task/job->task-metadata db framework-id mesos-run-as-user job-ent task-id)]
         (is (= {:command {:environment environment
                           :uris [(:uri executor)]
                           :user "test-user"
@@ -501,7 +502,7 @@
             environment {"COOK_JOB_CPUS" "1.0"
                          "COOK_JOB_MEM_MB" "10.0"
                          "COOK_JOB_UUID" (-> job-ent :job/uuid str)}
-            task-metadata (task/job->task-metadata db framework-id {} mesos-run-as-user job-ent task-id)]
+            task-metadata (task/job->task-metadata db framework-id mesos-run-as-user job-ent task-id)]
         (is (= {:command {:environment environment
                           :uris []
                           :user "test-user"
@@ -537,7 +538,7 @@
             environment {"COOK_JOB_CPUS" "1.0"
                          "COOK_JOB_MEM_MB" "10.0"
                          "COOK_JOB_UUID" (-> job-ent :job/uuid str)}
-            task-metadata (task/job->task-metadata db framework-id {} mesos-run-as-user job-ent task-id)]
+            task-metadata (task/job->task-metadata db framework-id mesos-run-as-user job-ent task-id)]
         (is (= {:command {:environment environment
                           :uris []
                           :user "test-user"
@@ -576,7 +577,7 @@
             environment {"COOK_JOB_CPUS" "1.0"
                          "COOK_JOB_MEM_MB" "200.0"
                          "COOK_JOB_UUID" (-> job-ent :job/uuid str)}
-            task-metadata (task/job->task-metadata db framework-id {} mesos-run-as-user job-ent task-id)]
+            task-metadata (task/job->task-metadata db framework-id mesos-run-as-user job-ent task-id)]
         (is (= {:command {:environment environment
                           :uris []
                           :user "test-user"
@@ -600,27 +601,31 @@
   (testing "empty entity and config"
     (let [job-ent {}
           executor-config {}]
-      (is (not (task/use-cook-executor? job-ent executor-config)))))
+      (setup :config {:executor executor-config})
+      (is (not (task/use-cook-executor? job-ent)))))
 
   (testing "custom-executor not configured"
     (let [job-ent {}
           executor-config {:command "cook-executor"
                            :portion 0.25
                            :retry-limit 1}]
-      (is (not (task/use-cook-executor? job-ent executor-config)))))
+      (setup :config {:executor executor-config})
+      (is (not (task/use-cook-executor? job-ent)))))
 
   (testing "custom-executor retry-limit not configured"
     (let [job-ent {:job/custom-executor true}
           executor-config {:command "cook-executor"
                            :portion 0.25}]
-      (is (not (task/use-cook-executor? job-ent executor-config)))))
+      (setup :config {:executor executor-config})
+      (is (not (task/use-cook-executor? job-ent)))))
 
   (testing "custom-executor enabled"
     (let [job-ent {:job/custom-executor true}
           executor-config {:command "cook-executor"
                            :portion 0.25
                            :retry-limit 1}]
-      (is (not (task/use-cook-executor? job-ent executor-config)))))
+      (setup :config {:executor executor-config})
+      (is (not (task/use-cook-executor? job-ent)))))
 
   (testing "custom-executor enabled and cook-executor enabled [faulty state]"
     (let [job-ent {:job/custom-executor true
@@ -628,7 +633,8 @@
           executor-config {:command "cook-executor"
                            :portion 0.25
                            :retry-limit 1}]
-      (is (not (task/use-cook-executor? job-ent executor-config)))))
+      (setup :config {:executor executor-config})
+      (is (not (task/use-cook-executor? job-ent)))))
 
   (testing "custom-executor disabled and cook-executor enabled"
     (let [job-ent {:job/custom-executor false
@@ -636,7 +642,8 @@
           executor-config {:command "cook-executor"
                            :portion 0.25
                            :retry-limit 1}]
-      (is (task/use-cook-executor? job-ent executor-config))))
+      (setup :config {:executor executor-config})
+      (is (task/use-cook-executor? job-ent))))
 
   (testing "custom-executor disabled and cook-executor disabled"
     (let [job-ent {:job/custom-executor false
@@ -644,7 +651,8 @@
           executor-config {:command "cook-executor"
                            :portion 0.25
                            :retry-limit 1}]
-      (is (not (task/use-cook-executor? job-ent executor-config)))))
+      (setup :config {:executor executor-config})
+      (is (not (task/use-cook-executor? job-ent)))))
 
   (testing "custom-executor disabled and coin toss favorable"
     (let [job-uuid (str (UUID/randomUUID))
@@ -653,8 +661,9 @@
           executor-config {:command "cook-executor"
                            :portion 0.25
                            :retry-limit 1}]
+      (setup :config {:executor executor-config})
       (with-redefs [hash (fn [obj] (is (= job-uuid obj)) 10)]
-        (is (task/use-cook-executor? job-ent executor-config)))))
+        (is (task/use-cook-executor? job-ent)))))
 
   (testing "custom-executor disabled and coin toss unfavorable"
     (let [job-uuid (str (UUID/randomUUID))
@@ -663,8 +672,9 @@
           executor-config {:command "cook-executor"
                            :portion 0.25
                            :retry-limit 1}]
+      (setup :config {:executor executor-config})
       (with-redefs [hash (fn [obj] (is (= job-uuid obj)) 90)]
-        (is (not (task/use-cook-executor? job-ent executor-config))))))
+        (is (not (task/use-cook-executor? job-ent))))))
 
   (testing "custom-executor disabled, coin toss favorable with single instance"
     (let [instance-1 {:instance/executor-id "foo"}
@@ -673,24 +683,22 @@
                    :job/instance [instance-1]
                    :job/uuid job-uuid}]
       (with-redefs [hash (fn [obj] (is (= job-uuid obj)) 10)]
-        (is (->> {:command "cook-executor"
-                  :portion 0.25}
-                 (task/use-cook-executor? job-ent)
-                 not))
-        (is (->> {:command "cook-executor"
-                  :portion 0.25
-                  :retry-limit 0}
-                 (task/use-cook-executor? job-ent)
-                 not))
-        (is (->> {:command "cook-executor"
-                  :portion 0.25
-                  :retry-limit 1}
-                 (task/use-cook-executor? job-ent)
-                 not))
-        (is (->> {:command "cook-executor"
-                  :portion 0.25
-                  :retry-limit 2}
-                 (task/use-cook-executor? job-ent))))))
+        (setup :config {:executor {:command "cook-executor"
+                                   :portion 0.25
+                                   :retry-limit "not-a-number"}})
+        (is (not (task/use-cook-executor? job-ent)))
+        (setup :config {:executor {:command "cook-executor"
+                                   :portion 0.25
+                                   :retry-limit 0}})
+        (is (not (task/use-cook-executor? job-ent)))
+        (setup :config {:executor {:command "cook-executor"
+                                   :portion 0.25
+                                   :retry-limit 1}})
+        (is (not (task/use-cook-executor? job-ent)))
+        (setup :config {:executor {:command "cook-executor"
+                                   :portion 0.25
+                                   :retry-limit 2}})
+        (is (task/use-cook-executor? job-ent)))))
 
   (testing "custom-executor disabled, coin toss favorable with multiple instances"
     (let [instance-1 {:instance/executor-id "foo"}
@@ -701,24 +709,22 @@
                    :job/instance [instance-1 instance-2 instance-3]
                    :job/uuid job-uuid}]
       (with-redefs [hash (fn [obj] (is (= job-uuid obj)) 10)]
-        (is (->> {:command "cook-executor"
-                  :portion 0.25}
-                 (task/use-cook-executor? job-ent)
-                 not))
-        (is (->> {:command "cook-executor"
-                  :portion 0.25
-                  :retry-limit 2}
-                 (task/use-cook-executor? job-ent)
-                 not))
-        (is (->> {:command "cook-executor"
-                  :portion 0.25
-                  :retry-limit 3}
-                 (task/use-cook-executor? job-ent)
-                 not))
-        (is (->> {:command "cook-executor"
-                  :portion 0.25
-                  :retry-limit 4}
-                 (task/use-cook-executor? job-ent)))))))
+        (setup :config {:executor {:command "cook-executor"
+                                   :portion 0.25
+                                   :retry-limit "not-a-number"}})
+        (is (not (task/use-cook-executor? job-ent)))
+        (setup :config {:executor {:command "cook-executor"
+                                   :portion 0.25
+                                   :retry-limit 2}})
+        (is (not (task/use-cook-executor? job-ent)))
+        (setup :config {:executor {:command "cook-executor"
+                                   :portion 0.25
+                                   :retry-limit 3}})
+        (is (not (task/use-cook-executor? job-ent)))
+        (setup :config {:executor {:command "cook-executor"
+                                   :portion 0.25
+                                   :retry-limit 4}})
+        (is (task/use-cook-executor? job-ent))))))
 
 (deftest test-build-executor-environment
   (testing "default values"
@@ -726,12 +732,14 @@
             "EXECUTOR_MAX_MESSAGE_LENGTH" 256
             "PROGRESS_REGEX_STRING" "default-regex"
             "PROGRESS_SAMPLE_INTERVAL_MS" 2000}
-           (let [executor-config {:default-progress-regex-string "default-regex"
+           (let [executor-config {:command "command"
+                                  :default-progress-regex-string "default-regex"
                                   :log-level "INFO"
                                   :max-message-length 256
                                   :progress-sample-interval-ms 2000}
                  job-ent nil]
-             (task/build-executor-environment executor-config job-ent)))))
+             (setup :config {:executor executor-config})
+             (task/build-executor-environment job-ent)))))
 
   (testing "default values with environment"
     (is (= {"CUSTOM_FOO" "foo"
@@ -741,7 +749,8 @@
             "EXECUTOR_PROGRESS_OUTPUT_FILE_ENV" "CONFIGURED_PROGRESS_OUTPUT_ENV"
             "PROGRESS_REGEX_STRING" "default-regex"
             "PROGRESS_SAMPLE_INTERVAL_MS" 2000}
-           (let [executor-config {:default-progress-regex-string "default-regex"
+           (let [executor-config {:command "command"
+                                  :default-progress-regex-string "default-regex"
                                   :environment {"CUSTOM_FOO" "foo"
                                                 "CUSTOM_VAR" "var"
                                                 "EXECUTOR_LOG_LEVEL" "will-be-overridden"
@@ -750,7 +759,8 @@
                                   :max-message-length 256
                                   :progress-sample-interval-ms 2000}
                  job-ent nil]
-             (task/build-executor-environment executor-config job-ent)))))
+             (setup :config {:executor executor-config})
+             (task/build-executor-environment job-ent)))))
 
   (testing "job configured values"
     (is (= {"EXECUTOR_LOG_LEVEL" "INFO"
@@ -759,7 +769,8 @@
             "EXECUTOR_PROGRESS_OUTPUT_FILE_NAME" "progress.out"
             "PROGRESS_REGEX_STRING" "custom-regex"
             "PROGRESS_SAMPLE_INTERVAL_MS" 2000}
-           (let [executor-config {:default-progress-regex-string "default-regex"
+           (let [executor-config {:command "command"
+                                  :default-progress-regex-string "default-regex"
                                   :log-level "INFO"
                                   :max-message-length 256
                                   :progress-sample-interval-ms 2000}
@@ -768,7 +779,8 @@
                           :job/progress-output-file "progress.out"
                           :job/progress-regex-string "custom-regex"
                           :job/progress-sample-interval-ms 5000}]
-             (task/build-executor-environment executor-config job-ent)))))
+             (setup :config {:executor executor-config})
+             (task/build-executor-environment job-ent)))))
 
   (testing "job configured values sanitized"
     (is (= {"CONFIGURED_PROGRESS_OUTPUT_ENV" "progress.conf.out"
@@ -780,7 +792,8 @@
             "EXECUTOR_PROGRESS_OUTPUT_FILE_NAME" "progress.out"
             "PROGRESS_REGEX_STRING" "custom-regex"
             "PROGRESS_SAMPLE_INTERVAL_MS" 2000}
-           (let [executor-config {:default-progress-regex-string "default-regex"
+           (let [executor-config {:command "command"
+                                  :default-progress-regex-string "default-regex"
                                   :environment {"CONFIGURED_PROGRESS_OUTPUT_ENV" "progress.conf.out"
                                                 "CUSTOM_FOO" "foo"
                                                 "CUSTOM_VAR" "var"
@@ -794,4 +807,5 @@
                           :job/progress-output-file "progress.out"
                           :job/progress-regex-string "custom-regex"
                           :job/progress-sample-interval-ms 5000000}]
-             (task/build-executor-environment executor-config job-ent))))))
+             (setup :config {:executor executor-config})
+             (task/build-executor-environment job-ent))))))
