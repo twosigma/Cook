@@ -55,11 +55,10 @@
    3. Either :job/executor is explicitly enabled
       Or: the job is a cook-executor candidate (see cook-executor-candidate?)."
   [job-ent]
-  (let [{:keys [command]} (-> config :settings :executor)]
-    (and (not (use-custom-executor? job-ent))
-         command
-         (or (= :executor/cook (:job/executor job-ent))
-             (cook-executor-candidate? job-ent)))))
+  (and (not (use-custom-executor? job-ent))
+       (-> config :settings :executor :command)
+       (or (= :executor/cook (:job/executor job-ent))
+           (cook-executor-candidate? job-ent))))
 
 (defn build-executor-environment
   "Build the environment for the cook executor."
