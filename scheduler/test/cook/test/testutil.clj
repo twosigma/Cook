@@ -239,17 +239,16 @@
                               :out (ConsoleAppender. (PatternLayout. "%d{ISO8601} %-5p %c [%t] - %m%n"))}))
   (log/info "Running" (:var m)))
 
-(let [minimal-config {:unhandled-exceptions {}
-                      :log {}
+(let [minimal-config {:authorization {:one-user ""}
                       :database {:datomic-uri ""}
-                      :mesos {:master ""
-                              :leader-path ""}
-                      :authorization {:one-user ""}
-                      :scheduler {}
-                      :zookeeper {:local? true}
-                      :port nil
+                      :log {}
+                      :mesos {:leader-path "", :master ""}
                       :metrics {}
-                      :nrepl {}}]
+                      :nrepl {}
+                      :port nil
+                      :scheduler {}
+                      :unhandled-exceptions {}
+                      :zookeeper {:local? true}}]
   (defn setup
     "Given an optional config map, initializes the config state"
     [& {:keys [config], :or nil}]
