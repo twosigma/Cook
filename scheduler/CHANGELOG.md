@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.12.0] - 2018-03-05
+### Added
+- Endpoint for instance statistics, from @dposada
+- Support for a configurable run as user, from @shamsimam
+- Support for configuring number of instances which can fail before falling back to the mesos executor, from @shamsimam
+### Changed
+- Performance improvements to sandbox syncer, from @shamsimam
+- Rebalancer now reserve hosts after preempting, from @pschorf
+- Performance improvents to dru computation, @shamsimam
+
 ## [1.11.0] - 2018-02-05
 ### Added
 - Added timely sandbox directory updates for tasks that are not executed by the cook executor, from @shamsimam
