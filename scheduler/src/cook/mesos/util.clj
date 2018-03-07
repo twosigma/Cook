@@ -323,7 +323,7 @@
          (filter #(= state-keyword (:job/state %)))
          (filter #(not (:job/custom-executor %))))))
 
-;; This differs from the get-active-jobs-by-user-and-state is also looking up based on task state.
+;; This differs from get-active-jobs-by-user-and-state as it is also looking up based on task state.
 (defn get-completed-jobs-by-user
   "Returns all completed job entities for a particular user
    in the specified timeframe, without a custom executor. Supports looking up based
@@ -337,12 +337,12 @@
                name-filter-fn (filter #(name-filter-fn (:job/name %))))
       (take limit))))
 
-;; This query looks for all jobs by job state only (i.e., no 'success' or 'failed')
 (defn get-active-jobs-by-user-and-state
   "Returns all jobs for a particular user in the specified state
    and timeframe, without a custom executor.
    Note that this query is not performant for completed jobs, use
-   get-completed-jobs-by-user instead."
+   get-completed-jobs-by-user instead. This query looks for all
+   jobs by job state only (i.e., no 'success' or 'failed')"
   [db user start end state name-filter-fn]
   (let [state-keyword (case state
                         "running" :job.state/running
