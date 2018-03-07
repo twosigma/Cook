@@ -339,9 +339,7 @@
 
 (defn get-active-jobs-by-user-and-state
   "Returns all jobs for a particular user in the specified state
-   and timeframe, without a custom executor.
-   Note that this query is not performant for completed jobs, use
-   get-completed-jobs-by-user instead. This query looks for all
+   and timeframe, without a custom executor. This query looks for all
    jobs by job state only (i.e., no 'success' or 'failed')"
   [db user start end state name-filter-fn]
   (let [state-keyword (case state
