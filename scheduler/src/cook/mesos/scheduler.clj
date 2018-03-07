@@ -609,7 +609,7 @@
    during the same Fenzo scheduling cycle as the newly created TaskRequest."
   [db job & {:keys [resources task-id assigned-resources guuid->considerable-cotask-ids reserved-hosts running-cotask-cache]
           :or {resources (util/job-ent->resources job)
-               task-id (str (java.util.UUID/randomUUID))
+               task-id (str (d/squuid))
                assigned-resources (atom nil)
                guuid->considerable-cotask-ids (constantly #{})
                running-cotask-cache (atom (cache/fifo-cache-factory {} :threshold 1))
