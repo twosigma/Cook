@@ -1610,6 +1610,18 @@ class CookCliTest(unittest.TestCase):
         self.assertEqual('hello\nworld\n' * 5, cli.decode(cp.stdout))
         self.assertEqual('', cli.decode(cp.stderr))
 
+    def test_cat_binary_file(self):
+        cp, uuids = cli.submit('bash -c \''
+                               'for i in {0..255}; do num=$(printf "%x" $i); echo -n -e "\\x$num"; done > file.bin'
+                               '\'',
+                               self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        cp = cli.wait(uuids, self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        cp = cli.cat(uuids[0], 'file.bin', self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertEqual(bytes(i for i in range(0, 256)), cp.stdout)
+
     def test_usage(self):
         command = 'sleep 300'
 
