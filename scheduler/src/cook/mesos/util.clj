@@ -42,7 +42,7 @@
 
 (defn lookup-cache!
   "Generic cache. Caches under a key (extracted from the item with extract-key-fn. Uses miss-fn to fill
-  any misses. Caches only postive hits where both functions return non-nil"
+  any misses. Caches only positive hits where both functions return non-nil"
   [^Cache cache extract-key-fn miss-fn item]
   (if-let [key (extract-key-fn item)]
       (if-let [result (.getIfPresent cache key)]
@@ -56,7 +56,7 @@
 
 (defn lookup-cache-datomic-entity!
   "Specialized function for caching where datomic entities are the key.
-  Extracts :db/id so that we don't keep the entity alive in the cache"
+  Extracts :db/id so that we don't keep the entity alive in the cache."
   [cache miss-fn entity]
   (lookup-cache! cache :db/id miss-fn entity))
 
