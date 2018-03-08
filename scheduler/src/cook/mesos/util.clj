@@ -25,7 +25,46 @@
             [metatransaction.core :refer (db)]
             [metrics.timers :as timers]
             [plumbing.core :as pc :refer (map-vals map-keys)])
-  (:import [java.util Date]))
+  (:import
+    [com.google.common.cache Cache CacheBuilder]
+    [java.util.concurrent TimeUnit]
+    [java.util Date]))
+
+
+(defn new-cache []
+  "Build a new cache"
+  (-> (CacheBuilder/newBuilder)
+      (.maximumSize 1000000)
+      ;; if its not been accessed in 2 hours, whatever is going on, its not being visted by the
+      ;; scheduler loop anymore. E.g., its probably failed/done and won't be needed. So,
+      ;; lets kick it out to keep cache small.
+      (.expireAfterAccess 2 TimeUnit/HOURS)
+      (.build)))
+
+(defn lookup-cache!
+  "Generic cache. Caches under a key (extracted from the item with extract-key-fn. Uses miss-fn to fill
+  any misses. Caches only positive hits where both functions return non-nil"
+  [^Cache cache extract-key-fn miss-fn item]
+  (if-let [key (extract-key-fn item)]
+      (if-let [result (.getIfPresent cache key)]
+        result ; we got a hit.
+        (let [new-result (miss-fn item)]
+          ; Only cache non-nil
+          (when new-result
+            (.put cache key new-result))
+          new-result))
+      (miss-fn item)))
+
+(defn lookup-cache-datomic-entity!
+  "Specialized function for caching where datomic entities are the key.
+  Extracts :db/id so that we don't keep the entity alive in the cache."
+  [cache miss-fn entity]
+  (lookup-cache! cache :db/id miss-fn entity))
+
+(defonce ^Cache job-ent->resources-cache (new-cache))
+(defonce ^Cache categorize-job-cache (new-cache))
+(defonce ^Cache task-ent->user-cache (new-cache))
+(defonce ^Cache task->feature-vector-cache (new-cache))
 
 (defn get-all-resource-types
   "Return a list of all supported resources types. Example, :cpus :mem :gpus ..."
@@ -37,13 +76,16 @@
        (map first)))
 
 (defn categorize-job
-  "Return the category of the job. Currently jobs can be :normal or :gpu. This
-   is used to give separate queues for scarce & non-scarce resources"
-  [job]
-  (let [resources (:job/resource job)]
-    (if (some #(= :resource.type/gpus (:resource/type %)) resources)
-      :gpu
-      :normal)))
+      "Return the category of the job. Currently jobs can be :normal or :gpu. This
+       is used to give separate queues for scarce & non-scarce resources"
+      [job]
+      (let [categorize-job-miss
+            (fn [job]
+                (let [resources (:job/resource job)]
+                     (if (some #(= :resource.type/gpus (:resource/type %)) resources)
+                       :gpu
+                       :normal)))]
+           (lookup-cache-datomic-entity! categorize-job-cache categorize-job-miss job)))
 
 (defn without-ns
   [k]
@@ -178,19 +220,22 @@
           (:job/label job-ent)))
 
 (defn job-ent->resources
-  "Take a job entity and return a resource map. NOTE: the keys must be same as mesos resource keys"
-  [job-ent]
-  (reduce (fn [m r]
-            (let [resource (keyword (name (:resource/type r)))]
-              (condp contains? resource
-                #{:cpus :mem :gpus} (assoc m resource (:resource/amount r))
-                #{:uri} (update-in m [:uris] (fnil conj [])
-                                   {:cache (:resource.uri/cache? r false)
-                                    :executable (:resource.uri/executable? r false)
-                                    :value (:resource.uri/value r)
-                                    :extract (:resource.uri/extract? r false)}))))
-          {:ports (:job/ports job-ent 0)}
-          (:job/resource job-ent)))
+      "Take a job entity and return a resource map. NOTE: the keys must be same as mesos resource keys"
+      [job]
+      (let [job-ent->resources-miss
+              (fn [job-ent]
+                  (reduce (fn [m r]
+                              (let [resource (keyword (name (:resource/type r)))]
+                                   (condp contains? resource
+                                          #{:cpus :mem :gpus} (assoc m resource (:resource/amount r))
+                                          #{:uri} (update-in m [:uris] (fnil conj [])
+                                                             {:cache (:resource.uri/cache? r false)
+                                                              :executable (:resource.uri/executable? r false)
+                                                              :value (:resource.uri/value r)
+                                                              :extract (:resource.uri/extract? r false)}))))
+                          {:ports (:job/ports job-ent 0)}
+                          (:job/resource job-ent)))]
+           (lookup-cache-datomic-entity! job-ent->resources-cache job-ent->resources-miss job)))
 
 (defn job-ent->attempts-consumed
   "Determines the amount of attempts consumed by a job-ent."
@@ -450,23 +495,29 @@
          (when slave-id {:instance/slave-id slave-id})))
 
 (defn task-ent->user
-  [task-ent]
-  (get-in task-ent [:job/_instance :job/user]))
+      [task-ent]
+      (let [task-ent->user-miss
+              (fn [task-ent]
+                  (get-in task-ent [:job/_instance :job/user]))]
+           (lookup-cache-datomic-entity! task-ent->user-cache task-ent->user-miss task-ent)))
 
 (def ^:const default-job-priority 50)
 
 
 (defn task->feature-vector
-  [task]
-  "Vector of comparable features of a task.
-   Last two elements are aribitary tie breakers.
-   Use :db/id because they guarantee uniqueness for different entities
-   (:db/id task) is not sufficient because synthetic task entities don't have :db/id
-    This assumes there are at most one synthetic task for a job, otherwise uniqueness invariant will break"
-  [(- (:job/priority (:job/_instance task) default-job-priority))
-   (:instance/start-time task (java.util.Date. Long/MAX_VALUE))
-   (:db/id task)
-   (:db/id (:job/_instance task))])
+      "Vector of comparable features of a task.
+       Last two elements are aribitary tie breakers.
+       Use :db/id because they guarantee uniqueness for different entities
+       (:db/id task) is not sufficient because synthetic task entities don't have :db/id
+       This assumes there are at most one synthetic task for a job, otherwise uniqueness invariant will break"
+      [task]
+      (let [task->feature-vector-miss
+            (fn [task]
+                [(- (:job/priority (:job/_instance task) default-job-priority))
+                 (:instance/start-time task (java.util.Date. Long/MAX_VALUE))
+                 (:db/id task)
+                 (:db/id (:job/_instance task))])]
+           (lookup-cache-datomic-entity! task->feature-vector-cache task->feature-vector-miss task)))
 
 (defn same-user-task-comparator
   "Comparator to order same user's tasks"

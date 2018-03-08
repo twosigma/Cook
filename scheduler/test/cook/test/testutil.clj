@@ -23,6 +23,7 @@
             [cook.impersonation :refer (create-impersonation-middleware)]
             [cook.mesos.api :as api]
             [cook.mesos.schema :as schema]
+            [cook.mesos.util :as util]
             [datomic.api :as d :refer (q db)]
             [plumbing.core :refer [mapply]]
             [qbits.jet.server :refer (run-jetty)]
@@ -63,12 +64,21 @@
        (finally
          (async/close! exit-chan#)))))
 
+(defn flush-caches!
+  "Flush the caches. Needed in unit tests. We centralize initialization by using it to initialize the caches too."
+  []
+  (.invalidateAll util/job-ent->resources-cache)
+  (.invalidateAll util/categorize-job-cache)
+  (.invalidateAll util/task-ent->user-cache)
+  (.invalidateAll util/task->feature-vector-cache))
+
 (defn restore-fresh-database!
   "Completely delete all data, start a fresh database and apply transactions if
    provided.
 
    Return a connection to the fresh database."
   [uri & txn]
+  (flush-caches!)
   (d/delete-database uri)
   (d/create-database uri)
   (let [conn (d/connect uri)]
