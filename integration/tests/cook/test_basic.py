@@ -1931,3 +1931,5 @@ class CookTest(unittest.TestCase):
         self.assertEqual(200, resp.status_code)
         _, resp = util.get_instance_stats(self.cook_url, status='running', start='2018-01-01', end='2018-02-02')
         self.assertEqual(400, resp.status_code)
+        _, resp = util.get_instance_stats(self.cook_url, status='running', start='2018-01-01', end='2017-12-31')
+        self.assertEqual(400, resp.status_code)
