@@ -606,7 +606,7 @@
         offensive-job-filter (partial sched/filter-offensive-jobs constraints offensive-jobs-ch)]
     (is (= {:normal (list (util/job-ent->map job-entity-2))
             :gpu ()}
-           (sched/rank-jobs test-db offensive-job-filter)))))
+           (:category->jobs (sched/rank-jobs test-db offensive-job-filter))))))
 
 (deftest test-virtual-machine-lease-adapter
   ;; ensure that the VirtualMachineLeaseAdapter can successfully handle an offer from Mesomatic.

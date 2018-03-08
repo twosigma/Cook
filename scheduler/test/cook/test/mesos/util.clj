@@ -471,4 +471,80 @@
     (is (= 12 (util/cache-lookup! cache-store "A" 12)))
     (is (= {"A" 12, "C" 31} (.cache @cache-store)))))
 
+(deftest test-get-pending-job-ents-since-tx
+  (let [uri "datomic:mem://test-get-pending-job-ents-since-tx"
+        conn (testutil/restore-fresh-database! uri)
+        sort-jobs (fn [jobs] (sort-by :job/uuid jobs))
+        get-pending-job-ents (fn [db]
+                               (->> (util/get-pending-job-ents db)
+                                    (map util/job-ent->map)
+                                    sort-jobs))
+        _ (testutil/create-dummy-job conn :command "c1" :job-state :job.state/waiting :user "user1")
+        j2 (testutil/create-dummy-job conn :command "c2" :job-state :job.state/running :user "user2")]
+
+    (let [unfiltered-db1 (d/db conn)
+          tx1 (-> unfiltered-db1 d/basis-t d/t->tx)]
+      (is (= (get-pending-job-ents unfiltered-db1)
+             (->> (util/get-pending-jobs-since-tx unfiltered-db1 0 [])
+                  sort-jobs)))
+
+      (let [_ @(d/transact conn [[:db/add j2 :job/state :job.state/waiting]])
+            j4 (testutil/create-dummy-job conn :command "c4" :job-state :job.state/waiting :user "user1")
+            _ @(d/transact conn [[:db/add j4 :job/state :job.state/running]])
+            _ (testutil/create-dummy-job conn :command "c5" :job-state :job.state/running :user "user2")
+            _ @(d/transact conn [[:db/add j4 :job/state :job.state/completed]])
+            _ (testutil/create-dummy-job conn :command "c6" :job-state :job.state/waiting :user "user1")
+
+            unfiltered-db2 (d/db conn)]
+        (is (= (get-pending-job-ents unfiltered-db2)
+               (->> (util/get-pending-jobs-since-tx unfiltered-db2 0 [])
+                    sort-jobs)))
+        (is (= (get-pending-job-ents unfiltered-db2)
+               (->> (util/get-pending-jobs-since-tx unfiltered-db1 0 [])
+                    (util/get-pending-jobs-since-tx unfiltered-db2 tx1)
+                    sort-jobs)))))))
+
+(deftest test-get-pending-job-ents-since-tx-randomized
+  (let [uri "datomic:mem://test-get-pending-job-ents-since-tx-randomized"
+        conn (testutil/restore-fresh-database! uri)
+        sort-jobs (fn [jobs] (sort-by :job/uuid jobs))
+        get-pending-job-ents (fn [db]
+                               (->> (util/get-pending-job-ents db)
+                                    (map util/job-ent->map)
+                                    sort-jobs))
+        random-job-state (fn []
+                           (->> [:job.state/completed :job.state/running :job.state/waiting]
+                                shuffle
+                                first))
+        all-jobs (->> (range 200)
+                      (map (fn [n]
+                             (testutil/create-dummy-job
+                               conn
+                               :command (str "run-my-command-" n)
+                               :job-state (random-job-state)
+                               :user (str "user" (mod n 20)))))
+                      doall)]
+    (loop [iteration 0
+           pending-jobs []
+           tx-id 0]
+
+      ;; randomly change state of a few jobs including from completed to another state
+      (doseq [job-id (->> all-jobs shuffle (take (rand-int 20)))]
+        (->> (random-job-state)
+             (vector :db/add job-id :job/state)
+             vector
+             (d/transact conn)
+             deref))
+
+      (let [db (d/db conn)
+            pending-jobs' (util/get-pending-jobs-since-tx db tx-id pending-jobs)]
+        ;; assert that the computed result is the same as the result from get-pending-job-ents
+        (is (= (get-pending-job-ents db) (sort-jobs pending-jobs')))
+
+        (when (<= iteration 100)
+          (recur
+            (inc iteration)
+            pending-jobs'
+            (-> db d/basis-t d/t->tx)))))))
+
 (comment (run-tests))

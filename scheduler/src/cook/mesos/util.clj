@@ -23,6 +23,7 @@
             [clojure.tools.logging :as log]
             [datomic.api :as d :refer (q)]
             [metatransaction.core :refer (db)]
+            [metrics.meters :as meters]
             [metrics.timers :as timers]
             [plumbing.core :as pc :refer (map-vals map-keys)])
   (:import
@@ -170,6 +171,15 @@
          ;; not logging the stacktrace as it adds noise and can cause the log files to blow up in size
          (log/error "Error while converting job entity to a map" {:job job :message (.getMessage e)}))))))
 
+(defn job->map
+  "If the input is a map, then it returns the same map assuming the job entity has been converted.
+   Else it assumes the job is an entity and converts it to a map using `job-ent->map`.
+   Returns nil if there was an error while converting the job entity to a map."
+  [job]
+  (if (map? job)
+    job ;; already converted to a map, nothing else to do
+    (job-ent->map job)))
+
 (defn remove-datomic-namespacing
   "Takes a map from datomic (pull) and removes the namespace
    as well as :db/id keys"
@@ -300,6 +310,42 @@
    (timers/time!
      get-pending-jobs-duration
      (get-pending-job-ents* unfiltered-db true))))
+
+(timers/deftimer [cook-mesos scheduler get-pending-jobs-since-tx-duration])
+(meters/defmeter [cook-mesos scheduler get-pending-jobs-since-tx-rate])
+
+(defn get-pending-jobs-since-tx
+  "Returns the list of pending jobs built by querying for jobs with modified state since prev-tx-id.
+   All jobs with modified state are removed from prev-pending-jobs and then only jobs in waiting
+   state are concatenated to the provided prev-pending-jobs."
+  ([unfiltered-db prev-tx-id prev-pending-jobs]
+   (timers/time!
+     get-pending-jobs-since-tx-duration
+     (let [all-job-states [:job.state/completed :job.state/running :job.state/waiting]
+           job-id-uuid-state-triple (d/q '[:find ?j ?uuid ?state
+                                           :in $ [?state ...] ?prev-tx
+                                           :where
+                                           [(> ?tx ?prev-tx)]
+                                           [?j :job/state ?state ?tx]
+                                           [?j :job/uuid ?uuid]
+                                           [?j :job/commit-latch ?cl]
+                                           [?cl :commit-latch/committed? true]]
+                                         unfiltered-db all-job-states prev-tx-id)
+           new-job-uuids (->> job-id-uuid-state-triple
+                              (map (comp str second))
+                              (into #{}))
+           new-pending-jobs (->> job-id-uuid-state-triple
+                                 (filter #(= :job.state/waiting (last %)))
+                                 (map (comp job-ent->map
+                                            (partial d/entity unfiltered-db)
+                                            first)))
+           _ (log/info "Found" (count new-pending-jobs) "waiting jobs since tx" prev-tx-id)
+           _ (meters/mark! get-pending-jobs-since-tx-rate (count new-pending-jobs))
+           pending-jobs (->> prev-pending-jobs
+                             (remove #(contains? new-job-uuids (str (:job/uuid %))))
+                             (concat new-pending-jobs))]
+       (log/info "Found" (count pending-jobs) "waiting jobs in total")
+       pending-jobs))))
 
 (defn generate-intervals
   "Generates a list of intervals between start and end as pairs
@@ -681,18 +727,24 @@
    Calls f with no arguments
 
    Will try to close the item pulled from ch once f has completed if the item is a channel"
-  [ch f & [{:keys [error-handler on-finished]
+  [ch f & [{:keys [error-handler initial-state on-finished]
             :or {error-handler identity
                  on-finished #()}}]]
-  (async/go-loop []
+  (async/go-loop [state initial-state]
     (if-let [x (async/<! ch)]
-      (do (async/<! (async/thread
-                      (try
-                        (f)
-                        (catch Exception e
-                          (error-handler e)))))
-          (close-when-ch! x)
-          (recur))
+      (let [partial-state (async/<!
+                            (async/thread
+                              (try
+                                (if (nil? state)
+                                  (f)
+                                  (f state))
+                                (catch Exception e
+                                  (error-handler e)))))]
+        (close-when-ch! x)
+        (recur
+          (if (nil? state)
+            state
+            (merge state partial-state))))
       (on-finished)))
   (fn cancel! []
     (async/close! ch)))
