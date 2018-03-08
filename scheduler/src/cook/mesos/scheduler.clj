@@ -1351,7 +1351,7 @@
 
 (defn filter-offensive-jobs
   "Base on the constraints on memory and cpus, given a list of job entities it
-   puts the offensive jobs into offensive-job-ch asynchronically and returns
+   puts the offensive jobs into offensive-job-ch asynchronously and returns
    the inoffensive jobs.
 
    A job is offensive if and only if its required memory or cpus exceeds the
@@ -1365,10 +1365,10 @@
           is-offensive? (partial is-offensive? max-memory-mb max-cpus)
           inoffensive (remove is-offensive? jobs)
           offensive (filter is-offensive? jobs)]
-      ;; Put offensive jobs asynchronically such that it could return the
-      ;; inoffensive jobs immediately.
-      (async/go
-        (when (seq offensive)
+      (when (seq offensive)
+        ;; Put offensive jobs asynchronously such that it could return the
+        ;; inoffensive jobs immediately.
+        (async/go
           (log/info "Found" (count offensive) "offensive jobs")
           (async/>! offensive-jobs-ch offensive)))
       inoffensive)))
@@ -1377,7 +1377,7 @@
   "It returns an async channel which will be used to receive offensive jobs expected
    to be killed / aborted.
 
-   It asynchronically pulls offensive jobs from the channel and abort these
+   It asynchronously pulls offensive jobs from the channel and abort these
    offensive jobs by marking job state as completed."
   [conn]
   (let [offensive-jobs-ch (async/chan (async/sliding-buffer 256))]
