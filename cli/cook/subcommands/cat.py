@@ -1,24 +1,22 @@
 import argparse
 import logging
+import sys
 from functools import partial
 
-from cook.mesos import read_file
+from cook.mesos import download_file
 from cook.querying import parse_entity_refs, query_unique_and_run, parse_entity_ref
 from cook.util import guard_no_cluster
 
 
 def cat_for_instance(instance, sandbox_dir, path):
     """Outputs the contents of the Mesos sandbox path for the given instance."""
-    read = partial(read_file, instance=instance, sandbox_dir=sandbox_dir, path=path)
-    offset = 0
-    chunk_size = 4096
-    data = read(offset=offset, length=chunk_size)['data']
+    resp = download_file(instance, sandbox_dir, path)
     try:
-        while len(data) > 0:
-            print(data, end='')
-            offset = offset + len(data)
-            data = read(offset=offset, length=chunk_size)['data']
+        for data in resp.iter_content(chunk_size=4096):
+            if data:
+                sys.stdout.buffer.write(data)
     except BrokenPipeError as bpe:
+        sys.stderr.close()
         logging.exception(bpe)
 
 
