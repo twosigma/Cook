@@ -171,8 +171,8 @@
                       (catch Exception e
                         (log/debug e "Error reading a string from mesos status data. Is it in the format we expect?")))))})
 
-(defn update-reason-histos!
-  "Updates histograms for run time, cpu time, and memory time,
+(defn update-reason-metrics!
+  "Updates histograms and counters for run time, cpu time, and memory time,
   where the histograms have the failure reason in the title"
   [db mesos-reason instance-runtime {:keys [cpus mem]}]
   (let [reason (->> mesos-reason
@@ -180,14 +180,20 @@
                     (d/entity db)
                     :reason/name
                     name)
-        update-histo! (fn update-histo! [s v]
-                        (histograms/update!
-                          (histograms/histogram
-                            ["cook-mesos" "scheduler" "hist-task-fail" reason s])
-                          v))]
-    (update-histo! "times" instance-runtime)
-    (update-histo! "cpu-times" (* instance-runtime cpus))
-    (update-histo! "mem-times" (* instance-runtime mem))))
+        update-metrics! (fn update-metrics! [s v]
+                          (histograms/update!
+                            (histograms/histogram
+                              ["cook-mesos" "scheduler" "hist-task-fail" reason s])
+                            v)
+                          (counters/inc!
+                            (counters/counter
+                              ["cook-mesos" "scheduler" "hist-task-fail" reason s "total"])
+                            v))
+        instance-runtime-seconds (/ instance-runtime 1000)
+        mem-gb (/ mem 1024)]
+    (update-metrics! "times" instance-runtime-seconds)
+    (update-metrics! "cpu-times" (* instance-runtime-seconds cpus))
+    (update-metrics! "mem-times" (* instance-runtime-seconds mem-gb))))
 
 (defn handle-status-update
   "Takes a status update from mesos."
@@ -253,7 +259,7 @@
                                         job-resources
                                         instance-runtime)
              (when-not previous-reason
-               (update-reason-histos! db reason instance-runtime job-resources)))
+               (update-reason-metrics! db reason instance-runtime job-resources)))
            ;; This code kills any task that "shouldn't" be running
            (when (and
                    (or (nil? instance) ; We could know nothing about the task, meaning a DB error happened and it's a waste to finish
