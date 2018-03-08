@@ -16,6 +16,7 @@ def cat_for_instance(instance, sandbox_dir, path):
             if data:
                 sys.stdout.buffer.write(data)
     except BrokenPipeError as bpe:
+        sys.stderr.close()
         logging.exception(bpe)
 
 
