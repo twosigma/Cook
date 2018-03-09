@@ -281,12 +281,12 @@
   ;; db to improve the performance of this query. We are working to remove
   ;; metatransaction throughout the code
   (->> (q '[:find [?j ...]
-            :in $ [?state ...] ?committed?
+            :in $ ?state ?committed?
             :where
             [?j :job/state ?state]
             [?j :job/commit-latch ?cl]
             [?cl :commit-latch/committed? ?committed?]]
-          unfiltered-db [:job.state/waiting] committed?)
+          unfiltered-db :job.state/waiting committed?)
        (map (partial d/entity unfiltered-db))))
 
 (timers/deftimer [cook-mesos scheduler get-pending-jobs-duration])
