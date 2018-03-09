@@ -349,7 +349,9 @@
 ;; jobs submitted after `start` will have been created after
 ;; expanded start
 (defn get-jobs-by-user-and-state-and-submit
-  "Returns all jobs for a particular user in the specified timeframe, without a custom executor"
+  "Returns all jobs for a particular user in the specified timeframe. By default,
+  filters out jobs with a custom executor. If include-custom-executor? is true,
+  jobs with a custom executor will be included."
   [db user start end state-keyword include-custom-executor?]
   (let [;; Expand the time range so that clock skew between cook
         ;; and datomic doesn't cause us to miss jobs
@@ -366,13 +368,13 @@
                   (take-while #(and (< (:e %) entid-end)
                                     (= (:a %) job-user-entid)
                                     (= (:v %) user)))
-                  (map #(:e %))
+                  (map :e)
                   (map (partial d/entity db))
                   (filter #(<= (.getTime start) (.getTime (:job/submit-time %))))
                   (filter #(< (.getTime (:job/submit-time %)) (.getTime end)))
                   (filter #(= state-keyword (:job/state %))))]
     (cond->> jobs
-             (not include-custom-executor?) (filter #(not (:job/custom-executor %))))))
+             (not include-custom-executor?) (remove :job/custom-executor))))
 
 ;; This differs from get-active-jobs-by-user-and-state as it is also looking up based on task state.
 (defn get-completed-jobs-by-user
