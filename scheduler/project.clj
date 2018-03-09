@@ -109,7 +109,10 @@
                   :exclusions [org.slf4j/slf4j-log4j12
                                org.slf4j/log4j
                                log4j]]
-                 [org.apache.curator/curator-test "2.7.1"]]
+                 [org.apache.curator/curator-test "2.7.1"]
+
+                 ;; Dependency management
+                 [mount "0.1.12"]]
 
   :repositories {"maven2" {:url "https://files.couchbase.com/maven2/"}
                  "sonatype-oss-public" "https://oss.sonatype.org/content/groups/public/"}
@@ -143,19 +146,27 @@
                    ; using a profiles.clj file that defines a profile
                    ; which pulls in datomic-pro
                    [com.datomic/datomic-free "0.9.5206"
-                    :exclusions [org.slf4j/slf4j-api
-                                 com.fasterxml.jackson.core/jackson-core
+                    :exclusions [com.fasterxml.jackson.core/jackson-core
+                                 joda-time
                                  org.slf4j/jcl-over-slf4j
                                  org.slf4j/jul-to-slf4j
                                  org.slf4j/log4j-over-slf4j
-                                 org.slf4j/slf4j-nop
-                                 joda-time]]
+                                 org.slf4j/slf4j-api
+                                 org.slf4j/slf4j-nop]]
                    ; Similarly, one could use an older version of the
                    ; mesomatic library in environments that require it
                    [wyegelwe/mesomatic "1.0.1-r0-SNAPSHOT"]]}
 
    :uberjar
-   {:aot [cook.components]}
+   {:aot [cook.components]
+    :dependencies [[com.datomic/datomic-free "0.9.5206"
+                    :exclusions [com.fasterxml.jackson.core/jackson-core
+                                 joda-time
+                                 org.slf4j/jcl-over-slf4j
+                                 org.slf4j/jul-to-slf4j
+                                 org.slf4j/log4j-over-slf4j
+                                 org.slf4j/slf4j-api
+                                 org.slf4j/slf4j-nop]]]}
 
    :dev
    {:dependencies [[criterium "0.4.4"]
