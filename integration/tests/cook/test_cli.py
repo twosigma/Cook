@@ -589,6 +589,17 @@ class CookCliTest(unittest.TestCase):
         self.assertEqual(1, len(jobs))
         self.assertIn(uuids[0], jobs[0]['uuid'])
 
+    def test_jobs_exclude_custom_executor(self):
+        # Unfortunately, there is no easy way to create a job with a custom executor.
+        # Instead, we will check that the 'include-custom-executor' param is being set
+        # appropriately by inspecting the --verbose output.
+        cp, jobs = cli.jobs_json(self.cook_url, '--exclude-custom-executor', flags='--verbose')
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertIn("'include-custom-executor': False", cli.decode(cp.stderr))
+        cp, jobs = cli.jobs_json(self.cook_url, flags='--verbose')
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertIn("'include-custom-executor': True", cli.decode(cp.stderr))
+
     def test_ssh_job_uuid(self):
         cp, uuids = cli.submit('ls', self.cook_url, submit_flags=f'--name {self.current_name()}')
         self.assertEqual(0, cp.returncode, cp.stderr)
