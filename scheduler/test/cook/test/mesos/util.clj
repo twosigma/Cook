@@ -379,35 +379,35 @@
                                    :custom-executor? false)
             _ (Thread/sleep 5)
             half-way-time (Date.)
-            job3 (create-dummy-job conn
-                                   :user "u2"
-                                   :job-state state
-                                   :submit-time (Date.)
-                                   :custom-executor? false)
+            _ (create-dummy-job conn
+                                :user "u2"
+                                :job-state state
+                                :submit-time (Date.)
+                                :custom-executor? false)
             _ (Thread/sleep 5)
-            job4 (create-dummy-job conn
-                                   :user "u1"
-                                   :job-state state
-                                   :submit-time (Date.)
-                                   :custom-executor? false)
+            _ (create-dummy-job conn
+                                :user "u1"
+                                :job-state state
+                                :submit-time (Date.)
+                                :custom-executor? false)
             _ (Thread/sleep 5)
             end-time (Date.)
             states [(name state)]
             name (constantly true)]
         (testing (str "get " state " jobs")
-          (is (= 2 (count (util/get-jobs-by-user-and-states (d/db conn) "u1" states start-time half-way-time 10 name))))
-          (is (= 1 (count (util/get-jobs-by-user-and-states (d/db conn) "u1" states start-time half-way-time 1 name))))
-          (is (= (map :db/id (util/get-jobs-by-user-and-states (d/db conn) "u1" states start-time half-way-time 1 name))
+          (is (= 2 (count (util/get-jobs-by-user-and-states (d/db conn) "u1" states start-time half-way-time 10 name nil))))
+          (is (= 1 (count (util/get-jobs-by-user-and-states (d/db conn) "u1" states start-time half-way-time 1 name nil))))
+          (is (= (map :db/id (util/get-jobs-by-user-and-states (d/db conn) "u1" states start-time half-way-time 1 name nil))
                  [job1]))
-          (is (= 3 (count (util/get-jobs-by-user-and-states (d/db conn) "u1" states start-time end-time 10 name))))
-          (is (= 2 (count (util/get-jobs-by-user-and-states (d/db conn) "u1" states start-time end-time 2 name))))
-          (is (= (map :db/id (util/get-jobs-by-user-and-states (d/db conn) "u1" states start-time end-time 2 name))
+          (is (= 3 (count (util/get-jobs-by-user-and-states (d/db conn) "u1" states start-time end-time 10 name nil))))
+          (is (= 2 (count (util/get-jobs-by-user-and-states (d/db conn) "u1" states start-time end-time 2 name nil))))
+          (is (= (map :db/id (util/get-jobs-by-user-and-states (d/db conn) "u1" states start-time end-time 2 name nil))
                  [job1 job2]))
 
-          (is (= 1 (count (util/get-jobs-by-user-and-states (d/db conn) "u2" states start-time end-time 10 name))))
-          (is (= 0 (count (util/get-jobs-by-user-and-states (d/db conn) "u3" states start-time end-time 10 name))))
+          (is (= 1 (count (util/get-jobs-by-user-and-states (d/db conn) "u2" states start-time end-time 10 name nil))))
+          (is (= 0 (count (util/get-jobs-by-user-and-states (d/db conn) "u3" states start-time end-time 10 name nil))))
           (is (= 0 (count (util/get-jobs-by-user-and-states (d/db conn) "u1" states
-                                                            #inst "2017-06-01" #inst "2017-06-02" 10 name)))))))))
+                                                            #inst "2017-06-01" #inst "2017-06-02" 10 name nil)))))))))
 
 (deftest test-reducing-pipe
   (testing "basic piping"
