@@ -81,3 +81,19 @@ def read_file(instance, sandbox_dir, path, offset=None, length=None):
         raise Exception('Could not read the file.')
 
     return resp.json()
+
+
+def download_file(instance, sandbox_dir, path):
+    """Calls the Mesos agent files/download API for the given path"""
+    logging.info(f'downloading file from sandbox {sandbox_dir} with path {path}')
+    agent_url = instance_to_agent_url(instance)
+    params = {'path': os.path.join(sandbox_dir, path)}
+    resp = http.__get(f'{agent_url}/files/download', params=params, stream=True)
+    if resp.status_code == 404:
+        raise Exception(f"Cannot download '{path}' (file was not found).")
+
+    if resp.status_code != 200:
+        logging.error(f'mesos agent returned status code {resp.status_code} and body {resp.text}')
+        raise Exception('Could not download the file.')
+
+    return resp

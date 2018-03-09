@@ -320,6 +320,7 @@
   (def t2-1 (d/resolve-tempid db-after tempids t2-1)))
 
 (deftest test-extract-job-resources
+  (cook.test.testutil/flush-caches!)
   (let [resources (util/job-ent->resources (d/entity (db c) j1))]
     (is (= 1.0 (:cpus resources)))
     (is (= 1000.0 (:mem resources)))))

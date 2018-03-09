@@ -62,7 +62,7 @@ class MultiUserCookTest(unittest.TestCase):
             for i, user in enumerate(users):
                 with user:
                     for j in range(i):
-                        job_uuid, resp = util.submit_job(self.cook_url, command='sleep 240', **job_resources)
+                        job_uuid, resp = util.submit_job(self.cook_url, command='sleep 480', **job_resources)
                         self.assertEqual(resp.status_code, 201, resp.content)
                         all_job_uuids.append(job_uuid)
             # Don't query until the jobs are all running

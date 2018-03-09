@@ -2189,8 +2189,7 @@
                           (or (tf/parse s)
                               (tc/from-long (Long/parseLong s))))
              start-time (parse-time start)
-             end-time (parse-time end)
-             interval (t/interval start-time end-time)]
+             end-time (parse-time end)]
          (cond
            (not (allowed-instance-statuses status))
            [true {::error (str "unsupported status " status ", must be one of: " allowed-instance-statuses)}]
@@ -2200,8 +2199,11 @@
                   (str "unsupported name filter " name
                        ", can only contain alphanumeric characters, '.', '-', '_', and '*' as a wildcard")}]
 
-           (< 31 (t/in-days interval))
-           [true {::error (str "time interval " interval ", must be less than or equal to 31 days")}]
+           (not (t/after? end-time start-time))
+           [true {::error "end time must be after start time"}]
+
+           (< 31 (t/in-days (t/interval start-time end-time)))
+           [true {::error (str "time interval must be less than or equal to 31 days")}]
 
            :else
            (try
