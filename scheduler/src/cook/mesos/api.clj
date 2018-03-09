@@ -2015,8 +2015,7 @@
     :malformed? (fn [ctx]
                   ;; since-hours-ago is included for backwards compatibility but is deprecated
                   ;; please use start-ms and end-ms instead
-                  (let [{:keys [state user since-hours-ago start-ms end-ms limit name]
-                         :as params}
+                  (let [{:keys [state user since-hours-ago start-ms end-ms limit name include-custom-executor]}
                         (keywordize-keys (or (get-in ctx [:request :query-params])
                                              (get-in ctx [:request :body-params])))
                         states (when state (set (str/split state #"\+")))
@@ -2041,7 +2040,8 @@
                                 ::start-ms (parse-long-default start-ms nil)
                                 ::limit (parse-int-default limit Integer/MAX_VALUE)
                                 ::end-ms (parse-long-default end-ms (System/currentTimeMillis))
-                                ::name-filter-fn (name-filter-str->name-filter-fn name)}]
+                                ::name-filter-fn (name-filter-str->name-filter-fn name)
+                                ::include-custom-executor? (Boolean/parseBoolean include-custom-executor)}]
                         (catch NumberFormatException e
                           [true {::error (.toString e)}])))))
     :allowed? (fn [ctx]
@@ -2077,13 +2077,15 @@
                          end-ms ::end-ms
                          since-hours-ago ::since-hours-ago
                          limit ::limit
-                         name-filter-fn ::name-filter-fn} ctx
+                         name-filter-fn ::name-filter-fn
+                         include-custom-executor? ::include-custom-executor?} ctx
                         start-ms' (or start-ms (- end-ms (-> since-hours-ago t/hours t/in-millis)))
                         start (Date. start-ms')
                         end (Date. end-ms)
                         job-uuids (->> (timers/time!
                                          fetch-jobs
-                                         (util/get-jobs-by-user-and-states db user states start end limit name-filter-fn))
+                                         (util/get-jobs-by-user-and-states db user states start end limit
+                                                                           name-filter-fn include-custom-executor?))
                                        (sort-by :job/submit-time)
                                        reverse
                                        (map :job/uuid))
