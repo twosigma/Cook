@@ -32,7 +32,7 @@
            (org.apache.curator.test TestingServer)
            (org.apache.log4j DailyRollingFileAppender Logger PatternLayout)))
 
-(defn- env
+(defn env
   ^String
   [name]
   (System/getenv name))

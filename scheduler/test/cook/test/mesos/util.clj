@@ -63,6 +63,24 @@
     ;; u3 has no jobs (running or otherwise)
     (is (= 0 (count (util/get-user-running-job-ents (db conn) "u3"))))))
 
+(deftest test-cache
+  (let [cache (util/new-cache)
+        extract-fn #(if (odd? %) nil %)
+        miss-fn #(if (> % 100) nil %)]
+    ;; u1 has 2 jobs running
+    (is (= 1 (util/lookup-cache! cache extract-fn miss-fn 1))) ; Should not be cached. Nil from extractor.
+    (is (= 2 (util/lookup-cache! cache extract-fn miss-fn 2))) ; Should be cached.
+    (is (= nil (.getIfPresent cache 1)))
+    (is (= 2 (.getIfPresent cache 2)))
+    (is (= nil (util/lookup-cache! cache extract-fn miss-fn 101))) ; Should not be cached. Nil from miss function
+    (is (= nil (util/lookup-cache! cache extract-fn miss-fn 102))) ; Should not be cached. Nil from miss function
+    (is (= nil (.getIfPresent cache 101)))
+    (is (= nil (.getIfPresent cache 102)))
+    (is (= 4 (util/lookup-cache! cache extract-fn miss-fn 4))) ; Should be cached.
+    (is (= 2 (.getIfPresent cache 2)))
+    (is (= 4 (.getIfPresent cache 4)))))
+
+
 (deftest test-get-pending-job-ents
   (let [uri "datomic:mem://test-get-pending-job-ents"
         conn (restore-fresh-database! uri)]

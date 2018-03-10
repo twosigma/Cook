@@ -45,7 +45,7 @@ class SubprocessTest(unittest.TestCase):
         tu.redirect_stderr_to_file(stderr_name)
 
         try:
-            command = "bash -c 'function handle_term { echo GOT TERM; }; trap handle_term SIGTERM TERM; sleep 100'"
+            command = "bash -c 'function handle_term { echo GOT TERM; }; trap handle_term SIGTERM TERM; sleep 200'"
             process = cs.launch_process(command, {})
             shutdown_grace_period_ms = 1000
 
@@ -82,7 +82,7 @@ class SubprocessTest(unittest.TestCase):
         tu.redirect_stderr_to_file(stderr_name)
 
         try:
-            command = "trap '' TERM SIGTERM; sleep 100"
+            command = "trap '' TERM SIGTERM; sleep 200"
             process = cs.launch_process(command, {})
             shutdown_grace_period_ms = 1000
 

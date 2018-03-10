@@ -28,7 +28,7 @@
             [cook.mesos.reason :as reason]
             [cook.mesos.scheduler :as sched]
             [cook.mesos.util :as util]
-            [cook.test.testutil :refer [restore-fresh-database! create-dummy-job create-dummy-instance]]
+            [cook.test.testutil :refer [restore-fresh-database! flush-caches! create-dummy-job create-dummy-instance]]
             [datomic.api :as d :refer [q db]]
             [mesomatic.scheduler :as msched]
             [schema.core :as s])
@@ -1140,6 +1140,7 @@
         (is (thrown? Exception (s/validate api/Job (assoc min-job :expected-runtime 3 :max-runtime 2))))))))
 
 (deftest test-create-jobs!
+  (cook.test.testutil/flush-caches!)
   (let [expected-job-map
         (fn
           ; Converts the provided job and framework-id (framework-id) to the job-map we expect to get back from
