@@ -365,3 +365,8 @@
 
 (mount/defstate config
                 :start (init-settings (mount/args)))
+
+(defn executor-config
+  "Returns the executor config map from the config map"
+  []
+  (-> config :settings :executor))

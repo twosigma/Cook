@@ -29,7 +29,7 @@
             [cook.mesos.share :as share]
             [cook.mesos.util :as util]
             [cook.test.testutil :refer [restore-fresh-database! create-dummy-group create-dummy-job
-                                        create-dummy-instance init-offer-cache poll-until setup]]
+                                        create-dummy-instance init-offer-cache poll-until]]
             [criterium.core :as crit]
             [datomic.api :as d :refer (q db)]
             [mesomatic.scheduler :as msched]
@@ -1536,159 +1536,158 @@
                                                      user->usage user->quota num-considerable offers-chan offers rebalancer-reservation-atom)]
                                         (async/>!! offers-chan :end-marker)
                                         result))]
-    (setup :config {:executor executor})
+    (with-redefs [cook.config/executor-config (constantly executor)]
+      (testing "enough offers for all normal jobs"
+        (let [num-considerable 10
+              offers [offer-1 offer-2 offer-3]]
+          (is (run-handle-resource-offers! num-considerable offers))
+          (is (= :end-marker (async/<!! offers-chan)))
+          (is (= 3 (count @launched-offer-ids-atom)))
+          (is (= 4 (count @launched-job-ids-atom)))
+          (is (= #{"job-1" "job-2" "job-3" "job-4"} (set @launched-job-ids-atom)))))
 
-    (testing "enough offers for all normal jobs"
-      (let [num-considerable 10
-            offers [offer-1 offer-2 offer-3]]
-        (is (run-handle-resource-offers! num-considerable offers))
-        (is (= :end-marker (async/<!! offers-chan)))
-        (is (= 3 (count @launched-offer-ids-atom)))
-        (is (= 4 (count @launched-job-ids-atom)))
-        (is (= #{"job-1" "job-2" "job-3" "job-4"} (set @launched-job-ids-atom)))))
+      (testing "enough offers for all normal jobs, limited by num-considerable of 1"
+        (let [num-considerable 1
+              offers [offer-1 offer-2 offer-3]]
+          (is (run-handle-resource-offers! num-considerable offers))
+          (is (= :end-marker (async/<!! offers-chan)))
+          (is (= 1 (count @launched-offer-ids-atom)))
+          (is (= 1 (count @launched-job-ids-atom)))
+          (is (= #{"job-1"} (set @launched-job-ids-atom)))))
 
-    (testing "enough offers for all normal jobs, limited by num-considerable of 1"
-      (let [num-considerable 1
-            offers [offer-1 offer-2 offer-3]]
-        (is (run-handle-resource-offers! num-considerable offers))
-        (is (= :end-marker (async/<!! offers-chan)))
-        (is (= 1 (count @launched-offer-ids-atom)))
-        (is (= 1 (count @launched-job-ids-atom)))
-        (is (= #{"job-1"} (set @launched-job-ids-atom)))))
+      (testing "enough offers for all normal jobs, limited by num-considerable of 2"
+        (let [num-considerable 2
+              offers [offer-1 offer-2 offer-3]]
+          (is (run-handle-resource-offers! num-considerable offers))
+          (is (= :end-marker (async/<!! offers-chan)))
+          (is (= 2 (count @launched-offer-ids-atom)))
+          (is (= 2 (count @launched-job-ids-atom)))
+          (is (= #{"job-1" "job-2"} (set @launched-job-ids-atom)))))
 
-    (testing "enough offers for all normal jobs, limited by num-considerable of 2"
-      (let [num-considerable 2
-            offers [offer-1 offer-2 offer-3]]
-        (is (run-handle-resource-offers! num-considerable offers))
-        (is (= :end-marker (async/<!! offers-chan)))
-        (is (= 2 (count @launched-offer-ids-atom)))
-        (is (= 2 (count @launched-job-ids-atom)))
-        (is (= #{"job-1" "job-2"} (set @launched-job-ids-atom)))))
+      (testing "enough offers for all normal jobs, limited by quota"
+        (let [num-considerable 1
+              offers [offer-1 offer-2 offer-3]
+              user-quota {test-user {:count 5, :cpus 45, :mem 16384, :gpus 0}}]
+          (is (run-handle-resource-offers! num-considerable offers :user-quota user-quota))
+          (is (= :end-marker (async/<!! offers-chan)))
+          (is (= 1 (count @launched-offer-ids-atom)))
+          (is (= 1 (count @launched-job-ids-atom)))
+          (is (= #{"job-1"} (set @launched-job-ids-atom)))))
 
-    (testing "enough offers for all normal jobs, limited by quota"
-      (let [num-considerable 1
-            offers [offer-1 offer-2 offer-3]
-            user-quota {test-user {:count 5, :cpus 45, :mem 16384, :gpus 0}}]
-        (is (run-handle-resource-offers! num-considerable offers :user-quota user-quota))
-        (is (= :end-marker (async/<!! offers-chan)))
-        (is (= 1 (count @launched-offer-ids-atom)))
-        (is (= 1 (count @launched-job-ids-atom)))
-        (is (= #{"job-1"} (set @launched-job-ids-atom)))))
+      (testing "enough offers for all normal jobs, limited by usage capacity"
+        (let [num-considerable 1
+              offers [offer-1 offer-2 offer-3]
+              user->usage {test-user {:count 5, :cpus 5, :mem 16384, :gpus 0}}]
+          (is (run-handle-resource-offers! num-considerable offers :user->usage user->usage))
+          (is (= :end-marker (async/<!! offers-chan)))
+          (is (= 1 (count @launched-offer-ids-atom)))
+          (is (= 1 (count @launched-job-ids-atom)))
+          (is (= #{"job-1"} (set @launched-job-ids-atom)))))
 
-    (testing "enough offers for all normal jobs, limited by usage capacity"
-      (let [num-considerable 1
-            offers [offer-1 offer-2 offer-3]
-            user->usage {test-user {:count 5, :cpus 5, :mem 16384, :gpus 0}}]
-        (is (run-handle-resource-offers! num-considerable offers :user->usage user->usage))
-        (is (= :end-marker (async/<!! offers-chan)))
-        (is (= 1 (count @launched-offer-ids-atom)))
-        (is (= 1 (count @launched-job-ids-atom)))
-        (is (= #{"job-1"} (set @launched-job-ids-atom)))))
+      (testing "offer for single normal job"
+        (let [num-considerable 10
+              offers [offer-4]]
+          (is (run-handle-resource-offers! num-considerable offers))
+          (is (= :end-marker (async/<!! offers-chan)))
+          (is (= 1 (count @launched-offer-ids-atom)))
+          (is (= 1 (count @launched-job-ids-atom)))
+          (is (= #{"job-1"} (set @launched-job-ids-atom)))))
 
-    (testing "offer for single normal job"
-      (let [num-considerable 10
-            offers [offer-4]]
-        (is (run-handle-resource-offers! num-considerable offers))
-        (is (= :end-marker (async/<!! offers-chan)))
-        (is (= 1 (count @launched-offer-ids-atom)))
-        (is (= 1 (count @launched-job-ids-atom)))
-        (is (= #{"job-1"} (set @launched-job-ids-atom)))))
+      (testing "offer for first three normal jobs"
+        (let [num-considerable 10
+              offers [offer-3]]
+          (is (run-handle-resource-offers! num-considerable offers))
+          (is (= :end-marker (async/<!! offers-chan)))
+          (is (= 1 (count @launched-offer-ids-atom)))
+          (is (= 3 (count @launched-job-ids-atom)))
+          (is (= #{"job-1" "job-2" "job-3"} (set @launched-job-ids-atom)))))
 
-    (testing "offer for first three normal jobs"
-      (let [num-considerable 10
-            offers [offer-3]]
-        (is (run-handle-resource-offers! num-considerable offers))
-        (is (= :end-marker (async/<!! offers-chan)))
-        (is (= 1 (count @launched-offer-ids-atom)))
-        (is (= 3 (count @launched-job-ids-atom)))
-        (is (= #{"job-1" "job-2" "job-3"} (set @launched-job-ids-atom)))))
+      (testing "offer not fit for any normal job"
+        (let [num-considerable 10
+              offers [offer-5]]
+          (is (run-handle-resource-offers! num-considerable offers))
+          (is (= :end-marker (async/<!! offers-chan)))
+          (is (zero? (count @launched-offer-ids-atom)))
+          (is (empty? @launched-job-ids-atom))))
 
-    (testing "offer not fit for any normal job"
-      (let [num-considerable 10
-            offers [offer-5]]
-        (is (run-handle-resource-offers! num-considerable offers))
-        (is (= :end-marker (async/<!! offers-chan)))
-        (is (zero? (count @launched-offer-ids-atom)))
-        (is (empty? @launched-job-ids-atom))))
+      (testing "offer fit but user has too little quota"
+        (let [num-considerable 10
+              offers [offer-1 offer-2 offer-3]
+              user-quota {test-user {:count 5, :cpus 4, :mem 4096, :gpus 0}}]
+          (is (run-handle-resource-offers! num-considerable offers :user-quota user-quota))
+          (is (= :end-marker (async/<!! offers-chan)))
+          (is (zero? (count @launched-offer-ids-atom)))
+          (is (empty? @launched-job-ids-atom))))
 
-    (testing "offer fit but user has too little quota"
-      (let [num-considerable 10
-            offers [offer-1 offer-2 offer-3]
-            user-quota {test-user {:count 5, :cpus 4, :mem 4096, :gpus 0}}]
-        (is (run-handle-resource-offers! num-considerable offers :user-quota user-quota))
-        (is (= :end-marker (async/<!! offers-chan)))
-        (is (zero? (count @launched-offer-ids-atom)))
-        (is (empty? @launched-job-ids-atom))))
+      (testing "offer fit but user has capacity usage"
+        (let [num-considerable 10
+              offers [offer-1 offer-2 offer-3]
+              user->usage {test-user {:count 10, :cpus 50, :mem 32768, :gpus 10}}]
+          (is (run-handle-resource-offers! num-considerable offers :user->usage user->usage))
+          (is (= :end-marker (async/<!! offers-chan)))
+          (is (zero? (count @launched-offer-ids-atom)))
+          (is (empty? @launched-job-ids-atom))))
 
-    (testing "offer fit but user has capacity usage"
-      (let [num-considerable 10
-            offers [offer-1 offer-2 offer-3]
-            user->usage {test-user {:count 10, :cpus 50, :mem 32768, :gpus 10}}]
-        (is (run-handle-resource-offers! num-considerable offers :user->usage user->usage))
-        (is (= :end-marker (async/<!! offers-chan)))
-        (is (zero? (count @launched-offer-ids-atom)))
-        (is (empty? @launched-job-ids-atom))))
+      (testing "gpu offers for all gpu jobs"
+        (let [num-considerable 10
+              offers [offer-6 offer-7]]
+          (is (not (run-handle-resource-offers! num-considerable offers))) ; normal jobs form the head
+          (is (= :end-marker (async/<!! offers-chan)))
+          (is (= 2 (count @launched-offer-ids-atom)))
+          (is (= 2 (count @launched-job-ids-atom)))
+          (is (= #{"job-5" "job-6"} (set @launched-job-ids-atom)))))
 
-    (testing "gpu offers for all gpu jobs"
-      (let [num-considerable 10
-            offers [offer-6 offer-7]]
-        (is (not (run-handle-resource-offers! num-considerable offers))) ; normal jobs form the head
-        (is (= :end-marker (async/<!! offers-chan)))
-        (is (= 2 (count @launched-offer-ids-atom)))
-        (is (= 2 (count @launched-job-ids-atom)))
-        (is (= #{"job-5" "job-6"} (set @launched-job-ids-atom)))))
+      (testing "gpu offer for single gpu job"
+        (let [num-considerable 10
+              offers [offer-6]]
+          (is (not (run-handle-resource-offers! num-considerable offers))) ; normal jobs form the head
+          (is (= :end-marker (async/<!! offers-chan)))
+          (is (= 1 (count @launched-offer-ids-atom)))
+          (is (= 1 (count @launched-job-ids-atom)))
+          (is (= #{"job-5"} (set @launched-job-ids-atom)))))
 
-    (testing "gpu offer for single gpu job"
-      (let [num-considerable 10
-            offers [offer-6]]
-        (is (not (run-handle-resource-offers! num-considerable offers))) ; normal jobs form the head
-        (is (= :end-marker (async/<!! offers-chan)))
-        (is (= 1 (count @launched-offer-ids-atom)))
-        (is (= 1 (count @launched-job-ids-atom)))
-        (is (= #{"job-5"} (set @launched-job-ids-atom)))))
+      (testing "gpu offer matching no gpu job"
+        (let [num-considerable 10
+              offers [offer-8]]
+          (is (run-handle-resource-offers! num-considerable offers))
+          (is (= :end-marker (async/<!! offers-chan)))
+          (is (zero? (count @launched-offer-ids-atom)))
+          (is (empty? @launched-job-ids-atom))))
 
-    (testing "gpu offer matching no gpu job"
-      (let [num-considerable 10
-            offers [offer-8]]
-        (is (run-handle-resource-offers! num-considerable offers))
-        (is (= :end-marker (async/<!! offers-chan)))
-        (is (zero? (count @launched-offer-ids-atom)))
-        (is (empty? @launched-job-ids-atom))))
+      (testing "offer for single normal and single gpu job"
+        (let [num-considerable 10
+              offers [offer-4 offer-6]]
+          (is (run-handle-resource-offers! num-considerable offers))
+          (is (= :end-marker (async/<!! offers-chan)))
+          (is (= 2 (count @launched-offer-ids-atom)))
+          (is (= 2 (count @launched-job-ids-atom)))
+          (is (= #{"job-1" "job-5"} (set @launched-job-ids-atom)))))
 
-    (testing "offer for single normal and single gpu job"
-      (let [num-considerable 10
-            offers [offer-4 offer-6]]
-        (is (run-handle-resource-offers! num-considerable offers))
-        (is (= :end-marker (async/<!! offers-chan)))
-        (is (= 2 (count @launched-offer-ids-atom)))
-        (is (= 2 (count @launched-job-ids-atom)))
-        (is (= #{"job-1" "job-5"} (set @launched-job-ids-atom)))))
+      (testing "will not launch jobs on reserved host"
+        (let [num-considerable 10
+              offers [offer-1]
+              initial-reservation-state {:job-uuid->reserved-host {(UUID/randomUUID) (:hostname offer-1)}}
+              rebalancer-reservation-atom (atom initial-reservation-state)]
+          (is (run-handle-resource-offers! num-considerable offers :rebalancer-reservation-atom rebalancer-reservation-atom))
+          (is (= 0 (count @launched-job-ids-atom)))
+          (is (= initial-reservation-state @rebalancer-reservation-atom))))
 
-    (testing "will not launch jobs on reserved host"
-      (let [num-considerable 10
-            offers [offer-1]
-            initial-reservation-state {:job-uuid->reserved-host {(UUID/randomUUID) (:hostname offer-1)}}
-            rebalancer-reservation-atom (atom initial-reservation-state)]
-        (is (run-handle-resource-offers! num-considerable offers :rebalancer-reservation-atom rebalancer-reservation-atom))
-        (is (= 0 (count @launched-job-ids-atom)))
-        (is (= initial-reservation-state @rebalancer-reservation-atom))))
-
-    (testing "only launches reserved jobs on reserved host"
-      (let [num-considerable 10
-            offers [offer-9] ; large enough to launch jobs 1, 2, 3, and 4
-            job-1-uuid (d/squuid)
-            job-2-uuid (d/squuid)
-            initial-reservation-state {:job-uuid->reserved-host {job-1-uuid (:hostname offer-9)
-                                                                 job-2-uuid (:hostname offer-9)}}
-            rebalancer-reservation-atom (atom initial-reservation-state)]
-        (is (run-handle-resource-offers! num-considerable offers :rebalancer-reservation-atom rebalancer-reservation-atom
-                                         :job-name->uuid {"job-1" job-1-uuid "job-2" job-2-uuid}))
-        (is (= :end-marker (async/<!! offers-chan)))
-        (is (= 2 (count @launched-job-ids-atom)))
-        (is (= #{"job-1" "job-2"} (set @launched-job-ids-atom)))
-        (is (= {:job-uuid->reserved-host {}
-                :launched-job-uuids #{job-1-uuid job-2-uuid}}
-               @rebalancer-reservation-atom))))))
+      (testing "only launches reserved jobs on reserved host"
+        (let [num-considerable 10
+              offers [offer-9] ; large enough to launch jobs 1, 2, 3, and 4
+              job-1-uuid (d/squuid)
+              job-2-uuid (d/squuid)
+              initial-reservation-state {:job-uuid->reserved-host {job-1-uuid (:hostname offer-9)
+                                                                   job-2-uuid (:hostname offer-9)}}
+              rebalancer-reservation-atom (atom initial-reservation-state)]
+          (is (run-handle-resource-offers! num-considerable offers :rebalancer-reservation-atom rebalancer-reservation-atom
+                                           :job-name->uuid {"job-1" job-1-uuid "job-2" job-2-uuid}))
+          (is (= :end-marker (async/<!! offers-chan)))
+          (is (= 2 (count @launched-job-ids-atom)))
+          (is (= #{"job-1" "job-2"} (set @launched-job-ids-atom)))
+          (is (= {:job-uuid->reserved-host {}
+                  :launched-job-uuids #{job-1-uuid job-2-uuid}}
+                 @rebalancer-reservation-atom)))))))
 
 
 (def dummy-fitness-calculator

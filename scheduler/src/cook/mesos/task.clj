@@ -17,7 +17,7 @@
   (:require [clojure.data.json :as json]
             [clojure.set :as set]
             [clojure.tools.logging :as log]
-            [cook.config :refer (config)]
+            [cook.config :refer (config, executor-config)]
             [cook.mesos.util :as util]
             [mesomatic.types :as mtypes]
             [plumbing.core :refer (map-vals)])
@@ -40,7 +40,7 @@
    b. This is going to be the first instance of the job, and
    c. The job UUID hash mod 100 yields less than portion percent."
   [job-ent]
-  (let [{:keys [portion retry-limit]} (-> config :settings :executor)]
+  (let [{:keys [portion retry-limit]} (executor-config)]
     (and (nil? (:job/executor job-ent))
          (number? retry-limit)
          (> retry-limit (count (:job/instance job-ent)))
@@ -56,7 +56,7 @@
       Or: the job is a cook-executor candidate (see cook-executor-candidate?)."
   [job-ent]
   (and (not (use-custom-executor? job-ent))
-       (-> config :settings :executor :command)
+       (:command (executor-config))
        (or (= :executor/cook (:job/executor job-ent))
            (cook-executor-candidate? job-ent))))
 
@@ -64,7 +64,7 @@
   "Build the environment for the cook executor."
   [job-ent]
   (let [{:keys [default-progress-regex-string environment log-level max-message-length progress-sample-interval-ms]}
-        (-> config :settings :executor)
+        (executor-config)
         progress-output-file (:job/progress-output-file job-ent)]
     (cond-> (assoc environment
               "EXECUTOR_LOG_LEVEL" log-level
@@ -94,13 +94,12 @@
                             (:mem resources) (assoc "COOK_JOB_MEM_MB" (-> resources :mem str))
                             cook-executor? (merge (build-executor-environment job-ent)))
         labels (util/job-ent->label job-ent)
-        executor-config (-> config :settings :executor)
         command {:environment environment
                  :uris (cond-> (:uris resources [])
-                               (and cook-executor? (get-in executor-config [:uri :value]))
-                               (conj (:uri executor-config)))
+                               (and cook-executor? (get-in (executor-config) [:uri :value]))
+                               (conj (:uri (executor-config))))
                  :user (or mesos-run-as-user (:job/user job-ent))
-                 :value (if cook-executor? (:command executor-config) (:job/command job-ent))}
+                 :value (if cook-executor? (:command (executor-config)) (:job/command job-ent))}
         ;; executor-key configure whether this is a command or custom executor
         executor-key (cond
                        (and container (not custom-executor?)) :container-command-executor
