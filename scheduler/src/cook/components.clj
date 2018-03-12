@@ -74,7 +74,7 @@
                    (route/not-found "<h1>Not a valid route</h1>")))})
 
 (def mesos-scheduler
-  {:mesos-scheduler (fnk [[:settings executor fenzo-fitness-calculator fenzo-floor-iterations-before-reset
+  {:mesos-scheduler (fnk [[:settings fenzo-fitness-calculator fenzo-floor-iterations-before-reset
                            fenzo-floor-iterations-before-warn fenzo-max-jobs-considered fenzo-scaleback
                            good-enough-fitness hostname mea-culpa-failure-limit mesos-failover-timeout mesos-framework-name
                            mesos-gpu-enabled mesos-leader-path mesos-master mesos-master-hosts mesos-principal
@@ -96,7 +96,6 @@
                           (Class/forName "org.apache.mesos.Scheduler")
                           ((util/lazy-load-var 'cook.mesos/start-mesos-scheduler)
                             {:curator-framework curator-framework
-                             :executor-config executor
                              :fenzo-config {:fenzo-max-jobs-considered fenzo-max-jobs-considered
                                             :fenzo-scaleback fenzo-scaleback
                                             :fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-warn

@@ -175,8 +175,6 @@
    mea-culpa-failure-limit       -- long, max failures of mea culpa reason before it is considered a 'real' failure
                                     see scheduler/docs/configuration.adoc for more details
    task-constraints              -- map, constraints on task. See scheduler/docs/configuration.adoc for more details
-   executor                      -- cook executor config includes command, default-progress-regex-string, environment,
-                                    log-level, message-length, progress-sample-interval-ms and uri.
    mesos-pending-jobs-atom       -- atom, Populate (and update) list of pending jobs into atom
    offer-cache                   -- atom, map from host to most recent offer. Used to get attributes
    gpu-enabled?                  -- boolean, whether cook will schedule gpus
@@ -185,7 +183,7 @@
    framework-id                  -- str, the Mesos framework id from the cook settings
    fenzo-config                  -- map, config for fenzo, See scheduler/docs/configuration.adoc for more details
    sandbox-syncer-state          -- map, representing the sandbox syncer object"
-  [{:keys [curator-framework executor-config fenzo-config framework-id get-mesos-utilization gpu-enabled? make-mesos-driver-fn
+  [{:keys [curator-framework fenzo-config framework-id get-mesos-utilization gpu-enabled? make-mesos-driver-fn
            mea-culpa-failure-limit mesos-datomic-conn mesos-datomic-mult mesos-leadership-atom mesos-pending-jobs-atom
            mesos-run-as-user offer-cache offer-incubate-time-ms optimizer-config progress-config rebalancer-config
            sandbox-syncer-state server-config task-constraints trigger-chans zk-prefix]}]
@@ -214,7 +212,6 @@
                                         (sched/create-datomic-scheduler
                                          {:conn mesos-datomic-conn
                                           :driver-atom current-driver
-                                          :executor-config executor-config
                                           :fenzo-fitness-calculator fenzo-fitness-calculator
                                           :fenzo-floor-iterations-before-reset fenzo-floor-iterations-before-reset
                                           :fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-warn
