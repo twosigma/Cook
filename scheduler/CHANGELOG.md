@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.12.1] - 2018-03-12
+### Added
+- Added resource, job category, and other caching @scrosby
+- New query functions for API calls of get-(pending|running) jobs by user @scrosby
+- Added counters for total CPU/MEM/RUN times by failure reason @dposada
+- Minimal experimental use of mount. @dposada
+### Changed
+- Fix support for cs cat on a binary file @dposada
+- Cleanly handle invalid time range on /stats/instances @dposada
+
 ## [1.12.0] - 2018-03-05
 ### Added
 - Endpoint for instance statistics, from @dposada
