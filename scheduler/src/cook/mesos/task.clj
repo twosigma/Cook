@@ -17,11 +17,12 @@
   (:require [clojure.data.json :as json]
             [clojure.set :as set]
             [clojure.tools.logging :as log]
-            [cook.config :refer (config, executor-config)]
+            [cook.config :as config]
             [cook.mesos.util :as util]
             [mesomatic.types :as mtypes]
             [plumbing.core :refer (map-vals)])
-  (:import com.netflix.fenzo.TaskAssignmentResult))
+  (:import com.google.protobuf.ByteString
+           com.netflix.fenzo.TaskAssignmentResult))
 
 (def cook-executor-name "cook_executor")
 (def cook-executor-source "cook_scheduler_executor")
@@ -40,7 +41,7 @@
    b. This is going to be the first instance of the job, and
    c. The job UUID hash mod 100 yields less than portion percent."
   [job-ent]
-  (let [{:keys [portion retry-limit]} (executor-config)]
+  (let [{:keys [portion retry-limit]} (config/executor-config)]
     (and (nil? (:job/executor job-ent))
          (number? retry-limit)
          (> retry-limit (count (:job/instance job-ent)))
@@ -56,7 +57,7 @@
       Or: the job is a cook-executor candidate (see cook-executor-candidate?)."
   [job-ent]
   (and (not (use-custom-executor? job-ent))
-       (:command (executor-config))
+       (:command (config/executor-config))
        (or (= :executor/cook (:job/executor job-ent))
            (cook-executor-candidate? job-ent))))
 
@@ -64,7 +65,7 @@
   "Build the environment for the cook executor."
   [job-ent]
   (let [{:keys [default-progress-regex-string environment log-level max-message-length progress-sample-interval-ms]}
-        (executor-config)
+        (config/executor-config)
         progress-output-file (:job/progress-output-file job-ent)]
     (cond-> (assoc environment
               "EXECUTOR_LOG_LEVEL" log-level
@@ -96,10 +97,10 @@
         labels (util/job-ent->label job-ent)
         command {:environment environment
                  :uris (cond-> (:uris resources [])
-                               (and cook-executor? (get-in (executor-config) [:uri :value]))
-                               (conj (:uri (executor-config))))
+                               (and cook-executor? (get-in (config/executor-config) [:uri :value]))
+                               (conj (:uri (config/executor-config))))
                  :user (or mesos-run-as-user (:job/user job-ent))
-                 :value (if cook-executor? (:command (executor-config)) (:job/command job-ent))}
+                 :value (if cook-executor? (:command (config/executor-config)) (:job/command job-ent))}
         ;; executor-key configure whether this is a command or custom executor
         executor-key (cond
                        (and container (not custom-executor?)) :container-command-executor
@@ -335,7 +336,7 @@
                   :executor-id (mtypes/->ExecutorID (str task-id))
                   :framework-id (mtypes/->FrameworkID framework-id)
                   :source custom-executor-source}]
-    (cond-> {:data (com.google.protobuf.ByteString/copyFrom data)
+    (cond-> {:data (ByteString/copyFrom data)
              :labels {:labels (map->mesos-kv labels :key)}
              :name name
              :resources (into scalar-resource-messages ports-resource-messages)
