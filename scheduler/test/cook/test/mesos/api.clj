@@ -28,8 +28,7 @@
             [cook.mesos.reason :as reason]
             [cook.mesos.scheduler :as sched]
             [cook.mesos.util :as util]
-            [cook.test.testutil :refer [restore-fresh-database! flush-caches! create-dummy-job create-dummy-instance
-                                        setup]]
+            [cook.test.testutil :refer [restore-fresh-database! flush-caches! create-dummy-job create-dummy-instance]]
             [datomic.api :as d :refer [q db]]
             [mesomatic.scheduler :as msched]
             [schema.core :as s])
@@ -1590,24 +1589,3 @@
       (is (nil? (:job/name job-entity)))
       (is (= job-uuid (:uuid job-map-for-api)))
       (is (= "cookjob" (:name job-map-for-api))))))
-
-(deftest test-cors
-  (setup :config {:cors-origins ["http://cors.twosigma.com"]})
-  (let [conn (restore-fresh-database! "datomic:mem://test-cors")
-        h (basic-handler conn)]
-    (testing "valid preflight request"
-      (let [{:keys [status headers]} (h {:request-method :options
-                                         :scheme :http
-                                         :uri "/info"
-                                         :headers {"origin" "http://cors.twosigma.com"}})]
-        (is (= 200 status))
-        (is (= (headers "Access-Control-Allow-Origin") "http://cors.twosigma.com"))
-        (is (= (headers "Access-Control-Max-Age") "300"))))
-
-    (testing "valid cors request"
-      (let [{:keys [status headers]} (h {:request-method :get
-                                         :scheme :http
-                                         :uri "/info"
-                                         :headers {"origin" "http://cors.twosigma.com"}})]
-           (is (= 200 status))
-           (is (= "http://cors.twosigma.com" (headers "Access-Control-Allow-Origin")))))))

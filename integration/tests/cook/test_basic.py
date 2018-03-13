@@ -1952,7 +1952,10 @@ class CookTest(unittest.TestCase):
         self.assertEqual(403, resp.status_code)
         self.assertEqual(b"Origin http://bad.example.com not allowed", resp.content)
 
-        resp = util.session.options(f"{self.cook_url}/settings", headers={"Origin": "http://cors.example.com"})
+        resp = util.session.options(f"{self.cook_url}/settings", headers={"Origin": "http://cors.example.com", "Access-Control-Request-Headers": "Foo, Bar"})
         self.assertEqual(200, resp.status_code)
+        self.assertEqual("true", resp.headers["Access-Control-Allow-Credentials"])
+        self.assertEqual("Foo, Bar", resp.headers["Access-Control-Allow-Headers"])
         self.assertEqual("http://cors.example.com", resp.headers["Access-Control-Allow-Origin"])
+        self.assertEqual("86400", resp.headers["Access-Control-Max-Age"])
         self.assertEqual(b"", resp.content)

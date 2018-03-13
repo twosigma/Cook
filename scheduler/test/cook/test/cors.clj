@@ -10,8 +10,8 @@
   (is (not (cors/preflight? {:request-method :put}))))
 
 (deftest test-same-origin?
-  (is (cors/same-origin? {:headers {"origin" "http://example.com"
-                                    "host" "example.com"}
+  (is (cors/same-origin? {:headers {"host" "example.com"
+                                    "origin" "http://example.com"}
                           :scheme :http}))
   (is (not (cors/same-origin? {:headers {"host" "example.com"}
                                :scheme :http})))
@@ -25,7 +25,8 @@
 (deftest test-request-allowed?
   (let [allowed-orgins [#"^https?://example.com$"
                         #"^https://secure.example.com"]
-        origin-allowed? (fn [origin] (cors/request-allowed? {:headers {"origin" origin}}
+        origin-allowed? (fn [origin] (cors/request-allowed? {:headers {"origin" origin
+                                                                       "host" "other.example.com"}}
                                                            allowed-orgins))]
     (is (origin-allowed? "http://example.com"))
     (is (origin-allowed? "https://example.com"))
@@ -60,7 +61,7 @@
         (is (every? #(str/includes? (headers "Access-Control-Allow-Methods") %)
                     ["PUT" "GET" "OPTIONS" "DELETE"]))
         (is (= "true" (headers "Access-Control-Allow-Credentials")))
-        (is (= "300" (headers "Access-Control-Max-Age")))))))
+        (is (= "86400" (headers "Access-Control-Max-Age")))))))
 
 
 (deftest test-wrap-cors

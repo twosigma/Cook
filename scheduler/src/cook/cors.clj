@@ -1,8 +1,8 @@
 (ns cook.cors)
 
 (defn preflight?
-  [req]
-  (= :options (:request-method req)))
+  [{:keys [request-method]}]
+  (= :options request-method))
 
 (defn same-origin?
   "Returns true if the request is from the same origin as the provided origin header"
@@ -12,7 +12,8 @@
       (= origin (str (name scheme) "://" host)))))
 
 (defn request-allowed?
-  "Returns true if the request is either from the same origin or matches a pattern in cors-origins"
+  "Returns true if the request is either from the same origin or matches a pattern in cors-origins.
+   The request should have a non-nil origin header."
   [req cors-origins]
   (or (same-origin? req)
       (let [origin (get-in req [:headers "origin"])]
@@ -21,17 +22,17 @@
 (defn wrap-preflight
   "Middleware for supporting CORS preflight requests"
   [handler cors-origins]
-  (fn preflight-handler [{:keys [headers request-method] :as req}]
+  (fn preflight-handler [{:keys [headers] :as req}]
     (let [{:strs [origin]} headers]
       (if (and (preflight? req) origin)
         (if (request-allowed? req cors-origins)
           (let [{:strs [access-control-request-headers]} headers]
             {:status 200
-             :headers {"Access-Control-Allow-Origin" origin
+             :headers {"Access-Control-Allow-Credentials" "true"
                        "Access-Control-Allow-Headers" access-control-request-headers
                        "Access-Control-Allow-Methods" "PUT, GET, OPTIONS, DELETE"
-                       "Access-Control-Allow-Credentials" "true"
-                       "Access-Control-Max-Age" "300"}})
+                       "Access-Control-Allow-Origin" origin
+                       "Access-Control-Max-Age" "86400"}}) ; 1 day
           {:status 403
            :body (str "Origin " origin " not allowed")})
         (handler req)))))
@@ -45,11 +46,11 @@
         (if (request-allowed? req cors-origins)
           (let [resp (handler req)]
             (update-in resp [:headers] assoc
-                       "Access-Control-Allow-Origin" origin
-                       "Access-Control-Allow-Credentials" "true"))
+                       "Access-Control-Allow-Credentials" "true"
+                       "Access-Control-Allow-Origin" origin))
           {:status 403
            :body (str "Cross origin request denied from " origin)})
-        (handler req)))))
+        (handler req))))) ; If no origin is provided, pass the request through.
 
 (defn cors-middleware
   "Wraps the provided handler with wrap-cors and wrap-preflight in the correct order"

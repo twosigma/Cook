@@ -26,7 +26,6 @@
             [compojure.api.middleware :as c-mw]
             [compojure.api.sweet :as c-api]
             [compojure.core :refer [ANY GET POST routes]]
-            [cook.config :as config]
             [cook.cors :as cors]
             [cook.mesos.quota :as quota]
             [cook.mesos.reason :as reason]
@@ -2524,5 +2523,4 @@
         (list-resource (db conn) framework-id is-authorized-fn)))
     (format-params/wrap-restful-params {:formats [:json-kw]
                                         :handle-error c-mw/handle-req-error})
-    (cors/cors-middleware (get-in config/config [:settings :cors-origins]))
     (streaming-json-middleware)))

@@ -21,6 +21,7 @@
             [congestion.middleware :refer (wrap-rate-limit ip-rate-limit)]
             [congestion.storage :as storage]
             [cook.config :refer (config)]
+            [cook.cors :as cors]
             [cook.curator :as curator]
             [cook.datomic :as datomic]
             [cook.impersonation :refer (impersonation-authorized-wrapper)]
@@ -212,7 +213,7 @@
 (def scheduler-server
   (graph/eager-compile
     {:route full-routes
-     :http-server (fnk [[:settings server-port authorization-middleware impersonation-middleware
+     :http-server (fnk [[:settings cors-origins server-port authorization-middleware impersonation-middleware
                          leader-reports-unhealthy [:rate-limit user-limit]] [:route view] mesos-leadership-atom]
                     (log/info "Launching http server")
                     (let [rate-limit-storage (storage/local-storage)
@@ -230,6 +231,7 @@
                                                        wrap-no-cache
                                                        wrap-cookies
                                                        wrap-params
+                                                       (cors/cors-middleware cors-origins)
                                                        (health-check-middleware mesos-leadership-atom leader-reports-unhealthy)
                                                        instrument))
                                    :join? false
