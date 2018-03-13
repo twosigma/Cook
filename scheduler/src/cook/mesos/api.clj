@@ -26,6 +26,7 @@
             [compojure.api.middleware :as c-mw]
             [compojure.api.sweet :as c-api]
             [compojure.core :refer [ANY GET POST routes]]
+            [cook.cors :as cors]
             [cook.mesos.quota :as quota]
             [cook.mesos.reason :as reason]
             [cook.mesos.schema :refer [constraint-operators host-placement-types straggler-handling-types]]

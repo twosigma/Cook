@@ -106,6 +106,8 @@
                             {:max-size 5000
                              :ttl-ms (* 60 1000)}
                             agent-query-cache))
+     :cors-origins (fnk [[:config {cors-origins nil}]]
+                        (map re-pattern (or cors-origins [])))
      :sandbox-syncer (fnk [[:config {sandbox-syncer nil}]]
                        (merge
                          {:max-consecutive-sync-failure 15
