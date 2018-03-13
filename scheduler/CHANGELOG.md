@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.13.0] - 2018-03-13
+### Added
+- Support for CORS requests, from @pschorf
+- Scheduling performance improvements, from @scrosby
+- Counters for job cpu/mem/runtime by failure reason, from @dposada 
+
 ## [1.12.0] - 2018-03-05
 ### Added
 - Endpoint for instance statistics, from @dposada
