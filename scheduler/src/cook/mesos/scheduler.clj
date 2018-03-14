@@ -689,6 +689,7 @@
 
 (timers/deftimer [cook-mesos scheduler handle-resource-offer!-duration])
 (timers/deftimer [cook-mesos scheduler handle-resource-offer!-transact-task-duration])
+(timers/deftimer [cook-mesos scheduler handle-resource-offer!-process-task-txns-duration])
 (timers/deftimer [cook-mesos scheduler handle-resource-offer!-process-matches-duration])
 (timers/deftimer [cook-mesos scheduler handle-resource-offer!-mesos-submit-duration])
 (timers/deftimer [cook-mesos scheduler handle-resource-offer!-match-duration])
@@ -834,7 +835,9 @@
   "Updates the state of matched tasks in the database and then launches them."
   [matches conn db driver fenzo framework-id executor-config mesos-run-as-user]
   (let [matches (map #(update-match-with-task-metadata-seq % db framework-id executor-config mesos-run-as-user) matches)
-        task-txns (matches->task-txns matches)]
+        task-txns (timers/time!
+                      handle-resource-offer!-process-task-txns-duration
+                      (doall (matches->task-txns matches)))]
     ;; Note that this transaction can fail if a job was scheduled
     ;; during a race. If that happens, then other jobs that should
     ;; be scheduled will not be eligible for rescheduling until
