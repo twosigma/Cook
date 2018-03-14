@@ -145,7 +145,7 @@
                    ; library instead of the datomic-free library, by
                    ; using a profiles.clj file that defines a profile
                    ; which pulls in datomic-pro
-                   [com.datomic/datomic-free "0.9.5206"
+                   [com.datomic/datomic-free "0.9.5390"
                     :exclusions [com.fasterxml.jackson.core/jackson-core
                                  joda-time
                                  org.slf4j/jcl-over-slf4j
