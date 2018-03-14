@@ -505,35 +505,31 @@
 
 
 (defn task->feature-vector
-      "Vector of comparable features of a task.
-       Last two elements are aribitary tie breakers.
-       Use :db/id because they guarantee uniqueness for different entities
-       (:db/id task) is not sufficient because synthetic task entities don't have :db/id
-       This assumes there are at most one synthetic task for a job, otherwise uniqueness invariant will break"
-      [task]
-      (let [task->feature-vector-miss
-            (fn [task]
-                [(- (:job/priority (:job/_instance task) default-job-priority))
-                 (:instance/start-time task (java.util.Date. Long/MAX_VALUE))
-                 (:db/id task)
-                 (:db/id (:job/_instance task))])]
-           (lookup-cache-datomic-entity! task->feature-vector-cache task->feature-vector-miss task)))
+  "Vector of comparable features of a task.
+   Last two elements are aribitary tie breakers.
+   Use :db/id because they guarantee uniqueness for different entities
+   (:db/id task) is not sufficient because synthetic task entities don't have :db/id
+   This assumes there are at most one synthetic task for a job, otherwise uniqueness invariant will break"
+  [task]
+  (let [task->feature-vector-miss
+        (fn [task]
+          [(- (:job/priority (:job/_instance task) default-job-priority))
+           (:instance/start-time task (java.util.Date. Long/MAX_VALUE))
+           (:db/id task)
+           (:db/id (:job/_instance task))])
+        extract-key
+        (fn [item]
+          (or (:db/id item) (:db/id (:job/_instance item))))]
+    (lookup-cache! task->feature-vector-cache extract-key task->feature-vector-miss task)))
 
 (defn same-user-task-comparator
   "Comparator to order same user's tasks"
   ([]
    (same-user-task-comparator []))
   ([tasks]
-    ;; Pre-compute the feature-vector for tasks we expect to see to improve performance
-    ;; This is done because accessing fields in datomic entities is much slower than
-    ;; a map access, even when accessing multiple times.
-    ;; Don't want to complicate the function by caching new values in the event we see them
-   (let [task-ent->feature-vector (pc/map-from-keys task->feature-vector tasks)]
      (fn [task1 task2]
-       (compare (or (task-ent->feature-vector task1)
-                    (task->feature-vector task1))
-                (or (task-ent->feature-vector task2)
-                    (task->feature-vector task2)))))))
+       (compare (task->feature-vector task1)
+                (task->feature-vector task2)))))
 
 (defn retry-job!
   "Sets :job/max-retries to the given value for the given job UUID.
