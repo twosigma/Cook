@@ -1413,14 +1413,17 @@
                       The jobs are ranked by dru first and then filter applied to remove jobs.
    `:pending-jobs`: The current list of pending job maps.
    `:tx-id`: The transaction id of the database used to build the current list of pending jobs."
-  ([unfiltered-db offensive-job-filter]
-    (rank-jobs unfiltered-db offensive-job-filter 0 []))
-  ([unfiltered-db offensive-job-filter prev-tx-id prev-pending-jobs]
+  ([conn-log conn-db offensive-job-filter]
+    (let [entity-id-attribute-maps (util/load-attribute-entity-ids conn-db)]
+      (rank-jobs conn-log conn-db entity-id-attribute-maps offensive-job-filter 0 [])))
+  ([conn-log conn-db entity-id-attribute-maps offensive-job-filter prev-tx-id prev-pending-jobs]
    (timers/time!
      rank-jobs-duration
      (try
-       (let [pending-jobs (util/get-pending-jobs-since-tx unfiltered-db prev-tx-id prev-pending-jobs)
-             category->jobs (->> (sort-jobs-by-dru-category unfiltered-db pending-jobs)
+       (let [curr-tx-id (-> conn-db d/basis-t d/t->tx)
+             pending-jobs (util/get-pending-jobs-since-tx
+                            conn-log conn-db entity-id-attribute-maps prev-tx-id curr-tx-id prev-pending-jobs)
+             category->jobs (->> (sort-jobs-by-dru-category conn-db pending-jobs)
                                  ;; Apply the offensive job filter first before taking.
                                  (pc/map-vals offensive-job-filter)
                                  (pc/map-vals #(map util/job->map %))
@@ -1430,7 +1433,7 @@
                     "The first 5 pending gpu jobs:" (take 5 (:gpu category->jobs)))
          {:category->jobs category->jobs
           :pending-jobs pending-jobs
-          :tx-id (-> unfiltered-db d/basis-t d/t->tx)})
+          :tx-id (inc curr-tx-id)})
        (catch Throwable t
          (log/error t "Failed to rank jobs")
          (meters/mark! rank-jobs-failures)
@@ -1446,8 +1449,11 @@
     (util/chime-at-ch
       trigger-chan
       (fn rank-jobs-event [{:keys [pending-jobs tx-id]}]
-        (let [unfiltered-db (d/db conn)
-              {:keys [category->jobs] :as rank-state} (rank-jobs unfiltered-db offensive-job-filter tx-id pending-jobs)]
+        (let [conn-db (d/db conn)
+              conn-log (d/log conn)
+              entity-id-attribute-maps (util/load-attribute-entity-ids conn-db)
+              {:keys [category->jobs] :as rank-state}
+              (rank-jobs conn-log conn-db entity-id-attribute-maps offensive-job-filter tx-id pending-jobs)]
           (reset! pending-jobs-atom category->jobs)
           rank-state))
       {:error-handler (fn rank-jobs-error-handler [e]

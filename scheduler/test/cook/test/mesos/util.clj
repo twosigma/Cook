@@ -26,7 +26,9 @@
                      create-dummy-job
                      create-dummy-job-with-instances
                      restore-fresh-database!]]
-            [datomic.api :as d :refer (q db)])
+            [datomic.api :as d :refer (q db)]
+            [plumbing.core :as pc]
+            [clojure.set :as set])
   (:import [java.util Date]))
 
 (deftest test-total-resources-of-jobs
@@ -474,39 +476,47 @@
 (deftest test-get-pending-job-ents-since-tx
   (let [uri "datomic:mem://test-get-pending-job-ents-since-tx"
         conn (testutil/restore-fresh-database! uri)
+        entity-id-attribute-maps (util/load-attribute-entity-ids (d/db conn))
         sort-jobs (fn [jobs] (sort-by :job/uuid jobs))
         get-pending-job-ents (fn [db]
                                (->> (util/get-pending-job-ents db)
                                     (map util/job-ent->map)
                                     sort-jobs))
         _ (testutil/create-dummy-job conn :command "c1" :job-state :job.state/waiting :user "user1")
-        j2 (testutil/create-dummy-job conn :command "c2" :job-state :job.state/running :user "user2")]
+        j2 (testutil/create-dummy-job conn :command "c2" :job-state :job.state/running :user "user2")
+        j3 (testutil/create-dummy-job conn :command "c3" :committed? false :job-state :job.state/running :user "user2")]
 
-    (let [unfiltered-db1 (d/db conn)
-          tx1 (-> unfiltered-db1 d/basis-t d/t->tx)]
-      (is (= (get-pending-job-ents unfiltered-db1)
-             (->> (util/get-pending-jobs-since-tx unfiltered-db1 0 [])
+    (let [test-db-1 (d/db conn)
+          test-log-1 (d/log conn)
+          tx-1 (-> test-db-1 d/basis-t d/t->tx)]
+      (is (= (get-pending-job-ents test-db-1)
+             (->> (util/get-pending-jobs-since-tx test-log-1 test-db-1 entity-id-attribute-maps 0 tx-1 [])
                   sort-jobs)))
 
       (let [_ @(d/transact conn [[:db/add j2 :job/state :job.state/waiting]])
+            c3 (:db/id (:job/commit-latch (d/entity (d/db conn) j3)))
+            _ @(d/transact conn [[:db/add c3 :commit-latch/committed? true]])
             j4 (testutil/create-dummy-job conn :command "c4" :job-state :job.state/waiting :user "user1")
             _ @(d/transact conn [[:db/add j4 :job/state :job.state/running]])
             _ (testutil/create-dummy-job conn :command "c5" :job-state :job.state/running :user "user2")
             _ @(d/transact conn [[:db/add j4 :job/state :job.state/completed]])
             _ (testutil/create-dummy-job conn :command "c6" :job-state :job.state/waiting :user "user1")
 
-            unfiltered-db2 (d/db conn)]
-        (is (= (get-pending-job-ents unfiltered-db2)
-               (->> (util/get-pending-jobs-since-tx unfiltered-db2 0 [])
+            test-db-2 (d/db conn)
+            test-log-2 (d/log conn)
+            tx-2 (-> test-db-2 d/basis-t d/t->tx)]
+        (is (= (get-pending-job-ents test-db-2)
+               (->> (util/get-pending-jobs-since-tx test-log-2 test-db-2 entity-id-attribute-maps 0 tx-2 [])
                     sort-jobs)))
-        (is (= (get-pending-job-ents unfiltered-db2)
-               (->> (util/get-pending-jobs-since-tx unfiltered-db1 0 [])
-                    (util/get-pending-jobs-since-tx unfiltered-db2 tx1)
+        (is (= (get-pending-job-ents test-db-2)
+               (->> (util/get-pending-jobs-since-tx test-log-1 test-db-1 entity-id-attribute-maps 0 tx-1 [])
+                    (util/get-pending-jobs-since-tx test-log-2 test-db-2 entity-id-attribute-maps tx-1 tx-2)
                     sort-jobs)))))))
 
 (deftest test-get-pending-job-ents-since-tx-randomized
   (let [uri "datomic:mem://test-get-pending-job-ents-since-tx-randomized"
         conn (testutil/restore-fresh-database! uri)
+        entity-id-attribute-maps (util/load-attribute-entity-ids (d/db conn))
         sort-jobs (fn [jobs] (sort-by :job/uuid jobs))
         get-pending-job-ents (fn [db]
                                (->> (util/get-pending-job-ents db)
@@ -516,35 +526,54 @@
                            (->> [:job.state/completed :job.state/running :job.state/waiting]
                                 shuffle
                                 first))
+        create-job (fn [& _]
+                     (testutil/create-dummy-job
+                       conn
+                       :command "run-my-command"
+                       :job-state (random-job-state)
+                       :user (str "user" (rand-int 20))))
         all-jobs (->> (range 200)
-                      (map (fn [n]
-                             (testutil/create-dummy-job
-                               conn
-                               :command (str "run-my-command-" n)
-                               :job-state (random-job-state)
-                               :user (str "user" (mod n 20)))))
+                      (map create-job)
                       doall)]
     (loop [iteration 0
            pending-jobs []
            tx-id 0]
 
       ;; randomly change state of a few jobs including from completed to another state
-      (doseq [job-id (->> all-jobs shuffle (take (rand-int 20)))]
-        (->> (random-job-state)
-             (vector :db/add job-id :job/state)
-             vector
-             (d/transact conn)
-             deref))
+      #_(println "Iteration:" iteration)
+      (let [conn-db (d/db conn)]
+        (doseq [job-id (->> all-jobs shuffle (take (rand-int 10)))]
+          (->> (random-job-state)
+               (vector :db/add job-id :job/state)
+               vector
+               (d/transact conn)
+               deref))
+        (doseq [job-id (->> all-jobs shuffle (take (rand-int 5)))]
+          #_(println "  changing commit latch for" job-id)
+          (->> (pos? (rand-int 2))
+               (vector :db/add (:db/id (:job/commit-latch (d/entity conn-db job-id))) :commit-latch/committed?)
+               vector
+               (d/transact conn)
+               deref))
+        (dotimes [_ (rand-int 3)]
+          (create-job)))
 
-      (let [db (d/db conn)
-            pending-jobs' (util/get-pending-jobs-since-tx db tx-id pending-jobs)]
+      (let [test-db (d/db conn)
+            test-log (d/log conn)
+            curr-tx-id (-> test-db d/basis-t d/t->tx)
+            pending-jobs' (util/get-pending-jobs-since-tx
+                            test-log test-db entity-id-attribute-maps tx-id curr-tx-id pending-jobs)
+            actual-pending-jobs (sort-jobs pending-jobs')
+            expected-pending-jobs (get-pending-job-ents test-db)]
         ;; assert that the computed result is the same as the result from get-pending-job-ents
-        (is (= (get-pending-job-ents db) (sort-jobs pending-jobs')))
+        #_(println "num pending jobs:" (count expected-pending-jobs))
+        (is (= expected-pending-jobs actual-pending-jobs))
 
-        (when (<= iteration 100)
+        (when (and (< iteration 150)
+                   (= expected-pending-jobs actual-pending-jobs))
           (recur
             (inc iteration)
             pending-jobs'
-            (-> db d/basis-t d/t->tx)))))))
+            curr-tx-id))))))
 
 (comment (run-tests))

@@ -20,6 +20,7 @@
             [cook.mesos.schema :as schema]
             [clojure.core.async :as async]
             [clojure.core.cache :as cache]
+            [clojure.set :as set]
             [clojure.tools.logging :as log]
             [datomic.api :as d :refer (q)]
             [metatransaction.core :refer (db)]
@@ -311,38 +312,108 @@
      get-pending-jobs-duration
      (get-pending-job-ents* unfiltered-db true))))
 
+(defn map-from-coll
+  "Build map (f e) -> (g e) for elements in es"
+  [f g es]
+  (pc/for-map [e es] (f e) (g e)))
+
+(defn load-attribute-entity-ids
+  "TODO: (shams) docstring"
+  [conn-db]
+  (let [attributes [:job/state :job/uuid :job.state/completed :job.state/running :job.state/waiting :commit-latch/committed?]
+        ent-id-attr-pairs (d/q '[:find ?e ?a
+                                 :in $ [?a ...]
+                                 :where [?e :db/ident ?a]]
+                               conn-db attributes)]
+    {:entity-id->attribute (map-from-coll first second ent-id-attr-pairs)
+     :attribute->entity-id (map-from-coll second first ent-id-attr-pairs)}))
+
+(defn- fetch-changed-entity-ids
+  "TODO: (shams) docstring"
+  [conn-log t-start t-end attr-entity-ids]
+  (d/q '[:find ?e ?attr-id
+         :in ?log ?t1 ?t2 [?attr-id ...]
+         :where
+         [(tx-ids ?log ?t1 ?t2) [?tx ...]]
+         [(tx-data ?log ?tx) [[?e ?a ?v _ ?op]]]
+         [(= ?a ?attr-id)]]
+       conn-log t-start (inc t-end) attr-entity-ids))
+
+(defn- commit-latch-ids->job-ids
+  "TODO: (shams) docstring"
+  [conn-db commit-latch-ids]
+  (->> (d/q '[:find ?j
+              :in $ [?c ...]
+              :where
+              [?j :job/commit-latch ?c]
+              [?j :job/state ?s]
+              [?j :job/uuid ?u]]
+            conn-db commit-latch-ids)
+       (map first)))
+
+(defn- job-ids->job-desc-maps
+  "TODO: (shams) docstring"
+  [conn-db entity-id->attribute job-ids]
+  (->> (d/q '[:find ?j ?u ?s ?c
+              :in $ [?j ...]
+              :where
+              [?j :job/state ?s]
+              [?j :job/uuid ?u]
+              [?j :job/commit-latch ?cl]
+              [?cl :commit-latch/committed? ?c]]
+            conn-db job-ids)
+       (map (fn [[j u s c]]
+              {:commit-latch/committed? c
+               :db/id j
+               :job/state (entity-id->attribute s)
+               :job/uuid u}))))
+
+(defn- fetch-changed-job-desc-maps
+  "TODO: (shams) docstring"
+  [conn-log conn-db t-start t-end attribute->entity-id entity-id->attribute]
+  (let [state-entity-id (:job/state attribute->entity-id)
+        commit-latch-entity-id (:commit-latch/committed? attribute->entity-id)
+        changed-entity-id-attr-id-pairs (->> [state-entity-id commit-latch-entity-id]
+                                             (fetch-changed-entity-ids conn-log t-start t-end))
+        attr-entity-id->entity-ids (fn [entity-id]
+                                     (->> changed-entity-id-attr-id-pairs
+                                          (filter #(= entity-id (second %)))
+                                          (map first)))
+        job-ids-with-changed-job-state (attr-entity-id->entity-ids state-entity-id)
+        cl-ids-with-changed-state (attr-entity-id->entity-ids commit-latch-entity-id)
+        job-ids-with-changed-cl-state (commit-latch-ids->job-ids conn-db cl-ids-with-changed-state)
+        job-ids-with-changes (set/union (set job-ids-with-changed-job-state) (set job-ids-with-changed-cl-state))
+        job-entities (job-ids->job-desc-maps conn-db entity-id->attribute job-ids-with-changes)]
+    job-entities))
+
 (timers/deftimer [cook-mesos scheduler get-pending-jobs-since-tx-duration])
-(meters/defmeter [cook-mesos scheduler get-pending-jobs-since-tx-rate])
+(meters/defmeter [cook-mesos scheduler get-pending-jobs-all-jobs-rate])
+(meters/defmeter [cook-mesos scheduler get-pending-jobs-pending-jobs-rate])
 
 (defn get-pending-jobs-since-tx
   "Returns the list of pending jobs built by querying for jobs with modified state since prev-tx-id.
    All jobs with modified state are removed from prev-pending-jobs and then only jobs in waiting
    state are concatenated to the provided prev-pending-jobs."
-  ([unfiltered-db prev-tx-id prev-pending-jobs]
+  ([conn-log conn-db {:keys [entity-id->attribute attribute->entity-id]} prev-tx-id curr-tx-id prev-pending-jobs]
    (timers/time!
      get-pending-jobs-since-tx-duration
-     (let [all-job-states [:job.state/completed :job.state/running :job.state/waiting]
-           job-id-uuid-state-triple (d/q '[:find ?j ?uuid ?state
-                                           :in $ [?state ...] ?prev-tx
-                                           :where
-                                           [(> ?tx ?prev-tx)]
-                                           [?j :job/state ?state ?tx]
-                                           [?j :job/uuid ?uuid]
-                                           [?j :job/commit-latch ?cl]
-                                           [?cl :commit-latch/committed? true]]
-                                         unfiltered-db all-job-states prev-tx-id)
-           new-job-uuids (->> job-id-uuid-state-triple
-                              (map (comp str second))
+     (let [changed-job-desc-maps (fetch-changed-job-desc-maps
+                                   conn-log conn-db prev-tx-id curr-tx-id attribute->entity-id entity-id->attribute)
+           changed-job-uuids (->> changed-job-desc-maps
+                              (map :job/uuid)
                               (into #{}))
-           new-pending-jobs (->> job-id-uuid-state-triple
-                                 (filter #(= :job.state/waiting (last %)))
+           _ (meters/mark! get-pending-jobs-all-jobs-rate (count changed-job-uuids))
+           new-pending-jobs (->> changed-job-desc-maps
+                                 (filter (fn [job-desc-map]
+                                           (and (:commit-latch/committed? job-desc-map)
+                                                (= :job.state/waiting (:job/state job-desc-map)))))
                                  (map (comp job-ent->map
-                                            (partial d/entity unfiltered-db)
-                                            first)))
-           _ (log/info "Found" (count new-pending-jobs) "waiting jobs since tx" prev-tx-id)
-           _ (meters/mark! get-pending-jobs-since-tx-rate (count new-pending-jobs))
+                                            (partial d/entity conn-db)
+                                            :db/id)))
+           _ (log/info "Found" (count new-pending-jobs) "waiting jobs in tx range" [prev-tx-id curr-tx-id])
+           _ (meters/mark! get-pending-jobs-pending-jobs-rate (count new-pending-jobs))
            pending-jobs (->> prev-pending-jobs
-                             (remove #(contains? new-job-uuids (str (:job/uuid %))))
+                             (remove #(contains? changed-job-uuids (:job/uuid %)))
                              (concat new-pending-jobs))]
        (log/info "Found" (count pending-jobs) "waiting jobs in total")
        pending-jobs))))
