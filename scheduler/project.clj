@@ -30,7 +30,7 @@
                  [com.rpl/specter "1.0.1"]
 
                  ;;Utility
-                 [com.google.guava/guava "16.0"]
+                 [com.google.guava/guava "17.0"]
                  [amalloy/ring-buffer "1.1"]
                  [listora/ring-congestion "0.1.2"]
                  [lonocloud/synthread "1.0.4"]
