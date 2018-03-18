@@ -25,6 +25,7 @@
             [cook.mesos.schema :as schema]
             [cook.mesos.util :as util]
             [datomic.api :as d :refer (q db)]
+            [mount.core :as mount]
             [plumbing.core :refer [mapply]]
             [qbits.jet.server :refer (run-jetty)]
             [ring.middleware.params :refer (wrap-params)])
@@ -247,3 +248,19 @@
                              {:level :info
                               :out (ConsoleAppender. (PatternLayout. "%d{ISO8601} %-5p %c [%t] - %m%n"))}))
   (log/info "Running" (:var m)))
+
+(let [minimal-config {:authorization {:one-user ""}
+                      :database {:datomic-uri ""}
+                      :log {}
+                      :mesos {:leader-path "", :master ""}
+                      :metrics {}
+                      :nrepl {}
+                      :port nil
+                      :scheduler {}
+                      :unhandled-exceptions {}
+                      :zookeeper {:local? true}}]
+  (defn setup
+    "Given an optional config map, initializes the config state"
+    [& {:keys [config], :or nil}]
+    (mount/stop)
+    (mount/start-with-args (merge minimal-config config) #'cook.config/config)))

@@ -281,12 +281,12 @@
   ;; db to improve the performance of this query. We are working to remove
   ;; metatransaction throughout the code
   (->> (q '[:find [?j ...]
-            :in $ [?state ...] ?committed?
+            :in $ ?state ?committed?
             :where
             [?j :job/state ?state]
             [?j :job/commit-latch ?cl]
             [?cl :commit-latch/committed? ?committed?]]
-          unfiltered-db [:job.state/waiting] committed?)
+          unfiltered-db :job.state/waiting committed?)
        (map (partial d/entity unfiltered-db))))
 
 (timers/deftimer [cook-mesos scheduler get-pending-jobs-duration])
@@ -337,7 +337,7 @@
 (def ^:const job-states #{"running" "waiting" "completed"})
 (def ^:const instance-states #{"success" "failed"})
 
-;; get-jobs-by-user-and-state-and-submit is a bit opaque because it is
+;; get-completed-jobs-by-user is a bit opaque because it is
 ;; reaching into datomic internals. Here is a quick explanation.
 ;; seek-datoms provides a pointer into the raw datomic indices 
 ;; that we can then seek through. We set the pointer to look
@@ -348,60 +348,65 @@
 ;; are set at the same time, in "real" time. This means that
 ;; jobs submitted after `start` will have been created after
 ;; expanded start
-(defn get-jobs-by-user-and-state-and-submit
-  "Returns all jobs for a particular user in the specified timeframe. By default,
-  filters out jobs with a custom executor. If include-custom-executor? is true,
-  jobs with a custom executor will be included."
-  [db user start end state-keyword include-custom-executor?]
-  (let [;; Expand the time range so that clock skew between cook
-        ;; and datomic doesn't cause us to miss jobs
-        ;; 1 hour was picked because a skew larger than that would be
-        ;; suspicious
-        expanded-start (Date. (- (.getTime start)
-                                 (-> 1 t/hours t/in-millis)))
-        expanded-end (Date. (+ (.getTime end)
-                               (-> 1 t/hours t/in-millis)))
-        entid-start (d/entid-at db :db.part/user expanded-start)
-        entid-end (d/entid-at db :db.part/user expanded-end)
-        job-user-entid (d/entid db :job/user)
-        jobs (->> (d/seek-datoms db :avet :job/user user entid-start)
-                  (take-while #(and (< (:e %) entid-end)
-                                    (= (:a %) job-user-entid)
-                                    (= (:v %) user)))
-                  (map :e)
-                  (map (partial d/entity db))
-                  (filter #(<= (.getTime start) (.getTime (:job/submit-time %))))
-                  (filter #(< (.getTime (:job/submit-time %)) (.getTime end)))
-                  (filter #(= state-keyword (:job/state %))))]
-    (cond->> jobs
-             (not include-custom-executor?) (remove :job/custom-executor))))
-
-;; This differs from get-active-jobs-by-user-and-state as it is also looking up based on task state.
 (defn get-completed-jobs-by-user
   "Returns all completed job entities for a particular user
-   in the specified timeframe, without a custom executor. Supports looking up based
-   on task state 'success' and 'failed' if passed into 'state'"
-  [db user start end limit state name-filter-fn include-custom-executor?]
+   in the specified timeframe, without a custom executor."
+  [db user start end limit state name-filter-fn]
   (timers/time!
     get-completed-jobs-by-user-duration
-    (->>
-      (cond->> (get-jobs-by-user-and-state-and-submit db user start end :job.state/completed include-custom-executor?)
-               (instance-states state) (filter #(= state (job-ent->state %)))
-               name-filter-fn (filter #(name-filter-fn (:job/name %))))
-      (take limit))))
+    (let [;; Expand the time range so that clock skew between cook
+          ;; and datomic doesn't cause us to miss jobs
+          ;; 1 hour was picked because a skew larger than that would be
+          ;; suspicious
+          expanded-start (Date. (- (.getTime start)
+                                   (-> 1 t/hours t/in-millis)))
+          expanded-end (Date. (+ (.getTime end)
+                                 (-> 1 t/hours t/in-millis)))
+          jobs
+          (->> (d/seek-datoms db :avet :job/user user (d/entid-at db :db.part/user expanded-start))
+               (take-while #(and (< (.e %) (d/entid-at db :db.part/user expanded-end))
+                                 (= (.a %) (d/entid db :job/user))
+                                 (= (.v %) user)))
+               (map #(.e %))
+               (map (partial d/entity db))
+               (filter #(<= (.getTime start) (.getTime (:job/submit-time %))))
+               (filter #(< (.getTime (:job/submit-time %)) (.getTime end)))
+               (filter #(= :job.state/completed (:job/state %)))
+               (filter #(not (:job/custom-executor %))))]
+      (->>
+        (cond->> jobs
+                 (instance-states state) (filter #(= state (job-ent->state %)))
+                 name-filter-fn (filter #(name-filter-fn (:job/name %))))
+        (take limit)))))
 
+;; This is a separate query from completed jobs because most running/waiting jobs
+;; will be at the end of the time range, so the query is somewhat inefficent.
+;; The standard datomic query performs reasonably well on the smaller set of
+;; running and waiting jobs, so it's implemented that way to keep things simple.
 (defn get-active-jobs-by-user-and-state
   "Returns all jobs for a particular user in the specified state
-   and timeframe, without a custom executor. This query looks for all
-   jobs by job state only (i.e., no 'success' or 'failed')"
-  [db user start end state name-filter-fn include-custom-executor?]
+   and timeframe, without a custom executor.
+   Note that this query is not performant for completed jobs, use
+   get-completed-jobs-by-user instead."
+  [db user start end state name-filter-fn]
   (let [state-keyword (case state
                         "running" :job.state/running
-                        "waiting" :job.state/waiting)]
-    (timers/time!
-      (timers/timer ["cook-mesos" "scheduler" (str "get-" (name state) "-jobs-by-user-duration")])
-      (cond->> (get-jobs-by-user-and-state-and-submit db user start end state-keyword include-custom-executor?)
-               name-filter-fn (filter #(name-filter-fn (:job/name %)))))))
+                        "waiting" :job.state/waiting)
+        jobs
+        (timers/time!
+          (timers/timer ["cook-mesos" "scheduler" (str "get-" (name state) "-jobs-by-user-duration")])
+          (->> (q '[:find [?j ...]
+                    :in $ ?user ?state ?start ?end
+                    :where
+                    [?j :job/state ?state]
+                    [?j :job/user ?user]
+                    [?j :job/submit-time ?t]
+                    [(<= ?start ?t)]
+                    [(< ?t ?end)]
+                    [?j :job/custom-executor false]]
+                  db user state-keyword start end)
+               (map (partial d/entity db))))]
+    (cond->> jobs name-filter-fn (filter #(name-filter-fn (:job/name %))))))
 
 (defn get-jobs-by-user-and-states
   "Returns all jobs for a particular user in the specified states
@@ -414,11 +419,9 @@
                               (get-active-jobs-by-user-and-state db user start end state
                                                                  name-filter-fn include-custom-executor?)))
         jobs-by-state (mapcat get-jobs-by-state states)]
-    (timers/time!
-      (timers/timer ["cook-mesos" "scheduler" "get-jobs-by-user-and-states-duration"])
-      (->> jobs-by-state
-           (sort-by :job/submit-time)
-           (take limit)))))
+    (->> jobs-by-state
+         (sort-by :job/submit-time)
+         (take limit))))
 
 
 (defn jobs-by-user-and-state
@@ -510,35 +513,31 @@
 
 
 (defn task->feature-vector
-      "Vector of comparable features of a task.
-       Last two elements are aribitary tie breakers.
-       Use :db/id because they guarantee uniqueness for different entities
-       (:db/id task) is not sufficient because synthetic task entities don't have :db/id
-       This assumes there are at most one synthetic task for a job, otherwise uniqueness invariant will break"
-      [task]
-      (let [task->feature-vector-miss
-            (fn [task]
-                [(- (:job/priority (:job/_instance task) default-job-priority))
-                 (:instance/start-time task (java.util.Date. Long/MAX_VALUE))
-                 (:db/id task)
-                 (:db/id (:job/_instance task))])]
-           (lookup-cache-datomic-entity! task->feature-vector-cache task->feature-vector-miss task)))
+  "Vector of comparable features of a task.
+   Last two elements are aribitary tie breakers.
+   Use :db/id because they guarantee uniqueness for different entities
+   (:db/id task) is not sufficient because synthetic task entities don't have :db/id
+   This assumes there are at most one synthetic task for a job, otherwise uniqueness invariant will break"
+  [task]
+  (let [task->feature-vector-miss
+        (fn [task]
+          [(- (:job/priority (:job/_instance task) default-job-priority))
+           (:instance/start-time task (java.util.Date. Long/MAX_VALUE))
+           (:db/id task)
+           (:db/id (:job/_instance task))])
+        extract-key
+        (fn [item]
+          (or (:db/id item) (:db/id (:job/_instance item))))]
+    (lookup-cache! task->feature-vector-cache extract-key task->feature-vector-miss task)))
 
 (defn same-user-task-comparator
   "Comparator to order same user's tasks"
   ([]
    (same-user-task-comparator []))
   ([tasks]
-    ;; Pre-compute the feature-vector for tasks we expect to see to improve performance
-    ;; This is done because accessing fields in datomic entities is much slower than
-    ;; a map access, even when accessing multiple times.
-    ;; Don't want to complicate the function by caching new values in the event we see them
-   (let [task-ent->feature-vector (pc/map-from-keys task->feature-vector tasks)]
      (fn [task1 task2]
-       (compare (or (task-ent->feature-vector task1)
-                    (task->feature-vector task1))
-                (or (task-ent->feature-vector task2)
-                    (task->feature-vector task2)))))))
+       (compare (task->feature-vector task1)
+                (task->feature-vector task2)))))
 
 (defn retry-job!
   "Sets :job/max-retries to the given value for the given job UUID.

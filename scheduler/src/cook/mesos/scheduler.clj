@@ -96,6 +96,8 @@
 (meters/defmeter [cook-mesos scheduler handle-framework-message-rate])
 (meters/defmeter [cook-mesos scheduler tasks-killed-in-status-update])
 
+(timers/deftimer [cook-mesos scheduler generate-user-usage-map-duration])
+
 (meters/defmeter [cook-mesos scheduler tasks-completed])
 (meters/defmeter [cook-mesos scheduler tasks-completed-mem])
 (meters/defmeter [cook-mesos scheduler tasks-completed-cpus])
@@ -607,7 +609,7 @@
    during the same Fenzo scheduling cycle as the newly created TaskRequest."
   [db job & {:keys [resources task-id assigned-resources guuid->considerable-cotask-ids reserved-hosts running-cotask-cache]
           :or {resources (util/job-ent->resources job)
-               task-id (str (java.util.UUID/randomUUID))
+               task-id (str (d/squuid))
                assigned-resources (atom nil)
                guuid->considerable-cotask-ids (constantly #{})
                running-cotask-cache (atom (cache/fifo-cache-factory {} :threshold 1))
@@ -741,13 +743,15 @@
 (defn generate-user-usage-map
   "Returns a mapping from user to usage stats"
   [unfiltered-db]
-  (->> (util/get-running-task-ents unfiltered-db)
-       (map :job/_instance)
-       (group-by :job/user)
-       (pc/map-vals (fn [jobs]
-                      (->> jobs
-                           (map job->usage)
-                           (reduce (partial merge-with +)))))))
+  (timers/time!
+    generate-user-usage-map-duration
+    (->> (util/get-running-task-ents unfiltered-db)
+         (map :job/_instance)
+         (group-by :job/user)
+         (pc/map-vals (fn [jobs]
+                        (->> jobs
+                             (map job->usage)
+                             (reduce (partial merge-with +))))))))
 
 (defn category->pending-jobs->category->considerable-jobs
   "Limit the pending jobs to considerable jobs based on usage and quota.
@@ -793,11 +797,11 @@
 
 (defn- update-match-with-task-metadata-seq
   "Updates the match with an entry for the task metadata for all tasks."
-  [{:keys [tasks] :as match} db framework-id executor-config mesos-run-as-user]
+  [{:keys [tasks] :as match} db framework-id mesos-run-as-user]
   (->> tasks
        ;; sort-by makes task-txns created in matches->task-txns deterministic
        (sort-by (comp :job/uuid :job #(.getRequest ^TaskAssignmentResult %)))
-       (map (partial task/TaskAssignmentResult->task-metadata db framework-id executor-config mesos-run-as-user))
+       (map (partial task/TaskAssignmentResult->task-metadata db framework-id mesos-run-as-user))
        (assoc match :task-metadata-seq)))
 
 (defn- matches->task-txns
@@ -828,8 +832,8 @@
 
 (defn- launch-matched-tasks!
   "Updates the state of matched tasks in the database and then launches them."
-  [matches conn db driver fenzo framework-id executor-config mesos-run-as-user]
-  (let [matches (map #(update-match-with-task-metadata-seq % db framework-id executor-config mesos-run-as-user) matches)
+  [matches conn db driver fenzo framework-id mesos-run-as-user]
+  (let [matches (map #(update-match-with-task-metadata-seq % db framework-id mesos-run-as-user) matches)
         task-txns (matches->task-txns matches)]
     ;; Note that this transaction can fail if a job was scheduled
     ;; during a race. If that happens, then other jobs that should
@@ -882,7 +886,7 @@
 (defn handle-resource-offers!
   "Gets a list of offers from mesos. Decides what to do with them all--they should all
    be accepted or rejected at the end of the function."
-  [conn driver ^TaskScheduler fenzo framework-id executor-config category->pending-jobs-atom mesos-run-as-user
+  [conn driver ^TaskScheduler fenzo framework-id category->pending-jobs-atom mesos-run-as-user
    user->usage user->quota num-considerable offers-chan offers rebalancer-reservation-atom]
   (log/debug "invoked handle-resource-offers!")
   (let [offer-stash (atom nil)] ;; This is a way to ensure we never lose offers fenzo assigned if an error occurs in the middle of processing
@@ -927,7 +931,7 @@
             (do
               (swap! category->pending-jobs-atom remove-matched-jobs-from-pending-jobs category->job-uuids)
               (log/debug "updated category->pending-jobs:" @category->pending-jobs-atom)
-              (launch-matched-tasks! matches conn db driver fenzo framework-id executor-config mesos-run-as-user)
+              (launch-matched-tasks! matches conn db driver fenzo framework-id mesos-run-as-user)
               (update-host-reservations! rebalancer-reservation-atom matches)
               matched-normal-considerable-jobs-head?)))
         (catch Throwable t
@@ -957,7 +961,7 @@
 (counters/defcounter [cook-mesos scheduler offer-chan-depth])
 
 (defn make-offer-handler
-  [conn driver-atom fenzo framework-id executor-config pending-jobs-atom offer-cache max-considerable scaleback
+  [conn driver-atom fenzo framework-id pending-jobs-atom offer-cache max-considerable scaleback
    floor-iterations-before-warn floor-iterations-before-reset trigger-chan rebalancer-reservation-atom
    mesos-run-as-user]
   (let [chan-length 100
@@ -1005,7 +1009,7 @@
                                                  (cache/miss c slave-id attrs)))))
                       _ (log/debug "Passing following offers to handle-resource-offers!" offers)
                       user->quota (quota/create-user->quota-fn (d/db conn))
-                      matched-head? (handle-resource-offers! conn @driver-atom fenzo framework-id executor-config pending-jobs-atom mesos-run-as-user @user->usage-future user->quota num-considerable offers-chan offers rebalancer-reservation-atom)]
+                      matched-head? (handle-resource-offers! conn @driver-atom fenzo framework-id pending-jobs-atom mesos-run-as-user @user->usage-future user->quota num-considerable offers-chan offers rebalancer-reservation-atom)]
                   (when (seq offers)
                     (reset! resources-atom (view-incubating-offers fenzo)))
                   ;; This check ensures that, although we value Fenzo's optimizations,
@@ -1621,7 +1625,7 @@
             task-id #(handle-status-update conn driver fenzo sync-agent-sandboxes-fn status)))))))
 
 (defn create-datomic-scheduler
-  [{:keys [conn driver-atom executor-config fenzo-fitness-calculator fenzo-floor-iterations-before-reset
+  [{:keys [conn driver-atom fenzo-fitness-calculator fenzo-floor-iterations-before-reset
            fenzo-floor-iterations-before-warn fenzo-max-jobs-considered fenzo-scaleback framework-id good-enough-fitness
            gpu-enabled? heartbeat-ch mea-culpa-failure-limit mesos-run-as-user offer-cache offer-incubate-time-ms
            pending-jobs-atom progress-config rebalancer-reservation-atom sandbox-syncer-state task-constraints
@@ -1633,7 +1637,7 @@
         fenzo (make-fenzo-scheduler driver-atom offer-incubate-time-ms fenzo-fitness-calculator good-enough-fitness)
         [offers-chan resources-atom]
         (make-offer-handler
-          conn driver-atom fenzo framework-id executor-config pending-jobs-atom offer-cache fenzo-max-jobs-considered
+          conn driver-atom fenzo framework-id pending-jobs-atom offer-cache fenzo-max-jobs-considered
           fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset match-trigger-chan
           rebalancer-reservation-atom mesos-run-as-user)
         {:keys [batch-size]} progress-config

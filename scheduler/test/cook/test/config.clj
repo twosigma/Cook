@@ -15,13 +15,21 @@
 ;;
 (ns cook.test.config
   (:require [clojure.test :refer :all]
-            [cook.config :as config]))
+            [cook.config :refer (config env read-edn-config)]
+            [cook.test.testutil :refer (setup)]))
 
 (deftest test-read-edn-config
-  (is (= {} (config/read-edn-config "{}")))
-  (is (= {:foo 1} (config/read-edn-config "{:foo 1}")))
-  (with-redefs [config/env (constantly "something")]
-    (is (= {:master "something"} (config/read-edn-config "{:master #config/env \"MESOS_MASTER\"}"))))
-  (with-redefs [config/env (constantly "12345")]
-    (is (= {:port "12345"} (config/read-edn-config "{:port #config/env \"COOK_PORT\"}")))
-    (is (= {:port 12345} (config/read-edn-config "{:port #config/env-int \"COOK_PORT\"}")))))
+  (is (= {} (read-edn-config "{}")))
+  (is (= {:foo 1} (read-edn-config "{:foo 1}")))
+  (with-redefs [env (constantly "something")]
+    (is (= {:master "something"} (read-edn-config "{:master #config/env \"MESOS_MASTER\"}"))))
+  (with-redefs [env (constantly "12345")]
+    (is (= {:port "12345"} (read-edn-config "{:port #config/env \"COOK_PORT\"}")))
+    (is (= {:port 12345} (read-edn-config "{:port #config/env-int \"COOK_PORT\"}")))))
+
+(deftest test-redef-config
+  (setup :config {:database {:datomic-uri "foo"}})
+  (is (= "foo" (-> config :settings :mesos-datomic-uri)))
+  (with-redefs [config {:settings {:mesos-datomic-uri "bar"}}]
+    (is (= "bar" (-> config :settings :mesos-datomic-uri))))
+  (is (= "foo" (-> config :settings :mesos-datomic-uri))))
