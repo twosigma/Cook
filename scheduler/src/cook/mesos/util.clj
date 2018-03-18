@@ -16,6 +16,7 @@
 (ns cook.mesos.util
   (:require [clj-time.coerce :as tc]
             [clj-time.core :as t]
+            [clj-time.format :as tf]
             [clj-time.periodic :refer [periodic-seq]]
             [cook.mesos.schema :as schema]
             [clojure.core.async :as async]
@@ -351,7 +352,7 @@
 (defn get-completed-jobs-by-user
   "Returns all completed job entities for a particular user
    in the specified timeframe, without a custom executor."
-  [db user start end limit state name-filter-fn]
+  [db user start end limit state name-filter-fn include-custom-executor?]
   (timers/time!
     get-completed-jobs-by-user-duration
     (let [;; Expand the time range so that clock skew between cook
@@ -371,10 +372,10 @@
                (map (partial d/entity db))
                (filter #(<= (.getTime start) (.getTime (:job/submit-time %))))
                (filter #(< (.getTime (:job/submit-time %)) (.getTime end)))
-               (filter #(= :job.state/completed (:job/state %)))
-               (filter #(not (:job/custom-executor %))))]
+               (filter #(= :job.state/completed (:job/state %))))]
       (->>
         (cond->> jobs
+                 (not include-custom-executor?) (remove :job/custom-executor)
                  (instance-states state) (filter #(= state (job-ent->state %)))
                  name-filter-fn (filter #(name-filter-fn (:job/name %))))
         (take limit)))))
@@ -388,7 +389,7 @@
    and timeframe, without a custom executor.
    Note that this query is not performant for completed jobs, use
    get-completed-jobs-by-user instead."
-  [db user start end state name-filter-fn]
+  [db user start end state name-filter-fn include-custom-executor?]
   (let [state-keyword (case state
                         "running" :job.state/running
                         "waiting" :job.state/waiting)
@@ -402,11 +403,12 @@
                     [?j :job/user ?user]
                     [?j :job/submit-time ?t]
                     [(<= ?start ?t)]
-                    [(< ?t ?end)]
-                    [?j :job/custom-executor false]]
+                    [(< ?t ?end)]]
                   db user state-keyword start end)
                (map (partial d/entity db))))]
-    (cond->> jobs name-filter-fn (filter #(name-filter-fn (:job/name %))))))
+    (cond->> jobs
+             (not include-custom-executor?) (remove :job/custom-executor)
+             name-filter-fn (filter #(name-filter-fn (:job/name %))))))
 
 (defn get-jobs-by-user-and-states
   "Returns all jobs for a particular user in the specified states
@@ -749,3 +751,16 @@
   (swap! cache-store #(-> %
                           (cache/evict key)
                           (cache/miss key value))))
+
+(defn parse-time
+  "Parses the provided string as a DateTime"
+  [s]
+  (or (tf/parse s)
+      (tc/from-long (Long/parseLong s))))
+
+(defn parse-int-default
+  "Parses the provided string as an integer"
+  [s d]
+  (if (nil? s)
+    d
+    (Integer/parseInt s)))

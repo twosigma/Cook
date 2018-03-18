@@ -1584,7 +1584,14 @@
     (is (= 201 (:status response-1)))
     (is (= 2 (count jobs)))
     (is (= (:uuid response-2) (-> jobs first (get "uuid"))))
-    (is (= (:uuid response-1) (-> jobs second (get "uuid"))))))
+    (is (= (:uuid response-1) (-> jobs second (get "uuid"))))
+    (is (-> (d/entity (d/db conn) [:job/uuid (UUID/fromString (:uuid response-1))])
+            d/touch
+            :job/custom-executor))
+    (is (-> (d/entity (d/db conn) [:job/uuid (UUID/fromString (:uuid response-2))])
+            d/touch
+            :job/custom-executor
+            not))))
 
 (deftest test-name-filter-str->name-filter-pattern
   (is (= (str #".*") (str (api/name-filter-str->name-filter-pattern "***"))))

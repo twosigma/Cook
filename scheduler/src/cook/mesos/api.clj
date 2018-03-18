@@ -1170,19 +1170,6 @@
       (-> states (set/difference util/instance-states) (conj "completed"))
       states)))
 
-(defn parse-time
-  "Parses the provided string as a DateTime"
-  [s]
-  (or (tf/parse s)
-      (tc/from-long (Long/parseLong s))))
-
-(defn- parse-int-default
-  "Parses the provided string as an integer"
-  [s d]
-  (if (nil? s)
-    d
-    (Integer/parseInt s)))
-
 (defn name-filter-str->name-filter-pattern
   "Generates a regex pattern corresponding to a user-provided name filter string"
   [name]
@@ -1198,11 +1185,13 @@
       #(re-matches pattern %))))
 
 (defn job-list-request-malformed?
+  "Returns a [true {::error ...}] pair if the request is malformed, and
+  otherwise [false m], where m represents data that gets merged into the ctx"
   [ctx]
   (let [{:strs [state user start end limit name]} (get-in ctx [:request :query-params])]
     (cond
-      (not (and state user))
-      [true {::error "must supply the state and the user name"}]
+      (not (and state user start end))
+      [true {::error "must supply the state, user name, start time, and end time"}]
 
       (not (set/superset? allowed-list-states state))
       [true {::error (str "unsupported state in " state ", must be one of: " allowed-list-states)}]
@@ -1216,9 +1205,9 @@
       (try
         [false {::states (normalize-list-states state)
                 ::user user
-                ::start-ms (-> start ^DateTime parse-time .getMillis)
-                ::end-ms (-> end ^DateTime parse-time .getMillis)
-                ::limit (parse-int-default limit 150)
+                ::start-ms (-> start ^DateTime util/parse-time .getMillis)
+                ::end-ms (-> end ^DateTime util/parse-time .getMillis)
+                ::limit (util/parse-int-default limit 150)
                 ::name-filter-fn (name-filter-str->name-filter-fn name)}]
         (catch NumberFormatException e
           [true {::error (.toString e)}])))))
@@ -2137,9 +2126,9 @@
                       (try
                         [false {::states (normalize-list-states states)
                                 ::user user
-                                ::since-hours-ago (parse-int-default since-hours-ago 24)
+                                ::since-hours-ago (util/parse-int-default since-hours-ago 24)
                                 ::start-ms (parse-long-default start-ms nil)
-                                ::limit (parse-int-default limit Integer/MAX_VALUE)
+                                ::limit (util/parse-int-default limit Integer/MAX_VALUE)
                                 ::end-ms (parse-long-default end-ms (System/currentTimeMillis))
                                 ::name-filter-fn (name-filter-str->name-filter-fn name)}]
                         (catch NumberFormatException e
@@ -2261,8 +2250,8 @@
      (fn [ctx]
        (let [{:keys [status start end name]} (-> ctx :request :params)
              allowed-instance-statuses #{"unknown" "running" "success" "failed"}
-             start-time (parse-time start)
-             end-time (parse-time end)]
+             start-time (util/parse-time start)
+             end-time (util/parse-time end)]
          (cond
            (not (allowed-instance-statuses status))
            [true {::error (str "unsupported status " status ", must be one of: " allowed-instance-statuses)}]
