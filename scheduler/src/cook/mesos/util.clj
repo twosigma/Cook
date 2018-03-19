@@ -380,6 +380,11 @@
                  name-filter-fn (filter #(name-filter-fn (:job/name %))))
         (take limit)))))
 
+(defn uncommitted?
+  "Returns true if the given job's commit latch is not committed"
+  [job]
+  (-> job :job/commit-latch :commit-latch/committed? not))
+
 ;; This is a separate query from completed jobs because most running/waiting jobs
 ;; will be at the end of the time range, so the query is somewhat inefficent.
 ;; The standard datomic query performs reasonably well on the smaller set of
@@ -408,7 +413,8 @@
                (map (partial d/entity db))))]
     (cond->> jobs
              (not include-custom-executor?) (remove :job/custom-executor)
-             name-filter-fn (filter #(name-filter-fn (:job/name %))))))
+             name-filter-fn (filter #(name-filter-fn (:job/name %)))
+             (and include-custom-executor? (= :job.state/waiting state-keyword)) (remove uncommitted?))))
 
 (defn get-jobs-by-user-and-states
   "Returns all jobs for a particular user in the specified states
