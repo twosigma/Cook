@@ -372,7 +372,7 @@
                (filter #(<= (.getTime start) (.getTime (:job/submit-time %))))
                (filter #(< (.getTime (:job/submit-time %)) (.getTime end)))
                (filter #(= :job.state/completed (:job/state %)))
-               (filter #(not (:job/custom-executor %))))]
+               (filter #(false? (:job/custom-executor %))))]
       (->>
         (cond->> jobs
                  (instance-states state) (filter #(= state (job-ent->state %)))
