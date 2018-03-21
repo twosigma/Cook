@@ -504,31 +504,31 @@
                            (async/go
                              (timers/start-stop-time! ; Use this in go blocks, time! doesn't play nice
                                tx-report-queue-processing-duration
-                               (let [{:keys [tx-data db-after db-before]} tx-report
-                                     db (db conn)]
+                               (let [{:keys [tx-data db-after]} tx-report]
                                  (when (< query-basis (d/basis-t db-after))
-                                   (meters/mark! tx-report-queue-datoms (count tx-data))
-                                   ;; Monitoring whether a job is completed.
-                                   (doseq [{:keys [e a v]} tx-data]
-                                     (try
-                                       (when (and (= a (d/entid db :job/state))
-                                                  (= v (d/entid db :job.state/completed)))
-                                         (meters/mark! tx-report-queue-job-complete)
-                                         (doseq [[task-id] (q '[:find ?task-id
-                                                                :in $ ?job [?status ...]
-                                                                :where
-                                                                [?job :job/instance ?i]
-                                                                [?i :instance/status ?status]
-                                                                [?i :instance/task-id ?task-id]]
-                                                              db e [:instance.status/unknown
-                                                                    :instance.status/running])]
-                                           (if-let [driver @driver-ref]
-                                             (do (log/info "Attempting to kill task" task-id "due to job completion")
-                                                 (meters/mark! tx-report-queue-tasks-killed)
-                                                 (mesos/kill-task! driver {:value task-id}))
-                                             (log/error "Couldn't kill task" task-id "due to no Mesos driver!"))))
-                                       (catch Exception e
-                                         (log/error e "Unexpected exception on tx report queue processor"))))))))
+                                   (let [db (db conn)]
+                                     (meters/mark! tx-report-queue-datoms (count tx-data))
+                                     ;; Monitoring whether a job is completed.
+                                     (doseq [{:keys [e a v]} tx-data]
+                                       (try
+                                         (when (and (= a (d/entid db :job/state))
+                                                    (= v (d/entid db :job.state/completed)))
+                                           (meters/mark! tx-report-queue-job-complete)
+                                           (doseq [[task-id] (q '[:find ?task-id
+                                                                  :in $ ?job [?status ...]
+                                                                  :where
+                                                                  [?job :job/instance ?i]
+                                                                  [?i :instance/status ?status]
+                                                                  [?i :instance/task-id ?task-id]]
+                                                                db e [:instance.status/unknown
+                                                                      :instance.status/running])]
+                                             (if-let [driver @driver-ref]
+                                               (do (log/info "Attempting to kill task" task-id "due to job completion")
+                                                   (meters/mark! tx-report-queue-tasks-killed)
+                                                   (mesos/kill-task! driver {:value task-id}))
+                                               (log/error "Couldn't kill task" task-id "due to no Mesos driver!"))))
+                                         (catch Exception e
+                                           (log/error e "Unexpected exception on tx report queue processor")))))))))
                            (recur))
           kill-chan ([_] nil))))
     #(async/close! kill-chan)))
