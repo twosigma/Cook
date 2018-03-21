@@ -29,7 +29,7 @@
             [cook.mesos.share :as share]
             [cook.mesos.util :as util]
             [cook.test.testutil :refer [restore-fresh-database! create-dummy-group create-dummy-job
-                                        create-dummy-instance init-offer-cache poll-until]]
+                                        create-dummy-instance init-offer-cache poll-until wait-for]]
             [criterium.core :as crit]
             [datomic.api :as d :refer (q db)]
             [mesomatic.scheduler :as msched]
@@ -2197,14 +2197,10 @@
           _ (async/tap report-mult transaction-chan)
           kill-fn (cook.mesos.scheduler/monitor-tx-report-queue transaction-chan conn driver-ref)]
       (cook.mesos/kill-job conn [(:job/uuid (d/entity (d/db conn) job-id-2))])
-      ;; TODO - find a better way to wait for this
-      (Thread/sleep 100)
-      (let [job-ent (d/entity (d/db conn) job-id-2)
-            instance-ent-1 (d/entity (d/db conn) instance-id-1)
-            instance-ent-2 (d/entity (d/db conn) instance-id-2)]
-        (is (= :job.state/completed (:job/state job-ent)))
-        (is (= [{:value (:instance/task-id instance-ent-1)} {:value (:instance/task-id instance-ent-2)}]
-               @killed-tasks))))))
+      (let [expected-tasks-killed [{:value (:instance/task-id (d/entity (d/db conn) instance-id-1))}
+                                   {:value (:instance/task-id (d/entity (d/db conn) instance-id-2))}]
+            tasks-killed? (fn [] (= expected-tasks-killed @killed-tasks))]
+        (is (wait-for tasks-killed? :interval 20 :timeout 100 :unit-multiplier 1))))))
 
 (comment
   (run-tests))

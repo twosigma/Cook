@@ -264,3 +264,22 @@
     [& {:keys [config], :or nil}]
     (mount/stop)
     (mount/start-with-args (merge minimal-config config) #'cook.config/config)))
+
+(defn wait-for
+  "Invoke predicate every interval (default 10) seconds until it returns true,
+   or timeout (default 150) seconds have elapsed. E.g.:
+       (wait-for #(< (rand) 0.2) :interval 1 :timeout 10)
+   Returns nil if the timeout elapses before the predicate becomes true, otherwise
+   the value of the predicate on its last evaluation."
+  [predicate & {:keys [interval timeout unit-multiplier]
+                :or {interval 10
+                     timeout 150
+                     unit-multiplier 1000}}]
+  (let [end-time (+ (System/currentTimeMillis) (* timeout unit-multiplier))]
+    (loop []
+      (if-let [result (predicate)]
+        result
+        (do
+          (Thread/sleep (* interval unit-multiplier))
+          (if (< (System/currentTimeMillis) end-time)
+            (recur)))))))
