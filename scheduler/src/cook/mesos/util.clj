@@ -375,7 +375,7 @@
                (filter #(= :job.state/completed (:job/state %))))]
       (->>
         (cond->> jobs
-                 (not include-custom-executor?) (remove :job/custom-executor)
+                 (not include-custom-executor?) (filter #(false? (:job/custom-executor %)))
                  (instance-states state) (filter #(= state (job-ent->state %)))
                  name-filter-fn (filter #(name-filter-fn (:job/name %))))
         (take limit)))))
@@ -412,7 +412,7 @@
                   db user state-keyword start end)
                (map (partial d/entity db))))]
     (cond->> jobs
-             (not include-custom-executor?) (remove :job/custom-executor)
+             (not include-custom-executor?) (filter #(false? (:job/custom-executor %)))
              name-filter-fn (filter #(name-filter-fn (:job/name %)))
              (and include-custom-executor? (= :job.state/waiting state-keyword)) (remove uncommitted?))))
 
