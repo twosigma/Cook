@@ -17,10 +17,12 @@
   (:require [clojure.data.json :as json]
             [clojure.set :as set]
             [clojure.tools.logging :as log]
+            [cook.config :as config]
             [cook.mesos.util :as util]
             [mesomatic.types :as mtypes]
             [plumbing.core :refer (map-vals)])
-  (:import com.netflix.fenzo.TaskAssignmentResult))
+  (:import com.google.protobuf.ByteString
+           com.netflix.fenzo.TaskAssignmentResult))
 
 (def cook-executor-name "cook_executor")
 (def cook-executor-source "cook_scheduler_executor")
@@ -38,12 +40,13 @@
    a. Cook executor has not been explicitly disabled,
    b. This is going to be the first instance of the job, and
    c. The job UUID hash mod 100 yields less than portion percent."
-  [job-ent portion retry-limit]
-  (and (nil? (:job/executor job-ent))
-       (number? retry-limit)
-       (> retry-limit (count (:job/instance job-ent)))
-       (number? portion)
-       (> (* portion 100) (-> job-ent :job/uuid hash (mod 100)))))
+  [job-ent]
+  (let [{:keys [portion retry-limit]} (config/executor-config)]
+    (and (nil? (:job/executor job-ent))
+         (number? retry-limit)
+         (> retry-limit (count (:job/instance job-ent)))
+         (number? portion)
+         (> (* portion 100) (-> job-ent :job/uuid hash (mod 100))))))
 
 (defn use-cook-executor?
   "Returns true if the job should be scheduled to use the Cook executor.
@@ -52,17 +55,18 @@
    2. The Cook executor command has been configured,
    3. Either :job/executor is explicitly enabled
       Or: the job is a cook-executor candidate (see cook-executor-candidate?)."
-  [job-ent {:keys [command portion retry-limit]}]
+  [job-ent]
   (and (not (use-custom-executor? job-ent))
-       command
+       (:command (config/executor-config))
        (or (= :executor/cook (:job/executor job-ent))
-           (cook-executor-candidate? job-ent portion retry-limit))))
+           (cook-executor-candidate? job-ent))))
 
 (defn build-executor-environment
   "Build the environment for the cook executor."
-  [{:keys [default-progress-regex-string environment log-level max-message-length progress-sample-interval-ms]}
-   job-ent]
-  (let [progress-output-file (:job/progress-output-file job-ent)]
+  [job-ent]
+  (let [{:keys [default-progress-regex-string environment log-level max-message-length progress-sample-interval-ms]}
+        (config/executor-config)
+        progress-output-file (:job/progress-output-file job-ent)]
     (cond-> (assoc environment
               "EXECUTOR_LOG_LEVEL" log-level
               "EXECUTOR_MAX_MESSAGE_LENGTH" max-message-length
@@ -74,14 +78,14 @@
 
 (defn job->task-metadata
   "Takes a job entity, returns task metadata"
-  [db framework-id executor-config mesos-run-as-user job-ent task-id]
+  [db framework-id mesos-run-as-user job-ent task-id]
   (let [resources (util/job-ent->resources job-ent)
         container (util/job-ent->container db job-ent)
         ;; If the custom-executor attr isn't set, we default to using a custom
         ;; executor in order to support jobs submitted before we added this field
         custom-executor? (use-custom-executor? job-ent)
         cook-executor? (and (not container) ;;TODO support cook-executor in containers
-                            (use-cook-executor? job-ent executor-config))
+                            (use-cook-executor? job-ent))
         group-uuid (util/job-ent->group-uuid job-ent)
         environment (cond-> (assoc (util/job-ent->env job-ent)
                               "COOK_JOB_UUID" (-> job-ent :job/uuid str))
@@ -89,14 +93,14 @@
                             (:cpus resources) (assoc "COOK_JOB_CPUS" (-> resources :cpus str))
                             (:gpus resources) (assoc "COOK_JOB_GPUS" (-> resources :gpus str))
                             (:mem resources) (assoc "COOK_JOB_MEM_MB" (-> resources :mem str))
-                            cook-executor? (merge (build-executor-environment executor-config job-ent)))
+                            cook-executor? (merge (build-executor-environment job-ent)))
         labels (util/job-ent->label job-ent)
         command {:environment environment
                  :uris (cond-> (:uris resources [])
-                               (and cook-executor? (get-in executor-config [:uri :value]))
-                               (conj (:uri executor-config)))
+                               (and cook-executor? (get-in (config/executor-config) [:uri :value]))
+                               (conj (:uri (config/executor-config))))
                  :user (or mesos-run-as-user (:job/user job-ent))
-                 :value (if cook-executor? (:command executor-config) (:job/command job-ent))}
+                 :value (if cook-executor? (:command (config/executor-config)) (:job/command job-ent))}
         ;; executor-key configure whether this is a command or custom executor
         executor-key (cond
                        (and container (not custom-executor?)) :container-command-executor
@@ -135,9 +139,9 @@
 
 (defn TaskAssignmentResult->task-metadata
   "Organizes the info Fenzo has already told us about the task we need to run"
-  [db framework-id executor-config mesos-run-as-user ^TaskAssignmentResult task-result]
+  [db framework-id mesos-run-as-user ^TaskAssignmentResult task-result]
   (let [{:keys [job task-id] :as task-request} (.getRequest task-result)]
-    (merge (job->task-metadata db framework-id executor-config mesos-run-as-user job task-id)
+    (merge (job->task-metadata db framework-id mesos-run-as-user job task-id)
            {:hostname (.getHostname task-result)
             :ports-assigned (vec (sort (.getAssignedPorts task-result)))
             :task-request task-request})))
@@ -332,7 +336,7 @@
                   :executor-id (mtypes/->ExecutorID (str task-id))
                   :framework-id (mtypes/->FrameworkID framework-id)
                   :source custom-executor-source}]
-    (cond-> {:data (com.google.protobuf.ByteString/copyFrom data)
+    (cond-> {:data (ByteString/copyFrom data)
              :labels {:labels (map->mesos-kv labels :key)}
              :name name
              :resources (into scalar-resource-messages ports-resource-messages)

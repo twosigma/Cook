@@ -1933,3 +1933,29 @@ class CookTest(unittest.TestCase):
         self.assertEqual(400, resp.status_code)
         _, resp = util.get_instance_stats(self.cook_url, status='running', start='2018-01-01', end='2017-12-31')
         self.assertEqual(400, resp.status_code)
+
+    def test_cors_request(self):
+        resp = util.session.get(f"{self.cook_url}/settings", headers={"Origin": "http://bad.example.com"})
+        self.assertEqual(403, resp.status_code)
+        self.assertEqual(b"Cross origin request denied from http://bad.example.com", resp.content)
+
+        resp = util.session.get(f"{self.cook_url}/settings", headers={"Origin": "http://cors.example.com"})
+        self.assertEqual(200, resp.status_code)
+        self.assertEqual(["https?://cors.example.com"], resp.json()["cors-origins"])
+
+        resp = util.session.get(f"{self.cook_url}/settings", headers={"Origin": "https://cors.example.com"})
+        self.assertEqual(200, resp.status_code)
+        self.assertEqual(["https?://cors.example.com"], resp.json()["cors-origins"])
+
+    def test_cors_preflight(self):
+        resp = util.session.options(f"{self.cook_url}/settings", headers={"Origin": "http://bad.example.com"})
+        self.assertEqual(403, resp.status_code)
+        self.assertEqual(b"Origin http://bad.example.com not allowed", resp.content)
+
+        resp = util.session.options(f"{self.cook_url}/settings", headers={"Origin": "http://cors.example.com", "Access-Control-Request-Headers": "Foo, Bar"})
+        self.assertEqual(200, resp.status_code)
+        self.assertEqual("true", resp.headers["Access-Control-Allow-Credentials"])
+        self.assertEqual("Foo, Bar", resp.headers["Access-Control-Allow-Headers"])
+        self.assertEqual("http://cors.example.com", resp.headers["Access-Control-Allow-Origin"])
+        self.assertEqual("86400", resp.headers["Access-Control-Max-Age"])
+        self.assertEqual(b"", resp.content)

@@ -25,6 +25,7 @@
             [cook.mesos.schema :as schema]
             [cook.mesos.util :as util]
             [datomic.api :as d :refer (q db)]
+            [mount.core :as mount]
             [plumbing.core :refer [mapply]]
             [qbits.jet.server :refer (run-jetty)]
             [ring.middleware.params :refer (wrap-params)])
@@ -247,3 +248,38 @@
                              {:level :info
                               :out (ConsoleAppender. (PatternLayout. "%d{ISO8601} %-5p %c [%t] - %m%n"))}))
   (log/info "Running" (:var m)))
+
+(let [minimal-config {:authorization {:one-user ""}
+                      :database {:datomic-uri ""}
+                      :log {}
+                      :mesos {:leader-path "", :master ""}
+                      :metrics {}
+                      :nrepl {}
+                      :port nil
+                      :scheduler {}
+                      :unhandled-exceptions {}
+                      :zookeeper {:local? true}}]
+  (defn setup
+    "Given an optional config map, initializes the config state"
+    [& {:keys [config], :or nil}]
+    (mount/stop)
+    (mount/start-with-args (merge minimal-config config) #'cook.config/config)))
+
+(defn wait-for
+  "Invoke predicate every interval (default 10) seconds until it returns true,
+   or timeout (default 150) seconds have elapsed. E.g.:
+       (wait-for #(< (rand) 0.2) :interval 1 :timeout 10)
+   Returns nil if the timeout elapses before the predicate becomes true, otherwise
+   the value of the predicate on its last evaluation."
+  [predicate & {:keys [interval timeout unit-multiplier]
+                :or {interval 10
+                     timeout 150
+                     unit-multiplier 1000}}]
+  (let [end-time (+ (System/currentTimeMillis) (* timeout unit-multiplier))]
+    (loop []
+      (if-let [result (predicate)]
+        result
+        (do
+          (Thread/sleep (* interval unit-multiplier))
+          (if (< (System/currentTimeMillis) end-time)
+            (recur)))))))

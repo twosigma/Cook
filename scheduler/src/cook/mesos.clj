@@ -21,7 +21,6 @@
             [clojure.core.async :as async]
             [clojure.data.json :as json]
             [clojure.tools.logging :as log]
-            [cook.curator :as curator]
             [cook.datomic :refer (transact-with-retries)]
             [cook.mesos.heartbeat]
             [cook.mesos.monitor]
@@ -176,8 +175,6 @@
    mea-culpa-failure-limit       -- long, max failures of mea culpa reason before it is considered a 'real' failure
                                     see scheduler/docs/configuration.adoc for more details
    task-constraints              -- map, constraints on task. See scheduler/docs/configuration.adoc for more details
-   executor                      -- cook executor config includes command, default-progress-regex-string, environment,
-                                    log-level, message-length, progress-sample-interval-ms and uri.
    mesos-pending-jobs-atom       -- atom, Populate (and update) list of pending jobs into atom
    offer-cache                   -- atom, map from host to most recent offer. Used to get attributes
    gpu-enabled?                  -- boolean, whether cook will schedule gpus
@@ -185,12 +182,11 @@
    progress-config               -- map, config for progress publishing. See scheduler/docs/configuration.adoc
    framework-id                  -- str, the Mesos framework id from the cook settings
    fenzo-config                  -- map, config for fenzo, See scheduler/docs/configuration.adoc for more details
-   sandbox-syncer-state          -- map, representing the sandbox syncer object
-   user-metrics-interval-seconds -- long, time in seconds between collecting and counting per-user job metrics"
-  [{:keys [curator-framework executor-config fenzo-config framework-id get-mesos-utilization gpu-enabled? make-mesos-driver-fn
+   sandbox-syncer-state          -- map, representing the sandbox syncer object"
+  [{:keys [curator-framework fenzo-config framework-id get-mesos-utilization gpu-enabled? make-mesos-driver-fn
            mea-culpa-failure-limit mesos-datomic-conn mesos-datomic-mult mesos-leadership-atom mesos-pending-jobs-atom
            mesos-run-as-user offer-cache offer-incubate-time-ms optimizer-config progress-config rebalancer-config
-           sandbox-syncer-state server-config task-constraints trigger-chans user-metrics-interval-seconds zk-prefix]}]
+           sandbox-syncer-state server-config task-constraints trigger-chans zk-prefix]}]
   (let [{:keys [fenzo-fitness-calculator fenzo-floor-iterations-before-reset fenzo-floor-iterations-before-warn
                 fenzo-max-jobs-considered fenzo-scaleback good-enough-fitness]} fenzo-config
         {:keys [cancelled-task-trigger-chan lingering-task-trigger-chan optimizer-trigger-chan
@@ -216,7 +212,6 @@
                                         (sched/create-datomic-scheduler
                                          {:conn mesos-datomic-conn
                                           :driver-atom current-driver
-                                          :executor-config executor-config
                                           :fenzo-fitness-calculator fenzo-fitness-calculator
                                           :fenzo-floor-iterations-before-reset fenzo-floor-iterations-before-reset
                                           :fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-warn
@@ -240,9 +235,7 @@
                                     (mesomatic.scheduler/start! driver)
                                     (reset! current-driver driver)
 
-                                    (cook.mesos.monitor/start-collecting-stats mesos-datomic-conn
-                                                                               user-metrics-interval-seconds)
-                                    #_(cook.mesos.scheduler/reconciler mesos-datomic-conn driver)
+                                    (cook.mesos.monitor/start-collecting-stats)
                                     (cook.mesos.scheduler/lingering-task-killer mesos-datomic-conn driver task-constraints lingering-task-trigger-chan)
                                     (cook.mesos.scheduler/straggler-handler mesos-datomic-conn driver straggler-trigger-chan)
                                     (cook.mesos.scheduler/cancelled-task-killer mesos-datomic-conn driver cancelled-task-trigger-chan)

@@ -14,7 +14,7 @@
             [clojure.tools.logging :as log]
             [clojure.walk :refer (keywordize-keys)]
             [com.rpl.specter :refer (transform ALL MAP-VALS MAP-KEYS select FIRST)]
-            [cook.config :refer (init-logger)]
+            [cook.config :refer (executor-config, init-logger)]
             [cook.mesos :as c]
             [cook.mesos.mesos-mock :as mm]
             [cook.mesos.share :as share]
@@ -125,31 +125,31 @@
          trigger-chans# (or (:trigger-chans ~scheduler-config)
                             (c/make-trigger-chans rebalancer-config# progress-config# optimizer-config# task-constraints#))]
      (try
-       (c/start-mesos-scheduler
-         {:curator-framework curator-framework#
-          :executor-config executor-config#
-          :fenzo-config fenzo-config#
-          :framework-id framework-id#
-          :get-mesos-utilization get-mesos-utilization#
-          :gpu-enabled? gpu-enabled?#
-          :make-mesos-driver-fn ~make-mesos-driver-fn
-          :mea-culpa-failure-limit mea-culpa-failure-limit#
-          :mesos-datomic-conn ~conn
-          :mesos-datomic-mult mesos-mult#
-          :mesos-leadership-atom mesos-leadership-atom#
-          :mesos-pending-jobs-atom pending-jobs-atom#
-          :mesos-run-as-user nil
-          :offer-cache offer-cache#
-          :offer-incubate-time-ms offer-incubate-time-ms#
-          :optimizer-config optimizer-config#
-          :progress-config progress-config#
-          :rebalancer-config rebalancer-config#
-          :sandbox-syncer-state sandbox-syncer-state#
-          :server-config host-settings#
-          :task-constraints task-constraints#
-          :trigger-chans trigger-chans#
-          :zk-prefix zk-prefix#})
-       (do ~@body)
+       (with-redefs [executor-config (constantly executor-config#)]
+         (c/start-mesos-scheduler
+           {:curator-framework curator-framework#
+            :fenzo-config fenzo-config#
+            :framework-id framework-id#
+            :get-mesos-utilization get-mesos-utilization#
+            :gpu-enabled? gpu-enabled?#
+            :make-mesos-driver-fn ~make-mesos-driver-fn
+            :mea-culpa-failure-limit mea-culpa-failure-limit#
+            :mesos-datomic-conn ~conn
+            :mesos-datomic-mult mesos-mult#
+            :mesos-leadership-atom mesos-leadership-atom#
+            :mesos-pending-jobs-atom pending-jobs-atom#
+            :mesos-run-as-user nil
+            :offer-cache offer-cache#
+            :offer-incubate-time-ms offer-incubate-time-ms#
+            :optimizer-config optimizer-config#
+            :progress-config progress-config#
+            :rebalancer-config rebalancer-config#
+            :sandbox-syncer-state sandbox-syncer-state#
+            :server-config host-settings#
+            :task-constraints task-constraints#
+            :trigger-chans trigger-chans#
+            :zk-prefix zk-prefix#})
+         (do ~@body))
        (finally
          (.close curator-framework#)
          (.stop zookeeper-server#)

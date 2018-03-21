@@ -20,12 +20,15 @@
             [compojure.route :as route]
             [congestion.middleware :refer (wrap-rate-limit ip-rate-limit)]
             [congestion.storage :as storage]
-            [cook.config :as config]
+            [cook.config :refer (config)]
+            [cook.cors :as cors]
             [cook.curator :as curator]
+            [cook.datomic :as datomic]
             [cook.impersonation :refer (impersonation-authorized-wrapper)]
             [cook.util :as util]
             [metrics.jvm.core :as metrics-jvm]
             [metrics.ring.instrument :refer (instrument)]
+            [mount.core :as mount]
             [plumbing.core :refer (fnk)]
             [plumbing.graph :as graph]
             [ring.middleware.cookies :refer (wrap-cookies)]
@@ -54,9 +57,9 @@
                 "max-age=0"))))
 
 (def raw-scheduler-routes
-  {:scheduler (fnk [mesos mesos-datomic mesos-leadership-atom mesos-pending-jobs-atom framework-id settings]
+  {:scheduler (fnk [mesos mesos-leadership-atom mesos-pending-jobs-atom framework-id settings]
                 ((util/lazy-load-var 'cook.mesos.api/main-handler)
-                  mesos-datomic
+                  datomic/conn
                   framework-id
                   (fn [] @mesos-pending-jobs-atom)
                   settings
@@ -72,13 +75,13 @@
                    (route/not-found "<h1>Not a valid route</h1>")))})
 
 (def mesos-scheduler
-  {:mesos-scheduler (fnk [[:settings executor fenzo-fitness-calculator fenzo-floor-iterations-before-reset
+  {:mesos-scheduler (fnk [[:settings fenzo-fitness-calculator fenzo-floor-iterations-before-reset
                            fenzo-floor-iterations-before-warn fenzo-max-jobs-considered fenzo-scaleback
                            good-enough-fitness hostname mea-culpa-failure-limit mesos-failover-timeout mesos-framework-name
                            mesos-gpu-enabled mesos-leader-path mesos-master mesos-master-hosts mesos-principal
                            mesos-role mesos-run-as-user offer-incubate-time-ms optimizer progress rebalancer server-port
-                           task-constraints user-metrics-interval-seconds]
-                          curator-framework framework-id mesos-datomic mesos-datomic-mult mesos-leadership-atom
+                           task-constraints]
+                          curator-framework framework-id mesos-datomic-mult mesos-leadership-atom
                           mesos-offer-cache mesos-pending-jobs-atom sandbox-syncer-state]
                       (log/info "Initializing mesos scheduler")
                       (let [make-mesos-driver-fn (partial (util/lazy-load-var 'cook.mesos/make-mesos-driver)
@@ -87,14 +90,13 @@
                                                            :mesos-principal mesos-principal
                                                            :mesos-role mesos-role
                                                            :mesos-framework-name mesos-framework-name
-                                                           :gpus-enabled? mesos-gpu-enabled})
+                                                           :gpu-enabled? mesos-gpu-enabled})
                             get-mesos-utilization-fn (partial (util/lazy-load-var 'cook.mesos/get-mesos-utilization) mesos-master-hosts)
                             trigger-chans ((util/lazy-load-var 'cook.mesos/make-trigger-chans) rebalancer progress optimizer task-constraints)]
                         (try
                           (Class/forName "org.apache.mesos.Scheduler")
                           ((util/lazy-load-var 'cook.mesos/start-mesos-scheduler)
                             {:curator-framework curator-framework
-                             :executor-config executor
                              :fenzo-config {:fenzo-max-jobs-considered fenzo-max-jobs-considered
                                             :fenzo-scaleback fenzo-scaleback
                                             :fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-warn
@@ -106,7 +108,7 @@
                              :gpu-enabled? mesos-gpu-enabled
                              :make-mesos-driver-fn make-mesos-driver-fn
                              :mea-culpa-failure-limit mea-culpa-failure-limit
-                             :mesos-datomic-conn mesos-datomic
+                             :mesos-datomic-conn datomic/conn
                              :mesos-datomic-mult mesos-datomic-mult
                              :mesos-leadership-atom mesos-leadership-atom
                              :mesos-pending-jobs-atom mesos-pending-jobs-atom
@@ -121,7 +123,6 @@
                                              :server-port server-port}
                              :task-constraints task-constraints
                              :trigger-chans trigger-chans
-                             :user-metrics-interval-seconds user-metrics-interval-seconds
                              :zk-prefix mesos-leader-path})
                           (catch ClassNotFoundException e
                             (log/warn e "Not loading mesos support...")
@@ -139,16 +140,6 @@
        :headers {}
        :body (str "Server is running version: " @util/version " (commit " @util/commit ")")}
       (h req))))
-
-(def mesos-datomic
-  (fnk [[:settings mesos-datomic-uri]]
-    ((util/lazy-load-var 'datomic.api/create-database) mesos-datomic-uri)
-    (let [conn ((util/lazy-load-var 'datomic.api/connect) mesos-datomic-uri)]
-      (doseq [txn (deref (util/lazy-load-var 'cook.mesos.schema/work-item-schema))]
-        (deref ((util/lazy-load-var 'datomic.api/transact) conn txn))
-        ((util/lazy-load-var 'metatransaction.core/install-metatransaction-support) conn)
-        ((util/lazy-load-var 'metatransaction.utils/install-utils-support) conn))
-      conn)))
 
 (def curator-framework
   (fnk [[:settings zookeeper] local-zookeeper]
@@ -220,9 +211,8 @@
 
 (def scheduler-server
   (graph/eager-compile
-    {:mesos-datomic mesos-datomic
-     :route full-routes
-     :http-server (fnk [[:settings server-port authorization-middleware impersonation-middleware
+    {:route full-routes
+     :http-server (fnk [[:settings cors-origins server-port authorization-middleware impersonation-middleware
                          leader-reports-unhealthy [:rate-limit user-limit]] [:route view] mesos-leadership-atom]
                     (log/info "Launching http server")
                     (let [rate-limit-storage (storage/local-storage)
@@ -240,6 +230,7 @@
                                                        wrap-no-cache
                                                        wrap-cookies
                                                        wrap-params
+                                                       (cors/cors-middleware cors-origins)
                                                        (health-check-middleware mesos-leadership-atom leader-reports-unhealthy)
                                                        instrument))
                                    :join? false
@@ -259,8 +250,8 @@
                          (throw (ex-info "Framework id not configured and not in ZooKeeper" {})))
                        (log/info "Using framework id:" framework-id)
                        framework-id))
-     :mesos-datomic-mult (fnk [mesos-datomic]
-                           (first ((util/lazy-load-var 'cook.datomic/create-tx-report-mult) mesos-datomic)))
+     :mesos-datomic-mult (fnk []
+                           (first ((util/lazy-load-var 'cook.datomic/create-tx-report-mult) datomic/conn)))
      :local-zookeeper (fnk [[:settings zookeeper-server]]
                         (when zookeeper-server
                           (log/info "Starting local ZK server")
@@ -273,9 +264,9 @@
                                     atom))
      :sandbox-syncer-state (fnk [[:settings [:sandbox-syncer max-consecutive-sync-failure
                                              publish-batch-size publish-interval-ms sync-interval-ms]]
-                                 framework-id mesos-agent-query-cache mesos-datomic]
+                                 framework-id mesos-agent-query-cache]
                              ((util/lazy-load-var 'cook.mesos.sandbox/prepare-sandbox-publisher)
-                               framework-id mesos-datomic publish-batch-size publish-interval-ms sync-interval-ms
+                               framework-id datomic/conn publish-batch-size publish-interval-ms sync-interval-ms
                                max-consecutive-sync-failure mesos-agent-query-cache))
      :mesos-leadership-atom (fnk [] (atom false))
      :mesos-pending-jobs-atom (fnk [] (atom {}))
@@ -289,11 +280,12 @@
 (defn -main
   "Entry point for Cook. Initializes configuration settings,
   instruments the JVM, and starts up the scheduler and API."
-  [config & _]
+  [config-file-path & _]
+  (println "Cook" @util/version "( commit" @util/commit ")")
   (try
-    (let [settings (config/init-settings config)
-          _ (metrics-jvm/instrument-jvm)
-          server (scheduler-server settings)]
+    (mount/start-with-args (cook.config/read-config config-file-path))
+    (metrics-jvm/instrument-jvm)
+    (let [server (scheduler-server config)]
       (intern 'user 'main-graph server)
       (log/info "Started Cook, stored variable in user/main-graph"))
     (catch Throwable t

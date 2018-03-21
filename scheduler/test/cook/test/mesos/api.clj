@@ -1519,7 +1519,7 @@
     (is (= 201 (:status (submit-job handler "alice" "carol"))))
     (is (= 403 (:status (submit-job handler "bob" "carol"))))))
 
-(defn list-jobs
+(defn list-jobs-with-list
   "Simulates a call to the /list endpoint with the given query params"
   [handler user state start-ms end-ms include-custom-executor?]
   (response->body-data (handler {:request-method :get
@@ -1532,6 +1532,20 @@
                                                 "end-ms" (str end-ms)
                                                 "include-custom-executor" (str include-custom-executor?)}})))
 
+(defn list-jobs-with-jobs
+  "Simulates a call to the /jobs endpoint with the given query params"
+  [handler user states start-ms end-ms]
+  (let [response (handler {:request-method :get
+                           :scheme :http
+                           :uri "/jobs"
+                           :authorization/user "user"
+                           :query-params {"user" user
+                                          "state" states
+                                          "start" (str start-ms)
+                                          "end" (str end-ms)}})]
+    (is (= 200 (:status response)))
+    (response->body-data response)))
+
 (deftest test-list-jobs-by-time
   (let [conn (restore-fresh-database! "datomic:mem://test-list-jobs")
         handler (basic-handler conn)
@@ -1541,7 +1555,7 @@
                                                                        :authorization/user "user"
                                                                        :query-params {"job" %}})))
                                  "submit_time")
-        list-jobs-fn #(list-jobs handler "user" "running+waiting+completed" %1 %2 nil)
+        list-jobs-fn #(list-jobs-with-list handler "user" "running+waiting+completed" %1 %2 nil)
         response-1 (submit-job handler "user")
         _ (is (= 201 (:status response-1)))
         _ (Thread/sleep 10)
@@ -1560,19 +1574,24 @@
   (let [conn (restore-fresh-database! "datomic:mem://test-list-jobs-include-custom-executor")
         handler (basic-handler conn)
         before (t/now)
-        list-jobs-fn #(list-jobs handler "user" "running+waiting+completed" (.getMillis before) (.getMillis (t/now)) %)
+        list-jobs-fn #(list-jobs-with-jobs handler "user" ["running" "waiting" "completed"]
+                                           (.getMillis before) (.getMillis (t/now)))
         response-1 (submit-job handler "user")
-        response-2 (submit-job handler "user")]
-    @(d/transact conn [[:db/add [:job/uuid (UUID/fromString (:uuid response-1))] :job/custom-executor true]])
+        response-2 (submit-job handler "user")
+        _ @(d/transact conn [[:db/add [:job/uuid (UUID/fromString (:uuid response-1))] :job/custom-executor true]])
+        jobs (list-jobs-fn)]
     (is (= 201 (:status response-2)))
     (is (= 201 (:status response-1)))
-    (is (= 1 (count (list-jobs-fn nil))))
-    (is (= 1 (count (list-jobs-fn false))))
-    (is (= 2 (count (list-jobs-fn true))))
-    (is (= (:uuid response-2) (-> (list-jobs-fn nil) first (get "uuid"))))
-    (is (= (:uuid response-2) (-> (list-jobs-fn false) first (get "uuid"))))
-    (is (= (:uuid response-2) (-> (list-jobs-fn true) first (get "uuid"))))
-    (is (= (:uuid response-1) (-> (list-jobs-fn true) second (get "uuid"))))))
+    (is (= 2 (count jobs)))
+    (is (= (:uuid response-2) (-> jobs first (get "uuid"))))
+    (is (= (:uuid response-1) (-> jobs second (get "uuid"))))
+    (is (-> (d/entity (d/db conn) [:job/uuid (UUID/fromString (:uuid response-1))])
+            d/touch
+            :job/custom-executor))
+    (is (-> (d/entity (d/db conn) [:job/uuid (UUID/fromString (:uuid response-2))])
+            d/touch
+            :job/custom-executor
+            not))))
 
 (deftest test-name-filter-str->name-filter-pattern
   (is (= (str #".*") (str (api/name-filter-str->name-filter-pattern "***"))))

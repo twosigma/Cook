@@ -13,7 +13,7 @@
 ;; See the License for the specific language governing permissions and
 ;; limitations under the License.
 ;;
-(defproject cook "1.12.1-SNAPSHOT"
+(defproject cook "1.13.1-SNAPSHOT"
   :description "This launches jobs on a Mesos cluster with fair sharing and preemption"
   :license {:name "Apache License, Version 2.0"}
   :dependencies [[org.clojure/clojure "1.8.0"]
@@ -30,7 +30,7 @@
                  [com.rpl/specter "1.0.1"]
 
                  ;;Utility
-                 [com.google.guava/guava "16.0"]
+                 [com.google.guava/guava "17.0"]
                  [amalloy/ring-buffer "1.1"]
                  [listora/ring-congestion "0.1.2"]
                  [lonocloud/synthread "1.0.4"]
@@ -109,7 +109,10 @@
                   :exclusions [org.slf4j/slf4j-log4j12
                                org.slf4j/log4j
                                log4j]]
-                 [org.apache.curator/curator-test "2.7.1"]]
+                 [org.apache.curator/curator-test "2.7.1"]
+
+                 ;; Dependency management
+                 [mount "0.1.12"]]
 
   :repositories {"maven2" {:url "https://files.couchbase.com/maven2/"}
                  "sonatype-oss-public" "https://oss.sonatype.org/content/groups/public/"}
@@ -143,19 +146,27 @@
                    ; using a profiles.clj file that defines a profile
                    ; which pulls in datomic-pro
                    [com.datomic/datomic-free "0.9.5206"
-                    :exclusions [org.slf4j/slf4j-api
-                                 com.fasterxml.jackson.core/jackson-core
+                    :exclusions [com.fasterxml.jackson.core/jackson-core
+                                 joda-time
                                  org.slf4j/jcl-over-slf4j
                                  org.slf4j/jul-to-slf4j
                                  org.slf4j/log4j-over-slf4j
-                                 org.slf4j/slf4j-nop
-                                 joda-time]]
+                                 org.slf4j/slf4j-api
+                                 org.slf4j/slf4j-nop]]
                    ; Similarly, one could use an older version of the
                    ; mesomatic library in environments that require it
                    [wyegelwe/mesomatic "1.0.1-r0-SNAPSHOT"]]}
 
    :uberjar
-   {:aot [cook.components]}
+   {:aot [cook.components]
+    :dependencies [[com.datomic/datomic-free "0.9.5206"
+                    :exclusions [com.fasterxml.jackson.core/jackson-core
+                                 joda-time
+                                 org.slf4j/jcl-over-slf4j
+                                 org.slf4j/jul-to-slf4j
+                                 org.slf4j/log4j-over-slf4j
+                                 org.slf4j/slf4j-api
+                                 org.slf4j/slf4j-nop]]]}
 
    :dev
    {:dependencies [[criterium "0.4.4"]
@@ -196,7 +207,9 @@
 
   :main cook.components
   :jvm-opts ["-Dpython.cachedir.skip=true"
-             "-XX:MaxPermSize=500M"
+             "-XX:+UseG1GC"
+             "-XX:+UseStringDeduplication"
+             "-XX:+PrintStringDeduplicationStatistics"
              ;"-Dsun.security.jgss.native=true"
              ;"-Dsun.security.jgss.lib=/opt/mitkrb5/lib/libgssapi_krb5.so"
              ;"-Djavax.security.auth.useSubjectCredsOnly=false"

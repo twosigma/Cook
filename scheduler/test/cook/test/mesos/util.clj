@@ -361,35 +361,40 @@
       ;; test less flaky 
       (let [start-time (Date.)
             job1 (create-dummy-job conn
+                                   :name "job1"
                                    :user "u1"
                                    :job-state state
                                    :submit-time (Date.)
                                    :custom-executor? false)
             ; this job should never be returned.
             _ (create-dummy-job conn
+                                :name "job1.5"
                                 :user "u1"
                                 :job-state state
                                 :submit-time (Date.)
                                 :custom-executor? true)
             _ (Thread/sleep 5)
             job2 (create-dummy-job conn
+                                   :name "job2"
                                    :user "u1"
                                    :job-state state
                                    :submit-time (Date.)
                                    :custom-executor? false)
             _ (Thread/sleep 5)
             half-way-time (Date.)
-            _ (create-dummy-job conn
-                                :user "u2"
-                                :job-state state
-                                :submit-time (Date.)
-                                :custom-executor? false)
+            job3 (create-dummy-job conn
+                                   :name "job3"
+                                   :user "u2"
+                                   :job-state state
+                                   :submit-time (Date.)
+                                   :custom-executor? false)
             _ (Thread/sleep 5)
-            _ (create-dummy-job conn
-                                :user "u1"
-                                :job-state state
-                                :submit-time (Date.)
-                                :custom-executor? false)
+            job4 (create-dummy-job conn
+                                   :name "job4"
+                                   :user "u1"
+                                   :job-state state
+                                   :submit-time (Date.)
+                                   :custom-executor? false)
             _ (Thread/sleep 5)
             end-time (Date.)
             states [(name state)]

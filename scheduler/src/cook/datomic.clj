@@ -17,8 +17,33 @@
   (:require [clojure.core.async :as async]
             [clojure.pprint :refer (pprint)]
             [clojure.tools.logging :as log]
-            [datomic.api :as d :refer (q)])
-  (:import (java.util.concurrent BlockingQueue TimeUnit)))
+            [cook.config :refer (config)]
+            [cook.util :as util]
+            [datomic.api :as d :refer (q)]
+            [mount.core :as mount])
+  (:import (clojure.lang Agent)
+           (datomic Connection)
+           (java.util.concurrent BlockingQueue TimeUnit)))
+
+(defn create-connection
+  "Creates and returns a connection to the given Datomic URI"
+  [{{:keys [mesos-datomic-uri]} :settings}]
+  ((util/lazy-load-var 'datomic.api/create-database) mesos-datomic-uri)
+  (let [conn ((util/lazy-load-var 'datomic.api/connect) mesos-datomic-uri)]
+    (doseq [txn (deref (util/lazy-load-var 'cook.mesos.schema/work-item-schema))]
+      (deref ((util/lazy-load-var 'datomic.api/transact) conn txn))
+      ((util/lazy-load-var 'metatransaction.core/install-metatransaction-support) conn)
+      ((util/lazy-load-var 'metatransaction.utils/install-utils-support) conn))
+    conn))
+
+(defn disconnect
+  "Releases the given Datomic connection"
+  [^Connection conn]
+  (.release conn))
+
+(mount/defstate conn
+                :start (create-connection config)
+                :stop (disconnect conn))
 
 (defn create-tx-report-mult
   "Takes a datomic connection, and returns a core.async mult that can
@@ -67,7 +92,7 @@
                         (try
                           (let [fut (d/transact-async conn txn)
                                 c (async/chan)]
-                            (d/add-listener fut #(async/close! c) clojure.lang.Agent/pooledExecutor)
+                            (d/add-listener fut #(async/close! c) Agent/pooledExecutor)
                             (async/<! c)
                             @fut
                             :success)
@@ -79,4 +104,3 @@
          (log/warn "Retrying txn" txn "attempt" (- (count retry-schedule) (count sched)) "of" (count retry-schedule))
          (async/<! (async/timeout sleep))
          (recur sched))))))
-

@@ -324,303 +324,307 @@
                         :extract false
                         :value "file:///path/to/cook-executor"}}
         mesos-run-as-user nil]
+    (with-redefs [cook.config/executor-config (constantly executor)]
+      (testing "custom-executor with simple job"
+        (let [task-id (str (UUID/randomUUID))
+              job (tu/create-dummy-job conn :user "test-user" :job-state :job.state/running :command "run-my-command")
+              db (d/db conn)
+              job-ent (d/entity db job)
+              framework-id {:value "framework-id"}
+              environment {"COOK_JOB_CPUS" "1.0"
+                           "COOK_JOB_MEM_MB" "10.0"
+                           "COOK_JOB_UUID" (-> job-ent :job/uuid str)}]
 
-    (testing "custom-executor with simple job"
-      (let [task-id (str (UUID/randomUUID))
-            job (tu/create-dummy-job conn :user "test-user" :job-state :job.state/running :command "run-my-command")
-            db (d/db conn)
-            job-ent (d/entity db job)
-            framework-id {:value "framework-id"}
-            environment {"COOK_JOB_CPUS" "1.0"
-                         "COOK_JOB_MEM_MB" "10.0"
-                         "COOK_JOB_UUID" (-> job-ent :job/uuid str)}]
+          (testing "mesos-run-as-user absent"
+            (let [task-metadata (task/job->task-metadata db framework-id mesos-run-as-user job-ent task-id)]
+              (is (= {:command {:value "run-my-command", :environment environment, :user "test-user", :uris []}
+                      :container nil
+                      :environment environment
+                      :executor :executor/custom
+                      :executor-key :custom-executor
+                      :framework-id framework-id
+                      :labels {}
+                      :name (format "dummy_job_%s_%s" (:job/user job-ent) task-id)
+                      :num-ports 0
+                      :resources {:cpus 1.0, :mem 10.0}
+                      :task-id task-id}
+                     (dissoc task-metadata :data)))
+              (is (= (pr-str {:instance "0"}) (-> task-metadata :data (String. "UTF-8"))))))
 
-        (testing "mesos-run-as-user absent"
-          (let [task-metadata (task/job->task-metadata db framework-id executor mesos-run-as-user job-ent task-id)]
-            (is (= {:command {:value "run-my-command", :environment environment, :user "test-user", :uris []}
-                    :container nil
-                    :environment environment
-                    :executor :executor/custom
-                    :executor-key :custom-executor
-                    :framework-id framework-id
-                    :labels {}
-                    :name (format "dummy_job_%s_%s" (:job/user job-ent) task-id)
-                    :num-ports 0
-                    :resources {:cpus 1.0, :mem 10.0}
-                    :task-id task-id}
-                   (dissoc task-metadata :data)))
-            (is (= (pr-str {:instance "0"}) (-> task-metadata :data (String. "UTF-8"))))))
+          (testing "mesos-run-as-user present"
+            (let [mesos-run-as-user "mesos-run-as-user"
+                  task-metadata (task/job->task-metadata db framework-id mesos-run-as-user job-ent task-id)]
+              (is (= {:command {:value "run-my-command", :environment environment, :user mesos-run-as-user, :uris []}
+                      :container nil
+                      :environment environment
+                      :executor :executor/custom
+                      :executor-key :custom-executor
+                      :framework-id framework-id
+                      :labels {}
+                      :name (format "dummy_job_%s_%s" (:job/user job-ent) task-id)
+                      :num-ports 0
+                      :resources {:cpus 1.0, :mem 10.0}
+                      :task-id task-id}
+                     (dissoc task-metadata :data)))
+              (is (= (pr-str {:instance "0"}) (-> task-metadata :data (String. "UTF-8"))))))))
 
-        (testing "mesos-run-as-user present"
-          (let [mesos-run-as-user "mesos-run-as-user"
-                task-metadata (task/job->task-metadata db framework-id executor mesos-run-as-user job-ent task-id)]
-            (is (= {:command {:value "run-my-command", :environment environment, :user mesos-run-as-user, :uris []}
-                    :container nil
-                    :environment environment
-                    :executor :executor/custom
-                    :executor-key :custom-executor
-                    :framework-id framework-id
-                    :labels {}
-                    :name (format "dummy_job_%s_%s" (:job/user job-ent) task-id)
-                    :num-ports 0
-                    :resources {:cpus 1.0, :mem 10.0}
-                    :task-id task-id}
-                   (dissoc task-metadata :data)))
-            (is (= (pr-str {:instance "0"}) (-> task-metadata :data (String. "UTF-8"))))))))
+      (testing "custom-executor with simple job in a group"
+        (let [task-id (str (UUID/randomUUID))
+              group-ent-id (tu/create-dummy-group conn)
+              job (tu/create-dummy-job conn :command "run-my-command" :group group-ent-id
+                                       :job-state :job.state/running :user "test-user")
+              db (d/db conn)
+              job-ent (d/entity db job)
+              group-ent (d/entity db group-ent-id)
+              framework-id {:value "framework-id"}
+              environment {"COOK_JOB_CPUS" "1.0"
+                           "COOK_JOB_GROUP_UUID" (-> group-ent :group/uuid str)
+                           "COOK_JOB_MEM_MB" "10.0"
+                           "COOK_JOB_UUID" (-> job-ent :job/uuid str)}
+              task-metadata (task/job->task-metadata db framework-id mesos-run-as-user job-ent task-id)]
+          (is (= {:command {:value "run-my-command", :environment environment, :user "test-user", :uris []}
+                  :container nil
+                  :environment environment
+                  :executor :executor/custom
+                  :executor-key :custom-executor
+                  :framework-id framework-id
+                  :labels {}
+                  :name (format "dummy_job_%s_%s" (:job/user job-ent) task-id)
+                  :num-ports 0
+                  :resources {:cpus 1.0, :mem 10.0}
+                  :task-id task-id}
+                 (dissoc task-metadata :data)))
+          (is (= (pr-str {:instance "0"}) (-> task-metadata :data (String. "UTF-8"))))))
 
-    (testing "custom-executor with simple job in a group"
-      (let [task-id (str (UUID/randomUUID))
-            group-ent-id (tu/create-dummy-group conn)
-            job (tu/create-dummy-job conn :command "run-my-command" :group group-ent-id
-                                     :job-state :job.state/running :user "test-user")
-            db (d/db conn)
-            job-ent (d/entity db job)
-            group-ent (d/entity db group-ent-id)
-            framework-id {:value "framework-id"}
-            environment {"COOK_JOB_CPUS" "1.0"
-                         "COOK_JOB_GROUP_UUID" (-> group-ent :group/uuid str)
-                         "COOK_JOB_MEM_MB" "10.0"
-                         "COOK_JOB_UUID" (-> job-ent :job/uuid str)}
-            task-metadata (task/job->task-metadata db framework-id executor mesos-run-as-user job-ent task-id)]
-        (is (= {:command {:value "run-my-command", :environment environment, :user "test-user", :uris []}
-                :container nil
-                :environment environment
-                :executor :executor/custom
-                :executor-key :custom-executor
-                :framework-id framework-id
-                :labels {}
-                :name (format "dummy_job_%s_%s" (:job/user job-ent) task-id)
-                :num-ports 0
-                :resources {:cpus 1.0, :mem 10.0}
-                :task-id task-id}
-               (dissoc task-metadata :data)))
-        (is (= (pr-str {:instance "0"}) (-> task-metadata :data (String. "UTF-8"))))))
+      (testing "explicit custom-executor with simple job"
+        (let [task-id (str (UUID/randomUUID))
+              job (tu/create-dummy-job conn :user "test-user" :job-state :job.state/running :command "run-my-command"
+                                       :custom-executor? true)
+              db (d/db conn)
+              job-ent (d/entity db job)
+              framework-id {:value "framework-id"}
+              environment {"COOK_JOB_CPUS" "1.0"
+                           "COOK_JOB_MEM_MB" "10.0"
+                           "COOK_JOB_UUID" (-> job-ent :job/uuid str)}
+              task-metadata (task/job->task-metadata db framework-id mesos-run-as-user job-ent task-id)]
+          (is (= {:command {:value "run-my-command", :environment environment, :user "test-user", :uris []}
+                  :container nil
+                  :environment environment
+                  :executor :executor/custom
+                  :executor-key :custom-executor
+                  :framework-id framework-id
+                  :labels {}
+                  :name (format "dummy_job_%s_%s" (:job/user job-ent) task-id)
+                  :num-ports 0
+                  :resources {:cpus 1.0, :mem 10.0}
+                  :task-id task-id}
+                 (dissoc task-metadata :data)))
+          (is (= (pr-str {:instance "0"}) (-> task-metadata :data (String. "UTF-8"))))))
 
-    (testing "explicit custom-executor with simple job"
-      (let [task-id (str (UUID/randomUUID))
-            job (tu/create-dummy-job conn :user "test-user" :job-state :job.state/running :command "run-my-command"
-                                     :custom-executor? true)
-            db (d/db conn)
-            job-ent (d/entity db job)
-            framework-id {:value "framework-id"}
-            environment {"COOK_JOB_CPUS" "1.0"
-                         "COOK_JOB_MEM_MB" "10.0"
-                         "COOK_JOB_UUID" (-> job-ent :job/uuid str)}
-            task-metadata (task/job->task-metadata db framework-id executor mesos-run-as-user job-ent task-id)]
-        (is (= {:command {:value "run-my-command", :environment environment, :user "test-user", :uris []}
-                :container nil
-                :environment environment
-                :executor :executor/custom
-                :executor-key :custom-executor
-                :framework-id framework-id
-                :labels {}
-                :name (format "dummy_job_%s_%s" (:job/user job-ent) task-id)
-                :num-ports 0
-                :resources {:cpus 1.0, :mem 10.0}
-                :task-id task-id}
-               (dissoc task-metadata :data)))
-        (is (= (pr-str {:instance "0"}) (-> task-metadata :data (String. "UTF-8"))))))
+      (testing "cook-executor with simple job"
+        (let [task-id (str (UUID/randomUUID))
+              job (tu/create-dummy-job conn :user "test-user" :job-state :job.state/running :command "run-my-command"
+                                       :custom-executor? false :executor :executor/cook)
+              db (d/db conn)
+              job-ent (d/entity db job)
+              framework-id {:value "framework-id"}
+              environment {"COOK_JOB_CPUS" "1.0"
+                           "COOK_JOB_MEM_MB" "10.0"
+                           "COOK_JOB_UUID" (-> job-ent :job/uuid str)
+                           "EXECUTOR_LOG_LEVEL" (:log-level executor)
+                           "EXECUTOR_MAX_MESSAGE_LENGTH" (:max-message-length executor)
+                           "PROGRESS_REGEX_STRING" (:default-progress-regex-string executor)
+                           "PROGRESS_SAMPLE_INTERVAL_MS" (:progress-sample-interval-ms executor)}
+              task-metadata (task/job->task-metadata db framework-id mesos-run-as-user job-ent task-id)]
+          (is (= {:command {:environment environment
+                            :uris [(:uri executor)]
+                            :user "test-user"
+                            :value (:command executor)}
+                  :container nil
+                  :environment environment
+                  :executor :executor/cook
+                  :executor-key :cook-executor
+                  :framework-id framework-id
+                  :labels {}
+                  :name (format "dummy_job_%s_%s" (:job/user job-ent) task-id)
+                  :num-ports 0
+                  :resources {:cpus 1.0, :mem 10.0}
+                  :task-id task-id}
+                 (dissoc task-metadata :data)))
+          (is (= (json/write-str {"command" "run-my-command"})
+                 (-> task-metadata :data (String. "UTF-8"))))))
 
-    (testing "cook-executor with simple job"
-      (let [task-id (str (UUID/randomUUID))
-            job (tu/create-dummy-job conn :user "test-user" :job-state :job.state/running :command "run-my-command"
-                                     :custom-executor? false :executor :executor/cook)
-            db (d/db conn)
-            job-ent (d/entity db job)
-            framework-id {:value "framework-id"}
-            environment {"COOK_JOB_CPUS" "1.0"
-                         "COOK_JOB_MEM_MB" "10.0"
-                         "COOK_JOB_UUID" (-> job-ent :job/uuid str)
-                         "EXECUTOR_LOG_LEVEL" (:log-level executor)
-                         "EXECUTOR_MAX_MESSAGE_LENGTH" (:max-message-length executor)
-                         "PROGRESS_REGEX_STRING" (:default-progress-regex-string executor)
-                         "PROGRESS_SAMPLE_INTERVAL_MS" (:progress-sample-interval-ms executor)}
-            task-metadata (task/job->task-metadata db framework-id executor mesos-run-as-user job-ent task-id)]
-        (is (= {:command {:environment environment
-                          :uris [(:uri executor)]
-                          :user "test-user"
-                          :value (:command executor)}
-                :container nil
-                :environment environment
-                :executor :executor/cook
-                :executor-key :cook-executor
-                :framework-id framework-id
-                :labels {}
-                :name (format "dummy_job_%s_%s" (:job/user job-ent) task-id)
-                :num-ports 0
-                :resources {:cpus 1.0, :mem 10.0}
-                :task-id task-id}
-               (dissoc task-metadata :data)))
-        (is (= (json/write-str {"command" "run-my-command"})
-               (-> task-metadata :data (String. "UTF-8"))))))
+      (testing "cook-executor with simple job in a group"
+        (let [task-id (str (UUID/randomUUID))
+              group-ent-id (tu/create-dummy-group conn)
+              job (tu/create-dummy-job conn :command "run-my-command" :custom-executor? false :executor :executor/cook
+                                       :group group-ent-id :gpus 1000 :job-state :job.state/running :user "test-user")
+              db (d/db conn)
+              group-ent (d/entity db group-ent-id)
+              job-ent (d/entity db job)
+              framework-id {:value "framework-id"}
+              environment {"COOK_JOB_CPUS" "1.0"
+                           "COOK_JOB_GROUP_UUID" (-> group-ent :group/uuid str)
+                           "COOK_JOB_GPUS" "1000.0"
+                           "COOK_JOB_MEM_MB" "10.0"
+                           "COOK_JOB_UUID" (-> job-ent :job/uuid str)
+                           "EXECUTOR_LOG_LEVEL" (:log-level executor)
+                           "EXECUTOR_MAX_MESSAGE_LENGTH" (:max-message-length executor)
+                           "PROGRESS_REGEX_STRING" (:default-progress-regex-string executor)
+                           "PROGRESS_SAMPLE_INTERVAL_MS" (:progress-sample-interval-ms executor)}
+              task-metadata (task/job->task-metadata db framework-id mesos-run-as-user job-ent task-id)]
+          (is (= {:command {:environment environment
+                            :uris [(:uri executor)]
+                            :user "test-user"
+                            :value (:command executor)}
+                  :container nil
+                  :environment environment
+                  :executor :executor/cook
+                  :executor-key :cook-executor
+                  :framework-id framework-id
+                  :labels {}
+                  :name (format "dummy_job_%s_%s" (:job/user job-ent) task-id)
+                  :num-ports 0
+                  :resources {:cpus 1.0, :mem 10.0}
+                  :task-id task-id}
+                 (dissoc task-metadata :data)))
+          (is (= (json/write-str {"command" "run-my-command"})
+                 (-> task-metadata :data (String. "UTF-8"))))))
 
-    (testing "cook-executor with simple job in a group"
-      (let [task-id (str (UUID/randomUUID))
-            group-ent-id (tu/create-dummy-group conn)
-            job (tu/create-dummy-job conn :command "run-my-command" :custom-executor? false :executor :executor/cook
-                                     :group group-ent-id :gpus 1000 :job-state :job.state/running :user "test-user")
-            db (d/db conn)
-            group-ent (d/entity db group-ent-id)
-            job-ent (d/entity db job)
-            framework-id {:value "framework-id"}
-            environment {"COOK_JOB_CPUS" "1.0"
-                         "COOK_JOB_GROUP_UUID" (-> group-ent :group/uuid str)
-                         "COOK_JOB_GPUS" "1000.0"
-                         "COOK_JOB_MEM_MB" "10.0"
-                         "COOK_JOB_UUID" (-> job-ent :job/uuid str)
-                         "EXECUTOR_LOG_LEVEL" (:log-level executor)
-                         "EXECUTOR_MAX_MESSAGE_LENGTH" (:max-message-length executor)
-                         "PROGRESS_REGEX_STRING" (:default-progress-regex-string executor)
-                         "PROGRESS_SAMPLE_INTERVAL_MS" (:progress-sample-interval-ms executor)}
-            task-metadata (task/job->task-metadata db framework-id executor mesos-run-as-user job-ent task-id)]
-        (is (= {:command {:environment environment
-                          :uris [(:uri executor)]
-                          :user "test-user"
-                          :value (:command executor)}
-                :container nil
-                :environment environment
-                :executor :executor/cook
-                :executor-key :cook-executor
-                :framework-id framework-id
-                :labels {}
-                :name (format "dummy_job_%s_%s" (:job/user job-ent) task-id)
-                :num-ports 0
-                :resources {:cpus 1.0, :mem 10.0}
-                :task-id task-id}
-               (dissoc task-metadata :data)))
-        (is (= (json/write-str {"command" "run-my-command"})
-               (-> task-metadata :data (String. "UTF-8"))))))
+      (testing "command-executor with simple job"
+        (let [task-id (str (UUID/randomUUID))
+              job (tu/create-dummy-job conn :user "test-user" :job-state :job.state/running :command "run-my-command"
+                                       :custom-executor? false)
+              db (d/db conn)
+              job-ent (d/entity db job)
+              framework-id {:value "framework-id"}
+              environment {"COOK_JOB_CPUS" "1.0"
+                           "COOK_JOB_MEM_MB" "10.0"
+                           "COOK_JOB_UUID" (-> job-ent :job/uuid str)}
+              task-metadata (task/job->task-metadata db framework-id mesos-run-as-user job-ent task-id)]
+          (is (= {:command {:environment environment
+                            :uris []
+                            :user "test-user"
+                            :value "run-my-command"}
+                  :container nil
+                  :environment environment
+                  :executor :executor/mesos
+                  :executor-key :command-executor
+                  :framework-id framework-id
+                  :labels {}
+                  :name (format "dummy_job_%s_%s" (:job/user job-ent) task-id)
+                  :num-ports 0
+                  :resources {:cpus 1.0, :mem 10.0}
+                  :task-id task-id}
+                 (dissoc task-metadata :data)))
+          (is (= (pr-str {:instance "0"}) (-> task-metadata :data (String. "UTF-8"))))))
 
-    (testing "command-executor with simple job"
-      (let [task-id (str (UUID/randomUUID))
-            job (tu/create-dummy-job conn :user "test-user" :job-state :job.state/running :command "run-my-command"
-                                     :custom-executor? false)
-            db (d/db conn)
-            job-ent (d/entity db job)
-            framework-id {:value "framework-id"}
-            environment {"COOK_JOB_CPUS" "1.0"
-                         "COOK_JOB_MEM_MB" "10.0"
-                         "COOK_JOB_UUID" (-> job-ent :job/uuid str)}
-            task-metadata (task/job->task-metadata db framework-id {} mesos-run-as-user job-ent task-id)]
-        (is (= {:command {:environment environment
-                          :uris []
-                          :user "test-user"
-                          :value "run-my-command"}
-                :container nil
-                :environment environment
-                :executor :executor/mesos
-                :executor-key :command-executor
-                :framework-id framework-id
-                :labels {}
-                :name (format "dummy_job_%s_%s" (:job/user job-ent) task-id)
-                :num-ports 0
-                :resources {:cpus 1.0, :mem 10.0}
-                :task-id task-id}
-               (dissoc task-metadata :data)))
-        (is (= (pr-str {:instance "0"}) (-> task-metadata :data (String. "UTF-8"))))))
+      (testing "container-executor with simple job"
+        (let [task-id (str (UUID/randomUUID))
+              job (tu/create-dummy-job conn
+                                       :command "run-my-command"
+                                       :container {:container/docker {:docker/image "a-docker-image"
+                                                                      :docker/network "HOST"
+                                                                      :docker/parameters []}
+                                                   :container/type "DOCKER"
+                                                   :container/volumes []}
+                                       :custom-executor? true
+                                       :job-state :job.state/running
+                                       :user "test-user")
+              db (d/db conn)
+              job-ent (d/entity db job)
+              framework-id {:value "framework-id"}
+              environment {"COOK_JOB_CPUS" "1.0"
+                           "COOK_JOB_MEM_MB" "10.0"
+                           "COOK_JOB_UUID" (-> job-ent :job/uuid str)}
+              task-metadata (task/job->task-metadata db framework-id mesos-run-as-user job-ent task-id)]
+          (is (= {:command {:environment environment
+                            :uris []
+                            :user "test-user"
+                            :value "run-my-command"}
+                  :container {:docker {:image "a-docker-image"
+                                       :network "HOST"}
+                              :type "DOCKER"}
+                  :environment environment
+                  :executor :executor/custom
+                  :executor-key :container-executor
+                  :framework-id framework-id
+                  :labels {}
+                  :name (format "dummy_job_%s_%s" (:job/user job-ent) task-id)
+                  :num-ports 0
+                  :resources {:cpus 1.0, :mem 10.0}
+                  :task-id task-id}
+                 (dissoc task-metadata :data)))
+          (is (= (pr-str {:instance "0"}) (-> task-metadata :data (String. "UTF-8"))))))
 
-    (testing "container-executor with simple job"
-      (let [task-id (str (UUID/randomUUID))
-            job (tu/create-dummy-job conn
-                                     :command "run-my-command"
-                                     :container {:container/docker {:docker/image "a-docker-image"
-                                                                    :docker/network "HOST"
-                                                                    :docker/parameters []}
-                                                 :container/type "DOCKER"
-                                                 :container/volumes []}
-                                     :custom-executor? true
-                                     :job-state :job.state/running
-                                     :user "test-user")
-            db (d/db conn)
-            job-ent (d/entity db job)
-            framework-id {:value "framework-id"}
-            environment {"COOK_JOB_CPUS" "1.0"
-                         "COOK_JOB_MEM_MB" "10.0"
-                         "COOK_JOB_UUID" (-> job-ent :job/uuid str)}
-            task-metadata (task/job->task-metadata db framework-id {} mesos-run-as-user job-ent task-id)]
-        (is (= {:command {:environment environment
-                          :uris []
-                          :user "test-user"
-                          :value "run-my-command"}
-                :container {:docker {:image "a-docker-image"
-                                     :network "HOST"}
-                            :type "DOCKER"}
-                :environment environment
-                :executor :executor/custom
-                :executor-key :container-executor
-                :framework-id framework-id
-                :labels {}
-                :name (format "dummy_job_%s_%s" (:job/user job-ent) task-id)
-                :num-ports 0
-                :resources {:cpus 1.0, :mem 10.0}
-                :task-id task-id}
-               (dissoc task-metadata :data)))
-        (is (= (pr-str {:instance "0"}) (-> task-metadata :data (String. "UTF-8"))))))
-
-    (testing "container-command with simple job"
-      (let [task-id (str (UUID/randomUUID))
-            job (tu/create-dummy-job conn
-                                     :command "run-my-command"
-                                     :container {:container/docker {:docker/image "a-docker-image"
-                                                                    :docker/network "HOST"
-                                                                    :docker/parameters []}
-                                                 :container/type "DOCKER"
-                                                 :container/volumes []}
-                                     :custom-executor? false
-                                     :job-state :job.state/running
-                                     :memory 200
-                                     :user "test-user")
-            db (d/db conn)
-            job-ent (d/entity db job)
-            framework-id {:value "framework-id"}
-            environment {"COOK_JOB_CPUS" "1.0"
-                         "COOK_JOB_MEM_MB" "200.0"
-                         "COOK_JOB_UUID" (-> job-ent :job/uuid str)}
-            task-metadata (task/job->task-metadata db framework-id {} mesos-run-as-user job-ent task-id)]
-        (is (= {:command {:environment environment
-                          :uris []
-                          :user "test-user"
-                          :value "run-my-command"}
-                :container {:docker {:image "a-docker-image"
-                                     :network "HOST"}
-                            :type "DOCKER"}
-                :environment environment
-                :executor :executor/mesos
-                :executor-key :container-command-executor
-                :framework-id framework-id
-                :labels {}
-                :name (format "dummy_job_%s_%s" (:job/user job-ent) task-id)
-                :num-ports 0
-                :resources {:cpus 1.0, :mem 200.0}
-                :task-id task-id}
-               (dissoc task-metadata :data)))
-        (is (= (pr-str {:instance "0"}) (-> task-metadata :data (String. "UTF-8"))))))))
+      (testing "container-command with simple job"
+        (let [task-id (str (UUID/randomUUID))
+              job (tu/create-dummy-job conn
+                                       :command "run-my-command"
+                                       :container {:container/docker {:docker/image "a-docker-image"
+                                                                      :docker/network "HOST"
+                                                                      :docker/parameters []}
+                                                   :container/type "DOCKER"
+                                                   :container/volumes []}
+                                       :custom-executor? false
+                                       :job-state :job.state/running
+                                       :memory 200
+                                       :user "test-user")
+              db (d/db conn)
+              job-ent (d/entity db job)
+              framework-id {:value "framework-id"}
+              environment {"COOK_JOB_CPUS" "1.0"
+                           "COOK_JOB_MEM_MB" "200.0"
+                           "COOK_JOB_UUID" (-> job-ent :job/uuid str)}
+              task-metadata (task/job->task-metadata db framework-id mesos-run-as-user job-ent task-id)]
+          (is (= {:command {:environment environment
+                            :uris []
+                            :user "test-user"
+                            :value "run-my-command"}
+                  :container {:docker {:image "a-docker-image"
+                                       :network "HOST"}
+                              :type "DOCKER"}
+                  :environment environment
+                  :executor :executor/mesos
+                  :executor-key :container-command-executor
+                  :framework-id framework-id
+                  :labels {}
+                  :name (format "dummy_job_%s_%s" (:job/user job-ent) task-id)
+                  :num-ports 0
+                  :resources {:cpus 1.0, :mem 200.0}
+                  :task-id task-id}
+                 (dissoc task-metadata :data)))
+          (is (= (pr-str {:instance "0"}) (-> task-metadata :data (String. "UTF-8")))))))))
 
 (deftest test-use-cook-executor?
   (testing "empty entity and config"
     (let [job-ent {}
           executor-config {}]
-      (is (not (task/use-cook-executor? job-ent executor-config)))))
+      (with-redefs [cook.config/executor-config (constantly executor-config)]
+        (is (not (task/use-cook-executor? job-ent))))))
 
   (testing "custom-executor not configured"
     (let [job-ent {}
           executor-config {:command "cook-executor"
                            :portion 0.25
                            :retry-limit 1}]
-      (is (not (task/use-cook-executor? job-ent executor-config)))))
+      (with-redefs [cook.config/executor-config (constantly executor-config)]
+        (is (not (task/use-cook-executor? job-ent))))))
 
   (testing "custom-executor retry-limit not configured"
     (let [job-ent {:job/custom-executor true}
           executor-config {:command "cook-executor"
                            :portion 0.25}]
-      (is (not (task/use-cook-executor? job-ent executor-config)))))
+      (with-redefs [cook.config/executor-config (constantly executor-config)]
+        (is (not (task/use-cook-executor? job-ent))))))
 
   (testing "custom-executor enabled"
     (let [job-ent {:job/custom-executor true}
           executor-config {:command "cook-executor"
                            :portion 0.25
                            :retry-limit 1}]
-      (is (not (task/use-cook-executor? job-ent executor-config)))))
+      (with-redefs [cook.config/executor-config (constantly executor-config)]
+        (is (not (task/use-cook-executor? job-ent))))))
 
   (testing "custom-executor enabled and cook-executor enabled [faulty state]"
     (let [job-ent {:job/custom-executor true
@@ -628,7 +632,8 @@
           executor-config {:command "cook-executor"
                            :portion 0.25
                            :retry-limit 1}]
-      (is (not (task/use-cook-executor? job-ent executor-config)))))
+      (with-redefs [cook.config/executor-config (constantly executor-config)]
+        (is (not (task/use-cook-executor? job-ent))))))
 
   (testing "custom-executor disabled and cook-executor enabled"
     (let [job-ent {:job/custom-executor false
@@ -636,7 +641,8 @@
           executor-config {:command "cook-executor"
                            :portion 0.25
                            :retry-limit 1}]
-      (is (task/use-cook-executor? job-ent executor-config))))
+      (with-redefs [cook.config/executor-config (constantly executor-config)]
+        (is (task/use-cook-executor? job-ent)))))
 
   (testing "custom-executor disabled and cook-executor disabled"
     (let [job-ent {:job/custom-executor false
@@ -644,7 +650,8 @@
           executor-config {:command "cook-executor"
                            :portion 0.25
                            :retry-limit 1}]
-      (is (not (task/use-cook-executor? job-ent executor-config)))))
+      (with-redefs [cook.config/executor-config (constantly executor-config)]
+        (is (not (task/use-cook-executor? job-ent))))))
 
   (testing "custom-executor disabled and coin toss favorable"
     (let [job-uuid (str (UUID/randomUUID))
@@ -653,8 +660,9 @@
           executor-config {:command "cook-executor"
                            :portion 0.25
                            :retry-limit 1}]
-      (with-redefs [hash (fn [obj] (is (= job-uuid obj)) 10)]
-        (is (task/use-cook-executor? job-ent executor-config)))))
+      (with-redefs [hash (fn [obj] (is (= job-uuid obj)) 10)
+                    cook.config/executor-config (constantly executor-config)]
+        (is (task/use-cook-executor? job-ent)))))
 
   (testing "custom-executor disabled and coin toss unfavorable"
     (let [job-uuid (str (UUID/randomUUID))
@@ -663,8 +671,9 @@
           executor-config {:command "cook-executor"
                            :portion 0.25
                            :retry-limit 1}]
-      (with-redefs [hash (fn [obj] (is (= job-uuid obj)) 90)]
-        (is (not (task/use-cook-executor? job-ent executor-config))))))
+      (with-redefs [hash (fn [obj] (is (= job-uuid obj)) 90)
+                    cook.config/executor-config (constantly executor-config)]
+        (is (not (task/use-cook-executor? job-ent))))))
 
   (testing "custom-executor disabled, coin toss favorable with single instance"
     (let [instance-1 {:instance/executor-id "foo"}
@@ -673,24 +682,22 @@
                    :job/instance [instance-1]
                    :job/uuid job-uuid}]
       (with-redefs [hash (fn [obj] (is (= job-uuid obj)) 10)]
-        (is (->> {:command "cook-executor"
-                  :portion 0.25}
-                 (task/use-cook-executor? job-ent)
-                 not))
-        (is (->> {:command "cook-executor"
-                  :portion 0.25
-                  :retry-limit 0}
-                 (task/use-cook-executor? job-ent)
-                 not))
-        (is (->> {:command "cook-executor"
-                  :portion 0.25
-                  :retry-limit 1}
-                 (task/use-cook-executor? job-ent)
-                 not))
-        (is (->> {:command "cook-executor"
-                  :portion 0.25
-                  :retry-limit 2}
-                 (task/use-cook-executor? job-ent))))))
+        (with-redefs [cook.config/executor-config (constantly {:command "cook-executor"
+                                                               :portion 0.25
+                                                               :retry-limit "not-a-number"})]
+          (is (not (task/use-cook-executor? job-ent))))
+        (with-redefs [cook.config/executor-config (constantly {:command "cook-executor"
+                                                               :portion 0.25
+                                                               :retry-limit 0})]
+          (is (not (task/use-cook-executor? job-ent))))
+        (with-redefs [cook.config/executor-config (constantly {:command "cook-executor"
+                                                               :portion 0.25
+                                                               :retry-limit 1})]
+          (is (not (task/use-cook-executor? job-ent))))
+        (with-redefs [cook.config/executor-config (constantly {:command "cook-executor"
+                                                               :portion 0.25
+                                                               :retry-limit 2})]
+          (is (task/use-cook-executor? job-ent))))))
 
   (testing "custom-executor disabled, coin toss favorable with multiple instances"
     (let [instance-1 {:instance/executor-id "foo"}
@@ -701,24 +708,22 @@
                    :job/instance [instance-1 instance-2 instance-3]
                    :job/uuid job-uuid}]
       (with-redefs [hash (fn [obj] (is (= job-uuid obj)) 10)]
-        (is (->> {:command "cook-executor"
-                  :portion 0.25}
-                 (task/use-cook-executor? job-ent)
-                 not))
-        (is (->> {:command "cook-executor"
-                  :portion 0.25
-                  :retry-limit 2}
-                 (task/use-cook-executor? job-ent)
-                 not))
-        (is (->> {:command "cook-executor"
-                  :portion 0.25
-                  :retry-limit 3}
-                 (task/use-cook-executor? job-ent)
-                 not))
-        (is (->> {:command "cook-executor"
-                  :portion 0.25
-                  :retry-limit 4}
-                 (task/use-cook-executor? job-ent)))))))
+        (with-redefs [cook.config/executor-config (constantly {:command "cook-executor"
+                                                               :portion 0.25
+                                                               :retry-limit "not-a-number"})]
+          (is (not (task/use-cook-executor? job-ent))))
+        (with-redefs [cook.config/executor-config (constantly {:command "cook-executor"
+                                                               :portion 0.25
+                                                               :retry-limit 2})]
+          (is (not (task/use-cook-executor? job-ent))))
+        (with-redefs [cook.config/executor-config (constantly {:command "cook-executor"
+                                                               :portion 0.25
+                                                               :retry-limit 3})]
+          (is (not (task/use-cook-executor? job-ent))))
+        (with-redefs [cook.config/executor-config (constantly {:command "cook-executor"
+                                                               :portion 0.25
+                                                               :retry-limit 4})]
+          (is (task/use-cook-executor? job-ent)))))))
 
 (deftest test-build-executor-environment
   (testing "default values"
@@ -726,12 +731,14 @@
             "EXECUTOR_MAX_MESSAGE_LENGTH" 256
             "PROGRESS_REGEX_STRING" "default-regex"
             "PROGRESS_SAMPLE_INTERVAL_MS" 2000}
-           (let [executor-config {:default-progress-regex-string "default-regex"
+           (let [executor-config {:command "command"
+                                  :default-progress-regex-string "default-regex"
                                   :log-level "INFO"
                                   :max-message-length 256
                                   :progress-sample-interval-ms 2000}
                  job-ent nil]
-             (task/build-executor-environment executor-config job-ent)))))
+             (with-redefs [cook.config/executor-config (constantly executor-config)]
+               (task/build-executor-environment job-ent))))))
 
   (testing "default values with environment"
     (is (= {"CUSTOM_FOO" "foo"
@@ -741,7 +748,8 @@
             "EXECUTOR_PROGRESS_OUTPUT_FILE_ENV" "CONFIGURED_PROGRESS_OUTPUT_ENV"
             "PROGRESS_REGEX_STRING" "default-regex"
             "PROGRESS_SAMPLE_INTERVAL_MS" 2000}
-           (let [executor-config {:default-progress-regex-string "default-regex"
+           (let [executor-config {:command "command"
+                                  :default-progress-regex-string "default-regex"
                                   :environment {"CUSTOM_FOO" "foo"
                                                 "CUSTOM_VAR" "var"
                                                 "EXECUTOR_LOG_LEVEL" "will-be-overridden"
@@ -750,7 +758,8 @@
                                   :max-message-length 256
                                   :progress-sample-interval-ms 2000}
                  job-ent nil]
-             (task/build-executor-environment executor-config job-ent)))))
+             (with-redefs [cook.config/executor-config (constantly executor-config)]
+               (task/build-executor-environment job-ent))))))
 
   (testing "job configured values"
     (is (= {"EXECUTOR_LOG_LEVEL" "INFO"
@@ -759,7 +768,8 @@
             "EXECUTOR_PROGRESS_OUTPUT_FILE_NAME" "progress.out"
             "PROGRESS_REGEX_STRING" "custom-regex"
             "PROGRESS_SAMPLE_INTERVAL_MS" 2000}
-           (let [executor-config {:default-progress-regex-string "default-regex"
+           (let [executor-config {:command "command"
+                                  :default-progress-regex-string "default-regex"
                                   :log-level "INFO"
                                   :max-message-length 256
                                   :progress-sample-interval-ms 2000}
@@ -768,7 +778,8 @@
                           :job/progress-output-file "progress.out"
                           :job/progress-regex-string "custom-regex"
                           :job/progress-sample-interval-ms 5000}]
-             (task/build-executor-environment executor-config job-ent)))))
+             (with-redefs [cook.config/executor-config (constantly executor-config)]
+               (task/build-executor-environment job-ent))))))
 
   (testing "job configured values sanitized"
     (is (= {"CONFIGURED_PROGRESS_OUTPUT_ENV" "progress.conf.out"
@@ -780,7 +791,8 @@
             "EXECUTOR_PROGRESS_OUTPUT_FILE_NAME" "progress.out"
             "PROGRESS_REGEX_STRING" "custom-regex"
             "PROGRESS_SAMPLE_INTERVAL_MS" 2000}
-           (let [executor-config {:default-progress-regex-string "default-regex"
+           (let [executor-config {:command "command"
+                                  :default-progress-regex-string "default-regex"
                                   :environment {"CONFIGURED_PROGRESS_OUTPUT_ENV" "progress.conf.out"
                                                 "CUSTOM_FOO" "foo"
                                                 "CUSTOM_VAR" "var"
@@ -794,4 +806,5 @@
                           :job/progress-output-file "progress.out"
                           :job/progress-regex-string "custom-regex"
                           :job/progress-sample-interval-ms 5000000}]
-             (task/build-executor-environment executor-config job-ent))))))
+             (with-redefs [cook.config/executor-config (constantly executor-config)]
+               (task/build-executor-environment job-ent)))))))
