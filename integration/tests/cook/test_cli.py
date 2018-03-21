@@ -595,10 +595,12 @@ class CookCliTest(unittest.TestCase):
         # appropriately by inspecting the --verbose output.
         cp, jobs = cli.jobs_json(self.cook_url, '--exclude-custom-executor', flags='--verbose')
         self.assertEqual(0, cp.returncode, cp.stderr)
-        self.assertIn("'include-custom-executor': False", cli.decode(cp.stderr))
+        self.assertIn('/list', cli.decode(cp.stderr))
+        self.assertNotIn('/jobs', cli.decode(cp.stderr))
         cp, jobs = cli.jobs_json(self.cook_url, flags='--verbose')
         self.assertEqual(0, cp.returncode, cp.stderr)
-        self.assertIn("'include-custom-executor': True", cli.decode(cp.stderr))
+        self.assertIn('/jobs', cli.decode(cp.stderr))
+        self.assertNotIn('/list', cli.decode(cp.stderr))
 
     def test_ssh_job_uuid(self):
         cp, uuids = cli.submit('ls', self.cook_url, submit_flags=f'--name {self.current_name()}')

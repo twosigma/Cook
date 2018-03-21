@@ -2130,8 +2130,7 @@
                                 ::start-ms (parse-long-default start-ms nil)
                                 ::limit (util/parse-int-default limit Integer/MAX_VALUE)
                                 ::end-ms (parse-long-default end-ms (System/currentTimeMillis))
-                                ::name-filter-fn (name-filter-str->name-filter-fn name)
-                                ::include-custom-executor? (Boolean/valueOf ^String include-custom-executor)}]
+                                ::name-filter-fn (name-filter-str->name-filter-fn name)}]
                         (catch NumberFormatException e
                           [true {::error (.toString e)}])))))
     :allowed? (fn [ctx]

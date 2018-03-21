@@ -26,17 +26,18 @@ def print_no_data(clusters):
 def list_jobs_on_cluster(cluster, state, user, start_ms, end_ms, name, limit, include_custom_executor):
     """Queries cluster for jobs with the given state / user / time / name"""
     if 'all' in state:
-        state_string = 'waiting+running+completed'
+        state = ['waiting', 'running', 'completed']
+    params = {'user': user, 'name': name, 'limit': limit}
+    if include_custom_executor:
+        params['state'] = state
+        params['start'] = start_ms
+        params['end'] = end_ms
+        jobs = http.make_data_request(cluster, lambda: http.get(cluster, 'jobs', params=params))
     else:
-        state_string = '+'.join(state)
-    params = {'state': state_string,
-              'user': user,
-              'start-ms': start_ms,
-              'end-ms': end_ms,
-              'name': name,
-              'limit': limit,
-              'include-custom-executor': include_custom_executor}
-    jobs = http.make_data_request(cluster, lambda: http.get(cluster, 'list', params=params))
+        params['state'] = '+'.join(state)
+        params['start-ms'] = start_ms
+        params['end-ms'] = end_ms
+        jobs = http.make_data_request(cluster, lambda: http.get(cluster, 'list', params=params))
     entities = {'jobs': jobs, 'count': len(jobs)}
     return entities
 
