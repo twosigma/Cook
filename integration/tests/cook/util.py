@@ -772,6 +772,13 @@ def list_jobs(cook_url, **kwargs):
     return resp
 
 
+def jobs(cook_url, **kwargs):
+    """Makes a request to the /jobs endpoint using the provided kwargs as the query params"""
+    query_params = urlencode(kwargs, doseq=True)
+    resp = session.get('%s/jobs?%s' % (cook_url, query_params))
+    return resp
+
+
 def contains_job_uuid(jobs, job_uuid):
     """Returns true if jobs contains a job with the given uuid"""
     return any(job for job in jobs if job['uuid'] == job_uuid)
