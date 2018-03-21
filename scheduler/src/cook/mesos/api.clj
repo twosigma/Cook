@@ -1188,13 +1188,14 @@
   "Returns a [true {::error ...}] pair if the request is malformed, and
   otherwise [false m], where m represents data that gets merged into the ctx"
   [ctx]
-  (let [{:strs [state user start end limit name]} (get-in ctx [:request :query-params])]
+  (let [{:strs [state user start end limit name]} (get-in ctx [:request :query-params])
+        states (wrap-seq state)]
     (cond
-      (not (and state user start end))
+      (not (and states user start end))
       [true {::error "must supply the state, user name, start time, and end time"}]
 
-      (not (set/superset? allowed-list-states state))
-      [true {::error (str "unsupported state in " state ", must be one of: " allowed-list-states)}]
+      (not (set/superset? allowed-list-states states))
+      [true {::error (str "unsupported state in " states ", must be one of: " allowed-list-states)}]
 
       (not (valid-name-filter? name))
       [true {::error
@@ -1203,7 +1204,7 @@
 
       :else
       (try
-        [false {::states (normalize-list-states state)
+        [false {::states (normalize-list-states states)
                 ::user user
                 ::start-ms (-> start ^DateTime util/parse-time .getMillis)
                 ::end-ms (-> end ^DateTime util/parse-time .getMillis)

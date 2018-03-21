@@ -618,6 +618,59 @@ class CookTest(unittest.TestCase):
         self.assertFalse(util.contains_job_uuid(resp.json(), job_uuid_2), job_uuid_2)
         self.assertTrue(util.contains_job_uuid(resp.json(), job_uuid_3), job_uuid_3)
 
+    def test_list_jobs_by_completion_state_with_jobs_endpoint(self):
+        name = str(uuid.uuid4())
+        job_uuid_1, resp = util.submit_job(self.cook_url, command='true', name=name)
+        self.assertEqual(201, resp.status_code)
+        job_uuid_2, resp = util.submit_job(self.cook_url, command='false', name=name)
+        self.assertEqual(201, resp.status_code)
+        job_uuid_3, resp = util.submit_job(self.cook_url, command='true', name=name)
+        self.assertEqual(201, resp.status_code)
+        user = self.determine_user()
+        start = util.wait_for_job(self.cook_url, job_uuid_1, 'completed')['submit_time']
+        end = util.wait_for_job(self.cook_url, job_uuid_2, 'completed')['submit_time'] + 1
+
+        # Test the various combinations of states
+        resp = util.jobs(self.cook_url, user=user, state='completed', start=start, end=end)
+        self.assertTrue(util.contains_job_uuid(resp.json(), job_uuid_1), job_uuid_1)
+        self.assertTrue(util.contains_job_uuid(resp.json(), job_uuid_2), job_uuid_2)
+        resp = util.jobs(self.cook_url, user=user, state=['success', 'failed'], start=start, end=end)
+        self.assertTrue(util.contains_job_uuid(resp.json(), job_uuid_1), job_uuid_1)
+        self.assertTrue(util.contains_job_uuid(resp.json(), job_uuid_2), job_uuid_2)
+        resp = util.jobs(self.cook_url, user=user, state=['completed', 'success', 'failed'], start=start, end=end)
+        self.assertTrue(util.contains_job_uuid(resp.json(), job_uuid_1), job_uuid_1)
+        self.assertTrue(util.contains_job_uuid(resp.json(), job_uuid_2), job_uuid_2)
+        resp = util.jobs(self.cook_url, user=user, state=['completed', 'failed'], start=start, end=end)
+        self.assertTrue(util.contains_job_uuid(resp.json(), job_uuid_1), job_uuid_1)
+        self.assertTrue(util.contains_job_uuid(resp.json(), job_uuid_2), job_uuid_2)
+        resp = util.jobs(self.cook_url, user=user, state=['completed', 'success'], start=start, end=end)
+        self.assertTrue(util.contains_job_uuid(resp.json(), job_uuid_1), job_uuid_1)
+        self.assertTrue(util.contains_job_uuid(resp.json(), job_uuid_2), job_uuid_2)
+        resp = util.jobs(self.cook_url, user=user, state='success', start=start, end=end)
+        self.assertTrue(util.contains_job_uuid(resp.json(), job_uuid_1), job_uuid_1)
+        self.assertFalse(util.contains_job_uuid(resp.json(), job_uuid_2), job_uuid_2)
+        resp = util.jobs(self.cook_url, user=user, state=['running', 'waiting', 'success'], start=start, end=end)
+        self.assertTrue(util.contains_job_uuid(resp.json(), job_uuid_1), job_uuid_1)
+        self.assertFalse(util.contains_job_uuid(resp.json(), job_uuid_2), job_uuid_2)
+        resp = util.jobs(self.cook_url, user=user, state='failed', start=start, end=end)
+        self.assertFalse(util.contains_job_uuid(resp.json(), job_uuid_1), job_uuid_1)
+        self.assertTrue(util.contains_job_uuid(resp.json(), job_uuid_2), job_uuid_2)
+        resp = util.jobs(self.cook_url, user=user, state=['running', 'waiting', 'failed'], start=start, end=end)
+        self.assertFalse(util.contains_job_uuid(resp.json(), job_uuid_1), job_uuid_1)
+        self.assertTrue(util.contains_job_uuid(resp.json(), job_uuid_2), job_uuid_2)
+
+        # Test with failed and a specified limit
+        resp = util.jobs(self.cook_url, user=user, state='failed', start=start, end=end, limit=1, name=name)
+        self.assertFalse(util.contains_job_uuid(resp.json(), job_uuid_1), job_uuid_1)
+        self.assertTrue(util.contains_job_uuid(resp.json(), job_uuid_2), job_uuid_2)
+
+        # Test with success and a specified limit
+        start = end - 1
+        end = util.wait_for_job(self.cook_url, job_uuid_3, 'completed')['submit_time'] + 1
+        resp = util.jobs(self.cook_url, user=user, state='success', start=start, end=end, limit=1, name=name)
+        self.assertFalse(util.contains_job_uuid(resp.json(), job_uuid_2), job_uuid_2)
+        self.assertTrue(util.contains_job_uuid(resp.json(), job_uuid_3), job_uuid_3)
+
     def test_list_jobs_by_name(self):
         job_uuid_1, resp = util.submit_job(self.cook_url, name='foo-bar-baz_qux')
         self.assertEqual(201, resp.status_code)
