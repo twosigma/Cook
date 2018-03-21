@@ -2175,5 +2175,36 @@
           (is (= :executor/cook (:instance/executor instance-ent)))
           (is (nil? (:instance/sandbox-directory instance-ent))))))))
 
+
+(deftest test-monitor-tx-report-queue
+  (let [conn (restore-fresh-database! "datomic:mem://test-monitor-tx-report-queue")
+        job-id-1 (create-dummy-job conn)
+        instance-id-1 (create-dummy-instance conn job-id-1)
+        job-id-2 (create-dummy-job conn)
+        instance-id-2 (create-dummy-instance conn job-id-2)
+        killed-tasks (atom [])
+        mock-driver (reify msched/SchedulerDriver
+                      (kill-task! [_ task-id]
+                        (swap! killed-tasks #(conj % task-id))))
+        driver-ref (ref mock-driver)]
+    (cook.mesos/kill-job conn [(:job/uuid (d/entity (d/db conn) job-id-1))])
+    (let [job-ent (d/entity (d/db conn) job-id-1)
+          instance-ent (d/entity (d/db conn) instance-id-1)]
+      (is (= :job.state/completed (:job/state job-ent)))
+      (is (= :instance.status/unknown (:instance/status instance-ent))))
+    (let [[report-mult close-fn] (cook.datomic/create-tx-report-mult conn)
+          transaction-chan (async/chan (async/sliding-buffer 4096))
+          _ (async/tap report-mult transaction-chan)
+          kill-fn (cook.mesos.scheduler/monitor-tx-report-queue transaction-chan conn driver-ref)]
+      (cook.mesos/kill-job conn [(:job/uuid (d/entity (d/db conn) job-id-2))])
+      ;; TODO - find a better way to wait for this
+      (Thread/sleep 100)
+      (let [job-ent (d/entity (d/db conn) job-id-2)
+            instance-ent-1 (d/entity (d/db conn) instance-id-1)
+            instance-ent-2 (d/entity (d/db conn) instance-id-2)]
+        (is (= :job.state/completed (:job/state job-ent)))
+        (is (= [{:value (:instance/task-id instance-ent-1)} {:value (:instance/task-id instance-ent-2)}]
+               @killed-tasks))))))
+
 (comment
   (run-tests))
