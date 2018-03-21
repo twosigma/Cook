@@ -90,7 +90,7 @@
                                                            :mesos-principal mesos-principal
                                                            :mesos-role mesos-role
                                                            :mesos-framework-name mesos-framework-name
-                                                           :gpus-enabled? mesos-gpu-enabled})
+                                                           :gpu-enabled? mesos-gpu-enabled})
                             get-mesos-utilization-fn (partial (util/lazy-load-var 'cook.mesos/get-mesos-utilization) mesos-master-hosts)
                             trigger-chans ((util/lazy-load-var 'cook.mesos/make-trigger-chans) rebalancer progress optimizer task-constraints)]
                         (try
