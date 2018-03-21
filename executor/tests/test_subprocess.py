@@ -5,6 +5,7 @@ import time
 import unittest
 
 import collections
+import pytest
 
 import cook.subprocess as cs
 import tests.utils as tu
