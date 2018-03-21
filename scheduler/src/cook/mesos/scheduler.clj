@@ -490,7 +490,7 @@
                            [?i :instance/task-id ?task-id]]
                          query-db [:instance.status/unknown :instance.status/running])]
     (doseq [[task-id] tasks-to-kill]
-      (if-let [driver @driver-ref]
+      (when-let [driver @driver-ref]
         (try
           (log/info "Attempting to kill task" task-id "from already completed job")
           (meters/mark! tx-report-queue-tasks-killed)
