@@ -35,6 +35,10 @@ def find_process_ids_in_group(group_id):
 
 
 class SubprocessTest(unittest.TestCase):
+    # FIXME - remove the xfail mark once the issue with this test failing is resolved:
+    # https://github.com/twosigma/Cook/issues/737
+    @pytest.mark.xfail
+    @unittest.skip('This test fails occasionally')
     def test_kill_task_terminate_with_sigterm(self):
         task_id = tu.get_random_task_id()
 
