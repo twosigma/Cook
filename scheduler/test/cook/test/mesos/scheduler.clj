@@ -29,7 +29,7 @@
             [cook.mesos.share :as share]
             [cook.mesos.util :as util]
             [cook.test.testutil :refer [restore-fresh-database! create-dummy-group create-dummy-job
-                                        create-dummy-instance init-offer-cache poll-until]]
+                                        create-dummy-instance init-offer-cache poll-until wait-for]]
             [criterium.core :as crit]
             [datomic.api :as d :refer (q db)]
             [mesomatic.scheduler :as msched]
@@ -2174,6 +2174,33 @@
           (is (= :instance.status/running (:instance/status instance-ent)))
           (is (= :executor/cook (:instance/executor instance-ent)))
           (is (nil? (:instance/sandbox-directory instance-ent))))))))
+
+
+(deftest test-monitor-tx-report-queue
+  (let [conn (restore-fresh-database! "datomic:mem://test-monitor-tx-report-queue")
+        job-id-1 (create-dummy-job conn)
+        instance-id-1 (create-dummy-instance conn job-id-1)
+        job-id-2 (create-dummy-job conn)
+        instance-id-2 (create-dummy-instance conn job-id-2)
+        killed-tasks (atom [])
+        mock-driver (reify msched/SchedulerDriver
+                      (kill-task! [_ task-id]
+                        (swap! killed-tasks #(conj % task-id))))
+        driver-ref (ref mock-driver)]
+    (cook.mesos/kill-job conn [(:job/uuid (d/entity (d/db conn) job-id-1))])
+    (let [job-ent (d/entity (d/db conn) job-id-1)
+          instance-ent (d/entity (d/db conn) instance-id-1)]
+      (is (= :job.state/completed (:job/state job-ent)))
+      (is (= :instance.status/unknown (:instance/status instance-ent))))
+    (let [[report-mult close-fn] (cook.datomic/create-tx-report-mult conn)
+          transaction-chan (async/chan (async/sliding-buffer 4096))
+          _ (async/tap report-mult transaction-chan)
+          kill-fn (cook.mesos.scheduler/monitor-tx-report-queue transaction-chan conn driver-ref)]
+      (cook.mesos/kill-job conn [(:job/uuid (d/entity (d/db conn) job-id-2))])
+      (let [expected-tasks-killed [{:value (:instance/task-id (d/entity (d/db conn) instance-id-1))}
+                                   {:value (:instance/task-id (d/entity (d/db conn) instance-id-2))}]
+            tasks-killed? (fn [] (= expected-tasks-killed @killed-tasks))]
+        (is (wait-for tasks-killed? :interval 20 :timeout 100 :unit-multiplier 1))))))
 
 (comment
   (run-tests))
