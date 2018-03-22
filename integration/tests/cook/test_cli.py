@@ -591,8 +591,8 @@ class CookCliTest(unittest.TestCase):
 
     def test_jobs_exclude_custom_executor(self):
         # Unfortunately, there is no easy way to create a job with a custom executor.
-        # Instead, we will check that the 'include-custom-executor' param is being set
-        # appropriately by inspecting the --verbose output.
+        # Instead, we will check that we are making a request to the correct endpoint by
+        # inspecting the --verbose output.
         cp, jobs = cli.jobs_json(self.cook_url, '--exclude-custom-executor', flags='--verbose')
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertIn('/list', cli.decode(cp.stderr))
