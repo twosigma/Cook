@@ -2011,8 +2011,9 @@
   "Query a user's current resource usage based on running jobs."
   [db ctx]
   (let [user (get-in ctx [:request :query-params :user])
-        running-jobs (util/get-user-running-job-ents db user)
-        with-group-breakdown? (get-in ctx [:request :query-params :group_breakdown])]
+        with-group-breakdown? (get-in ctx [:request :query-params :group_breakdown])
+        pool (get-in ctx [:request :query-params :pool])
+        running-jobs (util/get-user-running-job-ents db user pool)]
     (merge
       ; basic user usage response
       {:total-usage (util/total-resources-of-jobs running-jobs)}

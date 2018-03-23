@@ -372,3 +372,8 @@
   "Returns the executor config map from the config map"
   []
   (-> config :settings :executor))
+
+(defn default-pool
+  "Returns the default pool name from the config map"
+  []
+  (-> config :settings :pools :default))
