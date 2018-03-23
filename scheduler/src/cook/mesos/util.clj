@@ -344,7 +344,7 @@
 (def ^:const job-states #{"running" "waiting" "completed"})
 (def ^:const instance-states #{"success" "failed"})
 
-;; get-jobs-by-user-and-state-and-submit-by-state is a bit opaque
+;; get-jobs-by-user-and-state-and-submit is a bit opaque
 ;; because it is reaching into datomic internals. Here is a quick explanation.
 ;; seek-datoms provides a pointer into the raw datomic indices
 ;; that we can then seek through. We set the pointer to look
