@@ -2159,8 +2159,10 @@
     :handle-malformed ::error
     :handle-forbidden ::error
     :handle-ok (fn [ctx]
-                 (let [job-uuids (list-jobs db false ctx)]
-                   (mapv (partial fetch-job-map db framework-id) job-uuids)))))
+                 (timers/time!
+                   (timers/timer [cook-scheduler handler list-endpoint-duration])
+                   (let [job-uuids (list-jobs db false ctx)]
+                     (doall (mapv (partial fetch-job-map db framework-id) job-uuids)))))))
 
 ;;
 ;; /unscheduled_jobs
