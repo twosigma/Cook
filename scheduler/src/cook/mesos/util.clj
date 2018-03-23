@@ -344,6 +344,16 @@
 (def ^:const job-states #{"running" "waiting" "completed"})
 (def ^:const instance-states #{"success" "failed"})
 
+
+(defn job-submit-time-between
+  "Returns true if the job-ent's :job/submit-time is between start-ms (inclusive) and
+  end-ms (exclusive)"
+  [job-ent ^long start-ms ^long end-ms]
+  (let [^Date submit-time (:job/submit-time job-ent)
+        submit-ms (.getTime submit-time)]
+                    (and (<= start-ms submit-ms)
+                         (< submit-ms end-ms))))
+
 ;; get-jobs-by-user-and-state-and-submit is a bit opaque
 ;; because it is reaching into datomic internals. Here is a quick explanation.
 ;; seek-datoms provides a pointer into the raw datomic indices
@@ -359,7 +369,7 @@
 (defn get-jobs-by-user-and-state-and-submit
   "Returns all jobs for a particular user in the specified state
    and timeframe. Returns lazy output."
-  [db user start end state-keyword]
+  [db ^String user ^Date start ^Date end state-keyword]
   (let [;; Expand the time range so that clock skew between cook
         ;; and datomic doesn't cause us to miss jobs
         ;; 1 hour was picked because a skew larger than that would be
@@ -372,8 +382,8 @@
         entid-end (d/entid-at db :db.part/user expanded-end)
         job-state-entid (d/entid db :job/state)
         state-entid (d/entid db state-keyword)
-        ^long start-ms (.getTime start)
-        ^long end-ms (.getTime end)]
+        start-ms (.getTime start)
+        end-ms (.getTime end)]
     (->> (d/seek-datoms db :avet :job/state state-entid entid-start)
          (take-while #(and (< (:e %) entid-end)
                            (= (:a %) job-state-entid)
@@ -381,9 +391,7 @@
          (map :e)
          (map (partial d/entity db))
          (filter #(= (job-ent->user %) user))
-         (filter #(let [^long submit-ms (.getTime (:job/submit-time %))]
-                    (and (<= start-ms submit-ms)
-                         (< submit-ms end-ms)))))))
+         (filter #(job-submit-time-between % start-ms end-ms)))))
 
 ;; get-completed-jobs-by-user is a bit opaque because it is
 ;; reaching into datomic internals. Here is a quick explanation.
@@ -402,7 +410,7 @@
   "Returns all completed job entities for a particular user
    in the specified timeframe. Supports looking up based
    on task state 'success' and 'failed' if passed into 'state'"
-  [db user start end limit state name-filter-fn include-custom-executor?]
+  [db ^String user ^Date start ^Date end limit state name-filter-fn include-custom-executor?]
   (timers/time!
     get-completed-jobs-by-user-duration
     (let [;; Expand the time range so that clock skew between cook
@@ -416,8 +424,8 @@
           entid-start (d/entid-at db :db.part/user expanded-start)
           entid-end (d/entid-at db :db.part/user expanded-end)
           job-user-entid (d/entid db :job/user)
-          ^long start-ms (.getTime start)
-          ^long end-ms (.getTime end)
+          start-ms (.getTime start)
+          end-ms (.getTime end)
           jobs
           (->> (d/seek-datoms db :avet :job/user user entid-start)
                (take-while #(and (< (:e %) entid-end)
@@ -425,9 +433,7 @@
                                  (= (:v %) user)))
                (map :e)
                (map (partial d/entity db))
-               (filter #(let [^long submit-ms (.getTime (:job/submit-time %))]
-                          (and (<= start-ms submit-ms)
-                               (< submit-ms end-ms))))
+               (filter #(job-submit-time-between % start-ms end-ms))
                (filter #(= :job.state/completed (:job/state %))))]
       (->>
         (cond->> jobs
@@ -496,7 +502,7 @@
       (->> jobs-by-state
            (sort-by :job/submit-time)
            (take limit)
-           (doall)))))
+           doall))))
 
 
 (defn jobs-by-user-and-state
