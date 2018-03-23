@@ -324,11 +324,9 @@
 (timers/deftimer [cook-mesos scheduler get-completed-jobs-by-user-duration])
 
 (defn job-ent->user
+  "Given a job entity, return the user the job runs as."
   [job-ent]
-  (let [job-ent->user-miss
-        (fn [job-ent]
-          (:job/user job-ent))]
-    (lookup-cache-datomic-entity! job-ent->user-cache job-ent->user-miss job-ent)))
+    (lookup-cache-datomic-entity! job-ent->user-cache :job/user job-ent))
 
 (defn job-ent->state
   "Given a job entity, returns the corresponding 'state', which means
@@ -357,13 +355,10 @@
 ;; We then seek through the list of all jobs in that state,
 ;; then filtering to the target user.
 ;;
-;; This differs from get-active-jobs-by-user-and-state as it
-;; is also looking up based on task state.
-;;
 ;; This function is O(# jobs in that state in the time range)
-(defn get-jobs-by-user-and-state-and-submit-by-state
+(defn get-jobs-by-user-and-state-and-submit
   "Returns all jobs for a particular user in the specified state
-   and timeframe, without a custom executor. Returns lazy output."
+   and timeframe. Returns lazy output."
   [db user start end state-keyword]
   (let [;; Expand the time range so that clock skew between cook
         ;; and datomic doesn't cause us to miss jobs
@@ -388,7 +383,7 @@
          (filter #(= (job-ent->user %) user))
          (filter #(let [^long submit-ms (.getTime (:job/submit-time %))]
                     (and (<= start-ms submit-ms)
-                                                  (< submit-ms end-ms)))))))
+                         (< submit-ms end-ms)))))))
 
 ;; get-completed-jobs-by-user is a bit opaque because it is
 ;; reaching into datomic internals. Here is a quick explanation.
@@ -405,7 +400,7 @@
 ;; is also looking up based on task state.
 (defn get-completed-jobs-by-user
   "Returns all completed job entities for a particular user
-   in the specified timeframe, without a custom executor. Supports looking up based
+   in the specified timeframe. Supports looking up based
    on task state 'success' and 'failed' if passed into 'state'"
   [db user start end limit state name-filter-fn include-custom-executor?]
   (timers/time!
@@ -428,7 +423,7 @@
                (take-while #(and (< (:e %) entid-end)
                                  (= (:a %) job-user-entid)
                                  (= (:v %) user)))
-               (map #(:e %))
+               (map :e)
                (map (partial d/entity db))
                (filter #(let [^long submit-ms (.getTime (:job/submit-time %))]
                           (and (<= start-ms submit-ms)
@@ -439,6 +434,7 @@
                  (not include-custom-executor?) (filter #(false? (:job/custom-executor %)))
                  (instance-states state) (filter #(= state (job-ent->state %)))
                  name-filter-fn (filter #(name-filter-fn (:job/name %))))
+        ; No need to sort. We're traversing in entity_id order, so in time order.
         (take limit)
         doall))))
 
@@ -453,13 +449,13 @@
 ;; running and waiting jobs, so it's implemented that way to keep things simple.
 (defn get-active-jobs-by-user-and-state
   "Returns all jobs for a particular user in the specified state
-   and timeframe, without a custom executor. This query works for state
-   waiting and running only."
+   and timeframe. This query works for state waiting and running only."
   [db user start end limit state name-filter-fn include-custom-executor?]
   (let [state-keyword (case state
                         "running" :job.state/running
                         "waiting" :job.state/waiting)
-        ;; This is used to compute the histogram bucket to put in. take the time range in hours, with a one minute leeway. E.g., this counts
+        ;; This is used to compute the histogram bucket to put in. take the
+        ;; time range in hours, with a one minute leeway. E.g., this counts
         ;; a requested time of 24 hours + 3 seconds into the 24-hour bucket.
         millis-diff (max 0 (- (.getTime end) (.getTime start) (-> 1 t/minutes t/in-millis)))
         hours-diff (/ millis-diff (-> 1 t/hours t/in-millis))
@@ -477,7 +473,7 @@
       (timers/time!
         (timers/timer ["cook-mesos" "scheduler" (str "get-" (name state) "-jobs-by-user-by-state-" bucket "-duration")])
         (->>
-          (cond->> (get-jobs-by-user-and-state-and-submit-by-state db user start end state-keyword)
+          (cond->> (get-jobs-by-user-and-state-and-submit db user start end state-keyword)
                    (not include-custom-executor?) (filter #(false? (:job/custom-executor %)))
                    name-filter-fn (filter #(name-filter-fn (:job/name %)))
                    (and include-custom-executor? (= :job.state/waiting state-keyword)) (remove uncommitted?))
@@ -486,8 +482,7 @@
           doall)))))
 
 (defn get-jobs-by-user-and-states
-  "Returns all jobs for a particular user in the specified states
-   and timeframe, without a custom executor."
+  "Returns all jobs for a particular user in the specified states."
   [db user states start end limit name-filter-fn include-custom-executor?]
   (let [get-jobs-by-state (fn get-jobs-by-state [state]
                             (if (#{"completed" "success" "failed"} state)
@@ -500,7 +495,8 @@
       (timers/timer ["cook-mesos" "scheduler" "get-jobs-by-user-and-states-duration"])
       (->> jobs-by-state
            (sort-by :job/submit-time)
-           (take limit)))))
+           (take limit)
+           (doall)))))
 
 
 (defn jobs-by-user-and-state
