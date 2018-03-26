@@ -399,8 +399,7 @@
             end-time (Date.)
             states [(name state)]
             match-any-name-fn (constantly true)
-            match-no-name-fn (constantly false)
-            ]
+            match-no-name-fn (constantly false)]
         (testing (str "get " state " jobs")
           (is (= 2 (count (util/get-jobs-by-user-and-states (d/db conn) "u1" states start-time half-way-time 10 match-any-name-fn false))))
           (is (= 1 (count (util/get-jobs-by-user-and-states (d/db conn) "u1" states start-time half-way-time 1 match-any-name-fn false))))
