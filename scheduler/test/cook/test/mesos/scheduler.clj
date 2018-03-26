@@ -599,6 +599,7 @@
                                    :memory (* 1024 (- (:memory-gb constraints) 2.0))
                                    :ncpus (- (:cpus constraints) 1.0))
         test-db (d/db conn)
+        test-log (d/log conn)
         job-entity-1 (d/entity test-db job-id-1)
         job-entity-2 (d/entity test-db job-id-2)
         jobs [job-entity-1 job-entity-2]
@@ -606,7 +607,7 @@
         offensive-job-filter (partial sched/filter-offensive-jobs constraints offensive-jobs-ch)]
     (is (= {:normal (list (util/job-ent->map job-entity-2))
             :gpu ()}
-           (sched/rank-jobs test-db offensive-job-filter)))))
+           (:category->jobs (sched/rank-jobs test-log test-db offensive-job-filter))))))
 
 (deftest test-virtual-machine-lease-adapter
   ;; ensure that the VirtualMachineLeaseAdapter can successfully handle an offer from Mesomatic.

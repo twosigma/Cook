@@ -41,17 +41,19 @@
     (dotimes [_ 10000]
       (create-running-job conn "abc" :user (pick-user) :job-state :job.state/running))
     (testing "rank-jobs"
-      (let [db (d/db conn)
+      (let [conn-db (d/db conn)
+            conn-log (d/log conn)
             task-constraints {:memory-gb 100 :cpus 30}
             offensive-jobs-ch (sched/make-offensive-job-stifler conn)
             offensive-job-filter (partial sched/filter-offensive-jobs task-constraints offensive-jobs-ch)]
         (println "============ rank-jobs timing ============")
-        (cc/quick-bench (sched/rank-jobs db offensive-job-filter))))
+        (cc/quick-bench (sched/rank-jobs conn-log conn-db offensive-job-filter))))
     (testing "rank-jobs minus offensive-job-filter"
-      (let [db (d/db conn)
+      (let [conn-db (d/db conn)
+            conn-log (d/log conn)
             offensive-job-filter identity]
         (println "============ rank-jobs minus offensive-job-filter timing ============")
-        (cc/quick-bench (sched/rank-jobs db offensive-job-filter))))
+        (cc/quick-bench (sched/rank-jobs conn-log conn-db offensive-job-filter))))
     (testing "sort-jobs-by-dru-helper"
       (let [db (d/db conn)
             pending-task-ents (util/get-pending-job-ents db)

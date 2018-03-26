@@ -1340,24 +1340,27 @@
                            dru/sorted-task-cumulative-gpu-score-pairs sort-gpu-jobs-hierarchy-duration))
 
 (defn sort-jobs-by-dru-category
-  "Returns a map from job category to a list of job entities, ordered by dru"
-  [unfiltered-db]
-  ;; This function does not use the filtered db when it is not necessary in order to get better performance
-  ;; The filtered db is not necessary when an entity could only arrive at a given state if it was already committed
-  ;; e.g. running jobs or when it is always considered committed e.g. shares
-  ;; The unfiltered db can also be used on pending job entities once the filtered db is used to limit
-  ;; to only those jobs that have been committed.
-  (let [category->pending-job-ents (group-by util/categorize-job (util/get-pending-job-ents unfiltered-db))
-        category->pending-task-ents (pc/map-vals #(map util/create-task-ent %1) category->pending-job-ents)
-        category->running-task-ents (group-by (comp util/categorize-job :job/_instance)
-                                              (util/get-running-task-ents unfiltered-db))
-        user->dru-divisors (share/create-user->share-fn unfiltered-db)
-        category->sort-jobs-by-dru-fn {:normal sort-normal-jobs-by-dru, :gpu sort-gpu-jobs-by-dru}]
-    (letfn [(sort-jobs-by-dru-category-helper [[category sort-jobs-by-dru]]
-             (let [pending-tasks (category->pending-task-ents category)
-                   running-tasks (category->running-task-ents category)]
-               [category (sort-jobs-by-dru pending-tasks running-tasks user->dru-divisors)]))]
-      (into {} (map sort-jobs-by-dru-category-helper) category->sort-jobs-by-dru-fn))))
+  "Returns a map from job category to a list of job entities/maps, ordered by dru"
+  ([unfiltered-db]
+   (->> (util/get-pending-job-ents unfiltered-db)
+        (sort-jobs-by-dru-category unfiltered-db)))
+  ([unfiltered-db pending-jobs]
+    ;; This function does not use the filtered db when it is not necessary in order to get better performance
+    ;; The filtered db is not necessary when an entity could only arrive at a given state if it was already committed
+    ;; e.g. running jobs or when it is always considered committed e.g. shares
+    ;; The unfiltered db can also be used on pending job entities once the filtered db is used to limit
+    ;; to only those jobs that have been committed.
+   (let [category->pending-jobs (group-by util/categorize-job pending-jobs)
+         category->pending-task-ents (pc/map-vals #(map util/create-task-ent %1) category->pending-jobs)
+         category->running-task-ents (group-by (comp util/categorize-job :job/_instance)
+                                               (util/get-running-task-ents unfiltered-db))
+         user->dru-divisors (share/create-user->share-fn unfiltered-db)
+         category->sort-jobs-by-dru-fn {:normal sort-normal-jobs-by-dru, :gpu sort-gpu-jobs-by-dru}]
+     (letfn [(sort-jobs-by-dru-category-helper [[category sort-jobs-by-dru]]
+               (let [pending-tasks (category->pending-task-ents category)
+                     running-tasks (category->running-task-ents category)]
+                 [category (sort-jobs-by-dru pending-tasks running-tasks user->dru-divisors)]))]
+       (into {} (map sort-jobs-by-dru-category-helper) category->sort-jobs-by-dru-fn)))))
 
 (timers/deftimer [cook-mesos scheduler filter-offensive-jobs-duration])
 
@@ -1370,7 +1373,7 @@
 
 (defn filter-offensive-jobs
   "Base on the constraints on memory and cpus, given a list of job entities it
-   puts the offensive jobs into offensive-job-ch asynchronically and returns
+   puts the offensive jobs into offensive-job-ch asynchronously and returns
    the inoffensive jobs.
 
    A job is offensive if and only if its required memory or cpus exceeds the
@@ -1384,10 +1387,10 @@
           is-offensive? (partial is-offensive? max-memory-mb max-cpus)
           inoffensive (remove is-offensive? jobs)
           offensive (filter is-offensive? jobs)]
-      ;; Put offensive jobs asynchronically such that it could return the
-      ;; inoffensive jobs immediately.
-      (async/go
-        (when (seq offensive)
+      (when (seq offensive)
+        ;; Put offensive jobs asynchronously such that it could return the
+        ;; inoffensive jobs immediately.
+        (async/go
           (log/info "Found" (count offensive) "offensive jobs")
           (async/>! offensive-jobs-ch offensive)))
       inoffensive)))
@@ -1396,7 +1399,7 @@
   "It returns an async channel which will be used to receive offensive jobs expected
    to be killed / aborted.
 
-   It asynchronically pulls offensive jobs from the channel and abort these
+   It asynchronously pulls offensive jobs from the channel and abort these
    offensive jobs by marking job state as completed."
   [conn]
   (let [offensive-jobs-ch (async/chan (async/sliding-buffer 256))]
@@ -1424,35 +1427,60 @@
 (meters/defmeter [cook-mesos scheduler rank-jobs-failures])
 
 (defn rank-jobs
-  "Return a map of lists of job entities ordered by dru, keyed by category.
-
-   It ranks the jobs by dru first and then apply several filters if provided."
-  [unfiltered-db offensive-job-filter]
-  (timers/time!
-    rank-jobs-duration
-    (try
-      (let [jobs (->> (sort-jobs-by-dru-category unfiltered-db)
-                      ;; Apply the offensive job filter first before taking.
-                      (pc/map-vals offensive-job-filter)
-                      (pc/map-vals #(map util/job-ent->map %))
-                      (pc/map-vals #(remove nil? %)))]
-        (log/debug "Total number of pending jobs is:" (apply + (map count (vals jobs)))
-                   "The first 20 pending normal jobs:" (take 20 (:normal jobs))
-                   "The first 5 pending gpu jobs:" (take 5 (:gpu jobs)))
-        jobs)
-      (catch Throwable t
-        (log/error t "Failed to rank jobs")
-        (meters/mark! rank-jobs-failures)
-        {}))))
+  "Return a map containing the following keys:
+   `:category->jobs`: A lists of job maps ordered by dru, keyed by category.
+                      The jobs are ranked by dru first and then filter applied to remove jobs.
+   `:pending-jobs`: The current list of pending job maps.
+   `:tx-id`: The transaction id of the database used to build the current list of pending jobs."
+  ([conn-log conn-db offensive-job-filter]
+    (let [entity-id-attribute-maps (util/load-attribute-entity-ids conn-db)]
+      (rank-jobs conn-log conn-db entity-id-attribute-maps offensive-job-filter 0 [])))
+  ([conn-log conn-db entity-id-attribute-maps offensive-job-filter prev-tx-id prev-pending-jobs]
+   (timers/time!
+     rank-jobs-duration
+     (try
+       (let [curr-tx-id (-> conn-db d/basis-t d/t->tx)
+             pending-jobs (util/get-pending-jobs-since-tx
+                            conn-log conn-db entity-id-attribute-maps prev-tx-id curr-tx-id prev-pending-jobs)
+             category->jobs (->> (sort-jobs-by-dru-category conn-db pending-jobs)
+                                 ;; Apply the offensive job filter first before taking.
+                                 (pc/map-vals offensive-job-filter)
+                                 (pc/map-vals #(map util/job->map %))
+                                 (pc/map-vals #(remove nil? %)))]
+         (log/debug "Total number of pending jobs is:" (apply + (map count (vals category->jobs)))
+                    "The first 20 pending normal jobs:" (take 20 (:normal category->jobs))
+                    "The first 5 pending gpu jobs:" (take 5 (:gpu category->jobs)))
+         {:category->jobs category->jobs
+          :pending-jobs pending-jobs
+          :tx-id (inc curr-tx-id)})
+       (catch Throwable t
+         (log/error t "Failed to rank jobs")
+         (meters/mark! rank-jobs-failures)
+         {:category->jobs {}})))))
 
 (defn- start-jobs-prioritizer!
   [conn pending-jobs-atom task-constraints trigger-chan]
   (let [offensive-jobs-ch (make-offensive-job-stifler conn)
-        offensive-job-filter (partial filter-offensive-jobs task-constraints offensive-jobs-ch)]
-    (util/chime-at-ch trigger-chan
-                      (fn rank-jobs-event []
-                        (reset! pending-jobs-atom
-                                (rank-jobs (d/db conn) offensive-job-filter))))))
+        offensive-job-filter (partial filter-offensive-jobs task-constraints offensive-jobs-ch)
+        initial-db (d/db conn)
+        initial-pending-jobs (util/get-pending-job-ents initial-db)
+        initial-tx (-> initial-db d/basis-t d/t->tx)]
+    (util/chime-at-ch
+      trigger-chan
+      (fn rank-jobs-event [{:keys [pending-jobs tx-id]}]
+        (let [conn-db (d/db conn)
+              conn-log (d/log conn)
+              entity-id-attribute-maps (util/load-attribute-entity-ids conn-db)
+              {:keys [category->jobs] :as rank-state}
+              (rank-jobs conn-log conn-db entity-id-attribute-maps offensive-job-filter tx-id pending-jobs)]
+          (reset! pending-jobs-atom category->jobs)
+          rank-state))
+      {:error-handler (fn rank-jobs-error-handler [e]
+                        (log/error e "Error in start-jobs-prioritizer!")
+                        {:category->jobs {}})
+       :initial-state {:category->jobs {}
+                       :pending-jobs initial-pending-jobs
+                       :tx-id initial-tx}})))
 
 (meters/defmeter [cook-mesos scheduler mesos-error])
 (meters/defmeter [cook-mesos scheduler offer-chan-full-error])
