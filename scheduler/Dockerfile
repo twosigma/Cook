@@ -1,12 +1,19 @@
 FROM mesosphere/mesos:1.3.0
 
 RUN apt-get -y update
-RUN apt-get -y install curl
+RUN apt-get -y install software-properties-common
+RUN add-apt-repository ppa:openjdk-r/ppa
+RUN apt-get -y update
+RUN apt-get -y install \
+    curl \
+    openjdk-8-jdk \
+    unzip
 
 # Env setup
 ENV HOME "/root/"
 ENV LEIN_ROOT true
 ENV MESOS_NATIVE_JAVA_LIBRARY /usr/lib/libmesos.so
+ENV JAVA_CMD=/usr/lib/jvm/java-8-openjdk-amd64/bin/java
 
 # Lein setup
 RUN mkdir $HOME/bin
@@ -27,7 +34,12 @@ RUN lein deps
 # Copy the whole scheduler into the container
 COPY . /opt/cook/
 
+# Datomic setup
+RUN unzip -uo /opt/cook/datomic/datomic-free-0.9.5394.zip
+RUN lein uberjar
+RUN cp "target/cook-$(lein print :version | tr -d '"').jar" datomic-free-0.9.5394/lib/cook-$(lein print :version | tr -d '"').jar
+
 # Run cook
 EXPOSE 12321
-ENTRYPOINT ["lein", "with-profiles", "+docker", "run"]
+ENTRYPOINT ["/opt/cook/docker/run-cook.sh"]
 CMD ["config.edn"]
