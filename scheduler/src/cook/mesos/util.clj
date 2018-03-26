@@ -363,7 +363,7 @@
 ;; created at expanded start. This works because the submission
 ;; time (which we sort on) is correlated with the entitiy id.
 ;; We then seek through the list of all jobs in that state,
-;; then filtering to the target user.
+;; then filtering to the target user (which is cached).
 ;;
 ;; This function is O(# jobs in that state in the time range)
 (defn get-jobs-by-user-and-state-and-submit
