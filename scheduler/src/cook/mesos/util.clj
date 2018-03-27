@@ -405,6 +405,7 @@
 ;; expanded start
 ;; This differs from get-active-jobs-by-user-and-state as it
 ;; is also looking up based on task state.
+;; This is about O(# jobs user submitted in the given time range)
 (defn get-completed-jobs-by-user
   "Returns all completed job entities for a particular user
    in the specified timeframe. Supports looking up based
