@@ -76,7 +76,7 @@ $(./minimesos info | grep MINIMESOS)
 export COOK_ZOOKEEPER="${MINIMESOS_ZOOKEEPER_IP}:2181"
 export MINIMESOS_ZOOKEEPER=${MINIMESOS_ZOOKEEPER%;}
 
-./datomic-free-0.9.5394/bin/transactor ../scheduler/datomic/datomic_transactor.properties &
+./datomic-free-0.9.5394/bin/transactor ${TRAVIS_BUILD_DIR}/scheduler/datomic/datomic_transactor.properties &
 
 # Start three cook schedulers. We want one cluster with two cooks to run MasterSlaveTest, and a second cluster to run MultiClusterTest.
 # The basic tests will run against cook-framework-1
