@@ -90,7 +90,7 @@ fi
 
 if [ -z "${COOK_DATOMIC_URI}" ];
 then
-    COOK_DATOMIC_URI="datomic:mem://cook-jobs"
+    COOK_DATOMIC_URI="datomic:free://localhost:4334/cook-jobs"
 fi
 
 if [ "${COOK_ZOOKEEPER_LOCAL}" = false ] ; then

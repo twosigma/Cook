@@ -4,7 +4,7 @@ set -ev
 cd ${TRAVIS_BUILD_DIR}/travis
 
 ./build_cook_executor.sh
-./datomic-free-0.9.5394/bin/transactor $(pwd)/datomic_transactor.properties &
+./datomic-free-0.9.5394/bin/transactor ${TRAVIS_BUILD_DIR}/scheduler/datomic/datomic_transactor.properties &
 ./minimesos up
 
 cd ${TRAVIS_BUILD_DIR}/scheduler
