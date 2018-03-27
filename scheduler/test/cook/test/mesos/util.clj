@@ -398,21 +398,49 @@
             _ (Thread/sleep 5)
             end-time (Date.)
             states [(name state)]
-            name (constantly true)]
+            match-any-name-fn (constantly true)
+            match-no-name-fn (constantly false)]
         (testing (str "get " state " jobs")
-          (is (= 2 (count (util/get-jobs-by-user-and-states (d/db conn) "u1" states start-time half-way-time 10 name nil))))
-          (is (= 1 (count (util/get-jobs-by-user-and-states (d/db conn) "u1" states start-time half-way-time 1 name nil))))
-          (is (= (map :db/id (util/get-jobs-by-user-and-states (d/db conn) "u1" states start-time half-way-time 1 name nil))
+          (is (= 2 (count (util/get-jobs-by-user-and-states (d/db conn) "u1" states start-time half-way-time 10 match-any-name-fn false))))
+          (is (= 1 (count (util/get-jobs-by-user-and-states (d/db conn) "u1" states start-time half-way-time 1 match-any-name-fn false))))
+          (is (= (map :db/id (util/get-jobs-by-user-and-states (d/db conn) "u1" states start-time half-way-time 1 match-any-name-fn false))
                  [job1]))
-          (is (= 3 (count (util/get-jobs-by-user-and-states (d/db conn) "u1" states start-time end-time 10 name nil))))
-          (is (= 2 (count (util/get-jobs-by-user-and-states (d/db conn) "u1" states start-time end-time 2 name nil))))
-          (is (= (map :db/id (util/get-jobs-by-user-and-states (d/db conn) "u1" states start-time end-time 2 name nil))
+          (is (= 3 (count (util/get-jobs-by-user-and-states (d/db conn) "u1" states start-time end-time 10 match-any-name-fn false))))
+          (is (= 2 (count (util/get-jobs-by-user-and-states (d/db conn) "u1" states start-time end-time 2 match-any-name-fn false))))
+          (is (= (map :db/id (util/get-jobs-by-user-and-states (d/db conn) "u1" states start-time end-time 2 match-any-name-fn false))
                  [job1 job2]))
 
-          (is (= 1 (count (util/get-jobs-by-user-and-states (d/db conn) "u2" states start-time end-time 10 name nil))))
-          (is (= 0 (count (util/get-jobs-by-user-and-states (d/db conn) "u3" states start-time end-time 10 name nil))))
+          (is (= 1 (count (util/get-jobs-by-user-and-states (d/db conn) "u2" states start-time end-time 10 match-any-name-fn false))))
+          (is (= 0 (count (util/get-jobs-by-user-and-states (d/db conn) "u3" states start-time end-time 10 match-any-name-fn false))))
           (is (= 0 (count (util/get-jobs-by-user-and-states (d/db conn) "u1" states
-                                                            #inst "2017-06-01" #inst "2017-06-02" 10 name nil)))))))))
+                                                            #inst "2017-06-01" #inst "2017-06-02" 10 match-any-name-fn false)))))
+        ; Nil means the same as always true.
+        (testing (str "get " state " jobs ; name = nil")
+          (is (= 2 (count (util/get-jobs-by-user-and-states (d/db conn) "u1" states start-time half-way-time 10 nil false))))
+          (is (= 1 (count (util/get-jobs-by-user-and-states (d/db conn) "u1" states start-time half-way-time 1 nil false))))
+          (is (= (map :db/id (util/get-jobs-by-user-and-states (d/db conn) "u1" states start-time half-way-time 1 nil false))
+                 [job1]))
+          (is (= 3 (count (util/get-jobs-by-user-and-states (d/db conn) "u1" states start-time end-time 10 nil false))))
+          (is (= 2 (count (util/get-jobs-by-user-and-states (d/db conn) "u1" states start-time end-time 2 nil false))))
+          (is (= (map :db/id (util/get-jobs-by-user-and-states (d/db conn) "u1" states start-time end-time 2 nil false))
+                 [job1 job2]))
+
+          (is (= 1 (count (util/get-jobs-by-user-and-states (d/db conn) "u2" states start-time end-time 10 nil false))))
+          (is (= 0 (count (util/get-jobs-by-user-and-states (d/db conn) "u3" states start-time end-time 10 nil false))))
+          (is (= 0 (count (util/get-jobs-by-user-and-states (d/db conn) "u1" states
+                                                            #inst "2017-06-01" #inst "2017-06-02" 10 nil false)))))
+        ; Never true, so should match nothing.
+        (testing (str "get " state " jobs ; name = false")
+          (is (= 0 (count (util/get-jobs-by-user-and-states (d/db conn) "u1" states start-time half-way-time 10 match-no-name-fn false))))
+          (is (= 0 (count (util/get-jobs-by-user-and-states (d/db conn) "u1" states start-time half-way-time 1 match-no-name-fn false))))
+
+          (is (= 0 (count (util/get-jobs-by-user-and-states (d/db conn) "u1" states start-time end-time 10 match-no-name-fn false))))
+          (is (= 0 (count (util/get-jobs-by-user-and-states (d/db conn) "u1" states start-time end-time 2 match-no-name-fn false))))
+
+          (is (= 0 (count (util/get-jobs-by-user-and-states (d/db conn) "u2" states start-time end-time 10 match-no-name-fn false))))
+          (is (= 0 (count (util/get-jobs-by-user-and-states (d/db conn) "u3" states start-time end-time 10 match-no-name-fn false))))
+          (is (= 0 (count (util/get-jobs-by-user-and-states (d/db conn) "u1" states
+                                                            #inst "2017-06-01" #inst "2017-06-02" 10 match-no-name-fn false)))))))))
 
 (deftest test-reducing-pipe
   (testing "basic piping"
