@@ -207,9 +207,7 @@
 
   :main cook.components
   :jvm-opts ["-Dpython.cachedir.skip=true"
-             "-XX:+UseG1GC"
-             "-XX:+UseStringDeduplication"
-             "-XX:+PrintStringDeduplicationStatistics"
+             "-XX:MaxPermSize=500M"
              ;"-Dsun.security.jgss.native=true"
              ;"-Dsun.security.jgss.lib=/opt/mitkrb5/lib/libgssapi_krb5.so"
              ;"-Djavax.security.auth.useSubjectCredsOnly=false"
