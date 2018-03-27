@@ -459,33 +459,17 @@
   [db user start end limit state name-filter-fn include-custom-executor?]
   (let [state-keyword (case state
                         "running" :job.state/running
-                        "waiting" :job.state/waiting)
-        ;; This is used to compute the histogram bucket to put in. take the
-        ;; time range in hours, with a one minute leeway. E.g., this counts
-        ;; a requested time of 24 hours + 3 seconds into the 24-hour bucket.
-        millis-diff (max 0 (- (.getTime end) (.getTime start) (-> 1 t/minutes t/in-millis)))
-        hours-diff (/ millis-diff (-> 1 t/hours t/in-millis))
-        ; A histogram bucket, so that we can see the query time distribution as a function of the range of time being searched over.
-        bucket (cond
-                 (<= hours-diff 6) 6
-                 (<= hours-diff 12) 12
-                 (<= hours-diff 24) 24
-                 (<= hours-diff 36) 36
-                 (<= hours-diff 48) 48
-                 (<= hours-diff 72) 72
-                 :else 999)]
+                        "waiting" :job.state/waiting)]
     (timers/time!
       (timers/timer ["cook-mesos" "scheduler" (str "get-" (name state) "-jobs-by-user-duration")])
-      (timers/time!
-        (timers/timer ["cook-mesos" "scheduler" (str "get-" (name state) "-jobs-by-user-by-state-" bucket "-duration")])
-        (->>
+         (->>
           (cond->> (get-jobs-by-user-and-state-and-submit db user start end state-keyword)
                    (not include-custom-executor?) (filter #(false? (:job/custom-executor %)))
                    name-filter-fn (filter #(name-filter-fn (:job/name %)))
                    (and include-custom-executor? (= :job.state/waiting state-keyword)) (remove uncommitted?))
           ; No need to sort. We're traversing in entity_id order, so in time order.
           (take limit)
-          doall)))))
+          doall))))
 
 (defn get-jobs-by-user-and-states
   "Returns all jobs for a particular user in the specified states."
