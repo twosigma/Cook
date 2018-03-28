@@ -57,7 +57,7 @@
   (when (= (:job/state job) :job.state/waiting)
     (let [user (:job/user job)
           ways (how-job-would-exceed-resource-limits
-                (read-limit-fn db user)
+                (read-limit-fn db user nil)
                 (util/jobs-by-user-and-state db user :job.state/running)
                 job)]
       (when (seq ways)

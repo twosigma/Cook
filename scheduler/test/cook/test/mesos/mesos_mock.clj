@@ -679,7 +679,7 @@
                                  (mm/mesos-mock hosts offer-trigger-chan scheduler))]
       (with-cook-scheduler
         mesos-datomic-conn make-mesos-driver-fn {}
-        (share/set-share! mesos-datomic-conn "default" "new cluster settings"
+        (share/set-share! mesos-datomic-conn "default" nil "new cluster settings"
                           :mem mem :cpus cpus :gpus 1.0)
         ;; Note these two vars are lazy, need to realize to put them in db.
         (let [user-a-job-exec-time-ms 10000

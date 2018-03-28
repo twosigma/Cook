@@ -15,11 +15,14 @@
 ;;
 (ns cook.mesos.share
   (:require [clojure.tools.logging :as log]
+            [cook.config :as config]
+            [cook.mesos.pool :as pool]
             [cook.mesos.util :as util]
             [datomic.api :as d :refer (q)]
             [metatransaction.core :refer (db)]
             [metrics.timers :as timers]
-            [plumbing.core :as pc]))
+            [plumbing.core :as pc])
+  (:import [java.util UUID]))
 
 (def default-user "default")
 
@@ -34,21 +37,40 @@
   (keyword (name type)))
 
 (defn- retract-share-by-type!
-  [conn type user]
+  [conn type user pool]
   (let [db (db conn)
         type (resource-type->datomic-resource-type type)
-        resource (ffirst (q '[:find ?r
-                              :in $ ?u ?t
-                              :where
-                              [?e :share/user ?u]
-                              [?e :share/resource ?r]
-                              [?r :resource/type ?t]
-                              [?r :resource/amount ?a]]
-                            db user type))]
+        resource (first (q '[:find [?r ...]
+                             :in $ ?u ?t ?pool-name ?requesting-default-pool
+                             :where
+                             [?e :share/user ?u]
+                             [?e :share/resource ?r]
+                             [?r :resource/type ?t]
+                             [?r :resource/amount ?a]
+                             [(cook.mesos.pool/check-pool $ ?r :resource/pool ?pool-name
+                                                          ?requesting-default-pool)]]
+                           db user type (pool/pool-name-or-default pool)
+                           (pool/requesting-default-pool? pool)))]
     (if resource
       @(d/transact conn
                    [[:db.fn/retractEntity resource]])
       (log/warn "Resource" type "for user" user "does not exist, could not retract"))))
+
+(defn- filter-resource-entities
+  "Takes a list of resource entities and returns a map from type to amount.
+   If there are multiple resources for the same type, choose the one which exactly
+   matches the default pool name."
+  [resources]
+  (let [default-pool (config/default-pool)
+        reduce-vals (fn [resources]
+                      (if (= 1 (count resources))
+                        (first resources)
+                        (first (filter #(= default-pool (get-in % [:resource/pool :pool/name]))
+                                       resources))))]
+    (->> resources
+         (group-by :resource/type)
+         (pc/map-vals reduce-vals)
+         (pc/map-vals :resource/amount))))
 
 (defn get-share-by-types
   "Query a user's pre-defined share by types (e.g. [:cpus, :mem, :gpus]).
@@ -58,20 +80,25 @@
    1. the explicitly provided default value in type->share, or
    2. the share for the \"default\" user. If there is NO \"default\"
       value for a specific type, return Double.MAX_VALUE."
-  [db user types type->share]
-  (let [query '[:find ?t ?a
-                :in $ ?u [?t ...]
+  [db user pool-name types type->share]
+  (let [query '[:find [?r ...]
+                :in $ ?u ?pool-name ?requesting-default-pool [?t ...]
                 :where
                 [?e :share/user ?u]
                 [?e :share/resource ?r]
                 [?r :resource/type ?t]
-                [?r :resource/amount ?a]]
+                [?r :resource/amount ?a]
+                [(cook.mesos.pool/check-pool $ ?r :resource/pool ?pool-name
+                                             ?requesting-default-pool)]]
         datomic-resource-types (map resource-type->datomic-resource-type types)
         default-type->share (pc/map-from-keys
                               (fn [type] (get type->share type Double/MAX_VALUE))
                               types)]
-    (->> (q query db user datomic-resource-types)
-         (into {})
+
+    (->> (q query db user (pool/pool-name-or-default pool-name)
+            (pool/requesting-default-pool? pool-name) datomic-resource-types)
+         (map (partial d/entity db))
+         filter-resource-entities
          (pc/map-keys datomic-resource-type->resource-type)
          (merge default-type->share))))
 
@@ -82,12 +109,14 @@
    \"default\" user. If there is NO \"default\" value for a specific type,
    return Double.MAX_VALUE."
   ([db user]
-   (get-share db user (util/get-all-resource-types db)))
-  ([db user resource-types]
-   (let [type->default (get-share-by-types db default-user resource-types {})]
-     (get-share db user resource-types type->default)))
-  ([db user resource-types type->default]
-   (get-share-by-types db user resource-types type->default)))
+   (get-share db user nil))
+  ([db user pool]
+   (get-share db user pool (util/get-all-resource-types db)))
+  ([db user pool resource-types]
+   (let [type->default (get-share-by-types db default-user pool resource-types {})]
+     (get-share db user pool resource-types type->default)))
+  ([db user pool resource-types type->default]
+   (get-share-by-types db user pool resource-types type->default)))
 
 (timers/deftimer [cook-mesos share get-shares-duration])
 
@@ -97,42 +126,22 @@
    This function minimize db calls by locally caching the results for the default-user
    share and all the available resource-types."
   ([db users]
-   (get-shares db users (util/get-all-resource-types db)))
-  ([db users resource-types]
+   (get-shares db users nil))
+  ([db users pool-name]
+   (get-shares db users pool-name (util/get-all-resource-types db)))
+  ([db users pool-name resource-types]
    (timers/time!
      get-shares-duration
-     (let [type->default (get-share db default-user resource-types {})]
-       (-> (fn [user] (get-share db user resource-types type->default))
+     (let [type->default (get-share db default-user pool-name resource-types {})]
+       (-> (fn [user] (get-share db user pool-name resource-types type->default))
            (pc/map-from-keys users))))))
 
-(defn share-history
-  "Return changes to a user's own share, in the form
-  [{:time (inst when change occurred)
-    :reason (stated reason for change)
-    :share (share as would have been returned by get-share after change)}]"
-  [db user]
-  (->> (d/q '[:find ?e ?a ?v ?added ?tx
-              :in $ ?a ?e
-              :where
-              [?e ?a ?v ?tx ?added]]
-            (d/history db)
-            :share/reason
-            [:share/user user])
-       (sort-by last)
-       (map (fn [[e attr v added tx]]
-              (let [tx-db (d/as-of db tx)
-                    tx-e (d/entity tx-db e)]
-                {:time (:db/txInstant (d/entity db tx))
-                 :reason (:share/reason tx-e)
-                 :share (get-share tx-db user)})))
-       distinct))
-
 (defn retract-share!
-  [conn user reason]
+  [conn user pool reason]
   (let [db (d/db conn)]
     (->> (util/get-all-resource-types db)
          (map (fn [type]
-                [type (retract-share-by-type! conn type user)]))
+                [type (retract-share-by-type! conn type user pool)]))
          (into {})))
   @(d/transact conn [[:db/add [:share/user user] :share/reason reason]]))
 
@@ -145,25 +154,29 @@
    or
    (set-share! conn \"u1\" :cpus 20.0)
    etc."
-  [conn user reason & kvs]
+  [conn user pool-name reason & kvs]
   (loop [[type amount & kvs] kvs
          txns []]
     (if (and amount (pos? amount))
       (let [type (resource-type->datomic-resource-type type)
             resource (-> (q '[:find ?r
-                              :in $ ?user ?type
+                              :in $ ?user ?type ?pool-name ?requesting-default-pool
                               :where
                               [?e :share/user ?user]
                               [?e :share/resource ?r]
-                              [?r :resource/type ?type]]
-                            (d/db conn) user type)
+                              [?r :resource/type ?type]
+                              [(cook.mesos.pool/check-pool $ ?r :resource/pool ?pool-name
+                                                           ?requesting-default-pool)]]
+                            (d/db conn) user type (pool/pool-name-or-default pool-name)
+                            (pool/requesting-default-pool? pool-name))
                          ffirst)
             txn (if resource
                   [[:db/add resource :resource/amount amount]]
-                  [{:db/id (d/tempid :db.part/user)
-                    :share/user user
-                    :share/resource [{:resource/type type
-                                      :resource/amount amount}]}])]
+                  (let [resource (cond-> {:resource/type type :resource/amount amount}
+                                   pool-name (assoc :resource/pool [:pool/name pool-name]))]
+                    [{:db/id (d/tempid :db.part/user)
+                      :share/user user
+                      :share/resource [resource]}]))]
         (recur kvs (into txn txns)))
       @(d/transact conn txns)))
   @(d/transact conn [[:db/add [:share/user user] :share/reason reason]]))
@@ -175,15 +188,15 @@
    snapshotted to the db passed in. However, it queries for all users with share
    and returns the `default-user` value if a user is not returned.
    This is useful if the application will go over ALL users during processing"
-  [db]
+  [db pool-name]
   (timers/time!
     create-user->share-fn-duration
     (let [all-share-users (d/q '[:find [?user ...]
                                  :where
                                  [?q :share/user ?user]]
                                db)
-          default-user-share (get-share db default-user)
-          user->share-cache (-> (get-shares db all-share-users)
+          default-user-share (get-share db default-user pool-name)
+          user->share-cache (-> (get-shares db all-share-users pool-name)
                                 ;; In case default-user doesn't have an explicit share
                                 (assoc default-user default-user-share))]
       (fn user->share

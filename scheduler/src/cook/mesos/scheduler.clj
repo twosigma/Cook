@@ -1027,7 +1027,7 @@
                                                  (cache/hit c slave-id)
                                                  (cache/miss c slave-id attrs)))))
                       _ (log/debug "Passing following offers to handle-resource-offers!" offers)
-                      user->quota (quota/create-user->quota-fn (d/db conn))
+                      user->quota (quota/create-user->quota-fn (d/db conn) nil)
                       matched-head? (handle-resource-offers! conn @driver-atom fenzo framework-id pending-jobs-atom mesos-run-as-user @user->usage-future user->quota num-considerable offers-chan offers rebalancer-reservation-atom)]
                   (when (seq offers)
                     (reset! resources-atom (view-incubating-offers fenzo)))
@@ -1351,7 +1351,7 @@
         category->pending-task-ents (pc/map-vals #(map util/create-task-ent %1) category->pending-job-ents)
         category->running-task-ents (group-by (comp util/categorize-job :job/_instance)
                                               (util/get-running-task-ents unfiltered-db))
-        user->dru-divisors (share/create-user->share-fn unfiltered-db)
+        user->dru-divisors (share/create-user->share-fn unfiltered-db nil)
         category->sort-jobs-by-dru-fn {:normal sort-normal-jobs-by-dru, :gpu sort-gpu-jobs-by-dru}]
     (letfn [(sort-jobs-by-dru-category-helper [[category sort-jobs-by-dru]]
              (let [pending-tasks (category->pending-task-ents category)

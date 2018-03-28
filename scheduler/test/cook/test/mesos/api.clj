@@ -542,7 +542,7 @@
       (is (<= 200 (:status initial-get-resp) 299)))
 
     (testing "update changes quota"
-      (let [new-quota {:cpus 9.0 :mem 4323.0 :count 43 :gpus 3.0}
+      (let [new-quota {:cpus 9.0 :mem 4323.0 :count 43.0 :gpus 3.0}
             update-resp (h (merge quota-req-attrs
                                   {:request-method :post
                                    :body-params {:user "foo"

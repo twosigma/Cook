@@ -1441,7 +1441,7 @@
   (let [db (db conn)
         resource-keys [:cpus :mem :gpus]
         user (get-in ctx [:request :authorization/user])
-        user-quota (quota/get-quota db user)
+        user-quota (quota/get-quota db user nil)
         errors (for [job (::jobs ctx)
                      resource resource-keys
                      :let [job-usage (-> job (get resource 0) double)
@@ -1928,7 +1928,7 @@
 ;; /share and /quota
 (def UserParam {:user s/Str})
 (def ReasonParam {:reason s/Str})
-(def UserLimitChangeParams (merge UserParam ReasonParam))
+(def UserLimitChangeParams (merge {(s/optional-key :pool) s/Str} UserParam ReasonParam))
 
 (def UserLimitsResponse
   {String s/Num})
@@ -1939,10 +1939,12 @@
 
 (defn retrieve-user-limit
   [get-limit-fn conn ctx]
-  (->> (or (get-in ctx [:request :query-params :user])
-           (get-in ctx [:request :body-params :user]))
-       (get-limit-fn (db conn))
-       walk/stringify-keys))
+  (let [user (or (get-in ctx [:request :query-params :user])
+                 (get-in ctx [:request :body-params :user]))
+        pool (or (get-in ctx [:request :query-params :pool])
+                 (get-in ctx [:request :body-params :pool]))]
+    (->> (get-limit-fn (db conn) user pool)
+         walk/stringify-keys)))
 
 (defn check-limit-allowed
   [limit-type is-authorized-fn ctx]
@@ -1973,6 +1975,7 @@
      :delete! (fn [ctx]
                 (retract-limit-fn conn
                                   (get-in ctx [:request :query-params :user])
+                                  (get-in ctx [:request :query-params :pool])
                                   (get-in ctx [:request :query-params :reason])))}))
 
 (defn coerce-limit-values
@@ -2005,6 +2008,7 @@
               (apply set-limit-fn
                      conn
                      (get-in ctx [:request :body-params :user])
+                     (get-in ctx [:request :body-params :pool])
                      (get-in ctx [:request :body-params :reason])
                      (reduce into [] (::limits ctx))))}))
 

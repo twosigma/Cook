@@ -57,7 +57,7 @@
             pending-task-ents (util/get-pending-job-ents db)
             running-task-ents (util/get-running-task-ents db)
             sort-task-scored-task-pairs dru/sorted-task-scored-task-pairs
-            user->dru-divisors (share/create-user->share-fn db)]
+            user->dru-divisors (share/create-user->share-fn db nil)]
         (do
           (println "============ sort-jobs-by-dru timing ============")
           (cc/quick-bench (sched/sort-jobs-by-dru-helper pending-task-ents
