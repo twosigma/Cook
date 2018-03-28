@@ -837,12 +837,11 @@
             progress-message (assoc :progress_message progress-message)
             sandbox-directory (assoc :sandbox_directory sandbox-directory))))
 
-(defn fetch-job-map
-  [db framework-id job-uuid]
+(defn fetch-job-map-from-entity
+  [db framework-id job]
   (timers/time!
     (timers/timer ["cook-mesos" "internal" "fetch-job-map"])
-    (let [job (d/entity db [:job/uuid job-uuid])
-          resources (util/job-ent->resources job)
+    (let [resources (util/job-ent->resources job)
           groups (:group/_job job)
           application (:job/application job)
           expected-runtime (:job/expected-runtime job)
@@ -890,6 +889,10 @@
               progress-output-file (assoc :progress-output-file progress-output-file)
               progress-regex-string (assoc :progress-regex-string progress-regex-string)
               pool (assoc :pool (:pool/name pool))))))
+
+(defn fetch-job-map
+  [db framework-id job-uuid]
+  (fetch-job-map-from-entity db framework-id (d/entity db [:job/uuid job-uuid])))
 
 (defn fetch-group-live-jobs
   "Get all jobs from a group that are currently running or waiting (not complete)"
@@ -1257,8 +1260,8 @@
 (histograms/defhistogram [cook-mesos api list-request-param-limit])
 (histograms/defhistogram [cook-mesos api list-response-job-count])
 
-(defn list-jobs
-  "Queries using the params from ctx and returns the job uuids that were found"
+(defn list-jobents
+  "Queries using the params from ctx and returns the jobs that were found as datomic entities."
   [db include-custom-executor? ctx]
   (timers/time!
     list-endpoint
@@ -1273,20 +1276,24 @@
           start-ms' (or start-ms (- end-ms (-> since-hours-ago t/hours t/in-millis)))
           start (Date. ^long start-ms')
           end (Date. ^long end-ms)
-          job-uuids (->> (timers/time!
+          job-ents (->> (timers/time!
                            fetch-jobs
                            (util/get-jobs-by-user-and-states db user states start end limit
                                                              name-filter-fn include-custom-executor? pool-name))
                          (sort-by :job/submit-time)
-                         reverse
-                         (map :job/uuid))
-          job-uuids (if (nil? limit)
-                      job-uuids
-                      (take limit job-uuids))]
+                         reverse)
+          job-ents (if (nil? limit)
+                      job-ents
+                      (take limit job-ents))]
       (histograms/update! list-request-param-time-range-ms (- end-ms start-ms'))
       (histograms/update! list-request-param-limit limit)
-      (histograms/update! list-response-job-count (count job-uuids))
-      job-uuids)))
+      (histograms/update! list-response-job-count (count job-ents))
+      job-ents)))
+
+(defn list-jobs
+  "Queries using the params from ctx and returns the job uuids that were found"
+  [db include-custom-executor? ctx]
+  (map :job/uuid (list-jobents db include-custom-executor? ctx)))
 
 (defn jobs-list-exist?
   [conn ctx]
@@ -2285,8 +2292,8 @@
     :handle-ok (fn [ctx]
                  (timers/time!
                    (timers/timer ["cook-scheduler" "handler" "list-endpoint-duration"])
-                   (let [job-uuids (list-jobs db false ctx)]
-                     (mapv (partial fetch-job-map db framework-id) job-uuids))))))
+                   (let [job-ents (list-jobents db false ctx)]
+                     (mapv (partial fetch-job-map-from-entity db framework-id) job-ents))))))
 
 ;;
 ;; /unscheduled_jobs
