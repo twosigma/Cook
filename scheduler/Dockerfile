@@ -40,6 +40,10 @@ RUN lein uberjar
 RUN cp "target/cook-$(lein print :version | tr -d '"').jar" datomic-free-0.9.5394/lib/cook-$(lein print :version | tr -d '"').jar
 
 # Run cook
-EXPOSE 12321
+EXPOSE \
+    4334 \
+    4335 \
+    4336 \
+    12321
 ENTRYPOINT ["/opt/cook/docker/run-cook.sh"]
 CMD ["config.edn"]

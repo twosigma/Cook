@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.14.0] - 2018-03-28
+### Added
+- Support for listing custom executor jobs in /jobs endpoint, from @dposada
+- Kill instances for cancelled jobs on leadership election, from @pschorf
+### Changed
+- Performance improvements to scheduling and list APIs, from @scrosby
+### Fixed
+- Fixed GPU support, from @dPeS
+
 ## [1.13.0] - 2018-03-13
 ### Added
 - Support for CORS requests, from @pschorf
