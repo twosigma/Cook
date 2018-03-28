@@ -348,7 +348,7 @@
 (defn job-submit-time-between
   "Returns true if the job-ent's :job/submit-time is between start-ms (inclusive) and
   end-ms (exclusive)"
-  [{^Date submit-time :job/submit-time} ^long start-ms ^long end-ms]
+  [{:keys [^Date job/submit-time]} ^long start-ms ^long end-ms]
   (let [submit-ms (.getTime submit-time)]
                     (and (<= start-ms submit-ms)
                          (< submit-ms end-ms))))
