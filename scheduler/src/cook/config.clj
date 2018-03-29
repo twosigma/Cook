@@ -107,7 +107,7 @@
                              :ttl-ms (* 60 1000)}
                             agent-query-cache))
      :cors-origins (fnk [[:config {cors-origins nil}]]
-                        (map re-pattern (or cors-origins [])))
+                     (map re-pattern (or cors-origins [])))
      :sandbox-syncer (fnk [[:config {sandbox-syncer nil}]]
                        (merge
                          {:max-consecutive-sync-failure 15
@@ -324,7 +324,10 @@
                      (when enabled?
                        (when (zero? port)
                          (throw (ex-info "You enabled nrepl but didn't configure a port. Please configure a port in your config file." {})))
-                       ((util/lazy-load-var 'clojure.tools.nrepl.server/start-server) :port port)))}))
+                       ((util/lazy-load-var 'clojure.tools.nrepl.server/start-server) :port port)))
+
+     :pools (fnk [[:config {pools nil}]]
+              pools)}))
 
 (defn read-config
   "Given a config file path, reads the config and returns the map"

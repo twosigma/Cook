@@ -1727,6 +1727,36 @@ class CookTest(unittest.TestCase):
                                    places=4, msg=usage_data)
             self.assertEqual(usage_data['total_usage']['gpus'], breakdowns_total['gpus'], usage_data)
             self.assertEqual(usage_data['total_usage']['jobs'], breakdowns_total['jobs'], usage_data)
+            # Pool-specific checks
+            default_pool = util.default_pool(self.cook_url)
+            if default_pool:
+                # If there is a default pool configured, make sure that our jobs,
+                # which don't have a pool, are counted as being in the default pool
+                resp = util.user_current_usage(self.cook_url, user=user, group_breakdown='true', pool=default_pool)
+                self.assertEqual(resp.status_code, 200, resp.content)
+                usage_data = resp.json()
+                my_group_usage = next(x for x in usage_data['grouped'] if x['group']['uuid'] == group_uuid)
+                self.assertEqual(set(my_group_usage.keys()), {'group', 'usage'}, my_group_usage)
+                self.assertEqual(set(job_uuids), set(my_group_usage['group']['running_jobs']), my_group_usage)
+                self.assertEqual(my_group_usage['usage']['mem'], job_count * job_resources['mem'], my_group_usage)
+                self.assertEqual(my_group_usage['usage']['cpus'], job_count * job_resources['cpus'], my_group_usage)
+                self.assertEqual(my_group_usage['usage']['gpus'], 0, my_group_usage)
+                self.assertEqual(my_group_usage['usage']['jobs'], job_count, my_group_usage)
+                # If there is a non-default pool, make sure that
+                # our jobs don't appear under that pool's usage
+                pools, _ = util.pools(self.cook_url)
+                non_default_pools = [p for p in pools if p['name'] != default_pool]
+                if len(non_default_pools) > 0:
+                    pool = non_default_pools[0]['name']
+                    resp = util.user_current_usage(self.cook_url, user=user, group_breakdown='true', pool=pool)
+                    self.assertEqual(resp.status_code, 200, resp.content)
+                    usage_data = resp.json()
+                    my_group_usage = [x for x in usage_data['grouped'] if x['group']['uuid'] == group_uuid]
+                    self.assertEqual(0, len(my_group_usage))
+                else:
+                    self.logger.info('There is no pool that is not the default pool')
+            else:
+                self.logger.info('There is no configured default pool')
         finally:
             util.kill_jobs(self.cook_url, job_uuids)
 
