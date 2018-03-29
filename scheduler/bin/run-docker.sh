@@ -139,7 +139,7 @@ docker start ${NAME}
 
 echo "Seeding test data..."
 cd ${SCHEDULER_DIR}
-lein exec -p test/data/seed_pools.clj ${COOK_DATOMIC_URI}
+lein exec -p test-resources/data/seed_pools.clj ${COOK_DATOMIC_URI}
 
 echo "Attaching to container..."
 docker attach ${NAME}
