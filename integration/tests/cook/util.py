@@ -262,6 +262,8 @@ def multi_user_tests_enabled():
 
 def get_in(dct, *keys):
     for key in keys:
+        if not dct:
+            return None
         try:
             dct = dct[key]
         except KeyError:
