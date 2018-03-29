@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.14.1] - 2018-03-29
+### Fixed
+- Fix performance regression in list API, from @scrosby
+
 ## [1.14.0] - 2018-03-28
 ### Added
 - Support for listing custom executor jobs in /jobs endpoint, from @dposada
