@@ -1554,8 +1554,7 @@ class CookCliTest(unittest.TestCase):
                                'mv file2.txt file.txt; done\'',
                                self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
-        cp = cli.wait(uuids, self.cook_url)
-        self.assertEqual(0, cp.returncode, cp.stderr)
+        util.wait_for_job(self.cook_url, uuids[0], 'completed')
         cp = cli.cat(uuids[0], 'file.txt', self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual('helloworld' * pow(2, iterations), cli.decode(cp.stdout))
