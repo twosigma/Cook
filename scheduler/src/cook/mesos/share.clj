@@ -17,7 +17,6 @@
   (:require [clojure.tools.logging :as log]
             [cook.mesos.util :as util]
             [datomic.api :as d :refer (q)]
-            [metatransaction.core :refer (db)]
             [metrics.timers :as timers]
             [plumbing.core :as pc]))
 
@@ -35,7 +34,7 @@
 
 (defn- retract-share-by-type!
   [conn type user]
-  (let [db (db conn)
+  (let [db (d/db conn)
         type (resource-type->datomic-resource-type type)
         resource (ffirst (q '[:find ?r
                               :in $ ?u ?t

@@ -17,7 +17,6 @@
   (:use clojure.test)
   (:require [cook.mesos.share :as share]
             [cook.test.testutil :refer (restore-fresh-database!)]
-            [metatransaction.core :as mt]
             [datomic.api :as d]))
 
 (deftest test'
@@ -29,7 +28,7 @@
     (share/set-share! conn "u2" "custom limits" :cpus 5.0  :mem 10.0)
     (share/set-share! conn "u3" "needs cpus, mem, and gpus" :cpus 10.0 :mem 20.0 :gpus 4.0)
     (share/set-share! conn "default" "lock most users down" :cpus 1.0 :mem 2.0 :gpus 1.0)
-    (let [db (mt/db conn)]
+    (let [db (d/db conn)]
       (testing "set and query."
         (is (= {:cpus 5.0 :mem 10.0 :gpus 1.0} (share/get-share db "u2"))))
       (testing "set and override."
@@ -40,7 +39,7 @@
         (is (= (share/get-share db "whoami") (share/get-share db "default"))))
       (testing "retract share"
         (share/retract-share! conn "u2" "not special anymore")
-        (let [db (mt/db conn)]
+        (let [db (d/db conn)]
           (is (= {:cpus 1.0 :mem 2.0 :gpus 1.0} (share/get-share db "u2")))))
 
       (testing "get-shares:all-defaults-available"
@@ -52,7 +51,7 @@
       (testing "get-shares:some-defaults-available"
         (share/retract-share! conn "default" "clear defaults")
         (share/set-share! conn "default" "cpu and gpu defaults available" :cpus 3.0 :gpus 1.0)
-        (let [db (mt/db conn)]
+        (let [db (d/db conn)]
           (is (= {"u1" {:cpus 5.0 :mem 10.0 :gpus 1.0}
                   "u2" {:cpus 3.0 :mem Double/MAX_VALUE :gpus 1.0}
                   "u3" {:cpus 10.0 :mem 20.0 :gpus 4.0}

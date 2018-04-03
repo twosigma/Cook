@@ -16,8 +16,7 @@
 (ns cook.mesos.quota
   (:require [cook.mesos.schema]
             [cook.mesos.util :as util]
-            [datomic.api :as d :refer (q)]
-            [metatransaction.core :refer (db)]))
+            [datomic.api :as d :refer (q)]))
 ;; This namespace is dangerously similar to cook.mesos.share (it was copied..)
 ;; it isn't obvious what the abstraction is, but there must be one.
 

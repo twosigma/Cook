@@ -18,7 +18,6 @@
   (:require [cook.mesos.scheduler :as sched]
             [cook.mesos.quota :as quota]
             [cook.test.testutil :refer (restore-fresh-database!)]
-            [metatransaction.core :as mt :refer (db)]
             [datomic.api :as d]))
 
 (deftest test-quota
@@ -32,7 +31,7 @@
     (quota/set-quota! conn "u3" "needs no GPUs" :gpus 0.0)
     (quota/set-quota! conn "u4" "no jobs allowed" :count 0)
     (quota/set-quota! conn "default" "lock most users down" :cpus 1.0 :mem 2.0 :gpus 1.0)
-    (let [db (db conn)]
+    (let [db (d/db conn)]
       (testing "set and query zero job count"
         (is (= {:count 0
                 :cpus 1.0 :mem 2.0 :gpus 1.0} (quota/get-quota db "u4"))))
@@ -52,7 +51,7 @@
         (is (= (quota/get-quota db "whoami") (quota/get-quota db "default"))))
       (testing "retract quota"
         (quota/retract-quota! conn "u2" "not special anymore")
-        (let [db (mt/db conn)]
+        (let [db (d/db conn)]
           (is (= {:count Double/MAX_VALUE
                   :cpus 1.0 :mem 2.0 :gpus 1.0} (quota/get-quota db "u2")))))
 

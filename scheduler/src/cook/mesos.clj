@@ -32,8 +32,6 @@
             [datomic.api :as d :refer (q)]
             [mesomatic.scheduler]
             [mesomatic.types]
-            [metatransaction.core :as mt :refer (db)]
-            [metatransaction.utils :as dutils]
             [metrics.counters :as counters]
             [swiss.arrows :refer :all])
   (:import [org.apache.curator.framework.recipes.leader LeaderSelector LeaderSelectorListener]
@@ -41,45 +39,6 @@
 
 ;; ============================================================================
 ;; mesos scheduler etc.
-
-(defn submit-to-mesos
-  "Takes a sequence of jobs in jobsystem format and submits them to the mesos
-   DB."
-  ([conn user jobs]
-   (submit-to-mesos conn user jobs []))
-  ([conn user jobs additional-txns-per-job]
-   (log/info "Submitting jobs to mesos" conn)
-   (try
-     (let [submit-time (java.util.Date.)]
-       (doseq [{:keys [uuid command ncpus memory name retry-count priority]} jobs
-               :let [txn {:db/id (d/tempid :db.part/user)
-                          :job/command command
-                          :job/name "cooksim"
-                          :job/max-retries retry-count
-                          :job/priority priority
-                          :job/resource [{:resource/type :resource.type/cpus
-                                          :resource/amount (double ncpus)}
-                                         {:resource/type :resource.type/mem
-                                          :resource/amount (double memory)}]
-                          :job/state :job.state/waiting
-                          :job/submit-time submit-time
-                          :job/user user
-                          :job/uuid uuid}
-                     retries 5
-                     base-wait 500 ; millis
-                     opts {:retry-schedule (cook.util/rand-exponential-seq retries base-wait)}]]
-         (if (and (<= memory 200000) (<= ncpus 32))
-           (dutils/transact-with-retries!! conn opts (into [txn] additional-txns-per-job))
-           (log/error "We chose not to schedule the job" uuid
-                      "because it required too many resources:" ncpus
-                      "cpus and" memory "MB of memory"))))
-     (catch Exception e
-       (log/error e "Occurred while trying to 'submit to mesos' (transact with mesos datomic)")
-       (throw (ex-info "Exception occurred while trying to submit to mesos"
-                       {:exception e
-                        :conn conn}
-                       e))))))
-
 (counters/defcounter [cook-mesos mesos mesos-leader])
 
 (defn make-mesos-driver
@@ -293,8 +252,7 @@
     (.autoRequeue leader-selector)
     (.start leader-selector)
     (log/info "Started the mesos leader selector")
-    {:submitter (partial submit-to-mesos mesos-datomic-conn)
-     :driver current-driver
+    {:driver current-driver
      :leader-selector leader-selector
      :framework-id framework-id}))
 

@@ -26,7 +26,6 @@
             [cook.mesos.util :as util]
             [datomic.api :as d :refer (q)]
             [mesomatic.scheduler :as mesos]
-            [metatransaction.core :as mt]
             [metrics.histograms :as histograms]
             [metrics.timers :as timers]
             [plumbing.core :refer [map-keys]]
@@ -453,7 +452,7 @@
    params]
   (try
     (log/info "Rebalancing...Params:" params)
-    (let [db (mt/db conn)
+    (let [db (d/db conn)
           preemption-decisions (rebalance db offer-cache pending-job-ents host->spare-resources rebalancer-reservation-atom params)]
       (doseq [{job-ent-to-make-room-for :to-make-room-for
                task-ents-to-preempt :task} preemption-decisions]
@@ -504,7 +503,7 @@
 (defn read-datomic-params
   [conn]
   (-<>>
-   (d/pull (mt/db conn) ["*"] :rebalancer/config)
+   (d/pull (d/db conn) ["*"] :rebalancer/config)
    (dissoc <> ":db/id" ":db/ident")
    (map-keys #(keyword (name (keyword %))))))
 
