@@ -1575,7 +1575,7 @@
         handler (basic-handler conn)
         before (t/now)
         list-jobs-fn #(list-jobs-with-jobs handler "user" ["running" "waiting" "completed"]
-                                           (.getMillis before) (.getMillis (t/now)))
+                                           (.getMillis before) (+ 1 (.getMillis (t/now))))
         response-1 (submit-job handler "user")
         response-2 (submit-job handler "user")
         _ @(d/transact conn [[:db/add [:job/uuid (UUID/fromString (:uuid response-1))] :job/custom-executor true]])
