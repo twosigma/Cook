@@ -119,8 +119,7 @@
     (with-redefs [config/default-pool (constantly "pool-b")]
       (is (= 3 (count (util/get-user-running-job-ents (db conn) "u1" nil))))
       (is (= 2 (count (util/get-user-running-job-ents (db conn) "u2" nil))))
-      (is (= 0 (count (util/get-user-running-job-ents (db conn) "u3" nil)))))
-    ))
+      (is (= 0 (count (util/get-user-running-job-ents (db conn) "u3" nil)))))))
 
 (deftest test-cache
   (let [cache (util/new-cache)
