@@ -327,7 +327,7 @@
 (defn job-ent->user
   "Given a job entity, return the user the job runs as."
   [job-ent]
-    (lookup-cache-datomic-entity! job-ent->user-cache :job/user job-ent))
+  (lookup-cache-datomic-entity! job-ent->user-cache :job/user job-ent))
 
 (defn job-ent->state
   "Given a job entity, returns the corresponding 'state', which means
@@ -351,8 +351,8 @@
   end-ms (exclusive)"
   [{:keys [^Date job/submit-time]} ^long start-ms ^long end-ms]
   (let [submit-ms (.getTime submit-time)]
-                    (and (<= start-ms submit-ms)
-                         (< submit-ms end-ms))))
+    (and (<= start-ms submit-ms)
+         (< submit-ms end-ms))))
 
 ;; get-jobs-by-user-and-state-and-submit is a bit opaque
 ;; because it is reaching into datomic internals. Here is a quick explanation.
@@ -463,14 +463,14 @@
                         "waiting" :job.state/waiting)]
     (timers/time!
       (timers/timer ["cook-mesos" "scheduler" (str "get-" (name state) "-jobs-by-user-duration")])
-         (->>
-          (cond->> (get-jobs-by-user-and-state-and-submit db user start end state-keyword)
-                   (not include-custom-executor?) (filter #(false? (:job/custom-executor %)))
-                   name-filter-fn (filter #(name-filter-fn (:job/name %)))
-                   (and include-custom-executor? (= :job.state/waiting state-keyword)) (remove uncommitted?))
-          ; No need to sort. We're traversing in entity_id order, so in time order.
-          (take limit)
-          doall))))
+      (->>
+        (cond->> (get-jobs-by-user-and-state-and-submit db user start end state-keyword)
+                 (not include-custom-executor?) (filter #(false? (:job/custom-executor %)))
+                 name-filter-fn (filter #(name-filter-fn (:job/name %)))
+                 (and include-custom-executor? (= :job.state/waiting state-keyword)) (remove uncommitted?))
+        ; No need to sort. We're traversing in entity_id order, so in time order.
+        (take limit)
+        doall))))
 
 (defn get-jobs-by-user-and-states
   "Returns all jobs for a particular user in the specified states."
@@ -520,47 +520,42 @@
 
 (timers/deftimer [cook-mesos scheduler get-user-running-jobs-duration])
 
-(let [default-pool?
-      (fn default-pool?
-        [pool-name]
-        (= pool-name (config/default-pool)))
-
-      in-default-pool?
-      (fn in-default-pool?
-        [{:keys [job/pool]}]
-        (or (nil? pool)
-            (default-pool? (:pool/name pool))))
-
-      in-pool?
-      (fn in-pool?
-        [pool-name {:keys [job/pool]}]
-        (= pool-name (:pool/name pool)))]
-
-  (defn pool-filter
-    "Filters the provided jobs to those with a pool matching the given pool-name"
-    [pool-name jobs]
-    (let [matching-pool?
-          (if (or (nil? pool-name) (default-pool? pool-name))
-            in-default-pool?
-            (partial in-pool? pool-name))]
-      (filter matching-pool? jobs))))
+(defn default-pool?
+  "Returns true if the provided pool name matches
+  the currently configured default pool name"
+  [pool-name]
+  (= pool-name (config/default-pool)))
 
 (defn get-user-running-job-ents
   "Returns all running job entities for a specific user and pool."
   [db user pool-name]
-  (timers/time!
-    get-user-running-jobs-duration
-    (->> (q '[:find [?j ...]
-              :in $ ?user
-              :where
-              ;; Note: We're assuming that many users will have significantly more
-              ;; completed jobs than there are jobs currently running in the system.
-              ;; If not, we might want to swap these two constraints.
-              [?j :job/state :job.state/running]
-              [?j :job/user ?user]]
-            db user)
-         (map (partial d/entity db))
-         (pool-filter pool-name))))
+  (let [requesting-default-pool? (or (nil? pool-name) (default-pool? pool-name))
+        pool-name' (or pool-name (config/default-pool))]
+    (timers/time!
+      get-user-running-jobs-duration
+      (->> (q
+             '[:find [?j ...]
+               :in $ ?user ?pool-name ?requesting-default-pool
+               :where
+               ;; Note: We're assuming that many users will have significantly more
+               ;; completed jobs than there are jobs currently running in the system.
+               ;; If not, we might want to swap these two constraints.
+               [?j :job/state :job.state/running]
+               [?j :job/user ?user]
+               (or-join [?j ?pool-name ?requesting-default-pool]
+                        ; If the caller is requesting jobs in the default pool,
+                        ; we should include all jobs with no pool specified
+                        (and
+                          [(true? ?requesting-default-pool)]
+                          [(missing? $ ?j :job/pool)])
+
+                        ; We should also include jobs with a pool specified that
+                        ; matches the pool that the caller is requesting
+                        (and
+                          [?j :job/pool ?p]
+                          [?p :pool/name ?pool-name]))]
+             db user pool-name' requesting-default-pool?)
+           (map (partial d/entity db))))))
 
 (timers/deftimer [cook-mesos scheduler get-running-jobs-duration])
 
