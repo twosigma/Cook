@@ -30,7 +30,7 @@
   (:import
     [com.google.common.cache Cache CacheBuilder]
     [java.util.concurrent TimeUnit]
-    [java.util Date]))
+    [java.util Date UUID]))
 
 
 (defn new-cache []
@@ -530,7 +530,7 @@
   "Returns all running job entities for a specific user and pool."
   [db user pool-name]
   (let [requesting-default-pool? (or (nil? pool-name) (default-pool? pool-name))
-        pool-name' (or pool-name (config/default-pool))]
+        pool-name' (or pool-name (config/default-pool) (UUID/randomUUID))]
     (timers/time!
       get-user-running-jobs-duration
       (->> (q
