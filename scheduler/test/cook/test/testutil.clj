@@ -71,8 +71,7 @@
   (.invalidateAll util/job-ent->resources-cache)
   (.invalidateAll util/categorize-job-cache)
   (.invalidateAll util/task-ent->user-cache)
-  (.invalidateAll util/task->feature-vector-cache)
-  (.invalidateAll util/job-ent->user-cache))
+  (.invalidateAll util/task->feature-vector-cache))
 
 (defn restore-fresh-database!
   "Completely delete all data, start a fresh database and apply transactions if
