@@ -2312,7 +2312,7 @@
      :handle-ok (fn [_]
                   (let [db (d/db datomic/conn)]
                     (->> (pool/all-pools db)
-                         (mapv (partial pool-entity->consumable-map)))))}))
+                         (mapv pool-entity->consumable-map))))}))
 
 (defn- streaming-json-encoder
   "Takes as input the response body which can be converted into JSON,

@@ -85,11 +85,12 @@ cd ${SCHEDULER_DIR}
 ## on travis, ports on 172.17.0.1 are bindable from the host OS, and are also
 ## available for processes inside minimesos containers to connect to
 export COOK_EXECUTOR_COMMAND=${COOK_EXECUTOR_COMMAND}
-# Start one cook listening on port 12321, this will be the master of the "cook-framework-1" framework
 COOK_DATOMIC_URI_1=datomic:free://localhost:4334/cook-jobs
+COOK_DATOMIC_URI_2=datomic:mem://cook-jobs
+# Start one cook listening on port 12321, this will be the master of the "cook-framework-1" framework
 LIBPROCESS_IP=172.17.0.1 COOK_DATOMIC="${COOK_DATOMIC_URI_1}" COOK_PORT=12321 COOK_FRAMEWORK_ID=cook-framework-1 COOK_LOGFILE="log/cook-12321.log" lein run ${PROJECT_DIR}/travis/${CONFIG_FILE} &
 # Start a second cook listening on port 22321, this will be the master of the "cook-framework-2" framework
-LIBPROCESS_IP=172.17.0.1 COOK_DATOMIC="datomic:mem://cook-jobs" COOK_PORT=22321 COOK_ZOOKEEPER_LOCAL=true COOK_ZOOKEEPER_LOCAL_PORT=4291 COOK_FRAMEWORK_ID=cook-framework-2 COOK_LOGFILE="log/cook-22321.log" lein run ${PROJECT_DIR}/travis/${CONFIG_FILE} &
+LIBPROCESS_IP=172.17.0.1 COOK_DATOMIC="${COOK_DATOMIC_URI_2}" COOK_PORT=22321 COOK_ZOOKEEPER_LOCAL=true COOK_ZOOKEEPER_LOCAL_PORT=4291 COOK_FRAMEWORK_ID=cook-framework-2 COOK_LOGFILE="log/cook-22321.log" lein run ${PROJECT_DIR}/travis/${CONFIG_FILE} &
 
 # Wait for the cooks to be listening
 timeout 180s bash -c "wait_for_cook 12321" || curl_error=true
