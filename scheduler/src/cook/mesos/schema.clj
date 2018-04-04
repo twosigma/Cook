@@ -180,6 +180,12 @@ for a job. E.g. {:resources {:cpus 4 :mem 3} :constraints {\"unique_host_constra
     :db/cardinality :db.cardinality/one
     :db.install/_attribute :db.part/db
     :db/doc "Whether a summary of Fenzo placement failures should be recorded for the job at next opportunity."}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :job/pool
+    :db/doc "Cook schedules jobs independently between pools. Each pool supports different quotas, shares, etc."
+    :db/valueType :db.type/ref
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
    ;; Group attributes
    {:db/id (d/tempid :db.part/db)
     :db/ident :group/uuid
@@ -681,7 +687,27 @@ for a job. E.g. {:resources {:cpus 4 :mem 3} :constraints {\"unique_host_constra
     :db/valueType :db.type/long
     :db/cardinality :db.cardinality/one
     :db.install/_attribute :db.part/db}
-   ])
+
+   ;; Pool entity
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :pool/name
+    :db/doc "The name of the pool."
+    :db/valueType :db.type/string
+    :db/cardinality :db.cardinality/one
+    :db/unique :db.unique/identity
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :pool/purpose
+    :db/doc "The purpose of the pool (e.g. 'For jobs that can support preemptible VMs')."
+    :db/valueType :db.type/string
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :pool/state
+    :db/doc "The state of the pool."
+    :db/valueType :db.type/keyword
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}])
 
 (def migration-add-index-to-job-state
   "This was written on 9-26-2014"
@@ -778,7 +804,14 @@ for a job. E.g. {:resources {:cpus 4 :mem 3} :constraints {\"unique_host_constra
     :db/doc "Signals intent to use the custom executor"}
    {:db/id (d/tempid :db.part/user)
     :db/ident :executor/mesos
-    :db/doc "Signals intent to use the Mesos command executor"}])
+    :db/doc "Signals intent to use the Mesos command executor"}
+   ;; Pool states
+   {:db/id (d/tempid :db.part/user)
+    :db/ident :pool.state/active
+    :db/doc "Signifies that the pool is active."}
+   {:db/id (d/tempid :db.part/user)
+    :db/ident :pool.state/inactive
+    :db/doc "Signifies that the pool is inactive and should not be used."}])
 
 (def straggler-handling-types
   (->> schema-attributes

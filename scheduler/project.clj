@@ -197,7 +197,8 @@
    ; (.java sources are only used for unit test support)
    {:java-source-paths ^:replace []}}
 
-  :plugins [[lein-print "0.1.0"]]
+  :plugins [[lein-exec "0.3.7"]
+            [lein-print "0.1.0"]]
 
   :test-selectors {:all (constantly true)
                    :all-but-benchmark (complement :benchmark)

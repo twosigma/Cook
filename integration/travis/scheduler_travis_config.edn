@@ -45,4 +45,5 @@
                 "datomic.kv-cluster" :warn
                 "cook.mesos.rebalancer" :debug
                 "cook.mesos.scheduler" :debug
-                :default :info}}}
+                :default :info}}
+ :pools {:default "gamma"}}

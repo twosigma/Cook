@@ -262,6 +262,8 @@ def multi_user_tests_enabled():
 
 def get_in(dct, *keys):
     for key in keys:
+        if not dct:
+            return None
         try:
             dct = dct[key]
         except KeyError:
@@ -992,3 +994,16 @@ def to_iso(time_millis):
 def percentile(a, q):
     """Returns the qth percentile of a"""
     return numpy.percentile(a, q, interpolation='higher')
+
+
+def default_pool(cook_url):
+    """Returns the configured default pool, or None if one is not configured"""
+    cook_settings = settings(cook_url)
+    default_pool = get_in(cook_settings, 'pools', 'default')
+    return default_pool
+
+
+def pools(cook_url):
+    """Returns the list of all pools that exist"""
+    resp = session.get(f'{cook_url}/pools')
+    return resp.json(), resp

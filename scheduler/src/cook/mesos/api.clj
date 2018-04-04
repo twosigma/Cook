@@ -27,6 +27,8 @@
             [compojure.api.sweet :as c-api]
             [compojure.core :refer [ANY GET POST routes]]
             [cook.cors :as cors]
+            [cook.datomic :as datomic]
+            [cook.mesos.pool :as pool]
             [cook.mesos.quota :as quota]
             [cook.mesos.reason :as reason]
             [cook.mesos.schema :refer [constraint-operators host-placement-types straggler-handling-types]]
@@ -2011,8 +2013,9 @@
   "Query a user's current resource usage based on running jobs."
   [db ctx]
   (let [user (get-in ctx [:request :query-params :user])
-        running-jobs (util/get-user-running-job-ents db user)
-        with-group-breakdown? (get-in ctx [:request :query-params :group_breakdown])]
+        with-group-breakdown? (get-in ctx [:request :query-params :group_breakdown])
+        pool (get-in ctx [:request :query-params :pool])
+        running-jobs (util/get-user-running-job-ents db user pool)]
     (merge
       ; basic user usage response
       {:total-usage (util/total-resources-of-jobs running-jobs)}
@@ -2284,6 +2287,32 @@
          stats-instances-endpoint
          (let [{status ::status, start ::start, end ::end, name-filter-fn ::name-filter-fn} ctx]
            (task-stats/get-stats conn status start end name-filter-fn))))}))
+
+;;
+;; /pools
+;;
+
+(def PoolsResponse
+  [{:name s/Str
+    :purpose s/Str
+    :state s/Str}])
+
+(defn pool-entity->consumable-map
+  "Converts the given pool entity to a 'consumable' map"
+  [e]
+  {:name (:pool/name e)
+   :purpose (:pool/purpose e)
+   :state (name (:pool/state e))})
+
+(defn pools-handler
+  "Handler for retrieving pools"
+  []
+  (base-cook-handler
+    {:allowed-methods [:get]
+     :handle-ok (fn [_]
+                  (let [db (d/db datomic/conn)]
+                    (->> (pool/all-pools db)
+                         (mapv pool-entity->consumable-map))))}))
 
 (defn- streaming-json-encoder
   "Takes as input the response body which can be converted into JSON,
@@ -2577,7 +2606,16 @@
                          403 {:description "Invalid request format."}}
              :get {:summary "Query statistics for instances started in a time range."
                    :parameters {:query-params TaskStatsParams}
-                   :handler (task-stats-handler conn is-authorized-fn)}})))
+                   :handler (task-stats-handler conn is-authorized-fn)}}))
+
+        (c-api/context
+          "/pools" []
+          (c-api/resource
+            {:produces ["application/json"],
+             :responses {200 {:schema PoolsResponse
+                              :description "The pools were returned."}}
+             :get {:summary "Returns the pools."
+                   :handler (pools-handler)}})))
 
       (ANY "/queue" []
         (waiting-jobs mesos-pending-jobs-fn is-authorized-fn mesos-leadership-atom leader-selector))

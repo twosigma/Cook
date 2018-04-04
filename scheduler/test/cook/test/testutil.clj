@@ -92,7 +92,8 @@
 (defn create-dummy-job
   "Return the entity id for the created dummy job."
   [conn & {:keys [command committed? container custom-executor? disable-mea-culpa-retries env executor gpus group
-                  job-state max-runtime memory name ncpus priority retry-count submit-time under-investigation user uuid]
+                  job-state max-runtime memory name ncpus pool priority retry-count submit-time under-investigation user
+                  uuid]
            :or {command "dummy command"
                 committed? true
                 disable-mea-culpa-retries false
@@ -134,7 +135,9 @@
                          :job/uuid uuid}
                         (when (not (nil? custom-executor?)) {:job/custom-executor custom-executor?})
                         (when executor {:job/executor executor})
-                        (when group {:group/_job group}))
+                        (when group {:group/_job group})
+                        (when pool
+                          {:job/pool (d/entid (d/db conn) [:pool/name pool])}))
         job-info (if gpus
                    (update-in job-info [:job/resource] conj {:resource/type :resource.type/gpus
                                                              :resource/amount (double gpus)})
@@ -283,3 +286,11 @@
           (Thread/sleep (* interval unit-multiplier))
           (if (< (System/currentTimeMillis) end-time)
             (recur)))))))
+
+(defn create-pool
+  "Creates an active pool with the given name for use in unit testing"
+  [conn name]
+  @(d/transact conn [{:db/id (d/tempid :db.part/user)
+                      :pool/name name
+                      :pool/purpose "This is a pool for unit testing"
+                      :pool/state :pool.state/active}]))

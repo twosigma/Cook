@@ -48,7 +48,7 @@ NAME=cook-scheduler-${COOK_PORT}
 
 if [ "$(docker ps -aq -f name=${NAME})" ]; then
     # Cleanup
-    docker rm ${NAME}
+    docker stop ${NAME}
 fi
 
 $(minimesos info | grep MINIMESOS)
@@ -135,12 +135,11 @@ docker create \
 
 docker network connect bridge ${NAME}
 docker network connect cook_nw ${NAME}
-docker start -ai ${NAME}
+docker start ${NAME}
 
-# If Cook is not starting, you may be able to troubleshoot by
-# adding the following line right after the `docker run` line:
-#
-#    --entrypoint=/bin/bash \
-#
-# This will override the ENTRYPOINT baked into the Dockerfile
-# and instead give you an interactive bash shell.
+echo "Seeding test data..."
+cd ${SCHEDULER_DIR}
+lein exec -p test-resources/data/seed_pools.clj ${COOK_DATOMIC_URI}
+
+echo "Attaching to container..."
+docker attach ${NAME}

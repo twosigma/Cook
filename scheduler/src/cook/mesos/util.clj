@@ -18,6 +18,7 @@
             [clj-time.core :as t]
             [clj-time.format :as tf]
             [clj-time.periodic :refer [periodic-seq]]
+            [cook.config :as config]
             [cook.mesos.schema :as schema]
             [clojure.core.async :as async]
             [clojure.core.cache :as cache]
@@ -29,7 +30,7 @@
   (:import
     [com.google.common.cache Cache CacheBuilder]
     [java.util.concurrent TimeUnit]
-    [java.util Date]))
+    [java.util Date UUID]))
 
 
 (defn new-cache []
@@ -47,14 +48,14 @@
   any misses. Caches only positive hits where both functions return non-nil"
   [^Cache cache extract-key-fn miss-fn item]
   (if-let [key (extract-key-fn item)]
-      (if-let [result (.getIfPresent cache key)]
-        result ; we got a hit.
-        (let [new-result (miss-fn item)]
-          ; Only cache non-nil
-          (when new-result
-            (.put cache key new-result))
-          new-result))
-      (miss-fn item)))
+    (if-let [result (.getIfPresent cache key)]
+      result ; we got a hit.
+      (let [new-result (miss-fn item)]
+        ; Only cache non-nil
+        (when new-result
+          (.put cache key new-result))
+        new-result))
+    (miss-fn item)))
 
 (defn lookup-cache-datomic-entity!
   "Specialized function for caching where datomic entities are the key.
@@ -77,16 +78,16 @@
        (map first)))
 
 (defn categorize-job
-      "Return the category of the job. Currently jobs can be :normal or :gpu. This
-       is used to give separate queues for scarce & non-scarce resources"
-      [job]
-      (let [categorize-job-miss
-            (fn [job]
-                (let [resources (:job/resource job)]
-                     (if (some #(= :resource.type/gpus (:resource/type %)) resources)
-                       :gpu
-                       :normal)))]
-           (lookup-cache-datomic-entity! categorize-job-cache categorize-job-miss job)))
+  "Return the category of the job. Currently jobs can be :normal or :gpu. This
+   is used to give separate queues for scarce & non-scarce resources"
+  [job]
+  (let [categorize-job-miss
+        (fn [job]
+          (let [resources (:job/resource job)]
+            (if (some #(= :resource.type/gpus (:resource/type %)) resources)
+              :gpu
+              :normal)))]
+    (lookup-cache-datomic-entity! categorize-job-cache categorize-job-miss job)))
 
 (defn without-ns
   [k]
@@ -205,8 +206,8 @@
   [job-ent]
   (reduce (fn [m env-var]
             (assoc m
-                   (:environment/name env-var)
-                   (:environment/value env-var)))
+              (:environment/name env-var)
+              (:environment/value env-var)))
           {}
           (:job/environment job-ent)))
 
@@ -215,28 +216,28 @@
   [job-ent]
   (reduce (fn [m label-var]
             (assoc m
-                   (:label/key label-var)
-                   (:label/value label-var)))
+              (:label/key label-var)
+              (:label/value label-var)))
           {}
           (:job/label job-ent)))
 
 (defn job-ent->resources
-      "Take a job entity and return a resource map. NOTE: the keys must be same as mesos resource keys"
-      [job]
-      (let [job-ent->resources-miss
-              (fn [job-ent]
-                  (reduce (fn [m r]
-                              (let [resource (keyword (name (:resource/type r)))]
-                                   (condp contains? resource
-                                          #{:cpus :mem :gpus} (assoc m resource (:resource/amount r))
-                                          #{:uri} (update-in m [:uris] (fnil conj [])
-                                                             {:cache (:resource.uri/cache? r false)
-                                                              :executable (:resource.uri/executable? r false)
-                                                              :value (:resource.uri/value r)
-                                                              :extract (:resource.uri/extract? r false)}))))
-                          {:ports (:job/ports job-ent 0)}
-                          (:job/resource job-ent)))]
-           (lookup-cache-datomic-entity! job-ent->resources-cache job-ent->resources-miss job)))
+  "Take a job entity and return a resource map. NOTE: the keys must be same as mesos resource keys"
+  [job]
+  (let [job-ent->resources-miss
+        (fn [job-ent]
+          (reduce (fn [m r]
+                    (let [resource (keyword (name (:resource/type r)))]
+                      (condp contains? resource
+                        #{:cpus :mem :gpus} (assoc m resource (:resource/amount r))
+                        #{:uri} (update-in m [:uris] (fnil conj [])
+                                           {:cache (:resource.uri/cache? r false)
+                                            :executable (:resource.uri/executable? r false)
+                                            :value (:resource.uri/value r)
+                                            :extract (:resource.uri/extract? r false)}))))
+                  {:ports (:job/ports job-ent 0)}
+                  (:job/resource job-ent)))]
+    (lookup-cache-datomic-entity! job-ent->resources-cache job-ent->resources-miss job)))
 
 (defn job-ent->attempts-consumed
   "Determines the amount of attempts consumed by a job-ent."
@@ -462,21 +463,42 @@
 
 (timers/deftimer [cook-mesos scheduler get-user-running-jobs-duration])
 
+(defn default-pool?
+  "Returns true if the provided pool name matches
+  the currently configured default pool name"
+  [pool-name]
+  (= pool-name (config/default-pool)))
+
 (defn get-user-running-job-ents
-  "Returns all running job entities for a specific user."
-  [db user]
-  (timers/time!
-    get-user-running-jobs-duration
-    (->> (q '[:find [?j ...]
-              :in $ ?user
-              :where
-              ;; Note: We're assuming that many users will have significantly more
-              ;; completed jobs than there are jobs currently running in the system.
-              ;; If not, we might want to swap these two constraints.
-              [?j :job/state :job.state/running]
-              [?j :job/user ?user]]
-            db user)
-         (map (partial d/entity db)))))
+  "Returns all running job entities for a specific user and pool."
+  [db user pool-name]
+  (let [requesting-default-pool? (or (nil? pool-name) (default-pool? pool-name))
+        pool-name' (or pool-name (config/default-pool) (UUID/randomUUID))]
+    (timers/time!
+      get-user-running-jobs-duration
+      (->> (q
+             '[:find [?j ...]
+               :in $ ?user ?pool-name ?requesting-default-pool
+               :where
+               ;; Note: We're assuming that many users will have significantly more
+               ;; completed jobs than there are jobs currently running in the system.
+               ;; If not, we might want to swap these two constraints.
+               [?j :job/state :job.state/running]
+               [?j :job/user ?user]
+               (or-join [?j ?pool-name ?requesting-default-pool]
+                        ; If the caller is requesting jobs in the default pool,
+                        ; we should include all jobs with no pool specified
+                        (and
+                          [(true? ?requesting-default-pool)]
+                          [(missing? $ ?j :job/pool)])
+
+                        ; We should also include jobs with a pool specified that
+                        ; matches the pool that the caller is requesting
+                        (and
+                          [?j :job/pool ?p]
+                          [?p :pool/name ?pool-name]))]
+             db user pool-name' requesting-default-pool?)
+           (map (partial d/entity db))))))
 
 (timers/deftimer [cook-mesos scheduler get-running-jobs-duration])
 
@@ -511,11 +533,11 @@
          (when slave-id {:instance/slave-id slave-id})))
 
 (defn task-ent->user
-      [task-ent]
-      (let [task-ent->user-miss
-              (fn [task-ent]
-                  (get-in task-ent [:job/_instance :job/user]))]
-           (lookup-cache-datomic-entity! task-ent->user-cache task-ent->user-miss task-ent)))
+  [task-ent]
+  (let [task-ent->user-miss
+        (fn [task-ent]
+          (get-in task-ent [:job/_instance :job/user]))]
+    (lookup-cache-datomic-entity! task-ent->user-cache task-ent->user-miss task-ent)))
 
 (def ^:const default-job-priority 50)
 
@@ -543,9 +565,9 @@
   ([]
    (same-user-task-comparator []))
   ([tasks]
-     (fn [task1 task2]
-       (compare (task->feature-vector task1)
-                (task->feature-vector task2)))))
+   (fn [task1 task2]
+     (compare (task->feature-vector task1)
+              (task->feature-vector task2)))))
 
 (defn retry-job!
   "Sets :job/max-retries to the given value for the given job UUID.

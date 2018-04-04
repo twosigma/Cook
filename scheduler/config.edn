@@ -35,6 +35,7 @@
          :master-hosts [#config/env "MESOS_MASTER_HOST"]}
  :nrepl {:enabled? true
          :port #config/env-int "COOK_NREPL_PORT"}
+ :pools {:default "gamma"}
  :port #config/env-int "COOK_PORT"
  :rate-limit {:user-limit-per-m 1000000}
  :rebalancer {:dru-scale 1}
