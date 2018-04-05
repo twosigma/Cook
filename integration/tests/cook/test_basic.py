@@ -2043,10 +2043,26 @@ class CookTest(unittest.TestCase):
         self.assertEqual(403, resp.status_code)
         self.assertEqual(b"Origin http://bad.example.com not allowed", resp.content)
 
-        resp = util.session.options(f"{self.cook_url}/settings", headers={"Origin": "http://cors.example.com", "Access-Control-Request-Headers": "Foo, Bar"})
+        resp = util.session.options(f"{self.cook_url}/settings", headers={"Origin": "http://cors.example.com",
+                                                                          "Access-Control-Request-Headers": "Foo, Bar"})
         self.assertEqual(200, resp.status_code)
         self.assertEqual("true", resp.headers["Access-Control-Allow-Credentials"])
         self.assertEqual("Foo, Bar", resp.headers["Access-Control-Allow-Headers"])
         self.assertEqual("http://cors.example.com", resp.headers["Access-Control-Allow-Origin"])
         self.assertEqual("86400", resp.headers["Access-Control-Max-Age"])
         self.assertEqual(b"", resp.content)
+
+    def test_submit_with_pool(self):
+        pools, _ = util.pools(self.cook_url)
+        if len(pools) == 0:
+            self.logger.info('There are no pools to submit jobs to')
+        for pool in pools:
+            self.logger.info(f'Submitting to {pool}')
+            pool_name = pool['name']
+            job_uuid, resp = util.submit_job(self.cook_url, pool=pool_name)
+            if pool['state'] == 'active':
+                self.assertEqual(resp.status_code, 201, msg=resp.content)
+                job = util.load_job(self.cook_url, job_uuid)
+                self.assertEqual(pool_name, job['pool'])
+            else:
+                self.assertEqual(resp.status_code, 400, msg=resp.content)

@@ -308,7 +308,8 @@
   "Schema for a description of a job (as returned by the API)."
   (let [ParentGroup {:uuid s/Uuid, :name s/Str}]
     (-> JobResponseBase
-        (assoc (s/optional-key :groups) [ParentGroup]))))
+        (assoc (s/optional-key :groups) [ParentGroup])
+        (assoc (s/optional-key :pool) s/Str))))
 
 (def InstanceResponse
   "Schema for a description of a job instance (as returned by the API)."
@@ -601,7 +602,7 @@
                     executor (assoc :job/executor executor)
                     progress-output-file (assoc :job/progress-output-file progress-output-file)
                     progress-regex-string (assoc :job/progress-regex-string progress-regex-string)
-                    pool (assoc :job/pool pool))]
+                    pool (assoc :job/pool (:db/id pool)))]
 
     ;; TODO batch these transactions to improve performance
     (-> ports
@@ -843,6 +844,7 @@
         executor (:job/executor job)
         progress-output-file (:job/progress-output-file job)
         progress-regex-string (:job/progress-regex-string job)
+        pool (:job/pool job)
         state (util/job-ent->state job)
         constraints (->> job
                          :job/constraint
@@ -881,7 +883,8 @@
             expected-runtime (assoc :expected-runtime expected-runtime)
             executor (assoc :executor (name executor))
             progress-output-file (assoc :progress-output-file progress-output-file)
-            progress-regex-string (assoc :progress-regex-string progress-regex-string))))
+            progress-regex-string (assoc :progress-regex-string progress-regex-string)
+            pool (assoc :pool (:pool/name pool)))))
 
 (defn fetch-group-live-jobs
   "Get all jobs from a group that are currently running or waiting (not complete)"
