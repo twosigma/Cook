@@ -398,7 +398,9 @@ def submit_jobs(cook_url, job_specs, clones=1, pool=None, **kwargs):
             return spec
 
     jobs = [full_spec(j) for j in job_specs]
-    request_body = {'jobs': jobs, 'pool': pool}
+    request_body = {'jobs': jobs}
+    if pool:
+        request_body['pool'] = pool
     request_body.update(kwargs)
     logger.info(request_body)
     resp = session.post(f'{cook_url}/jobs', json=request_body)
