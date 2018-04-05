@@ -2066,3 +2066,6 @@ class CookTest(unittest.TestCase):
                 self.assertEqual(pool_name, job['pool'])
             else:
                 self.assertEqual(resp.status_code, 400, msg=resp.content)
+        # Try submitting to a pool that doesn't exist
+        job_uuid, resp = util.submit_job(self.cook_url, pool=str(uuid.uuid4()))
+        self.assertEqual(resp.status_code, 400, msg=resp.content)
