@@ -376,6 +376,23 @@
                  name-filter-fn (filter #(name-filter-fn (:job/name %))))
         (take limit)))))
 
+(defn committed?
+  "Check if a job our group is committed. I.e., if the commit latch is nil, or if it points
+   at a committed commit latch."
+  [commit-latch]
+  (or (nil? commit-latch)
+      (:commit-latch/commited?)))
+
+(defn get-committed-guuid
+  "Return the group corresponding to a group/uuid if it is commited, else return nil"
+  [db guuid]
+  (let [group (d/entity db [:group/uuid guuid])]
+    (if (nil? group)
+      nil
+      (if (committed? (:group/commit-latch group))
+        group
+        nil))))
+
 (defn uncommitted?
   "Returns true if the given job's commit latch is not committed"
   [job]

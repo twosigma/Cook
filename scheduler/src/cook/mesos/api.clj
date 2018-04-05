@@ -640,12 +640,16 @@
 (defn group-exists?
   "True if a group with guuid exists in the database, false otherwise"
   [db guuid]
-  (not (nil? (d/entity db [:group/uuid guuid]))))
+  (let [group (util/get-committed-guuid db guuid)]
+    (and (not (nil? group))
+         (util/committed? (:group/commit-latch group)))))
 
 (defn job-exists?
   "True if a job with juuid exists in the database, false otherwise"
   [db juuid]
-  (not (nil? (d/entity db [:job/uuid juuid]))))
+  (let [job (d/entity db [:job/uuid juuid])]
+  (and (not (nil? job))
+       (util/committed? (:job/commit-latch job)))))
 
 (defn valid-group-uuid?
   "Returns truth-y if the provided guuid corresponds to a valid group for a new
@@ -873,14 +877,14 @@
 (defn fetch-group-live-jobs
   "Get all jobs from a group that are currently running or waiting (not complete)"
   [db guuid]
-  (let [group (d/entity db [:group/uuid guuid])
+  (let [group (util/get-committed-guuid db guuid)
         jobs (:group/job group)
         completed? #(-> % :job/state (= :job.state/completed))]
     (remove completed? jobs)))
 
 (defn fetch-group-job-details
   [db guuid]
-  (let [group (d/entity db [:group/uuid guuid])
+  (let [group (util/get-committed-guuid db guuid)
         jobs (:group/job group)
         jobs-by-state (group-by :job/state jobs)]
     {:completed (count (:job.state/completed jobs-by-state))
@@ -889,7 +893,7 @@
 
 (defn fetch-group-map
   [db guuid]
-  (let [group (d/entity db [:group/uuid guuid])
+  (let [group (util/get-committed-guuid db guuid)
         jobs (:group/job group)]
     (-> (into {} group)
         ;; Remove job because we don't want to walk entire job list
@@ -1100,7 +1104,7 @@
 
         fetch-group
         (fn fetch-group [group-uuid]
-          (let [group (d/entity db [:group/uuid (UUID/fromString group-uuid)])]
+          (let [group (util/get-committed-guuid db (UUID/fromString group-uuid))]
             {:uuid group-uuid
              :name (:group/name group)}))
 
@@ -1543,7 +1547,7 @@
      :allowed? (fn [ctx]
                  (let [user (get-in ctx [:request :authorization/user])
                        guuids (::guuids ctx)
-                       group-user (fn [guuid] (-> (d/entity (d/db conn) [:group/uuid guuid])
+                       group-user (fn [guuid] (-> (util/get-committed-guuid (d/db conn) guuid)
                                                   :group/job first :job/user))
                        request-method (get-in ctx [:request :request-method])
                        impersonator (get-in ctx [:request :authorization/impersonator])
@@ -1742,7 +1746,7 @@
   "Check if all of the group UUIDs provided via ::groups are valid."
   [conn ctx]
   (let [guuids (::groups ctx)
-        bad-guuids (remove #(d/entity (d/db conn) [:group/uuid %]) guuids)]
+        bad-guuids (remove #(util/get-committed-guuid (d/db conn) %) guuids)]
     (if (seq bad-guuids)
       [false {::error (->> bad-guuids
                            (map #(str "UUID " % " does not correspond to a group."))
@@ -1811,7 +1815,7 @@
       :else
       (let [db (d/db conn)
             group-jobs (for [guuid groups
-                             :let [group (d/entity db [:group/uuid guuid])]
+                             :let [group (util/get-committed-guuid db guuid)]
                              job (:group/job group)]
                          (:job/uuid job))
             all-jobs (vec (concat jobs group-jobs))
@@ -1834,7 +1838,7 @@
         impersonator (get-in ctx [:request :authorization/impersonator])
         unauthorized-job? #(not (user-can-retry-job? conn is-authorized-fn request-user impersonator %))]
     (or (first (for [guuid (::groups ctx)
-                     :let [group (d/entity (d/db conn) [:group/uuid guuid])
+                     :let [group (util/get-committed-guuid (d/db conn) guuid)
                            job (-> group :group/job first)]
                      :when (some-> job :job/uuid unauthorized-job?)]
                  [false {::error (str "You are not authorized to retry jobs from group " guuid ".")}]))
