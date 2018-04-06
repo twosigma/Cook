@@ -1,4 +1,8 @@
 {:port #config/env-int "COOK_PORT"
+ :ssl {:port #config/env-int "COOK_SSL_PORT"
+       :keystore-path #config/env "COOK_KEYSTORE_PATH"
+       :keystore-type "pkcs12"
+       :keystore-pass "cookstore"}
  :hostname "172.17.0.1"
  :authorization {;; Note that internally, Cook will select :http-basic if it's set to true,
                  ;; and fall back to :one-user only if :http-basic is false.

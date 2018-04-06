@@ -8,7 +8,7 @@ import uuid
 import requests
 
 from cook import colors, http, metrics, version
-from cook.util import deep_merge, is_valid_uuid, read_lines, print_info, current_user, guard_no_cluster
+from cook.util import deep_merge, is_valid_uuid, read_lines, print_info, current_user, guard_no_cluster, check_positive
 
 
 def parse_raw_job_spec(job, r):
@@ -224,6 +224,7 @@ def register(add_parser, add_defaults):
                                dest='max-runtime', type=int, metavar='MILLIS')
     submit_parser.add_argument('--cpus', '-c', help='cpus to reserve for job', type=float)
     submit_parser.add_argument('--mem', '-m', help='memory to reserve for job', type=int)
+    submit_parser.add_argument('--gpus', help='gpus to reserve for job', type=check_positive)
     submit_parser.add_argument('--group', '-g', help='group uuid for job', type=str, metavar='UUID')
     submit_parser.add_argument('--group-name', '-G', help='group name for job',
                                type=str, metavar='NAME', dest='group-name')

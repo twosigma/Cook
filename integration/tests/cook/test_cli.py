@@ -1744,3 +1744,15 @@ class CookCliTest(unittest.TestCase):
             self.assertEqual(0, cp.returncode, cp.stderr)
             self.assertEqual(uuids[0], jobs[0]['uuid'])
             self.assertIn('Encountered connection error with bar', cli.decode(cp.stderr))
+
+    def test_submit_with_gpus(self):
+        cp, uuids = cli.submit('ls', self.cook_url, submit_flags=f'--gpus 1')
+        if util.settings(self.cook_url)['mesos-gpu-enabled']:
+            self.assertEqual(0, cp.returncode, cp.stderr)
+        else:
+            self.assertEqual(1, cp.returncode, cp.stderr)
+            self.assertIn('GPU support is not enabled', cli.stdout(cp))
+
+        cp, uuids = cli.submit('ls', self.cook_url, submit_flags=f'--gpus 0')
+        self.assertEqual(2, cp.returncode, cp.stderr)
+        self.assertIn('submit: error: argument --gpus: 0 is not a positive integer', cli.decode(cp.stderr))

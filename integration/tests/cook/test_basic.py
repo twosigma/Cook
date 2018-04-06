@@ -11,6 +11,7 @@ from collections import Counter
 import dateutil.parser
 import pytest
 from retrying import retry
+from urllib.parse import urlparse
 
 from tests.cook import reasons
 from tests.cook import util
@@ -2071,3 +2072,15 @@ class CookTest(unittest.TestCase):
         # Try submitting to a pool that doesn't exist
         job_uuid, resp = util.submit_job(self.cook_url, pool=str(uuid.uuid4()))
         self.assertEqual(resp.status_code, 400, msg=resp.content)
+
+    def test_ssl(self):
+        settings = util.settings(self.cook_url)
+        if not 'server-https-port' in settings:
+            self.logger.info('SSL not configured: skipping test')
+            return
+        ssl_port = settings['server-https-port']
+
+        host = urlparse(self.cook_url).hostname
+
+        resp = util.session.get(f"https://{host}:{ssl_port}/settings", verify=False)
+        self.assertEqual(200, resp.status_code)

@@ -213,30 +213,36 @@
   (graph/eager-compile
     {:route full-routes
      :http-server (fnk [[:settings cors-origins server-port authorization-middleware impersonation-middleware
-                         leader-reports-unhealthy [:rate-limit user-limit]] [:route view] mesos-leadership-atom]
+                         leader-reports-unhealthy server-https-port server-keystore-path server-keystore-type
+                         server-keystore-pass [:rate-limit user-limit]]
+                        [:route view] mesos-leadership-atom]
                     (log/info "Launching http server")
                     (let [rate-limit-storage (storage/local-storage)
                           jetty ((util/lazy-load-var 'qbits.jet.server/run-jetty)
-                                  {:port server-port
-                                   :ring-handler (routes
-                                                   (route/resources "/resource")
-                                                   (-> view
-                                                       tell-jetty-about-usename
-                                                       (wrap-rate-limit {:storage rate-limit-storage
-                                                                         :limit user-limit})
-                                                       impersonation-middleware
-                                                       (conditional-auth-bypass authorization-middleware)
-                                                       wrap-stacktrace
-                                                       wrap-no-cache
-                                                       wrap-cookies
-                                                       wrap-params
-                                                       (cors/cors-middleware cors-origins)
-                                                       (health-check-middleware mesos-leadership-atom leader-reports-unhealthy)
-                                                       instrument))
-                                   :join? false
-                                   :configurator configure-jet-logging
-                                   :max-threads 200
-                                   :request-header-size 32768})]
+                                 (cond-> {:ring-handler (routes
+                                                         (route/resources "/resource")
+                                                         (-> view
+                                                             tell-jetty-about-usename
+                                                             (wrap-rate-limit {:storage rate-limit-storage
+                                                                               :limit user-limit})
+                                                             impersonation-middleware
+                                                             (conditional-auth-bypass authorization-middleware)
+                                                             wrap-stacktrace
+                                                             wrap-no-cache
+                                                             wrap-cookies
+                                                             wrap-params
+                                                             (cors/cors-middleware cors-origins)
+                                                             (health-check-middleware mesos-leadership-atom leader-reports-unhealthy)
+                                                             instrument))
+                                          :join? false
+                                          :configurator configure-jet-logging
+                                          :max-threads 200
+                                          :request-header-size 32768}
+                                   server-port (assoc :port server-port)
+                                   server-https-port (assoc :ssl-port server-https-port)
+                                   server-keystore-pass (assoc :key-password server-keystore-pass)
+                                   server-keystore-path (assoc :keystore server-keystore-path)
+                                   server-keystore-type (assoc :keystore-type server-keystore-type)))]
                       (fn [] (.stop jetty))))
      ; If the framework id was not found in the configuration settings, we attempt reading it from
      ; ZooKeeper. The read from ZK is present for backwards compatibility (the framework id used to
