@@ -726,10 +726,10 @@ def wait_for_running_instance(cook_url, job_id, max_wait_ms=DEFAULT_TIMEOUT_MS):
         if not job['instances']:
             logger.info(f"Job {job_id} has no instances.")
         else:
-            inst = job['instances'][0]
-            status = inst['status']
-            logger.info(f"Job {job_id} instance {inst['task_id']} has status {status}, expected running.")
-            return status == 'running'
+            for inst in job['instances']:
+                status = inst['status']
+                logger.info(f"Job {job_id} instance {inst['task_id']} has status {status}, expected running.")
+                return status == 'running'
 
     response = wait_until(query, predicate, max_wait_ms=max_wait_ms)
     return response.json()[0]['instances'][0]
