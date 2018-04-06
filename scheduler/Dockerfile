@@ -15,6 +15,10 @@ ENV LEIN_ROOT true
 ENV MESOS_NATIVE_JAVA_LIBRARY /usr/lib/libmesos.so
 ENV JAVA_CMD=/usr/lib/jvm/java-8-openjdk-amd64/bin/java
 
+# Generate SSL certificate
+RUN mkdir /opt/ssl
+RUN keytool -genkeypair -keystore /opt/ssl/cook.p12 -storetype PKCS12 -storepass cookstore -dname "CN=cook, OU=Cook Developers, O=Two Sigma Investments, L=New York, ST=New York, C=US" -keyalg RSA -keysize 2048
+
 # Lein setup
 RUN mkdir $HOME/bin
 ENV PATH $PATH:$HOME/bin
@@ -44,6 +48,7 @@ EXPOSE \
     4334 \
     4335 \
     4336 \
-    12321
+    12321 \
+    12322
 ENTRYPOINT ["/opt/cook/docker/run-cook.sh"]
 CMD ["config.edn"]

@@ -191,7 +191,7 @@
                 fenzo-max-jobs-considered fenzo-scaleback good-enough-fitness]} fenzo-config
         {:keys [cancelled-task-trigger-chan lingering-task-trigger-chan optimizer-trigger-chan
                 rebalancer-trigger-chan straggler-trigger-chan]} trigger-chans
-        {:keys [hostname server-port]} server-config
+        {:keys [hostname server-port server-https-port]} server-config
         datomic-report-chan (async/chan (async/sliding-buffer 4096))
         mesos-heartbeat-chan (async/chan (async/buffer 4096))
         current-driver (atom nil)
@@ -288,7 +288,8 @@
                                   (log/fatal "Lost leadership in zookeeper. Exitting. Expecting a supervisor to restart me!")
                                   (System/exit 0))))))]
     (.setId leader-selector (str hostname \#
-                                 server-port \#
+                                 (or server-port server-https-port) \#
+                                 (if server-port "http" "https") \#
                                  (java.util.UUID/randomUUID)))
     (.autoRequeue leader-selector)
     (.start leader-selector)
