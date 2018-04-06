@@ -9,6 +9,7 @@ set -e
 
 # Defaults (overridable via environment)
 : ${COOK_PORT:=12321}
+: ${COOK_SSL_PORT:=12322}
 : ${COOK_NREPL_PORT:=8888}
 : ${COOK_FRAMEWORK_ID:=cook-framework-$(date +%s)}
 : ${COOK_AUTH:=one-user}
@@ -112,12 +113,15 @@ docker create \
     --name=${NAME} \
     --publish=${COOK_NREPL_PORT}:${COOK_NREPL_PORT} \
     --publish=${COOK_PORT}:${COOK_PORT} \
+    --publish=${COOK_SSL_PORT}:${COOK_SSL_PORT} \
     --publish=4334:4334 \
     --publish=4335:4335 \
     --publish=4336:4336 \
     -e "COOK_EXECUTOR=file://${SCHEDULER_EXECUTOR_DIR}/${EXECUTOR_NAME}.tar.gz" \
     -e "COOK_EXECUTOR_COMMAND=${COOK_EXECUTOR_COMMAND}" \
     -e "COOK_PORT=${COOK_PORT}" \
+    -e "COOK_SSL_PORT=${COOK_SSL_PORT}" \
+    -e "COOK_KEYSTORE_PATH=${COOK_KEYSTORE_PATH}" \
     -e "COOK_NREPL_PORT=${COOK_NREPL_PORT}" \
     -e "COOK_FRAMEWORK_ID=${COOK_FRAMEWORK_ID}" \
     -e "MESOS_MASTER=${ZK}" \

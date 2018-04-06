@@ -258,7 +258,7 @@
                       :mesos {:leader-path "", :master ""}
                       :metrics {}
                       :nrepl {}
-                      :port nil
+                      :port 80
                       :scheduler {}
                       :unhandled-exceptions {}
                       :zookeeper {:local? true}}]

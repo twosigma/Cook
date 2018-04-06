@@ -1587,7 +1587,7 @@
 ;;
 ;; /queue
 
-(def leader-hostname-regex #"^([^#]*)#([0-9]*)#.*")
+(def leader-hostname-regex #"^([^#]*)#([0-9]*)#([a-z]*)#.*")
 
 (defn waiting-jobs
   [mesos-pending-jobs-fn is-authorized-fn mesos-leadership-atom leader-selector]
@@ -1620,8 +1620,9 @@
                                  leader-match (re-matcher leader-hostname-regex leader-id)]
                              (if (.matches leader-match)
                                (let [leader-hostname (.group leader-match 1)
-                                     leader-port (.group leader-match 2)]
-                                 [true {:location (str "http://" leader-hostname ":" leader-port "/queue")}])
+                                     leader-port (.group leader-match 2)
+                                     leader-protocol (.group leader-match 3)]
+                                 [true {:location (str leader-protocol "://" leader-hostname ":" leader-port "/queue")}])
                                (throw (IllegalStateException.
                                        (str "Unable to parse leader id: " leader-id)))))))
    :handle-forbidden (fn [ctx]

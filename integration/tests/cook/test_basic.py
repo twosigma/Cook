@@ -11,6 +11,7 @@ from collections import Counter
 import dateutil.parser
 import pytest
 from retrying import retry
+from urllib.parse import urlparse
 
 from tests.cook import reasons
 from tests.cook import util
@@ -2050,3 +2051,16 @@ class CookTest(unittest.TestCase):
         self.assertEqual("http://cors.example.com", resp.headers["Access-Control-Allow-Origin"])
         self.assertEqual("86400", resp.headers["Access-Control-Max-Age"])
         self.assertEqual(b"", resp.content)
+
+
+    def test_ssl(self):
+        settings = util.settings(self.cook_url)
+        if not 'server-https-port' in settings:
+            self.logger.info('SSL not configured: skipping test')
+            return
+        ssl_port = settings['server-https-port']
+
+        host = urlparse(self.cook_url).hostname
+
+        resp = util.session.get(f"https://{host}:{ssl_port}/settings", verify=False)
+        self.assertEqual(200, resp.status_code)

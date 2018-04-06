@@ -116,8 +116,18 @@
                           ;; The default should ideally be lower than the agent-query-cache ttl-ms
                           :sync-interval-ms 15000}
                          sandbox-syncer))
-     :server-port (fnk [[:config port]]
-                    port)
+     :server-port (fnk [[:config {port nil} {ssl nil}]]
+                     (when (and (nil? port) (nil? (get ssl :port)))
+                       (throw (ex-info "Must provide either port or https-port" {})))
+                     port)
+     :server-https-port (fnk [[:config {ssl nil}]]
+                           (get ssl :port))
+     :server-keystore-path (fnk [[:config {ssl nil}]]
+                              (get ssl :keystore-path))
+     :server-keystore-type (fnk [[:config {ssl nil}]]
+                              (get ssl :keystore-type))
+     :server-keystore-pass (fnk [[:config {ssl nil}]]
+                              (get ssl :keystore-pass))
      :is-authorized-fn (fnk [[:config {authorization-config default-authorization}]]
                          (let [auth-fn @(util/lazy-load-var 'cook.authorization/is-authorized?)]
                            ; we only wrap the authorization function if we have impersonators configured
