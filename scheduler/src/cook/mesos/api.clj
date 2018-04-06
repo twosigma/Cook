@@ -297,7 +297,8 @@
               :user UserName
               (s/optional-key :gpus) s/Int
               (s/optional-key :groups) [s/Uuid]
-              (s/optional-key :instances) [Instance]})
+              (s/optional-key :instances) [Instance]
+              (s/optional-key :pool) s/Str})
       prepare-schema-response))
 
 (def JobResponseDeprecated
@@ -308,8 +309,7 @@
   "Schema for a description of a job (as returned by the API)."
   (let [ParentGroup {:uuid s/Uuid, :name s/Str}]
     (-> JobResponseBase
-        (assoc (s/optional-key :groups) [ParentGroup])
-        (assoc (s/optional-key :pool) s/Str))))
+        (assoc (s/optional-key :groups) [ParentGroup]))))
 
 (def InstanceResponse
   "Schema for a description of a job instance (as returned by the API)."
