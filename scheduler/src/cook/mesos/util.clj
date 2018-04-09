@@ -471,34 +471,48 @@
 
 (defn get-user-running-job-ents
   "Returns all running job entities for a specific user and pool."
-  [db user pool-name]
-  (let [requesting-default-pool? (or (nil? pool-name) (default-pool? pool-name))
-        pool-name' (or pool-name (config/default-pool) (UUID/randomUUID))]
-    (timers/time!
-      get-user-running-jobs-duration
-      (->> (q
-             '[:find [?j ...]
-               :in $ ?user ?pool-name ?requesting-default-pool
-               :where
-               ;; Note: We're assuming that many users will have significantly more
-               ;; completed jobs than there are jobs currently running in the system.
-               ;; If not, we might want to swap these two constraints.
-               [?j :job/state :job.state/running]
-               [?j :job/user ?user]
-               (or-join [?j ?pool-name ?requesting-default-pool]
-                        ; If the caller is requesting jobs in the default pool,
-                        ; we should include all jobs with no pool specified
-                        (and
-                          [(true? ?requesting-default-pool)]
-                          [(missing? $ ?j :job/pool)])
+  ([db user]
+   (timers/time!
+     get-user-running-jobs-duration
+     (->> (q
+            '[:find [?j ...]
+              :in $ ?user
+              :where
+              ;; Note: We're assuming that many users will have significantly more
+              ;; completed jobs than there are jobs currently running in the system.
+              ;; If not, we might want to swap these two constraints.
+              [?j :job/state :job.state/running]
+              [?j :job/user ?user]]
+            db user)
+          (map (partial d/entity db)))))
+  ([db user pool-name]
+   (let [requesting-default-pool? (or (nil? pool-name) (default-pool? pool-name))
+         pool-name' (or pool-name (config/default-pool) (UUID/randomUUID))]
+     (timers/time!
+       get-user-running-jobs-duration
+       (->> (q
+              '[:find [?j ...]
+                :in $ ?user ?pool-name ?requesting-default-pool
+                :where
+                ;; Note: We're assuming that many users will have significantly more
+                ;; completed jobs than there are jobs currently running in the system.
+                ;; If not, we might want to swap these two constraints.
+                [?j :job/state :job.state/running]
+                [?j :job/user ?user]
+                (or-join [?j ?pool-name ?requesting-default-pool]
+                         ; If the caller is requesting jobs in the default pool,
+                         ; we should include all jobs with no pool specified
+                         (and
+                           [(true? ?requesting-default-pool)]
+                           [(missing? $ ?j :job/pool)])
 
-                        ; We should also include jobs with a pool specified that
-                        ; matches the pool that the caller is requesting
-                        (and
-                          [?j :job/pool ?p]
-                          [?p :pool/name ?pool-name]))]
-             db user pool-name' requesting-default-pool?)
-           (map (partial d/entity db))))))
+                         ; We should also include jobs with a pool specified that
+                         ; matches the pool that the caller is requesting
+                         (and
+                           [?j :job/pool ?p]
+                           [?p :pool/name ?pool-name]))]
+              db user pool-name' requesting-default-pool?)
+            (map (partial d/entity db)))))))
 
 (timers/deftimer [cook-mesos scheduler get-running-jobs-duration])
 

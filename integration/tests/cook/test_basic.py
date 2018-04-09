@@ -1671,7 +1671,7 @@ class CookTest(unittest.TestCase):
             self.assertEqual(resp.status_code, 200, resp.content)
             usage_data = resp.json()
             # Check that the response structure looks as expected
-            self.assertEqual(list(usage_data.keys()), ['total_usage'], usage_data)
+            self.assertEqual(list(usage_data.keys()), ['total_usage', 'pools'], usage_data)
             self.assertEqual(len(usage_data['total_usage']), 4, usage_data)
             # Since we don't know what other test jobs are currently running,
             # we conservatively check current usage with the >= operation.
@@ -1698,7 +1698,7 @@ class CookTest(unittest.TestCase):
             self.assertEqual(resp.status_code, 200, resp.content)
             usage_data = resp.json()
             # Check that the response structure looks as expected
-            self.assertEqual(set(usage_data.keys()), {'total_usage', 'grouped', 'ungrouped'}, usage_data)
+            self.assertEqual(set(usage_data.keys()), {'total_usage', 'grouped', 'ungrouped', 'pools'}, usage_data)
             self.assertEqual(set(usage_data['ungrouped'].keys()), {'running_jobs', 'usage'}, usage_data)
             my_group_usage = next(x for x in usage_data['grouped'] if x['group']['uuid'] == group_uuid)
             self.assertEqual(set(my_group_usage.keys()), {'group', 'usage'}, my_group_usage)
@@ -1775,7 +1775,7 @@ class CookTest(unittest.TestCase):
             self.assertEqual(resp.status_code, 200, resp.content)
             usage_data = resp.json()
             # Check that the response structure looks as expected
-            self.assertEqual(set(usage_data.keys()), {'total_usage', 'grouped', 'ungrouped'}, usage_data)
+            self.assertEqual(set(usage_data.keys()), {'total_usage', 'grouped', 'ungrouped', 'pools'}, usage_data)
             ungrouped_data = usage_data['ungrouped']
             self.assertEqual(set(ungrouped_data.keys()), {'running_jobs', 'usage'}, ungrouped_data)
             # Our jobs should be included in the ungrouped breakdown
