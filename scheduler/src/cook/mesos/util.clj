@@ -19,7 +19,6 @@
             [clj-time.format :as tf]
             [clj-time.periodic :refer [periodic-seq]]
             [cook.config :as config]
-            [cook.mesos.pool :as pool]
             [cook.mesos.schema :as schema]
             [clojure.core.async :as async]
             [clojure.core.cache :as cache]

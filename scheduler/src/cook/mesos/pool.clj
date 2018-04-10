@@ -4,9 +4,9 @@
 (defn check-pool
   "Returns true if requesting-default-pool? and the entity does not have a pool
    or the entity has a pool named pool-name"
-  [source eid relationship pool-name requesting-default-pool?]
+  [source eid entity->pool pool-name requesting-default-pool?]
   (let [ent (d/entity source eid)
-        pool (relationship ent)]
+        pool (entity->pool ent)]
     (or (and (nil? pool)
              requesting-default-pool?)
         (= pool-name (:pool/name pool)))))
