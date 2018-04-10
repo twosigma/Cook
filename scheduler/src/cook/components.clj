@@ -83,50 +83,58 @@
                            task-constraints]
                           curator-framework framework-id mesos-datomic-mult mesos-leadership-atom
                           mesos-offer-cache mesos-pending-jobs-atom sandbox-syncer-state]
-                      (log/info "Initializing mesos scheduler")
-                      (let [make-mesos-driver-fn (partial (util/lazy-load-var 'cook.mesos/make-mesos-driver)
-                                                          {:mesos-master mesos-master
-                                                           :mesos-failover-timeout mesos-failover-timeout
-                                                           :mesos-principal mesos-principal
-                                                           :mesos-role mesos-role
-                                                           :mesos-framework-name mesos-framework-name
-                                                           :gpu-enabled? mesos-gpu-enabled})
-                            get-mesos-utilization-fn (partial (util/lazy-load-var 'cook.mesos/get-mesos-utilization) mesos-master-hosts)
-                            trigger-chans ((util/lazy-load-var 'cook.mesos/make-trigger-chans) rebalancer progress optimizer task-constraints)]
-                        (try
-                          (Class/forName "org.apache.mesos.Scheduler")
-                          ((util/lazy-load-var 'cook.mesos/start-mesos-scheduler)
-                            {:curator-framework curator-framework
-                             :fenzo-config {:fenzo-max-jobs-considered fenzo-max-jobs-considered
-                                            :fenzo-scaleback fenzo-scaleback
-                                            :fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-warn
-                                            :fenzo-floor-iterations-before-reset fenzo-floor-iterations-before-reset
-                                            :fenzo-fitness-calculator fenzo-fitness-calculator
-                                            :good-enough-fitness good-enough-fitness}
-                             :framework-id framework-id
-                             :get-mesos-utilization get-mesos-utilization-fn
-                             :gpu-enabled? mesos-gpu-enabled
-                             :make-mesos-driver-fn make-mesos-driver-fn
-                             :mea-culpa-failure-limit mea-culpa-failure-limit
-                             :mesos-datomic-conn datomic/conn
-                             :mesos-datomic-mult mesos-datomic-mult
-                             :mesos-leadership-atom mesos-leadership-atom
-                             :mesos-pending-jobs-atom mesos-pending-jobs-atom
-                             :mesos-run-as-user mesos-run-as-user
-                             :offer-cache mesos-offer-cache
-                             :offer-incubate-time-ms offer-incubate-time-ms
-                             :optimizer-config optimizer
-                             :progress-config progress
-                             :rebalancer-config rebalancer
-                             :sandbox-syncer-state sandbox-syncer-state
-                             :server-config {:hostname hostname
-                                             :server-port server-port}
-                             :task-constraints task-constraints
-                             :trigger-chans trigger-chans
-                             :zk-prefix mesos-leader-path})
-                          (catch ClassNotFoundException e
-                            (log/warn e "Not loading mesos support...")
-                            nil))))})
+                      (if (cook.config/api-only-mode?)
+                        (if curator-framework
+                          (throw (ex-info "This node is configured for API-only mode, but also has a curator configured"
+                                          {:curator-framework curator-framework}))
+                          (log/info "This node is in API-only mode, and will not participate in scheduling"))
+                        (if curator-framework
+                          (do
+                            (log/info "Initializing mesos scheduler")
+                            (let [make-mesos-driver-fn (partial (util/lazy-load-var 'cook.mesos/make-mesos-driver)
+                                                                {:mesos-master mesos-master
+                                                                 :mesos-failover-timeout mesos-failover-timeout
+                                                                 :mesos-principal mesos-principal
+                                                                 :mesos-role mesos-role
+                                                                 :mesos-framework-name mesos-framework-name
+                                                                 :gpu-enabled? mesos-gpu-enabled})
+                                  get-mesos-utilization-fn (partial (util/lazy-load-var 'cook.mesos/get-mesos-utilization) mesos-master-hosts)
+                                  trigger-chans ((util/lazy-load-var 'cook.mesos/make-trigger-chans) rebalancer progress optimizer task-constraints)]
+                              (try
+                                (Class/forName "org.apache.mesos.Scheduler")
+                                ((util/lazy-load-var 'cook.mesos/start-mesos-scheduler)
+                                  {:curator-framework curator-framework
+                                   :fenzo-config {:fenzo-max-jobs-considered fenzo-max-jobs-considered
+                                                  :fenzo-scaleback fenzo-scaleback
+                                                  :fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-warn
+                                                  :fenzo-floor-iterations-before-reset fenzo-floor-iterations-before-reset
+                                                  :fenzo-fitness-calculator fenzo-fitness-calculator
+                                                  :good-enough-fitness good-enough-fitness}
+                                   :framework-id framework-id
+                                   :get-mesos-utilization get-mesos-utilization-fn
+                                   :gpu-enabled? mesos-gpu-enabled
+                                   :make-mesos-driver-fn make-mesos-driver-fn
+                                   :mea-culpa-failure-limit mea-culpa-failure-limit
+                                   :mesos-datomic-conn datomic/conn
+                                   :mesos-datomic-mult mesos-datomic-mult
+                                   :mesos-leadership-atom mesos-leadership-atom
+                                   :mesos-pending-jobs-atom mesos-pending-jobs-atom
+                                   :mesos-run-as-user mesos-run-as-user
+                                   :offer-cache mesos-offer-cache
+                                   :offer-incubate-time-ms offer-incubate-time-ms
+                                   :optimizer-config optimizer
+                                   :progress-config progress
+                                   :rebalancer-config rebalancer
+                                   :sandbox-syncer-state sandbox-syncer-state
+                                   :server-config {:hostname hostname
+                                                   :server-port server-port}
+                                   :task-constraints task-constraints
+                                   :trigger-chans trigger-chans
+                                   :zk-prefix mesos-leader-path})
+                                (catch ClassNotFoundException e
+                                  (log/warn e "Not loading mesos support...")
+                                  nil))))
+                          (throw (ex-info "This node does not have a curator configured" {})))))})
 
 (defn health-check-middleware
   "This adds /debug to return 200 OK"
@@ -142,20 +150,18 @@
       (h req))))
 
 (def curator-framework
-  (fnk [[:settings zookeeper] local-zookeeper]
-    (let [retry-policy (BoundedExponentialBackoffRetry. 100 120000 10)
-          ;; The 180s session and 30s connection timeouts were pulled from a google group
-          ;; recommendation
-          curator-framework (CuratorFrameworkFactory/newClient zookeeper 180000 30000 retry-policy)
-          ]
-      (.. curator-framework
-          getConnectionStateListenable
-          (addListener (reify ConnectionStateListener
-                         (stateChanged [_ _ newState]
-                           (log/info "Curator state changed:"
-                                     (str newState))))))
-      (.start curator-framework)
-      curator-framework)))
+  (fnk [[:settings zookeeper]]
+    (when zookeeper
+      (let [retry-policy (BoundedExponentialBackoffRetry. 100 120000 10)
+            curator-framework (CuratorFrameworkFactory/newClient zookeeper 180000 30000 retry-policy)]
+        (.. curator-framework
+            getConnectionStateListenable
+            (addListener (reify ConnectionStateListener
+                           (stateChanged [_ _ newState]
+                             (log/info "Curator state changed:"
+                                       (str newState))))))
+        (.start curator-framework)
+        curator-framework))))
 
 (defn tell-jetty-about-usename [h]
   "Our auth in cook.spnego doesn't hook in to Jetty - this handler
@@ -219,30 +225,30 @@
                     (log/info "Launching http server")
                     (let [rate-limit-storage (storage/local-storage)
                           jetty ((util/lazy-load-var 'qbits.jet.server/run-jetty)
-                                 (cond-> {:ring-handler (routes
-                                                         (route/resources "/resource")
-                                                         (-> view
-                                                             tell-jetty-about-usename
-                                                             (wrap-rate-limit {:storage rate-limit-storage
-                                                                               :limit user-limit})
-                                                             impersonation-middleware
-                                                             (conditional-auth-bypass authorization-middleware)
-                                                             wrap-stacktrace
-                                                             wrap-no-cache
-                                                             wrap-cookies
-                                                             wrap-params
-                                                             (cors/cors-middleware cors-origins)
-                                                             (health-check-middleware mesos-leadership-atom leader-reports-unhealthy)
-                                                             instrument))
-                                          :join? false
-                                          :configurator configure-jet-logging
-                                          :max-threads 200
-                                          :request-header-size 32768}
-                                   server-port (assoc :port server-port)
-                                   server-https-port (assoc :ssl-port server-https-port)
-                                   server-keystore-pass (assoc :key-password server-keystore-pass)
-                                   server-keystore-path (assoc :keystore server-keystore-path)
-                                   server-keystore-type (assoc :keystore-type server-keystore-type)))]
+                                  (cond-> {:ring-handler (routes
+                                                           (route/resources "/resource")
+                                                           (-> view
+                                                               tell-jetty-about-usename
+                                                               (wrap-rate-limit {:storage rate-limit-storage
+                                                                                 :limit user-limit})
+                                                               impersonation-middleware
+                                                               (conditional-auth-bypass authorization-middleware)
+                                                               wrap-stacktrace
+                                                               wrap-no-cache
+                                                               wrap-cookies
+                                                               wrap-params
+                                                               (cors/cors-middleware cors-origins)
+                                                               (health-check-middleware mesos-leadership-atom leader-reports-unhealthy)
+                                                               instrument))
+                                           :join? false
+                                           :configurator configure-jet-logging
+                                           :max-threads 200
+                                           :request-header-size 32768}
+                                          server-port (assoc :port server-port)
+                                          server-https-port (assoc :ssl-port server-https-port)
+                                          server-keystore-pass (assoc :key-password server-keystore-pass)
+                                          server-keystore-path (assoc :keystore server-keystore-path)
+                                          server-keystore-type (assoc :keystore-type server-keystore-type)))]
                       (fn [] (.stop jetty))))
      ; If the framework id was not found in the configuration settings, we attempt reading it from
      ; ZooKeeper. The read from ZK is present for backwards compatibility (the framework id used to
@@ -250,12 +256,13 @@
      ; framework id and mark all jobs that were running failed because mesos wouldn't have tasks for
      ; those jobs under the new framework id.
      :framework-id (fnk [curator-framework [:settings mesos-leader-path mesos-framework-id]]
-                     (let [framework-id (or mesos-framework-id
-                                            (framework-id-from-zk curator-framework mesos-leader-path))]
-                       (when-not framework-id
-                         (throw (ex-info "Framework id not configured and not in ZooKeeper" {})))
-                       (log/info "Using framework id:" framework-id)
-                       framework-id))
+                     (when curator-framework
+                       (let [framework-id (or mesos-framework-id
+                                              (framework-id-from-zk curator-framework mesos-leader-path))]
+                         (when-not framework-id
+                           (throw (ex-info "Framework id not configured and not in ZooKeeper" {})))
+                         (log/info "Using framework id:" framework-id)
+                         framework-id)))
      :mesos-datomic-mult (fnk []
                            (first ((util/lazy-load-var 'cook.datomic/create-tx-report-mult) datomic/conn)))
      :local-zookeeper (fnk [[:settings zookeeper-server]]
@@ -271,16 +278,18 @@
      :sandbox-syncer-state (fnk [[:settings [:sandbox-syncer max-consecutive-sync-failure
                                              publish-batch-size publish-interval-ms sync-interval-ms]]
                                  framework-id mesos-agent-query-cache]
-                             ((util/lazy-load-var 'cook.mesos.sandbox/prepare-sandbox-publisher)
-                               framework-id datomic/conn publish-batch-size publish-interval-ms sync-interval-ms
-                               max-consecutive-sync-failure mesos-agent-query-cache))
+                             (when framework-id
+                               ((util/lazy-load-var 'cook.mesos.sandbox/prepare-sandbox-publisher)
+                                 framework-id datomic/conn publish-batch-size publish-interval-ms sync-interval-ms
+                                 max-consecutive-sync-failure mesos-agent-query-cache)))
      :mesos-leadership-atom (fnk [] (atom false))
      :mesos-pending-jobs-atom (fnk [] (atom {}))
-     :mesos-offer-cache (fnk [[:settings [:offer-cache max-size ttl-ms]]]
-                          (-> {}
-                              (cache/lru-cache-factory :threshold max-size)
-                              (cache/ttl-cache-factory :ttl ttl-ms)
-                              atom))
+     :mesos-offer-cache (fnk [[:settings {offer-cache nil}]]
+                          (when offer-cache
+                            (-> {}
+                                (cache/lru-cache-factory :threshold (:max-size offer-cache))
+                                (cache/ttl-cache-factory :ttl (:ttl-ms offer-cache))
+                                atom)))
      :curator-framework curator-framework}))
 
 (defn -main
