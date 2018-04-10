@@ -117,17 +117,17 @@
                           :sync-interval-ms 15000}
                          sandbox-syncer))
      :server-port (fnk [[:config {port nil} {ssl nil}]]
-                     (when (and (nil? port) (nil? (get ssl :port)))
-                       (throw (ex-info "Must provide either port or https-port" {})))
-                     port)
+                    (when (and (nil? port) (nil? (get ssl :port)))
+                      (throw (ex-info "Must provide either port or https-port" {})))
+                    port)
      :server-https-port (fnk [[:config {ssl nil}]]
-                           (get ssl :port))
+                          (get ssl :port))
      :server-keystore-path (fnk [[:config {ssl nil}]]
-                              (get ssl :keystore-path))
+                             (get ssl :keystore-path))
      :server-keystore-type (fnk [[:config {ssl nil}]]
-                              (get ssl :keystore-type))
+                             (get ssl :keystore-type))
      :server-keystore-pass (fnk [[:config {ssl nil}]]
-                              (get ssl :keystore-pass))
+                             (get ssl :keystore-pass))
      :is-authorized-fn (fnk [[:config {authorization-config default-authorization}]]
                          (let [auth-fn @(util/lazy-load-var 'cook.authorization/is-authorized?)]
                            ; we only wrap the authorization function if we have impersonators configured
@@ -209,20 +209,23 @@
                           datomic-uri)
      :hostname (fnk [[:config {hostname (.getCanonicalHostName (InetAddress/getLocalHost))}]]
                  hostname)
-     :leader-reports-unhealthy (fnk [[:config [:mesos {leader-reports-unhealthy false}]]]
-                                 leader-reports-unhealthy)
-     :local-zk-port (fnk [[:config [:zookeeper {local-port 3291}]]]
-                      local-port)
-     :zookeeper-server (fnk [[:config [:zookeeper {local? false}]] local-zk-port]
-                         (when local?
+     :leader-reports-unhealthy (fnk [[:config {mesos nil}]]
+                                 (when mesos
+                                   (or (:leader-reports-unhealthy mesos) false)))
+     :local-zk-port (fnk [[:config {zookeeper nil}]]
+                      (when zookeeper
+                        (or (:local-port zookeeper) 3291)))
+     :zookeeper-server (fnk [[:config {zookeeper nil}] local-zk-port]
+                         (when (:local? zookeeper)
                            (log/info "Created local ZooKeeper; not yet started")
                            (TestingServer. ^Integer local-zk-port false)))
-     :zookeeper (fnk [[:config [:zookeeper {local? false} {connection nil}]] local-zk-port]
-                  (cond
-                    local? (str "localhost:" local-zk-port)
-                    connection connection
-                    :else (throw (ex-info "Must specify a zookeeper connection" {}))))
-     :task-constraints (fnk [[:config [:scheduler {task-constraints nil}]]]
+     :zookeeper (fnk [[:config {zookeeper nil}] local-zk-port]
+                  (when zookeeper
+                    (cond
+                      (:local? zookeeper) (str "localhost:" local-zk-port)
+                      (:connection zookeeper) (:connection zookeeper)
+                      :else (throw (ex-info "Must specify a zookeeper connection" {})))))
+     :task-constraints (fnk [[:config {scheduler nil}]]
                          ;; Trying to pick conservative defaults
                          (merge
                            {:timeout-hours 1
@@ -230,56 +233,69 @@
                             :retry-limit 20
                             :memory-gb 12
                             :cpus 4}
-                           task-constraints))
-     :offer-incubate-time-ms (fnk [[:config [:scheduler {offer-incubate-ms 15000}]]]
-                               offer-incubate-ms)
-     :offer-cache (fnk [[:config [:scheduler {offer-cache nil}]]]
-                    (merge
-                      {:max-size 2000
-                       :ttl-ms 15000}
-                      offer-cache))
-     :mea-culpa-failure-limit (fnk [[:config [:scheduler {mea-culpa-failure-limit nil}]]]
-                                mea-culpa-failure-limit)
-     :fenzo-max-jobs-considered (fnk [[:config [:scheduler {fenzo-max-jobs-considered 1000}]]]
-                                  fenzo-max-jobs-considered)
-     :fenzo-scaleback (fnk [[:config [:scheduler {fenzo-scaleback 0.95}]]]
-                        fenzo-scaleback)
-     :fenzo-floor-iterations-before-warn (fnk [[:config [:scheduler {fenzo-floor-iterations-before-warn 10}]]]
-                                           fenzo-floor-iterations-before-warn)
-     :fenzo-floor-iterations-before-reset (fnk [[:config [:scheduler {fenzo-floor-iterations-before-reset 1000}]]]
-                                            fenzo-floor-iterations-before-reset)
-     :fenzo-fitness-calculator (fnk [[:config [:scheduler {fenzo-fitness-calculator default-fitness-calculator}]]]
-                                 fenzo-fitness-calculator)
-     :mesos-gpu-enabled (fnk [[:config [:mesos {enable-gpu-support false}]]]
-                          (boolean enable-gpu-support))
-     :good-enough-fitness (fnk [[:config [:scheduler {good-enough-fitness 0.8}]]]
-                            good-enough-fitness)
-     :mesos-master (fnk [[:config [:mesos master]]]
-                     master)
-     :mesos-master-hosts (fnk [[:config [:mesos master {master-hosts nil}]]]
-                           (if master-hosts
-                             (if (and (sequential? master-hosts) (every? string? master-hosts))
-                               master-hosts
-                               (throw (ex-info ":mesos-master should be a list of hostnames (e.g. [\"host1.example.com\", ...])" {})))
-                             (->> master
-                                  (re-seq #"[/|,]?([^/,:]+):\d+")
-                                  (mapv second))))
-     :mesos-failover-timeout (fnk [[:config [:mesos {failover-timeout-ms nil}]]]
-                               failover-timeout-ms)
-     :mesos-leader-path (fnk [[:config [:mesos leader-path]]]
-                          leader-path)
-     :mesos-principal (fnk [[:config [:mesos {principal nil}]]]
-                        principal)
-     :mesos-role (fnk [[:config [:mesos {role "*"}]]]
-                   role)
-     :mesos-run-as-user (fnk [[:config [:mesos {run-as-user nil}]]]
-                          (when run-as-user
-                            (log/warn "Tasks launched in Mesos will ignore user specified in the job and run as" run-as-user))
-                          run-as-user)
-     :mesos-framework-name (fnk [[:config [:mesos {framework-name "Cook"}]]]
-                             framework-name)
-     :mesos-framework-id (fnk [[:config [:mesos {framework-id nil}]]]
-                           framework-id)
+                           (:task-constraints scheduler)))
+     :offer-incubate-time-ms (fnk [[:config {scheduler nil}]]
+                               (when scheduler
+                                 (or (:offer-incubate-ms scheduler) 15000)))
+     :offer-cache (fnk [[:config {scheduler nil}]]
+                    (when scheduler
+                      (merge
+                        {:max-size 2000
+                         :ttl-ms 15000}
+                        (:offer-cache scheduler))))
+     :mea-culpa-failure-limit (fnk [[:config {scheduler nil}]]
+                                (:mea-culpa-failure-limit scheduler))
+     :fenzo-max-jobs-considered (fnk [[:config {scheduler nil}]]
+                                  (when scheduler
+                                    (or (:fenzo-max-jobs-considered scheduler) 1000)))
+     :fenzo-scaleback (fnk [[:config {scheduler nil}]]
+                        (when scheduler
+                          (or (:fenzo-scaleback scheduler) 0.95)))
+     :fenzo-floor-iterations-before-warn (fnk [[:config {scheduler nil}]]
+                                           (when scheduler
+                                             (or (:fenzo-floor-iterations-before-warn scheduler) 10)))
+     :fenzo-floor-iterations-before-reset (fnk [[:config {scheduler nil}]]
+                                            (when scheduler
+                                              (or (:fenzo-floor-iterations-before-reset scheduler) 1000)))
+     :fenzo-fitness-calculator (fnk [[:config {scheduler nil}]]
+                                 (when scheduler
+                                   (or (:fenzo-fitness-calculator scheduler) default-fitness-calculator)))
+     :mesos-gpu-enabled (fnk [[:config {mesos nil}]]
+                          (when mesos
+                            (boolean (or (:enable-gpu-support mesos) false))))
+     :good-enough-fitness (fnk [[:config {scheduler nil}]]
+                            (when scheduler
+                              (or (:good-enough-fitness scheduler) 0.8)))
+     :mesos-master (fnk [[:config {mesos nil}]]
+                     (when mesos
+                       (:master mesos)))
+     :mesos-master-hosts (fnk [[:config {mesos nil}]]
+                           (when mesos
+                             (if (:master-hosts mesos)
+                               (if (and (sequential? (:master-hosts mesos)) (every? string? (:master-hosts mesos)))
+                                 (:master-hosts mesos)
+                                 (throw (ex-info ":mesos-master should be a list of hostnames (e.g. [\"host1.example.com\", ...])" {})))
+                               (->> (:master mesos)
+                                    (re-seq #"[/|,]?([^/,:]+):\d+")
+                                    (mapv second)))))
+     :mesos-failover-timeout (fnk [[:config {mesos nil}]]
+                               (:failover-timeout-ms mesos))
+     :mesos-leader-path (fnk [[:config {mesos nil}]]
+                          (:leader-path mesos))
+     :mesos-principal (fnk [[:config {mesos nil}]]
+                        (:principal mesos))
+     :mesos-role (fnk [[:config {mesos nil}]]
+                   (when mesos
+                     (or (:role mesos) "*")))
+     :mesos-run-as-user (fnk [[:config {mesos nil}]]
+                          (when (:run-as-user mesos)
+                            (log/warn "Tasks launched in Mesos will ignore user specified in the job and run as" (:run-as-user mesos)))
+                          (:run-as-user mesos))
+     :mesos-framework-name (fnk [[:config {mesos nil}]]
+                             (when mesos
+                               (or (:framework-name mesos) "Cook")))
+     :mesos-framework-id (fnk [[:config {mesos nil}]]
+                           (:framework-id mesos))
      :jmx-metrics (fnk [[:config [:metrics {jmx false}]]]
                     (when jmx
                       ((util/lazy-load-var 'cook.reporter/jmx-reporter))))
@@ -337,7 +353,10 @@
                        ((util/lazy-load-var 'clojure.tools.nrepl.server/start-server) :port port)))
 
      :pools (fnk [[:config {pools nil}]]
-              pools)}))
+              pools)
+
+     :api-only? (fnk [[:config {api-only? false}]]
+                  api-only?)}))
 
 (defn read-config
   "Given a config file path, reads the config and returns the map"
@@ -390,3 +409,8 @@
   "Returns the default pool name from the config map"
   []
   (-> config :settings :pools :default))
+
+(defn api-only-mode?
+  "Returns true if api-only? mode is turned on"
+  []
+  (-> config :settings :api-only?))

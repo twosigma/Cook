@@ -1,0 +1,26 @@
+{:api-only? true
+ :authorization {:one-user #config/env "USER"}
+ :authorization-config {;; These users have admin privileges when using configfile-admins-auth;
+                        ;; e.g., they can view and modify other users' jobs.
+                        :admins #{"admin" "root"}
+                        ;; What function should be used to perform user authorization?
+                        ;; See the docstring in cook.authorization for details.
+                        :authorization-fn cook.authorization/configfile-admins-auth-open-gets
+                        ;; users that are allowed to do things on behalf of others
+                        :impersonators #{"poser" "other-impersonator"}}
+ :cors-origins ["https?://cors.example.com"]
+ :database {:datomic-uri "datomic:mem://cook-jobs"}
+ :hostname "cook-scheduler-12321"
+ :log {:file "log/cook-12321.log"
+       :levels {"datomic.db" :warn
+                "datomic.kv-cluster" :warn
+                "datomic.peer" :warn
+                :default :info}}
+ :metrics {:jmx true
+           :user-metrics-interval-seconds 60}
+ :nrepl {:enabled? true
+         :port 8888}
+ :pools {:default "gamma"}
+ :port 12321
+ :rate-limit {:user-limit-per-m 1000000}
+ :unhandled-exceptions {:log-level :error}}
