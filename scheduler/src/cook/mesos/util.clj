@@ -485,18 +485,7 @@
                ;; If not, we might want to swap these two constraints.
                [?j :job/state :job.state/running]
                [?j :job/user ?user]
-               (or-join [?j ?pool-name ?requesting-default-pool]
-                        ; If the caller is requesting jobs in the default pool,
-                        ; we should include all jobs with no pool specified
-                        (and
-                          [(true? ?requesting-default-pool)]
-                          [(missing? $ ?j :job/pool)])
-
-                        ; We should also include jobs with a pool specified that
-                        ; matches the pool that the caller is requesting
-                        (and
-                          [?j :job/pool ?p]
-                          [?p :pool/name ?pool-name]))]
+               [(cook.mesos.pool/check-pool $ ?j :job/pool ?pool-name ?requesting-default-pool)]]
              db user pool-name' requesting-default-pool?)
            (map (partial d/entity db))))))
 
