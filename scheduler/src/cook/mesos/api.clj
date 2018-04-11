@@ -2056,7 +2056,7 @@
                                    default-pool-name))
                               jobs)
             pool-name->usage (map-vals (partial user-usage with-group-breakdown?) pool-name->jobs)]
-        (assoc (get pool-name->usage default-pool-name)
+        (assoc (get pool-name->usage default-pool-name {:total-usage {:cpus 0.0, :mem 0.0, :gpus 0.0, :jobs 0}})
           :pools pool-name->usage)))))
 
 (defn read-usage-handler

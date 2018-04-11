@@ -1632,3 +1632,12 @@
       (is (nil? (:job/name job-entity)))
       (is (= job-uuid (:uuid job-map-for-api)))
       (is (= "cookjob" (:name job-map-for-api))))))
+
+(deftest test-get-user-usage-no-usage
+  (let [conn (restore-fresh-database! "datomic:mem://test-get-user-usage")]
+    (is (= {:total-usage {:cpus 0.0
+                          :mem 0.0
+                          :gpus 0.0
+                          :jobs 0}
+            :pools {}}
+           (api/get-user-usage (d/db conn) {:request {:query-params {:user "alice"}}})))))
