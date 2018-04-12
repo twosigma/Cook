@@ -1729,6 +1729,13 @@ class CookTest(unittest.TestCase):
             self.assertEqual(usage_data['total_usage']['gpus'], breakdowns_total['gpus'], usage_data)
             self.assertEqual(usage_data['total_usage']['jobs'], breakdowns_total['jobs'], usage_data)
             # Pool-specific checks
+            pools, _ = util.pools(self.cook_url)
+            for pool in pools:
+                # There should be a sub-map under pools for each pool in the
+                # system, since we didn't specify the pool in the usage request
+                pool_usage = usage_data['pools'][pool['name']]
+                self.assertEqual(set(pool_usage.keys()), {'total_usage', 'grouped', 'ungrouped'}, pool_usage)
+                self.assertEqual(set(pool_usage['ungrouped'].keys()), {'running_jobs', 'usage'}, pool_usage)
             default_pool = util.default_pool(self.cook_url)
             if default_pool:
                 # If there is a default pool configured, make sure that our jobs,
@@ -1745,7 +1752,6 @@ class CookTest(unittest.TestCase):
                 self.assertEqual(my_group_usage['usage']['jobs'], job_count, my_group_usage)
                 # If there is a non-default pool, make sure that
                 # our jobs don't appear under that pool's usage
-                pools, _ = util.pools(self.cook_url)
                 non_default_pools = [p for p in pools if p['name'] != default_pool]
                 if len(non_default_pools) > 0:
                     pool = non_default_pools[0]['name']

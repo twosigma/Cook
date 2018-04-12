@@ -28,7 +28,11 @@
             [cook.mesos.reason :as reason]
             [cook.mesos.scheduler :as sched]
             [cook.mesos.util :as util]
-            [cook.test.testutil :refer [restore-fresh-database! flush-caches! create-dummy-job create-dummy-instance]]
+            [cook.test.testutil :refer [create-dummy-instance
+                                        create-dummy-job
+                                        create-pool
+                                        flush-caches!
+                                        restore-fresh-database!]]
             [datomic.api :as d :refer [q db]]
             [mesomatic.scheduler :as msched]
             [schema.core :as s])
@@ -1634,10 +1638,32 @@
       (is (= "cookjob" (:name job-map-for-api))))))
 
 (deftest test-get-user-usage-no-usage
-  (let [conn (restore-fresh-database! "datomic:mem://test-get-user-usage")]
+  (let [conn (restore-fresh-database! "datomic:mem://test-get-user-usage")
+        request-context {:request {:query-params {:user "alice"}}}]
     (is (= {:total-usage {:cpus 0.0
                           :mem 0.0
                           :gpus 0.0
                           :jobs 0}
             :pools {}}
-           (api/get-user-usage (d/db conn) {:request {:query-params {:user "alice"}}})))))
+           (api/get-user-usage (d/db conn) request-context)))
+
+    (create-pool conn "foo")
+    (create-pool conn "bar")
+    (create-pool conn "baz")
+    (is (= {:total-usage {:cpus 0.0
+                          :mem 0.0
+                          :gpus 0.0
+                          :jobs 0}
+            :pools {"foo" {:total-usage {:cpus 0.0
+                                         :mem 0.0
+                                         :gpus 0.0
+                                         :jobs 0}}
+                    "bar" {:total-usage {:cpus 0.0
+                                         :mem 0.0
+                                         :gpus 0.0
+                                         :jobs 0}}
+                    "baz" {:total-usage {:cpus 0.0
+                                         :mem 0.0
+                                         :gpus 0.0
+                                         :jobs 0}}}}
+           (api/get-user-usage (d/db conn) request-context)))))

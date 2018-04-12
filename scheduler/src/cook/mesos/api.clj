@@ -2036,7 +2036,16 @@
                              :running-jobs job-uuids}
                      :usage usage})
          :ungrouped (let [[job-uuids usage] (get breakdowns nil)]
-                      {:running-jobs job-uuids :usage (or usage zero-usage)})}))))
+                      {:running-jobs job-uuids
+                       :usage (or usage zero-usage)})}))))
+
+(defn no-usage-map
+  "Returns a resource usage map showing no usage"
+  [with-group-breakdown?]
+  (cond-> {:total-usage zero-usage}
+          with-group-breakdown? (assoc :grouped []
+                                       :ungrouped {:running-jobs []
+                                                   :usage zero-usage})))
 
 (defn get-user-usage
   "Query a user's current resource usage based on running jobs."
@@ -2055,9 +2064,12 @@
                                    (:pool/name pool)
                                    default-pool-name))
                               jobs)
-            pool-name->usage (map-vals (partial user-usage with-group-breakdown?) pool-name->jobs)]
-        (assoc (get pool-name->usage default-pool-name {:total-usage {:cpus 0.0, :mem 0.0, :gpus 0.0, :jobs 0}})
-          :pools pool-name->usage)))))
+            no-usage (no-usage-map with-group-breakdown?)
+            pool-name->usage (map-vals (partial user-usage with-group-breakdown?) pool-name->jobs)
+            pool-name->no-usage (into {} (map (fn [{:keys [pool/name]}] [name no-usage]) (pool/all-pools db)))
+            default-pool-usage (get pool-name->usage default-pool-name no-usage)]
+        (assoc default-pool-usage
+          :pools (merge pool-name->no-usage pool-name->usage))))))
 
 (defn read-usage-handler
   "Handle GET requests for a user's current usage."
