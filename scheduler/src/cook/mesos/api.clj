@@ -1471,7 +1471,7 @@
                          user (get-in ctx [:request :authorization/user])
                          override-group-immutability? (boolean (get params :override-group-immutability))
                          pool-name (get params :pool)
-                         pool (when pool-name (pool/pool-by-name (d/db conn) pool-name))]
+                         pool (when pool-name (d/entity (d/db conn) [:pool/name pool-name]))]
                      (try
                        (cond
                          (empty? params)

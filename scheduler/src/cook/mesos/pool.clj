@@ -12,16 +12,6 @@
               [?e :pool/name]]
             db)))
 
-(defn pool-by-name
-  "Returns the pool with the given name, or nil"
-  [db pool-name]
-  (->> (d/q '[:find ?e .
-              :in $ ?pool-name
-              :where
-              [?e :pool/name ?pool-name]]
-            db pool-name)
-       (d/entity db)))
-
 (defn accepts-submissions?
   "Returns true if the given pool can accept job submissions"
   [pool]
