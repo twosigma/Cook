@@ -37,6 +37,10 @@
          :port #config/env-int "COOK_NREPL_PORT"}
  :pools {:default "gamma"}
  :port #config/env-int "COOK_PORT"
+ :ssl {:port #config/env-int "COOK_SSL_PORT"
+       :keystore-path #config/env "COOK_KEYSTORE_PATH"
+       :keystore-type "pkcs12"
+       :keystore-pass "cookstore"}
  :rate-limit {:user-limit-per-m 1000000}
  :rebalancer {:dru-scale 1}
  :sandbox-syncer {:sync-interval-ms 1000}

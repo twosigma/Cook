@@ -79,6 +79,11 @@ export MINIMESOS_ZOOKEEPER=${MINIMESOS_ZOOKEEPER%;}
 SCHEDULER_DIR=${TRAVIS_BUILD_DIR}/scheduler
 ./datomic-free-0.9.5394/bin/transactor ${SCHEDULER_DIR}/datomic/datomic_transactor.properties &
 
+# Generate SSL certificate
+COOK_KEYSTORE_PATH=${SCHEDULER_DIR}/cook.p12
+keytool -genkeypair -keystore ${COOK_KEYSTORE_PATH} -storetype PKCS12 -storepass cookstore -dname "CN=cook, OU=Cook Developers, O=Two Sigma Investments, L=New York, ST=New York, C=US" -keyalg RSA -keysize 2048
+export COOK_KEYSTORE_PATH=${COOK_KEYSTORE_PATH}
+
 # Start three cook schedulers. We want one cluster with two cooks to run MasterSlaveTest, and a second cluster to run MultiClusterTest.
 # The basic tests will run against cook-framework-1
 cd ${SCHEDULER_DIR}
@@ -88,9 +93,9 @@ export COOK_EXECUTOR_COMMAND=${COOK_EXECUTOR_COMMAND}
 COOK_DATOMIC_URI_1=datomic:free://localhost:4334/cook-jobs
 COOK_DATOMIC_URI_2=datomic:mem://cook-jobs
 # Start one cook listening on port 12321, this will be the master of the "cook-framework-1" framework
-LIBPROCESS_IP=172.17.0.1 COOK_DATOMIC="${COOK_DATOMIC_URI_1}" COOK_PORT=12321 COOK_FRAMEWORK_ID=cook-framework-1 COOK_LOGFILE="log/cook-12321.log" lein run ${PROJECT_DIR}/travis/${CONFIG_FILE} &
+LIBPROCESS_IP=172.17.0.1 COOK_DATOMIC="${COOK_DATOMIC_URI_1}" COOK_PORT=12321 COOK_SSL_PORT=12322 COOK_FRAMEWORK_ID=cook-framework-1 COOK_LOGFILE="log/cook-12321.log" lein run ${PROJECT_DIR}/travis/${CONFIG_FILE} &
 # Start a second cook listening on port 22321, this will be the master of the "cook-framework-2" framework
-LIBPROCESS_IP=172.17.0.1 COOK_DATOMIC="${COOK_DATOMIC_URI_2}" COOK_PORT=22321 COOK_ZOOKEEPER_LOCAL=true COOK_ZOOKEEPER_LOCAL_PORT=4291 COOK_FRAMEWORK_ID=cook-framework-2 COOK_LOGFILE="log/cook-22321.log" lein run ${PROJECT_DIR}/travis/${CONFIG_FILE} &
+LIBPROCESS_IP=172.17.0.1 COOK_DATOMIC="${COOK_DATOMIC_URI_2}" COOK_PORT=22321 COOK_SSL_PORT=22322 COOK_ZOOKEEPER_LOCAL=true COOK_ZOOKEEPER_LOCAL_PORT=4291 COOK_FRAMEWORK_ID=cook-framework-2 COOK_LOGFILE="log/cook-22321.log" lein run ${PROJECT_DIR}/travis/${CONFIG_FILE} &
 
 # Wait for the cooks to be listening
 timeout 180s bash -c "wait_for_cook 12321" || curl_error=true
@@ -100,13 +105,13 @@ if [ "$curl_error" = true ]; then
   exit 1
 fi
 
-# Start a third cook listening on port 12322, this will be a slave on the "cook-framework-1" framework
-LIBPROCESS_IP=172.17.0.1 COOK_DATOMIC="${COOK_DATOMIC_URI_1}" COOK_PORT=12322 COOK_FRAMEWORK_ID=cook-framework-1 COOK_LOGFILE="log/cook-12322.log" lein run ${PROJECT_DIR}/travis/${CONFIG_FILE} &
+# Start a third cook listening on port 12323, this will be a slave on the "cook-framework-1" framework
+LIBPROCESS_IP=172.17.0.1 COOK_DATOMIC="${COOK_DATOMIC_URI_1}" COOK_PORT=12323 COOK_SSL_PORT=12324 COOK_FRAMEWORK_ID=cook-framework-1 COOK_LOGFILE="log/cook-12323.log" lein run ${PROJECT_DIR}/travis/${CONFIG_FILE} &
 
-timeout 180s bash -c "wait_for_cook 12322" || curl_error=true
+timeout 180s bash -c "wait_for_cook 12323" || curl_error=true
 if [ "$curl_error" = true ]; then
   echo "$(date +%H:%M:%S) Timed out waiting for cook to start listening, displaying cook log"
-  cat ${SCHEDULER_DIR}/log/cook-12322.log
+  cat ${SCHEDULER_DIR}/log/cook-12323.log
   exit 1
 fi
 timeout 180s bash -c "wait_for_cook 22321" || curl_error=true
@@ -128,7 +133,7 @@ lein exec -p test-resources/data/seed_pools.clj ${COOK_DATOMIC_URI_1}
 cd ${PROJECT_DIR}
 export COOK_MULTI_CLUSTER=
 export COOK_MASTER_SLAVE=
-export COOK_SLAVE_URL=http://localhost:12322
+export COOK_SLAVE_URL=http://localhost:12323
 pytest -n4 -v --color=no --timeout-method=thread --boxed -m "${PYTEST_MARKS}" || test_failures=true
 
 # If there were failures, dump the executor logs
