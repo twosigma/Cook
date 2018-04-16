@@ -470,7 +470,7 @@
   (= pool-name (config/default-pool)))
 
 (defn get-user-running-job-ents
-  "Returns all running job entities for a specific user and pool."
+  "Returns all running job entities for a specific user."
   ([db user]
    (timers/time!
      get-user-running-jobs-duration
@@ -484,24 +484,27 @@
               [?j :job/state :job.state/running]
               [?j :job/user ?user]]
             db user)
-          (map (partial d/entity db)))))
-  ([db user pool-name]
-   (let [requesting-default-pool? (or (nil? pool-name) (default-pool? pool-name))
-         pool-name' (or pool-name (config/default-pool) (UUID/randomUUID))]
-     (timers/time!
-       get-user-running-jobs-duration
-       (->> (q
-              '[:find [?j ...]
-                :in $ ?user ?pool-name ?requesting-default-pool
-                :where
-                ;; Note: We're assuming that many users will have significantly more
-                ;; completed jobs than there are jobs currently running in the system.
-                ;; If not, we might want to swap these two constraints.
-                [?j :job/state :job.state/running]
-                [?j :job/user ?user]
-                [(cook.mesos.pool/check-pool $ ?j :job/pool ?pool-name ?requesting-default-pool)]]
-              db user pool-name' requesting-default-pool?)
-            (map (partial d/entity db)))))))
+          (map (partial d/entity db))))))
+
+(defn get-user-running-job-ents-in-pool
+  "Returns all running job entities for a specific user and pool."
+  [db user pool-name]
+  (let [requesting-default-pool? (or (nil? pool-name) (default-pool? pool-name))
+        pool-name' (or pool-name (config/default-pool) (UUID/randomUUID))]
+    (timers/time!
+      get-user-running-jobs-duration
+      (->> (q
+             '[:find [?j ...]
+               :in $ ?user ?pool-name ?requesting-default-pool
+               :where
+               ;; Note: We're assuming that many users will have significantly more
+               ;; completed jobs than there are jobs currently running in the system.
+               ;; If not, we might want to swap these two constraints.
+               [?j :job/state :job.state/running]
+               [?j :job/user ?user]
+               [(cook.mesos.pool/check-pool $ ?j :job/pool ?pool-name ?requesting-default-pool)]]
+             db user pool-name' requesting-default-pool?)
+           (map (partial d/entity db))))))
 
 (timers/deftimer [cook-mesos scheduler get-running-jobs-duration])
 

@@ -2054,22 +2054,24 @@
         with-group-breakdown? (get-in ctx [:request :query-params :group_breakdown])
         pool (get-in ctx [:request :query-params :pool])]
     (if pool
-      (let [jobs (util/get-user-running-job-ents db user pool)]
+      (let [jobs (util/get-user-running-job-ents-in-pool db user pool)]
         (user-usage with-group-breakdown? jobs))
       (let [jobs (util/get-user-running-job-ents db user)
-            default-pool-name (config/default-pool)
-            pool-name->jobs (group-by
-                              #(let [pool (:job/pool %)]
-                                 (if pool
-                                   (:pool/name pool)
-                                   default-pool-name))
-                              jobs)
-            no-usage (no-usage-map with-group-breakdown?)
-            pool-name->usage (map-vals (partial user-usage with-group-breakdown?) pool-name->jobs)
-            pool-name->no-usage (into {} (map (fn [{:keys [pool/name]}] [name no-usage]) (pool/all-pools db)))
-            default-pool-usage (get pool-name->usage default-pool-name no-usage)]
-        (assoc default-pool-usage
-          :pools (merge pool-name->no-usage pool-name->usage))))))
+            pools (pool/all-pools db)]
+        (if (pos? (count pools))
+          (let [default-pool-name (config/default-pool)
+                pool-name->jobs (group-by
+                                  #(if-let [pool (:job/pool %)]
+                                     (:pool/name pool)
+                                     default-pool-name)
+                                  jobs)
+                no-usage (no-usage-map with-group-breakdown?)
+                pool-name->usage (map-vals (partial user-usage with-group-breakdown?) pool-name->jobs)
+                pool-name->no-usage (into {} (map (fn [{:keys [pool/name]}] [name no-usage]) pools))
+                default-pool-usage (get pool-name->usage default-pool-name no-usage)]
+            (assoc default-pool-usage
+              :pools (merge pool-name->no-usage pool-name->usage)))
+          (user-usage with-group-breakdown? jobs))))))
 
 (defn read-usage-handler
   "Handle GET requests for a user's current usage."

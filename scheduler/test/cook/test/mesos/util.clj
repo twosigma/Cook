@@ -100,26 +100,26 @@
                       :pool "pool-a")
 
     ; No default pool, specifying a specific pool
-    (is (= 2 (count (util/get-user-running-job-ents (db conn) "u1" "pool-a"))))
-    (is (= 1 (count (util/get-user-running-job-ents (db conn) "u2" "pool-b"))))
-    (is (= 0 (count (util/get-user-running-job-ents (db conn) "u3" "pool-c"))))
+    (is (= 2 (count (util/get-user-running-job-ents-in-pool (db conn) "u1" "pool-a"))))
+    (is (= 1 (count (util/get-user-running-job-ents-in-pool (db conn) "u2" "pool-b"))))
+    (is (= 0 (count (util/get-user-running-job-ents-in-pool (db conn) "u3" "pool-c"))))
 
     ; No default pool, not specifying a pool
-    (is (= 2 (count (util/get-user-running-job-ents (db conn) "u1" nil))))
-    (is (= 1 (count (util/get-user-running-job-ents (db conn) "u2" nil))))
-    (is (= 0 (count (util/get-user-running-job-ents (db conn) "u3" nil))))
+    (is (= 2 (count (util/get-user-running-job-ents-in-pool (db conn) "u1" nil))))
+    (is (= 1 (count (util/get-user-running-job-ents-in-pool (db conn) "u2" nil))))
+    (is (= 0 (count (util/get-user-running-job-ents-in-pool (db conn) "u3" nil))))
 
     ; Default pool defined, specifying a specific pool
     (with-redefs [config/default-pool (constantly "pool-a")]
-      (is (= 4 (count (util/get-user-running-job-ents (db conn) "u1" "pool-a"))))
-      (is (= 1 (count (util/get-user-running-job-ents (db conn) "u2" "pool-b"))))
-      (is (= 0 (count (util/get-user-running-job-ents (db conn) "u3" "pool-c")))))
+      (is (= 4 (count (util/get-user-running-job-ents-in-pool (db conn) "u1" "pool-a"))))
+      (is (= 1 (count (util/get-user-running-job-ents-in-pool (db conn) "u2" "pool-b"))))
+      (is (= 0 (count (util/get-user-running-job-ents-in-pool (db conn) "u3" "pool-c")))))
 
     ; Default pool defined, not specifying a pool
     (with-redefs [config/default-pool (constantly "pool-b")]
-      (is (= 3 (count (util/get-user-running-job-ents (db conn) "u1" nil))))
-      (is (= 2 (count (util/get-user-running-job-ents (db conn) "u2" nil))))
-      (is (= 0 (count (util/get-user-running-job-ents (db conn) "u3" nil)))))))
+      (is (= 3 (count (util/get-user-running-job-ents-in-pool (db conn) "u1" nil))))
+      (is (= 2 (count (util/get-user-running-job-ents-in-pool (db conn) "u2" nil))))
+      (is (= 0 (count (util/get-user-running-job-ents-in-pool (db conn) "u3" nil)))))))
 
 (deftest test-cache
   (let [cache (util/new-cache)

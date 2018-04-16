@@ -1643,8 +1643,7 @@
     (is (= {:total-usage {:cpus 0.0
                           :mem 0.0
                           :gpus 0.0
-                          :jobs 0}
-            :pools {}}
+                          :jobs 0}}
            (api/get-user-usage (d/db conn) request-context)))
 
     (create-pool conn "foo")
@@ -1667,3 +1666,95 @@
                                          :gpus 0.0
                                          :jobs 0}}}}
            (api/get-user-usage (d/db conn) request-context)))))
+
+(deftest test-get-user-usage-with-some-usage
+  (let [conn (restore-fresh-database! "datomic:mem://test-get-user-usage-with-some-usage")
+        request-context {:request {:query-params {:user "alice"}}}]
+    ; No pools in the database
+    (create-dummy-job conn
+                      :user "alice"
+                      :job-state :job.state/running
+                      :ncpus 12
+                      :memory 34
+                      :gpus 56)
+    (is (= {:total-usage {:cpus 12.0
+                          :mem 34.0
+                          :gpus 56.0
+                          :jobs 1}}
+           (api/get-user-usage (d/db conn) request-context)))
+
+    ; Jobs with no pool should show up in the default pool
+    (create-pool conn "foo")
+    (create-pool conn "bar")
+    (create-pool conn "baz")
+    (is (= {:total-usage {:cpus 12.0
+                          :mem 34.0
+                          :gpus 56.0
+                          :jobs 1}
+            :pools {"foo" {:total-usage {:cpus 0.0
+                                         :mem 0.0
+                                         :gpus 0.0
+                                         :jobs 0}}
+                    "bar" {:total-usage {:cpus 12.0
+                                         :mem 34.0
+                                         :gpus 56.0
+                                         :jobs 1}}
+                    "baz" {:total-usage {:cpus 0.0
+                                         :mem 0.0
+                                         :gpus 0.0
+                                         :jobs 0}}}}
+           (with-redefs [config/default-pool (constantly "bar")]
+             (api/get-user-usage (d/db conn) request-context))))
+
+    ; Jobs with a pool should show up in that pool
+    (create-dummy-job conn
+                      :user "alice"
+                      :job-state :job.state/running
+                      :ncpus 78
+                      :memory 910
+                      :gpus 1112
+                      :pool "baz")
+    (is (= {:total-usage {:cpus 12.0
+                          :mem 34.0
+                          :gpus 56.0
+                          :jobs 1}
+            :pools {"foo" {:total-usage {:cpus 12.0
+                                         :mem 34.0
+                                         :gpus 56.0
+                                         :jobs 1}}
+                    "bar" {:total-usage {:cpus 0.0
+                                         :mem 0.0
+                                         :gpus 0.0
+                                         :jobs 0}}
+                    "baz" {:total-usage {:cpus 78.0
+                                         :mem 910.0
+                                         :gpus 1112.0
+                                         :jobs 1}}}}
+           (with-redefs [config/default-pool (constantly "foo")]
+             (api/get-user-usage (d/db conn) request-context))))
+
+    ; Asking for a specific pool should return that pool's
+    ; usage at the top level, and should not produce sub-map
+    (create-dummy-job conn
+                      :user "alice"
+                      :job-state :job.state/running
+                      :ncpus 13
+                      :memory 14
+                      :gpus 15
+                      :pool "bar")
+    (with-redefs [config/default-pool (constantly "baz")]
+      (is (= {:total-usage {:cpus 0.0
+                            :mem 0.0
+                            :gpus 0.0
+                            :jobs 0}}
+             (api/get-user-usage (d/db conn) (assoc-in request-context [:request :query-params :pool] "foo"))))
+      (is (= {:total-usage {:cpus 13.0
+                            :mem 14.0
+                            :gpus 15.0
+                            :jobs 1}}
+             (api/get-user-usage (d/db conn) (assoc-in request-context [:request :query-params :pool] "bar"))))
+      (is (= {:total-usage {:cpus 90.0
+                            :mem 944.0
+                            :gpus 1168.0
+                            :jobs 2}}
+             (api/get-user-usage (d/db conn) (assoc-in request-context [:request :query-params :pool] "baz")))))))
