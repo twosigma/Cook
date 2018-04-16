@@ -101,7 +101,7 @@
         users-to-clear (difference previous-users current-users)]
     (run! (fn [user]
             (run! (fn [[type _]]
-                    (metrics/remove-metric [state user (name type)]))
+                    (set-counter! (counters/counter [state user (name type)]) 0))
                   (get previous-stats user)))
           users-to-clear)))
 
