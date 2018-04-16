@@ -134,6 +134,7 @@ docker create \
     -e "COOK_HTTP_BASIC_AUTH=${COOK_HTTP_BASIC_AUTH:-false}" \
     -e "COOK_ONE_USER_AUTH=root" \
     -e "COOK_EXECUTOR_PORTION=${COOK_EXECUTOR_PORTION:-0}" \
+    -e "COOK_KEYSTORE_PATH=/opt/ssl/cook.p12" \
     -v ${DIR}/../log:/opt/cook/log \
     cook-scheduler:latest ${COOK_CONFIG:-}
 
