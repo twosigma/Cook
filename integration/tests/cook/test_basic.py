@@ -1130,14 +1130,16 @@ class CookTest(unittest.TestCase):
         group_spec = util.minimal_group()
         group_uuid = group_spec['uuid']
         try:
-            job_fast = util.minimal_job(group=group_uuid, priority=99)
+            job_fast = util.minimal_job(group=group_uuid, priority=99, max_retries=2)
             job_slow = util.minimal_job(group=group_uuid, command=f'sleep {slow_job_wait_seconds}')
             _, resp = util.submit_jobs(self.cook_url, [job_fast, job_slow], groups=[group_spec])
             self.assertEqual(resp.status_code, 201, resp.text)
             # Wait for the fast job to finish, and the slow job to start
             util.wait_for_job(self.cook_url, job_fast, 'completed')
+            job = util.load_job(self.cook_url, job_fast['uuid'])
+            self.assertEqual('success', job['state'], f"Job details: {json.dumps(job, sort_keys=True)}")
             util.wait_for_job(self.cook_url, job_slow, 'running')
-            # Now try to cancel the group (just the long job)
+            # Now try to cancel the group (just the slow job)
             util.kill_groups(self.cook_url, [group_uuid])
 
             # Wait for the slow job (and its instance) to die
