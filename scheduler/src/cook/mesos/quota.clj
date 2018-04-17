@@ -131,7 +131,7 @@
                     [[:db/add resource :resource/amount (double amount)]]
                     (let [resource (cond-> {:resource/type type
                                             :resource/amount (double amount)}
-                                     pool-name (assoc :resource/pool [:pool/name pool-name]))]
+                                           pool-name (assoc :resource/pool [:pool/name pool-name]))]
                       [{:db/id (d/tempid :db.part/user)
                         :quota/user user
                         :quota/resource [resource]}]))]
