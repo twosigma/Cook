@@ -75,8 +75,8 @@
                         (:quota/count (d/entity db [:quota/user user])) ; then the field on the user
                         (get-quota-by-type db :resource.type/count default-user pool-name) ; then the resource from the default user
                         (:quota/count (d/entity db [:quota/user default-user])) ; then the field on the default user
-                        Double/MAX_VALUE)]
-    (assoc mesos-resource-quota :count (double count-quota))))
+                        Integer/MAX_VALUE)]
+    (assoc mesos-resource-quota :count (int count-quota))))
 
 (defn retract-quota!
   [conn user pool-name reason]

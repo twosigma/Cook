@@ -111,7 +111,7 @@
 
         (is (= (nth reasons 1)
                ["The job would cause you to exceed resource quotas."
-                {:count {:limit 2.0 :usage 3}}]))
+                {:count {:limit 2 :usage 3}}]))
 
         (is (= (nth reasons 2)
                ["You have 2 other jobs ahead in the queue."
