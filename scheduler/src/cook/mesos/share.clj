@@ -18,7 +18,7 @@
             [cook.config :as config]
             [cook.mesos.pool :as pool]
             [cook.mesos.util :as util]
-            [datomic.api :as d :refer (q)]
+            [datomic.api :as d]
             [metatransaction.core :refer (db)]
             [metrics.timers :as timers]
             [plumbing.core :as pc])
@@ -40,17 +40,17 @@
   [conn type user pool]
   (let [db (db conn)
         type (resource-type->datomic-resource-type type)
-        resource (first (q '[:find [?r ...]
-                             :in $ ?u ?t ?pool-name ?requesting-default-pool
-                             :where
-                             [?e :share/user ?u]
-                             [?e :share/resource ?r]
-                             [?r :resource/type ?t]
-                             [?r :resource/amount ?a]
-                             [(cook.mesos.pool/check-pool $ ?r :resource/pool ?pool-name
-                                                          ?requesting-default-pool)]]
-                           db user type (pool/pool-name-or-default pool)
-                           (pool/requesting-default-pool? pool)))]
+        resource (first (d/q '[:find [?r ...]
+                               :in $ ?u ?t ?pool-name ?requesting-default-pool
+                               :where
+                               [?e :share/user ?u]
+                               [?e :share/resource ?r]
+                               [?r :resource/type ?t]
+                               [?r :resource/amount ?a]
+                               [(cook.mesos.pool/check-pool $ ?r :resource/pool ?pool-name
+                                                            ?requesting-default-pool)]]
+                             db user type (pool/pool-name-or-default pool)
+                             (pool/requesting-default-pool? pool)))]
     (if resource
       @(d/transact conn
                    [[:db.fn/retractEntity resource]])
@@ -95,8 +95,8 @@
                               (fn [type] (get type->share type Double/MAX_VALUE))
                               types)]
 
-    (->> (q query db user (pool/pool-name-or-default pool-name)
-            (pool/requesting-default-pool? pool-name) datomic-resource-types)
+    (->> (d/q query db user (pool/pool-name-or-default pool-name)
+              (pool/requesting-default-pool? pool-name) datomic-resource-types)
          (map (partial d/entity db))
          filter-resource-entities
          (pc/map-keys datomic-resource-type->resource-type)
@@ -159,20 +159,21 @@
          txns []]
     (if (and amount (pos? amount))
       (let [type (resource-type->datomic-resource-type type)
-            resource (-> (q '[:find ?r
-                              :in $ ?user ?type ?pool-name ?requesting-default-pool
-                              :where
-                              [?e :share/user ?user]
-                              [?e :share/resource ?r]
-                              [?r :resource/type ?type]
-                              [(cook.mesos.pool/check-pool $ ?r :resource/pool ?pool-name
-                                                           ?requesting-default-pool)]]
-                            (d/db conn) user type (pool/pool-name-or-default pool-name)
-                            (pool/requesting-default-pool? pool-name))
+            resource (-> (d/q '[:find ?r
+                                :in $ ?user ?type ?pool-name ?requesting-default-pool
+                                :where
+                                [?e :share/user ?user]
+                                [?e :share/resource ?r]
+                                [?r :resource/type ?type]
+                                [(cook.mesos.pool/check-pool $ ?r :resource/pool ?pool-name
+                                                             ?requesting-default-pool)]]
+                              (d/db conn) user type (pool/pool-name-or-default pool-name)
+                              (pool/requesting-default-pool? pool-name))
                          ffirst)
             txn (if resource
                   [[:db/add resource :resource/amount amount]]
-                  (let [resource (cond-> {:resource/type type :resource/amount amount}
+                  (let [resource (cond-> {:resource/type type
+                                          :resource/amount amount}
                                    pool-name (assoc :resource/pool [:pool/name pool-name]))]
                     [{:db/id (d/tempid :db.part/user)
                       :share/user user

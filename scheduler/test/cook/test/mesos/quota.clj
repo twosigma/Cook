@@ -35,8 +35,7 @@
     (quota/set-quota! conn "default" nil "lock most users down" :cpus 1.0 :mem 2.0 :gpus 1.0)
     (let [db (db conn)]
       (testing "set and query zero job count"
-        (is (= {:count 0.0
-                :cpus 1.0 :mem 2.0 :gpus 1.0} (quota/get-quota db "u4" nil))))
+        (is (= {:count 0.0 :cpus 1.0 :mem 2.0 :gpus 1.0} (quota/get-quota db "u4" nil))))
       (testing "set and query zero gpus"
         (is (= {:count Double/MAX_VALUE
                 :cpus 1.0 :mem 2.0 :gpus 0.0} (quota/get-quota db "u3" nil))))
@@ -44,8 +43,7 @@
         (is (= {:count Double/MAX_VALUE
                 :cpus 5.0 :mem 10.0 :gpus 1.0} (quota/get-quota db "u2" nil))))
       (testing "set and overide."
-        (is (= {:count 6.0
-                :cpus 5.0 :mem 10.0 :gpus 1.0} (quota/get-quota db "u1" nil))))
+        (is (= {:count 6.0 :cpus 5.0 :mem 10.0 :gpus 1.0} (quota/get-quota db "u1" nil))))
       (testing "query default."
         (is (= {:count Double/MAX_VALUE
                 :cpus 1.0 :mem 2.0 :gpus 1.0} (quota/get-quota db "default" nil))))
@@ -141,6 +139,7 @@
 
           (is (= {:cpus 10.0 :mem 10.0 :gpus 10.0 :count 10.0} (quota/get-quota db "u2" nil)))
           (is (= {:cpus 10.0 :mem 10.0 :gpus 10.0 :count 10.0} (quota/get-quota db "u2" "pool-1"))))))
+
     (testing "retract quota, no default pool configured"
       (quota/set-quota! conn "u2" nil "defaults" :cpus 1.0 :mem 1.0 :gpus 1.0 :count 1)
       (quota/set-quota! conn "u2" "pool-2" "pool-2 settings" :cpus 2.0 :mem 2.0 :gpus 2.0 :count 2)
