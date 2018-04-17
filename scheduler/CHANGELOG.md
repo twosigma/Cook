@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.15.0] - 2018-04-17
+### Added
+- Support for pool param to /usage endpoint, from @dposada
+- Support for pool param on job submission, from @dposada
+- Support for SSL, from @pschorf
+- Support for api-only mode, from @dposada
+### Fixed
+- Issue where monitor metrics would sometimes stop on a non-zero value, from @dposada
+
 ## [1.14.1] - 2018-03-29
 ### Fixed
 - Fix performance regression in list API, from @scrosby
