@@ -297,7 +297,8 @@
               :user UserName
               (s/optional-key :gpus) s/Int
               (s/optional-key :groups) [s/Uuid]
-              (s/optional-key :instances) [Instance]})
+              (s/optional-key :instances) [Instance]
+              (s/optional-key :pool) s/Str})
       prepare-schema-response))
 
 (def JobResponseDeprecated
@@ -417,11 +418,20 @@
          (s/optional-key :completed) s/Int})
       prepare-schema-response))
 
-(def RawSchedulerRequest
-  "Schema for a request to the raw scheduler endpoint."
+(def JobSubmission
+  "Schema for a request to submit one or more jobs."
   {:jobs [JobRequest]
    (s/optional-key :override-group-immutability) s/Bool
    (s/optional-key :groups) [Group]})
+
+(def RawSchedulerRequestDeprecated
+  "Schema for a request to the raw scheduler endpoint."
+  JobSubmission)
+
+(def JobSubmissionRequest
+  "Schema for a POST request to the /jobs endpoint."
+  (assoc JobSubmission
+    (s/optional-key :pool) s/Str))
 
 (defn- mk-container-params
   "Helper for build-container.  Transforms parameters into the datomic schema."
@@ -502,7 +512,7 @@
 
 (s/defn make-job-txn
   "Creates the necessary txn data to insert a job into the database"
-  [job :- Job]
+  [pool job :- Job]
   (let [{:keys [uuid command max-retries max-runtime expected-runtime priority cpus mem gpus
                 user name ports uris env labels container group application disable-mea-culpa-retries
                 constraints executor progress-output-file progress-regex-string]
@@ -591,7 +601,8 @@
                     expected-runtime (assoc :job/expected-runtime expected-runtime)
                     executor (assoc :job/executor executor)
                     progress-output-file (assoc :job/progress-output-file progress-output-file)
-                    progress-regex-string (assoc :job/progress-regex-string progress-regex-string))]
+                    progress-regex-string (assoc :job/progress-regex-string progress-regex-string)
+                    pool (assoc :job/pool (:db/id pool)))]
 
     ;; TODO batch these transactions to improve performance
     (-> ports
@@ -833,6 +844,7 @@
         executor (:job/executor job)
         progress-output-file (:job/progress-output-file job)
         progress-regex-string (:job/progress-regex-string job)
+        pool (:job/pool job)
         state (util/job-ent->state job)
         constraints (->> job
                          :job/constraint
@@ -871,7 +883,8 @@
             expected-runtime (assoc :expected-runtime expected-runtime)
             executor (assoc :executor (name executor))
             progress-output-file (assoc :progress-output-file progress-output-file)
-            progress-regex-string (assoc :progress-regex-string progress-regex-string))))
+            progress-regex-string (assoc :progress-regex-string progress-regex-string)
+            pool (assoc :pool (:pool/name pool)))))
 
 (defn fetch-group-live-jobs
   "Get all jobs from a group that are currently running or waiting (not complete)"
@@ -1356,7 +1369,7 @@
   to Datomic.
   Preconditions:  The context must already have been populated with both
   ::jobs and ::groups, which specify the jobs and job groups."
-  [conn {:keys [::groups ::jobs] :as ctx}]
+  [conn {:keys [::groups ::jobs ::pool]}]
   (try
     (log/info "Submitting jobs through raw api:" jobs)
     (let [group-uuids (set (map :uuid groups))
@@ -1371,7 +1384,7 @@
                                (map make-default-group))
           groups (into (vec implicit-groups) groups)
           job-asserts (map (fn [j] [:entity/ensure-not-exists [:job/uuid (:uuid j)]]) jobs)
-          job-txns (mapcat make-job-txn jobs)
+          job-txns (mapcat (partial make-job-txn pool) jobs)
           job-uuids->dbids (->> job-txns
                                 ;; Not all txns are for the top level job
                                 (filter :job/uuid)
@@ -1456,12 +1469,21 @@
                          jobs (get params :jobs)
                          groups (get params :groups)
                          user (get-in ctx [:request :authorization/user])
-                         override-group-immutability? (boolean (get params :override-group-immutability))]
+                         override-group-immutability? (boolean (get params :override-group-immutability))
+                         pool-name (get params :pool)
+                         pool (when pool-name (d/entity (d/db conn) [:pool/name pool-name]))]
                      (try
                        (cond
                          (empty? params)
                          [true {::error (str "Must supply at least one job or group to start."
                                              "Are you specifying that this is application/json?")}]
+
+                         (and pool-name (not pool))
+                         [true {::error (str pool-name " is not a valid pool name.")}]
+
+                         (and pool (not (pool/accepts-submissions? pool)))
+                         [true {::error (str pool-name " is not accepting job submissions.")}]
+
                          :else
                          (let [groups (mapv #(validate-and-munge-group (db conn) %) groups)
                                jobs (mapv #(validate-and-munge-job
@@ -1473,7 +1495,9 @@
                                              %
                                              :override-group-immutability?
                                              override-group-immutability?) jobs)]
-                           [false {::groups groups ::jobs jobs}]))
+                           [false {::groups groups
+                                   ::jobs jobs
+                                   ::pool pool}]))
                        (catch Exception e
                          (log/warn e "Malformed raw api request")
                          [true {::error (.getMessage e)}]))))
@@ -2404,8 +2428,8 @@
                                400 {:description "Non-UUID values were passed as jobs."}
                                403 {:description "The supplied UUIDs don't correspond to valid jobs."}}
                    :handler (read-jobs-handler-deprecated conn framework-id is-authorized-fn)}
-             :post {:summary "Schedules one or more jobs."
-                    :parameters {:body-params RawSchedulerRequest}
+             :post {:summary "Schedules one or more jobs (deprecated)."
+                    :parameters {:body-params RawSchedulerRequestDeprecated}
                     :responses {201 {:description "The jobs were successfully scheduled."}
                                 400 {:description "One or more of the jobs were incorrectly specified."}
                                 409 {:description "One or more of the jobs UUIDs are already in use."}}
@@ -2437,7 +2461,13 @@
                                     :description "The jobs were returned."}
                                400 {:description "Non-UUID values were passed."}
                                403 {:description "The supplied UUIDs don't correspond to valid jobs."}}
-                   :handler (read-jobs-handler-multiple conn framework-id is-authorized-fn)}}))
+                   :handler (read-jobs-handler-multiple conn framework-id is-authorized-fn)}
+             :post {:summary "Schedules one or more jobs."
+                    :parameters {:body-params JobSubmissionRequest}
+                    :responses {201 {:description "The jobs were successfully scheduled."}
+                                400 {:description "One or more of the jobs were incorrectly specified."}
+                                409 {:description "One or more of the jobs UUIDs are already in use."}}
+                    :handler (create-jobs-handler conn task-constraints gpu-enabled? is-authorized-fn)}}))
 
         (c-api/context
           "/info" []

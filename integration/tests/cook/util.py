@@ -382,7 +382,7 @@ def minimal_group(**kwargs):
     return dict(uuid=str(uuid.uuid4()), **kwargs)
 
 
-def submit_jobs(cook_url, job_specs, clones=1, **kwargs):
+def submit_jobs(cook_url, job_specs, clones=1, pool=None, **kwargs):
     """
     Create and submit multiple jobs, either cloned from a single job spec,
     or specified individually in multiple job specs.
@@ -399,9 +399,11 @@ def submit_jobs(cook_url, job_specs, clones=1, **kwargs):
 
     jobs = [full_spec(j) for j in job_specs]
     request_body = {'jobs': jobs}
+    if pool:
+        request_body['pool'] = pool
     request_body.update(kwargs)
     logger.info(request_body)
-    resp = session.post(f'{cook_url}/rawscheduler', json=request_body)
+    resp = session.post(f'{cook_url}/jobs', json=request_body)
     return [j['uuid'] for j in jobs], resp
 
 
@@ -438,9 +440,9 @@ def kill_groups(cook_url, groups, assert_response=True, expected_status_code=204
     return response
 
 
-def submit_job(cook_url, **kwargs):
+def submit_job(cook_url, pool=None, **kwargs):
     """Create and submit a single job"""
-    uuids, resp = submit_jobs(cook_url, job_specs=[kwargs])
+    uuids, resp = submit_jobs(cook_url, job_specs=[kwargs], pool=pool)
     return uuids[0], resp
 
 

@@ -21,3 +21,8 @@
               :where
               [?e :pool/name]]
             db)))
+
+(defn accepts-submissions?
+  "Returns true if the given pool can accept job submissions"
+  [pool]
+  (= :pool.state/active (:pool/state pool)))
