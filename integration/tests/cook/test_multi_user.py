@@ -75,7 +75,7 @@ class MultiUserCookTest(unittest.TestCase):
                     self.assertEqual(resp.status_code, 200, resp.content)
                     usage_data = resp.json()
                     # Check that the response structure looks as expected
-                    self.assertEqual(list(usage_data.keys()), ['total_usage'], usage_data)
+                    self.assertEqual(list(usage_data.keys()), ['total_usage', 'pools'], usage_data)
                     self.assertEqual(len(usage_data['total_usage']), 4, usage_data)
                     # Check that each user's usage is as expected
                     self.assertEqual(usage_data['total_usage']['mem'], job_resources['mem'] * i, usage_data)

@@ -26,6 +26,7 @@
             [compojure.api.middleware :as c-mw]
             [compojure.api.sweet :as c-api]
             [compojure.core :refer [ANY GET POST routes]]
+            [cook.config :as config]
             [cook.cors :as cors]
             [cook.datomic :as datomic]
             [cook.mesos.pool :as pool]
@@ -2024,41 +2025,77 @@
   "Helper-schema for :ungrouped jobs in UserUsageResponse."
   {:running_jobs [s/Uuid], :usage UsageInfo})
 
-(def UserUsageResponse
-  "Schema for a usage response."
+(def UserUsageInPool
+  "Schema for a user's usage within a particular pool."
   {:total_usage UsageInfo
    (s/optional-key :grouped) [{:group UsageGroupInfo, :usage UsageInfo}]
    (s/optional-key :ungrouped) JobsUsageResponse})
 
+(def UserUsageResponse
+  "Schema for a usage response."
+  (assoc UserUsageInPool
+    (s/optional-key :pools) {s/Str UserUsageInPool}))
+
 (def zero-usage
   "Resource usage map 'zero' value"
   (util/total-resources-of-jobs nil))
+
+(defn user-usage
+  "Given a collection of jobs, returns the usage information for those jobs."
+  [with-group-breakdown? jobs]
+  (merge
+    ; basic user usage response
+    {:total-usage (util/total-resources-of-jobs jobs)}
+    ; (optional) user's total usage with breakdown by job groups
+    (when with-group-breakdown?
+      (let [breakdowns (->> jobs
+                            (group-by util/job-ent->group-uuid)
+                            (map-vals (juxt #(mapv :job/uuid %)
+                                            util/total-resources-of-jobs
+                                            #(-> % first :group/_job first))))]
+        {:grouped (for [[guuid [job-uuids usage group]] breakdowns
+                        :when guuid]
+                    {:group {:uuid (:group/uuid group)
+                             :name (:group/name group)
+                             :running-jobs job-uuids}
+                     :usage usage})
+         :ungrouped (let [[job-uuids usage] (get breakdowns nil)]
+                      {:running-jobs job-uuids
+                       :usage (or usage zero-usage)})}))))
+
+(defn no-usage-map
+  "Returns a resource usage map showing no usage"
+  [with-group-breakdown?]
+  (cond-> {:total-usage zero-usage}
+          with-group-breakdown? (assoc :grouped []
+                                       :ungrouped {:running-jobs []
+                                                   :usage zero-usage})))
 
 (defn get-user-usage
   "Query a user's current resource usage based on running jobs."
   [db ctx]
   (let [user (get-in ctx [:request :query-params :user])
         with-group-breakdown? (get-in ctx [:request :query-params :group_breakdown])
-        pool (get-in ctx [:request :query-params :pool])
-        running-jobs (util/get-user-running-job-ents db user pool)]
-    (merge
-      ; basic user usage response
-      {:total-usage (util/total-resources-of-jobs running-jobs)}
-      ; (optional) user's total usage with breakdown by job groups
-      (when with-group-breakdown?
-        (let [breakdowns (->> running-jobs
-                              (group-by util/job-ent->group-uuid)
-                              (map-vals (juxt #(mapv :job/uuid %)
-                                              util/total-resources-of-jobs
-                                              #(-> % first :group/_job first))))]
-          {:grouped (for [[guuid [job-uuids usage group]] breakdowns
-                          :when guuid]
-                      {:group {:uuid (:group/uuid group)
-                               :name (:group/name group)
-                               :running-jobs job-uuids}
-                       :usage usage})
-           :ungrouped (let [[job-uuids usage] (get breakdowns nil)]
-                        {:running-jobs job-uuids :usage (or usage zero-usage)})})))))
+        pool (get-in ctx [:request :query-params :pool])]
+    (if pool
+      (let [jobs (util/get-user-running-job-ents-in-pool db user pool)]
+        (user-usage with-group-breakdown? jobs))
+      (let [jobs (util/get-user-running-job-ents db user)
+            pools (pool/all-pools db)]
+        (if (pos? (count pools))
+          (let [default-pool-name (config/default-pool)
+                pool-name->jobs (group-by
+                                  #(if-let [pool (:job/pool %)]
+                                     (:pool/name pool)
+                                     default-pool-name)
+                                  jobs)
+                no-usage (no-usage-map with-group-breakdown?)
+                pool-name->usage (map-vals (partial user-usage with-group-breakdown?) pool-name->jobs)
+                pool-name->no-usage (into {} (map (fn [{:keys [pool/name]}] [name no-usage]) pools))
+                default-pool-usage (get pool-name->usage default-pool-name no-usage)]
+            (assoc default-pool-usage
+              :pools (merge pool-name->no-usage pool-name->usage)))
+          (user-usage with-group-breakdown? jobs))))))
 
 (defn read-usage-handler
   "Handle GET requests for a user's current usage."
@@ -2389,6 +2426,7 @@
                          JobResponse (partial map-keys ->snake_case)
                          GroupResponse (partial map-keys ->snake_case)
                          UserUsageResponse (partial map-keys ->snake_case)
+                         UserUsageInPool (partial map-keys ->snake_case)
                          UsageGroupInfo (partial map-keys ->snake_case)
                          JobsUsageResponse (partial map-keys ->snake_case)
                          s/Uuid str})]

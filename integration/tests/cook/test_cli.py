@@ -439,23 +439,23 @@ class CookCliTest(unittest.TestCase):
         self.assertEqual(0, cp.returncode, cp.stderr)
         running_uuid = uuids[0]
 
-        # Submit a successful job
-        cp, uuids = cli.submit('ls', self.cook_url, submit_flags='--name %s' % name)
-        self.assertEqual(0, cp.returncode, cp.stderr)
-        success_uuid = uuids[0]
-
-        # Submit a failed job
-        cp, uuids = cli.submit('exit 1', self.cook_url, submit_flags='--name %s' % name)
-        self.assertEqual(0, cp.returncode, cp.stderr)
-        failed_uuid = uuids[0]
-
-        # Wait for the desired states to be reached
-        util.wait_for_job(self.cook_url, waiting_uuid, 'waiting')
-        util.wait_for_job(self.cook_url, running_uuid, 'running')
-        util.wait_for_job(self.cook_url, success_uuid, 'completed')
-        util.wait_for_job(self.cook_url, failed_uuid, 'completed')
-
         try:
+            # Submit a successful job
+            cp, uuids = cli.submit('ls', self.cook_url, submit_flags='--name %s' % name)
+            self.assertEqual(0, cp.returncode, cp.stderr)
+            success_uuid = uuids[0]
+
+            # Submit a failed job
+            cp, uuids = cli.submit('exit 1', self.cook_url, submit_flags='--name %s' % name)
+            self.assertEqual(0, cp.returncode, cp.stderr)
+            failed_uuid = uuids[0]
+
+            # Wait for the desired states to be reached
+            util.wait_for_job(self.cook_url, waiting_uuid, 'waiting')
+            util.wait_for_job(self.cook_url, running_uuid, 'running')
+            util.wait_for_job(self.cook_url, success_uuid, 'completed')
+            util.wait_for_job(self.cook_url, failed_uuid, 'completed')
+
             # waiting
             cp, jobs = self.list_jobs(name, user, 'waiting')
             self.assertEqual(0, cp.returncode, cp.stderr)

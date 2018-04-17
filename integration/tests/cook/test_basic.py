@@ -1673,7 +1673,7 @@ class CookTest(unittest.TestCase):
             self.assertEqual(resp.status_code, 200, resp.content)
             usage_data = resp.json()
             # Check that the response structure looks as expected
-            self.assertEqual(list(usage_data.keys()), ['total_usage'], usage_data)
+            self.assertEqual(list(usage_data.keys()), ['total_usage', 'pools'], usage_data)
             self.assertEqual(len(usage_data['total_usage']), 4, usage_data)
             # Since we don't know what other test jobs are currently running,
             # we conservatively check current usage with the >= operation.
@@ -1700,7 +1700,7 @@ class CookTest(unittest.TestCase):
             self.assertEqual(resp.status_code, 200, resp.content)
             usage_data = resp.json()
             # Check that the response structure looks as expected
-            self.assertEqual(set(usage_data.keys()), {'total_usage', 'grouped', 'ungrouped'}, usage_data)
+            self.assertEqual(set(usage_data.keys()), {'total_usage', 'grouped', 'ungrouped', 'pools'}, usage_data)
             self.assertEqual(set(usage_data['ungrouped'].keys()), {'running_jobs', 'usage'}, usage_data)
             my_group_usage = next(x for x in usage_data['grouped'] if x['group']['uuid'] == group_uuid)
             self.assertEqual(set(my_group_usage.keys()), {'group', 'usage'}, my_group_usage)
@@ -1731,6 +1731,13 @@ class CookTest(unittest.TestCase):
             self.assertEqual(usage_data['total_usage']['gpus'], breakdowns_total['gpus'], usage_data)
             self.assertEqual(usage_data['total_usage']['jobs'], breakdowns_total['jobs'], usage_data)
             # Pool-specific checks
+            pools, _ = util.pools(self.cook_url)
+            for pool in pools:
+                # There should be a sub-map under pools for each pool in the
+                # system, since we didn't specify the pool in the usage request
+                pool_usage = usage_data['pools'][pool['name']]
+                self.assertEqual(set(pool_usage.keys()), {'total_usage', 'grouped', 'ungrouped'}, pool_usage)
+                self.assertEqual(set(pool_usage['ungrouped'].keys()), {'running_jobs', 'usage'}, pool_usage)
             default_pool = util.default_pool(self.cook_url)
             if default_pool:
                 # If there is a default pool configured, make sure that our jobs,
@@ -1747,7 +1754,6 @@ class CookTest(unittest.TestCase):
                 self.assertEqual(my_group_usage['usage']['jobs'], job_count, my_group_usage)
                 # If there is a non-default pool, make sure that
                 # our jobs don't appear under that pool's usage
-                pools, _ = util.pools(self.cook_url)
                 non_default_pools = [p for p in pools if p['name'] != default_pool]
                 if len(non_default_pools) > 0:
                     pool = non_default_pools[0]['name']
@@ -1777,7 +1783,7 @@ class CookTest(unittest.TestCase):
             self.assertEqual(resp.status_code, 200, resp.content)
             usage_data = resp.json()
             # Check that the response structure looks as expected
-            self.assertEqual(set(usage_data.keys()), {'total_usage', 'grouped', 'ungrouped'}, usage_data)
+            self.assertEqual(set(usage_data.keys()), {'total_usage', 'grouped', 'ungrouped', 'pools'}, usage_data)
             ungrouped_data = usage_data['ungrouped']
             self.assertEqual(set(ungrouped_data.keys()), {'running_jobs', 'usage'}, ungrouped_data)
             # Our jobs should be included in the ungrouped breakdown
