@@ -1529,7 +1529,7 @@
 
      :post! (partial create-jobs! conn)
      :handle-exception (fn [{:keys [exception]}]
-                         (if (str/includes? (str (.getMessage exception)) "db.error/transaction-timeout")
+                         (if (str/includes? (str (.getMessage exception)) "Transaction timed out.")
                            {:error (str "Transaction timed out."
                                         " Your jobs may not have been created successfully."
                                         " Please query your jobs and check whether they were created successfully.")}
