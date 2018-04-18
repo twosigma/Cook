@@ -72,7 +72,7 @@
 
 (deftest test-reasons
   (let [conn (restore-fresh-database! datomic-uri)
-        _ (quota/set-quota! conn "mforsyth" "test-reasons" :count 2)
+        _ (quota/set-quota! conn "mforsyth" nil "test-reasons" :count 2)
         running-job-id1 (-> (create-dummy-job conn :user "mforsyth"
                                               :ncpus 1.0 :memory 3.0
                                               :job-state :job.state/running))

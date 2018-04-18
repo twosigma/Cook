@@ -64,7 +64,7 @@
    from stats types to amounts."
   ([db running-stats waiting-stats]
    (let [waiting-users (keys waiting-stats)
-         shares (share/get-shares db waiting-users [:cpus :mem])
+         shares (share/get-shares db waiting-users nil [:cpus :mem])
          promised-resources (fn [user] (get shares user))
          compute-starvation (fn [user]
                               (->> (merge-with - (promised-resources user) (get running-stats user))

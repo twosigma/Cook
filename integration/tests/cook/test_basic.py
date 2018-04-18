@@ -3,6 +3,7 @@ import logging
 import math
 import operator
 import subprocess
+import sys
 import time
 import unittest
 import uuid
@@ -1830,6 +1831,55 @@ class CookTest(unittest.TestCase):
         # reset user share fails (malformed) if no reason is given
         resp = util.reset_limit(self.cook_url, 'share', user, reason=None)
         self.assertEqual(resp.status_code, 400, resp.text)
+
+        default_pool = util.default_pool(self.cook_url)
+        if default_pool is not None:
+            for limit in ['quota', 'share']:
+                # Set a limit for the default pool
+                resp = util.set_limit(self.cook_url, limit, user, cpus=100, pool=default_pool)
+                self.assertEqual(resp.status_code, 201, resp.text)
+
+                # Check that the limit is returned for no pool
+                resp = util.get_limit(self.cook_url, limit, user)
+                self.assertEqual(resp.status_code, 200, resp.text)
+                self.assertEqual(100, resp.json()['cpus'], resp.text)
+
+                # Check that the limit is returned for the default pool
+                resp = util.get_limit(self.cook_url, limit, user, pool=default_pool)
+                self.assertEqual(resp.status_code, 200, resp.text)
+                self.assertEqual(100, resp.json()['cpus'], resp.text)
+
+                # Delete the default pool limit (no pool argument)
+                resp = util.reset_limit(self.cook_url, limit, user)
+                self.assertEqual(resp.status_code, 204, resp.text)
+
+                # Check that the default is returned for the default pool
+                resp = util.get_limit(self.cook_url, limit, user, pool=default_pool)
+                self.assertEqual(resp.status_code, 200, resp.text)
+                self.assertEqual(sys.float_info.max, resp.json()['cpus'], resp.text)
+
+                pools, _ = util.pools(self.cook_url)
+                non_default_pools = [p['name'] for p in pools if p['name'] != default_pool]
+
+                for pool in non_default_pools:
+                    # delete the pool's limit
+                    resp = util.reset_limit(self.cook_url, limit, user, pool=pool)
+                    self.assertEqual(resp.status_code, 204, resp.text)
+
+                    # check that the default value is returned
+                    resp = util.get_limit(self.cook_url, limit, user, pool=pool)
+                    self.assertEqual(resp.status_code, 200, resp.text)
+                    self.assertEqual(sys.float_info.max, resp.json()['cpus'], resp.text)
+
+                    # set a pool-specific limit
+                    resp = util.set_limit(self.cook_url, limit, user, cpus=1000, pool=pool)
+                    self.assertEqual(resp.status_code, 201, resp.text)
+
+                    # check that the pool-specific limit is returned
+                    resp = util.get_limit(self.cook_url, limit, user, pool=pool)
+                    self.assertEqual(resp.status_code, 200, resp.text)
+                    self.assertEqual(1000, resp.json()['cpus'], resp.text)
+
 
     def test_submit_with_no_name(self):
         # We need to manually set the 'uuid' to avoid having the

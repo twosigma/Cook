@@ -69,7 +69,7 @@
   "Returns map where keys are categories of jobs and vals are seq of jobs waiting
    to be scheduled in order of Cook's desire to schedule it"
   [db rank-state]
-  (let [user->dru-divisors (share/create-user->share-fn db)] 
+  (let [user->dru-divisors (share/create-user->share-fn db nil)]
     (sort-jobs-by-dru-rank-state rank-state user->dru-divisors)))
  
 

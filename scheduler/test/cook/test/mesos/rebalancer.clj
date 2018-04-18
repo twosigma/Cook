@@ -77,7 +77,7 @@
 
           tasks (shuffle [task-ent1 task-ent2 task-ent3 task-ent4
                            task-ent5 task-ent6 task-ent7 task-ent8])]
-      (let [_ (share/set-share! conn "default"
+      (let [_ (share/set-share! conn "default" nil
                                 "Limits for new cluster"
                                 :mem 25.0 :cpus 25.0 :gpus 1.0)
             scored-task1 (dru/->ScoredTask task-ent1 0.4 10.0 10.0)
@@ -139,7 +139,7 @@
           task-ent7 (d/entity (d/db conn) task7)
           task-ent8 (d/entity (d/db conn) task8)
 
-          _ (share/set-share! conn "default"
+          _ (share/set-share! conn "default" nil
                               "limits for new cluster"
                               :mem 25.0 :cpus 25.0 :gpus 1.0)
 
@@ -185,7 +185,7 @@
         task-ent7 (d/entity (d/db conn) task7)
         task-ent8 (d/entity (d/db conn) task8)
 
-        _ (share/set-share! conn "default"
+        _ (share/set-share! conn "default" nil
                             "limits for new cluster"
                             :mem 25.0 :cpus 25.0 :gpus 1.0)
 
@@ -271,7 +271,7 @@
           task-ent7 (d/entity (d/db conn) task7)
           task-ent8 (d/entity (d/db conn) task8)
 
-          _ (share/set-share! conn "default"
+          _ (share/set-share! conn "default" nil
                               "limits for new cluster"
                               :mem 25.0 :cpus 25.0 :gpus 1.0)
 
@@ -458,7 +458,7 @@
                        "rebar" {"HOSTNAME" "rebar"}}
           offer-cache (init-offer-cache)
           cotask-cache (atom (cache/fifo-cache-factory {} :threshold 100))]
-      (share/set-share! conn "default" "new cluster settings"
+      (share/set-share! conn "default" nil "new cluster settings"
                         :mem 10.0 :cpus 10.0 :gpus 10.0)
       ; Fill up hosts with preemptable tasks
       (doall (for [[user host] user->host]
@@ -541,7 +541,7 @@
                        "rebar" {"HOSTNAME" "rebar"}}
           offer-cache (init-offer-cache)
           cotask-cache (atom (cache/fifo-cache-factory {} :threshold 100))]
-      (share/set-share! conn "default" "new cluster settings"
+      (share/set-share! conn "default" nil "new cluster settings"
                         :mem 10.0 :cpus 10.0 :gpus 1.0)
       ; Fill up hosts with preemptable tasks
       (doall (for [[user host] user->host]
@@ -603,7 +603,7 @@
                            "rebar" {"az" "west" "HOSTNAME" "rebar"}}
           offer-cache (init-offer-cache)
           cotask-cache (atom (cache/fifo-cache-factory {} :threshold 100))]
-      (share/set-share! conn "default" "new cluster limits"
+      (share/set-share! conn "default" nil "new cluster limits"
                         :mem 10.0 :cpus 10.0 :gpus 1.0)
       ; Fill up hosts with preemptable tasks
       (doall (for [[user host] user->host]
@@ -681,7 +681,7 @@
 
       (testing "try placing job with one unconstrained-host available"
         (let [conn (restore-fresh-database! datomic-uri)
-              _ (share/set-share! conn "default""new cluster limits"
+              _ (share/set-share! conn "default" nil "new cluster limits"
                                   :mem 20.0 :cpus 20.0 :gpus 1.0)
               offer-cache (init-offer-cache)
               ; Fill up hosts with preemptable tasks
@@ -717,7 +717,7 @@
 
       (testing "try placing job with two unconstrained hosts available, but one has already been preempted this cycle"
         (let [conn (restore-fresh-database! datomic-uri)
-              _ (share/set-share! conn "default" "new cluster limits"
+              _ (share/set-share! conn "default" nil "new cluster limits"
                                   :mem 20.0 :cpus 20.0 :gpus 1.0)
               offer-cache (init-offer-cache)
               ; Fill up hosts with preemptable tasks
@@ -814,7 +814,7 @@
                                              :instance-status :instance.status/running
                                              :slave-id "testB"
                                              :hostname "hostB")
-          _ (share/set-share! conn "default"
+          _ (share/set-share! conn "default" nil
                               "limits for new cluster"
                               :mem 25.0 :cpus 25.0 :gpus 1.0)
           db (d/db conn)
@@ -982,7 +982,7 @@
                                      job8
                                      :instance-status :instance.status/running
                                      :hostname "hostB")
-        _ (share/set-share! conn "default"
+        _ (share/set-share! conn "default" nil
                             "limits for new cluster"
                             :mem 25.0 :cpus 25.0)
 
@@ -1063,7 +1063,7 @@
          test-cases]
   (testing test-name
     (doseq [{:keys [user mem cpus]} share-updates]
-      (share/set-share! conn user
+      (share/set-share! conn user nil
                         "test update"
                         :mem mem :cpus cpus))
     (let [db (d/db conn)
@@ -1104,7 +1104,7 @@
           pending-job-gen  (gen/tuple pending-user-gen mem-gen cpus-gen)]
       (let [conn (restore-fresh-database! datomic-uri)
             offer-cache (init-offer-cache)
-            _ (share/set-share! conn "default"
+            _ (share/set-share! conn "default" nil
                                 "limits for new cluster"
                                 :mem 1024.0 :cpus Double/MAX_VALUE)
             running-tasks-sample-size 10240
@@ -1176,10 +1176,10 @@
                                        :instance-status :instance.status/running
                                        :hostname "hostA")
           reservations (atom {})]
-      (share/set-share! conn "user1"
+      (share/set-share! conn "user1" nil
                         "test update"
                         :mem 1.0 :cpus 1.0)
-      (share/set-share! conn "user2"
+      (share/set-share! conn "user2" nil
                         "big user"
                         :mem 10.0 :cpus 10.0)
       (let [db (d/db conn)
@@ -1209,10 +1209,10 @@
                                        :instance-status :instance.status/running
                                        :hostname "hostA")
           reservations (atom {})]
-      (share/set-share! conn "user1"
+      (share/set-share! conn "user1" nil
                         "test update"
                         :mem 1.0 :cpus 1.0)
-      (share/set-share! conn "user2"
+      (share/set-share! conn "user2" nil
                         "test update"
                         :mem 1.0 :cpus 1.0)
       (let [db (d/db conn)
@@ -1246,10 +1246,10 @@
                                        :instance-status :instance.status/running
                                        :hostname "hostA")
           reservations (atom {:launched-job-uuids [(:job/uuid (d/entity (d/db conn) job4))]})]
-      (share/set-share! conn "user1"
+      (share/set-share! conn "user1" nil
                         "test update"
                         :mem 1.0 :cpus 1.0)
-      (share/set-share! conn "user2"
+      (share/set-share! conn "user2" nil
                         "big user"
                         :mem 10.0 :cpus 10.0)
       (let [db (d/db conn)

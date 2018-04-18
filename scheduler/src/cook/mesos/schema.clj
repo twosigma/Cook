@@ -489,6 +489,12 @@ for a job. E.g. {:resources {:cpus 4 :mem 3} :constraints {\"unique_host_constra
     :db/valueType :db.type/boolean
     :db/cardinality :db.cardinality/one
     :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :resource/pool
+    :db/doc "Each resource can have different values per pool"
+    :db/valueType :db.type/ref
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
    ;; Instance attributes
    {:db/id (d/tempid :db.part/db)
     :db/ident :instance/task-id
@@ -621,6 +627,7 @@ for a job. E.g. {:resources {:cpus 4 :mem 3} :constraints {\"unique_host_constra
     :db/valueType :db.type/string
     :db/cardinality :db.cardinality/one
     :db.install/_attribute :db.part/db}
+   
 
    ;; Quota attributes
    {:db/id (d/tempid :db.part/db)
@@ -791,6 +798,8 @@ for a job. E.g. {:resources {:cpus 4 :mem 3} :constraints {\"unique_host_constra
     :resource.type/mesos-name :gpus}
    {:db/id (d/tempid :db.part/user)
     :db/ident :resource.type/uri}
+   {:db/id (d/tempid :db.part/user)
+    :db/ident :resource.type/count}
    ;; Functions for database manipulation
    {:db/id (d/tempid :db.part/user)
     :db/ident :instance/create

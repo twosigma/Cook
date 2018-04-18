@@ -1,5 +1,7 @@
 (ns cook.mesos.pool
-  (:require [datomic.api :as d]))
+  (:require [cook.config :as config]
+            [datomic.api :as d])
+  (:import [java.util UUID]))
 
 (defn check-pool
   "Returns true if requesting-default-pool? and the entity does not have a pool
@@ -10,6 +12,19 @@
     (or (and (nil? pool)
              requesting-default-pool?)
         (= pool-name (:pool/name pool)))))
+
+(defn pool-name-or-default
+  "Returns:
+   - The given pool name if not-nil
+   - The default pool name, if configured
+   - A random UUID"
+  [pool-name]
+  (or pool-name (config/default-pool) (str (UUID/randomUUID))))
+
+(defn requesting-default-pool?
+  "Returns true if pool-name is nil or equal to the default pool name"
+  [pool-name]
+  (true? (or (nil? pool-name) (= pool-name (config/default-pool)))))
 
 (defn all-pools
   "Returns a list of Datomic entities corresponding

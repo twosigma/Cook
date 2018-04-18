@@ -941,8 +941,14 @@ def query_queue(cook_url):
     """Get current jobs via the queue endpoint (admin-only)"""
     return session.get(f'{cook_url}/queue')
 
+def get_limit(cook_url, limit_type, user, pool=None):
+    params = {'user': user}
+    if pool is not None:
+        params['pool'] = pool
+    return session.get(f'{cook_url}/{limit_type}', params=params)
 
-def set_limit(cook_url, limit_type, user, mem=None, cpus=None, gpus=None, count=None, reason='testing'):
+
+def set_limit(cook_url, limit_type, user, mem=None, cpus=None, gpus=None, count=None, reason='testing', pool=None):
     """
     Set resource limits for the given user.
     The limit_type parameter should be either 'share' or 'quota', specifying which type of limit is being set.
@@ -960,11 +966,13 @@ def set_limit(cook_url, limit_type, user, mem=None, cpus=None, gpus=None, count=
         limits['gpus'] = gpus
     if count is not None:
         limits['count'] = count
+    if pool is not None:
+        body['pool'] = pool
     logger.debug(f'Setting {user} {limit_type} to {limits}: {body}')
     return session.post(f'{cook_url}/{limit_type}', json=body)
 
 
-def reset_limit(cook_url, limit_type, user, reason='testing'):
+def reset_limit(cook_url, limit_type, user, reason='testing', pool=None):
     """
     Resets resource limits for the given user to the default for the cluster.
     The limit_type parameter should be either 'share' or 'quota', specifying which type of limit is being reset.
@@ -972,6 +980,8 @@ def reset_limit(cook_url, limit_type, user, reason='testing'):
     params = {'user': user}
     if reason is not None:
         params['reason'] = reason
+    if pool is not None:
+        params['pool'] = pool
     return session.delete(f'{cook_url}/{limit_type}', params=params)
 
 

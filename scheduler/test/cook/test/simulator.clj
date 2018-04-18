@@ -335,7 +335,7 @@
       scheduler-config
       (try
         (doseq [{:keys [user mem cpus gpus]} (:shares config)]
-          (share/set-share! mesos-datomic-conn user "simulation" :mem mem :cpus cpus :gpus gpus))
+          (share/set-share! mesos-datomic-conn user nil "simulation" :mem mem :cpus cpus :gpus gpus))
         (loop [trace trace
                simulation-time simulation-time
                time-ms-since-last-rebalancer 0]
