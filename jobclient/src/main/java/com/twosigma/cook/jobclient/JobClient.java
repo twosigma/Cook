@@ -24,6 +24,7 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -37,6 +38,7 @@ import java.security.Principal;
 
 import org.apache.http.HttpEntity;
 import org.apache.http.HttpResponse;
+import org.apache.http.HttpStatus;
 import org.apache.http.NameValuePair;
 import org.apache.http.ParseException;
 import org.apache.http.StatusLine;
@@ -54,14 +56,14 @@ import org.apache.http.client.methods.HttpRequestBase;
 import org.apache.http.client.utils.URIBuilder;
 import org.apache.http.config.RegistryBuilder;
 import org.apache.http.entity.StringEntity;
-import org.apache.http.HttpStatus;
-import org.apache.http.message.BasicNameValuePair;
-import org.apache.http.util.EntityUtils;
 import org.apache.http.impl.auth.SPNegoSchemeFactory;
 import org.apache.http.impl.client.BasicCredentialsProvider;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClientBuilder;
 import org.apache.http.impl.client.StandardHttpRequestRetryHandler;
+import org.apache.http.message.BasicNameValuePair;
+import org.apache.http.util.EntityUtils;
+import org.apache.log4j.Logger;
 import org.json.JSONException;
 import org.json.JSONObject;
 
@@ -71,8 +73,6 @@ import com.google.common.collect.Lists;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.twosigma.cook.jobclient.auth.spnego.BasicSPNegoSchemeFactory;
 import com.twosigma.cook.jobclient.auth.spnego.GSSCredentialProvider;
-
-import org.apache.log4j.Logger;
 
 /**
  * An implementation for the Cook job client.
@@ -119,10 +119,17 @@ public class JobClient implements Closeable, JobClientInterface {
 
         public static final int DEFAULT_REQUEST_TIMEOUT_SECONDS = 60;
 
+        public static final int DEFAULT_SUBMIT_RETRY_INTERVAL_SECONDS = 10;
+
         /**
          * An interval in seconds which will be used to query job status update periodically.
          */
         private Integer _statusUpdateIntervalSeconds;
+
+        /**
+         * An interval in seconds to retry job submits.
+         */
+        private Integer _submitRetryIntervalSeconds;
 
         /**
          * The number of jobs per http request for job submission or status query.
@@ -153,6 +160,9 @@ public class JobClient implements Closeable, JobClientInterface {
             if (_statusUpdateIntervalSeconds == null) {
                 _statusUpdateIntervalSeconds = DEFAULT_STATUS_UPDATE_INTERVAL_SECONDS;
             }
+            if (_submitRetryIntervalSeconds == null) {
+                _submitRetryIntervalSeconds = DEFAULT_SUBMIT_RETRY_INTERVAL_SECONDS;
+            }
             if (_batchRequestSize == null) {
                 _batchRequestSize = DEFAULT_BATCH_REQUEST_SIZE;
             }
@@ -172,6 +182,7 @@ public class JobClient implements Closeable, JobClientInterface {
                     Preconditions.checkNotNull(_jobEndpoint, "jobEndpoint must be set"),
                     _groupEndpoint,
                     _statusUpdateIntervalSeconds,
+                    _submitRetryIntervalSeconds,
                     _batchRequestSize,
                     _instanceDecorator,
                     _httpClientBuilder.build());
@@ -322,6 +333,15 @@ public class JobClient implements Closeable, JobClientInterface {
             return _statusUpdateIntervalSeconds;
         }
 
+        public Integer getSubmitRetryInterval() {
+            return _submitRetryIntervalSeconds;
+        }
+
+        public Builder setSubmitRetryInterval(int submitRetryIntervalSeconds) {
+            this._submitRetryIntervalSeconds = submitRetryIntervalSeconds;
+            return this;
+        }
+
         /**
          * Set the size of batch requests for the job client expected to build. This will limit the number of jobs per
          * any HTTP request through Cook scheduler rest endpoint.
@@ -431,13 +451,20 @@ public class JobClient implements Closeable, JobClientInterface {
     private int _statusUpdateInterval;
 
     /**
+     * An interval in seconds to retry job submits.
+     */
+    private int _submitRetryInterval;
+
+    /**
      * The job instance decorator which will be used to decorate job instances when querying from this client.
      */
     private InstanceDecorator _instanceDecorator;
 
-    private JobClient(String host, int port, String jobEndpoint, String groupEndpoint, int statusUpdateInterval, int batchSubmissionLimit,
-            InstanceDecorator instanceDecorator, CloseableHttpClient httpClient) throws URISyntaxException {
+    private JobClient(String host, int port, String jobEndpoint, String groupEndpoint, int statusUpdateInterval,
+                      int submitRetryInterval, int batchSubmissionLimit, InstanceDecorator instanceDecorator,
+                      CloseableHttpClient httpClient) throws URISyntaxException {
         _statusUpdateInterval = statusUpdateInterval;
+        _submitRetryInterval = submitRetryInterval;
         _batchRequestSize = batchSubmissionLimit;
         _activeUUIDToJob = new ConcurrentHashMap<>();
         _jobUUIDToListener = new ConcurrentHashMap<>();
@@ -757,7 +784,7 @@ public class JobClient implements Closeable, JobClientInterface {
         HttpRequestBase httpRequest = makeHttpPost(_jobURI, json, impersonatedUser);
 
         try {
-            httpResponse = executeWithRetries(httpRequest, 5, 10);
+            httpResponse = executeWithRetries(httpRequest, 5, _submitRetryInterval);
         } catch (IOException e) {
             throw releaseAndCreateException(httpRequest, null, "Can not submit POST request " + json + " via uri " + _jobURI, e);
         }
@@ -794,9 +821,38 @@ public class JobClient implements Closeable, JobClientInterface {
         if (null != statusLine && statusLine.getStatusCode() == HttpStatus.SC_CREATED) {
             isSuccess = true;
             _log.info("Successfully execute POST request with data " + json + " via uri " + _jobURI);
+        } else if (null != statusLine && statusLine.getStatusCode() >= HttpStatus.SC_INTERNAL_SERVER_ERROR) {
+            final String transactionTimeoutMessage = "Transaction timed out.";
+            if (String.valueOf(response).contains(transactionTimeoutMessage)) {
+                _log.warn("POST experienced transaction timeout via uri " + _jobURI);
+                Collection<UUID> jobUuids = new HashSet<>();
+                for (Job job : jobs) {
+                    jobUuids.add(job.getUUID());
+                }
+
+                _log.info("Sleeping " + _submitRetryInterval + " secs to allow transaction opportunity to complete");
+                try {
+                    Thread.sleep(_submitRetryInterval * 1000);
+                } catch (InterruptedException e) {
+                    // ignore
+                }
+                _log.info("Verifying whether all the jobs were created despite the transaction timeout message");
+                try {
+                    final Map<UUID, Job> uuidToJob = queryJobs(jobUuids);
+                    if (uuidToJob.size() == jobUuids.size()) {
+                        _log.info("All " + uuidToJob.size() + " jobs were created despite the transaction timeout message");
+                        isSuccess = true;
+                    } else {
+                        _log.warn("POST failed: " + uuidToJob.size() + " of " + jobUuids.size() +
+                            " jobs were created in the timed out transaction");
+                    }
+                } catch (Exception ex) {
+                    _log.error("POST failed: all queried jobs were not found: " + ex.getMessage());
+                }
+            }
         } else if (null != statusLine && statusLine.getStatusCode() >= HttpStatus.SC_BAD_REQUEST) {
             final Pattern patternUUID =
-                   Pattern.compile("[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89aAbB][a-f0-9]{3}-[a-f0-9]{12} already used");
+                Pattern.compile("[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89aAbB][a-f0-9]{3}-[a-f0-9]{12} already used");
             final Matcher matchUUID = patternUUID.matcher(response);
             if (matchUUID.find()) {
                 _log.info("Successfully execute POST request with several retries " + json + " via uri " + _jobURI);

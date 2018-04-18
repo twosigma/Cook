@@ -1758,3 +1758,41 @@
                             :gpus 1168.0
                             :jobs 2}}
              (api/get-user-usage (d/db conn) (assoc-in request-context [:request :query-params :pool] "baz")))))))
+
+(deftest test-create-jobs-handler
+  (let [conn (restore-fresh-database! "datomic:mem://test-create-jobs-handler")
+        task-constraints {:cpus 12 :memory-gb 100 :retry-limit 200}
+        gpu-enabled? false
+        is-authorized-fn (constantly true)
+        new-request (fn []
+                      {:request-method :post
+                       :scheme :http
+                       :uri "/rawscheduler"
+                       :headers {"Content-Type" "application/json"}
+                       :body-params {"jobs" [(basic-job)]}})]
+    (with-redefs [api/no-job-exceeds-quota? (constantly true)]
+      (testing "successful-job-creation-response"
+        (with-redefs [api/create-jobs! (fn [in-conn _]
+                                         (is (= conn in-conn)))]
+          (let [handler (api/create-jobs-handler conn task-constraints gpu-enabled? is-authorized-fn)
+                {:keys [status]} (handler (new-request))]
+            (is (= 201 status)))))
+
+      (testing "transaction-timed-out-job-creation-response"
+        (with-redefs [api/create-jobs! (fn [in-conn _]
+                                         (is (= conn in-conn))
+                                         (throw (ex-info "Transaction timed out."
+                                                         {:db.error :db.error/transaction-timeout})))]
+          (let [handler (api/create-jobs-handler conn task-constraints gpu-enabled? is-authorized-fn)
+                {:keys [body status]} (handler (new-request))]
+            (is (= 500 status))
+            (is (str/includes? body "Transaction timed out. Your jobs may not have been created successfully.")))))
+
+      (testing "generic-exception-job-creation-response"
+        (with-redefs [api/create-jobs! (fn [in-conn _]
+                                         (is (= conn in-conn))
+                                         (throw (Exception. "Thrown from test")))]
+          (let [handler (api/create-jobs-handler conn task-constraints gpu-enabled? is-authorized-fn)
+                {:keys [body status]} (handler (new-request))]
+            (is (= 500 status))
+            (is (str/includes? body "Exception occurred while creating job - Thrown from test"))))))))
