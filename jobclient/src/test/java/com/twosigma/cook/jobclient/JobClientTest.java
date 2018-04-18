@@ -128,6 +128,23 @@ public class JobClientTest {
         Assert.assertEquals(1, postCounter.get());
     }
 
+    private HttpResponse executeAndReturnTransactionTimedOutError(HttpRequestBase request, AtomicInteger postCounter) throws IOException {
+        final ProtocolVersion protocolVersion = new ProtocolVersion("HTTP", 1, 1);
+        final BasicHttpEntity httpEntity = new BasicHttpEntity();
+        final String msg = buildResponseMessage(request);
+        // Test http post for submitting jobs.
+        if (request instanceof HttpPost) {
+            postCounter.incrementAndGet();
+            final BasicStatusLine statusLine = new BasicStatusLine(protocolVersion, 500, msg);
+            final BasicHttpResponse response = new BasicHttpResponse(statusLine);
+            httpEntity.setContent(IOUtils.toInputStream("Transaction timed out.", "UTF-8"));
+            response.setEntity(httpEntity);
+            return response;
+        } else {
+            return null;
+        }
+    }
+
     @Test(expected = JobClientException.class)
     public void testJobSubmitWithTransactionTimeoutAndFailingEmptyQuery() throws JobClientException {
         // arrange
@@ -136,20 +153,7 @@ public class JobClientTest {
         new MockUp<JobClient>() {
             @Mock
             public HttpResponse executeWithRetries(HttpRequestBase request, int ignore1, long ignore2) throws IOException {
-                final ProtocolVersion protocolVersion = new ProtocolVersion("HTTP", 1, 1);
-                final BasicHttpEntity httpEntity = new BasicHttpEntity();
-                final String msg = buildResponseMessage(request);
-                // Test http post for submitting jobs.
-                if (request instanceof HttpPost) {
-                    postCounter.incrementAndGet();
-                    final BasicStatusLine statusLine = new BasicStatusLine(protocolVersion, 500, msg);
-                    final BasicHttpResponse response = new BasicHttpResponse(statusLine);
-                    httpEntity.setContent(IOUtils.toInputStream("Transaction timed out. {:db.error :db.error/transaction-timeout}", "UTF-8"));
-                    response.setEntity(httpEntity);
-                    return response;
-                } else {
-                    return null;
-                }
+                return executeAndReturnTransactionTimedOutError(request, postCounter);
             }
 
             @Mock
@@ -174,20 +178,7 @@ public class JobClientTest {
         new MockUp<JobClient>() {
             @Mock
             public HttpResponse executeWithRetries(HttpRequestBase request, int ignore1, long ignore2) throws IOException {
-                final ProtocolVersion protocolVersion = new ProtocolVersion("HTTP", 1, 1);
-                final BasicHttpEntity httpEntity = new BasicHttpEntity();
-                final String msg = buildResponseMessage(request);
-                // Test http post for submitting jobs.
-                if (request instanceof HttpPost) {
-                    postCounter.incrementAndGet();
-                    final BasicStatusLine statusLine = new BasicStatusLine(protocolVersion, 500, msg);
-                    final BasicHttpResponse response = new BasicHttpResponse(statusLine);
-                    httpEntity.setContent(IOUtils.toInputStream("Transaction timed out. {:db.error :db.error/transaction-timeout}", "UTF-8"));
-                    response.setEntity(httpEntity);
-                    return response;
-                } else {
-                    return null;
-                }
+                return executeAndReturnTransactionTimedOutError(request, postCounter);
             }
 
             @Mock
@@ -215,20 +206,7 @@ public class JobClientTest {
         new MockUp<JobClient>() {
             @Mock
             public HttpResponse executeWithRetries(HttpRequestBase request, int ignore1, long ignore2) throws IOException {
-                final ProtocolVersion protocolVersion = new ProtocolVersion("HTTP", 1, 1);
-                final BasicHttpEntity httpEntity = new BasicHttpEntity();
-                final String msg = buildResponseMessage(request);
-                // Test http post for submitting jobs.
-                if (request instanceof HttpPost) {
-                    postCounter.incrementAndGet();
-                    final BasicStatusLine statusLine = new BasicStatusLine(protocolVersion, 500, msg);
-                    final BasicHttpResponse response = new BasicHttpResponse(statusLine);
-                    httpEntity.setContent(IOUtils.toInputStream("Transaction timed out. {:db.error :db.error/transaction-timeout}", "UTF-8"));
-                    response.setEntity(httpEntity);
-                    return response;
-                } else {
-                    return null;
-                }
+                return executeAndReturnTransactionTimedOutError(request, postCounter);
             }
 
             @Mock
