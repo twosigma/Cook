@@ -4,7 +4,7 @@
             [cook.mesos.pool :as pool])
   (:import (clojure.lang ExceptionInfo)))
 
-(deftest test-guard-no-default-pool
+(deftest test-guard-invalid-default-pool
   (with-redefs [pool/all-pools (constantly [{:pool/name "foo"}])
                 config/default-pool (constantly "foo")]
     (is (nil? (pool/guard-invalid-default-pool nil))))
