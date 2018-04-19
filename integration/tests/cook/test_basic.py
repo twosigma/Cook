@@ -1632,6 +1632,7 @@ class CookTest(unittest.TestCase):
 
     def test_retrieve_jobs_with_deprecated_api(self):
         pools, _ = util.pools(self.cook_url)
+        pools = [p for p in pools if p['state'] == 'active']
         pool = pools[0]['name'] if len(pools) > 0 else None
         job_uuid_1, resp = util.submit_job(self.cook_url, pool=pool)
         self.assertEqual(201, resp.status_code, msg=resp.content)
