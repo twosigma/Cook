@@ -111,7 +111,7 @@ if [ "$curl_error" = true ]; then
 fi
 
 # Start a third cook listening on port 12323, this will be a slave on the "cook-framework-1" framework
-LIBPROCESS_IP=172.17.0.1 COOK_DATOMIC="${COOK_DATOMIC_URI_1}" COOK_PORT=12323 COOK_SSL_PORT=12324 COOK_FRAMEWORK_ID=cook-framework-1 COOK_LOGFILE="log/cook-12323.log" lein run ${PROJECT_DIR}/travis/${CONFIG_FILE} &
+LIBPROCESS_IP=172.17.0.1 COOK_DATOMIC="${COOK_DATOMIC_URI_1}" COOK_PORT=12323 COOK_SSL_PORT=12324 COOK_FRAMEWORK_ID=cook-framework-1 COOK_LOGFILE="log/cook-12323.log" COOK_DEFAULT_POOL="gamma" lein run ${PROJECT_DIR}/travis/${CONFIG_FILE} &
 
 timeout 180s bash -c "wait_for_cook 12323" || curl_error=true
 if [ "$curl_error" = true ]; then
