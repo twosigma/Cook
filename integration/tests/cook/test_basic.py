@@ -1392,6 +1392,8 @@ class CookTest(unittest.TestCase):
 
             @retry(stop_max_delay=60000, wait_fixed=1000)  # Wait for docker container to start
             def get_docker_info():
+                job = util.load_job(self.cook_url, job_uuid)
+                self.logger.info(f'Job status is {job["status"]}: {job}')
                 self.logger.info('Running containers: %s' % subprocess.check_output(['docker', 'ps']).decode('utf-8'))
                 return json.loads(subprocess.check_output(['docker', 'inspect', container_id]).decode('utf-8'))
 
@@ -1403,6 +1405,8 @@ class CookTest(unittest.TestCase):
             self.assertTrue('9090/udp' in ports)
             self.assertEqual(instance['ports'][1], int(ports['9090/udp'][0]['HostPort']))
         finally:
+            job = util.load_job(self.cook_url, job_uuid)
+            self.logger.info(f'Job status is {job["status"]}: {job}')
             util.session.delete('%s/rawscheduler?job=%s' % (self.cook_url, job_uuid))
 
     def test_unscheduled_jobs(self):
