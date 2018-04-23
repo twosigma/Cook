@@ -1,11 +1,14 @@
 import logging
-import pytest
 import unittest
 
-from tests.cook import reasons, util
+import pytest
+
+from tests.cook import util
+
 
 @pytest.mark.multi_user
-@unittest.skipUnless(util.multi_user_tests_enabled(), 'Requires using multi-user coniguration (e.g., BasicAuth) for Cook Scheduler')
+@unittest.skipUnless(util.multi_user_tests_enabled(), 'Requires using multi-user coniguration '
+                                                      '(e.g., BasicAuth) for Cook Scheduler')
 @pytest.mark.timeout(util.DEFAULT_TEST_TIMEOUT_SECS)  # individual test timeout
 class MultiUserCookTest(unittest.TestCase):
 
@@ -57,7 +60,7 @@ class MultiUserCookTest(unittest.TestCase):
         users = self.user_factory.new_users(6)
         job_resources = {'cpus': 0.1, 'mem': 123}
         all_job_uuids = []
-        pools, _ = util.pools(self.cook_url)
+        pools, _ = util.all_pools(self.cook_url)
         try:
             # Start jobs for several users
             for i, user in enumerate(users):
@@ -198,4 +201,3 @@ class MultiUserCookTest(unittest.TestCase):
             with admin:
                 util.kill_jobs(self.cook_url, all_job_uuids)
                 util.reset_limit(self.cook_url, 'quota', user.name)
-

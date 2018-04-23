@@ -1671,7 +1671,7 @@ class CookTest(unittest.TestCase):
         job_resources = {'cpus': 0.1, 'mem': 123}
         job_uuid, resp = util.submit_job(self.cook_url, command='sleep 120', **job_resources)
         self.assertEqual(resp.status_code, 201, resp.content)
-        pools, _ = util.pools(self.cook_url)
+        pools, _ = util.all_pools(self.cook_url)
         try:
             user = util.get_user(self.cook_url, job_uuid)
             # Don't query until the job starts
@@ -1789,7 +1789,7 @@ class CookTest(unittest.TestCase):
         job_uuids, resp = util.submit_jobs(self.cook_url, job_specs)
         self.assertEqual(resp.status_code, 201, resp.content)
 
-        pools, _ = util.pools(self.cook_url)
+        pools, _ = util.all_pools(self.cook_url)
         try:
             user = util.get_user(self.cook_url, job_uuids[0])
             # Don't query until both of the jobs start
@@ -1894,7 +1894,6 @@ class CookTest(unittest.TestCase):
                     resp = util.get_limit(self.cook_url, limit, user, pool=pool)
                     self.assertEqual(resp.status_code, 200, resp.text)
                     self.assertEqual(1000, resp.json()['cpus'], resp.text)
-
 
     def test_submit_with_no_name(self):
         # We need to manually set the 'uuid' to avoid having the
@@ -2107,6 +2106,7 @@ class CookTest(unittest.TestCase):
 
         def origin_allowed(cors_patterns, origin):
             return any([re.search(pattern, origin) for pattern in cors_patterns])
+
         resp = util.session.get(f"{self.cook_url}/settings", headers={"Origin": self.cors_origin})
         self.assertEqual(200, resp.status_code)
         self.assertTrue(origin_allowed(resp.json()["cors-origins"], self.cors_origin), resp.json())
@@ -2149,7 +2149,7 @@ class CookTest(unittest.TestCase):
 
     def test_ssl(self):
         settings = util.settings(self.cook_url)
-        if not 'server-https-port' in settings or settings['server-https-port'] is None:
+        if 'server-https-port' not in settings or settings['server-https-port'] is None:
             self.logger.info('SSL not configured: skipping test')
             return
         ssl_port = settings['server-https-port']

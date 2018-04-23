@@ -1024,5 +1024,5 @@ def all_pools(cook_url):
 
 def active_pools(cook_url):
     """Returns the list of all active pools that exist"""
-    pools, _ = all_pools(cook_url)
-    return [p for p in pools if p['state'] == 'active']
+    pools, resp = all_pools(cook_url)
+    return [p for p in pools if p['state'] == 'active'], resp
