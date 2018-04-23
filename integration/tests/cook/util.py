@@ -941,6 +941,7 @@ def query_queue(cook_url):
     """Get current jobs via the queue endpoint (admin-only)"""
     return session.get(f'{cook_url}/queue')
 
+
 def get_limit(cook_url, limit_type, user, pool=None):
     params = {'user': user}
     if pool is not None:
@@ -1015,7 +1016,13 @@ def default_pool(cook_url):
     return default_pool
 
 
-def pools(cook_url):
+def all_pools(cook_url):
     """Returns the list of all pools that exist"""
     resp = session.get(f'{cook_url}/pools')
     return resp.json(), resp
+
+
+def active_pools(cook_url):
+    """Returns the list of all active pools that exist"""
+    pools, _ = all_pools(cook_url)
+    return [p for p in pools if p['state'] == 'active']

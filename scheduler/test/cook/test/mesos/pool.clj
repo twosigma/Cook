@@ -13,10 +13,16 @@
     (is (nil? (pool/guard-invalid-default-pool nil))))
   (with-redefs [pool/all-pools (constantly [{}])
                 config/default-pool (constantly nil)]
-    (is (thrown? ExceptionInfo (pool/guard-invalid-default-pool nil))))
+    (is (thrown-with-msg? ExceptionInfo
+                          #"There are pools in the database, but no default pool is configured"
+                          (pool/guard-invalid-default-pool nil))))
   (with-redefs [pool/all-pools (constantly [])
                 config/default-pool (constantly "foo")]
-    (is (thrown? ExceptionInfo (pool/guard-invalid-default-pool nil))))
+    (is (thrown-with-msg? ExceptionInfo
+                          #"There is no pool in the database matching the configured default pool"
+                          (pool/guard-invalid-default-pool nil))))
   (with-redefs [pool/all-pools (constantly [{:pool/name "bar"}])
                 config/default-pool (constantly "foo")]
-    (is (thrown? ExceptionInfo (pool/guard-invalid-default-pool nil)))))
+    (is (thrown-with-msg? ExceptionInfo
+                          #"There is no pool in the database matching the configured default pool"
+                          (pool/guard-invalid-default-pool nil)))))

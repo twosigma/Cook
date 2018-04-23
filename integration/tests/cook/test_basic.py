@@ -1631,8 +1631,7 @@ class CookTest(unittest.TestCase):
             util.kill_jobs(self.cook_url, uuids)
 
     def test_retrieve_jobs_with_deprecated_api(self):
-        pools, _ = util.pools(self.cook_url)
-        pools = [p for p in pools if p['state'] == 'active']
+        pools, _ = util.active_pools(self.cook_url)
         pool = pools[0]['name'] if len(pools) > 0 else None
         job_uuid_1, resp = util.submit_job(self.cook_url, pool=pool)
         self.assertEqual(201, resp.status_code, msg=resp.content)
@@ -1735,7 +1734,7 @@ class CookTest(unittest.TestCase):
             self.assertEqual(usage_data['total_usage']['gpus'], breakdowns_total['gpus'], usage_data)
             self.assertEqual(usage_data['total_usage']['jobs'], breakdowns_total['jobs'], usage_data)
             # Pool-specific checks
-            pools, _ = util.pools(self.cook_url)
+            pools, _ = util.all_pools(self.cook_url)
             for pool in pools:
                 # There should be a sub-map under pools for each pool in the
                 # system, since we didn't specify the pool in the usage request
@@ -1859,7 +1858,7 @@ class CookTest(unittest.TestCase):
                 self.assertEqual(resp.status_code, 200, resp.text)
                 self.assertEqual(sys.float_info.max, resp.json()['cpus'], resp.text)
 
-                pools, _ = util.pools(self.cook_url)
+                pools, _ = util.all_pools(self.cook_url)
                 non_default_pools = [p['name'] for p in pools if p['name'] != default_pool]
 
                 for pool in non_default_pools:
@@ -2114,7 +2113,7 @@ class CookTest(unittest.TestCase):
         self.assertEqual(b"", resp.content)
 
     def test_submit_with_pool(self):
-        pools, _ = util.pools(self.cook_url)
+        pools, _ = util.all_pools(self.cook_url)
         if len(pools) == 0:
             self.logger.info('There are no pools to submit jobs to')
         for pool in pools:
