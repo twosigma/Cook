@@ -1,5 +1,6 @@
 (ns data.seed-pools
-  (:require [cook.mesos.quota :as quota]
+  (:require [cook.datomic :as datomic]
+            [cook.mesos.quota :as quota]
             [datomic.api :as d]))
 
 (def uri (second *command-line-args*))
@@ -39,7 +40,7 @@
 (defn connect
   []
   (println "Attempting to connect to" uri)
-  (d/connect uri))
+  (datomic/create-connection {:settings {:mesos-datomic-uri uri}}))
 
 (try
   (let [conn (retry 10 connect)]

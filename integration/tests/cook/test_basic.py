@@ -15,7 +15,7 @@ import dateutil.parser
 import pytest
 from retrying import retry
 
-from tests.cook import reasons
+from tests.cook import reasons, mesos
 from tests.cook import util
 
 
@@ -1355,11 +1355,10 @@ class CookTest(unittest.TestCase):
                                                                                  'container-port': 9090,
                                                                                  'protocol': 'udp'}]}})
         self.assertEqual(resp.status_code, 201, resp.content)
+        job = util.wait_for_job(self.cook_url, job_uuid, 'running')
+        instance = job['instances'][0]
+        self.logger.debug('instance: %s' % instance)
         try:
-            job = util.wait_for_job(self.cook_url, job_uuid, 'running')
-            instance = job['instances'][0]
-            self.logger.debug('instance: %s' % instance)
-
             # Get agent host/port
             state = util.get_mesos_state(self.mesos_url)
             agent = [agent for agent in state['slaves']
@@ -1391,6 +1390,8 @@ class CookTest(unittest.TestCase):
 
             @retry(stop_max_delay=60000, wait_fixed=1000)  # Wait for docker container to start
             def get_docker_info():
+                job = util.load_job(self.cook_url, job_uuid)
+                self.logger.info(f'Job status is {job["status"]}: {job}')
                 self.logger.info('Running containers: %s' % subprocess.check_output(['docker', 'ps']).decode('utf-8'))
                 return json.loads(subprocess.check_output(['docker', 'inspect', container_id]).decode('utf-8'))
 
@@ -1402,7 +1403,10 @@ class CookTest(unittest.TestCase):
             self.assertTrue('9090/udp' in ports)
             self.assertEqual(instance['ports'][1], int(ports['9090/udp'][0]['HostPort']))
         finally:
+            job = util.load_job(self.cook_url, job_uuid)
+            self.logger.info(f'Job status is {job["status"]}: {job}')
             util.session.delete('%s/rawscheduler?job=%s' % (self.cook_url, job_uuid))
+            mesos.dump_sandbox_files(util.session, instance, job)
 
     def test_unscheduled_jobs(self):
         unsatisfiable_constraint = ['HOSTNAME', 'EQUALS', 'fakehost']
@@ -2117,6 +2121,7 @@ class CookTest(unittest.TestCase):
 
         def origin_allowed(cors_patterns, origin):
             return any([re.search(pattern, origin) for pattern in cors_patterns])
+
         resp = util.session.get(f"{self.cook_url}/settings", headers={"Origin": self.cors_origin})
         self.assertEqual(200, resp.status_code)
         self.assertTrue(origin_allowed(resp.json()["cors-origins"], self.cors_origin), resp.json())

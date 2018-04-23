@@ -142,9 +142,5 @@ docker network connect bridge ${NAME}
 docker network connect cook_nw ${NAME}
 docker start ${NAME}
 
-echo "Seeding test data..."
-cd ${SCHEDULER_DIR}
-lein exec -p test-resources/data/seed_pools.clj ${COOK_DATOMIC_URI}
-
 echo "Attaching to container..."
 docker attach ${NAME}

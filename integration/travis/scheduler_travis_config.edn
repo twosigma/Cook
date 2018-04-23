@@ -50,4 +50,4 @@
                 "cook.mesos.rebalancer" :debug
                 "cook.mesos.scheduler" :debug
                 :default :info}}
- :pools {:default "gamma"}}
+ :pools {:default #config/env "COOK_DEFAULT_POOL"}}
