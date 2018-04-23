@@ -57,7 +57,7 @@ class MultiUserCookTest(unittest.TestCase):
         users = self.user_factory.new_users(6)
         job_resources = {'cpus': 0.1, 'mem': 123}
         all_job_uuids = []
-        pools, _ = util.pools(self.cook_url)
+        pools, _ = util.all_pools(self.cook_url)
         try:
             # Start jobs for several users
             for i, user in enumerate(users):
