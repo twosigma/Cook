@@ -1,18 +1,18 @@
 import logging
 import os
 import sys
-from urllib.parse import urlparse, parse_qs
+import urllib.parse as up
 
 
 def instance_to_agent_url(instance):
     """Given a job instance, returns the base Mesos agent URL, e.g. http://agent123.example.com:5051"""
-    hostname = instance['hostname']
     if 'output_url' in instance:
         output_url = instance['output_url']
-        url = urlparse(output_url)
+        url = up.urlparse(output_url)
         netloc = url.netloc
     else:
         logging.info('assuming default agent port of 5051')
+        hostname = instance['hostname']
         netloc = f'{hostname}:5051'
     return f'http://{netloc}'
 
@@ -28,8 +28,8 @@ def retrieve_instance_sandbox_directory(session, instance, job):
     # Try parsing it from the output url if present
     if 'output_url' in instance:
         output_url = instance['output_url']
-        url = urlparse(output_url)
-        query_dict = parse_qs(url.query)
+        url = up.urlparse(output_url)
+        query_dict = up.parse_qs(url.query)
         if 'path' in query_dict:
             path_list = query_dict['path']
             if len(path_list) == 1:
@@ -113,10 +113,13 @@ def cat_for_instance(session, instance, sandbox_dir, path):
 
 def dump_sandbox_files(session, instance, job):
     """Logs the contents of each file in the root of the given instance's sandbox."""
-    directory = retrieve_instance_sandbox_directory(session, instance, job)
-    entries = browse_files(session, instance, directory, None)
-    for entry in entries:
-        if is_directory(entry):
-            logging.info(f'Skipping over directory {entry}')
-        else:
-            cat_for_instance(session, instance, directory, entry['path'])
+    try:
+        directory = retrieve_instance_sandbox_directory(session, instance, job)
+        entries = browse_files(session, instance, directory, None)
+        for entry in entries:
+            if is_directory(entry):
+                logging.info(f'Skipping over directory {entry}')
+            else:
+                cat_for_instance(session, instance, directory, entry['path'])
+    except Exception as e:
+        logging.info(f'Unable to dump sandbox files: {e}')
