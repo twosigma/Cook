@@ -941,6 +941,7 @@ def query_queue(cook_url):
     """Get current jobs via the queue endpoint (admin-only)"""
     return session.get(f'{cook_url}/queue')
 
+
 def get_limit(cook_url, limit_type, user, pool=None):
     params = {'user': user}
     if pool is not None:
