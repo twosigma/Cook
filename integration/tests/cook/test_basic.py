@@ -1638,7 +1638,7 @@ class CookTest(unittest.TestCase):
             util.kill_jobs(self.cook_url, uuids)
 
     def test_retrieve_jobs_with_deprecated_api(self):
-        pools, _ = util.pools(self.cook_url)
+        pools, _ = util.active_pools(self.cook_url)
         pool = pools[0]['name'] if len(pools) > 0 else None
         job_uuid_1, resp = util.submit_job(self.cook_url, pool=pool)
         self.assertEqual(201, resp.status_code, msg=resp.content)
@@ -1675,7 +1675,7 @@ class CookTest(unittest.TestCase):
         job_resources = {'cpus': 0.1, 'mem': 123}
         job_uuid, resp = util.submit_job(self.cook_url, command='sleep 120', **job_resources)
         self.assertEqual(resp.status_code, 201, resp.content)
-        pools, _ = util.pools(self.cook_url)
+        pools, _ = util.all_pools(self.cook_url)
         try:
             user = util.get_user(self.cook_url, job_uuid)
             # Don't query until the job starts
@@ -1706,7 +1706,7 @@ class CookTest(unittest.TestCase):
         job_specs = util.minimal_jobs(job_count, command='sleep 120', group=group_uuid, **job_resources)
         job_uuids, resp = util.submit_jobs(self.cook_url, job_specs, groups=[group_spec])
         self.assertEqual(resp.status_code, 201, resp.content)
-        pools, _ = util.pools(self.cook_url)
+        pools, _ = util.all_pools(self.cook_url)
         try:
             user = util.get_user(self.cook_url, job_uuids[0])
             # Don't query until both of the jobs start
@@ -1793,7 +1793,7 @@ class CookTest(unittest.TestCase):
         job_uuids, resp = util.submit_jobs(self.cook_url, job_specs)
         self.assertEqual(resp.status_code, 201, resp.content)
 
-        pools, _ = util.pools(self.cook_url)
+        pools, _ = util.all_pools(self.cook_url)
         try:
             user = util.get_user(self.cook_url, job_uuids[0])
             # Don't query until both of the jobs start
@@ -1877,7 +1877,7 @@ class CookTest(unittest.TestCase):
                 self.assertEqual(resp.status_code, 200, resp.text)
                 self.assertEqual(sys.float_info.max, resp.json()['cpus'], resp.text)
 
-                pools, _ = util.pools(self.cook_url)
+                pools, _ = util.all_pools(self.cook_url)
                 non_default_pools = [p['name'] for p in pools if p['name'] != default_pool]
 
                 for pool in non_default_pools:
@@ -2134,7 +2134,7 @@ class CookTest(unittest.TestCase):
         self.assertEqual(b"", resp.content)
 
     def test_submit_with_pool(self):
-        pools, _ = util.pools(self.cook_url)
+        pools, _ = util.all_pools(self.cook_url)
         if len(pools) == 0:
             self.logger.info('There are no pools to submit jobs to')
         for pool in pools:

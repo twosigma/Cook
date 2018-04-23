@@ -25,7 +25,9 @@
             [cook.curator :as curator]
             [cook.datomic :as datomic]
             [cook.impersonation :refer (impersonation-authorized-wrapper)]
+            [cook.mesos.pool :as pool]
             [cook.util :as util]
+            [datomic.api :as d]
             [metrics.jvm.core :as metrics-jvm]
             [metrics.ring.instrument :refer (instrument)]
             [mount.core :as mount]
@@ -299,6 +301,7 @@
   (println "Cook" @util/version "( commit" @util/commit ")")
   (try
     (mount/start-with-args (cook.config/read-config config-file-path))
+    (pool/guard-invalid-default-pool (d/db datomic/conn))
     (metrics-jvm/instrument-jvm)
     (let [server (scheduler-server config)]
       (intern 'user 'main-graph server)
