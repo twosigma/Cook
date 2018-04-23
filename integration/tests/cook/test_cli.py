@@ -1756,3 +1756,25 @@ class CookCliTest(unittest.TestCase):
         cp, uuids = cli.submit('ls', self.cook_url, submit_flags=f'--gpus 0')
         self.assertEqual(2, cp.returncode, cp.stderr)
         self.assertIn('submit: error: argument --gpus: 0 is not a positive integer', cli.decode(cp.stderr))
+
+    def test_submit_with_pool(self):
+        pools, _ = util.pools(self.cook_url)
+        if len(pools) == 0:
+            self.logger.info('There are no pools to submit jobs to')
+        for pool in pools:
+            self.logger.info(f'Submitting to {pool}')
+            pool_name = pool['name']
+            cp, uuids = cli.submit('ls', self.cook_url, submit_flags=f'--pool {pool_name}')
+            if pool['state'] == 'active':
+                self.assertEqual(0, cp.returncode, cp.stderr)
+                cp, jobs = cli.show_jobs(uuids, self.cook_url)
+                self.assertEqual(0, cp.returncode, cp.stderr)
+                self.assertEqual(1, len(jobs))
+                self.assertEqual(pool_name, jobs[0]['pool'])
+            else:
+                self.assertEqual(1, cp.returncode, cp.stderr)
+                self.assertIn(f'{pool_name} is not accepting job submissions', cli.stdout(cp))
+        # Try submitting to a pool that doesn't exist
+        cp, uuids = cli.submit('ls', self.cook_url, submit_flags=f'--pool {uuid.uuid4()}')
+        self.assertEqual(1, cp.returncode, cp.stderr)
+        self.assertIn('is not a valid pool name', cli.stdout(cp))
