@@ -2,6 +2,8 @@ import json
 import logging
 import math
 import operator
+import os
+import re
 import subprocess
 import sys
 import time
@@ -30,6 +32,7 @@ class CookTest(unittest.TestCase):
         self.cook_url = type(self).cook_url
         self.mesos_url = util.retrieve_mesos_url()
         self.logger = logging.getLogger(__name__)
+        self.cors_origin = os.getenv('COOK_ALLOWED_ORIGIN', 'http://cors.example.com')
 
     def test_scheduler_info(self):
         info = util.scheduler_info(self.cook_url)
@@ -1668,6 +1671,7 @@ class CookTest(unittest.TestCase):
         job_resources = {'cpus': 0.1, 'mem': 123}
         job_uuid, resp = util.submit_job(self.cook_url, command='sleep 120', **job_resources)
         self.assertEqual(resp.status_code, 201, resp.content)
+        pools, _ = util.pools(self.cook_url)
         try:
             user = util.get_user(self.cook_url, job_uuid)
             # Don't query until the job starts
@@ -1676,7 +1680,10 @@ class CookTest(unittest.TestCase):
             self.assertEqual(resp.status_code, 200, resp.content)
             usage_data = resp.json()
             # Check that the response structure looks as expected
-            self.assertEqual(list(usage_data.keys()), ['total_usage', 'pools'], usage_data)
+            if pools:
+                self.assertEqual(list(usage_data.keys()), ['total_usage', 'pools'], usage_data)
+            else:
+                self.assertEqual(list(usage_data.keys()), ['total_usage'], usage_data)
             self.assertEqual(len(usage_data['total_usage']), 4, usage_data)
             # Since we don't know what other test jobs are currently running,
             # we conservatively check current usage with the >= operation.
@@ -1695,6 +1702,7 @@ class CookTest(unittest.TestCase):
         job_specs = util.minimal_jobs(job_count, command='sleep 120', group=group_uuid, **job_resources)
         job_uuids, resp = util.submit_jobs(self.cook_url, job_specs, groups=[group_spec])
         self.assertEqual(resp.status_code, 201, resp.content)
+        pools, _ = util.all_pools(self.cook_url)
         try:
             user = util.get_user(self.cook_url, job_uuids[0])
             # Don't query until both of the jobs start
@@ -1703,7 +1711,10 @@ class CookTest(unittest.TestCase):
             self.assertEqual(resp.status_code, 200, resp.content)
             usage_data = resp.json()
             # Check that the response structure looks as expected
-            self.assertEqual(set(usage_data.keys()), {'total_usage', 'grouped', 'ungrouped', 'pools'}, usage_data)
+            if pools:
+                self.assertEqual(set(usage_data.keys()), {'total_usage', 'grouped', 'ungrouped', 'pools'}, usage_data)
+            else:
+                self.assertEqual(set(usage_data.keys()), {'total_usage', 'grouped', 'ungrouped'}, usage_data)
             self.assertEqual(set(usage_data['ungrouped'].keys()), {'running_jobs', 'usage'}, usage_data)
             my_group_usage = next(x for x in usage_data['grouped'] if x['group']['uuid'] == group_uuid)
             self.assertEqual(set(my_group_usage.keys()), {'group', 'usage'}, my_group_usage)
@@ -1734,7 +1745,6 @@ class CookTest(unittest.TestCase):
             self.assertEqual(usage_data['total_usage']['gpus'], breakdowns_total['gpus'], usage_data)
             self.assertEqual(usage_data['total_usage']['jobs'], breakdowns_total['jobs'], usage_data)
             # Pool-specific checks
-            pools, _ = util.all_pools(self.cook_url)
             for pool in pools:
                 # There should be a sub-map under pools for each pool in the
                 # system, since we didn't specify the pool in the usage request
@@ -1778,6 +1788,8 @@ class CookTest(unittest.TestCase):
         job_specs = util.minimal_jobs(job_count, command='sleep 120', **job_resources)
         job_uuids, resp = util.submit_jobs(self.cook_url, job_specs)
         self.assertEqual(resp.status_code, 201, resp.content)
+
+        pools, _ = util.pools(self.cook_url)
         try:
             user = util.get_user(self.cook_url, job_uuids[0])
             # Don't query until both of the jobs start
@@ -1786,7 +1798,10 @@ class CookTest(unittest.TestCase):
             self.assertEqual(resp.status_code, 200, resp.content)
             usage_data = resp.json()
             # Check that the response structure looks as expected
-            self.assertEqual(set(usage_data.keys()), {'total_usage', 'grouped', 'ungrouped', 'pools'}, usage_data)
+            if pools:
+                self.assertEqual(set(usage_data.keys()), {'total_usage', 'grouped', 'ungrouped', 'pools'}, usage_data)
+            else:
+                self.assertEqual(set(usage_data.keys()), {'total_usage', 'grouped', 'ungrouped'}, usage_data)
             ungrouped_data = usage_data['ungrouped']
             self.assertEqual(set(ungrouped_data.keys()), {'running_jobs', 'usage'}, ungrouped_data)
             # Our jobs should be included in the ungrouped breakdown
@@ -2090,25 +2105,27 @@ class CookTest(unittest.TestCase):
         self.assertEqual(403, resp.status_code)
         self.assertEqual(b"Cross origin request denied from http://bad.example.com", resp.content)
 
-        resp = util.session.get(f"{self.cook_url}/settings", headers={"Origin": "http://cors.example.com"})
+        def origin_allowed(cors_patterns, origin):
+            return any([re.search(pattern, origin) for pattern in cors_patterns])
+        resp = util.session.get(f"{self.cook_url}/settings", headers={"Origin": self.cors_origin})
         self.assertEqual(200, resp.status_code)
-        self.assertEqual(["https?://cors.example.com"], resp.json()["cors-origins"])
+        self.assertTrue(origin_allowed(resp.json()["cors-origins"], self.cors_origin), resp.json())
 
-        resp = util.session.get(f"{self.cook_url}/settings", headers={"Origin": "https://cors.example.com"})
+        resp = util.session.get(f"{self.cook_url}/settings", headers={"Origin": self.cors_origin})
         self.assertEqual(200, resp.status_code)
-        self.assertEqual(["https?://cors.example.com"], resp.json()["cors-origins"])
+        self.assertTrue(origin_allowed(resp.json()["cors-origins"], self.cors_origin), resp.json())
 
     def test_cors_preflight(self):
         resp = util.session.options(f"{self.cook_url}/settings", headers={"Origin": "http://bad.example.com"})
         self.assertEqual(403, resp.status_code)
         self.assertEqual(b"Origin http://bad.example.com not allowed", resp.content)
 
-        resp = util.session.options(f"{self.cook_url}/settings", headers={"Origin": "http://cors.example.com",
+        resp = util.session.options(f"{self.cook_url}/settings", headers={"Origin": self.cors_origin,
                                                                           "Access-Control-Request-Headers": "Foo, Bar"})
         self.assertEqual(200, resp.status_code)
         self.assertEqual("true", resp.headers["Access-Control-Allow-Credentials"])
         self.assertEqual("Foo, Bar", resp.headers["Access-Control-Allow-Headers"])
-        self.assertEqual("http://cors.example.com", resp.headers["Access-Control-Allow-Origin"])
+        self.assertEqual(self.cors_origin, resp.headers["Access-Control-Allow-Origin"])
         self.assertEqual("86400", resp.headers["Access-Control-Max-Age"])
         self.assertEqual(b"", resp.content)
 
@@ -2132,7 +2149,7 @@ class CookTest(unittest.TestCase):
 
     def test_ssl(self):
         settings = util.settings(self.cook_url)
-        if not 'server-https-port' in settings:
+        if not 'server-https-port' in settings or settings['server-https-port'] is None:
             self.logger.info('SSL not configured: skipping test')
             return
         ssl_port = settings['server-https-port']

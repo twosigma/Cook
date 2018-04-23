@@ -57,6 +57,7 @@ class MultiUserCookTest(unittest.TestCase):
         users = self.user_factory.new_users(6)
         job_resources = {'cpus': 0.1, 'mem': 123}
         all_job_uuids = []
+        pools, _ = util.pools(self.cook_url)
         try:
             # Start jobs for several users
             for i, user in enumerate(users):
@@ -75,7 +76,10 @@ class MultiUserCookTest(unittest.TestCase):
                     self.assertEqual(resp.status_code, 200, resp.content)
                     usage_data = resp.json()
                     # Check that the response structure looks as expected
-                    self.assertEqual(list(usage_data.keys()), ['total_usage', 'pools'], usage_data)
+                    if pools:
+                        self.assertEqual(list(usage_data.keys()), ['total_usage', 'pools'], usage_data)
+                    else:
+                        self.assertEqual(list(usage_data.keys()), ['total_usage'], usage_data)
                     self.assertEqual(len(usage_data['total_usage']), 4, usage_data)
                     # Check that each user's usage is as expected
                     self.assertEqual(usage_data['total_usage']['mem'], job_resources['mem'] * i, usage_data)
