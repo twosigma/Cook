@@ -906,6 +906,7 @@ def group_submit_retry(cook_url, command, predicate_statuses, retry_failed_jobs_
 
     def status_condition(response):
         group = response.json()[0]
+        logger.debug(f'Group: {group}')
         statuses_map = {x: group[x] for x in predicate_statuses}
         status_counts = statuses_map.values()
         # for running & waiting, we want at least one running (not all waiting)

@@ -1272,7 +1272,7 @@ class CookTest(unittest.TestCase):
 
     def test_group_failed_only_change_retries_all_active(self):
         statuses = ['running', 'waiting']
-        jobs = util.group_submit_retry(self.cook_url, command='sleep 10', predicate_statuses=statuses)
+        jobs = util.group_submit_retry(self.cook_url, command='sleep 120', predicate_statuses=statuses)
         for job in jobs:
             job_details = f'Job details: {json.dumps(job, sort_keys=True)}'
             self.assertIn(job['status'], statuses, job_details)
