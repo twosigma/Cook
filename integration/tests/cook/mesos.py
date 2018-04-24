@@ -117,9 +117,12 @@ def dump_sandbox_files(session, instance, job):
         directory = retrieve_instance_sandbox_directory(session, instance, job)
         entries = browse_files(session, instance, directory, None)
         for entry in entries:
-            if is_directory(entry):
-                logging.info(f'Skipping over directory {entry}')
-            else:
-                cat_for_instance(session, instance, directory, entry['path'])
+            try:
+                if is_directory(entry):
+                    logging.info(f'Skipping over directory {entry}')
+                else:
+                    cat_for_instance(session, instance, directory, entry['path'])
+            except Exception as e:
+                logging.info(f'Unable to dump sandbox file {entry}: {e}')
     except Exception as e:
         logging.info(f'Unable to dump sandbox files: {e}')
