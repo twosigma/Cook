@@ -1,6 +1,7 @@
 import functools
 import importlib
 import itertools
+import json
 import logging
 import os
 import os.path
@@ -906,13 +907,19 @@ def group_submit_retry(cook_url, command, predicate_statuses, retry_failed_jobs_
 
     def status_condition(response):
         group = response.json()[0]
-        logger.debug(f'Group: {group}')
         statuses_map = {x: group[x] for x in predicate_statuses}
         status_counts = statuses_map.values()
         # for running & waiting, we want at least one running (not all waiting)
         not_all_waiting = group['waiting'] != job_count
         logger.debug(f"Currently {statuses_map} jobs in group {group['uuid']}")
-        return not_all_waiting and sum(status_counts) == job_count
+        if not_all_waiting and sum(status_counts) == job_count:
+            return True
+        else:
+            logger.debug(f'Group details: {group}')
+            jobs = query_jobs(cook_url, assert_response=True, uuid=group['jobs']).json()
+            for job in jobs:
+                logger.debug(f'Job details: {json.dumps(job, sort_keys=True)}')
+            return False
 
     try:
         jobs, resp = submit_jobs(cook_url, job_spec, job_count, groups=[group_spec])
