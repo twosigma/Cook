@@ -430,7 +430,7 @@ class CookTest(unittest.TestCase):
             else:
                 self.fail('Unknown reason code {}, details {}'.format(instance['reason_code'], instance_details))
         finally:
-            mesos.dump_sandbox_files(util.session, instance)
+            mesos.dump_sandbox_files(util.session, instance, instance['parent'])
             util.kill_jobs(self.cook_url, [job_uuid])
 
     @pytest.mark.memlimit
@@ -1411,7 +1411,7 @@ class CookTest(unittest.TestCase):
             job = util.load_job(self.cook_url, job_uuid)
             self.logger.info(f'Job status is {job["status"]}: {job}')
             util.session.delete('%s/rawscheduler?job=%s' % (self.cook_url, job_uuid))
-            mesos.dump_sandbox_files(util.session, instance)
+            mesos.dump_sandbox_files(util.session, instance, job)
 
     def test_unscheduled_jobs(self):
         unsatisfiable_constraint = ['HOSTNAME', 'EQUALS', 'fakehost']
