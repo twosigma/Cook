@@ -407,8 +407,7 @@ class CookTest(unittest.TestCase):
         the job should be killed by Mesos as it exceeds its memory limits."""
         job_uuid, resp = util.submit_job(self.cook_url, command=command, executor=executor_type, mem=128)
         self.assertEqual(201, resp.status_code, msg=resp.content)
-        job = util.wait_for_job(self.cook_url, job_uuid, 'running')
-        instance = job['instances'][0]
+        instance = util.wait_for_instance(self.cook_url, job_uuid)
         self.logger.debug('instance: %s' % instance)
         try:
             job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
@@ -431,7 +430,7 @@ class CookTest(unittest.TestCase):
             else:
                 self.fail('Unknown reason code {}, details {}'.format(instance['reason_code'], instance_details))
         finally:
-            mesos.dump_sandbox_files(util.session, instance, job)
+            mesos.dump_sandbox_files(util.session, instance)
             util.kill_jobs(self.cook_url, [job_uuid])
 
     @pytest.mark.memlimit
@@ -1412,7 +1411,7 @@ class CookTest(unittest.TestCase):
             job = util.load_job(self.cook_url, job_uuid)
             self.logger.info(f'Job status is {job["status"]}: {job}')
             util.session.delete('%s/rawscheduler?job=%s' % (self.cook_url, job_uuid))
-            mesos.dump_sandbox_files(util.session, instance, job)
+            mesos.dump_sandbox_files(util.session, instance)
 
     def test_unscheduled_jobs(self):
         unsatisfiable_constraint = ['HOSTNAME', 'EQUALS', 'fakehost']

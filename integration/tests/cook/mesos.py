@@ -17,7 +17,7 @@ def instance_to_agent_url(instance):
     return f'http://{netloc}'
 
 
-def retrieve_instance_sandbox_directory(session, instance, job):
+def sandbox_directory(instance):
     """Given an instance and its parent job, determines the Mesos agent sandbox directory"""
 
     # Check if we've simply been handed the sandbox directory
@@ -36,29 +36,8 @@ def retrieve_instance_sandbox_directory(session, instance, job):
                 logging.debug('parsed sandbox directory from output url')
                 return path_list[0]
 
-    # As a last resort, query the Mesos agent state
-    agent_url = instance_to_agent_url(instance)
-    resp = session.get(f'{agent_url}/state')
-    if resp.status_code != 200:
-        logging.error(f'mesos agent returned status code {resp.status_code} and body {resp.text}')
-        raise Exception('Encountered error when querying Mesos agent for the sandbox directory.')
-
-    # Parse the Mesos agent state and look for a matching executor
-    resp_json = resp.json()
-    frameworks = resp_json['completed_frameworks'] + resp_json['frameworks']
-    cook_framework = next(f for f in frameworks if f['id'] == job['framework_id'])
-    cook_executors = cook_framework['completed_executors'] + cook_framework['executors']
     instance_id = instance['task_id']
-    directories = [e['directory'] for e in cook_executors if e['id'] == instance_id]
-
-    if len(directories) == 0:
-        raise Exception(f'Unable to retrieve sandbox directory for job instance {instance_id}.')
-
-    if len(directories) > 1:
-        # This should not happen, but we'll be defensive anyway
-        raise Exception(f'Found more than one Mesos executor with ID {instance_id}')
-
-    return directories[0]
+    raise Exception(f'Unable to determine sandbox directory for job instance {instance_id}.')
 
 
 def browse_files(session, instance, sandbox_dir, path):
@@ -111,10 +90,10 @@ def cat_for_instance(session, instance, sandbox_dir, path):
         logging.exception(bpe)
 
 
-def dump_sandbox_files(session, instance, job):
+def dump_sandbox_files(session, instance):
     """Logs the contents of each file in the root of the given instance's sandbox."""
     try:
-        directory = retrieve_instance_sandbox_directory(session, instance, job)
+        directory = sandbox_directory(instance)
         entries = browse_files(session, instance, directory, None)
         for entry in entries:
             try:
