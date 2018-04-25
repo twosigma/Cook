@@ -15,6 +15,8 @@ import numpy
 import requests
 from retrying import retry
 
+from tests.cook import mesos
+
 logger = logging.getLogger(__name__)
 session = importlib.import_module(os.getenv('COOK_SESSION_MODULE', 'requests')).Session()
 session.headers['User-Agent'] = f"Cook-Scheduler-Integration-Tests ({session.headers['User-Agent']})"
@@ -876,12 +878,21 @@ def group_submit_kill_retry(cook_url, retry_failed_jobs_only):
             return query_jobs(cook_url, True, uuid=jobs)
 
         wait_until(jobs_query, all_instances_done)
+        jobs = query_jobs(cook_url, assert_response=True, uuid=jobs).json()
+        for job in jobs:
+            logger.info(f'Job details: {json.dumps(job, sort_keys=True)}')
         # retry all jobs in the group
         retry_jobs(cook_url, retries=2, groups=[group_uuid], failed_only=retry_failed_jobs_only)
         # wait for some job to start
         wait_until(group_query, group_some_job_started)
         # return final job details to caller for assertion checks
-        return query_jobs(cook_url, assert_response=True, uuid=jobs).json()
+        jobs = query_jobs(cook_url, assert_response=True, uuid=jobs).json()
+        for job in jobs:
+            logger.info(f'Dumping sandbox files for job {job}')
+            for instance in job['instances']:
+                logger.info(f'Dumping sandbox files for instance {instance}')
+                mesos.dump_sandbox_files(session, instance, job)
+        return jobs
     finally:
         # ensure that we don't leave a bunch of jobs running/waiting
         kill_groups(cook_url, [group_uuid])
