@@ -1758,7 +1758,7 @@ class CookCliTest(unittest.TestCase):
         self.assertIn('submit: error: argument --gpus: 0 is not a positive integer', cli.decode(cp.stderr))
 
     def test_submit_with_pool(self):
-        pools, _ = util.pools(self.cook_url)
+        pools, _ = util.all_pools(self.cook_url)
         if len(pools) == 0:
             self.logger.info('There are no pools to submit jobs to')
         for pool in pools:
