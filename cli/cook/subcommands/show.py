@@ -39,6 +39,7 @@ def juxtapose_text(text_a, text_b, buffer_len=15):
 def tabulate_job(cluster_name, job):
     """Given a job, returns a string containing tables for the job and instance fields"""
     job_definition = [['Cluster', cluster_name],
+                      ['Pool', job.get('pool', '-')],
                       ['Memory', format_job_memory(job)],
                       ['CPUs', job['cpus']],
                       ['User', job['user']],

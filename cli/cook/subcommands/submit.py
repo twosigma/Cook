@@ -75,7 +75,7 @@ def print_submit_result(cluster, response):
         print_info(submit_failed_message(cluster_name, reason))
 
 
-def submit_federated(clusters, jobs, group):
+def submit_federated(clusters, jobs, group, pool):
     """
     Attempts to submit the provided jobs to each cluster in clusters, until a cluster
     returns a "created" status code. If no cluster returns "created" status, throws.
@@ -89,8 +89,10 @@ def submit_federated(clusters, jobs, group):
             json_body = {'jobs': jobs}
             if group:
                 json_body['groups'] = [group]
+            if pool:
+                json_body['pool'] = pool
 
-            resp = http.post(cluster, 'rawscheduler', json_body)
+            resp = http.post(cluster, 'jobs', json_body)
             print_submit_result(cluster, resp)
             if resp.status_code == 201:
                 metrics.inc('command.submit.jobs', len(jobs))
@@ -160,6 +162,7 @@ def submit(clusters, args, _):
     application_name = job_template.pop('application-name', 'cook-scheduler-cli')
     application_version = job_template.pop('application-version', version.VERSION)
     job_template['application'] = {'name': application_name, 'version': application_version}
+    pool = job_template.pop('pool-name', None)
 
     group = None
     if 'group-name' in job_template:
@@ -199,7 +202,7 @@ def submit(clusters, args, _):
             job['command'] = f'{command_prefix}{job["command"]}'
 
     logging.debug('jobs: %s' % jobs)
-    return submit_federated(clusters, jobs, group)
+    return submit_federated(clusters, jobs, group, pool)
 
 
 def valid_uuid(s):
@@ -239,6 +242,7 @@ def register(add_parser, add_defaults):
                                choices=('cook', 'mesos'))
     submit_parser.add_argument('--raw', '-r', help='raw job spec in json format', dest='raw', action='store_true')
     submit_parser.add_argument('--command-prefix', help='prefix to use for all commands', dest='command-prefix')
+    submit_parser.add_argument('--pool', '-P', help='pool name for job', type=str, metavar='NAME', dest='pool-name')
     submit_parser.add_argument('command', nargs=argparse.REMAINDER)
 
     add_defaults('submit', {'cpus': 1, 'max-retries': 1, 'mem': 128, 'command-prefix': ''})
