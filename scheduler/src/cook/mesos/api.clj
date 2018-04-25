@@ -1437,12 +1437,12 @@
      [false {::error \"...\"}]
 
   where \"...\" is a detailed error string describing the quota bounds exceeded."
-  [conn ctx]
+  [conn {:keys [::jobs ::pool] :as ctx}]
   (let [db (db conn)
         resource-keys [:cpus :mem :gpus]
         user (get-in ctx [:request :authorization/user])
-        user-quota (quota/get-quota db user nil)
-        errors (for [job (::jobs ctx)
+        user-quota (quota/get-quota db user (:pool/name pool))
+        errors (for [job jobs
                      resource resource-keys
                      :let [job-usage (-> job (get resource 0) double)
                            quota-val (-> user-quota (get resource) double)]

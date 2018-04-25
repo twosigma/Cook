@@ -5,7 +5,6 @@ import operator
 import os
 import re
 import subprocess
-import sys
 import time
 import unittest
 import uuid
@@ -1854,6 +1853,12 @@ class CookTest(unittest.TestCase):
         default_pool = util.default_pool(self.cook_url)
         if default_pool is not None:
             for limit in ['quota', 'share']:
+                # Get the default cpus limit
+                resp = util.get_limit(self.cook_url, limit, "default")
+                self.assertEqual(200, resp.status_code, resp.text)
+                self.logger.info(f'The default limit in the {default_pool} pool is {resp.json()}')
+                default_cpus = resp.json()['cpus']
+
                 # Set a limit for the default pool
                 resp = util.set_limit(self.cook_url, limit, user, cpus=100, pool=default_pool)
                 self.assertEqual(resp.status_code, 201, resp.text)
@@ -1875,12 +1880,18 @@ class CookTest(unittest.TestCase):
                 # Check that the default is returned for the default pool
                 resp = util.get_limit(self.cook_url, limit, user, pool=default_pool)
                 self.assertEqual(resp.status_code, 200, resp.text)
-                self.assertEqual(sys.float_info.max, resp.json()['cpus'], resp.text)
+                self.assertEqual(default_cpus, resp.json()['cpus'], resp.text)
 
                 pools, _ = util.all_pools(self.cook_url)
                 non_default_pools = [p['name'] for p in pools if p['name'] != default_pool]
 
                 for pool in non_default_pools:
+                    # Get the default cpus limit
+                    resp = util.get_limit(self.cook_url, limit, "default", pool=pool)
+                    self.assertEqual(200, resp.status_code, resp.text)
+                    self.logger.info(f'The default limit in the {default_pool} pool is {resp.json()}')
+                    default_cpus = resp.json()['cpus']
+
                     # delete the pool's limit
                     resp = util.reset_limit(self.cook_url, limit, user, pool=pool)
                     self.assertEqual(resp.status_code, 204, resp.text)
@@ -1888,7 +1899,7 @@ class CookTest(unittest.TestCase):
                     # check that the default value is returned
                     resp = util.get_limit(self.cook_url, limit, user, pool=pool)
                     self.assertEqual(resp.status_code, 200, resp.text)
-                    self.assertEqual(sys.float_info.max, resp.json()['cpus'], resp.text)
+                    self.assertEqual(default_cpus, resp.json()['cpus'], resp.text)
 
                     # set a pool-specific limit
                     resp = util.set_limit(self.cook_url, limit, user, cpus=1000, pool=pool)
@@ -2162,3 +2173,30 @@ class CookTest(unittest.TestCase):
 
         resp = util.session.get(f"https://{host}:{ssl_port}/settings", verify=False)
         self.assertEqual(200, resp.status_code)
+
+    def test_pool_specific_quota_check_on_submit(self):
+        constraints = util.settings(self.cook_url)['task-constraints']
+        task_constraint_cpus = constraints['cpus']
+        task_constraint_mem = constraints['memory-gb'] * 1024
+        user = self.determine_user()
+        pools, _ = util.active_pools(self.cook_url)
+        for pool in pools:
+            pool_name = pool['name']
+            self.logger.info(f'Testing quota check for pool {pool_name}')
+            quota = util.get_limit(self.cook_url, 'quota', user, pool_name).json()
+            cpus_over_quota = quota['cpus'] + 0.1
+            mem_over_quota = quota['mem'] + 1
+            self.assertLessEqual(cpus_over_quota, task_constraint_cpus)
+            self.assertLessEqual(mem_over_quota, task_constraint_mem)
+
+            # cpus
+            job_uuid, resp = util.submit_job(self.cook_url, pool=pool_name, cpus=0.1)
+            self.assertEqual(201, resp.status_code, msg=resp.content)
+            job_uuid, resp = util.submit_job(self.cook_url, pool=pool_name, cpus=cpus_over_quota)
+            self.assertEqual(422, resp.status_code, msg=resp.content)
+
+            # mem
+            job_uuid, resp = util.submit_job(self.cook_url, pool=pool_name, mem=32)
+            self.assertEqual(201, resp.status_code, msg=resp.content)
+            job_uuid, resp = util.submit_job(self.cook_url, pool=pool_name, mem=mem_over_quota)
+            self.assertEqual(422, resp.status_code, msg=resp.content)

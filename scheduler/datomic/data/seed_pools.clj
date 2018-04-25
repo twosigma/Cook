@@ -1,5 +1,6 @@
 (ns data.seed-pools
   (:require [cook.datomic :as datomic]
+            [cook.mesos.quota :as quota]
             [datomic.api :as d]))
 
 (def uri (second *command-line-args*))
@@ -48,8 +49,13 @@
     (create-pool conn "beta" :pool.state/inactive)
     (create-pool conn "gamma" :pool.state/active)
     (create-pool conn "delta" :pool.state/inactive)
-    (println "Pools:")
-    (-> conn d/db pools clojure.pprint/pprint)
+    (quota/set-quota! conn "default" "alpha" "For quota-related testing." :cpus 8 :mem 1024)
+    (quota/set-quota! conn "default" "gamma" "For quota-related testing." :cpus 9 :mem 2048)
+    (println "Pools & Quotas:")
+    (run! (fn [{:keys [pool/name] :as p}]
+            (clojure.pprint/pprint p)
+            (clojure.pprint/pprint (quota/get-quota (d/db conn) "default" name)))
+          (pools (d/db conn)))
     (System/exit 0))
   (catch Throwable t
     (println "Failed to seed pools:" t)
