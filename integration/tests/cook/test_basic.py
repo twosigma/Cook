@@ -409,6 +409,7 @@ class CookTest(unittest.TestCase):
         self.assertEqual(201, resp.status_code, msg=resp.content)
         instance = util.wait_for_instance(self.cook_url, job_uuid)
         self.logger.debug('instance: %s' % instance)
+        job = instance['parent']
         try:
             job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
             job_details = f"Job details: {json.dumps(job, sort_keys=True)}"
@@ -430,7 +431,7 @@ class CookTest(unittest.TestCase):
             else:
                 self.fail('Unknown reason code {}, details {}'.format(instance['reason_code'], instance_details))
         finally:
-            mesos.dump_sandbox_files(util.session, instance, instance['parent'])
+            mesos.dump_sandbox_files(util.session, instance, job)
             util.kill_jobs(self.cook_url, [job_uuid])
 
     @pytest.mark.memlimit
