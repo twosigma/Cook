@@ -41,7 +41,8 @@
                               TaskRequest TaskScheduler VMTaskFitnessCalculator)
            (com.netflix.fenzo.plugins BinPackingFitnessCalculators)
            (java.util UUID)
-           (java.util.concurrent CountDownLatch TimeUnit)))
+           (java.util.concurrent CountDownLatch TimeUnit)
+           (org.mockito Mockito)))
 
 (def datomic-uri "datomic:mem://test-mesos-jobs")
 
