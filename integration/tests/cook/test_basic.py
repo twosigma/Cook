@@ -397,6 +397,7 @@ class CookTest(unittest.TestCase):
                   '    V="${V}.${R}"; ' \
                   '    echo "progress: ${p} ${p}-percent iter-${i}" ; ' \
                   '  done ; ' \
+                  '  echo "Length of V is ${#V}" ; ' \
                   'done'
         return command
 
@@ -404,8 +405,11 @@ class CookTest(unittest.TestCase):
         """Given a command that needs more memory than it is allocated, when the command is submitted to cook,
         the job should be killed by Mesos as it exceeds its memory limits."""
         job_uuid, resp = util.submit_job(self.cook_url, command=command, executor=executor_type, mem=128)
+        self.assertEqual(201, resp.status_code, msg=resp.content)
+        instance = util.wait_for_instance(self.cook_url, job_uuid)
+        self.logger.debug('instance: %s' % instance)
+        job = instance['parent']
         try:
-            self.assertEqual(201, resp.status_code, msg=resp.content)
             job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
             job_details = f"Job details: {json.dumps(job, sort_keys=True)}"
             self.assertEqual('failed', job['state'], job_details)
@@ -426,6 +430,7 @@ class CookTest(unittest.TestCase):
             else:
                 self.fail('Unknown reason code {}, details {}'.format(instance['reason_code'], instance_details))
         finally:
+            mesos.dump_sandbox_files(util.session, instance, job)
             util.kill_jobs(self.cook_url, [job_uuid])
 
     @pytest.mark.memlimit

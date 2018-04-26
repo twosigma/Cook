@@ -17,7 +17,7 @@ def instance_to_agent_url(instance):
     return f'http://{netloc}'
 
 
-def retrieve_instance_sandbox_directory(session, instance, job):
+def sandbox_directory(session, instance, job):
     """Given an instance and its parent job, determines the Mesos agent sandbox directory"""
 
     # Check if we've simply been handed the sandbox directory
@@ -114,12 +114,15 @@ def cat_for_instance(session, instance, sandbox_dir, path):
 def dump_sandbox_files(session, instance, job):
     """Logs the contents of each file in the root of the given instance's sandbox."""
     try:
-        directory = retrieve_instance_sandbox_directory(session, instance, job)
+        directory = sandbox_directory(session, instance, job)
         entries = browse_files(session, instance, directory, None)
         for entry in entries:
-            if is_directory(entry):
-                logging.info(f'Skipping over directory {entry}')
-            else:
-                cat_for_instance(session, instance, directory, entry['path'])
+            try:
+                if is_directory(entry):
+                    logging.info(f'Skipping over directory {entry}')
+                else:
+                    cat_for_instance(session, instance, directory, entry['path'])
+            except Exception as e:
+                logging.info(f'Unable to dump sandbox file {entry}: {e}')
     except Exception as e:
         logging.info(f'Unable to dump sandbox files: {e}')
