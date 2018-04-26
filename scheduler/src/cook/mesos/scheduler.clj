@@ -25,7 +25,7 @@
             [clojure.string :as str]
             [clojure.tools.logging :as log]
             [cook.config :refer (default-fitness-calculator)]
-            [cook.datomic :refer (transact-with-retries)]
+            [cook.datomic :refer (transact-with-retries) :as datomic]
             [cook.mesos.constraints :as constraints]
             [cook.mesos.dru :as dru]
             [cook.mesos.fenzo-utils :as fenzo]
@@ -849,7 +849,7 @@
       :instance/status :instance.status/unknown
       :instance/task-id task-id}]))
 
-(defn- launch-matched-tasks!
+(defn launch-matched-tasks!
   "Updates the state of matched tasks in the database and then launches them."
   [matches conn db driver fenzo framework-id mesos-run-as-user]
   (let [matches (map #(update-match-with-task-metadata-seq % db framework-id mesos-run-as-user) matches)
@@ -860,9 +860,15 @@
     ;; the pending-jobs atom is repopulated
     (timers/time!
       handle-resource-offer!-transact-task-duration
-      @(d/transact
-         conn
-         (reduce into [] task-txns)))
+      (datomic/transact
+        conn
+        (reduce into [] task-txns)
+        (fn [e]
+          (log/warn e
+                    "Transaction timed out, so these tasks might be present"
+                    "in Datomic without actually having been launched in Mesos"
+                    matches)
+          (throw e))))
     (log/info "Launching" (count task-txns) "tasks")
     (log/debug "Matched tasks" task-txns)
     ;; This launch-tasks MUST happen after the above transaction in

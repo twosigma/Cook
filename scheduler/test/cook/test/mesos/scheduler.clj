@@ -22,6 +22,7 @@
             [clojure.core.cache :as cache]
             [clojure.data.json :as json]
             [clojure.string :as str]
+            [clojure.tools.logging :as log]
             [clojure.walk :as walk]
             [cook.mesos.heartbeat :as heartbeat]
             [cook.mesos.sandbox :as sandbox]
@@ -35,11 +36,12 @@
             [mesomatic.scheduler :as msched]
             [mesomatic.types :as mtypes]
             [plumbing.core :as pc])
-  (:import (com.netflix.fenzo TaskAssignmentResult TaskScheduler VMTaskFitnessCalculator)
+  (:import (clojure.lang ExceptionInfo)
+           (com.netflix.fenzo SimpleAssignmentResult TaskAssignmentResult
+                              TaskRequest TaskScheduler VMTaskFitnessCalculator)
            (com.netflix.fenzo.plugins BinPackingFitnessCalculators)
            (java.util UUID)
-           (java.util.concurrent CountDownLatch TimeUnit)
-           (org.mockito Mockito)))
+           (java.util.concurrent CountDownLatch TimeUnit)))
 
 (def datomic-uri "datomic:mem://test-mesos-jobs")
 
@@ -2202,5 +2204,21 @@
             tasks-killed? (fn [] (= expected-tasks-killed @killed-tasks))]
         (is (wait-for tasks-killed? :interval 20 :timeout 100 :unit-multiplier 1))))))
 
-(comment
-  (run-tests))
+(deftest test-launch-matched-tasks!-logs-transaction-timeouts
+  (let [conn (restore-fresh-database! "datomic:mem://test-launch-matched-tasks!-logs-transaction-timeouts")
+        timeout-exception (ex-info "Transaction timed out." {})
+        caught-exception-atom (atom nil)
+        logged-message-atom (atom nil)
+        job-id (create-dummy-job conn)
+        job (d/entity (d/db conn) job-id)
+        ^TaskRequest task-request (sched/make-task-request (d/db conn) job)
+        matches [{:tasks [(SimpleAssignmentResult. [] nil task-request)]}]]
+    (with-redefs [d/transact (fn [_ _]
+                               (throw timeout-exception))
+                  log/log* (fn [_ level throwable message]
+                             (when (= :warn level)
+                               (reset! caught-exception-atom throwable)
+                               (reset! logged-message-atom message)))]
+      (is (thrown? ExceptionInfo (sched/launch-matched-tasks! matches conn nil nil nil nil nil)))
+      (is (= timeout-exception @caught-exception-atom))
+      (is (str/includes? @logged-message-atom (str job-id))))))
