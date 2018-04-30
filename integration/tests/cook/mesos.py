@@ -114,6 +114,7 @@ def cat_for_instance(session, instance, sandbox_dir, path):
 def dump_sandbox_files(session, instance, job):
     """Logs the contents of each file in the root of the given instance's sandbox."""
     try:
+        logging.info(f'Attempting to dump sandbox files for {instance}')
         directory = sandbox_directory(session, instance, job)
         entries = browse_files(session, instance, directory, None)
         for entry in entries:

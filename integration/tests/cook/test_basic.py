@@ -2025,9 +2025,11 @@ class CookTest(unittest.TestCase):
         job_uuid_3, resp = util.submit_job(self.cook_url, command='sleep 2', name=name, cpus=0.4, mem=128)
         self.assertEqual(resp.status_code, 201, msg=resp.content)
         job_uuids = [job_uuid_1, job_uuid_2, job_uuid_3]
+        util.wait_for_jobs(self.cook_url, job_uuids, 'completed')
+        instances = [util.wait_for_instance(self.cook_url, j) for j in job_uuids]
         try:
-            util.wait_for_jobs(self.cook_url, job_uuids, 'completed')
-            instances = [util.wait_for_instance(self.cook_url, j) for j in job_uuids]
+            for instance in instances:
+                self.assertEqual('success', instance['parent']['state'])
             start_time = min(i['start_time'] for i in instances)
             end_time = max(i['start_time'] for i in instances)
             stats, _ = util.get_instance_stats(self.cook_url,
@@ -2068,6 +2070,8 @@ class CookTest(unittest.TestCase):
             self.assertEqual(util.percentile(mem_times, 100), percentiles['100'])
             self.assertAlmostEqual(sum(mem_times), mem_seconds['total'])
         finally:
+            for instance in instances:
+                mesos.dump_sandbox_files(util.session, instance, instance['parent'])
             util.kill_jobs(self.cook_url, job_uuids)
 
     def test_instance_stats_supports_epoch_time_params(self):
