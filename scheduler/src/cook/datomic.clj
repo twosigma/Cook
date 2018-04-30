@@ -123,5 +123,5 @@
           (log/warn e "Datomic transaction timed out")
           (handle-timeout-fn e))
         (do
-          (log/warn e "Datomic transaction caused exception")
+          (log/error e "Datomic transaction caused exception")
           (throw e))))))

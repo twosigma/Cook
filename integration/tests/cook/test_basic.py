@@ -460,7 +460,7 @@ class CookTest(unittest.TestCase):
             self.logger.info("Skipping test_memory_limit_exceeded_cook_script, executor={}".format(job_executor_type))
 
     @pytest.mark.memlimit
-    @unittest.skipUnless(util.continuous_integration(), "Doesn't work in our local test environments")
+    # @unittest.skipUnless(util.continuous_integration(), "Doesn't work in our local test environments")
     def test_memory_limit_exceeded_mesos_script(self):
         command = self.memory_limit_script_command()
         self.memory_limit_exceeded_helper(command, 'mesos')

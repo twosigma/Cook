@@ -25,7 +25,7 @@
             [clojure.string :as str]
             [clojure.tools.logging :as log]
             [cook.config :refer (default-fitness-calculator)]
-            [cook.datomic :refer (transact-with-retries) :as datomic]
+            [cook.datomic :as datomic]
             [cook.mesos.constraints :as constraints]
             [cook.mesos.dru :as dru]
             [cook.mesos.fenzo-utils :as fenzo]
@@ -285,7 +285,7 @@
              (log/debug "Transacting updated state for instance" instance "to status" instance-status)
              ;; The database can become inconsistent if we make multiple calls to :instance/update-state in a single
              ;; transaction; see the comment in the definition of :instance/update-state for more details
-             (transact-with-retries
+             (datomic/transact-with-retries
                conn
                (reduce
                  into
@@ -464,7 +464,7 @@
                                         :progress-sequence progress-sequence}))
             (when exit-code
               (log/info "Updating instance" instance-id "exit-code to" exit-code)
-              (transact-with-retries conn [[:db/add instance-id :instance/exit-code (int exit-code)]])))))
+              (datomic/transact-with-retries conn [[:db/add instance-id :instance/exit-code (int exit-code)]])))))
       (catch Exception e
         (log/error e "Mesos scheduler framework message error")))))
 
@@ -1080,10 +1080,10 @@
                            (db conn) [:job.state/waiting
                                       :job.state/running]))]
     (doseq [js (partition-all 25 jobs)]
-      (async/<!! (transact-with-retries conn
-                                        (mapv (fn [j]
-                                                [:job/update-state j])
-                                              js))))))
+      (async/<!! (datomic/transact-with-retries conn
+                                                (mapv (fn [j]
+                                                        [:job/update-state j])
+                                                      js))))))
 
 ;; TODO test that this fenzo recovery system actually works
 (defn reconcile-tasks
@@ -1414,12 +1414,12 @@
               ;; Transact synchronously so that it won't accidentally put a huge
               ;; spike of load on the transactor.
               (async/<!!
-                (transact-with-retries conn
-                                       (mapv
-                                         (fn [job]
-                                           [:db/add [:job/uuid (:job/uuid job)]
-                                            :job/state :job.state/completed])
-                                         jobs))))
+                (datomic/transact-with-retries conn
+                                               (mapv
+                                                 (fn [job]
+                                                   [:db/add [:job/uuid (:job/uuid job)]
+                                                    :job/state :job.state/completed])
+                                                 jobs))))
             (log/warn "Suppressed offensive" (count offensive-jobs) "jobs" (mapv :job/uuid offensive-jobs))
             (catch Exception e
               (log/error e "Failed to kill the offensive job!")))

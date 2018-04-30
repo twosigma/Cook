@@ -2208,8 +2208,7 @@
 (deftest test-launch-matched-tasks!-logs-transaction-timeouts
   (let [conn (restore-fresh-database! "datomic:mem://test-launch-matched-tasks!-logs-transaction-timeouts")
         timeout-exception (ex-info "Transaction timed out." {})
-        caught-exception-atom (atom nil)
-        logged-message-atom (atom nil)
+        logged-atom (atom nil)
         job-id (create-dummy-job conn)
         job (d/entity (d/db conn) job-id)
         ^TaskRequest task-request (sched/make-task-request (d/db conn) job)
@@ -2218,8 +2217,8 @@
                                (throw timeout-exception))
                   log/log* (fn [_ level throwable message]
                              (when (= :warn level)
-                               (reset! caught-exception-atom throwable)
-                               (reset! logged-message-atom message)))]
+                               (reset! logged-atom {:throwable throwable
+                                                    :message message})))]
       (is (thrown? ExceptionInfo (sched/launch-matched-tasks! matches conn nil nil nil nil nil)))
-      (is (= timeout-exception @caught-exception-atom))
-      (is (str/includes? @logged-message-atom (str job-id))))))
+      (is (= timeout-exception (:throwable @logged-atom)))
+      (is (str/includes? (:message @logged-atom) (str job-id))))))
