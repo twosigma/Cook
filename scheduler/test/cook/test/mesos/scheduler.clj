@@ -22,6 +22,7 @@
             [clojure.core.cache :as cache]
             [clojure.data.json :as json]
             [clojure.string :as str]
+            [clojure.tools.logging :as log]
             [clojure.walk :as walk]
             [cook.mesos.heartbeat :as heartbeat]
             [cook.mesos.sandbox :as sandbox]
@@ -35,7 +36,9 @@
             [mesomatic.scheduler :as msched]
             [mesomatic.types :as mtypes]
             [plumbing.core :as pc])
-  (:import (com.netflix.fenzo TaskAssignmentResult TaskScheduler VMTaskFitnessCalculator)
+  (:import (clojure.lang ExceptionInfo)
+           (com.netflix.fenzo SimpleAssignmentResult TaskAssignmentResult
+                              TaskRequest TaskScheduler VMTaskFitnessCalculator)
            (com.netflix.fenzo.plugins BinPackingFitnessCalculators)
            (java.util UUID)
            (java.util.concurrent CountDownLatch TimeUnit)
@@ -2202,5 +2205,20 @@
             tasks-killed? (fn [] (= expected-tasks-killed @killed-tasks))]
         (is (wait-for tasks-killed? :interval 20 :timeout 100 :unit-multiplier 1))))))
 
-(comment
-  (run-tests))
+(deftest test-launch-matched-tasks!-logs-transaction-timeouts
+  (let [conn (restore-fresh-database! "datomic:mem://test-launch-matched-tasks!-logs-transaction-timeouts")
+        timeout-exception (ex-info "Transaction timed out." {})
+        logged-atom (atom nil)
+        job-id (create-dummy-job conn)
+        job (d/entity (d/db conn) job-id)
+        ^TaskRequest task-request (sched/make-task-request (d/db conn) job)
+        matches [{:tasks [(SimpleAssignmentResult. [] nil task-request)]}]]
+    (with-redefs [d/transact (fn [_ _]
+                               (throw timeout-exception))
+                  log/log* (fn [_ level throwable message]
+                             (when (= :warn level)
+                               (reset! logged-atom {:throwable throwable
+                                                    :message message})))]
+      (is (thrown? ExceptionInfo (sched/launch-matched-tasks! matches conn nil nil nil nil nil)))
+      (is (= timeout-exception (:throwable @logged-atom)))
+      (is (str/includes? (:message @logged-atom) (str job-id))))))

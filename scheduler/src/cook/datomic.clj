@@ -16,6 +16,7 @@
 (ns cook.datomic
   (:require [clojure.core.async :as async]
             [clojure.pprint :refer (pprint)]
+            [clojure.string :as str]
             [clojure.tools.logging :as log]
             [cook.config :refer (config)]
             [cook.util :as util]
@@ -104,3 +105,23 @@
          (log/warn "Retrying txn" txn "attempt" (- (count retry-schedule) (count sched)) "of" (count retry-schedule))
          (async/<! (async/timeout sleep))
          (recur sched))))))
+
+(defn transaction-timeout?
+  "Returns true if the given exception is due to a transaction timeout"
+  [exception]
+  (str/includes? (str (.getMessage exception)) "Transaction timed out."))
+
+(defn transact
+  "Like datomic.api/transact, except the caller provides
+  a handler function for transaction timeout exceptions"
+  [conn tx-data handle-timeout-fn]
+  (try
+    @(d/transact conn tx-data)
+    (catch Exception e
+      (if (transaction-timeout? e)
+        (do
+          (log/warn e "Datomic transaction timed out")
+          (handle-timeout-fn e))
+        (do
+          (log/error e "Datomic transaction caused exception")
+          (throw e))))))
