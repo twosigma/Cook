@@ -2205,3 +2205,20 @@ class CookTest(unittest.TestCase):
             self.assertEqual(201, resp.status_code, msg=resp.content)
             job_uuid, resp = util.submit_job(self.cook_url, pool=pool_name, mem=mem_over_quota)
             self.assertEqual(422, resp.status_code, msg=resp.content)
+
+    def test_decrease_retries_below_attempts(self):
+        uuid, resp = util.submit_job(self.cook_url, command='exit 1', max_retries=2)
+        util.wait_for_job(self.cook_url, uuid, 'completed')
+        resp = util.retry_jobs(self.cook_url, job=uuid, assert_response=False, retries=1)
+        self.assertEqual(400, resp.status_code, msg=resp.content)
+        self.assertEqual('Retries would be less than attempts-consumed',
+                         resp.json()['error'])
+
+    def test_retries_unchanged_does_not_restart_job(self):
+        uuid, resp = util.submit_job(self.cook_url, command='exit 0', max_retries=1)
+        util.wait_for_job(self.cook_url, uuid, 'completed')
+        util.retry_jobs(self.cook_url, job=uuid, retries=1)
+        job = util.load_job(self.cook_url, uuid)
+        self.assertEqual('completed', job['status'])
+        self.assertEqual(1, len(job['instances']))
+

@@ -1841,6 +1841,13 @@
                              jobs)))
       [true {::error (str "Increment would exceed the maximum retry limit of " retry-limit)}]
 
+      (and retries (let [db (d/db conn)]
+                     (some (fn [job]
+                             (> (d/invoke db :job/attempts-consumed db (d/entity db [:job/uuid job]))
+                                retries))
+                           jobs)))
+      [true {::error (str "Retries would be less than attempts-consumed")}]
+
       :else
       (let [db (d/db conn)
             group-jobs (for [guuid groups
