@@ -29,7 +29,8 @@
                      create-pool
                      restore-fresh-database!]]
             [datomic.api :as d :refer (q db)])
-  (:import [java.util Date]))
+  (:import [java.util Date]
+           [java.util.concurrent ExecutionException]))
 
 (deftest test-total-resources-of-jobs
   (let [uri "datomic:mem://test-total-resources-of-jobs"
@@ -561,5 +562,83 @@
 
     (is (= 12 (util/cache-lookup! cache-store "A" 12)))
     (is (= {"A" 12, "C" 31} (.cache @cache-store)))))
+
+
+(deftest test-retry-job
+  (let [uri "datomic:mem://test-retry-job"
+        conn (restore-fresh-database! uri)]
+    (testing "increment retries on running job"
+      (let [[job _] (create-dummy-job-with-instances conn :job-state :job.state/running
+                                                     :instances [{:instance-status :instance.status/running}])
+            uuid (:job/uuid (d/entity (d/db conn) job))]
+        (util/retry-job! conn uuid 10)
+        (let [job-ent (d/entity (d/db conn) job)]
+          (is (= 10 (:job/max-retries job-ent)))
+          (is (= :job.state/running (:job/state job-ent))))))
+
+    (testing "same retries on completed jobs with attempts remaining"
+      (let [[job _] (create-dummy-job-with-instances conn
+                                                     :job-state :job.state/completed
+                                                     :retry-count 2
+                                                     :instances [{:instance-status :instance.status/failed}])
+            job-uuid (:job/uuid (d/entity (d/db conn) job))]
+        (util/retry-job! conn job-uuid 2)
+        (let [job-ent (d/entity (d/db conn) job)]
+          (is (= 2 (:job/max-retries job-ent)))
+          (is (= :job.state/waiting (:job/state job-ent))))))
+
+    (testing "same retries on completed jobs with mea-culpa attempts remaining"
+      (let [[job _] (create-dummy-job-with-instances conn
+                                                    :job-state :job.state/completed
+                                                    :retry-count 1
+                                                    :instances [{:instance-status :instance.status/failed
+                                                                 :reason :preempted-by-rebalancer}])
+            job-uuid (:job/uuid (d/entity (d/db conn) job))]
+        (util/retry-job! conn job-uuid 1)
+        (let [job-ent (d/entity (d/db conn) job)]
+          (is (= 1 (:job/max-retries job-ent)))
+          (is (= :job.state/waiting (:job/state job-ent))))))
+
+    (testing "same retries on job with no attempts remaining"
+      (let [[job _] (create-dummy-job-with-instances conn
+                                                     :job-state :job.state/completed
+                                                     :retry-count 1
+                                                     :instances [{:instance-status :instance.status/failed}])
+            job-uuid (:job/uuid (d/entity (d/db conn) job))]
+        (util/retry-job! conn job-uuid 1)
+        (let [job-ent (d/entity (d/db conn) job)]
+          (is (= 1 (:job/max-retries job-ent)))
+          (is (= :job.state/completed (:job/state job-ent))))))
+
+    (testing "increment retries on waiting job"
+      (let [job (create-dummy-job conn :job-state :job.state/waiting)
+            job-uuid (:job/uuid (d/entity (d/db conn) job))]
+        (util/retry-job! conn job-uuid 20)
+        (let [job-ent (d/entity (d/db conn) job)]
+          (is (= 20 (:job/max-retries job-ent)))
+          (is (= :job.state/waiting (:job/state job-ent))))))
+
+    (testing "decrease retries to less than attempts consumed"
+      (let [[job _] (create-dummy-job-with-instances conn
+                                                     :retry-count 5
+                                                     :job-state :job.state/completed
+                                                     :instances [{:instance-status :instance.status/failed}
+                                                                 {:instance-status :instance.status/failed}
+                                                                 {:instance-status :instance.status/failed}])
+            job-uuid (:job/uuid (d/entity (d/db conn) job))]
+        (is (thrown-with-msg? ExecutionException #"Attempted to change retries from 5 to 2"
+                              (util/retry-job! conn job-uuid 2)))))
+
+    (testing "decrease retries with attempts remaining"
+      (let [[job _] (create-dummy-job-with-instances conn
+                                                     :job-state :job.state/completed
+                                                     :retry-count 5
+                                                     :instances [{:instance-status :instance.status/failed
+                                                                  :reason :preempted-by-rebalancer}])
+            job-uuid (:job/uuid (d/entity (d/db conn) job))]
+        (util/retry-job! conn job-uuid 1)
+        (let [job-ent (d/entity (d/db conn) job)]
+          (is (= 1 (:job/max-retries job-ent)))
+          (is (= :job.state/waiting (:job/state job-ent))))))))
 
 (comment (run-tests))

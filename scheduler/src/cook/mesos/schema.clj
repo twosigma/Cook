@@ -1055,7 +1055,31 @@ for a job. E.g. {:resources {:cpus 4 :mem 3} :constraints {\"unique_host_constra
                    (let [j (d/entity db id-or-lookup)]
                      (when j
                        (throw (IllegalStateException.
-                               (str "Entity with id " id-or-lookup " already exists.")))))}}])
+                               (str "Entity with id " id-or-lookup " already exists.")))))}}
+   {:db/id (d/tempid :db.part/user)
+    :db/ident :job/update-retry-count
+    :db/doc "Updates a job's max-retries"
+    :db/fn #db/fn {:lang "clojure"
+                   :params [db job-entity-id retries]
+                   :code
+                   (let [job-ent (d/entity db job-entity-id)
+                         attempts-consumed (d/invoke db :job/attempts-consumed db job-ent)]
+                     (if (<= attempts-consumed retries)
+                       [[:db/add job-entity-id :job/max-retries retries]]
+                       (throw (IllegalStateException.
+                               (str "Attempted to change retries from " (:job/max-retries job-ent) " to " retries)))))}}
+   {:db/id (d/tempid :db.part/user)
+    :db/ident :job/update-state-on-retry
+    :db/doc "Updates a jobs state on retry"
+    :db/fn #db/fn {:lang "clojure"
+                   :params [db job-entity-id retries]
+                   :code
+                   (let [job-ent (d/entity db job-entity-id)
+                         attempts-consumed (d/invoke db :job/attempts-consumed db job-ent)]
+                     (if (and (= :job.state/completed (:job/state job-ent))
+                              (< attempts-consumed retries))
+                       [[:db/add job-entity-id :job/state :job.state/waiting]]
+                       []))}}])
 
 (def reason-entities
   [{:db/id (d/tempid :db.part/user)

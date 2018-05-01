@@ -580,26 +580,11 @@
    Also resets the job state to 'waiting' if it had completed.
    Throws an exception if there is no job with that UUID."
   [conn uuid retries]
-  (try
-    (let [eid (-> (d/entity (d/db conn) [:job/uuid uuid])
-                  :db/id)]
-      @(d/transact conn
-                   [[:db/add [:job/uuid uuid]
-                     :job/max-retries retries]
-
-                    ;; If the job is in the "completed" state, put it back into
-                    ;; "waiting":
-                    [:db.fn/cas [:job/uuid uuid]
-                     :job/state (d/entid (d/db conn) :job.state/completed) :job.state/waiting]]))
-    ;; :db.fn/cas throws an exception if the job is not already in the "completed" state.
-    ;; If that happens, that's fine. We just set "retries" only and continue.
-    (catch java.util.concurrent.ExecutionException e
-      (if-not (.startsWith (.getMessage e)
-                           "java.lang.IllegalStateException: :db.error/cas-failed Compare failed:")
-        (throw (ex-info "Exception while retrying job" {:uuid uuid :retries retries} e))
-        @(d/transact conn
-                     [[:db/add [:job/uuid uuid]
-                       :job/max-retries retries]])))))
+  (let [eid (-> (d/entity (d/db conn) [:job/uuid uuid])
+                :db/id)]
+    @(d/transact conn
+                 [[:job/update-retry-count [:job/uuid uuid] retries]
+                  [:job/update-state-on-retry [:job/uuid uuid] retries]])))
 
 (defn filter-sequential
   "This function allows for filtering when the filter function needs to consider previous elements
