@@ -568,7 +568,9 @@
   (let [uri "datomic:mem://test-retry-job"
         conn (restore-fresh-database! uri)]
     (testing "increment retries on running job"
-      (let [[job _] (create-dummy-job-with-instances conn :job-state :job.state/running
+      (let [[job _] (create-dummy-job-with-instances conn
+                                                     :job-state :job.state/running
+                                                     :retry-count 5
                                                      :instances [{:instance-status :instance.status/running}])
             uuid (:job/uuid (d/entity (d/db conn) job))]
         (util/retry-job! conn uuid 10)
@@ -611,7 +613,9 @@
           (is (= :job.state/completed (:job/state job-ent))))))
 
     (testing "increment retries on waiting job"
-      (let [job (create-dummy-job conn :job-state :job.state/waiting)
+      (let [job (create-dummy-job conn
+                                  :job-state :job.state/waiting
+                                  :retry-count 5)
             job-uuid (:job/uuid (d/entity (d/db conn) job))]
         (util/retry-job! conn job-uuid 20)
         (let [job-ent (d/entity (d/db conn) job)]
