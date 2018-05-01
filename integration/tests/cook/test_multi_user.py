@@ -3,7 +3,7 @@ import unittest
 
 import pytest
 
-from tests.cook import util
+from tests.cook import mesos, util
 
 
 @pytest.mark.multi_user
@@ -66,7 +66,8 @@ class MultiUserCookTest(unittest.TestCase):
             for i, user in enumerate(users):
                 with user:
                     for j in range(i):
-                        job_uuid, resp = util.submit_job(self.cook_url, command='sleep 480', **job_resources)
+                        job_uuid, resp = util.submit_job(self.cook_url, command='sleep 480',
+                                                         max_retries=2, **job_resources)
                         self.assertEqual(resp.status_code, 201, resp.content)
                         all_job_uuids.append(job_uuid)
             # Don't query until the jobs are all running
@@ -90,6 +91,11 @@ class MultiUserCookTest(unittest.TestCase):
                     self.assertEqual(usage_data['total_usage']['gpus'], 0, usage_data)
                     self.assertEqual(usage_data['total_usage']['jobs'], i, usage_data)
         finally:
+            for job_uuid in all_job_uuids:
+                job = util.load_job(self.cook_url, job_uuid)
+                for instance in job['instances']:
+                    if instance['status'] == 'failed':
+                        mesos.dump_sandbox_files(util.session, instance, job)
             # Terminate all of the jobs
             if all_job_uuids:
                 with self.user_factory.admin():
