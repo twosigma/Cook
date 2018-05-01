@@ -240,6 +240,8 @@ Example: +
   This option is a map that allows you to configure limits for tasks, to ensure that impossible-to-schedule tasks and tasks that run forever won't bog down your cluster.
   It currently supports 4 parameters to defend the Cook scheduler, which are described in <<task_constraints>>.
 
+`:estimated-completion-constraint`::
+ This allows you to configure an optional constraint which will not launch jobs on VMs where the job is expected to run longer than the host's expected lifetime (for instance, on GCP spot VMs.) The configuration parameters are described in <<estimated_completion_constraint>>.
 
 [[rebalancer]]
 ==== Rebalancer configuration
@@ -340,6 +342,15 @@ Example optimizer config:
 `:retry-limit`::
   This limits the number of retries a job is allowed to request. Something in the low tens is often more than sufficient.
 
+[[estimated_completion_constraint]]
+==== Estimated Completion Constraint
+`:expected-runtime-multiplier`::
+ This is a configurable constant factor which will multiply the expected runtime on each job to compute
+ when the job will complete. For instance, if `estimated-runtime-multiplier` is 2.5 and a job has an expected
+ runtime of 60000 ms, it will not be scheduled on a host which will die in 2.5 minutes.
+`:host-lifetime-mins`::
+ This is the expected lifetime of hosts in the cluster. Each host should have a `host-start-time` attribute in it's mesos offer
+ which will be used with the `host-lifetime-mins` parameter to determine when the host is expected to die.
 [[cook_executor]]
 ==== Cook Executor
 

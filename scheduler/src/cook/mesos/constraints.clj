@@ -16,7 +16,9 @@
 (ns cook.mesos.constraints
   (:require [clojure.core.cache :as cache]
             [clojure.set :as set]
+            [clj-time.core :as t]
             [clojure.tools.logging :as log]
+            [cook.config :as config]
             [cook.mesos.group :as group]
             [swiss.arrows :refer :all])
   (:import com.netflix.fenzo.VirtualMachineLease))
@@ -155,7 +157,41 @@
   [job]
   (->user-defined-constraint (:job/constraint job)))
 
-(def job-constraint-constructors [build-novel-host-constraint build-gpu-host-constraint build-user-defined-constraint])
+(defrecord estimated-completion-constraint [estimated-end-time host-lifetime-mins]
+  JobConstraint
+  (job-constraint-name [this] (get-class-name this))
+  (job-constraint-evaluate
+    [this _ vm-attributes _]
+    (job-constraint-evaluate this _ vm-attributes))
+  (job-constraint-evaluate
+    [this _ vm-attributes]
+    (if-let [host-start-time (get vm-attributes "host-start-time")]
+      (let [host-death-time (+ (* 1000 (long host-start-time))
+                               (* 60 1000 host-lifetime-mins))]
+        (if (< host-death-time estimated-end-time)
+          [true ""]
+          [false "host is expected to shutdown before job completion"]))
+      [true ""])))
+
+(defn build-estimated-completion-constraint
+  [job]
+  (let [{:keys [expected-runtime-multiplier host-lifetime-mins]} (config/estimated-completion-config)]
+    (when (and expected-runtime-multiplier host-lifetime-mins)
+      (let [expected-runtime (:job/expected-runtime job)
+            agent-removed-failures (filter #(= :mesos-slave-removed (get-in % [:instance/reason :reason/name]))
+                                           (:job/instance job))
+            agent-removed-runtimes (map #(- (.getTime (:instance/end-time %))
+                                            (.getTime (:instance/mesos-start-time %)))
+                                        agent-removed-failures)
+            scaled-expected-runtime (if expected-runtime
+                                      (long (* expected-runtime expected-runtime-multiplier))
+                                      0)
+            max-expected-runtime (apply max (conj agent-removed-runtimes scaled-expected-runtime))
+            expected-end-time (+ (.getMillis (t/now)) max-expected-runtime)]
+        (when (< 0 max-expected-runtime)
+          (->estimated-completion-constraint expected-end-time host-lifetime-mins))))))
+
+(def job-constraint-constructors [build-novel-host-constraint build-gpu-host-constraint build-user-defined-constraint build-estimated-completion-constraint])
 
 (defn fenzoize-job-constraint
   "Makes the JobConstraint 'constraint' Fenzo-compatible."
@@ -181,9 +217,10 @@
 (defn make-fenzo-job-constraints
   "Returns a sequence of all the constraints for 'job', in Fenzo-compatible format."
   [job]
-  (for [constraint-constructor job-constraint-constructors
-        :let [constraint (constraint-constructor job)]]
-    (fenzoize-job-constraint constraint)))
+  (->> job-constraint-constructors
+       (map (fn [constructor] (constructor job)))
+       (remove nil?)
+       (map fenzoize-job-constraint)))
 
 (defn build-rebalancer-reservation-constraint
   "Constructs a rebalancer-reservation-constraint"
@@ -197,11 +234,13 @@
    format. 'slave-attrs-getter' must be a function that takes a slave-id and returns a map of that
    slave's attributes."
   [job slave-attrs-getter]
-  (for [constraint-constructor job-constraint-constructors
-        :let [constraint (constraint-constructor job)]]
-    (fn job-constraint [job target-slave-id]
-      (first ; evaluate returns [passes? reason], this function only returns passes?
-        (job-constraint-evaluate constraint nil (slave-attrs-getter target-slave-id))))))
+  (->> job-constraint-constructors
+       (map (fn [constructor] (constructor job)))
+       (remove nil?)
+       (map (fn [constraint]
+              (fn job-constraint [job target-slave-id]
+                (first ; evaluate returns [passes? reason], this function only returns passes?
+                 (job-constraint-evaluate constraint nil (slave-attrs-getter target-slave-id))))))))
 
 ;; Group host placement constraints
 

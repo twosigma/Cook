@@ -16,11 +16,16 @@
 
 (ns cook.test.mesos.constraints
   (:use [clojure.test])
-  (:require [cook.mesos.scheduler :as sched]
+  (:require [clj-time.core :as t]
+            [cook.config :as config]
             [cook.mesos.constraints :as constraints]
-            [cook.test.testutil :refer (restore-fresh-database! create-dummy-group create-dummy-job create-dummy-instance)]
+            [cook.mesos.scheduler :as sched]
+            [cook.mesos.util :as util]
+            [cook.test.testutil :refer (restore-fresh-database! create-dummy-group create-dummy-job create-dummy-instance create-dummy-job-with-instances)]
             [datomic.api :as d :refer (db)])
-  (:import org.mockito.Mockito))
+  (:import java.util.Date
+           org.joda.time.DateTime
+           org.mockito.Mockito))
 
 (deftest test-get-group-constraint-name
   (is (= "unique-host-placement-group-constraint"
@@ -180,3 +185,47 @@
                       (getTasksCurrentlyAssigned [_] [])
                       (getCurrAvailableResources [_]  (sched/->VirtualMachineLeaseAdapter hostA-offer 0)))
                     nil)))))
+
+
+(deftest test-build-estimated-completion-constraint
+  (testing "does not generate a constraint when turned off"
+    (with-redefs [config/estimated-completion-config (constantly nil)]
+      (is (nil? (constraints/build-estimated-completion-constraint {})))))
+  (let [conn (restore-fresh-database! "datomic:mem://test-estimated-completion-constraint")]
+    (with-redefs [config/estimated-completion-config (constantly {:expected-runtime-multiplier 1.2
+                                                                  :host-lifetime-mins 60})
+                  t/now (constantly (DateTime. 0))]
+      (let [job-id (create-dummy-job conn)
+            job (util/job-ent->map (d/entity (d/db conn) job-id))]
+        (is (nil? (constraints/build-estimated-completion-constraint job))))
+      (let [job-id (create-dummy-job conn :expected-runtime 1000)
+            job (util/job-ent->map (d/entity (d/db conn) job-id))
+            constraint (constraints/build-estimated-completion-constraint job)]
+        (is (= 1200 (:estimated-end-time constraint)))
+        (is (= 60 (:host-lifetime-mins constraint))))
+
+      (let [[job-id _] (create-dummy-job-with-instances conn :instances [{:instance-status :instance.status/failed
+                                                                          :reason :preempted-by-rebalancer}])
+            job (util/job-ent->map (d/entity (d/db conn) job-id))]
+        (is (nil? (constraints/build-estimated-completion-constraint job))))
+
+      (let [instance-duration 10000
+            instance {:instance-status :instance.status/failed
+                      :reason :mesos-slave-removed
+                      :mesos-start-time (Date. 0)
+                      :end-time (Date. instance-duration)}
+            [job-id _] (create-dummy-job-with-instances conn
+                                                        :expected-runtime 1000
+                                                        :instances [instance])
+            job (util/job-ent->map (d/entity (d/db conn) job-id))
+            constraint (constraints/build-estimated-completion-constraint job)]
+        (is (= 10000 (:estimated-end-time constraint)))
+        (is (= 60 (:host-lifetime-mins constraint)))))))
+
+(deftest test-estimated-completion-constraint
+  (let [estimated-end-time 100000
+        host-lifetime-mins 1
+        constraint (constraints/->estimated-completion-constraint estimated-end-time host-lifetime-mins)]
+    (is (first (constraints/job-constraint-evaluate constraint nil {})))
+    (is (first (constraints/job-constraint-evaluate constraint nil {"host-start-time" 0.0})))
+    (is (not (first (constraints/job-constraint-evaluate constraint nil {"host-start-time" 51.0}))))))
