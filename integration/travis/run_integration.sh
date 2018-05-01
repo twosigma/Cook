@@ -136,9 +136,9 @@ export COOK_MASTER_SLAVE=
 export COOK_SLAVE_URL=http://localhost:12323
 pytest -n4 -v --color=no --timeout-method=thread --boxed -m "${PYTEST_MARKS}" || test_failures=true
 
-# If there were failures, dump the executor logs
+# If there were failures, then we should save the logs
 if [ "$test_failures" = true ]; then
-  echo "Displaying scheduler logs"
-  ${TRAVIS_BUILD_DIR}/travis/show_scheduler_logs.sh
+  echo "Uploading logs..."
+  ${TRAVIS_BUILD_DIR}/travis/upload_logs.sh
   exit 1
 fi
