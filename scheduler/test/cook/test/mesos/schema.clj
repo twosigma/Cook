@@ -125,26 +125,18 @@
       :disable-mea-culpa-retries false
       :retry-count 1
       :old-job-state :job.state/running
-      :new-job-state :job.state/waiting)
-    (doseq [n (range 1 4)]
-      (verify-job-state-transition
-        (-> n dec (repeat :instance.status/failed) vec (conj :instance.status/running))
-        (-> n dec (repeat nil) vec (conj :instance.status/failed))
-        :old-reasons (repeat n :mesos-executor-terminated)
-        :new-reasons (repeat n :mesos-executor-terminated)
-        :disable-mea-culpa-retries true
-        :retry-count 1
-        :old-job-state :job.state/running
-        :new-job-state :job.state/waiting))
+      :new-job-state :job.state/waiting))
+
+  (testing "mea-culpa failure with disable-mea-culpa-retries true"
     (verify-job-state-transition
-      [:instance.status/failed :instance.status/failed :instance.status/failed :instance.status/running]
-      [nil nil nil :instance.status/failed]
-      :old-reasons (repeat 4 :mesos-executor-terminated)
-      :new-reasons (repeat 4 :mesos-executor-terminated)
-      :disable-mea-culpa-retries true
-      :retry-count 1
-      :old-job-state :job.state/running
-      :new-job-state :job.state/completed))
+     [:instance.status/running]
+     [:instance.status/failed]
+     :old-reasons [:mesos-executor-terminated]
+     :new-reasons [:mesos-executor-terminated]
+     :disable-mea-culpa-retries true
+     :retry-count 1
+     :old-job-state :job.state/running
+     :new-job-state :job.state/completed))
 
   (testing "mea-culpas retry on mesos-executor-terminated some retries"
     (verify-job-state-transition
@@ -156,25 +148,26 @@
       :retry-count 2
       :old-job-state :job.state/running
       :new-job-state :job.state/waiting)
-    (doseq [n (range 1 5)]
-      (verify-job-state-transition
-        (-> n dec (repeat :instance.status/failed) vec (conj :instance.status/running))
-        (-> n dec (repeat nil) vec (conj :instance.status/failed))
-        :old-reasons (repeat n :mesos-executor-terminated)
-        :new-reasons (repeat n :mesos-executor-terminated)
-        :disable-mea-culpa-retries true
-        :retry-count 2
-        :old-job-state :job.state/running
-        :new-job-state :job.state/waiting))
+
     (verify-job-state-transition
-      [:instance.status/failed :instance.status/failed :instance.status/failed :instance.status/failed :instance.status/running]
-      [nil nil nil nil :instance.status/failed]
-      :old-reasons (repeat 5 :mesos-executor-terminated)
-      :new-reasons (repeat 5 :mesos-executor-terminated)
-      :disable-mea-culpa-retries true
-      :retry-count 2
-      :old-job-state :job.state/running
-      :new-job-state :job.state/completed)))
+     [:instance.status/running]
+     [:instance.status/failed]
+     :old-reasons [:mesos-executor-terminated]
+     :new-reasons [:mesos-executor-terminated]
+     :disable-mea-culpa-retries true
+     :retry-count 2
+     :old-job-state :job.state/running
+     :new-job-state :job.state/waiting)
+
+    (verify-job-state-transition
+     [:instance.status/failed :instance.status/running]
+     [nil :instance.status/failed]
+     :old-reasons [:mesos-executor-terminated nil]
+     :new-reasons [:mesos-executor-terminated :mesos-executor-terminated]
+     :disable-mea-culpa-retries true
+     :retry-count 2
+     :old-job-state :job.state/running
+     :new-job-state :job.state/completed)))
 
 (deftest test-reasons->attempts-consumed
   (let [uri "datomic:mem://test-reasons-attempts-consumed"
@@ -191,11 +184,12 @@
                  {:reason/code 103 :reason/mea-culpa? true :reason/failure-limit 1}
                  {:reason/code 104 :reason/mea-culpa? true :reason/failure-limit -1}
                  {:reason/code 104 :reason/mea-culpa? true :reason/failure-limit -1}]]
-    (is (= (d/invoke db :job/reasons->attempts-consumed 0 reasons) 8))
-    (is (= (d/invoke db :job/reasons->attempts-consumed 1 reasons) 7))
-    (is (= (d/invoke db :job/reasons->attempts-consumed 2 reasons) 6))
-    (is (= (d/invoke db :job/reasons->attempts-consumed 3 reasons) 5))
-    (is (= (d/invoke db :job/reasons->attempts-consumed 5 reasons) 5))))
+    (is (= (d/invoke db :job/reasons->attempts-consumed 0 true reasons) 11))
+    (is (= (d/invoke db :job/reasons->attempts-consumed 0 false reasons) 8))
+    (is (= (d/invoke db :job/reasons->attempts-consumed 1 false reasons) 7))
+    (is (= (d/invoke db :job/reasons->attempts-consumed 2 false reasons) 6))
+    (is (= (d/invoke db :job/reasons->attempts-consumed 3 false reasons) 5))
+    (is (= (d/invoke db :job/reasons->attempts-consumed 5 false reasons) 5))))
 
 (deftest test-instance-update-state-with-job-state
     (testing "Instance initially unknown"

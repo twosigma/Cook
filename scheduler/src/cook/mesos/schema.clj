@@ -867,14 +867,15 @@ for a job. E.g. {:resources {:cpus 4 :mem 3} :constraints {\"unique_host_constra
     :db/ident :job/reasons->attempts-consumed
     :db/doc "Determines the amount of attempts consumed by a collection of failure reasons."
     :db/fn #db/fn {:lang "clojure"
-                   :params [mea-culpa-limit reasons]
+                   :params [mea-culpa-limit disable-mea-culpa-retries reasons]
                    :code
                    (->> reasons
                         frequencies
                         (map (fn [[reason count]]
                                ;; Note a nil reason counts as a non-mea-culpa failure!
                                (if (:reason/mea-culpa? reason)
-                                 (let [failure-limit (or (:reason/failure-limit reason)
+                                 (let [failure-limit (or (when disable-mea-culpa-retries 0)
+                                                         (:reason/failure-limit reason)
                                                          mea-culpa-limit)]
                                    (if (= failure-limit -1)
                                      0 ; -1 means no failure limit
@@ -889,7 +890,8 @@ for a job. E.g. {:resources {:cpus 4 :mem 3} :constraints {\"unique_host_constra
                    :params [db job-ent]
                    :code
                    (let [done-statuses #{:instance.status/success :instance.status/failed}
-                         mea-culpa-limit (or (when (:job/disable-mea-culpa-retries job-ent)
+                         disable-mea-culpa-retries (:job/disable-mea-culpa-retries job-ent)
+                         mea-culpa-limit (or (when disable-mea-culpa-retries
                                                0)
                                              (:scheduler.config/mea-culpa-failure-limit
                                                (d/entity db :scheduler/config))
@@ -898,7 +900,10 @@ for a job. E.g. {:resources {:cpus 4 :mem 3} :constraints {\"unique_host_constra
                           :job/instance
                           (filter #(done-statuses (:instance/status %)))
                           (map :instance/reason)
-                          (d/invoke db :job/reasons->attempts-consumed mea-culpa-limit)))}}
+                          (d/invoke db
+                                    :job/reasons->attempts-consumed
+                                    mea-culpa-limit
+                                    disable-mea-culpa-retries)))}}
 
    {:db/id (d/tempid :db.part/user)
     :db/ident :job/all-attempts-consumed?
