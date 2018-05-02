@@ -2222,3 +2222,5 @@ class CookTest(unittest.TestCase):
         self.assertEqual('completed', job['status'])
         self.assertEqual(1, len(job['instances']))
 
+    def test_fail(self):
+        self.fail()
