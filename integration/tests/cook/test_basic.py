@@ -2221,6 +2221,3 @@ class CookTest(unittest.TestCase):
         job = util.load_job(self.cook_url, uuid)
         self.assertEqual('completed', job['status'])
         self.assertEqual(1, len(job['instances']))
-
-    def test_fail(self):
-        self.fail()
