@@ -345,7 +345,8 @@
    (s/optional-key :start) s/Str
    (s/optional-key :end) s/Str
    (s/optional-key :limit) NonNegInt
-   (s/optional-key :name) JobNameListFilter})
+   (s/optional-key :name) JobNameListFilter
+   (s/optional-key :pool) s/Str})
 
 (def QueryInstancesParams
   "Schema for querying for instances by instance uuid, allowing optionally for
@@ -1204,7 +1205,7 @@
   "Returns a [true {::error ...}] pair if the request is malformed, and
   otherwise [false m], where m represents data that gets merged into the ctx"
   [ctx]
-  (let [{:strs [state user start end limit name]} (get-in ctx [:request :query-params])
+  (let [{:strs [state user start end limit name pool]} (get-in ctx [:request :query-params])
         states (wrap-seq state)]
     (cond
       (not (and states user start end))
@@ -1225,7 +1226,8 @@
                 ::start-ms (-> start ^DateTime util/parse-time .getMillis)
                 ::end-ms (-> end ^DateTime util/parse-time .getMillis)
                 ::limit (util/parse-int-default limit 150)
-                ::name-filter-fn (name-filter-str->name-filter-fn name)}]
+                ::name-filter-fn (name-filter-str->name-filter-fn name)
+                ::pool-name pool}]
         (catch NumberFormatException e
           [true {::error (.toString e)}])))))
 
@@ -1263,14 +1265,15 @@
            end-ms ::end-ms
            since-hours-ago ::since-hours-ago
            limit ::limit
-           name-filter-fn ::name-filter-fn} ctx
+           name-filter-fn ::name-filter-fn
+           pool-name ::pool-name} ctx
           start-ms' (or start-ms (- end-ms (-> since-hours-ago t/hours t/in-millis)))
           start (Date. ^long start-ms')
           end (Date. ^long end-ms)
           job-uuids (->> (timers/time!
                            fetch-jobs
                            (util/get-jobs-by-user-and-states db user states start end limit
-                                                             name-filter-fn include-custom-executor?))
+                                                             name-filter-fn include-custom-executor? pool-name))
                          (sort-by :job/submit-time)
                          reverse
                          (map :job/uuid))

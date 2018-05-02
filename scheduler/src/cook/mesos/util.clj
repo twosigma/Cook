@@ -26,7 +26,8 @@
             [datomic.api :as d :refer (q)]
             [metatransaction.core :refer (db)]
             [metrics.timers :as timers]
-            [plumbing.core :as pc :refer (map-vals map-keys)])
+            [plumbing.core :as pc :refer (map-vals map-keys)]
+            [cook.mesos.pool :as pool])
   (:import
     [com.google.common.cache Cache CacheBuilder]
     [java.util.concurrent TimeUnit]
@@ -395,22 +396,25 @@
    and timeframe, without a custom executor.
    Note that this query is not performant for completed jobs, use
    get-completed-jobs-by-user instead."
-  [db user start end state name-filter-fn include-custom-executor?]
+  [db user start end state name-filter-fn include-custom-executor? pool-name]
   (let [state-keyword (case state
                         "running" :job.state/running
                         "waiting" :job.state/waiting)
+        requesting-default-pool? (pool/requesting-default-pool? pool-name)
+        pool-name' (pool/pool-name-or-default pool-name)
         jobs
         (timers/time!
           (timers/timer ["cook-mesos" "scheduler" (str "get-" (name state) "-jobs-by-user-duration")])
           (->> (q '[:find [?j ...]
-                    :in $ ?user ?state ?start ?end
+                    :in $ ?user ?state ?start ?end ?pool-name ?requesting-default-pool
                     :where
                     [?j :job/state ?state]
                     [?j :job/user ?user]
                     [?j :job/submit-time ?t]
                     [(<= ?start ?t)]
-                    [(< ?t ?end)]]
-                  db user state-keyword start end)
+                    [(< ?t ?end)]
+                    [(cook.mesos.pool/check-pool $ ?j :job/pool ?pool-name ?requesting-default-pool)]]
+                  db user state-keyword start end pool-name' requesting-default-pool?)
                (map (partial d/entity db))))]
     (cond->> jobs
              (not include-custom-executor?) (filter #(false? (:job/custom-executor %)))
@@ -420,13 +424,13 @@
 (defn get-jobs-by-user-and-states
   "Returns all jobs for a particular user in the specified states
    and timeframe, without a custom executor."
-  [db user states start end limit name-filter-fn include-custom-executor?]
+  [db user states start end limit name-filter-fn include-custom-executor? pool-name]
   (let [get-jobs-by-state (fn get-jobs-by-state [state]
                             (if (#{"completed" "success" "failed"} state)
                               (get-completed-jobs-by-user db user start end limit state
                                                           name-filter-fn include-custom-executor?)
                               (get-active-jobs-by-user-and-state db user start end state
-                                                                 name-filter-fn include-custom-executor?)))
+                                                                 name-filter-fn include-custom-executor? pool-name)))
         jobs-by-state (mapcat get-jobs-by-state states)]
     (->> jobs-by-state
          (sort-by :job/submit-time)
@@ -463,12 +467,6 @@
 
 (timers/deftimer [cook-mesos scheduler get-user-running-jobs-duration])
 
-(defn default-pool?
-  "Returns true if the provided pool name matches
-  the currently configured default pool name"
-  [pool-name]
-  (= pool-name (config/default-pool)))
-
 (defn get-user-running-job-ents
   "Returns all running job entities for a specific user."
   ([db user]
@@ -489,8 +487,8 @@
 (defn get-user-running-job-ents-in-pool
   "Returns all running job entities for a specific user and pool."
   [db user pool-name]
-  (let [requesting-default-pool? (or (nil? pool-name) (default-pool? pool-name))
-        pool-name' (or pool-name (config/default-pool) (UUID/randomUUID))]
+  (let [requesting-default-pool? (pool/requesting-default-pool? pool-name)
+        pool-name' (pool/pool-name-or-default pool-name)]
     (timers/time!
       get-user-running-jobs-duration
       (->> (q
