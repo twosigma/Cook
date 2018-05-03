@@ -107,15 +107,13 @@ class CookTest(unittest.TestCase):
                 self.assertEqual('mesos', job_instance['executor'], message)
 
     def test_disable_mea_culpa(self):
-        job_uuid, resp = util.submit_job(self.cook_url, disable_mea_culpa_retries=True)
-        self.assertEqual(201, resp.status_code, msg=resp.content)
-        job = util.load_job(self.cook_url, job_uuid)
-        self.assertEqual(True, job['disable_mea_culpa_retries'])
-
-        job_uuid, resp = util.submit_job(self.cook_url, disable_mea_culpa_retries=False)
-        self.assertEqual(201, resp.status_code, msg=resp.content)
-        job = util.load_job(self.cook_url, job_uuid)
-        self.assertEqual(False, job['disable_mea_culpa_retries'])
+        uuid, resp = util.submit_job(self.cook_url, command='sleep 30', env={'EXECUTOR_TEST_EXIT': '1'}, disable_mea_culpa_retries=True)
+        job = util.wait_for_job(self.cook_url, uuid, 'completed')
+        self.assertEqual(job['state'], 'failed', json.dumps(job, indent=2))
+        self.assertEqual(job['retries_remaining'], 0, json.dumps(job, indent=2))
+        instances = job['instances']
+        self.assertEqual(1, len(instances), json.dumps(job, indent=2))
+        self.assertEqual('Mesos executor terminated', instances[0]['reason_string'], json.dumps(job, indent=2))
 
     def test_executor_flag(self):
         job_uuid, resp = util.submit_job(self.cook_url, executor='cook')
@@ -2221,4 +2219,3 @@ class CookTest(unittest.TestCase):
         job = util.load_job(self.cook_url, uuid)
         self.assertEqual('completed', job['status'])
         self.assertEqual(1, len(job['instances']))
-
