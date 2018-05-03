@@ -2214,10 +2214,29 @@ class CookTest(unittest.TestCase):
         self.assertEqual('Retries would be less than attempts-consumed',
                          resp.json()['error'])
 
-    def test_retries_unchanged_does_not_restart_job(self):
-        uuid, resp = util.submit_job(self.cook_url, command='exit 0', max_retries=1)
+    def test_retries_unchanged_conflict(self):
+        uuid, resp = util.submit_job(self.cook_url, command='exit 0', max_retries=1, disable_mea_culpa_retries=True)
         util.wait_for_job(self.cook_url, uuid, 'completed')
-        util.retry_jobs(self.cook_url, job=uuid, retries=1)
+        resp = util.retry_jobs(self.cook_url, job=uuid, assert_response=False, retries=1)
+        self.assertEqual(409, resp.status_code, msg=resp.content)
+        job = util.load_job(self.cook_url, uuid)
+        self.assertEqual('completed', job['status'], json.dumps(job, indent=2))
+        self.assertEqual(1, len(job['instances']), json.dumps(job, indent=2))
+
+
+    def test_set_retries_to_attempts_conflict(self):
+        uuid, resp = util.submit_job(self.cook_url, command='sleep 30', max_retries=5, disable_mea_culpa_retries=True)
+        util.wait_for_instance(self.cook_url, uuid)
+        util.kill_jobs(self.cook_url, [uuid])
+        def instances_complete(job):
+            return all([i['status'] != 'running' for i in job['instances']])
+        job = util.wait_until(lambda: util.load_job(self.cook_url, uuid), instances_complete)
+        self.assertEqual('completed', job['status'], json.dumps(job, indent=2))
+        num_instances = len(job['instances'])
+        self.assertEqual(5-num_instances, job['retries_remaining'], json.dumps(job, indent=2))
+
+        resp = util.retry_jobs(self.cook_url, job=uuid, retries=num_instances, assert_response=False)
+        self.assertEqual(409, resp.status_code, msg=resp.content)
         job = util.load_job(self.cook_url, uuid)
         self.assertEqual('completed', job['status'])
-        self.assertEqual(1, len(job['instances']))
+        self.assertEqual(num_instances, len(job['instances']), json.dumps(job, indent=2))
