@@ -890,11 +890,8 @@ for a job. E.g. {:resources {:cpus 4 :mem 3} :constraints {\"unique_host_constra
                    :params [db job-ent]
                    :code
                    (let [done-statuses #{:instance.status/success :instance.status/failed}
-                         disable-mea-culpa-retries (:job/disable-mea-culpa-retries job-ent)
-                         mea-culpa-limit (or (when disable-mea-culpa-retries
-                                               0)
-                                             (:scheduler.config/mea-culpa-failure-limit
-                                               (d/entity db :scheduler/config))
+                         mea-culpa-limit (or (:scheduler.config/mea-culpa-failure-limit
+                                              (d/entity db :scheduler/config))
                                              5)]
                      (->> job-ent
                           :job/instance
@@ -903,7 +900,7 @@ for a job. E.g. {:resources {:cpus 4 :mem 3} :constraints {\"unique_host_constra
                           (d/invoke db
                                     :job/reasons->attempts-consumed
                                     mea-culpa-limit
-                                    disable-mea-culpa-retries)))}}
+                                    (:job/disable-mea-culpa-retries job-ent))))}}
 
    {:db/id (d/tempid :db.part/user)
     :db/ident :job/all-attempts-consumed?
