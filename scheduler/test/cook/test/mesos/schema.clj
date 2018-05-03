@@ -105,29 +105,7 @@
                       (db conn) job))))))
 
 (deftest test-mea-culpa-retry-on-mesos-executor-terminated
-  (testing "mea-culpas retry on mesos-executor-terminated no retries"
-    (verify-job-state-transition
-      [:instance.status/running]
-      [:instance.status/failed]
-      :old-reasons [:mesos-executor-terminated]
-      :new-reasons [:mesos-executor-terminated]
-      :disable-mea-culpa-retries false
-      :retry-count 0
-      :old-job-state :job.state/running
-      :new-job-state :job.state/completed))
-
-  (testing "mea-culpas retry on mesos-executor-terminated one retry"
-    (verify-job-state-transition
-      [:instance.status/running]
-      [:instance.status/failed]
-      :old-reasons [:mesos-executor-terminated]
-      :new-reasons [:mesos-executor-terminated]
-      :disable-mea-culpa-retries false
-      :retry-count 1
-      :old-job-state :job.state/running
-      :new-job-state :job.state/waiting))
-
-  (testing "mea-culpa failure with disable-mea-culpa-retries true"
+  (testing "single retry with disable-mea-culpa-retries true"
     (verify-job-state-transition
      [:instance.status/running]
      [:instance.status/failed]
@@ -138,7 +116,7 @@
      :old-job-state :job.state/running
      :new-job-state :job.state/completed))
 
-  (testing "mea-culpas retry on mesos-executor-terminated some retries"
+  (testing "multiple retries with disable-mea-culpa retries true"
     (verify-job-state-transition
       [:instance.status/running]
       [:instance.status/failed]
@@ -167,7 +145,50 @@
      :disable-mea-culpa-retries true
      :retry-count 2
      :old-job-state :job.state/running
+     :new-job-state :job.state/completed))
+
+  (testing "single retry with disable-mea-culpa-retries false"
+    (doseq [n (range 1 4)]
+      (verify-job-state-transition
+       (-> n dec (repeat :instance.status/failed) vec (conj :instance.status/running))
+       (-> n dec (repeat nil) vec (conj :instance.status/failed))
+       :old-reasons (repeat n :mesos-executor-terminated)
+       :new-reasons (repeat n :mesos-executor-terminated)
+       :disable-mea-culpa-retries false
+       :retry-count 1
+       :old-job-state :job.state/running
+       :new-job-state :job.state/waiting))
+    (verify-job-state-transition
+     [:instance.status/failed :instance.status/failed :instance.status/failed :instance.status/running]
+     [nil nil nil :instance.status/failed]
+     :old-reasons (repeat 4 :mesos-executor-terminated)
+     :new-reasons (repeat 4 :mesos-executor-terminated)
+     :disable-mea-culpa-retries false
+     :retry-count 1
+     :old-job-state :job.state/running
+     :new-job-state :job.state/completed))
+
+  (testing "multiple retries with disable-mea-culpa-retrues false"
+    (doseq [n (range 1 5)]
+      (verify-job-state-transition
+       (-> n dec (repeat :instance.status/failed) vec (conj :instance.status/running))
+       (-> n dec (repeat nil) vec (conj :instance.status/failed))
+       :old-reasons (repeat n :mesos-executor-terminated)
+       :new-reasons (repeat n :mesos-executor-terminated)
+       :disable-mea-culpa-retries false
+       :retry-count 2
+       :old-job-state :job.state/running
+       :new-job-state :job.state/waiting))
+    (verify-job-state-transition
+     [:instance.status/failed :instance.status/failed :instance.status/failed :instance.status/failed :instance.status/running]
+     [nil nil nil nil :instance.status/failed]
+     :old-reasons (repeat 5 :mesos-executor-terminated)
+     :new-reasons (repeat 5 :mesos-executor-terminated)
+     :disable-mea-culpa-retries false
+     :retry-count 2
+     :old-job-state :job.state/running
      :new-job-state :job.state/completed)))
+
 
 (deftest test-reasons->attempts-consumed
   (let [uri "datomic:mem://test-reasons-attempts-consumed"
