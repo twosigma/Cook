@@ -636,15 +636,26 @@ class CookTest(unittest.TestCase):
 
     def test_list_jobs_by_completion_state_with_jobs_endpoint(self):
         name = str(uuid.uuid4())
-        job_uuid_1, resp = util.submit_job(self.cook_url, command='true', name=name)
+        job_uuid_1, resp = util.submit_job(self.cook_url, command='true', name=name, max_retries=2)
         self.assertEqual(201, resp.status_code)
         job_uuid_2, resp = util.submit_job(self.cook_url, command='false', name=name)
         self.assertEqual(201, resp.status_code)
-        job_uuid_3, resp = util.submit_job(self.cook_url, command='true', name=name)
+        job_uuid_3, resp = util.submit_job(self.cook_url, command='true', name=name, max_retries=2)
         self.assertEqual(201, resp.status_code)
         user = self.determine_user()
         start = util.wait_for_job(self.cook_url, job_uuid_1, 'completed')['submit_time']
         end = util.wait_for_job(self.cook_url, job_uuid_2, 'completed')['submit_time'] + 1
+
+        # Assert the job states
+        job_1 = util.load_job(self.cook_url, job_uuid_1)
+        job_2 = util.load_job(self.cook_url, job_uuid_2)
+        job_3 = util.load_job(self.cook_url, job_uuid_3)
+        self.logger.info(job_1)
+        self.logger.info(job_2)
+        self.logger.info(job_3)
+        self.assertEqual('success', job_1['state'])
+        self.assertEqual('failed', job_2['state'])
+        self.assertEqual('success', job_3['state'])
 
         # Test the various combinations of states
         resp = util.jobs(self.cook_url, user=user, state='completed', start=start, end=end)
