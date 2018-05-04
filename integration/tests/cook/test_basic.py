@@ -835,25 +835,23 @@ class CookTest(unittest.TestCase):
                 self.assertEqual(2, len(resp.json()), json.dumps(resp.json(), indent=2))
                 self.assertEqual(sorted(job_uuids), sorted(j['uuid'] for j in resp.json()))
 
-            # List running / waiting with no pool should return all running / waiting
-            resp = util.jobs(self.cook_url, user=user, state=active, start=start, end=end, name=name)
-            job_uuids = [j['uuid'] for j in jobs if j['command'] == 'sleep 300']
-            self.assertEqual(200, resp.status_code)
-            self.assertEqual(2, len(resp.json()), json.dumps(resp.json(), indent=2))
-            self.assertEqual(sorted(job_uuids), sorted([j['uuid'] for j in resp.json()]))
+            if len(pools) > 0:
+                # List running / waiting with no pool should return all running / waiting
+                resp = util.jobs(self.cook_url, user=user, state=active, start=start, end=end, name=name)
+                job_uuids = [j['uuid'] for j in jobs if j['command'] == 'sleep 300']
+                self.assertEqual(200, resp.status_code)
+                self.assertEqual(sorted(job_uuids), sorted([j['uuid'] for j in resp.json()]))
 
-            # List completed with no pool should return all completed
-            resp = util.jobs(self.cook_url, user=user, state=completed, start=start, end=end, name=name)
-            job_uuids = [j['uuid'] for j in jobs if j['command'] == 'exit 0']
-            self.assertEqual(200, resp.status_code)
-            self.assertEqual(2, len(resp.json()), json.dumps(resp.json(), indent=2))
-            self.assertEqual(sorted(job_uuids), sorted([j['uuid'] for j in resp.json()]))
+                # List completed with no pool should return all completed
+                resp = util.jobs(self.cook_url, user=user, state=completed, start=start, end=end, name=name)
+                job_uuids = [j['uuid'] for j in jobs if j['command'] == 'exit 0']
+                self.assertEqual(200, resp.status_code)
+                self.assertEqual(sorted(job_uuids), sorted([j['uuid'] for j in resp.json()]))
 
-            # List all states with no pool should return all jobs
-            resp = util.jobs(self.cook_url, user=user, state=completed + active, start=start, end=end, name=name)
-            self.assertEqual(200, resp.status_code)
-            self.assertEqual(4, len(resp.json()), json.dumps(resp.json(), indent=2))
-            self.assertEqual(sorted(j['uuid'] for j in jobs), sorted([j['uuid'] for j in resp.json()]))
+                # List all states with no pool should return all jobs
+                resp = util.jobs(self.cook_url, user=user, state=completed + active, start=start, end=end, name=name)
+                self.assertEqual(200, resp.status_code)
+                self.assertEqual(sorted(j['uuid'] for j in jobs), sorted([j['uuid'] for j in resp.json()]))
         finally:
             util.kill_jobs(self.cook_url, jobs)
 
