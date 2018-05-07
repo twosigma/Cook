@@ -1886,6 +1886,9 @@
         true)))
 
 (defn check-retry-conflict
+  "Checks whether a 409 conflict should be returned during a retry operation. This should occur when one of the jobs:
+   - Is already completed
+   - Has already retried 'retries' times"
   [conn ctx]
   (let [jobs (::jobs ctx)
         retries (get-in ctx [:request :body-params :retries])

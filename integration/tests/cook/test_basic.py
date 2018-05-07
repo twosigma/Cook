@@ -2224,6 +2224,35 @@ class CookTest(unittest.TestCase):
         self.assertEqual(1, len(job['instances']), json.dumps(job, indent=2))
 
 
+        uuid, resp = util.submit_job(self.cook_url, command='sleep 30', max_retries=1, disable_mea_culpa_retries=True)
+        try:
+            util.wait_for_job(self.cook_url, uuid, 'completed')
+            resp = util.retry_jobs(self.cook_url, job=uuid, assert_response=False, retries=1)
+            self.assertEqual(409, resp.status_code, msg=resp.content)
+            job = util.load_job(self.cook_url, uuid)
+            self.assertEqual('completed', job['status'], json.dumps(job, indent=2))
+            self.assertEqual(1, len(job['instances']), json.dumps(job, indent=2))
+        finally:
+            util.kill_jobs(self.cook_url, [uuid])
+
+    def test_retries_unchanged_conflict_group(self):
+        group_spec = util.minimal_group()
+        group_uuid = group_spec['uuid']
+        jobs = [{'group': group_uuid,
+                 'command': 'exit 1',
+                 'max_retries': 2,
+                 'disable_mea_culpa_retries': True},
+                {'group': group_uuid,
+                 'command': 'exit 1',
+                 'max_retries': 1,
+                 'disable_mea_culpa_retries': True}]
+        jobs, resp = util.submit_jobs(self.cook_url, jobs)
+        util.wait_for_jobs(self.cook_url, jobs, 'completed')
+        resp = util.retry_jobs(self.cook_url, groups=[group_uuid], assert_response=False, retries=2)
+        self.assertEqual(409, resp.status_code, resp.content)
+        self.assertTrue(jobs[0] in str(resp.content), resp.content)
+        self.assertFalse(jobs[1] in str(resp.content), resp.content)
+
     def test_set_retries_to_attempts_conflict(self):
         uuid, resp = util.submit_job(self.cook_url, command='sleep 30', max_retries=5, disable_mea_culpa_retries=True)
         util.wait_for_instance(self.cook_url, uuid)
