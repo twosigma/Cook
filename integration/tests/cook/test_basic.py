@@ -2228,10 +2228,7 @@ class CookTest(unittest.TestCase):
         try:
             util.wait_for_job(self.cook_url, uuid, 'running')
             resp = util.retry_jobs(self.cook_url, job=uuid, assert_response=False, retries=1)
-            self.assertEqual(409, resp.status_code, msg=resp.content)
-            job = util.load_job(self.cook_url, uuid)
-            self.assertEqual('completed', job['status'], json.dumps(job, indent=2))
-            self.assertEqual(1, len(job['instances']), json.dumps(job, indent=2))
+            self.assertEqual(201, resp.status_code, msg=resp.content)
         finally:
             util.kill_jobs(self.cook_url, [uuid])
 
