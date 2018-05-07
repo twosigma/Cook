@@ -383,6 +383,13 @@ class CookExecutor(pm.Executor):
         logging.info('Executor registered executor={}, framework={}, agent={}'.
                      format(executor_info['executor_id']['value'], framework_info['id'], agent_info['id']['value']))
 
+        env = os.environ
+        if 'EXECUTOR_TEST_EXIT' in env:
+            exit_code = int(env['EXECUTOR_TEST_EXIT'])
+            logging.warn('Exiting with code {} from EXECUTOR_TEST_EXIT environment variable'.
+                         format(exit_code))
+            os._exit(exit_code)
+
     def reregistered(self, driver, agent_info):
         logging.info('Executor re-registered agent={}'.format(agent_info))
 

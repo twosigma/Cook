@@ -5,6 +5,7 @@ import logging
 import subprocess
 import time
 import unittest
+from unittest.mock import patch
 from threading import Event, Timer
 
 import os
@@ -842,3 +843,19 @@ class ExecutorTest(unittest.TestCase):
         finally:
             tu.cleanup_output(stdout_name, stderr_name)
             tu.cleanup_file(output_name)
+
+    @patch('os._exit')
+    def test_executor_exit_env_variable(self, mock_exit):
+        os.environ['EXECUTOR_TEST_EXIT'] = '5'
+        try:
+            config = cc.ExecutorConfig()
+            stop_signal = Event()
+            executor = ce.CookExecutor(stop_signal, config)
+            driver = tu.FakeMesosExecutorDriver()
+            executor_info = {'executor_id': {'value': 'test'}}
+            framework_info = {'id': 'framework'}
+            agent_info = {'id': {'value': 'agent'}}
+            executor.registered(driver, executor_info, framework_info, agent_info)
+            mock_exit.assert_called_with(5)
+        finally:
+            del os.environ['EXECUTOR_TEST_EXIT']
