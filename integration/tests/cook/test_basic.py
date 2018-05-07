@@ -2228,7 +2228,7 @@ class CookTest(unittest.TestCase):
         try:
             util.wait_for_job(self.cook_url, uuid, 'running')
             resp = util.retry_jobs(self.cook_url, job=uuid, assert_response=False, retries=1)
-            self.assertEqual(201, resp.status_code, msg=resp.content)
+            self.assertEqual(409, resp.status_code, msg=resp.content)
         finally:
             util.kill_jobs(self.cook_url, [uuid])
 

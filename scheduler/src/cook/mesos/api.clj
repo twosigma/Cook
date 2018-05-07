@@ -1887,17 +1887,19 @@
 
 (defn check-retry-conflict
   "Checks whether a 409 conflict should be returned during a retry operation. This should occur when one of the jobs:
-   - Is already completed
-   - Has already retried 'retries' times"
+   - Is already completed and has already retried 'retries' times
+   - Is not completed and already has 'retries' max-retries"
   [conn ctx]
   (let [jobs (::jobs ctx)
         retries (get-in ctx [:request :body-params :retries])
         db (d/db conn)]
     (if (not (nil? retries))
       (let [jobs-not-updated (filter (fn [uuid]
-                                       (let [{:keys [job/state] :as job} (d/entity db [:job/uuid uuid])]
-                                         (and (= :job.state/completed state)
-                                              (= retries (d/invoke db :job/attempts-consumed db job)))))
+                                       (let [{:keys [job/state job/max-retries] :as job} (d/entity db [:job/uuid uuid])]
+                                         (or (and (not (= :job.state/completed state))
+                                                  (= retries max-retries))
+                                             (and (= :job.state/completed state)
+                                                  (<= retries (d/invoke db :job/attempts-consumed db job))))))
                                      jobs)]
         (if (not (empty? jobs-not-updated))
           [true {::error (str "Jobs will not retry: " (str/join ", " jobs-not-updated))}]
