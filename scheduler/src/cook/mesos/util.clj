@@ -384,7 +384,7 @@
         state-entid (d/entid db state-keyword)
         start-ms (.getTime start)
         end-ms (.getTime end)]
-    (->> (d/seek-datoms db :avet :job/state state-entid entid-start)
+    (->> (d/seek-datoms db :vaet state-entid :job/state entid-start)
          (take-while #(and (< (:e %) entid-end)
                            (= (:a %) job-state-entid)
                            (= (:v %) state-entid)))
