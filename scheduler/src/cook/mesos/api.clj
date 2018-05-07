@@ -90,6 +90,7 @@
    :handle-forbidden render-error
    :handle-malformed render-error
    :handle-not-found render-error
+   :handle-conflict render-error
    :handle-unprocessable-entity render-error})
 
 (defn base-cook-handler
@@ -1884,6 +1885,27 @@
                                (str/join \space))}])
         true)))
 
+(defn check-retry-conflict
+  "Checks whether a 409 conflict should be returned during a retry operation. This should occur when one of the jobs:
+   - Is already completed and has already retried 'retries' times
+   - Is not completed and already has 'retries' max-retries"
+  [conn ctx]
+  (let [jobs (::jobs ctx)
+        retries (get-in ctx [:request :body-params :retries])
+        db (d/db conn)]
+    (if (not (nil? retries))
+      (let [jobs-not-updated (filter (fn [uuid]
+                                       (let [{:keys [job/state job/max-retries] :as job} (d/entity db [:job/uuid uuid])]
+                                         (or (and (not (= :job.state/completed state))
+                                                  (= retries max-retries))
+                                             (and (= :job.state/completed state)
+                                                  (<= retries (d/invoke db :job/attempts-consumed db job))))))
+                                     jobs)]
+        (if (not (empty? jobs-not-updated))
+          [true {::error (str "Jobs will not retry: " (str/join ", " jobs-not-updated))}]
+          false))
+      false))) ; no conflict when incrementing
+
 (defn base-retries-handler
   [conn is-authorized-fn liberator-attrs]
   (base-cook-handler
@@ -1917,6 +1939,7 @@
      ;; actually an idempotent update; it should be PUT).
      :exists? (partial check-jobs-and-groups-exist conn)
      :malformed? (partial validate-retries conn task-constraints)
+     :conflict? (partial check-retry-conflict conn)
      :handle-created (partial display-retries conn)
      :post! (partial retry-jobs! conn)}))
 
@@ -1927,6 +1950,7 @@
     {:allowed-methods [:put]
      :malformed? (partial validate-retries conn task-constraints)
      :exists? (partial check-jobs-and-groups-exist conn)
+     :conflict? (partial check-retry-conflict conn)
      :put! (partial retry-jobs! conn)
      ;; :new? decides whether to respond with Created (true) or OK (false).
      :new? (comp seq ::jobs)

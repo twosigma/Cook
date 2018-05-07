@@ -30,6 +30,7 @@
             [cook.mesos.util :as util]
             [cook.test.testutil :refer [create-dummy-instance
                                         create-dummy-job
+                                        create-dummy-job-with-instances
                                         create-pool
                                         flush-caches!
                                         restore-fresh-database!]]
@@ -352,6 +353,7 @@
         h (basic-handler conn :is-authorized-fn is-authorized-fn)
         uuid1 (str (UUID/randomUUID))
         uuid2 (str (UUID/randomUUID))
+        uuid3 (str (UUID/randomUUID))
         group-uuid (str (UUID/randomUUID))
         create-response (h {:request-method :post
                             :scheme :http
@@ -363,10 +365,21 @@
                                                          "max_retries" 42})
                                      (merge (basic-job) {"uuid" uuid2
                                                          "max_retries" 30
-                                                         "group" group-uuid})]}})
+                                                         "group" group-uuid})
+                                     (merge (basic-job) {"uuid" uuid3
+                                                         "max_retries" 10})]}})
         retry-req-attrs {:scheme :http
                          :uri "/retry"
-                         :authorization/user "mforsyth"}]
+                         :authorization/user "mforsyth"}
+        [job3 _] (create-dummy-job-with-instances conn
+                                                  :disable-mea-culpa-retries true
+                                                  :retry-count 3
+                                                  :user "mforsyth"
+                                                  :job-state :job.state/completed
+                                                  :instances [{:instance-status :instance.status/failed}
+                                                              {:instance-status :instance.status/failed}
+                                                              {:instance-status :instance.status/failed}])
+        uuid4 (str (:job/uuid (d/entity (d/db conn) job3)))]
 
     (testing "Specifying both \"job\" and \"jobs\" is malformed"
       (let [update-resp (h (merge retry-req-attrs
@@ -473,7 +486,25 @@
             read-resp (h (merge retry-req-attrs {:request-method :get
                                                  :query-params {:job uuid2}}))
             read-body (response->body-data read-resp)]
-        (is (= read-body 36))))))
+        (is (= read-body 36))))
+
+    (testing "conflict on retrying completed jobs"
+      (let [update-resp (h (merge retry-req-attrs
+                                  {:request-method :post
+                                   :body-params {"jobs" [uuid1 uuid4]
+                                                 "retries" 3}}))]
+        (is (= 409 (:status update-resp)))
+        (is (= {"error" (str "Jobs will not retry: " uuid4)}
+               (response->body-data update-resp)))))
+
+    (testing "conflict on retrying waiting jobs"
+      (let [update-resp (h (merge retry-req-attrs
+                                  {:request-method :post
+                                   :body-params {"jobs" [uuid3]
+                                                 "retries" 10}}))]
+        (is (= 409 (:status update-resp)))
+        (is (= {"error" (str "Jobs will not retry: " uuid3)}
+               (response->body-data update-resp)))))))
 
 (deftest instance-cancelling
   (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")]
