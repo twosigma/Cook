@@ -837,55 +837,57 @@
 
 (defn fetch-job-map
   [db framework-id job-uuid]
-  (let [job (d/entity db [:job/uuid job-uuid])
-        resources (util/job-ent->resources job)
-        groups (:group/_job job)
-        application (:job/application job)
-        expected-runtime (:job/expected-runtime job)
-        executor (:job/executor job)
-        progress-output-file (:job/progress-output-file job)
-        progress-regex-string (:job/progress-regex-string job)
-        pool (:job/pool job)
-        state (util/job-ent->state job)
-        constraints (->> job
-                         :job/constraint
-                         (map util/remove-datomic-namespacing)
-                         (map (fn [{:keys [attribute operator pattern]}]
-                                (->> [attribute (str/upper-case (name operator)) pattern]
-                                     (map str)))))
-        instances (map #(fetch-instance-map db %1) (:job/instance job))
-        submit-time (when (:job/submit-time job) ; due to a bug, submit time may not exist for some jobs
-                     (.getTime (:job/submit-time job)))
-        job-map {:command (:job/command job)
-                 :constraints constraints
-                 :cpus (:cpus resources)
-                 :disable_mea_culpa_retries (:job/disable-mea-culpa-retries job false)
-                 :env (util/job-ent->env job)
-                 :framework_id framework-id
-                 :gpus (int (:gpus resources 0))
-                 :instances instances
-                 :labels (util/job-ent->label job)
-                 :max_retries (:job/max-retries job) ; consistent with input
-                 :max_runtime (:job/max-runtime job Long/MAX_VALUE) ; consistent with input
-                 :mem (:mem resources)
-                 :name (:job/name job "cookjob")
-                 :ports (:job/ports job 0)
-                 :priority (:job/priority job util/default-job-priority)
-                 :retries_remaining (- (:job/max-retries job) (util/job-ent->attempts-consumed db job))
-                 :state state
-                 :status (name (:job/state job))
-                 :submit_time submit-time
-                 :uris (:uris resources)
-                 :user (:job/user job)
-                 :uuid (:job/uuid job)}]
-    (cond-> job-map
-            groups (assoc :groups (map #(str (:group/uuid %)) groups))
-            application (assoc :application (util/remove-datomic-namespacing application))
-            expected-runtime (assoc :expected-runtime expected-runtime)
-            executor (assoc :executor (name executor))
-            progress-output-file (assoc :progress-output-file progress-output-file)
-            progress-regex-string (assoc :progress-regex-string progress-regex-string)
-            pool (assoc :pool (:pool/name pool)))))
+  (timers/time!
+    (timers/timer ["cook-scheduler" "internal" "fetch-job-map"])
+    (let [job (d/entity db [:job/uuid job-uuid])
+          resources (util/job-ent->resources job)
+          groups (:group/_job job)
+          application (:job/application job)
+          expected-runtime (:job/expected-runtime job)
+          executor (:job/executor job)
+          progress-output-file (:job/progress-output-file job)
+          progress-regex-string (:job/progress-regex-string job)
+          pool (:job/pool job)
+          state (util/job-ent->state job)
+          constraints (->> job
+                           :job/constraint
+                           (map util/remove-datomic-namespacing)
+                           (map (fn [{:keys [attribute operator pattern]}]
+                                  (->> [attribute (str/upper-case (name operator)) pattern]
+                                       (map str)))))
+          instances (map #(fetch-instance-map db %1) (:job/instance job))
+          submit-time (when (:job/submit-time job) ; due to a bug, submit time may not exist for some jobs
+                        (.getTime (:job/submit-time job)))
+          job-map {:command (:job/command job)
+                   :constraints constraints
+                   :cpus (:cpus resources)
+                   :disable_mea_culpa_retries (:job/disable-mea-culpa-retries job false)
+                   :env (util/job-ent->env job)
+                   :framework_id framework-id
+                   :gpus (int (:gpus resources 0))
+                   :instances instances
+                   :labels (util/job-ent->label job)
+                   :max_retries (:job/max-retries job) ; consistent with input
+                   :max_runtime (:job/max-runtime job Long/MAX_VALUE) ; consistent with input
+                   :mem (:mem resources)
+                   :name (:job/name job "cookjob")
+                   :ports (:job/ports job 0)
+                   :priority (:job/priority job util/default-job-priority)
+                   :retries_remaining (- (:job/max-retries job) (util/job-ent->attempts-consumed db job))
+                   :state state
+                   :status (name (:job/state job))
+                   :submit_time submit-time
+                   :uris (:uris resources)
+                   :user (:job/user job)
+                   :uuid (:job/uuid job)}]
+      (cond-> job-map
+              groups (assoc :groups (map #(str (:group/uuid %)) groups))
+              application (assoc :application (util/remove-datomic-namespacing application))
+              expected-runtime (assoc :expected-runtime expected-runtime)
+              executor (assoc :executor (name executor))
+              progress-output-file (assoc :progress-output-file progress-output-file)
+              progress-regex-string (assoc :progress-regex-string progress-regex-string)
+              pool (assoc :pool (:pool/name pool))))))
 
 (defn fetch-group-live-jobs
   "Get all jobs from a group that are currently running or waiting (not complete)"
@@ -2242,7 +2244,12 @@
                  (timers/time!
                    (timers/timer ["cook-scheduler" "handler" "list-endpoint-duration"])
                    (let [job-uuids (list-jobs db false ctx)]
-                     (mapv (partial fetch-job-map db framework-id) job-uuids))))))
+                     (histograms/update!
+                       (histograms/histogram ["cook-scheduler" "handler" "list-endpoint-response-count"])
+                       (count job-uuids))
+                     (timers/time!
+                       (timers/timer ["cook-scheduler" "handler" "list-endpoint-fetch-job-map-duration"])
+                       (mapv (partial fetch-job-map db framework-id) job-uuids)))))))
 
 ;;
 ;; /unscheduled_jobs
