@@ -890,8 +890,7 @@ for a job. E.g. {:resources {:cpus 4 :mem 3} :constraints {\"unique_host_constra
                    :params [db job-ent]
                    :code
                    (let [done-statuses #{:instance.status/success :instance.status/failed}
-                         mea-culpa-limit (or (:scheduler.config/mea-culpa-failure-limit
-                                              (d/entity db :scheduler/config))
+                         mea-culpa-limit (or (:scheduler.config/mea-culpa-failure-limit (d/entity db :scheduler/config))
                                              5)]
                      (->> job-ent
                           :job/instance
