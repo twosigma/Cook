@@ -2244,9 +2244,7 @@
                  (timers/time!
                    (timers/timer ["cook-scheduler" "handler" "list-endpoint-duration"])
                    (let [job-uuids (list-jobs db false ctx)]
-                     (timers/time!
-                       (timers/timer ["cook-scheduler" "handler" "list-endpoint-fetch-job-map-duration"])
-                       (mapv (partial fetch-job-map db framework-id) job-uuids)))))))
+                     (mapv (partial fetch-job-map db framework-id) job-uuids))))))
 
 ;;
 ;; /unscheduled_jobs
