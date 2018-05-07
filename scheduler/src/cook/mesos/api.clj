@@ -1895,8 +1895,8 @@
         db (d/db conn)]
     (if (not (nil? retries))
       (let [jobs-not-updated (filter (fn [uuid]
-                                       (let [job (d/entity db [:job/uuid uuid])]
-                                         (and (= :job.state/completed (:job/state job))
+                                       (let [{:keys [job/state] :as job} (d/entity db [:job/uuid uuid])]
+                                         (and (= :job.state/completed state)
                                               (= retries (d/invoke db :job/attempts-consumed db job)))))
                                      jobs)]
         (if (not (empty? jobs-not-updated))
