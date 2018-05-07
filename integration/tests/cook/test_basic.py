@@ -128,9 +128,10 @@ class CookTest(unittest.TestCase):
             job = util.wait_until(lambda: util.load_job(self.cook_url, uuid),
                                   lambda job: len(job['instances']) > 1 and any([i['status'] == 'failed' for i in job['instances']]))
             self.assertEqual(job['retries_remaining'], 1, json.dumps(job, indent=2))
-            instances = sorted(job['instances'], key=lambda i: i['start_time'])
-            self.assertLess(1, len(instances), json.dumps(job, indent=2))
-            for instance in job['instances'][:-1]:
+
+            failed_instances = [i for i in job['instances'] if i['status'] == 'failed']
+            self.assertTrue(len(failed_instances) != 0, json.dumps(job, indent=2))
+            for instance in failed_instances:
                 self.assertEqual('failed', instance['status'], json.dumps(instance, indent=2))
                 self.assertEqual('Mesos executor terminated', instance['reason_string'],
                                  json.dumps(instance, indent=2))
