@@ -69,41 +69,39 @@ class CookTest(unittest.TestCase):
     def test_no_cook_executor_on_subsequent_instances(self):
         retry_limit = util.get_in(util.settings(self.cook_url), 'executor', 'retry-limit')
         if retry_limit is None:
-            self.logger.debug("Cook executor is not configured (retry-limit is None)")
+            self.logger.debug('Cook executor is not configured (retry-limit is None)')
             return
         else:
+            self.logger.debug(f'Cook executor retry limit is {retry_limit}')
             num_hosts = len(util.get_mesos_state(self.mesos_url)['slaves'])
             if retry_limit >= num_hosts:
-                self.logger.debug("Skipping test as not enough agents to verify Mesos executor on subsequent instances")
+                self.logger.debug(f'Skipping test as not enough agents to verify Mesos executor on subsequent '
+                                  f'instances (agents = {num_hosts}, retry limit = {retry_limit})')
                 return
 
-        job_uuid, resp = util.submit_job(self.cook_url, command='exit 1',
-                                         max_retries=10)  # should launch many instances
+        # Should launch many instances
+        job_uuid, resp = util.submit_job(self.cook_url, command='exit 1', max_retries=retry_limit*2)
         self.assertEqual(resp.status_code, 201, msg=resp.content)
-        try:  # try to get at least 5 instances
+        try:
+            # Try to get more than retry_limit instances
             util.wait_until(lambda: util.load_job(self.cook_url, job_uuid),
-                            lambda job: len(job['instances']) > 4)
+                            lambda job: len(job['instances']) > retry_limit)
         except BaseException as e:
-            self.logger.debug("Didn't reach desired instance count: {}".format(e))
+            self.logger.debug(f"Didn't reach desired instance count: {e}")
 
         job = util.load_job(self.cook_url, job_uuid)
-        self.logger.debug("num job instances is {}".format(len(job['instances'])))
+        self.logger.debug(f"Num job instances is {len(job['instances'])}")
         job_instances = sorted(job['instances'], key=operator.itemgetter('start_time'))
         for i, job_instance in enumerate(job_instances):
-            message = 'Trailing instance {}: {}'.format(i, json.dumps(job_instance, sort_keys=True))
-            if 'reason_string' in job_instance:
-                self.assertEqual('failed', job_instance['status'], message)
-                self.assertEqual('Command exited non-zero', job_instance['reason_string'], message)
-            else:
-                self.assertIn(job_instance['status'], ['running', 'unknown'], message)
+            message = f'Trailing instance {i}: {json.dumps(job_instance, sort_keys=True)}'
+            self.assertNotEqual('success', job_instance['status'], message)
 
-        self.logger.debug("cook executor retry limit is {}".format(retry_limit))
         if retry_limit >= len(job_instances):
-            self.logger.debug("Not enough instances to verify Mesos executor on subsequent instances")
+            self.logger.debug('Not enough instances to verify Mesos executor on subsequent instances')
         else:
             later_job_instances = job_instances[retry_limit:]
             for i, job_instance in enumerate(later_job_instances):
-                message = 'Trailing instance {}: {}'.format(i, json.dumps(job_instance, sort_keys=True))
+                message = f'Trailing instance {i}: {json.dumps(job_instance, sort_keys=True)}'
                 self.assertEqual('mesos', job_instance['executor'], message)
 
     def test_disable_mea_culpa(self):
