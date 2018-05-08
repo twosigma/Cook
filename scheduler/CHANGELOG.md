@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.16.0] - 2018-05-08
+### Added
+- Added pool support to /share and /quota endpoints, from @pschorf
+### Changed
+- Returns 409 on some retry operations instead of retrying jobs which could end up in a bad state, from @pschorf
+- Fixed bug with disable_mea_culpa_retries, from @pschorf
+- Improved logging for some error cases, from @dposada
+
+
 ## [1.15.0] - 2018-04-17
 ### Added
 - Support for pool param to /usage endpoint, from @dposada
