@@ -416,7 +416,8 @@ class CookCliTest(unittest.TestCase):
     def test_list_no_matching_jobs(self):
         cp = cli.jobs(self.cook_url, '--name %s' % uuid.uuid4())
         self.assertEqual(0, cp.returncode, cp.stderr)
-        self.assertEqual(f'No jobs found in {self.cook_url}.', cli.stdout(cp))
+        self.assertIn('No running jobs', cli.stdout(cp))
+        self.assertIn(f'found in {self.cook_url}.', cli.stdout(cp))
 
     def list_jobs(self, name, user, *states):
         """Invokes the jobs subcommand with the given name, user, and state filters"""
