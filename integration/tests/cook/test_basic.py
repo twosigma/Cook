@@ -670,13 +670,10 @@ class CookTest(unittest.TestCase):
         # Assert the job states
         job_1 = util.load_job(self.cook_url, job_uuid_1)
         job_2 = util.load_job(self.cook_url, job_uuid_2)
-        job_3 = util.load_job(self.cook_url, job_uuid_3)
         self.logger.info(job_1)
         self.logger.info(job_2)
-        self.logger.info(job_3)
         self.assertEqual('success', job_1['state'])
         self.assertEqual('failed', job_2['state'])
-        self.assertEqual('success', job_3['state'])
 
         # Test the various combinations of states
         resp = util.jobs(self.cook_url, user=user, state='completed', start=start, end=end)
@@ -714,7 +711,10 @@ class CookTest(unittest.TestCase):
 
         # Test with success and a specified limit
         start = end - 1
-        end = util.wait_for_job(self.cook_url, job_uuid_3, 'completed')['submit_time'] + 1
+        job_3 = util.wait_for_job(self.cook_url, job_uuid_3, 'completed')
+        self.logger.info(job_3)
+        self.assertEqual('success', job_3['state'])
+        end = job_3['submit_time'] + 1
         resp = util.jobs(self.cook_url, user=user, state='success', start=start, end=end, limit=1, name=name)
         self.assertFalse(util.contains_job_uuid(resp.json(), job_uuid_2), job_uuid_2)
         self.assertTrue(util.contains_job_uuid(resp.json(), job_uuid_3), job_uuid_3)
