@@ -838,7 +838,7 @@
 (defn fetch-job-map
   [db framework-id job-uuid]
   (timers/time!
-    (timers/timer ["cook-scheduler" "internal" "fetch-job-map"])
+    (timers/timer ["cook-mesos" "internal" "fetch-job-map"])
     (let [job (d/entity db [:job/uuid job-uuid])
           resources (util/job-ent->resources job)
           groups (:group/_job job)
