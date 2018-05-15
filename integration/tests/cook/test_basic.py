@@ -1571,6 +1571,8 @@ class CookTest(unittest.TestCase):
                     'mem': 100}
         num_jobs = minimum_hosts
         uuids, resp = util.submit_jobs(self.cook_url, job_spec, num_jobs, groups=[group])
+
+
         try:
             def query_list():
                 return util.query_jobs(self.cook_url, uuid=uuids).json()
@@ -1589,6 +1591,8 @@ class CookTest(unittest.TestCase):
                 resp = util.unscheduled_jobs(self.cook_url, waiting_job['uuid'])[0][0]
                 placement_reasons = [reason for reason in resp['reasons']
                                      if reason['reason'] == reasons.COULD_NOT_PLACE_JOB]
+                jobs = util.query_jobs(self.cook_url, job=uuids).json()
+                self.logger.info(f"jobs: {json.dumps(jobs)}")
                 self.logger.info(f"unscheduled_jobs response: {resp}")
                 return placement_reasons
 
