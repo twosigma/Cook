@@ -12,6 +12,7 @@ requirements = [
     'pytz',
     'requests',
     'tabulate',
+    'tenacity',
     'tzlocal',
 ]
 
