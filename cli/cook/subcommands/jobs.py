@@ -17,10 +17,16 @@ DEFAULT_LOOKBACK_HOURS = 6
 DEFAULT_LIMIT = 150
 
 
-def print_no_data(clusters):
+def print_no_data(clusters, states, user):
     """Prints a message indicating that no data was found in the given clusters"""
     clusters_text = ' / '.join([c['name'] for c in clusters])
-    print(colors.failed('No jobs found in %s.' % clusters_text))
+    if 'all' in states:
+        states = ['waiting', 'running', 'completed']
+    elif 'success' in states:
+        states.remove('success')
+        states.append('successful')
+    states_text = ' / '.join(states)
+    print(colors.failed(f'No {states_text} jobs for {user} found in {clusters_text}.'))
 
 
 def list_jobs_on_cluster(cluster, state, user, start_ms, end_ms, name, limit, include_custom_executor):
@@ -163,7 +169,7 @@ def jobs(clusters, args, _):
     elif found_jobs:
         print_as_table(query_result)
     else:
-        print_no_data(clusters)
+        print_no_data(clusters, states, user)
     return 0
 
 
