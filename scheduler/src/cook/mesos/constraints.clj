@@ -14,9 +14,9 @@
 ;; limitations under the License.
 ;;
 (ns cook.mesos.constraints
-  (:require [clojure.core.cache :as cache]
+  (:require [clj-time.core :as t]
+            [clojure.core.cache :as cache]
             [clojure.set :as set]
-            [clj-time.core :as t]
             [clojure.tools.logging :as log]
             [cook.config :as config]
             [cook.mesos.group :as group]
@@ -174,12 +174,14 @@
       [true ""])))
 
 (defn build-estimated-completion-constraint
-  [job]
+  "Returns an instance of estimated-completion-constraint for the job. The estimated end time will be the max of:
+   - :job/expected-runtime
+   - the runtimes of all failed instances with :mesos-slave-removed as the reason"
+  [{:keys [job/expected-runtime job/instance]}]
   (let [{:keys [expected-runtime-multiplier host-lifetime-mins]} (config/estimated-completion-config)]
     (when (and expected-runtime-multiplier host-lifetime-mins)
-      (let [expected-runtime (:job/expected-runtime job)
-            agent-removed-failures (filter #(= :mesos-slave-removed (get-in % [:instance/reason :reason/name]))
-                                           (:job/instance job))
+      (let [agent-removed-failures (filter #(= :mesos-slave-removed (get-in % [:instance/reason :reason/name]))
+                                           instance)
             agent-removed-runtimes (map #(- (.getTime (:instance/end-time %))
                                             (.getTime (:instance/mesos-start-time %)))
                                         agent-removed-failures)

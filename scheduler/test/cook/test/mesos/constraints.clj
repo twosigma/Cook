@@ -191,6 +191,7 @@
   (testing "does not generate a constraint when turned off"
     (with-redefs [config/estimated-completion-config (constantly nil)]
       (is (nil? (constraints/build-estimated-completion-constraint {})))))
+
   (let [conn (restore-fresh-database! "datomic:mem://test-estimated-completion-constraint")]
     (with-redefs [config/estimated-completion-config (constantly {:expected-runtime-multiplier 1.2
                                                                   :host-lifetime-mins 60})
@@ -198,6 +199,7 @@
       (let [job-id (create-dummy-job conn)
             job (util/job-ent->map (d/entity (d/db conn) job-id))]
         (is (nil? (constraints/build-estimated-completion-constraint job))))
+
       (let [job-id (create-dummy-job conn :expected-runtime 1000)
             job (util/job-ent->map (d/entity (d/db conn) job-id))
             constraint (constraints/build-estimated-completion-constraint job)]
