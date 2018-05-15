@@ -18,7 +18,7 @@
             [clj-time.core :as t]
             [clj-time.format :as tf]
             [clj-time.periodic :refer [periodic-seq]]
-            [cook.config :as config]
+            [cook.mesos.pool :as pool]
             [cook.mesos.schema :as schema]
             [clojure.core.async :as async]
             [clojure.core.cache :as cache]
@@ -26,12 +26,11 @@
             [datomic.api :as d :refer (q)]
             [metatransaction.core :refer (db)]
             [metrics.timers :as timers]
-            [plumbing.core :as pc :refer (map-vals map-keys)]
-            [cook.mesos.pool :as pool])
+            [plumbing.core :as pc :refer (map-vals map-keys)])
   (:import
     [com.google.common.cache Cache CacheBuilder]
     [java.util.concurrent TimeUnit]
-    [java.util Date UUID]))
+    [java.util Date]))
 
 
 (defn new-cache []
