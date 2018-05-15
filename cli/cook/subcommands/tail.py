@@ -9,6 +9,7 @@ CHUNK_SIZE = 4096
 LINE_DELIMITER = '\n'
 DEFAULT_NUM_LINES = 10
 DEFAULT_FOLLOW_SLEEP_SECS = 1.0
+DEFAULT_PATH = 'stdout'
 
 
 # For everything we print in tail, we want to forcibly flush
@@ -119,7 +120,7 @@ def tail(clusters, args, _):
     """Tails the contents of the corresponding Mesos sandbox path by job or instance uuid."""
     guard_no_cluster(clusters)
     entity_refs, clusters_of_interest = parse_entity_refs(clusters, args.get('uuid'))
-    paths = args.get('path')
+    path = args.get('path')
     lines = args.get('lines')
     follow = args.get('follow')
     sleep_interval = args.get('sleep-interval')
@@ -128,11 +129,7 @@ def tail(clusters, args, _):
         # argparse should prevent this, but we'll be defensive anyway
         raise Exception(f'You can only provide a single uuid.')
 
-    if len(paths) > 1:
-        # argparse should prevent this, but we'll be defensive anyway
-        raise Exception(f'You can only provide a single path.')
-
-    command_fn = partial(tail_for_instance, path=paths[0], num_lines_to_print=lines,
+    command_fn = partial(tail_for_instance, path=path, num_lines_to_print=lines,
                          follow=follow, follow_sleep_seconds=sleep_interval)
     query_unique_and_run(clusters_of_interest, entity_refs[0], command_fn)
 
@@ -147,8 +144,10 @@ def register(add_parser, add_defaults):
                         help=f'with -f, sleep for N seconds (default {DEFAULT_FOLLOW_SLEEP_SECS}) between iterations',
                         metavar='N', type=float)
     parser.add_argument('uuid', nargs=1)
-    parser.add_argument('path', nargs=1)
+    parser.add_argument('path', nargs='?')
 
-    add_defaults('tail', {'lines': DEFAULT_NUM_LINES, 'sleep-interval': DEFAULT_FOLLOW_SLEEP_SECS})
+    add_defaults('tail', {'lines': DEFAULT_NUM_LINES,
+                          'sleep-interval': DEFAULT_FOLLOW_SLEEP_SECS,
+                          'path': DEFAULT_PATH})
 
     return tail

@@ -780,6 +780,15 @@ class CookCliTest(unittest.TestCase):
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertEqual('', cli.decode(cp.stdout))
 
+    def test_tail_default_path(self):
+        text = str(uuid.uuid4())
+        cp, uuids = cli.submit(f'echo {text}', self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        util.wait_for_job(self.cook_url, uuids[0], 'completed')
+        cp = cli.tail(uuids[0], '', self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        self.assertIn(text, cli.decode(cp.stdout))
+
     def test_ls(self):
 
         def entry(name):
