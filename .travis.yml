@@ -5,11 +5,7 @@ jdk: oraclejdk8
 branches:
   only: master
 
-cache:
-  directories:
-    - $HOME/.apt-cache
-    - $HOME/.local
-    - $HOME/.m2
+cache: false
 
 env:
   global:
