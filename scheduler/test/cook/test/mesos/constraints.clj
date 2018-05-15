@@ -229,5 +229,5 @@
         host-lifetime-mins 1
         constraint (constraints/->estimated-completion-constraint estimated-end-time host-lifetime-mins)]
     (is (first (constraints/job-constraint-evaluate constraint nil {})))
-    (is (first (constraints/job-constraint-evaluate constraint nil {"host-start-time" 0.0})))
-    (is (not (first (constraints/job-constraint-evaluate constraint nil {"host-start-time" 51.0}))))))
+    (is (not (first (constraints/job-constraint-evaluate constraint nil {"host-start-time" 0.0}))))
+    (is (first (constraints/job-constraint-evaluate constraint nil {"host-start-time" 51.0})))))

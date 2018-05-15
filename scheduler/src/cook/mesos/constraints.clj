@@ -168,7 +168,7 @@
     (if-let [host-start-time (get vm-attributes "host-start-time")]
       (let [host-death-time (+ (* 1000 (long host-start-time))
                                (* 60 1000 host-lifetime-mins))]
-        (if (< host-death-time estimated-end-time)
+        (if (< estimated-end-time host-death-time)
           [true ""]
           [false "host is expected to shutdown before job completion"]))
       [true ""])))
