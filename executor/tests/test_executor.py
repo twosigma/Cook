@@ -539,6 +539,10 @@ class ExecutorTest(unittest.TestCase):
         command = 'sleep 100'
         self.run_command_in_manage_task_runner(command, assertions, 2)
 
+    # FIXME - remove the xfail mark once the issue with this test crashing is resolved:
+    # https://github.com/twosigma/Cook/issues/856
+    @pytest.mark.xfail
+    @unittest.skip('This test fails occasionally')
     def test_manage_task_random_binary_output(self):
         def assertions(driver, task_id, sandbox_directory):
             expected_statuses = [{'task_id': {'value': task_id}, 'state': cook.TASK_STARTING},
