@@ -12,5 +12,9 @@ docker cp --follow-link $mesos_master_container:/var/log/mesos-master.INFO ./mes
 docker cp --follow-link $mesos_master_container:/var/log/mesos-master.WARNING ./mesos/master-logs/
 
 tarball=./dump.txz
-tar -cJf $tarball --transform="s|\./[^/]*/\.*|${TRAVIS_JOB_NUMBER}/|" ./scheduler/log ./travis/.minimesos ./mesos/master-logs
+tar -cJf $tarball --transform="s|\./[^/]*/\.*|${TRAVIS_JOB_NUMBER}/|" --warning=no-file-changed ./scheduler/log ./travis/.minimesos ./mesos/master-logs || exitcode=$?
+if [ "$exitcode" != "" ] && [ "$exitcode" != "1" ] && [ "$exitcode" != "0" ]; then
+  echo "The tar command exited with exit code $exitcode, exiting..."
+  exit $exitcode
+fi
 ./travis/gdrive_upload "travis-${TRAVIS_JOB_NUMBER:-dump}" $tarball
