@@ -93,7 +93,7 @@
   "Return the entity id for the created dummy job."
   [conn & {:keys [command committed? container custom-executor? disable-mea-culpa-retries env executor gpus group
                   job-state max-runtime memory name ncpus pool priority retry-count submit-time under-investigation user
-                  uuid]
+                  uuid expected-runtime]
            :or {command "dummy command"
                 committed? true
                 disable-mea-culpa-retries false
@@ -137,7 +137,9 @@
                         (when executor {:job/executor executor})
                         (when group {:group/_job group})
                         (when pool
-                          {:job/pool (d/entid (d/db conn) [:pool/name pool])}))
+                          {:job/pool (d/entid (d/db conn) [:pool/name pool])})
+                        (when expected-runtime
+                          {:job/expected-runtime expected-runtime}))
         job-info (if gpus
                    (update-in job-info [:job/resource] conj {:resource/type :resource.type/gpus
                                                              :resource/amount (double gpus)})
@@ -159,7 +161,7 @@
 (defn create-dummy-instance
   "Return the entity id for the created instance."
   [conn job & {:keys [cancelled end-time executor executor-id exit-code hostname instance-status job-state preempted?
-                      progress progress-message reason sandbox-directory slave-id start-time task-id ]
+                      progress progress-message reason sandbox-directory slave-id start-time task-id mesos-start-time]
                :or  {end-time nil
                      executor-id  (str (UUID/randomUUID))
                      hostname "localhost"
@@ -190,7 +192,8 @@
                                  exit-code (assoc :instance/exit-code exit-code)
                                  progress-message (assoc :instance/progress-message progress-message)
                                  reason (assoc :instance/reason [:reason/name reason])
-                                 sandbox-directory (assoc :instance/sandbox-directory sandbox-directory))])]
+                                 sandbox-directory (assoc :instance/sandbox-directory sandbox-directory)
+                                 mesos-start-time (assoc :instance/mesos-start-time mesos-start-time))])]
     (d/resolve-tempid (db conn) (:tempids val) id)))
 
 (defn create-dummy-group

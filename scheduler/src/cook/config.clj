@@ -356,7 +356,9 @@
               pools)
 
      :api-only? (fnk [[:config {api-only? false}]]
-                  api-only?)}))
+                  api-only?)
+     :estimated-completion-constraint (fnk [[:config {estimated-completion-constraint nil}]]
+                                           estimated-completion-constraint)}))
 
 (defn read-config
   "Given a config file path, reads the config and returns the map"
@@ -414,3 +416,7 @@
   "Returns true if api-only? mode is turned on"
   []
   (-> config :settings :api-only?))
+
+(defn estimated-completion-config
+  []
+  (-> config :settings :estimated-completion-constraint))
