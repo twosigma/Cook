@@ -124,7 +124,7 @@ def tail(clusters, args, _):
     lines = args.get('lines')
     follow = args.get('follow')
     sleep_interval = args.get('sleep-interval')
-    retry_seconds = args.get('retry_seconds', None)
+    wait_seconds = args.get('wait_seconds', None)
 
     if len(entity_refs) > 1:
         # argparse should prevent this, but we'll be defensive anyway
@@ -132,7 +132,7 @@ def tail(clusters, args, _):
 
     command_fn = partial(tail_for_instance, path=path, num_lines_to_print=lines,
                          follow=follow, follow_sleep_seconds=sleep_interval)
-    query_unique_and_run(clusters_of_interest, entity_refs[0], command_fn, retry_seconds)
+    query_unique_and_run(clusters_of_interest, entity_refs[0], command_fn, wait_seconds)
 
 
 def register(add_parser, add_defaults):
@@ -144,8 +144,8 @@ def register(add_parser, add_defaults):
     parser.add_argument('--sleep-interval', '-s',
                         help=f'with -f, sleep for N seconds (default {DEFAULT_FOLLOW_SLEEP_SECS}) between iterations',
                         metavar='N', type=float)
-    parser.add_argument('--retry-seconds', '-r',
-                        help=f'retry for a maximum of N seconds (default is to not retry)',
+    parser.add_argument('--wait-seconds', '-w',
+                        help=f'wait for up to N seconds (default is to not wait)',
                         metavar='N', type=float)
     parser.add_argument('uuid', nargs=1)
     parser.add_argument('path', nargs='?')

@@ -239,7 +239,7 @@ def __get_latest_instance(job):
     raise Exception(f'Job {job["uuid"]} currently has no instances.')
 
 
-def query_unique_and_run(clusters, entity_ref, command_fn, retry_seconds=None):
+def query_unique_and_run(clusters, entity_ref, command_fn, wait_seconds=None):
     """Calls query_unique and then calls the given command_fn on the resulting job instance"""
 
     def query_unique_and_run():
@@ -258,9 +258,9 @@ def query_unique_and_run(clusters, entity_ref, command_fn, retry_seconds=None):
             # only return a map with type "job" or type "instance"
             raise Exception(f'Encountered error when querying for {entity_ref}.')
 
-    if retry_seconds:
+    if wait_seconds:
         r = tenacity.Retrying(wait=tenacity.wait_fixed(5),
-                              stop=tenacity.stop_after_delay(retry_seconds))
+                              stop=tenacity.stop_after_delay(wait_seconds))
         r.call(query_unique_and_run)
     else:
         query_unique_and_run()
