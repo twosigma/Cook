@@ -13,7 +13,11 @@ docker cp --follow-link $mesos_master_container:/var/log/mesos-master.WARNING ./
 
 tarball=./dump.txz
 tar -cJf $tarball --transform="s|\./[^/]*/\.*|${TRAVIS_JOB_NUMBER}/|" --warning=no-file-changed ./scheduler/log ./travis/.minimesos ./mesos/master-logs || exitcode=$?
-if [ "$exitcode" != "" ] && [ "$exitcode" != "1" ] && [ "$exitcode" != "0" ]; then
+# GNU tar always exits with 0, 1 or 2 (https://www.gnu.org/software/tar/manual/html_section/tar_19.html)
+# 0 = Successful termination
+# 1 = Some files differ (we're OK with this)
+# 2 = Fatal error
+if [ "$exitcode" == "2" ]; then
   echo "The tar command exited with exit code $exitcode, exiting..."
   exit $exitcode
 fi
