@@ -11,6 +11,8 @@ import uuid
 
 from urllib.parse import urlparse
 
+from nbconvert.preprocessors import ExecutePreprocessor
+
 from tests.cook import cli, util
 
 
@@ -1792,7 +1794,6 @@ class CookCliTest(unittest.TestCase):
         self.assertIn('is not a valid pool name', cli.stdout(cp))
 
     def test_show_from_jupyter(self):
-        from nbconvert.preprocessors import ExecutePreprocessor
         notebook = {
             "cells": [
                 {
