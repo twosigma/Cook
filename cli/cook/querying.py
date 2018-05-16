@@ -260,7 +260,8 @@ def query_unique_and_run(clusters, entity_ref, command_fn, wait_seconds=None):
 
     if wait_seconds:
         r = tenacity.Retrying(wait=tenacity.wait_fixed(5),
-                              stop=tenacity.stop_after_delay(wait_seconds))
+                              stop=tenacity.stop_after_delay(wait_seconds),
+                              reraise=True)
         r.call(query_unique_and_run)
     else:
         query_unique_and_run()
