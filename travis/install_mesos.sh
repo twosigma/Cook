@@ -15,11 +15,12 @@ else
     cp -f /var/cache/apt/archives/*.deb $PACKAGE_CACHE_DIR/
 fi
 
-dpkg --force-all --install /var/cache/apt/archives/mesos_*.deb && apt-get install -fy
+set -x
+
+apt-get install --allow-downgrades --fix-broken --no-download --yes $PACKAGE_CACHE_DIR/*.deb
 APT_EXIT_CODE=$?
 
-if [ $APT_EXIT_CODE -ne 0 ]; then
-    echo 'Mesos installation error! Wiping package cache...'
-    rm -rf $PACKAGE_CACHE_DIR
+if [ $APT_EXIT_CODE -ne 0 ] || ! [ -f $MESOS_NATIVE_JAVA_LIBRARY ]; then
+    echo 'Mesos installation error!'
     exit $APT_EXIT_CODE
 fi
