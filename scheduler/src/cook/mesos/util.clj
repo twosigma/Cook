@@ -468,16 +468,15 @@
         pool-name' (or pool-name pool/nil-pool)]
     (timers/time!
       (timers/timer ["cook-mesos" "scheduler" (str "get-" (name state) "-jobs-by-user-duration")])
-         (->>
-          (cond->> (get-jobs-by-user-and-state-and-submit db user start end state-keyword)
-                   (not include-custom-executor?) (filter #(false? (:job/custom-executor %)))
-                   name-filter-fn (filter #(name-filter-fn (:job/name %)))
-                   (and include-custom-executor? (= :job.state/waiting state-keyword)) (remove uncommitted?))
-                   (filter #(pool/check-pool-for-listing % :job/pool pool-name' default-pool?))
-
-          ; No need to sort. We're traversing in entity_id order, so in time order.
-          (take limit)
-          doall))))
+      (->>
+        (cond->> (get-jobs-by-user-and-state-and-submit db user start end state-keyword)
+                 (not include-custom-executor?) (filter #(false? (:job/custom-executor %)))
+                 name-filter-fn (filter #(name-filter-fn (:job/name %)))
+                 (and include-custom-executor? (= :job.state/waiting state-keyword)) (remove uncommitted?))
+        (filter #(pool/check-pool-for-listing % :job/pool pool-name' default-pool?))
+        ; No need to sort. We're traversing in entity_id order, so in time order.
+        (take limit)
+        doall))))
 
 (defn get-jobs-by-user-and-states
   "Returns all jobs for a particular user in the specified states."
