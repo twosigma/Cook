@@ -7,12 +7,26 @@
 (defn check-pool
   "Returns true if requesting-default-pool? and the entity does not have a pool
    or the entity has a pool named pool-name"
-  [source eid entity->pool pool-name requesting-default-pool?]
-  (let [ent (d/entity source eid)
-        pool (entity->pool ent)]
-    (or (and (nil? pool)
-             requesting-default-pool?)
-        (= pool-name (:pool/name pool)))))
+  ([ent entity->pool pool-name requesting-default-pool?]
+   (let [pool (entity->pool ent)]
+     (or (and (nil? pool)
+              requesting-default-pool?)
+         (= pool-name (:pool/name pool)))))
+  ([source eid entity->pool pool-name requesting-default-pool?]
+   (check-pool (d/entity source eid) entity->pool pool-name requesting-default-pool?)))
+
+(def nil-pool (str (UUID/randomUUID)))
+
+(defn check-pool-for-listing
+  "Returns true if either the provided pool-name is the 'nil' pool, or if
+  pool/check-pool returns true. This allows us to return jobs in all pools when the user
+  does not specify a pool."
+  ([entity entity->pool pool-name default-pool?]
+   (or
+     (= nil-pool pool-name)
+     (cook.mesos.pool/check-pool entity entity->pool pool-name default-pool?)))
+  ([source eid entity->pool pool-name default-pool?]
+   (check-pool-for-listing (d/entity source eid) entity->pool pool-name default-pool?)))
 
 (defn pool-name-or-default
   "Returns:
@@ -22,10 +36,15 @@
   [pool-name]
   (or pool-name (config/default-pool) (str (UUID/randomUUID))))
 
+(defn default-pool?
+  "Returns true if pool-name is equal to the default pool name"
+  [pool-name]
+  (= pool-name (config/default-pool)))
+
 (defn requesting-default-pool?
   "Returns true if pool-name is nil or equal to the default pool name"
   [pool-name]
-  (true? (or (nil? pool-name) (= pool-name (config/default-pool)))))
+  (true? (or (nil? pool-name) (default-pool? pool-name))))
 
 (defn all-pools
   "Returns a list of Datomic entities corresponding

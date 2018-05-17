@@ -1,3 +1,7 @@
+beakerx==0.16.1
+jupyter_client==5.2.3
+nbconvert==5.3.1
+nbformat==4.4.0
 numpy==1.14.0
 pip==9.0.1; python_version >= '3.6'
 pytest==3.3.1
