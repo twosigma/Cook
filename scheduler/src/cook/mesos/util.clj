@@ -327,7 +327,7 @@
 (defn job-ent->user
   "Given a job entity, return the user the job runs as."
   [job-ent]
-    (lookup-cache-datomic-entity! job-ent->user-cache :job/user job-ent))
+  (lookup-cache-datomic-entity! job-ent->user-cache :job/user job-ent))
 
 (defn job-ent->state
   "Given a job entity, returns the corresponding 'state', which means
@@ -346,7 +346,7 @@
 (def ^:const instance-states #{"success" "failed"})
 
 
-(defn job-submit-time-between
+(defn job-submitted-in-range
   "Returns true if the job-ent's :job/submit-time is between start-ms (inclusive) and
   end-ms (exclusive)"
   [{:keys [^Date job/submit-time]} ^long start-ms ^long end-ms]
@@ -357,8 +357,8 @@
 ;; get-jobs-by-user-and-state-and-submit is a bit opaque
 ;; because it is reaching into datomic internals. Here is a quick explanation.
 ;; seek-datoms provides a pointer into the raw datomic indices
-;; that we can then seek through. We set the pointer to look
-;; through the avet index, with attribute :job/state, seek to
+;; that we can then seek through. We set the pointer to look through the
+;; vaet index, with value :job.state/{running,waiting,completed}, seek to
 ;; state and then seek to the entity id that *would* have been
 ;; created at expanded start. This works because the submission
 ;; time (which we sort on) is correlated with the entitiy id.
@@ -391,7 +391,7 @@
          (map :e)
          (map (partial d/entity db))
          (filter #(= (job-ent->user %) user))
-         (filter #(job-submit-time-between % start-ms end-ms)))))
+         (filter #(job-submitted-in-range % start-ms end-ms)))))
 
 ;; get-completed-jobs-by-user is a bit opaque because it is
 ;; reaching into datomic internals. Here is a quick explanation.
@@ -404,8 +404,9 @@
 ;; are set at the same time, in "real" time. This means that
 ;; jobs submitted after `start` will have been created after
 ;; expanded start
-;; This differs from get-active-jobs-by-user-and-state as it
-;; is also looking up based on task state.
+;; This function for scanning completed jobs differs from
+;; get-active-jobs-by-user-and-state as it is also looking up
+;; based on task state; users can ask for "success" or "failed" jobs.
 ;; This is about O(# jobs user submitted in the given time range)
 (defn get-completed-jobs-by-user
   "Returns all completed job entities for a particular user
@@ -436,7 +437,7 @@
                                  (= (:v %) user)))
                (map :e)
                (map (partial d/entity db))
-               (filter #(job-submit-time-between % start-ms end-ms))
+               (filter #(job-submitted-in-range % start-ms end-ms))
                (filter #(= :job.state/completed (:job/state %)))
                (filter #(pool/check-pool-for-listing % :job/pool pool-name' default-pool?)))]
       (->>
@@ -478,6 +479,11 @@
         (take limit)
         doall))))
 
+
+;; Users have many fewer running/waiting jobs than completed jobs, so they need different queries.
+;; For searches for jobs in the active/running state, enumerating jobs based on state is more robustly
+;; a 'small set' than enumearting by user. Enumerating all jobs by user is more likely to be a
+;; small set than all jobs in the completed state. So, we special case the queries here.
 (defn get-jobs-by-user-and-states
   "Returns all jobs for a particular user in the specified states."
   [db user states start end limit name-filter-fn include-custom-executor? pool-name]
