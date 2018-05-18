@@ -126,12 +126,7 @@ def tail(clusters, args, _):
     lines = args.get('lines')
     follow = args.get('follow')
     sleep_interval = args.get('sleep-interval')
-    wait_seconds = args.get('wait')
-
-    if wait_seconds == -1:
-        wait_seconds = None
-    elif not wait_seconds:
-        wait_seconds = sys.maxsize
+    wait = args.get('wait')
 
     if len(entity_refs) > 1:
         # argparse should prevent this, but we'll be defensive anyway
@@ -139,7 +134,7 @@ def tail(clusters, args, _):
 
     command_fn = partial(tail_for_instance, path=path, num_lines_to_print=lines,
                          follow=follow, follow_sleep_seconds=sleep_interval)
-    query_unique_and_run(clusters_of_interest, entity_refs[0], command_fn, wait_seconds)
+    query_unique_and_run(clusters_of_interest, entity_refs[0], command_fn, wait)
 
 
 def register(add_parser, add_defaults):
@@ -152,8 +147,8 @@ def register(add_parser, add_defaults):
                         help=f'with -f, sleep for N seconds (default {DEFAULT_FOLLOW_SLEEP_SECS}) between iterations',
                         metavar='N', type=float)
     parser.add_argument('--wait', '-w',
-                        help=f'wait for up to N seconds (default is to wait indefinitely)',
-                        metavar='N', type=float, nargs='?', default=-1)
+                        help=f'wait indefinitely for the job to be running and for the file to become available',
+                        action='store_true')
     parser.add_argument('uuid', nargs=1)
     parser.add_argument('path', nargs='?')
 
