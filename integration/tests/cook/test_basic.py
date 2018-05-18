@@ -2389,3 +2389,18 @@ class CookTest(unittest.TestCase):
         job = util.load_job(self.cook_url, uuid)
         self.assertEqual('completed', job['status'])
         self.assertEqual(num_instances, len(job['instances']), json.dumps(job, indent=2))
+
+    def test_pools_in_default_limit_response(self):
+        pools, resp = util.all_pools(self.cook_url)
+        pool_names = [p['name'] for p in pools]
+
+        for limit in ['share', 'quota']:
+
+            resp = util.get_limit(self.cook_url, 'share', 'root')
+            self.assertEqual(200, resp.status_code)
+            for pool in pool_names:
+                self.assertTrue(pool in resp.json()['pools'])
+
+            if len(pool_names) > 0:
+                resp = util.get_limit(self.cook_url, limit, 'root', pool_names[0])
+                self.assertFalse('pools' in resp.json())

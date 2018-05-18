@@ -48,7 +48,7 @@
             [metrics.histograms :as histograms]
             [metrics.meters :as meters]
             [metrics.timers :as timers]
-            [plumbing.core :refer [map-from-vals map-keys map-vals mapply]]
+            [plumbing.core :as pc]
             [ring.middleware.format-params :as format-params]
             [ring.util.response :as res]
             [schema.core :as s]
@@ -95,7 +95,7 @@
 
 (defn base-cook-handler
   [resource-attrs]
-  (mapply liberator/resource (merge cook-liberator-attrs resource-attrs)))
+  (pc/mapply liberator/resource (merge cook-liberator-attrs resource-attrs)))
 
 ;;
 ;; /rawscheduler
@@ -107,11 +107,11 @@
    Modifications:
    1. changes keys to snake_case"
   [schema]
-  (map-keys (fn [k]
-              (if (instance? OptionalKey k)
-                (update k :k ->snake_case)
-                (->snake_case k)))
-            schema))
+  (pc/map-keys (fn [k]
+                 (if (instance? OptionalKey k)
+                   (update k :k ->snake_case)
+                   (->snake_case k)))
+               schema))
 
 (def iso-8601-format (:date-time tf/formatters))
 
@@ -636,8 +636,8 @@
     (merge
       {(namespace-fn :type) (namespace-fn :type type)}
       (when (seq parameters)
-        {(namespace-fn :parameters) (map-keys (partial namespace-fn type)
-                                              parameters)}))))
+        {(namespace-fn :parameters) (pc/map-keys (partial namespace-fn type)
+                                                 parameters)}))))
 
 (s/defn make-group-txn
   "Creates the transaction data necessary to insert a group to the database. job-db-ids is the
@@ -1399,9 +1399,9 @@
                                 (into {}))
           group-uuid->job-dbids (->> jobs
                                      (group-by :group)
-                                     (map-vals (fn [jobs]
-                                                 (map #(job-uuids->dbids (:uuid %))
-                                                      jobs))))
+                                     (pc/map-vals (fn [jobs]
+                                                    (map #(job-uuids->dbids (:uuid %))
+                                                         jobs))))
           group-txns (map #(make-group-txn % (get group-uuid->job-dbids
                                                   (:uuid %)
                                                   []))
@@ -1665,9 +1665,9 @@
                        (render-error ctx))
    :handle-malformed render-error
    :handle-ok (fn [ctx]
-                (map-vals (fn [queue]
-                            (take (::limit ctx) queue))
-                          (mesos-pending-jobs-fn)))))
+                (pc/map-vals (fn [queue]
+                               (take (::limit ctx) queue))
+                             (mesos-pending-jobs-fn)))))
 
 ;;
 ;; /running
@@ -1970,21 +1970,36 @@
 (def ReasonParam {:reason s/Str})
 (def UserLimitChangeParams (merge {(s/optional-key :pool) s/Str} UserParam ReasonParam))
 
+(def UserLimitSchema
+  {:cpus s/Num
+   :gpus s/Num
+   :mem s/Num
+   (s/optional-key :count) s/Num})
+
 (def UserLimitsResponse
-  {String s/Num})
+  (assoc UserLimitSchema (s/optional-key :pools) {String UserLimitSchema}))
 
 (defn set-limit-params
   [limit-type]
   {:body-params (merge UserLimitChangeParams {limit-type {s/Keyword NonNegNum}})})
+
+(defn- get-pool-limits [get-limit-fn db user]
+  (pc/map-from-keys (fn [pool] (get-limit-fn db user pool))
+                    (map :pool/name (pool/all-pools db))))
 
 (defn retrieve-user-limit
   [get-limit-fn conn ctx]
   (let [user (or (get-in ctx [:request :query-params :user])
                  (get-in ctx [:request :body-params :user]))
         pool (or (get-in ctx [:request :query-params :pool])
-                 (get-in ctx [:request :body-params :pool]))]
-    (->> (get-limit-fn (db conn) user pool)
-         walk/stringify-keys)))
+                 (get-in ctx [:request :body-params :pool]))
+        db (d/db conn)
+        response (get-limit-fn db user pool)]
+    (if (nil? pool)
+      (let [pool-limits (get-pool-limits get-limit-fn db user)]
+        (cond-> response
+          (not (empty? pool-limits)) (assoc :pools pool-limits)))
+      response)))
 
 (defn check-limit-allowed
   [limit-type is-authorized-fn ctx]
@@ -2094,7 +2109,7 @@
     (when with-group-breakdown?
       (let [breakdowns (->> jobs
                             (group-by util/job-ent->group-uuid)
-                            (map-vals (juxt #(mapv :job/uuid %)
+                            (pc/map-vals (juxt #(mapv :job/uuid %)
                                             util/total-resources-of-jobs
                                             #(-> % first :group/_job first))))]
         {:grouped (for [[guuid [job-uuids usage group]] breakdowns
@@ -2134,7 +2149,7 @@
                                      default-pool-name)
                                   jobs)
                 no-usage (no-usage-map with-group-breakdown?)
-                pool-name->usage (map-vals (partial user-usage with-group-breakdown?) pool-name->jobs)
+                pool-name->usage (pc/map-vals (partial user-usage with-group-breakdown?) pool-name->jobs)
                 pool-name->no-usage (into {} (map (fn [{:keys [pool/name]}] [name no-usage]) pools))
                 default-pool-usage (get pool-name->usage default-pool-name no-usage)]
             (assoc default-pool-usage
@@ -2186,7 +2201,7 @@
   (cond
     (contains? (meta v) :json-value) (-> v meta :json-value str)
     (fn? v) (str v)
-    (map? v) (map-vals stringify v)
+    (map? v) (pc/map-vals stringify v)
     (instance? Atom v) (stringify (deref v))
     (instance? TestingServer v) (str v)
     (instance? Minutes v) (str v)
@@ -2458,21 +2473,21 @@
         body-matchers (merged-matchers
                         {;; can't use form->kebab-case because env and label
                          ;; accept arbitrary kvs
-                         JobRequestMap (partial map-keys ->kebab-case)
-                         Group (partial map-keys ->kebab-case)
+                         JobRequestMap (partial pc/map-keys ->kebab-case)
+                         Group (partial pc/map-keys ->kebab-case)
                          HostPlacement (fn [hp]
                                          (update hp :type keyword))
-                         UpdateRetriesRequest (partial map-keys ->kebab-case)
+                         UpdateRetriesRequest (partial pc/map-keys ->kebab-case)
                          StragglerHandling (fn [sh]
                                              (update sh :type keyword))})
         resp-matchers (merged-matchers
-                        {JobResponseDeprecated (partial map-keys ->snake_case)
-                         JobResponse (partial map-keys ->snake_case)
-                         GroupResponse (partial map-keys ->snake_case)
-                         UserUsageResponse (partial map-keys ->snake_case)
-                         UserUsageInPool (partial map-keys ->snake_case)
-                         UsageGroupInfo (partial map-keys ->snake_case)
-                         JobsUsageResponse (partial map-keys ->snake_case)
+                        {JobResponseDeprecated (partial pc/map-keys ->snake_case)
+                         JobResponse (partial pc/map-keys ->snake_case)
+                         GroupResponse (partial pc/map-keys ->snake_case)
+                         UserUsageResponse (partial pc/map-keys ->snake_case)
+                         UserUsageInPool (partial pc/map-keys ->snake_case)
+                         UsageGroupInfo (partial pc/map-keys ->snake_case)
+                         JobsUsageResponse (partial pc/map-keys ->snake_case)
                          s/Uuid str})]
     (constantly
       (-> c-mw/default-coercion-matchers
