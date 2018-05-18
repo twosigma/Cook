@@ -1,8 +1,6 @@
 import time
 from functools import partial
 
-import sys
-
 from cook.mesos import read_file
 from cook.querying import query_unique_and_run, parse_entity_refs
 from cook.util import check_positive, guard_no_cluster
