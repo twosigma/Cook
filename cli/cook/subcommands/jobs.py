@@ -26,7 +26,7 @@ def print_no_data(clusters, states, user):
         states.remove('success')
         states.append('successful')
     states_text = ' / '.join(states)
-    print(colors.failed(f'No {states_text} jobs for {user} found in {clusters_text}.'))
+    print(colors.failed(f'No matching {states_text} jobs for {user} found in {clusters_text}.'))
 
 
 def list_jobs_on_cluster(cluster, state, user, start_ms, end_ms, name, limit, include_custom_executor):

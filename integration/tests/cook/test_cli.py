@@ -1,6 +1,8 @@
 import json
 import logging
 import os
+
+import nbformat
 import pytest
 import subprocess
 import time
@@ -8,6 +10,8 @@ import unittest
 import uuid
 
 from urllib.parse import urlparse
+
+from nbconvert.preprocessors import ExecutePreprocessor
 
 from tests.cook import cli, util
 
@@ -416,7 +420,7 @@ class CookCliTest(unittest.TestCase):
     def test_list_no_matching_jobs(self):
         cp = cli.jobs(self.cook_url, '--name %s' % uuid.uuid4())
         self.assertEqual(0, cp.returncode, cp.stderr)
-        self.assertIn('No running jobs', cli.stdout(cp))
+        self.assertIn('No matching running jobs', cli.stdout(cp))
         self.assertIn(f'found in {self.cook_url}.', cli.stdout(cp))
 
     def list_jobs(self, name, user, *states):
@@ -1804,3 +1808,67 @@ class CookCliTest(unittest.TestCase):
         cp, uuids = cli.submit('ls', self.cook_url, submit_flags=f'--pool {uuid.uuid4()}')
         self.assertEqual(1, cp.returncode, cp.stderr)
         self.assertIn('is not a valid pool name', cli.stdout(cp))
+
+    def test_show_from_jupyter(self):
+        notebook = {
+            "cells": [
+                {
+                    "cell_type": "code",
+                    "execution_count": None,
+                    "metadata": {},
+                    "outputs": [],
+                    "source": [
+                        "%%bash\n",
+                        f"uuid=$(cs --url {self.cook_url} submit ls | tail -1)\n",
+                        f"cs --url {self.cook_url} show $uuid"
+                    ]
+                }
+            ],
+            "metadata": {
+                "kernelspec": {
+                    "display_name": "Python 3",
+                    "language": "python",
+                    "name": "python3"
+                },
+                "language_info": {
+                    "codemirror_mode": {
+                        "name": "ipython",
+                        "version": 3
+                    },
+                    "file_extension": ".py",
+                    "mimetype": "text/x-python",
+                    "name": "python",
+                    "nbconvert_exporter": "python",
+                    "pygments_lexer": "ipython3",
+                    "version": "3.6.5"
+                }
+            },
+            "nbformat": 4,
+            "nbformat_minor": 2
+        }
+        notebook_filename = 'unexecuted_notebook.ipynb'
+        executed_notebook_filename = 'executed_notebook.ipynb'
+        try:
+            with open(notebook_filename, 'w') as f:
+                f.write(json.dumps(notebook, indent=2))
+            with open(notebook_filename) as f:
+                nb = nbformat.read(f, as_version=4)
+            ep = ExecutePreprocessor(timeout=600, kernel_name='python3')
+            ep.preprocess(nb, {'metadata': {'path': './'}})
+            with open(executed_notebook_filename, 'wt') as f:
+                nbformat.write(nb, f)
+            with open(executed_notebook_filename) as f:
+                notebook_json = f.read()
+            notebook = json.loads(notebook_json)
+            cell = notebook['cells'][0]
+            output = cell['outputs'][0]
+            self.assertEqual(1, len(notebook['cells']))
+            self.assertEqual('code', cell['cell_type'])
+            self.assertEqual(1, cell['execution_count'])
+            self.assertEqual(1, len(cell['outputs']))
+            self.assertEqual('stdout', output['name'], ''.join(output['text']))
+            self.assertEqual('\n', output['text'][0])
+            self.assertIn('=== Job: ', output['text'][1])
+        finally:
+            os.remove(notebook_filename)
+            os.remove(executed_notebook_filename)

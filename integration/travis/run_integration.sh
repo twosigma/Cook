@@ -105,8 +105,8 @@ LIBPROCESS_IP=172.17.0.1 COOK_DATOMIC="${COOK_DATOMIC_URI_2}" COOK_PORT=22321 CO
 # Wait for the cooks to be listening
 timeout 180s bash -c "wait_for_cook 12321" || curl_error=true
 if [ "$curl_error" = true ]; then
-  echo "$(date +%H:%M:%S) Timed out waiting for cook to start listening, displaying cook log"
-  cat ${SCHEDULER_DIR}/log/cook-12321.log
+  echo "$(date +%H:%M:%S) Timed out waiting for cook to start listening"
+  ${TRAVIS_BUILD_DIR}/travis/upload_logs.sh
   exit 1
 fi
 
@@ -115,15 +115,15 @@ LIBPROCESS_IP=172.17.0.1 COOK_DATOMIC="${COOK_DATOMIC_URI_1}" COOK_PORT=12323 CO
 
 timeout 180s bash -c "wait_for_cook 12323" || curl_error=true
 if [ "$curl_error" = true ]; then
-  echo "$(date +%H:%M:%S) Timed out waiting for cook to start listening, displaying cook log"
-  cat ${SCHEDULER_DIR}/log/cook-12323.log
+  echo "$(date +%H:%M:%S) Timed out waiting for cook to start listening"
+  ${TRAVIS_BUILD_DIR}/travis/upload_logs.sh
   exit 1
 fi
 timeout 180s bash -c "wait_for_cook 22321" || curl_error=true
 if [ "$curl_error" = true ]; then
-    echo "$(date +%H:%M:%S) Timed out waiting for cook to start listening, displaying cook log"
-    cat ${SCHEDULER_DIR}/log/cook-22321.log
-    exit 1
+  echo "$(date +%H:%M:%S) Timed out waiting for cook to start listening"
+  ${TRAVIS_BUILD_DIR}/travis/upload_logs.sh
+  exit 1
 fi
 
 # Ensure the Cook Scheduler CLI is available

@@ -811,6 +811,90 @@ class CookTest(unittest.TestCase):
         self.assertFalse(util.contains_job_uuid(resp.json(), job_uuid_5), job_uuid_5)
         self.assertFalse(util.contains_job_uuid(resp.json(), job_uuid_6), job_uuid_6)
 
+    def test_list_jobs_by_pool(self):
+
+        def current_milli_time():
+            return int(round(time.time() * 1000))
+
+        # Submit two jobs to each active pool -- one that will be
+        # running or waiting for a while, and another that will complete
+        jobs = []
+        name = str(uuid.uuid4())
+        pools, _ = util.active_pools(self.cook_url)
+        start = current_milli_time()
+        for pool in pools:
+            pool_name = pool['name']
+            job_uuid, resp = util.submit_job(self.cook_url, pool=pool_name, name=name, command='sleep 300')
+            self.assertEqual(201, resp.status_code)
+            jobs.append(util.load_job(self.cook_url, job_uuid))
+            job_uuid, resp = util.submit_job(self.cook_url, pool=pool_name, name=name, command='exit 0')
+            self.assertEqual(201, resp.status_code)
+            jobs.append(util.wait_for_job(self.cook_url, job_uuid, 'completed'))
+        end = current_milli_time() + 1
+
+        try:
+            completed = ['completed']
+            active = ['running', 'waiting']
+            user = self.determine_user()
+
+            # List jobs for each pool
+            for pool in pools:
+                pool_name = pool['name']
+
+                # List running / waiting
+                job_uuid = next(j['uuid'] for j in jobs if j['pool'] == pool_name and j['command'] == 'sleep 300')
+                resp = util.jobs(self.cook_url, user=user, state=active,
+                                 start=start, end=end, name=name, pool=pool_name)
+                self.assertEqual(200, resp.status_code, resp.text)
+                self.assertEqual(1, len(resp.json()))
+                self.assertEqual(job_uuid, resp.json()[0]['uuid'])
+
+                # List completed
+                job_uuid = next(j['uuid'] for j in jobs if j['pool'] == pool_name and j['command'] == 'exit 0')
+                resp = util.jobs(self.cook_url, user=user, state=completed,
+                                 start=start, end=end, name=name, pool=pool_name)
+                self.assertEqual(200, resp.status_code, resp.text)
+                self.assertEqual(1, len(resp.json()), json.dumps(resp.json(), indent=2))
+                self.assertEqual(job_uuid, resp.json()[0]['uuid'])
+
+                # List all states
+                job_uuids = [j['uuid'] for j in jobs if j['pool'] == pool_name]
+                resp = util.jobs(self.cook_url, user=user, state=completed + active,
+                                 start=start, end=end, name=name, pool=pool_name)
+                self.assertEqual(200, resp.status_code, resp.text)
+                self.assertEqual(2, len(resp.json()), json.dumps(resp.json(), indent=2))
+                self.assertEqual(sorted(job_uuids), sorted(j['uuid'] for j in resp.json()))
+
+            if len(pools) > 0:
+                # List running / waiting with no pool should return all running / waiting
+                resp = util.jobs(self.cook_url, user=user, state=active, start=start, end=end, name=name)
+                job_uuids = [j['uuid'] for j in jobs if j['command'] == 'sleep 300']
+                self.assertEqual(200, resp.status_code)
+                self.assertEqual(sorted(job_uuids), sorted([j['uuid'] for j in resp.json()]))
+
+                # List completed with no pool should return all completed
+                resp = util.jobs(self.cook_url, user=user, state=completed, start=start, end=end, name=name)
+                job_uuids = [j['uuid'] for j in jobs if j['command'] == 'exit 0']
+                self.assertEqual(200, resp.status_code)
+                self.assertEqual(sorted(job_uuids), sorted([j['uuid'] for j in resp.json()]))
+
+                # List all states with no pool should return all jobs
+                resp = util.jobs(self.cook_url, user=user, state=completed + active, start=start, end=end, name=name)
+                self.assertEqual(200, resp.status_code)
+                self.assertEqual(sorted(j['uuid'] for j in jobs), sorted([j['uuid'] for j in resp.json()]))
+        finally:
+            util.kill_jobs(self.cook_url, jobs)
+
+        # List running / waiting with a bogus pool
+        resp = util.jobs(self.cook_url, user=user, state=active, start=start, end=end, pool=uuid.uuid4())
+        self.assertEqual(200, resp.status_code)
+        self.assertEqual(0, len(resp.json()))
+
+        # List completed with a bogus pool
+        resp = util.jobs(self.cook_url, user=user, state=completed, start=start, end=end, pool=uuid.uuid4())
+        self.assertEqual(200, resp.status_code)
+        self.assertEqual(0, len(resp.json()))
+
     def test_list_with_invalid_name_filters(self):
         user = self.determine_user()
         any_state = 'running+waiting+completed'

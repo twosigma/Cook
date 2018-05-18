@@ -387,21 +387,24 @@ def query_with_stdin_support(clusters, entity_refs, pred_jobs=None, pred_instanc
     The above example would wait for all of sally's running and waiting jobs to complete. Returns a pair where the
     first element is the query result map, and the second element is the subset of clusters that are of interest.
     """
-    stdin_from_pipe = not sys.stdin.isatty()
+    is_stdin_from_pipe = not sys.stdin.isatty()
+    text_read_from_pipe = sys.stdin.read() if is_stdin_from_pipe else None
 
-    if entity_refs and stdin_from_pipe:
+    if entity_refs and text_read_from_pipe:
         raise Exception(f'You cannot supply entity references both as arguments and from stdin.')
 
     clusters_of_interest = clusters
     if not entity_refs:
-        if not stdin_from_pipe:
+        if is_stdin_from_pipe:
+            text = text_read_from_pipe
+        else:
             print_info('Enter the UUIDs or URLs, one per line (press Ctrl+D on a blank line to submit)')
+            text = sys.stdin.read()
 
-        stdin = sys.stdin.read()
-        if not stdin:
+        if not text:
             raise Exception('You must specify at least one UUID or URL.')
 
-        ref_strings = stdin.splitlines()
+        ref_strings = text.splitlines()
         entity_refs, clusters_of_interest = parse_entity_refs(clusters, ref_strings)
 
     query_result = query(clusters_of_interest, entity_refs, pred_jobs, pred_instances, pred_groups, timeout, interval)

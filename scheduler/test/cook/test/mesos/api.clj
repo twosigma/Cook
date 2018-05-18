@@ -1569,15 +1569,16 @@
 
 (defn list-jobs-with-jobs
   "Simulates a call to the /jobs endpoint with the given query params"
-  [handler user states start-ms end-ms]
+  [handler user states start-ms end-ms pool]
   (let [response (handler {:request-method :get
                            :scheme :http
                            :uri "/jobs"
                            :authorization/user "user"
-                           :query-params {"user" user
-                                          "state" states
-                                          "start" (str start-ms)
-                                          "end" (str end-ms)}})]
+                           :query-params (cond-> {"user" user
+                                                  "state" states
+                                                  "start" (str start-ms)
+                                                  "end" (str end-ms)}
+                                                 pool (assoc "pool" pool))})]
     (is (= 200 (:status response)))
     (response->body-data response)))
 
@@ -1610,7 +1611,7 @@
         handler (basic-handler conn)
         before (t/now)
         list-jobs-fn #(list-jobs-with-jobs handler "user" ["running" "waiting" "completed"]
-                                           (.getMillis before) (+ 1 (.getMillis (t/now))))
+                                           (.getMillis before) (+ 1 (.getMillis (t/now))) nil)
         response-1 (submit-job handler "user")
         response-2 (submit-job handler "user")
         _ @(d/transact conn [[:db/add [:job/uuid (UUID/fromString (:uuid response-1))] :job/custom-executor true]])
@@ -1627,6 +1628,29 @@
             d/touch
             :job/custom-executor
             not))))
+
+(deftest test-list-jobs-with-pool
+  (let [conn (restore-fresh-database! "datomic:mem://test-list-jobs-with-pool")
+        handler (basic-handler conn)
+        before (t/now)
+        list-jobs-fn #(list-jobs-with-jobs handler "alice" ["running"]
+                                           (.getMillis before) (+ 1 (.getMillis (t/now))) %)
+        _ (create-pool conn "foo")
+        _ (create-pool conn "bar")
+        job-1 (create-dummy-job conn
+                                :user "alice"
+                                :job-state :job.state/running
+                                :pool "foo")
+        job-2 (create-dummy-job conn
+                                :user "alice"
+                                :job-state :job.state/running
+                                :pool "bar")
+        foo-jobs (list-jobs-fn "foo")
+        bar-jobs (list-jobs-fn "bar")]
+    (is (= 1 (count foo-jobs)))
+    (is (= 1 (count bar-jobs)))
+    (is (= (str (:job/uuid (d/entity (d/db conn) job-1))) (-> foo-jobs first (get "uuid"))))
+    (is (= (str (:job/uuid (d/entity (d/db conn) job-2))) (-> bar-jobs first (get "uuid"))))))
 
 (deftest test-name-filter-str->name-filter-pattern
   (is (= (str #".*") (str (api/name-filter-str->name-filter-pattern "***"))))
