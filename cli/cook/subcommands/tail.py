@@ -147,7 +147,7 @@ def register(add_parser, add_defaults):
                         help=f'with -f, sleep for N seconds (default {DEFAULT_FOLLOW_SLEEP_SECS}) between iterations',
                         metavar='N', type=float)
     parser.add_argument('--wait', '-w',
-                        help=f'wait indefinitely for the job to be running and for the file to become available',
+                        help='wait indefinitely for the job to be running and for the file to become available',
                         action='store_true')
     parser.add_argument('uuid', nargs=1)
     parser.add_argument('path', nargs='?')
