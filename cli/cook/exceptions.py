@@ -1,0 +1,2 @@
+class CookRetriableException(Exception):
+    pass

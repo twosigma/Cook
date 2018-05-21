@@ -3,6 +3,7 @@ import os
 from urllib.parse import urlparse, parse_qs
 
 from cook import http
+from cook.exceptions import CookRetriableException
 
 
 def instance_to_agent_url(instance):
@@ -53,7 +54,7 @@ def retrieve_instance_sandbox_directory(instance, job):
     directories = [e['directory'] for e in cook_executors if e['id'] == instance_id]
 
     if len(directories) == 0:
-        raise Exception(f'Unable to retrieve sandbox directory for job instance {instance_id}.')
+        raise CookRetriableException(f'Unable to retrieve sandbox directory for job instance {instance_id}.')
 
     if len(directories) > 1:
         # This should not happen, but we'll be defensive anyway
@@ -74,11 +75,11 @@ def read_file(instance, sandbox_dir, path, offset=None, length=None):
 
     resp = http.__get(f'{agent_url}/files/read', params=params)
     if resp.status_code == 404:
-        raise Exception(f"Cannot open '{path}' for reading (file was not found).")
+        raise CookRetriableException(f"Cannot open '{path}' for reading (file was not found).")
 
     if resp.status_code != 200:
         logging.error(f'mesos agent returned status code {resp.status_code} and body {resp.text}')
-        raise Exception('Could not read the file.')
+        raise CookRetriableException('Could not read the file.')
 
     return resp.json()
 

@@ -8,9 +8,8 @@ from functools import partial
 from operator import itemgetter
 from urllib.parse import urlparse, parse_qs
 
-import tenacity
-
 from cook import http, colors, mesos, progress
+from cook.exceptions import CookRetriableException
 from cook.util import is_valid_uuid, wait_until, print_info, distinct, partition
 
 
@@ -236,7 +235,7 @@ def __get_latest_instance(job):
             instance = max(instances, key=itemgetter('start_time'))
             return instance
 
-    raise Exception(f'Job {job["uuid"]} currently has no instances.')
+    raise CookRetriableException(f'Job {job["uuid"]} currently has no instances.')
 
 
 def query_unique_and_run(clusters, entity_ref, command_fn, wait=False):
@@ -259,7 +258,11 @@ def query_unique_and_run(clusters, entity_ref, command_fn, wait=False):
             raise Exception(f'Encountered error when querying for {entity_ref}.')
 
     if wait:
-        r = tenacity.Retrying(wait=tenacity.wait_fixed(5))
+        # Importing tenacity locally to prevent startup time
+        # from increasing in the default (i.e. don't wait) case
+        import tenacity
+        r = tenacity.Retrying(wait=tenacity.wait_fixed(5),
+                              retry=tenacity.retry_if_exception_type(CookRetriableException))
         r.call(query_unique_and_run)
     else:
         query_unique_and_run()
