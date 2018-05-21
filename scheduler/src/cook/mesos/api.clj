@@ -1977,7 +1977,7 @@
    (s/optional-key :count) s/Num})
 
 (def UserLimitsResponse
-  (assoc UserLimitSchema (s/optional-key :pools) {String UserLimitSchema}))
+  (assoc UserLimitSchema (s/optional-key :pools) {s/Str UserLimitSchema}))
 
 (defn set-limit-params
   [limit-type]
