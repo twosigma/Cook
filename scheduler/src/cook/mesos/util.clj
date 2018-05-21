@@ -361,7 +361,7 @@
 ;; vaet index, with value :job.state/{running,waiting,completed}, seek to
 ;; state and then seek to the entity id that *would* have been
 ;; created at expanded start. This works because the submission
-;; time (which we sort on) is correlated with the entitiy id.
+;; time (which we sort on) is correlated with the entity id.
 ;; We then seek through the list of all jobs in that state,
 ;; then filtering to the target user (which is cached).
 ;;
