@@ -80,7 +80,7 @@ class CookTest(unittest.TestCase):
                 return
 
         # Should launch many instances
-        job_uuid, resp = util.submit_job(self.cook_url, command='exit 1', max_retries=retry_limit*2)
+        job_uuid, resp = util.submit_job(self.cook_url, command='exit 1', max_retries=retry_limit * 2)
         self.assertEqual(resp.status_code, 201, msg=resp.content)
         try:
             # Try to get more than retry_limit instances
@@ -108,7 +108,8 @@ class CookTest(unittest.TestCase):
         job_executor_type = util.get_job_executor_type(self.cook_url)
         if job_executor_type != 'cook':
             return
-        uuid, resp = util.submit_job(self.cook_url, command='sleep 30', env={'EXECUTOR_TEST_EXIT': '1'}, disable_mea_culpa_retries=True)
+        uuid, resp = util.submit_job(self.cook_url, command='sleep 30', env={'EXECUTOR_TEST_EXIT': '1'},
+                                     disable_mea_culpa_retries=True)
         job = util.wait_for_job(self.cook_url, uuid, 'completed')
         self.assertEqual(job['state'], 'failed', json.dumps(job, indent=2))
         self.assertEqual(job['retries_remaining'], 0, json.dumps(job, indent=2))
@@ -124,7 +125,8 @@ class CookTest(unittest.TestCase):
         uuid, resp = util.submit_job(self.cook_url, command='sleep 30', env={'EXECUTOR_TEST_EXIT': '1'})
         try:
             job = util.wait_until(lambda: util.load_job(self.cook_url, uuid),
-                                  lambda job: len(job['instances']) > 1 and any([i['status'] == 'failed' for i in job['instances']]))
+                                  lambda job: len(job['instances']) > 1 and any(
+                                      [i['status'] == 'failed' for i in job['instances']]))
             self.assertEqual(job['retries_remaining'], 1, json.dumps(job, indent=2))
 
             failed_instances = [i for i in job['instances'] if i['status'] == 'failed']
@@ -2344,11 +2346,12 @@ class CookTest(unittest.TestCase):
         self.assertEqual('completed', job['status'], json.dumps(job, indent=2))
         self.assertEqual(1, len(job['instances']), json.dumps(job, indent=2))
 
-
-        uuid, resp = util.submit_job(self.cook_url, command='sleep 30', max_retries=1, disable_mea_culpa_retries=True)
+        attempts = 2
+        uuid, resp = util.submit_job(self.cook_url, command='sleep 30',
+                                     max_retries=attempts, disable_mea_culpa_retries=True)
         try:
             util.wait_for_job(self.cook_url, uuid, 'running')
-            resp = util.retry_jobs(self.cook_url, job=uuid, assert_response=False, retries=1)
+            resp = util.retry_jobs(self.cook_url, job=uuid, assert_response=False, retries=attempts)
             self.assertEqual(409, resp.status_code, msg=resp.content)
         finally:
             util.kill_jobs(self.cook_url, [uuid])
@@ -2377,12 +2380,14 @@ class CookTest(unittest.TestCase):
         util.wait_until(lambda: util.load_job(self.cook_url, uuid),
                         lambda j: (len(j['instances']) == 1) and (j['instances'][0]['status'] == 'running'))
         util.kill_jobs(self.cook_url, [uuid])
+
         def instances_complete(job):
             return all([i['status'] == 'failed' for i in job['instances']])
+
         job = util.wait_until(lambda: util.load_job(self.cook_url, uuid), instances_complete)
         self.assertEqual('completed', job['status'], json.dumps(job, indent=2))
         num_instances = len(job['instances'])
-        self.assertEqual(5-num_instances, job['retries_remaining'], json.dumps(job, indent=2))
+        self.assertEqual(5 - num_instances, job['retries_remaining'], json.dumps(job, indent=2))
 
         resp = util.retry_jobs(self.cook_url, job=uuid, retries=num_instances, assert_response=False)
         self.assertEqual(409, resp.status_code, msg=resp.content)
