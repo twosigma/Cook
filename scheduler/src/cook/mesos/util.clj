@@ -481,8 +481,8 @@
 
 
 ;; Users have many fewer running/waiting jobs than completed jobs, so they need different queries.
-;; For searches for jobs in the active/running state, enumerating jobs based on state is more robustly
-;; a 'small set' than enumearting by user. Enumerating all jobs by user is more likely to be a
+;; For searches for jobs in the running/waiting state, enumerating jobs based on state is more robustly
+;; a 'small set' than enumerating by user. Enumerating all jobs by user is more likely to be a
 ;; small set than all jobs in the completed state. So, we special case the queries here.
 (defn get-jobs-by-user-and-states
   "Returns all jobs for a particular user in the specified states."
