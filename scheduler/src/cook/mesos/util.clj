@@ -346,7 +346,7 @@
 (def ^:const instance-states #{"success" "failed"})
 
 
-(defn job-submitted-in-range
+(defn job-submitted-in-range?
   "Returns true if the job-ent's :job/submit-time is between start-ms (inclusive) and
   end-ms (exclusive)"
   [{:keys [^Date job/submit-time]} ^long start-ms ^long end-ms]
@@ -395,7 +395,7 @@
          (map :e)
          (map (partial d/entity db))
          (filter #(= (job-ent->user %) user))
-         (filter #(job-submitted-in-range % start-ms end-ms)))))
+         (filter #(job-submitted-in-range? % start-ms end-ms)))))
 
 ;; get-completed-jobs-by-user is a bit opaque because it is
 ;; reaching into datomic internals. Here is a quick explanation.
@@ -441,7 +441,7 @@
                                  (= (:v %) user)))
                (map :e)
                (map (partial d/entity db))
-               (filter #(job-submitted-in-range % start-ms end-ms))
+               (filter #(job-submitted-in-range? % start-ms end-ms))
                (filter #(= :job.state/completed (:job/state %)))
                (filter #(pool/check-pool-for-listing % :job/pool pool-name' default-pool?)))]
       (->>
