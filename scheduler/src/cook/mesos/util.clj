@@ -351,19 +351,23 @@
   end-ms (exclusive)"
   [{:keys [^Date job/submit-time]} ^long start-ms ^long end-ms]
   (let [submit-ms (.getTime submit-time)]
-                    (and (<= start-ms submit-ms)
-                         (< submit-ms end-ms))))
+    (and (<= start-ms submit-ms)
+         (< submit-ms end-ms))))
 
 ;; get-jobs-by-user-and-state-and-submit is a bit opaque
 ;; because it is reaching into datomic internals. Here is a quick explanation.
 ;; seek-datoms provides a pointer into the raw datomic indices
 ;; that we can then seek through. We set the pointer to look through the
-;; vaet index, with value :job.state/{running,waiting,completed}, seek to
+;; vaet index, with value :job.state/{running,waiting}, seek to
 ;; state and then seek to the entity id that *would* have been
 ;; created at expanded start. This works because the submission
 ;; time (which we sort on) is correlated with the entity id.
 ;; We then seek through the list of all jobs in that state,
 ;; then filtering to the target user (which is cached).
+;;
+;; We could use the avet index here and return correct answers, but that
+;; solution seemed to have less performance stability, and be slightly slower.
+;; This may be related to how datomic does index refreshes.
 ;;
 ;; This function is O(# jobs in that state in the time range)
 (defn get-jobs-by-user-and-state-and-submit
