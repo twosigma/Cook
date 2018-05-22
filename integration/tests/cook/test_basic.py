@@ -124,6 +124,11 @@ class CookTest(unittest.TestCase):
 
         uuid, resp = util.submit_job(self.cook_url, command='sleep 30', env={'EXECUTOR_TEST_EXIT': '1'})
         try:
+            instance = util.wait_for_instance(self.cook_url, uuid)
+            if instance['executor'] != 'cook':
+                self.logger.info(f'Bailing out because the cook executor is not being used: {instance}')
+                return
+
             job = util.wait_until(lambda: util.load_job(self.cook_url, uuid),
                                   lambda job: len(job['instances']) > 1 and any(
                                       [i['status'] == 'failed' for i in job['instances']]))
