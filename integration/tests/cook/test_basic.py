@@ -885,7 +885,8 @@ class CookTest(unittest.TestCase):
                 self.assertEqual(200, resp.status_code)
                 self.assertEqual(sorted(j['uuid'] for j in jobs), sorted([j['uuid'] for j in resp.json()]))
         finally:
-            util.kill_jobs(self.cook_url, jobs)
+            if len(jobs) > 0:
+                util.kill_jobs(self.cook_url, jobs)
 
         # List running / waiting with a bogus pool
         resp = util.jobs(self.cook_url, user=user, state=active, start=start, end=end, pool=uuid.uuid4())
