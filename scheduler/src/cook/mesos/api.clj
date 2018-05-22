@@ -2750,7 +2750,7 @@
       (ANY "/running" []
         (running-jobs conn is-authorized-fn))
       (ANY "/list" []
-        (list-resource (db conn) framework-id is-authorized-fn)))
+        (list-resource (d/db conn) framework-id is-authorized-fn)))
     (format-params/wrap-restful-params {:formats [:json-kw]
                                         :handle-error c-mw/handle-req-error})
     (streaming-json-middleware)))
