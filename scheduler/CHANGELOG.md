@@ -4,14 +4,6 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
-## [1.17.0] - 2018-05-22
-### Added
-- Pool support to /jobs, from @dposada
-- Estimated completion constraint, from @pschorf
-- Pool submap to /quota and /share, from @pschorf
-### Changed
-- Improvements to job query times, from @scrosby
-
 ## [1.16.0] - 2018-05-08
 ### Added
 - Added pool support to /share and /quota endpoints, from @pschorf
