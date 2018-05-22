@@ -27,7 +27,7 @@ DEFAULT_TEST_TIMEOUT_SECS = 600
 
 # default time limit used by most wait_* utility functions
 # 2 minutes should be more than sufficient on most cases
-DEFAULT_TIMEOUT_MS = 120000
+DEFAULT_TIMEOUT_MS = int(os.getenv('COOK_TEST_DEFAULT_TIMEOUT_MS', 120000))
 
 # Name of our custom HTTP header for user impersonation
 IMPERSONATION_HEADER = 'X-Cook-Impersonate'
