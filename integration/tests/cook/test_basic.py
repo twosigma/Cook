@@ -499,21 +499,21 @@ class CookTest(unittest.TestCase):
 
         # query for the same job & ensure the response has what it's supposed to have
         job = util.wait_for_job(self.cook_url, job_spec['uuid'], 'completed')
-        self.assertEquals(job_spec['mem'], job['mem'])
-        self.assertEquals(job_spec['max_retries'], job['max_retries'])
-        self.assertEquals(job_spec['name'], job['name'])
-        self.assertEquals(job_spec['priority'], job['priority'])
-        self.assertEquals(job_spec['uuid'], job['uuid'])
-        self.assertEquals(job_spec['cpus'], job['cpus'])
+        self.assertEqual(job_spec['mem'], job['mem'])
+        self.assertEqual(job_spec['max_retries'], job['max_retries'])
+        self.assertEqual(job_spec['name'], job['name'])
+        self.assertEqual(job_spec['priority'], job['priority'])
+        self.assertEqual(job_spec['uuid'], job['uuid'])
+        self.assertEqual(job_spec['cpus'], job['cpus'])
         self.assertTrue('labels' in job)
-        self.assertEquals(9223372036854775807, job['max_runtime'])
+        self.assertEqual(9223372036854775807, job['max_runtime'])
         # 9223372036854775807 is MAX_LONG(ish), the default value for max_runtime
-        self.assertEquals('success', job['state'])
+        self.assertEqual('success', job['state'])
         self.assertTrue('env' in job)
         self.assertTrue('framework_id' in job)
         self.assertTrue('ports' in job)
         self.assertTrue('instances' in job)
-        self.assertEquals('completed', job['status'])
+        self.assertEqual('completed', job['status'])
         self.assertTrue(isinstance(job['submit_time'], int))
         self.assertTrue('uris' in job)
         self.assertTrue('retries_remaining' in job)
@@ -526,7 +526,7 @@ class CookTest(unittest.TestCase):
         self.assertTrue(isinstance(instance['end_time'], int))
         self.assertTrue(isinstance(instance['backfilled'], bool))
         self.assertTrue('ports' in instance)
-        self.assertEquals('completed', job['status'])
+        self.assertEqual('completed', job['status'])
         self.assertTrue('task_id' in instance)
 
     def determine_user(self):
@@ -890,7 +890,8 @@ class CookTest(unittest.TestCase):
                 self.assertEqual(200, resp.status_code)
                 self.assertEqual(sorted(j['uuid'] for j in jobs), sorted([j['uuid'] for j in resp.json()]))
         finally:
-            util.kill_jobs(self.cook_url, jobs)
+            if len(jobs) > 0:
+                util.kill_jobs(self.cook_url, jobs)
 
         # List running / waiting with a bogus pool
         resp = util.jobs(self.cook_url, user=user, state=active, start=start, end=end, pool=uuid.uuid4())
