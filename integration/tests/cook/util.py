@@ -371,6 +371,16 @@ def minimal_job(**kwargs):
         'priority': 1,
         'uuid': str(uuid.uuid4())
     }
+    docker_image = os.getenv('COOK_TEST_DOCKER_IMAGE')
+    if docker_image:
+        job['container'] = {
+            'type': 'docker',
+            'docker': {
+                'image': docker_image,
+                'network': 'HOST',
+                'force-pull-image': False
+            }
+        }
     job.update(kwargs)
     return job
 
