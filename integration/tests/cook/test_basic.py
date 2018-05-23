@@ -227,12 +227,12 @@ class CookTest(unittest.TestCase):
         message = json.dumps(job['instances'][0], sort_keys=True)
         self.assertEqual('success', job['instances'][0]['status'], message)
 
-        job = util.wait_for_sandbox_directory(self.cook_url, job_uuid)
-        message = json.dumps(job['instances'][0], sort_keys=True)
-        self.assertIsNotNone(job['instances'][0]['output_url'], message)
-        self.assertIsNotNone(job['instances'][0]['sandbox_directory'], message)
+        instance = util.wait_for_sandbox_directory(self.cook_url, job_uuid)['instances'][0]
+        message = json.dumps(instance, sort_keys=True)
+        self.assertIsNotNone(instance['output_url'], message)
+        self.assertIsNotNone(instance['sandbox_directory'], message)
 
-        if job_executor_type == 'cook':
+        if instance['executor'] == 'cook':
             util.sleep_for_publish_interval(self.cook_url)
 
             job = util.wait_for_exit_code(self.cook_url, job_uuid)
@@ -243,6 +243,8 @@ class CookTest(unittest.TestCase):
             message = json.dumps(job['instances'][0], sort_keys=True)
             self.assertEqual(25, job['instances'][0]['progress'], message)
             self.assertEqual('Twenty-five percent in progress.txt', job['instances'][0]['progress_message'], message)
+        else:
+            self.logger.info(f'Bailing out because the cook executor is not being used: {instance}')
 
     def test_configurable_progress_update_submit(self):
         job_executor_type = util.get_job_executor_type(self.cook_url)
