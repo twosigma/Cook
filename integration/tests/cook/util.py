@@ -898,7 +898,6 @@ def group_submit_kill_retry(cook_url, retry_failed_jobs_only):
         # return final job details to caller for assertion checks
         jobs = query_jobs(cook_url, assert_response=True, uuid=jobs).json()
         for job in jobs:
-            logger.info(f'Dumping sandbox files for job {job}')
             for instance in job['instances']:
                 mesos.dump_sandbox_files(session, instance, job)
         return jobs
