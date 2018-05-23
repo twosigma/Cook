@@ -393,16 +393,18 @@ class CookTest(unittest.TestCase):
             self.assertGreater(actual_running_time_ms, max_runtime_ms, job_details)
             self.assertGreater(job_sleep_ms, actual_running_time_ms, job_details)
 
-            job = util.wait_for_sandbox_directory(self.cook_url, job_uuid)
-            message = json.dumps(job['instances'][0], sort_keys=True)
-            self.assertIsNotNone(job['instances'][0]['output_url'], message)
-            self.assertIsNotNone(job['instances'][0]['sandbox_directory'], message)
+            instance = util.wait_for_sandbox_directory(self.cook_url, job_uuid)['instances'][0]
+            message = json.dumps(instance, sort_keys=True)
+            self.assertIsNotNone(instance['output_url'], message)
+            self.assertIsNotNone(instance['sandbox_directory'], message)
 
             # verify additional fields set when the cook executor is used
-            if job_executor_type == 'cook':
+            if instance['executor'] == 'cook':
                 job = util.wait_for_exit_code(self.cook_url, job_uuid)
                 message = json.dumps(job['instances'][0], sort_keys=True)
                 self.assertNotEqual(0, job['instances'][0]['exit_code'], message)
+            else:
+                self.logger.info(f'Bailing out because the cook executor is not being used: {instance}')
         finally:
             util.kill_jobs(self.cook_url, [job_uuid])
 
