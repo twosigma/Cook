@@ -604,11 +604,11 @@ class CookTest(unittest.TestCase):
 
     def test_list_jobs_by_completion_state(self):
         name = str(uuid.uuid4())
-        job_uuid_1, resp = util.submit_job(self.cook_url, command='true', name=name)
+        job_uuid_1, resp = util.submit_job(self.cook_url, command='true', name=name, max_retries=2)
         self.assertEqual(201, resp.status_code)
         job_uuid_2, resp = util.submit_job(self.cook_url, command='false', name=name)
         self.assertEqual(201, resp.status_code)
-        job_uuid_3, resp = util.submit_job(self.cook_url, command='true', name=name)
+        job_uuid_3, resp = util.submit_job(self.cook_url, command='true', name=name, max_retries=2)
         self.assertEqual(201, resp.status_code)
         user = self.determine_user()
         start = util.wait_for_job(self.cook_url, job_uuid_1, 'completed')['submit_time']
