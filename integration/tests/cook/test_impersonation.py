@@ -1,12 +1,14 @@
-import itertools
 import logging
-import pytest
 import unittest
+
+import pytest
 
 from tests.cook import util
 
+
 @pytest.mark.multi_user
-@unittest.skipUnless(util.multi_user_tests_enabled(), 'Requires using multi-user coniguration (e.g., BasicAuth) for Cook Scheduler')
+@unittest.skipUnless(util.multi_user_tests_enabled(), 'Requires using multi-user coniguration (e.g., BasicAuth) for '
+                                                      'Cook Scheduler')
 @pytest.mark.timeout(util.DEFAULT_TEST_TIMEOUT_SECS)  # individual test timeout
 class ImpersonationCookTest(unittest.TestCase):
 
@@ -77,7 +79,6 @@ class ImpersonationCookTest(unittest.TestCase):
 
     def test_cannot_impersonate_admin_endpoints(self):
         user1 = self.user_factory.new_user()
-        job_uuids = []
         # admin can do admin things
         with self.admin:
             # read queue endpoint
