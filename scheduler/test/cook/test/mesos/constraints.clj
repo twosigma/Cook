@@ -222,6 +222,31 @@
             job (util/job-ent->map (d/entity (d/db conn) job-id))
             constraint (constraints/build-estimated-completion-constraint job)]
         (is (= 10000 (:estimated-end-time constraint)))
+        (is (= 60 (:host-lifetime-mins constraint))))
+
+      (let [instance-duration 10000
+            instance {:instance-status :instance.status/failed
+                      :reason :mesos-slave-removed
+                      :mesos-start-time nil
+                      :end-time (Date. instance-duration)}
+            [job-id _] (create-dummy-job-with-instances conn
+                                                        :expected-runtime 1000
+                                                        :instances [instance])
+            job (util/job-ent->map (d/entity (d/db conn) job-id))
+            constraint (constraints/build-estimated-completion-constraint job)]
+        (is (= 1200 (:estimated-end-time constraint)))
+        (is (= 60 (:host-lifetime-mins constraint))))
+
+      (let [instance {:instance-status :instance.status/failed
+                      :reason :mesos-slave-removed
+                      :mesos-start-time (Date. 0)
+                      :end-time nil}
+            [job-id _] (create-dummy-job-with-instances conn
+                                                        :expected-runtime 1000
+                                                        :instances [instance])
+            job (util/job-ent->map (d/entity (d/db conn) job-id))
+            constraint (constraints/build-estimated-completion-constraint job)]
+        (is (= 1200 (:estimated-end-time constraint)))
         (is (= 60 (:host-lifetime-mins constraint)))))))
 
 (deftest test-estimated-completion-constraint

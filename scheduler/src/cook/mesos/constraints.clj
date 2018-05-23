@@ -21,7 +21,8 @@
             [cook.config :as config]
             [cook.mesos.group :as group]
             [swiss.arrows :refer :all])
-  (:import com.netflix.fenzo.VirtualMachineLease))
+  (:import com.netflix.fenzo.VirtualMachineLease
+           java.util.Date))
 
 ;; Wisdom:
 ;; * This code expects that attributes COOK_GPU? and HOSTNAME are set for all
@@ -173,6 +174,14 @@
           [false "host is expected to shutdown before job completion"]))
       [true ""])))
 
+(defn instance-runtime
+  "Returns the runtime, in milliseconds, of the given instance,
+  or 0 if the end-time or mesos-start-time is nil"
+  [{:keys [^Date instance/end-time ^Date instance/mesos-start-time]}]
+  (if (and end-time mesos-start-time)
+    (- (.getTime end-time) (.getTime mesos-start-time))
+    0))
+
 (defn build-estimated-completion-constraint
   "Returns an instance of estimated-completion-constraint for the job. The estimated end time will be the max of:
    - :job/expected-runtime
@@ -182,9 +191,7 @@
     (when (and expected-runtime-multiplier host-lifetime-mins)
       (let [agent-removed-failures (filter #(= :mesos-slave-removed (get-in % [:instance/reason :reason/name]))
                                            instance)
-            agent-removed-runtimes (map #(- (.getTime (:instance/end-time %))
-                                            (.getTime (:instance/mesos-start-time %)))
-                                        agent-removed-failures)
+            agent-removed-runtimes (map instance-runtime agent-removed-failures)
             scaled-expected-runtime (if expected-runtime
                                       (long (* expected-runtime expected-runtime-multiplier))
                                       0)
