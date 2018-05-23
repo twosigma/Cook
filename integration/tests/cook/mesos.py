@@ -114,7 +114,7 @@ def cat_for_instance(session, instance, sandbox_dir, path):
 def dump_sandbox_files(session, instance, job):
     """Logs the contents of each file in the root of the given instance's sandbox."""
     if os.getenv('COOK_TEST_SKIP_SANDBOX_DUMP') is not None:
-        logging.info(f'Skipping dumping of sandbox files for {job["uuid"]}')
+        logging.info(f'Skipping dumping of sandbox files for instance {instance["task_id"]}')
         return
 
     try:
