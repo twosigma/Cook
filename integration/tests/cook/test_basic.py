@@ -110,12 +110,20 @@ class CookTest(unittest.TestCase):
             return
         uuid, resp = util.submit_job(self.cook_url, command='sleep 30', env={'EXECUTOR_TEST_EXIT': '1'},
                                      disable_mea_culpa_retries=True)
-        job = util.wait_for_job(self.cook_url, uuid, 'completed')
-        self.assertEqual(job['state'], 'failed', json.dumps(job, indent=2))
-        self.assertEqual(job['retries_remaining'], 0, json.dumps(job, indent=2))
-        instances = job['instances']
-        self.assertEqual(1, len(instances), json.dumps(job, indent=2))
-        self.assertEqual('Mesos executor terminated', instances[0]['reason_string'], json.dumps(job, indent=2))
+        try:
+            instance = util.wait_for_instance(self.cook_url, uuid)
+            if instance['executor'] != 'cook':
+                self.logger.info(f'Bailing out because the cook executor is not being used: {instance}')
+                return
+
+            job = util.wait_for_job(self.cook_url, uuid, 'completed')
+            self.assertEqual(job['state'], 'failed', json.dumps(job, indent=2))
+            self.assertEqual(job['retries_remaining'], 0, json.dumps(job, indent=2))
+            instances = job['instances']
+            self.assertEqual(1, len(instances), json.dumps(job, indent=2))
+            self.assertEqual('Mesos executor terminated', instances[0]['reason_string'], json.dumps(job, indent=2))
+        finally:
+            util.kill_jobs(self.cook_url, [uuid])
 
     def test_mea_culpa_retries(self):
         job_executor_type = util.get_job_executor_type(self.cook_url)
