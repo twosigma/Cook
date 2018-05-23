@@ -900,7 +900,6 @@ def group_submit_kill_retry(cook_url, retry_failed_jobs_only):
         for job in jobs:
             logger.info(f'Dumping sandbox files for job {job}')
             for instance in job['instances']:
-                logger.info(f'Dumping sandbox files for instance {instance}')
                 mesos.dump_sandbox_files(session, instance, job)
         return jobs
     finally:

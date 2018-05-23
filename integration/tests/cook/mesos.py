@@ -38,7 +38,7 @@ def sandbox_directory(session, instance, job):
 
     # As a last resort, query the Mesos agent state
     agent_url = instance_to_agent_url(instance)
-    resp = session.get(f'{agent_url}/state')
+    resp = session.get(f'{agent_url}/state', timeout=5)
     if resp.status_code != 200:
         logging.error(f'mesos agent returned status code {resp.status_code} and body {resp.text}')
         raise Exception('Encountered error when querying Mesos agent for the sandbox directory.')
