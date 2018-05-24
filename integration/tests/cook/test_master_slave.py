@@ -26,7 +26,7 @@ class MasterSlaveTest(unittest.TestCase):
         self.logger = logging.getLogger(__name__)
 
     def test_get_queue(self):
-        if util.has_ephemeral_hosts(self.cook_url):
+        if util.has_ephemeral_hosts(self.master_url):
             # If the cluster under test has ephemeral hosts, then it's generally a bad
             # idea to use HOSTNAME EQUALS constraints, because it can cause the process
             # responsible for launching hosts to launch hosts that never get used
