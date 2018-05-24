@@ -1068,4 +1068,4 @@ def has_ephemeral_hosts(cook_url):
     else:
         # If the estimated completion constraint is turned on, it's a
         # good indication that the hosts on the cluster are ephemeral
-        return settings(cook_url).get('estimated_completion_constraint', None) is not None
+        return settings(cook_url).get('estimated-completion-constraint', None) is not None
