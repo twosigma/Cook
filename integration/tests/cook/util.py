@@ -464,10 +464,15 @@ def unpack_uuid(entity):
     return entity['uuid'] if isinstance(entity, dict) else entity
 
 
+def to_bool(v):
+    """Converts the given argument to a boolean value"""
+    return v is True or str(v).lower() in ['true', '1']
+
+
 def __get(cook_url, endpoint, assert_response=False, **kwargs):
     """Makes a GET request to the given root URL and endpoint"""
     if 'partial' in kwargs:
-        kwargs['partial'] = 'true' if (kwargs['partial'] in [True, 'true', '1']) else 'false'
+        kwargs['partial'] = 'true' if to_bool(kwargs['partial']) else 'false'
     response = session.get(f'{cook_url}/{endpoint}', params=kwargs)
     if assert_response:
         assert 200 == response.status_code
@@ -1053,3 +1058,14 @@ def active_pools(cook_url):
     """Returns the list of all active pools that exist"""
     pools, resp = all_pools(cook_url)
     return [p for p in pools if p['state'] == 'active'], resp
+
+
+def has_ephemeral_hosts(cook_url):
+    """Returns True if the cluster under test has ephemeral hosts"""
+    s = os.getenv('COOK_TEST_EPHEMERAL_HOSTS')
+    if s is not None:
+        return to_bool(s)
+    else:
+        # If the estimated completion constraint is turned on, it's a
+        # good indication that the hosts on the cluster are ephemeral
+        return settings(cook_url).get('estimated_completion_constraint', None) is not None

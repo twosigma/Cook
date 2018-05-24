@@ -1138,6 +1138,13 @@ class CookTest(unittest.TestCase):
         Marked as explicit due to:
         RuntimeError: Job ... had status running - expected completed
         """
+        if util.has_ephemeral_hosts(self.cook_url):
+            # If the cluster under test has ephemeral hosts, then it's generally a bad
+            # idea to use HOSTNAME EQUALS constraints, because it can cause the process
+            # responsible for launching hosts to launch hosts that never get used
+            self.logger.info('Bailing out because the cluster has ephemeral hosts')
+            return
+
         state = util.get_mesos_state(self.mesos_url)
         hosts = [agent['hostname'] for agent in state['slaves']][:10]
 
@@ -1450,6 +1457,13 @@ class CookTest(unittest.TestCase):
         self.assertEqual(400, resp.status_code)
 
     def test_queue_endpoint(self):
+        if util.has_ephemeral_hosts(self.cook_url):
+            # If the cluster under test has ephemeral hosts, then it's generally a bad
+            # idea to use HOSTNAME EQUALS constraints, because it can cause the process
+            # responsible for launching hosts to launch hosts that never get used
+            self.logger.info('Bailing out because the cluster has ephemeral hosts')
+            return
+
         constraints = [["HOSTNAME", "EQUALS", "lol won't get scheduled"]]
         group = {'uuid': str(uuid.uuid4())}
         job_spec = {'group': group['uuid'],
@@ -1557,6 +1571,13 @@ class CookTest(unittest.TestCase):
             mesos.dump_sandbox_files(util.session, instance, job)
 
     def test_unscheduled_jobs(self):
+        if util.has_ephemeral_hosts(self.cook_url):
+            # If the cluster under test has ephemeral hosts, then it's generally a bad
+            # idea to use HOSTNAME EQUALS constraints, because it can cause the process
+            # responsible for launching hosts to launch hosts that never get used
+            self.logger.info('Bailing out because the cluster has ephemeral hosts')
+            return
+
         unsatisfiable_constraint = ['HOSTNAME', 'EQUALS', 'fakehost']
         job_uuid_1, resp = util.submit_job(self.cook_url, command='ls', constraints=[unsatisfiable_constraint])
         self.assertEqual(resp.status_code, 201, resp.content)
@@ -1588,6 +1609,13 @@ class CookTest(unittest.TestCase):
             util.kill_jobs(self.cook_url, [job_uuid_1, job_uuid_2])
 
     def test_unscheduled_jobs_partial(self):
+        if util.has_ephemeral_hosts(self.cook_url):
+            # If the cluster under test has ephemeral hosts, then it's generally a bad
+            # idea to use HOSTNAME EQUALS constraints, because it can cause the process
+            # responsible for launching hosts to launch hosts that never get used
+            self.logger.info('Bailing out because the cluster has ephemeral hosts')
+            return
+
         unsatisfiable_constraint = ['HOSTNAME', 'EQUALS', 'fakehost']
         job_uuid_1, resp = util.submit_job(self.cook_url, command='ls', constraints=[unsatisfiable_constraint])
         self.assertEqual(resp.status_code, 201, resp.content)
