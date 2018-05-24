@@ -657,22 +657,22 @@ def wait_for_exit_code(cook_url, job_id, max_wait_ms=DEFAULT_TIMEOUT_MS):
     job_id = unpack_uuid(job_id)
 
     def query():
-        return query_jobs(cook_url, True, uuid=[job_id])
+        return query_jobs(cook_url, True, uuid=[job_id]).json()[0]
 
-    def predicate(resp):
-        job = resp.json()[0]
+    def predicate(job):
         if not job['instances']:
             logger.info(f"Job {job_id} has no instances.")
         else:
-            inst = job['instances'][0]
-            if 'exit_code' not in inst:
-                logger.info(f"Job {job_id} instance {inst['task_id']} has no exit code.")
-            else:
-                logger.info(f"Job {job_id} instance {inst['task_id']} has exit code {inst['exit_code']}.")
-                return True
+            for inst in job['instances']:
+                if 'exit_code' not in inst:
+                    logger.info(f"Job {job_id} instance {inst['task_id']} has no exit code.")
+                else:
+                    logger.info(f"Job {job_id} instance {inst['task_id']} has exit code {inst['exit_code']}.")
+                    job['instance-with-exit-code'] = inst
+                    return True
 
-    response = wait_until(query, predicate, max_wait_ms=max_wait_ms)
-    return response.json()[0]
+    job = wait_until(query, predicate, max_wait_ms=max_wait_ms)
+    return job['instance-with-exit-code']
 
 
 def wait_for_sandbox_directory(cook_url, job_id):
@@ -696,15 +696,16 @@ def wait_for_sandbox_directory(cook_url, job_id):
         if not job['instances']:
             logger.info(f"Job {job_id} has no instances.")
         else:
-            inst = job['instances'][0]
-            if 'sandbox_directory' not in inst:
-                logger.info(f"Job {job_id} instance {inst['task_id']} has no sandbox directory.")
-            else:
-                logger.info(
-                    f"Job {job_id} instance {inst['task_id']} has sandbox directory {inst['sandbox_directory']}.")
-                return True
+            for inst in job['instances']:
+                if 'sandbox_directory' not in inst:
+                    logger.info(f"Job {job_id} instance {inst['task_id']} has no sandbox directory.")
+                else:
+                    logger.info(
+                        f"Job {job_id} instance {inst['task_id']} has sandbox directory {inst['sandbox_directory']}.")
+                    job['instance-with-sandbox'] = inst
+                    return True
 
-    return wait_until(query, predicate, max_wait_ms=max_wait_ms, wait_interval_ms=250)
+    return wait_until(query, predicate, max_wait_ms=max_wait_ms, wait_interval_ms=250)['instance-with-sandbox']
 
 
 def wait_for_end_time(cook_url, job_id, max_wait_ms=DEFAULT_TIMEOUT_MS):

@@ -56,15 +56,15 @@ class CookTest(unittest.TestCase):
         self.assertEqual(False, job['disable_mea_culpa_retries'])
         self.assertTrue(len(util.wait_for_output_url(self.cook_url, job_uuid)['output_url']) > 0)
 
-        instance = util.wait_for_sandbox_directory(self.cook_url, job_uuid)['instances'][0]
+        instance = util.wait_for_sandbox_directory(self.cook_url, job_uuid)
         message = json.dumps(instance, sort_keys=True)
         self.assertIsNotNone(instance['output_url'], message)
         self.assertIsNotNone(instance['sandbox_directory'], message)
 
         if instance['executor'] == 'cook':
-            job = util.wait_for_exit_code(self.cook_url, job_uuid)
-            message = json.dumps(job['instances'][0], sort_keys=True)
-            self.assertEqual(0, job['instances'][0]['exit_code'], message)
+            instance = util.wait_for_exit_code(self.cook_url, job_uuid)
+            message = json.dumps(instance, sort_keys=True)
+            self.assertEqual(0, instance['exit_code'], message)
         else:
             self.logger.info(f'Bailing out because the cook executor is not being used: {instance}')
 
@@ -200,15 +200,15 @@ class CookTest(unittest.TestCase):
         message = json.dumps(job['instances'][0], sort_keys=True)
         self.assertEqual('failed', job['instances'][0]['status'], message)
 
-        instance = util.wait_for_sandbox_directory(self.cook_url, job_uuid)['instances'][0]
+        instance = util.wait_for_sandbox_directory(self.cook_url, job_uuid)
         message = json.dumps(instance, sort_keys=True)
         self.assertIsNotNone(instance['output_url'], message)
         self.assertIsNotNone(instance['sandbox_directory'], message)
 
         if instance['executor'] == 'cook':
-            job = util.wait_for_exit_code(self.cook_url, job_uuid)
-            message = json.dumps(job['instances'][0], sort_keys=True)
-            self.assertEqual(1, job['instances'][0]['exit_code'], message)
+            instance = util.wait_for_exit_code(self.cook_url, job_uuid)
+            message = json.dumps(instance, sort_keys=True)
+            self.assertEqual(1, instance['exit_code'], message)
         else:
             self.logger.info(f'Bailing out because the cook executor is not being used: {instance}')
 
@@ -223,26 +223,21 @@ class CookTest(unittest.TestCase):
                                          executor=job_executor_type, max_runtime=60000)
         self.assertEqual(201, resp.status_code, msg=resp.content)
         job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
-        self.assertEqual(1, len(job['instances']))
-        message = json.dumps(job['instances'][0], sort_keys=True)
-        self.assertEqual('success', job['instances'][0]['status'], message)
+        message = json.dumps(job['instances'], sort_keys=True)
+        self.assertIn('success', (i['status'] for i in job['instances']), message)
 
-        instance = util.wait_for_sandbox_directory(self.cook_url, job_uuid)['instances'][0]
+        instance = util.wait_for_sandbox_directory(self.cook_url, job_uuid)
         message = json.dumps(instance, sort_keys=True)
         self.assertIsNotNone(instance['output_url'], message)
         self.assertIsNotNone(instance['sandbox_directory'], message)
 
         if instance['executor'] == 'cook':
             util.sleep_for_publish_interval(self.cook_url)
-
-            job = util.wait_for_exit_code(self.cook_url, job_uuid)
-            message = json.dumps(job['instances'][0], sort_keys=True)
-            self.assertEqual(0, job['instances'][0]['exit_code'], message)
-
-            job = util.load_job(self.cook_url, job_uuid)
-            message = json.dumps(job['instances'][0], sort_keys=True)
-            self.assertEqual(25, job['instances'][0]['progress'], message)
-            self.assertEqual('Twenty-five percent in progress.txt', job['instances'][0]['progress_message'], message)
+            instance = util.wait_for_exit_code(self.cook_url, job_uuid)
+            message = json.dumps(instance, sort_keys=True)
+            self.assertEqual(0, instance['exit_code'], message)
+            self.assertEqual(25, instance['progress'], message)
+            self.assertEqual('Twenty-five percent in progress.txt', instance['progress_message'], message)
         else:
             self.logger.info(f'Bailing out because the cook executor is not being used: {instance}')
 
@@ -262,22 +257,18 @@ class CookTest(unittest.TestCase):
         self.assertEqual('success', job['instances'][0]['status'], message)
         self.assertEqual('success', job['instances'][0]['status'], message)
 
-        instance = util.wait_for_sandbox_directory(self.cook_url, job_uuid)['instances'][0]
+        instance = util.wait_for_sandbox_directory(self.cook_url, job_uuid)
         message = json.dumps(instance, sort_keys=True)
         self.assertIsNotNone(instance['output_url'], message)
         self.assertIsNotNone(instance['sandbox_directory'], message)
 
         if instance['executor'] == 'cook':
             util.sleep_for_publish_interval(self.cook_url)
-
-            job = util.wait_for_exit_code(self.cook_url, job_uuid)
-            message = json.dumps(job['instances'][0], sort_keys=True)
-            self.assertEqual(0, job['instances'][0]['exit_code'], message)
-
-            job = util.load_job(self.cook_url, job_uuid)
-            message = json.dumps(job['instances'][0], sort_keys=True)
-            self.assertEqual(25, job['instances'][0]['progress'], message)
-            self.assertEqual('Twenty-five percent', job['instances'][0]['progress_message'], message)
+            instance = util.wait_for_exit_code(self.cook_url, job_uuid)
+            message = json.dumps(instance, sort_keys=True)
+            self.assertEqual(0, instance['exit_code'], message)
+            self.assertEqual(25, instance['progress'], message)
+            self.assertEqual('Twenty-five percent', instance['progress_message'], message)
         else:
             self.logger.info(f'Bailing out because the cook executor is not being used: {instance}')
 
@@ -298,22 +289,18 @@ class CookTest(unittest.TestCase):
         message = json.dumps(job['instances'][0], sort_keys=True)
         self.assertEqual('success', job['instances'][0]['status'], message)
 
-        instance = util.wait_for_sandbox_directory(self.cook_url, job_uuid)['instances'][0]
+        instance = util.wait_for_sandbox_directory(self.cook_url, job_uuid)
         message = json.dumps(instance, sort_keys=True)
         self.assertIsNotNone(instance['output_url'], message)
         self.assertIsNotNone(instance['sandbox_directory'], message)
 
         if instance['executor'] == 'cook':
             util.sleep_for_publish_interval(self.cook_url)
-
-            job = util.wait_for_exit_code(self.cook_url, job_uuid)
-            message = json.dumps(job['instances'][0], sort_keys=True)
-            self.assertEqual(0, job['instances'][0]['exit_code'], message)
-
-            job = util.load_job(self.cook_url, job_uuid)
-            message = json.dumps(job['instances'][0], sort_keys=True)
-            self.assertEqual(75, job['instances'][0]['progress'], message)
-            self.assertEqual('Seventy-five percent', job['instances'][0]['progress_message'], message)
+            instance = util.wait_for_exit_code(self.cook_url, job_uuid)
+            message = json.dumps(instance, sort_keys=True)
+            self.assertEqual(0, instance['exit_code'], message)
+            self.assertEqual(75, instance['progress'], message)
+            self.assertEqual('Seventy-five percent', instance['progress_message'], message)
         else:
             self.logger.info(f'Bailing out because the cook executor is not being used: {instance}')
 
@@ -332,22 +319,18 @@ class CookTest(unittest.TestCase):
         message = json.dumps(job['instances'][0], sort_keys=True)
         self.assertEqual('success', job['instances'][0]['status'], message)
 
-        instance = util.wait_for_sandbox_directory(self.cook_url, job_uuid)['instances'][0]
+        instance = util.wait_for_sandbox_directory(self.cook_url, job_uuid)
         message = json.dumps(instance, sort_keys=True)
         self.assertIsNotNone(instance['output_url'], message)
         self.assertIsNotNone(instance['sandbox_directory'], message)
 
         if instance['executor'] == 'cook':
             util.sleep_for_publish_interval(self.cook_url)
-
-            job = util.wait_for_exit_code(self.cook_url, job_uuid)
-            message = json.dumps(job['instances'][0], sort_keys=True)
-            self.assertEqual(0, job['instances'][0]['exit_code'], message)
-
-            job = util.load_job(self.cook_url, job_uuid)
-            message = json.dumps(job['instances'][0], sort_keys=True)
-            self.assertEqual(80, job['instances'][0]['progress'], message)
-            self.assertEqual('80%', job['instances'][0]['progress_message'], message)
+            instance = util.wait_for_exit_code(self.cook_url, job_uuid)
+            message = json.dumps(instance, sort_keys=True)
+            self.assertEqual(0, instance['exit_code'], message)
+            self.assertEqual(80, instance['progress'], message)
+            self.assertEqual('80%', instance['progress_message'], message)
         else:
             self.logger.info(f'Bailing out because the cook executor is not being used: {instance}')
 
@@ -395,16 +378,16 @@ class CookTest(unittest.TestCase):
             self.assertGreater(actual_running_time_ms, max_runtime_ms, job_details)
             self.assertGreater(job_sleep_ms, actual_running_time_ms, job_details)
 
-            instance = util.wait_for_sandbox_directory(self.cook_url, job_uuid)['instances'][0]
+            instance = util.wait_for_sandbox_directory(self.cook_url, job_uuid)
             message = json.dumps(instance, sort_keys=True)
             self.assertIsNotNone(instance['output_url'], message)
             self.assertIsNotNone(instance['sandbox_directory'], message)
 
             # verify additional fields set when the cook executor is used
             if instance['executor'] == 'cook':
-                job = util.wait_for_exit_code(self.cook_url, job_uuid)
-                message = json.dumps(job['instances'][0], sort_keys=True)
-                self.assertNotEqual(0, job['instances'][0]['exit_code'], message)
+                instance = util.wait_for_exit_code(self.cook_url, job_uuid)
+                message = json.dumps(instance, sort_keys=True)
+                self.assertNotEqual(0, instance['exit_code'], message)
             else:
                 self.logger.info(f'Bailing out because the cook executor is not being used: {instance}')
         finally:
