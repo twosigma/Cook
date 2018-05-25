@@ -261,8 +261,11 @@ def query_unique_and_run(clusters, entity_ref, command_fn, wait=False):
         # Importing tenacity locally to prevent startup time
         # from increasing in the default (i.e. don't wait) case
         import tenacity
+        one_day_in_seconds = 24 * 60 * 60
         r = tenacity.Retrying(wait=tenacity.wait_fixed(5),
-                              retry=tenacity.retry_if_exception_type(CookRetriableException))
+                              retry=tenacity.retry_if_exception_type(CookRetriableException),
+                              stop=tenacity.stop_after_delay(one_day_in_seconds),
+                              reraise=True)
         r.call(query_unique_and_run)
     else:
         query_unique_and_run()
