@@ -1096,6 +1096,7 @@ def _cook_executor_config():
     """Get the cook executor config from the /settings endpoint"""
     cook_url = retrieve_cook_url()
     _wait_for_cook(cook_url)
+    init_cook_session(cook_url)
     cook_executor_config = get_in(settings(cook_url), 'executor')
     logger.info(f"Cook's executor config is {cook_executor_config}")
     return cook_executor_config
