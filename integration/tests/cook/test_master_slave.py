@@ -26,7 +26,7 @@ class MasterSlaveTest(unittest.TestCase):
         self.logger = logging.getLogger(__name__)
 
     def test_get_queue(self):
-        uuids, resp = util.submit_jobs(self.cook_url, {'command': 'sleep 30'}, clones=100)
+        uuids, resp = util.submit_jobs(self.master_url, {'command': 'sleep 30'}, clones=100)
         self.assertEqual(201, resp.status_code, resp.content)
         try:
             slave_queue = util.session.get('%s/queue' % self.slave_url, allow_redirects=False)
