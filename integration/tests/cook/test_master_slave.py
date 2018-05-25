@@ -25,14 +25,11 @@ class MasterSlaveTest(unittest.TestCase):
         self.slave_url = type(self).slave_url
         self.logger = logging.getLogger(__name__)
 
+    @unittest.skipIf(util.has_ephemeral_hosts(), 'If the cluster under test has ephemeral hosts, then it is generally '
+                                                 'a bad idea to use HOSTNAME EQUALS constraints, because it can cause '
+                                                 'the process responsible for launching hosts to launch hosts that '
+                                                 'never get used')
     def test_get_queue(self):
-        if util.has_ephemeral_hosts(self.master_url):
-            # If the cluster under test has ephemeral hosts, then it's generally a bad
-            # idea to use HOSTNAME EQUALS constraints, because it can cause the process
-            # responsible for launching hosts to launch hosts that never get used
-            self.logger.info('Bailing out because the cluster has ephemeral hosts')
-            return
-
         job_uuid, resp = util.submit_job(self.master_url, constraints=[["HOSTNAME",
                                                                         "EQUALS",
                                                                         "can't schedule"]])

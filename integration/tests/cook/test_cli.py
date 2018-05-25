@@ -429,14 +429,11 @@ class CookCliTest(unittest.TestCase):
         cp, jobs = cli.jobs_json(self.cook_url, '--name %s --user %s %s' % (name, user, state_flags))
         return cp, jobs
 
+    @unittest.skipIf(util.has_ephemeral_hosts(), 'If the cluster under test has ephemeral hosts, then it is generally '
+                                                 'a bad idea to use HOSTNAME EQUALS constraints, because it can cause '
+                                                 'the process responsible for launching hosts to launch hosts that '
+                                                 'never get used')
     def test_list_by_state(self):
-        if util.has_ephemeral_hosts(self.cook_url):
-            # If the cluster under test has ephemeral hosts, then it's generally a bad
-            # idea to use HOSTNAME EQUALS constraints, because it can cause the process
-            # responsible for launching hosts to launch hosts that never get used
-            self.logger.info('Bailing out because the cluster has ephemeral hosts')
-            return
-
         name = f'{self.current_name()}_{uuid.uuid4()}'
 
         # Submit a job that will never run
@@ -630,14 +627,11 @@ class CookCliTest(unittest.TestCase):
         self.assertIn(f'-t {hostname} cd', stdout)
         self.assertIn('; bash', stdout)
 
+    @unittest.skipIf(util.has_ephemeral_hosts(), 'If the cluster under test has ephemeral hosts, then it is generally '
+                                                 'a bad idea to use HOSTNAME EQUALS constraints, because it can cause '
+                                                 'the process responsible for launching hosts to launch hosts that '
+                                                 'never get used')
     def test_ssh_no_instances(self):
-        if util.has_ephemeral_hosts(self.cook_url):
-            # If the cluster under test has ephemeral hosts, then it's generally a bad
-            # idea to use HOSTNAME EQUALS constraints, because it can cause the process
-            # responsible for launching hosts to launch hosts that never get used
-            self.logger.info('Bailing out because the cluster has ephemeral hosts')
-            return
-
         raw_job = {'command': 'ls', 'constraints': [['HOSTNAME', 'EQUALS', 'will not get scheduled']]}
         cp, uuids = cli.submit(stdin=cli.encode(json.dumps(raw_job)), cook_url=self.cook_url, submit_flags='--raw')
         self.assertEqual(0, cp.returncode, cp.stderr)
@@ -1620,14 +1614,11 @@ class CookCliTest(unittest.TestCase):
         self.assertEqual(1, cp.returncode, cp.stdout)
         self.assertIn('No matching data found', cli.decode(cp.stderr))
 
+    @unittest.skipIf(util.has_ephemeral_hosts(), 'If the cluster under test has ephemeral hosts, then it is generally '
+                                                 'a bad idea to use HOSTNAME EQUALS constraints, because it can cause '
+                                                 'the process responsible for launching hosts to launch hosts that '
+                                                 'never get used')
     def test_cat_job_with_no_instances(self):
-        if util.has_ephemeral_hosts(self.cook_url):
-            # If the cluster under test has ephemeral hosts, then it's generally a bad
-            # idea to use HOSTNAME EQUALS constraints, because it can cause the process
-            # responsible for launching hosts to launch hosts that never get used
-            self.logger.info('Bailing out because the cluster has ephemeral hosts')
-            return
-
         raw_job = {'command': 'ls', 'constraints': [['HOSTNAME', 'EQUALS', 'will not get scheduled']]}
         cp, uuids = cli.submit(stdin=cli.encode(json.dumps(raw_job)), cook_url=self.cook_url, submit_flags='--raw')
         self.assertEqual(0, cp.returncode, cp.stderr)
