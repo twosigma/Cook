@@ -32,6 +32,12 @@ DEFAULT_TIMEOUT_MS = int(os.getenv('COOK_TEST_DEFAULT_TIMEOUT_MS', 120000))
 # Name of our custom HTTP header for user impersonation
 IMPERSONATION_HEADER = 'X-Cook-Impersonate'
 
+# Reason used by tests that should be skipped on clusters with ephemeral hosts
+EPHEMERAL_HOSTS_SKIP_REASON = 'If the cluster under test has ephemeral hosts, then it is generally ' \
+                              'a bad idea to use HOSTNAME EQUALS constraints, because it can cause ' \
+                              'the process responsible for launching hosts to launch hosts that ' \
+                              'never get used'
+
 
 def continuous_integration():
     """Returns true if the CONTINUOUS_INTEGRATION environment variable is set, as done by Travis-CI."""
@@ -440,7 +446,7 @@ def kill_jobs(cook_url, jobs, assert_response=True, expected_status_code=204):
     params = {'job': [unpack_uuid(j) for j in jobs]}
     response = session.delete(f'{cook_url}/rawscheduler', params=params)
     if assert_response:
-        assert expected_status_code == response.status_code, response.content
+        assert expected_status_code == response.status_code, response.text
     return response
 
 
@@ -1083,3 +1089,20 @@ def has_ephemeral_hosts():
             return _cook_estimated_completion_constraint() is not None
         except:
             return False
+
+
+@functools.lru_cache()
+def _cook_executor_config():
+    """Get the cook executor config from the /settings endpoint"""
+    cook_url = retrieve_cook_url()
+    _wait_for_cook(cook_url)
+    cook_executor_config = get_in(settings(cook_url), 'executor')
+    logger.info(f"Cook's executor config is {cook_executor_config}")
+    return cook_executor_config
+
+
+def is_cook_executor_in_use():
+    """Returns true if the cook executor is configured and COOK_TEST_DOCKER_IMAGE is not set"""
+    is_cook_executor_configured = is_not_blank(get_in(_cook_executor_config(), 'command'))
+    docker_image = os.getenv('COOK_TEST_DOCKER_IMAGE', None)
+    return is_cook_executor_configured and docker_image is None

@@ -25,23 +25,19 @@ class MasterSlaveTest(unittest.TestCase):
         self.slave_url = type(self).slave_url
         self.logger = logging.getLogger(__name__)
 
-    @unittest.skipIf(util.has_ephemeral_hosts(), 'If the cluster under test has ephemeral hosts, then it is generally '
-                                                 'a bad idea to use HOSTNAME EQUALS constraints, because it can cause '
-                                                 'the process responsible for launching hosts to launch hosts that '
-                                                 'never get used')
     def test_get_queue(self):
-        job_uuid, resp = util.submit_job(self.master_url, constraints=[["HOSTNAME",
-                                                                        "EQUALS",
-                                                                        "can't schedule"]])
+        uuids, resp = util.submit_jobs(self.cook_url, {'command': 'sleep 30'}, clones=100)
         self.assertEqual(201, resp.status_code, resp.content)
-        slave_queue = util.session.get('%s/queue' % self.slave_url, allow_redirects=False)
-        self.assertEqual(307, slave_queue.status_code)
+        try:
+            slave_queue = util.session.get('%s/queue' % self.slave_url, allow_redirects=False)
+            self.assertEqual(307, slave_queue.status_code)
 
-        @retry(stop_max_delay=30000, wait_fixed=1000)  # Need to wait for a rank cycle
-        def check_queue():
-            master_queue = util.session.get(slave_queue.headers['Location'])
-            self.assertEqual(200, master_queue.status_code, master_queue.content)
-            self.assertTrue(any([job['job/uuid'] == job_uuid for job in master_queue.json()['normal']]))
+            @retry(stop_max_delay=30000, wait_fixed=1000)  # Need to wait for a rank cycle
+            def check_queue():
+                master_queue = util.session.get(slave_queue.headers['Location'])
+                self.assertEqual(200, master_queue.status_code, master_queue.content)
+                self.assertTrue(any([job['job/uuid'] in uuids for job in master_queue.json()['normal']]))
 
-        check_queue()
-        util.session.delete('%s/rawscheduler?job=%s' % (self.master_url, job_uuid))
+            check_queue()
+        finally:
+            util.kill_jobs(self.cook_url, uuids)
