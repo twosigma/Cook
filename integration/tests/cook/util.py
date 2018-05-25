@@ -1077,6 +1077,9 @@ def has_ephemeral_hosts():
     if s is not None:
         return to_bool(s)
     else:
-        # If the estimated completion constraint is turned on, it's a
-        # good indication that the hosts on the cluster are ephemeral
-        return _cook_estimated_completion_constraint() is not None
+        try:
+            # If the estimated completion constraint is turned on, it's a
+            # good indication that the hosts on the cluster are ephemeral
+            return _cook_estimated_completion_constraint() is not None
+        except:
+            return False
