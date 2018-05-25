@@ -40,4 +40,4 @@ class MasterSlaveTest(unittest.TestCase):
 
             check_queue()
         finally:
-            util.kill_jobs(self.cook_url, uuids)
+            util.kill_jobs(self.master_url, uuids)
