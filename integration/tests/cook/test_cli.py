@@ -793,6 +793,22 @@ class CookCliTest(unittest.TestCase):
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertIn(text, cli.decode(cp.stdout))
 
+    def test_tail_wait(self):
+        # No --wait should fail
+        cp, uuids = cli.submit(f'bash -c \'sleep 10; echo hello > foo\'', self.cook_url)
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        cp = cli.tail(uuids[0], 'foo', self.cook_url)
+        self.assertEqual(1, cp.returncode, cp.stderr)
+        # Indefinite wait should work
+        cp = cli.tail(uuids[0], 'foo', self.cook_url, '--wait')
+        self.assertEqual(0, cp.returncode, cli.decode(cp.stderr))
+        self.assertEqual('hello\n', cli.decode(cp.stdout))
+        # Tailing a file that doesn't exist should fail
+        path = uuid.uuid4()
+        cp = cli.tail(uuids[0], path, self.cook_url)
+        self.assertEqual(1, cp.returncode, cli.decode(cp.stderr))
+        self.assertEqual(f"Cannot open '{path}' for reading (file was not found).\n", cli.decode(cp.stderr))
+
     def test_ls(self):
 
         def entry(name):

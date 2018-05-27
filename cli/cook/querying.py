@@ -9,6 +9,7 @@ from operator import itemgetter
 from urllib.parse import urlparse, parse_qs
 
 from cook import http, colors, mesos, progress
+from cook.exceptions import CookRetriableException
 from cook.util import is_valid_uuid, wait_until, print_info, distinct, partition
 
 
@@ -234,25 +235,40 @@ def __get_latest_instance(job):
             instance = max(instances, key=itemgetter('start_time'))
             return instance
 
-    raise Exception(f'Job {job["uuid"]} currently has no instances.')
+    raise CookRetriableException(f'Job {job["uuid"]} currently has no instances.')
 
 
-def query_unique_and_run(clusters, entity_ref, command_fn):
+def query_unique_and_run(clusters, entity_ref, command_fn, wait=False):
     """Calls query_unique and then calls the given command_fn on the resulting job instance"""
-    query_result = query_unique(clusters, entity_ref)
-    if query_result['type'] == Types.JOB:
-        job = query_result['data']
-        instance = __get_latest_instance(job)
-        directory = mesos.retrieve_instance_sandbox_directory(instance, job)
-        command_fn(instance, directory)
-    elif query_result['type'] == Types.INSTANCE:
-        instance, job = query_result['data']
-        directory = mesos.retrieve_instance_sandbox_directory(instance, job)
-        command_fn(instance, directory)
+
+    def query_unique_and_run():
+        query_result = query_unique(clusters, entity_ref)
+        if query_result['type'] == Types.JOB:
+            job = query_result['data']
+            instance = __get_latest_instance(job)
+            directory = mesos.retrieve_instance_sandbox_directory(instance, job)
+            command_fn(instance, directory)
+        elif query_result['type'] == Types.INSTANCE:
+            instance, job = query_result['data']
+            directory = mesos.retrieve_instance_sandbox_directory(instance, job)
+            command_fn(instance, directory)
+        else:
+            # This should not happen, because query_unique should
+            # only return a map with type "job" or type "instance"
+            raise Exception(f'Encountered error when querying for {entity_ref}.')
+
+    if wait:
+        # Importing tenacity locally to prevent startup time
+        # from increasing in the default (i.e. don't wait) case
+        import tenacity
+        one_day_in_seconds = 24 * 60 * 60
+        r = tenacity.Retrying(wait=tenacity.wait_fixed(5),
+                              retry=tenacity.retry_if_exception_type(CookRetriableException),
+                              stop=tenacity.stop_after_delay(one_day_in_seconds),
+                              reraise=True)
+        r.call(query_unique_and_run)
     else:
-        # This should not happen, because query_unique should
-        # only return a map with type "job" or type "instance"
-        raise Exception(f'Encountered error when querying for {entity_ref}.')
+        query_unique_and_run()
 
 
 def resource_to_entity_type(resource):
