@@ -18,6 +18,7 @@
             [clj-time.core :as t]
             [clj-time.format :as tf]
             [clj-time.periodic :refer [periodic-seq]]
+            [cook.config :as config]
             [cook.mesos.pool :as pool]
             [cook.mesos.schema :as schema]
             [clojure.core.async :as async]
@@ -78,17 +79,20 @@
           db)
        (map first)))
 
-(defn categorize-job
-  "Return the category of the job. Currently jobs can be :normal or :gpu. This
-   is used to give separate queues for scarce & non-scarce resources"
-  [job]
-  (let [categorize-job-miss
-        (fn [job]
-          (let [resources (:job/resource job)]
-            (if (some #(= :resource.type/gpus (:resource/type %)) resources)
-              :gpu
-              :normal)))]
-    (lookup-cache-datomic-entity! categorize-job-cache categorize-job-miss job)))
+(let [default-pool (config/default-pool)]
+  (defn categorize-job
+    "Return the category of the job. Currently jobs can be :normal or :gpu. This
+     is used to give separate queues for scarce & non-scarce resources"
+    [job]
+    (let [categorize-job-miss
+          (fn [job]
+            (if default-pool
+              (-> job :job/pool :pool/name (or default-pool) keyword)
+              (let [resources (:job/resource job)]
+                (if (some #(= :resource.type/gpus (:resource/type %)) resources)
+                  :gpu
+                  :normal))))]
+      (lookup-cache-datomic-entity! categorize-job-cache categorize-job-miss job))))
 
 (defn without-ns
   [k]
