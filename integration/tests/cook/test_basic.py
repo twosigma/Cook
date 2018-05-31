@@ -1420,11 +1420,12 @@ class CookTest(unittest.TestCase):
 
     def test_queue_endpoint(self):
         group = {'uuid': str(uuid.uuid4())}
-        job_spec = {'group': group['uuid'], 'command': 'sleep 30'}
+        job_spec = {'group': group['uuid'],
+                    'command': 'sleep 30',
+                    'cpus': util.max_cpus(self.mesos_url, self.cook_url)}
         uuids, resp = util.submit_jobs(self.cook_url, job_spec, clones=100, groups=[group])
+        self.assertEqual(201, resp.status_code, resp.content)
         try:
-            self.assertEqual(201, resp.status_code, resp.content)
-
             def query_queue():
                 return util.query_queue(self.cook_url)
 
@@ -1432,11 +1433,10 @@ class CookTest(unittest.TestCase):
                 return any([job['job/uuid'] in uuids for job in resp.json()['normal']])
 
             resp = util.wait_until(query_queue, queue_predicate)
-            self.assertEqual(200, resp.status_code, resp.content)
-            job = [job for job in resp.json()['normal']
-                   if job['job/uuid'] in uuids][0]
-            self.assertTrue('group/_job' in job.keys())
+            job = [job for job in resp.json()['normal'] if job['job/uuid'] in uuids][0]
             job_group = job['group/_job'][0]
+            self.assertEqual(200, resp.status_code, resp.content)
+            self.assertTrue('group/_job' in job.keys())
             self.assertEqual(group['uuid'], job_group['group/uuid'])
             self.assertTrue('group/host-placement' in job_group.keys())
             self.assertFalse('group/job' in job_group.keys())
@@ -1523,7 +1523,10 @@ class CookTest(unittest.TestCase):
             mesos.dump_sandbox_files(util.session, instance, job)
 
     def test_unscheduled_jobs(self):
-        uuids, resp = util.submit_jobs(self.cook_url, {'command': 'sleep 30', 'priority': 100}, clones=100)
+        job_spec = {'command': 'sleep 30',
+                    'priority': 100,
+                    'cpus': util.max_cpus(self.mesos_url, self.cook_url)}
+        uuids, resp = util.submit_jobs(self.cook_url, job_spec, clones=100)
         self.assertEqual(resp.status_code, 201, resp.content)
         try:
             job_uuid_1, resp = util.submit_job(self.cook_url, command='ls', priority=1)
@@ -1701,9 +1704,8 @@ class CookTest(unittest.TestCase):
             util.kill_jobs(self.cook_url, uuids)
 
     def test_attribute_equals_hostname_constraint(self):
-        slaves = util.get_mesos_state(self.mesos_url)['slaves']
-        max_slave_cpus = max([s['resources']['cpus'] for s in slaves])
-        task_constraint_cpus = util.settings(self.cook_url)['task-constraints']['cpus']
+        max_slave_cpus = util.max_slave_cpus(self.mesos_url)
+        task_constraint_cpus = util.task_constraint_cpus(self.cook_url)
         # The largest job we can submit that actually fits on a slave
         max_cpus = min(max_slave_cpus, task_constraint_cpus)
         # The number of "big" jobs we need to submit before one will not be scheduled

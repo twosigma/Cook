@@ -1110,3 +1110,25 @@ def is_cook_executor_in_use():
     is_cook_executor_configured = is_not_blank(get_in(_cook_executor_config(), 'command'))
     docker_image = os.getenv('COOK_TEST_DOCKER_IMAGE', None)
     return is_cook_executor_configured and docker_image is None
+
+
+def max_slave_cpus(mesos_url):
+    """Returns the max cpus of all current Mesos agents"""
+    slaves = get_mesos_state(mesos_url)['slaves']
+    max_slave_cpus = max([s['resources']['cpus'] for s in slaves])
+    return max_slave_cpus
+
+
+def task_constraint_cpus(cook_url):
+    """Returns the max cpus that can be submitted to the cluster"""
+    task_constraint_cpus = settings(cook_url)['task-constraints']['cpus']
+    return task_constraint_cpus
+
+
+def max_cpus(mesos_url, cook_url):
+    """Returns the maximum cpus we can submit that actually fits on a slave"""
+    slave_cpus = max_slave_cpus(mesos_url)
+    constraint_cpus = task_constraint_cpus(cook_url)
+    max_cpus = min(slave_cpus, constraint_cpus)
+    logging.debug(f'Max cpus we can submit that will get scheduled is {max_cpus}')
+    return max_cpus
