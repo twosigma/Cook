@@ -1119,18 +1119,22 @@ class CookTest(unittest.TestCase):
             host_to_job_uuid = {}
             for hostname in hosts:
                 constraints = [["HOSTNAME", "EQUALS", hostname]]
-                job_uuid, resp = util.submit_job(self.cook_url, constraints=constraints)
+                job_uuid, resp = util.submit_job(self.cook_url, constraints=constraints,
+                                                 name='test_hostname_equals_job_constraint')
                 self.assertEqual(resp.status_code, 201, resp.text)
                 host_to_job_uuid[hostname] = job_uuid
 
-            for hostname, job_uuid in host_to_job_uuid.items():
-                job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
-                hostname_constrained = job['instances'][0]['hostname']
-                self.assertEqual(hostname, hostname_constrained)
-                self.assertEqual([["HOSTNAME", "EQUALS", hostname]], job['constraints'])
-            # This job should have been scheduled since the job submitted after it has completed
-            # however, its constraint means it won't get scheduled
-            util.wait_for_job(self.cook_url, bad_job_uuid, 'waiting', max_wait_ms=3000)
+            try:
+                for hostname, job_uuid in host_to_job_uuid.items():
+                    job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
+                    hostname_constrained = job['instances'][0]['hostname']
+                    self.assertEqual(hostname, hostname_constrained)
+                    self.assertEqual([["HOSTNAME", "EQUALS", hostname]], job['constraints'])
+                # This job should have been scheduled since the job submitted after it has completed
+                # however, its constraint means it won't get scheduled
+                util.wait_for_job(self.cook_url, bad_job_uuid, 'waiting', max_wait_ms=3000)
+            finally:
+                util.kill_jobs(self.cook_url, host_to_job_uuid.values())
         finally:
             util.kill_jobs(self.cook_url, [bad_job_uuid])
 
