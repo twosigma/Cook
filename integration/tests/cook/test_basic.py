@@ -1066,9 +1066,7 @@ class CookTest(unittest.TestCase):
         expected_runtime = 1
         job_uuid, resp = util.submit_job(self.cook_url, expected_runtime=expected_runtime)
         self.assertEqual(resp.status_code, 201)
-        job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
-        instance = job['instances'][0]
-        self.assertEqual('success', instance['status'], 'Instance details: %s' % (json.dumps(instance, sort_keys=True)))
+        job = util.load_job(self.cook_url, job_uuid)
         self.assertEqual(expected_runtime, job['expected_runtime'])
 
         # Should disallow expected_runtime > max_runtime
