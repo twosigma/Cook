@@ -70,6 +70,8 @@ class MultiUserCookTest(unittest.TestCase):
                                                          max_retries=2, **job_resources)
                         self.assertEqual(resp.status_code, 201, resp.content)
                         all_job_uuids.append(job_uuid)
+                        job = util.load_job(self.cook_url, job_uuid)
+                        self.assertEqual(user, job['user'], job)
             # Don't query until the jobs are all running
             util.wait_for_jobs(self.cook_url, all_job_uuids, 'running')
             # Check the usage for each of our users
