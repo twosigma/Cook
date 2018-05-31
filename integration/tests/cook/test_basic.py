@@ -20,7 +20,7 @@ from tests.cook import util
 
 
 @pytest.mark.timeout(util.DEFAULT_TEST_TIMEOUT_SECS)  # individual test timeout
-class CookTest(unittest.TestCase):
+class CookTest(util.CookTest):
 
     @classmethod
     def setUpClass(cls):
@@ -1117,8 +1117,7 @@ class CookTest(unittest.TestCase):
             host_to_job_uuid = {}
             for hostname in hosts:
                 constraints = [["HOSTNAME", "EQUALS", hostname]]
-                job_uuid, resp = util.submit_job(self.cook_url, constraints=constraints,
-                                                 name='test_hostname_equals_job_constraint')
+                job_uuid, resp = util.submit_job(self.cook_url, constraints=constraints, name=self.current_name())
                 self.assertEqual(resp.status_code, 201, resp.text)
                 host_to_job_uuid[hostname] = job_uuid
 

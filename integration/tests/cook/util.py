@@ -7,6 +7,7 @@ import os
 import os.path
 import subprocess
 import time
+import unittest
 import uuid
 from datetime import datetime
 from urllib.parse import urlencode
@@ -1132,3 +1133,10 @@ def max_cpus(mesos_url, cook_url):
     max_cpus = min(slave_cpus, constraint_cpus)
     logging.debug(f'Max cpus we can submit that will get scheduled is {max_cpus}')
     return max_cpus
+
+
+class CookTest(unittest.TestCase):
+    def current_name(self):
+        """Returns the name of the currently running test function"""
+        test_id = self.id()
+        return test_id.split('.')[-1]
