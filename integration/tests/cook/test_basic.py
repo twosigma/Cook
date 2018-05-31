@@ -1945,7 +1945,7 @@ class CookTest(util.CookTest):
         resp = util.set_limit(self.cook_url, 'quota', user, cpus=10, reason=None)
         self.assertEqual(resp.status_code, 400, resp.text)
         # reset user quota back to default
-        resp = util.reset_limit(self.cook_url, 'quota', user)
+        resp = util.reset_limit(self.cook_url, 'quota', user, reason=self.current_name())
         self.assertEqual(resp.status_code, 204, resp.text)
         # reset user quota fails (malformed) if no reason is given
         resp = util.reset_limit(self.cook_url, 'quota', user, reason=None)
@@ -1957,7 +1957,7 @@ class CookTest(util.CookTest):
         resp = util.set_limit(self.cook_url, 'share', user, cpus=10, reason=None)
         self.assertEqual(resp.status_code, 400, resp.text)
         # reset user share back to default
-        resp = util.reset_limit(self.cook_url, 'share', user)
+        resp = util.reset_limit(self.cook_url, 'share', user, reason=self.current_name())
         self.assertEqual(resp.status_code, 204, resp.text)
         # reset user share fails (malformed) if no reason is given
         resp = util.reset_limit(self.cook_url, 'share', user, reason=None)
@@ -1987,7 +1987,7 @@ class CookTest(util.CookTest):
                 self.assertEqual(100, resp.json()['cpus'], resp.text)
 
                 # Delete the default pool limit (no pool argument)
-                resp = util.reset_limit(self.cook_url, limit, user)
+                resp = util.reset_limit(self.cook_url, limit, user, reason=self.current_name())
                 self.assertEqual(resp.status_code, 204, resp.text)
 
                 # Check that the default is returned for the default pool
@@ -2006,7 +2006,7 @@ class CookTest(util.CookTest):
                     default_cpus = resp.json()['cpus']
 
                     # delete the pool's limit
-                    resp = util.reset_limit(self.cook_url, limit, user, pool=pool)
+                    resp = util.reset_limit(self.cook_url, limit, user, pool=pool, reason=self.current_name())
                     self.assertEqual(resp.status_code, 204, resp.text)
 
                     # check that the default value is returned
