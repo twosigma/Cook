@@ -1103,8 +1103,9 @@
     (when (seq running-tasks)
       (log/info "Preparing to reconcile" (count running-tasks) "tasks")
       ;; TODO: When turning on periodic reconcilation, probably want to move this to startup
-      (let [processed-tasks (->> (for [[task-id] running-tasks
-                                       :let [task-ent (d/entity db [:instance/task-id task-id])
+      (let [processed-tasks (->> (for [task running-tasks
+                                       :let [[task-id] task
+                                             task-ent (d/entity db [:instance/task-id task-id])
                                              hostname (:instance/hostname task-ent)]]
                                    (when-let [job (util/job-ent->map (:job/_instance task-ent))]
                                      (let [task-request (make-task-request db job :task-id task-id)]
@@ -1114,17 +1115,20 @@
                                          (.. fenzo
                                              (getTaskAssigner)
                                              (call task-request hostname)))
-                                       [task-id])))
+                                       task)))
                                  (remove nil?))]
         (when (not= (count running-tasks) (count processed-tasks))
           (log/error "Skipping reconciling" (- (count running-tasks) (count processed-tasks)) "tasks"))
         (doseq [ts (partition-all 50 processed-tasks)]
           (log/info "Reconciling" (count ts) "tasks, including task" (first ts))
-          (mesos/reconcile-tasks driver (mapv (fn [[task-id status slave-id]]
-                                                {:task-id {:value task-id}
-                                                 :state (sched->mesos status)
-                                                 :slave-id {:value slave-id}})
-                                              ts))))
+          (try
+            (mesos/reconcile-tasks driver (mapv (fn [[task-id status slave-id]]
+                                                  {:task-id {:value task-id}
+                                                   :state (sched->mesos status)
+                                                   :slave-id {:value slave-id}})
+                                                ts))
+            (catch Exception e
+              (log/error e "Reconciliation error")))))
       (log/info "Finished reconciling all tasks"))))
 
 (timers/deftimer [cook-mesos scheduler reconciler-duration])
