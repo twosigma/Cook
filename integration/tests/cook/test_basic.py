@@ -1036,6 +1036,9 @@ class CookTest(util.CookTest):
         util.wait_for_job(self.cook_url, jobs[0], 'completed')
         util.wait_for_job(self.cook_url, jobs[1], 'completed')
 
+    # Requires a longer timeout for clusters with a large timeout-interval-minutes,
+    # because the straggler-handling check only happens on this timeout interval
+    @pytest.mark.timeout(util.DEFAULT_TEST_TIMEOUT_SECS * 2)
     def test_straggler_handling(self):
         straggler_handling = {
             'type': 'quantile-deviation',
