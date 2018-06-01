@@ -30,7 +30,8 @@
             [cook.mesos.share :as share]
             [cook.mesos.util :as util]
             [cook.test.testutil :refer [restore-fresh-database! create-dummy-group create-dummy-job
-                                        create-dummy-instance init-offer-cache poll-until wait-for]]
+                                        create-dummy-instance init-offer-cache poll-until wait-for
+                                        create-dummy-job-with-instances]]
             [criterium.core :as crit]
             [datomic.api :as d :refer (q db)]
             [mesomatic.scheduler :as msched]
@@ -2222,3 +2223,32 @@
       (is (thrown? ExceptionInfo (sched/launch-matched-tasks! matches conn nil nil nil nil nil)))
       (is (= timeout-exception (:throwable @logged-atom)))
       (is (str/includes? (:message @logged-atom) (str job-id))))))
+
+(deftest test-reconcile-tasks
+  (let [conn (restore-fresh-database! "datomic:mem://test-reconcile-tasks")
+        framework-id #mesomatic.types.FrameworkID{:value "my-original-framework-id"}
+        fenzo (make-dummy-scheduler)
+        task-atom (atom [])
+        mock-driver (reify msched/SchedulerDriver
+                      (reconcile-tasks [_ tasks]
+                        (reset! task-atom tasks)))
+        [_ [running-instance-id]] (create-dummy-job-with-instances conn
+                                                                   :job-state :job.state/running
+                                                                   :instances [{:instance-status :instance.status/running}])
+        [_ [unknown-instance-id]] (create-dummy-job-with-instances conn
+                                                                   :job-state :job.state/running
+                                                                   :instances [{:instance-status :instance.status/unknown}])
+        _ (create-dummy-job-with-instances conn
+                                           :job-state :job.state/completed
+                                           :instances [{:instance-status :instance.status/success}])]
+    (sched/reconcile-tasks (d/db conn) mock-driver framework-id fenzo)
+    (let [reconciled-tasks (set @task-atom)
+          running-instance (d/entity (d/db conn) running-instance-id)
+          unknown-instance (d/entity (d/db conn) unknown-instance-id)]
+      (is (= 2 (count reconciled-tasks)))
+      (is (contains? reconciled-tasks {:task-id {:value (:instance/task-id running-instance)}
+                                       :state :task-running
+                                       :slave-id {:value (:instance/slave-id running-instance)}}))
+      (is (contains? reconciled-tasks {:task-id {:value (:instance/task-id unknown-instance)}
+                                       :state :task-staging
+                                       :slave-id {:value (:instance/slave-id unknown-instance)}})))))
