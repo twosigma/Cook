@@ -88,10 +88,7 @@
           (fn [job]
             (if default-pool
               (-> job :job/pool :pool/name (or default-pool) keyword)
-              (let [resources (:job/resource job)]
-                (if (some #(= :resource.type/gpus (:resource/type %)) resources)
-                  :gpu
-                  :normal))))]
+              :no-pool))]
       (lookup-cache-datomic-entity! categorize-job-cache categorize-job-miss job))))
 
 (defn without-ns

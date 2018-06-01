@@ -772,47 +772,39 @@
                              (map job->usage)
                              (reduce (partial merge-with +))))))))
 
-(defn category->pending-jobs->category->considerable-jobs
+(defn pending-jobs->considerable-jobs
   "Limit the pending jobs to considerable jobs based on usage and quota.
    Further limit the considerable jobs to a maximum of num-considerable jobs."
-  [db category->pending-jobs user->quota user->usage num-considerable]
-  (log/debug "There are" (apply + (map count category->pending-jobs)) "pending jobs")
-  (log/debug "pending-jobs:" category->pending-jobs)
-  (let [filter-considerable-jobs (fn filter-considerable-jobs [jobs]
-                                   (->> jobs
-                                        (filter-based-on-quota user->quota user->usage)
-                                        (filter (fn [job]
-                                                  (util/job-allowed-to-start? db job)))
-                                        (take num-considerable)))
-        category->considerable-jobs (->> category->pending-jobs
-                                         (pc/map-vals filter-considerable-jobs))]
-    (log/debug "We'll consider scheduling" (map (fn [[k v]] [k (count v)]) category->considerable-jobs)
-               "of those pending jobs (limited to " num-considerable " due to backdown)")
-    category->considerable-jobs))
+  [db pending-jobs user->quota user->usage num-considerable]
+  ;;; TODO(DPO) Add pool name to the log below
+  (log/debug "There are" (count pending-jobs) "pending jobs:" pending-jobs)
+  (->> pending-jobs
+       (filter-based-on-quota user->quota user->usage)
+       (filter (fn [job] (util/job-allowed-to-start? db job)))
+       (take num-considerable)))
 
-(defn matches->category->job-uuids
+(defn matches->job-uuids
   "Returns the matched job uuid sets by category."
   [matches]
-  (let [category->jobs (group-by util/categorize-job
-                                 (->> matches
-                                      (mapcat #(-> % :tasks))
-                                      (map #(-> % .getRequest :job))))
-        category->job-uuids (pc/map-vals #(set (map :job/uuid %)) category->jobs)]
-    (log/debug "matched jobs:" (pc/map-vals count category->job-uuids))
-    (when (seq matches)
-      (let [matched-normal-jobs-resource-requirements (-> category->jobs :normal util/sum-resources-of-jobs)]
-        (meters/mark! matched-tasks-cpus (:cpus matched-normal-jobs-resource-requirements))
-        (meters/mark! matched-tasks-mem (:mem matched-normal-jobs-resource-requirements))))
-    category->job-uuids))
+  (let [jobs (->> matches
+                  (mapcat #(-> % :tasks))
+                  (map #(-> % .getRequest :job)))
+        job-uuids (set (map :job/uuid jobs))]
+    ;;; TODO(DPO) Add pool name to the log below
+    (log/debug "matched jobs:" (count job-uuids))
+    ;;; TODO(DPO) Fix the metrics below to include the pool
+    ;(when (seq matches)
+    ;  (let [matched-normal-jobs-resource-requirements (-> jobs :normal util/sum-resources-of-jobs)]
+    ;    (meters/mark! matched-tasks-cpus (:cpus matched-normal-jobs-resource-requirements))
+    ;    (meters/mark! matched-tasks-mem (:mem matched-normal-jobs-resource-requirements))))
+    job-uuids))
 
 (defn remove-matched-jobs-from-pending-jobs
   "Removes matched jobs from category->pending-jobs."
-  [category->pending-jobs category->matched-job-uuids]
-  (let [remove-matched-jobs (fn remove-matched-jobs [category]
-                              (let [existing-jobs (category->pending-jobs category)
-                                    matched-job-uuids (category->matched-job-uuids category)]
-                                (remove #(contains? matched-job-uuids (:job/uuid %)) existing-jobs)))]
-    (pc/map-from-keys remove-matched-jobs (keys category->pending-jobs))))
+  [pool->pending-jobs matched-job-uuids pool]
+  (update-in pool->pending-jobs [pool]
+             (fn [jobs]
+               (remove #(contains? matched-job-uuids (:job/uuid %)) jobs))))
 
 (defn- update-match-with-task-metadata-seq
   "Updates the match with an entry for the task metadata for all tasks."
@@ -894,25 +886,21 @@
                 (getTaskAssigner)
                 (call task-request hostname))))))))
 
+;;; TODO(DPO) Investigate if this needs to change to account for pools
 (defn update-host-reservations!
   "Updates the rebalancer-reservation-atom with the result of the match cycle.
    - Releases reservations for jobs that were matched
    - Adds matched job uuids to the launched-job-uuids list"
-  [rebalancer-reservation-atom matches]
-  (let [matched-job-uuids (->> matches
-                               (mapcat #(-> % :tasks))
-                               (map #(-> % .getRequest :job))
-                               (map :job/uuid)
-                               (into (hash-set)))]
-    (swap! rebalancer-reservation-atom (fn [{:keys [job-uuid->reserved-host launched-job-uuids]}]
-                                         {:job-uuid->reserved-host (apply dissoc job-uuid->reserved-host matched-job-uuids)
-                                          :launched-job-uuids (into matched-job-uuids launched-job-uuids)}))))
+  [rebalancer-reservation-atom matched-job-uuids]
+  (swap! rebalancer-reservation-atom (fn [{:keys [job-uuid->reserved-host launched-job-uuids]}]
+                                       {:job-uuid->reserved-host (apply dissoc job-uuid->reserved-host matched-job-uuids)
+                                        :launched-job-uuids (into matched-job-uuids launched-job-uuids)})))
 
 (defn handle-resource-offers!
   "Gets a list of offers from mesos. Decides what to do with them all--they should all
    be accepted or rejected at the end of the function."
-  [conn driver ^TaskScheduler fenzo framework-id category->pending-jobs-atom mesos-run-as-user
-   user->usage user->quota num-considerable offers-chan offers rebalancer-reservation-atom pool-keyword]
+  [conn driver ^TaskScheduler fenzo framework-id pool->pending-jobs-atom mesos-run-as-user
+   user->usage user->quota num-considerable offers-chan offers rebalancer-reservation-atom pool]
   (log/debug "invoked handle-resource-offers!")
   (let [offer-stash (atom nil)] ;; This is a way to ensure we never lose offers fenzo assigned if an error occurs in the middle of processing
     ;; TODO: It is possible to have an offer expire by mesos because we recycle it a bunch of times.
@@ -921,29 +909,29 @@
       handle-resource-offer!-duration
       (try
         (let [db (db conn)
-              category->pending-jobs @category->pending-jobs-atom
-              category->considerable-jobs (timers/time!
-                                            handle-resource-offer!-considerable-jobs-duration
-                                            (category->pending-jobs->category->considerable-jobs
-                                              db category->pending-jobs user->quota user->usage num-considerable))
+              pending-jobs (get @pool->pending-jobs-atom pool)
+              considerable-jobs (timers/time!
+                                  handle-resource-offer!-considerable-jobs-duration
+                                  (pending-jobs->considerable-jobs
+                                    db pending-jobs user->quota user->usage num-considerable))
               {:keys [matches failures]} (timers/time!
                                            handle-resource-offer!-match-duration
-                                           (match-offer-to-schedule db fenzo (reduce into [] (vals category->considerable-jobs)) offers rebalancer-reservation-atom))
+                                           (match-offer-to-schedule db fenzo considerable-jobs offers rebalancer-reservation-atom))
               _ (log/debug "got matches:" matches)
               offers-scheduled (for [{:keys [leases]} matches
                                      lease leases]
                                  (:offer lease))
-              {matched-normal-job-uuids :normal :as category->job-uuids} (timers/time!
-                                                                           handle-resource-offer!-match-job-uuids-duration
-                                                                           (matches->category->job-uuids matches))
-              first-normal-considerable-job-resources (-> category->considerable-jobs :normal first util/job-ent->resources)
-              matched-normal-considerable-jobs-head? (contains? matched-normal-job-uuids (-> category->considerable-jobs :normal first :job/uuid))]
+              matched-job-uuids (timers/time!
+                                  handle-resource-offer!-match-job-uuids-duration
+                                  (matches->job-uuids matches))
+              first-considerable-job-resources (-> considerable-jobs first util/job-ent->resources)
+              matched-considerable-jobs-head? (contains? matched-job-uuids (-> considerable-jobs first :job/uuid))]
 
           (fenzo/record-placement-failures! conn failures)
 
           (reset! offer-stash offers-scheduled)
-          (reset! front-of-job-queue-mem-atom (or (:mem first-normal-considerable-job-resources) 0))
-          (reset! front-of-job-queue-cpus-atom (or (:cpus first-normal-considerable-job-resources) 0))
+          (reset! front-of-job-queue-mem-atom (or (:mem first-considerable-job-resources) 0))
+          (reset! front-of-job-queue-cpus-atom (or (:cpus first-considerable-job-resources) 0))
 
           (cond
             ;; Possible innocuous reasons for no matches: no offers, or no pending jobs.
@@ -954,11 +942,11 @@
             (empty? matches) true
             :else
             (do
-              (swap! category->pending-jobs-atom remove-matched-jobs-from-pending-jobs category->job-uuids)
-              (log/debug "updated category->pending-jobs:" @category->pending-jobs-atom)
+              (swap! pool->pending-jobs-atom remove-matched-jobs-from-pending-jobs matched-job-uuids pool)
+              (log/debug "updated pool->pending-jobs-atom:" @pool->pending-jobs-atom)
               (launch-matched-tasks! matches conn db driver fenzo framework-id mesos-run-as-user)
-              (update-host-reservations! rebalancer-reservation-atom matches)
-              matched-normal-considerable-jobs-head?)))
+              (update-host-reservations! rebalancer-reservation-atom matched-job-uuids)
+              matched-considerable-jobs-head?)))
         (catch Throwable t
           (meters/mark! handle-resource-offer!-errors)
           (log/error t "Error in match:" (ex-data t))
@@ -988,7 +976,7 @@
 (defn make-offer-handler
   [conn driver-atom fenzo framework-id pending-jobs-atom offer-cache max-considerable scaleback
    floor-iterations-before-warn floor-iterations-before-reset trigger-chan rebalancer-reservation-atom
-   mesos-run-as-user pool-keyword]
+   mesos-run-as-user pool]
   (let [chan-length 100
         offers-chan (async/chan (async/buffer chan-length))
         resources-atom (atom (view-incubating-offers fenzo))]
@@ -1037,7 +1025,7 @@
                       matched-head? (handle-resource-offers! conn @driver-atom fenzo framework-id pending-jobs-atom
                                                              mesos-run-as-user @user->usage-future user->quota
                                                              num-considerable offers-chan offers
-                                                             rebalancer-reservation-atom pool-keyword)]
+                                                             rebalancer-reservation-atom pool)]
                   (when (seq offers)
                     (reset! resources-atom (view-incubating-offers fenzo)))
                   ;; This check ensures that, although we value Fenzo's optimizations,
@@ -1374,7 +1362,7 @@
         category->sort-jobs-by-dru-fn (let [pools (pool/all-pools unfiltered-db)]
                                         (if (-> pools count pos?)
                                           (pool-map pools (constantly sort-normal-jobs-by-dru))
-                                          {:normal sort-normal-jobs-by-dru, :gpu sort-gpu-jobs-by-dru}))]
+                                          {:no-pool sort-normal-jobs-by-dru}))]
     (letfn [(sort-jobs-by-dru-category-helper [[category sort-jobs-by-dru]]
              (let [pending-tasks (category->pending-task-ents category)
                    running-tasks (category->running-task-ents category)]
@@ -1688,21 +1676,20 @@
                  [{:pool/name "no-pool"}])
         pool->fenzo (pool-map pools' #(make-fenzo-scheduler driver-atom offer-incubate-time-ms
                                                             fenzo-fitness-calculator good-enough-fitness))
-        {:keys [pool->offers-chan pool->resources-atom] :as big-map}
-        (reduce (fn [m pool]
-                  (let [pool-keyword (pool->keyword pool)
-                        fenzo (pool->fenzo pool-keyword)
+        {:keys [pool->offers-chan pool->resources-atom]}
+        (reduce (fn [m pool-ent]
+                  (let [pool (pool->keyword pool-ent)
+                        fenzo (pool->fenzo pool)
                         [offers-chan resources-atom]
                         (make-offer-handler
                           conn driver-atom fenzo framework-id pending-jobs-atom offer-cache fenzo-max-jobs-considered
                           fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset
-                          match-trigger-chan rebalancer-reservation-atom mesos-run-as-user pool-keyword)]
+                          match-trigger-chan rebalancer-reservation-atom mesos-run-as-user pool)]
                     (-> m
-                        (assoc-in [:pool->offers-chan pool-keyword] offers-chan)
-                        (assoc-in [:pool->resources-atom pool-keyword] resources-atom))))
+                        (assoc-in [:pool->offers-chan pool] offers-chan)
+                        (assoc-in [:pool->resources-atom pool] resources-atom))))
                 {}
                 pools')
-        _ (println "big map" big-map)
         {:keys [batch-size]} progress-config
         {:keys [progress-state-chan]} (progress-update-transactor progress-updater-trigger-chan batch-size conn)
         progress-aggregator-chan (progress-update-aggregator progress-config progress-state-chan)

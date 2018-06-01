@@ -1310,49 +1310,49 @@
             user->quota {test-user {:count 10, :cpus 50, :mem 32768, :gpus 10}}
             num-considerable 5]
         (is (= {:normal [job-1 job-2 job-3 job-4], :gpu [job-5 job-6]}
-               (sched/category->pending-jobs->category->considerable-jobs
+               (sched/pending-jobs->considerable-jobs
                  (d/db conn) category->pending-jobs user->quota user->usage num-considerable)))))
     (testing "jobs inside usage quota limited by num-considerable of 3"
       (let [user->usage {test-user {:count 1, :cpus 2, :mem 1024, :gpus 0}}
             user->quota {test-user {:count 10, :cpus 50, :mem 32768, :gpus 10}}
             num-considerable 3]
         (is (= {:normal [job-1 job-2 job-3], :gpu [job-5 job-6]}
-               (sched/category->pending-jobs->category->considerable-jobs
+               (sched/pending-jobs->considerable-jobs
                  (d/db conn) category->pending-jobs user->quota user->usage num-considerable)))))
     (testing "jobs inside usage quota limited by num-considerable of 2"
       (let [user->usage {test-user {:count 1, :cpus 2, :mem 1024, :gpus 0}}
             user->quota {test-user {:count 10, :cpus 50, :mem 32768, :gpus 10}}
             num-considerable 2]
         (is (= {:normal [job-1 job-2], :gpu [job-5 job-6]}
-               (sched/category->pending-jobs->category->considerable-jobs
+               (sched/pending-jobs->considerable-jobs
                  (d/db conn) category->pending-jobs user->quota user->usage num-considerable)))))
     (testing "jobs inside usage quota limited by num-considerable of 1"
       (let [user->usage {test-user {:count 1, :cpus 2, :mem 1024, :gpus 0}}
             user->quota {test-user {:count 10, :cpus 50, :mem 32768, :gpus 10}}
             num-considerable 1]
         (is (= {:normal [job-1], :gpu [job-5]}
-               (sched/category->pending-jobs->category->considerable-jobs
+               (sched/pending-jobs->considerable-jobs
                  (d/db conn) category->pending-jobs user->quota user->usage num-considerable)))))
     (testing "some jobs inside usage quota"
       (let [user->usage {test-user {:count 1, :cpus 2, :mem 1024, :gpus 0}}
             user->quota {test-user {:count 5, :cpus 10, :mem 4096, :gpus 10}}
             num-considerable 5]
         (is (= {:normal [job-1], :gpu [job-5]}
-               (sched/category->pending-jobs->category->considerable-jobs
+               (sched/pending-jobs->considerable-jobs
                  (d/db conn) category->pending-jobs user->quota user->usage num-considerable)))))
     (testing "some jobs inside usage quota - quota gpus not ignored"
       (let [user->usage {test-user {:count 1, :cpus 2, :mem 1024, :gpus 0}}
             user->quota {test-user {:count 5, :cpus 10, :mem 4096, :gpus 0}}
             num-considerable 5]
         (is (= {:normal [job-1], :gpu []}
-               (sched/category->pending-jobs->category->considerable-jobs
+               (sched/pending-jobs->considerable-jobs
                  (d/db conn) category->pending-jobs user->quota user->usage num-considerable)))))
     (testing "all jobs exceed quota"
       (let [user->usage {test-user {:count 1, :cpus 2, :mem 1024, :gpus 0}}
             user->quota {test-user {:count 5, :cpus 3, :mem 4096, :gpus 10}}
             num-considerable 5]
         (is (= {:normal [], :gpu []}
-               (sched/category->pending-jobs->category->considerable-jobs
+               (sched/pending-jobs->considerable-jobs
                  (d/db conn) category->pending-jobs user->quota user->usage num-considerable)))))))
 
 (deftest test-matches->category->job-uuids
@@ -1375,16 +1375,16 @@
         job-7 (create-task-result "job-7" 7 1024 nil)]
     (is (= {:gpu #{"job-3" "job-5" "job-6"}
             :normal #{"job-1" "job-2" "job-4" "job-7"}}
-           (sched/matches->category->job-uuids
+           (sched/matches->job-uuids
              [{:tasks [job-1 job-2 job-3]}, {:tasks #{job-4 job-5}}, {:tasks [job-6]}, {:tasks [job-7]}])))
     (is (= {:normal #{"job-1" "job-2" "job-4" "job-7"}}
-           (sched/matches->category->job-uuids
+           (sched/matches->job-uuids
              [{:tasks [job-1 job-2]}, {:tasks #{job-4}}, {:tasks #{}}, {:tasks [job-7]}])))
     (is (= {:gpu #{"job-3" "job-5" "job-6"}}
-           (sched/matches->category->job-uuids
+           (sched/matches->job-uuids
              [{:tasks [job-3]}, {:tasks #{job-5}}, {:tasks #{job-6}}, {:tasks []}])))
     (is (= {}
-           (sched/matches->category->job-uuids
+           (sched/matches->job-uuids
              [{:tasks []}, {:tasks #{}}, {:tasks #{}}, {:tasks []}])))))
 
 (deftest test-remove-matched-jobs-from-pending-jobs
