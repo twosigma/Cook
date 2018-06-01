@@ -52,7 +52,7 @@ class CookTest(util.CookTest):
         self.assertEqual(resp.status_code, 201, msg=resp.content)
         self.assertEqual(resp.content, str.encode(f"submitted jobs {job_uuid}"))
         job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
-        self.assertEqual('success', job['instances'][0]['status'])
+        self.assertIn('success', (i['status'] for i in job['instances']))
         self.assertEqual(False, job['disable_mea_culpa_retries'])
         self.assertTrue(len(util.wait_for_output_url(self.cook_url, job_uuid)['output_url']) > 0)
 
