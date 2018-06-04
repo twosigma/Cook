@@ -1269,7 +1269,7 @@
 (histograms/defhistogram [cook-mesos api list-request-param-limit])
 (histograms/defhistogram [cook-mesos api list-response-job-count])
 
-(defn list-jobents
+(defn list-jobs
   "Queries using the params from ctx and returns the jobs that were found as datomic entities."
   [db include-custom-executor? ctx]
   (timers/time!
@@ -1301,7 +1301,7 @@
 
 (defn jobs-list-exist?
   [conn ctx]
-  [true {::jobs-entities (list-jobents (d/db conn) true ctx)}])
+  [true {::jobs-entities (list-jobs (d/db conn) true ctx)}])
 
 (defn read-jobs-handler
   [conn is-authorized-fn resource-attrs]
@@ -2296,7 +2296,7 @@
     :handle-ok (fn [ctx]
                  (timers/time!
                    (timers/timer ["cook-scheduler" "handler" "list-endpoint-duration"])
-                   (let [job-ents (list-jobents db false ctx)]
+                   (let [job-ents (list-jobs db false ctx)]
                      (mapv (partial fetch-job-map-from-entity db framework-id) job-ents))))))
 
 ;;
