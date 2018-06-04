@@ -1119,22 +1119,31 @@
   (mapv (partial fetch-job-map (db conn) framework-id) (::jobs ctx)))
 
 (defn render-jobs-for-response
+  "This rendes for response. Fills in in :group UUID's and names as well as map-ifies jobs
+  It will examine the ctx for ::jobs (containing UUID's) or ::job-entities (containing
+  datomic job entities) and return the merged set."
   [conn framework-id ctx]
   (let [db (db conn)
-
         fetch-group
         (fn fetch-group [group-uuid]
           (let [group (d/entity db [:group/uuid (UUID/fromString group-uuid)])]
             {:uuid group-uuid
              :name (:group/name group)}))
-
-        fetch-job
+        fetch-job-from-uuid
         (fn fetch-job [job-uuid]
           (let [job (fetch-job-map db framework-id job-uuid)
                 groups (mapv fetch-group (:groups job))]
+            (assoc job :groups groups)))
+        fetch-job-from-entity
+        (fn fetch-job [job-ent]
+          (let [job (fetch-job-map-from-entity db framework-id job-ent)
+                groups (mapv fetch-group (:groups job))]
             (assoc job :groups groups)))]
-
-    (mapv fetch-job (::jobs ctx))))
+    (concat
+      (when-let [entities (::jobs-entities ctx)]
+        (mapv fetch-job-from-entity entities))
+      (when-let [uuids (::jobs ctx)]
+        (mapv fetch-job-from-uuid uuids)))))
 
 (defn render-instances-for-response
   [conn framework-id ctx]
@@ -1290,14 +1299,9 @@
       (histograms/update! list-response-job-count (count job-ents))
       job-ents)))
 
-(defn list-jobs
-  "Queries using the params from ctx and returns the job uuids that were found"
-  [db include-custom-executor? ctx]
-  (map :job/uuid (list-jobents db include-custom-executor? ctx)))
-
 (defn jobs-list-exist?
   [conn ctx]
-  [true {::jobs (list-jobs (d/db conn) true ctx)}])
+  [true {::jobs-entities (list-jobents (d/db conn) true ctx)}])
 
 (defn read-jobs-handler
   [conn is-authorized-fn resource-attrs]
