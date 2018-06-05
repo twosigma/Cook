@@ -77,26 +77,28 @@
   "Transacts the latest aggregated task-id->sandbox to datomic.
    No more than batch-size facts are updated in individual datomic transactions."
   [datomic-conn batch-size task-id->sandbox-agent]
-  (let [task-id->sandbox @task-id->sandbox-agent]
-    (log/info "Publishing" (count task-id->sandbox) "instance sandbox directories")
-    (histograms/update! sandbox-updater-pending-entries (count task-id->sandbox))
+  (let [task-id->sandbox @task-id->sandbox-agent
+        task-count (count task-id->sandbox)]
+    (histograms/update! sandbox-updater-pending-entries task-count)
     (meters/mark! sandbox-updater-publish-rate)
-    (timers/time!
-      sandbox-updater-publish-duration
-      (doseq [task-id->sandbox-partition (partition-all batch-size task-id->sandbox)]
-        (try
-          (letfn [(build-sandbox-txns [[task-id sandbox]]
-                    [:db/add [:instance/task-id task-id] :instance/sandbox-directory sandbox])]
-            (let [txns (map build-sandbox-txns task-id->sandbox-partition)]
-              (when (seq txns)
-                (log/info "Inserting" (count txns) "facts in sandbox state update")
-                (meters/mark! sandbox-updater-tx-rate)
-                (timers/time!
-                  sandbox-updater-tx-duration
-                  @(d/transact datomic-conn txns)))))
-          (send task-id->sandbox-agent clear-agent-state task-id->sandbox-partition)
-          (catch Exception e
-            (log/error e "Sandbox batch update error")))))
+    (when (pos? task-count)
+      (log/info "Publishing" task-count "instance sandbox directories")
+      (timers/time!
+        sandbox-updater-publish-duration
+        (doseq [task-id->sandbox-partition (partition-all batch-size task-id->sandbox)]
+          (try
+            (letfn [(build-sandbox-txns [[task-id sandbox]]
+                      [:db/add [:instance/task-id task-id] :instance/sandbox-directory sandbox])]
+              (let [txns (map build-sandbox-txns task-id->sandbox-partition)]
+                (when (seq txns)
+                  (log/info "Inserting" (count txns) "facts in sandbox state update")
+                  (meters/mark! sandbox-updater-tx-rate)
+                  (timers/time!
+                    sandbox-updater-tx-duration
+                    @(d/transact datomic-conn txns)))))
+            (send task-id->sandbox-agent clear-agent-state task-id->sandbox-partition)
+            (catch Exception e
+              (log/error e "Sandbox batch update error"))))))
     {}))
 
 (defn retrieve-sandbox-directories-on-agent
@@ -266,7 +268,6 @@
   (chime/chime-at
     (periodic/periodic-seq (time/now) (time/millis publish-interval-ms))
     (fn sandbox-publisher-task [_]
-      (log/info "Requesting publishing of instance sandbox directories")
       (publish-sandbox-to-datomic! datomic-conn publish-batch-size task-id->sandbox-agent))
     {:error-handler (fn sandbox-publisher-error-handler [ex]
                       (log/error ex "Instance sandbox directory publish failed"))}))
