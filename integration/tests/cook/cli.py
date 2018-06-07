@@ -138,6 +138,27 @@ def wait(uuids=None, cook_url=None, flags=None, wait_flags=None, stdin=None):
     return cp
 
 
+def write_json(path, config):
+    """Writes the given config map as JSON to the given path."""
+    with open(path, 'w') as outfile:
+        logger.info('echo \'%s\' > %s' % (json.dumps(config), path))
+        json.dump(config, outfile)
+
+
+def basic_auth_config():
+    """Returns a config map with HTTP basic auth configured."""
+    config = {'http': {'auth': {'type': 'basic',
+                                'basic': {'user': 'foo',
+                                          'pass': 'bar'}}}}
+    return config
+
+
+def base_config():
+    """Returns a "base" config map that can be added to."""
+    config = basic_auth_config() if util.http_basic_auth_enabled() else {}
+    return config
+
+
 class temp_config_file:
     """
     A context manager used to generate and subsequently delete a temporary 
@@ -152,11 +173,22 @@ class temp_config_file:
         else:
             self.config = config
 
+    def deep_merge(self, a, b):
+        """Merges a and b, letting b win if there is a conflict"""
+        merged = a.copy()
+        for key in b:
+            b_value = b[key]
+            merged[key] = b_value
+            if key in a:
+                a_value = a[key]
+                if isinstance(a_value, dict) and isinstance(b_value, dict):
+                    merged[key] = self.deep_merge(a_value, b_value)
+        return merged
+
     def write_temp_json(self):
         path = tempfile.NamedTemporaryFile(delete=False).name
-        with open(path, 'w') as outfile:
-            logger.info('echo \'%s\' > %s' % (json.dumps(self.config), path))
-            json.dump(self.config, outfile)
+        config = self.deep_merge(base_config(), self.config)
+        write_json(path, config)
         return path
 
     def __enter__(self):
