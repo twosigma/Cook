@@ -29,7 +29,9 @@ class MultiUserCookTest(unittest.TestCase):
         try:
             self.assertEqual(resp.status_code, 201, resp.text)
             with user2:
-                util.kill_jobs(self.cook_url, [job_uuid], expected_status_code=403)
+                resp = util.kill_jobs(self.cook_url, [job_uuid], expected_status_code=403)
+                self.assertEqual(f'You are not authorized to kill the following jobs: {job_uuid}',
+                                 resp.json()['error'])
             with user1:
                 util.kill_jobs(self.cook_url, [job_uuid])
             job = util.wait_for_job(self.cook_url, job_uuid, 'completed')

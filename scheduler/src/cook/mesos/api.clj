@@ -1088,17 +1088,28 @@
         request-method (get-in ctx [:request :request-method])]
     (is-authorized-fn request-user request-method impersonator {:owner job-user :item :job})))
 
+(defn- job-uuids-from-context
+  [conn ctx]
+  (or (::jobs ctx)
+      (::jobs (second (retrieve-jobs conn ctx)))))
+
 (defn job-request-allowed?
-  ([conn is-authorized-fn ctx uuids]
+  ([conn is-authorized-fn ctx uuids action]
    (let [authorized? (partial user-authorized-for-job? conn is-authorized-fn ctx)]
      (if (every? authorized? uuids)
        [true {}]
-       [false {::error (str "You are not authorized to view access the following jobs "
+       [false {::error (str "You are not authorized to " action " the following jobs: "
                             (str/join \space (remove authorized? uuids)))}])))
+  ([conn is-authorized-fn ctx uuids]
+    (job-request-allowed? conn is-authorized-fn ctx uuids "view / access"))
   ([conn is-authorized-fn ctx]
-   (let [uuids (or (::jobs ctx)
-                   (::jobs (second (retrieve-jobs conn ctx))))]
+   (let [uuids (job-uuids-from-context conn ctx)]
      (job-request-allowed? conn is-authorized-fn ctx uuids))))
+
+(defn- job-kill-allowed?
+  [conn is-authorized-fn ctx]
+  (let [uuids (job-uuids-from-context conn ctx)]
+    (job-request-allowed? conn is-authorized-fn ctx uuids "kill")))
 
 (defn instance-request-allowed?
   [conn is-authorized-fn ctx]
@@ -1356,7 +1367,7 @@
   (base-cook-handler
     {:allowed-methods [:delete]
      :malformed? check-job-params-present
-     :allowed? (partial job-request-allowed? conn is-authorized-fn)
+     :allowed? (partial job-kill-allowed? conn is-authorized-fn)
      :exists? (partial retrieve-jobs conn)
      :delete! (fn [ctx]
                 (cook.mesos/kill-job conn (::jobs-requested ctx))
