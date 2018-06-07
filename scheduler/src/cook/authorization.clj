@@ -113,6 +113,14 @@
   ([settings user verb object]
    true))
 
+(defn open-auth-no-job-killing
+  "This authorization function allows any user to do anything to any
+  object, except killing a job. It is intended for testing and development."
+  ([user verb object]
+   (open-auth {} user verb object))
+  ([_ _ verb object]
+   (not (and (= :delete verb) (= :job (:item object))))))
+
 (defn configfile-admins-auth
   "This authorization function consults the set of usernames specified
   in the :admins key of the :authorization-config section of the config file.
