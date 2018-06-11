@@ -10,7 +10,7 @@ from tests.cook import mesos, util
 @unittest.skipUnless(util.multi_user_tests_enabled(), 'Requires using multi-user coniguration '
                                                       '(e.g., BasicAuth) for Cook Scheduler')
 @pytest.mark.timeout(util.DEFAULT_TEST_TIMEOUT_SECS)  # individual test timeout
-class MultiUserCookTest(unittest.TestCase):
+class MultiUserCookTest(util.CookTest):
 
     @classmethod
     def setUpClass(cls):
@@ -72,6 +72,8 @@ class MultiUserCookTest(unittest.TestCase):
                                                          max_retries=2, **job_resources)
                         self.assertEqual(resp.status_code, 201, resp.content)
                         all_job_uuids.append(job_uuid)
+                        job = util.load_job(self.cook_url, job_uuid)
+                        self.assertEqual(user.name, job['user'], job)
             # Don't query until the jobs are all running
             util.wait_for_jobs(self.cook_url, all_job_uuids, 'running')
             # Check the usage for each of our users
@@ -127,7 +129,7 @@ class MultiUserCookTest(unittest.TestCase):
                 all_job_uuids.append(job_uuid)
             # Reset user's quota back to default, then user can submit jobs again
             with admin:
-                resp = util.reset_limit(self.cook_url, 'quota', user.name)
+                resp = util.reset_limit(self.cook_url, 'quota', user.name, reason=self.current_name())
                 self.assertEqual(resp.status_code, 204, resp.text)
             with user:
                 job_uuid, resp = util.submit_job(self.cook_url)
@@ -140,7 +142,7 @@ class MultiUserCookTest(unittest.TestCase):
         finally:
             with admin:
                 util.kill_jobs(self.cook_url, all_job_uuids)
-                util.reset_limit(self.cook_url, 'quota', user.name)
+                util.reset_limit(self.cook_url, 'quota', user.name, reason=self.current_name())
 
     def test_job_mem_quota(self):
         admin = self.user_factory.admin()
@@ -166,7 +168,7 @@ class MultiUserCookTest(unittest.TestCase):
                 all_job_uuids.append(job_uuid)
             # Reset user's quota back to default, then user can submit jobs again
             with admin:
-                resp = util.reset_limit(self.cook_url, 'quota', user.name)
+                resp = util.reset_limit(self.cook_url, 'quota', user.name, reason=self.current_name())
                 self.assertEqual(resp.status_code, 204, resp.text)
             with user:
                 job_uuid, resp = util.submit_job(self.cook_url)
@@ -179,7 +181,7 @@ class MultiUserCookTest(unittest.TestCase):
         finally:
             with admin:
                 util.kill_jobs(self.cook_url, all_job_uuids)
-                util.reset_limit(self.cook_url, 'quota', user.name)
+                util.reset_limit(self.cook_url, 'quota', user.name, reason=self.current_name())
 
     def test_job_count_quota(self):
         admin = self.user_factory.admin()
@@ -195,7 +197,7 @@ class MultiUserCookTest(unittest.TestCase):
                 self.assertEqual(resp.status_code, 422, msg=resp.text)
             # Reset user's quota back to default, then user can submit jobs again
             with admin:
-                resp = util.reset_limit(self.cook_url, 'quota', user.name)
+                resp = util.reset_limit(self.cook_url, 'quota', user.name, reason=self.current_name())
                 self.assertEqual(resp.status_code, 204, resp.text)
             with user:
                 job_uuid, resp = util.submit_job(self.cook_url)
@@ -208,4 +210,4 @@ class MultiUserCookTest(unittest.TestCase):
         finally:
             with admin:
                 util.kill_jobs(self.cook_url, all_job_uuids)
-                util.reset_limit(self.cook_url, 'quota', user.name)
+                util.reset_limit(self.cook_url, 'quota', user.name, reason=self.current_name())

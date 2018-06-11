@@ -10,7 +10,7 @@ from tests.cook import util
 @unittest.skipUnless(util.multi_user_tests_enabled(), 'Requires using multi-user coniguration (e.g., BasicAuth) for '
                                                       'Cook Scheduler')
 @pytest.mark.timeout(util.DEFAULT_TEST_TIMEOUT_SECS)  # individual test timeout
-class ImpersonationCookTest(unittest.TestCase):
+class ImpersonationCookTest(util.CookTest):
 
     @classmethod
     def setUpClass(cls):
@@ -64,6 +64,7 @@ class ImpersonationCookTest(unittest.TestCase):
                 job_uuid, resp = util.submit_job(self.cook_url, command='sleep 1')
                 self.assertEqual(resp.status_code, 201, resp.text)
                 job_uuids.append(job_uuid)
+                util.reset_limit(self.cook_url, 'quota', user1.name, reason=self.current_name())
             # users can create jobs
             with user1:
                 job_uuid, resp = util.submit_job(self.cook_url, command='sleep 1')
@@ -88,13 +89,13 @@ class ImpersonationCookTest(unittest.TestCase):
             resp = util.set_limit(self.cook_url, 'quota', user1.name, cpus=20)
             self.assertEqual(resp.status_code, 201, resp.text)
             # reset user quota back to default
-            resp = util.reset_limit(self.cook_url, 'quota', user1.name)
+            resp = util.reset_limit(self.cook_url, 'quota', user1.name, reason=self.current_name())
             self.assertEqual(resp.status_code, 204, resp.text)
             # set user share
             resp = util.set_limit(self.cook_url, 'share', user1.name, cpus=10)
             self.assertEqual(resp.status_code, 201, resp.text)
             # reset user share back to default
-            resp = util.reset_limit(self.cook_url, 'share', user1.name)
+            resp = util.reset_limit(self.cook_url, 'share', user1.name, reason=self.current_name())
             self.assertEqual(resp.status_code, 204, resp.text)
         # impersonator cannot indirectly do admin things
         with self.poser.impersonating(self.admin):
@@ -105,11 +106,11 @@ class ImpersonationCookTest(unittest.TestCase):
             resp = util.set_limit(self.cook_url, 'quota', user1.name, cpus=20)
             self.assertEqual(resp.status_code, 403, resp.text)
             # reset user quota back to default
-            resp = util.reset_limit(self.cook_url, 'quota', user1.name)
+            resp = util.reset_limit(self.cook_url, 'quota', user1.name, reason=self.current_name())
             self.assertEqual(resp.status_code, 403, resp.text)
             # set user share
             resp = util.set_limit(self.cook_url, 'share', user1.name, cpus=10)
             self.assertEqual(resp.status_code, 403, resp.text)
             # reset user share back to default
-            resp = util.reset_limit(self.cook_url, 'share', user1.name)
+            resp = util.reset_limit(self.cook_url, 'share', user1.name, reason=self.current_name())
             self.assertEqual(resp.status_code, 403, resp.text)
