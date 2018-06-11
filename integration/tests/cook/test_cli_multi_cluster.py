@@ -20,7 +20,7 @@ class MultiCookCliTest(unittest.TestCase):
         cls.cook_url_1 = util.retrieve_cook_url()
         cls.cook_url_2 = util.retrieve_cook_url('COOK_SCHEDULER_URL_2', 'http://localhost:22321')
         util.init_cook_session(cls.cook_url_1, cls.cook_url_2)
-        cli.write_json('.cs.json', cli.base_config())
+        cli.write_base_config()
 
     def setUp(self):
         self.cook_url_1 = type(self).cook_url_1

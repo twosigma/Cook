@@ -159,6 +159,17 @@ def base_config():
     return config
 
 
+def write_base_config():
+    """If HTTP basic auth is enabled, creates the needed auth config"""
+    if util.http_basic_auth_enabled():
+        write_json(os.path.abspath('.cs.json'), basic_auth_config())
+        cp = config_get('http.auth.basic.user', '--verbose')
+        auth_user = stdout(cp)
+        logging.debug(decode(cp.stderr))
+        logging.info(f'Auth user is {auth_user}')
+        assert 'foo' == auth_user
+
+
 class temp_config_file:
     """
     A context manager used to generate and subsequently delete a temporary 

@@ -24,7 +24,7 @@ class CookCliTest(unittest.TestCase):
     def setUpClass(cls):
         cls.cook_url = util.retrieve_cook_url()
         util.init_cook_session(cls.cook_url)
-        cli.write_json('.cs.json', cli.base_config())
+        cli.write_base_config()
 
     def current_name(self):
         """Returns the name of the currently running test function"""
