@@ -712,10 +712,12 @@ def wait_for_sandbox_directory(cook_url, job_id):
                 else:
                     logger.info(
                         f"Job {job_id} instance {inst['task_id']} has sandbox directory {inst['sandbox_directory']}.")
-                    job['instance-with-sandbox'] = inst
                     return True
 
-    return wait_until(query, predicate, max_wait_ms=max_wait_ms, wait_interval_ms=250)['instance-with-sandbox']
+    job = wait_until(query, predicate, max_wait_ms=max_wait_ms, wait_interval_ms=250)
+    for inst in job['instances']:
+        if 'sandbox_directory' in inst:
+            return inst
 
 
 def wait_for_end_time(cook_url, job_id, max_wait_ms=DEFAULT_TIMEOUT_MS):
