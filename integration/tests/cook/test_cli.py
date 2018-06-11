@@ -286,8 +286,8 @@ class CookCliTest(unittest.TestCase):
     def test_assume_http_if_elided(self):
         url = urlparse(self.cook_url)
         url_sans_scheme = url.netloc
-        cp, uuids = cli.submit('ls', url_sans_scheme)
-        self.assertEqual(0, cp.returncode, cp.stderr)
+        cp, uuids = cli.submit('ls', url_sans_scheme, flags='--verbose')
+        self.assertEqual(0, cp.returncode, cli.output(cp))
 
     def test_double_dash_for_end_of_options(self):
         # Double-dash for 'end of options'
