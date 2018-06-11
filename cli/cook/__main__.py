@@ -36,6 +36,4 @@ def sigint_handler(_, __):
 signal.signal(signal.SIGINT, sigint_handler)
 
 if __name__ == '__main__':
-    import requests
-    http.inject_http_modules(requests, requests.adapters)
     main()
