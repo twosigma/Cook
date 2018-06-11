@@ -837,12 +837,11 @@
             progress-message (assoc :progress_message progress-message)
             sandbox-directory (assoc :sandbox_directory sandbox-directory))))
 
-(defn fetch-job-map
-  [db framework-id job-uuid]
+(defn fetch-job-map-from-entity
+  [db framework-id job]
   (timers/time!
     (timers/timer ["cook-mesos" "internal" "fetch-job-map"])
-    (let [job (d/entity db [:job/uuid job-uuid])
-          resources (util/job-ent->resources job)
+    (let [resources (util/job-ent->resources job)
           groups (:group/_job job)
           application (:job/application job)
           expected-runtime (:job/expected-runtime job)
@@ -890,6 +889,10 @@
               progress-output-file (assoc :progress-output-file progress-output-file)
               progress-regex-string (assoc :progress-regex-string progress-regex-string)
               pool (assoc :pool (:pool/name pool))))))
+
+(defn fetch-job-map
+  [db framework-id job-uuid]
+  (fetch-job-map-from-entity db framework-id (d/entity db [:job/uuid job-uuid])))
 
 (defn fetch-group-live-jobs
   "Get all jobs from a group that are currently running or waiting (not complete)"
@@ -1127,22 +1130,31 @@
   (mapv (partial fetch-job-map (db conn) framework-id) (::jobs ctx)))
 
 (defn render-jobs-for-response
+  "This rendes for response. Fills in in :group UUID's and names as well as map-ifies jobs
+  It will examine the ctx for ::jobs (containing UUID's) or ::job-entities (containing
+  datomic job entities) and return the merged set."
   [conn framework-id ctx]
   (let [db (db conn)
-
         fetch-group
         (fn fetch-group [group-uuid]
           (let [group (d/entity db [:group/uuid (UUID/fromString group-uuid)])]
             {:uuid group-uuid
              :name (:group/name group)}))
-
-        fetch-job
+        fetch-job-from-uuid
         (fn fetch-job [job-uuid]
           (let [job (fetch-job-map db framework-id job-uuid)
                 groups (mapv fetch-group (:groups job))]
+            (assoc job :groups groups)))
+        fetch-job-from-entity
+        (fn fetch-job [job-ent]
+          (let [job (fetch-job-map-from-entity db framework-id job-ent)
+                groups (mapv fetch-group (:groups job))]
             (assoc job :groups groups)))]
-
-    (mapv fetch-job (::jobs ctx))))
+    (concat
+      (when-let [entities (::jobs-entities ctx)]
+        (mapv fetch-job-from-entity entities))
+      (when-let [uuids (::jobs ctx)]
+        (mapv fetch-job-from-uuid uuids)))))
 
 (defn render-instances-for-response
   [conn framework-id ctx]
@@ -1269,7 +1281,7 @@
 (histograms/defhistogram [cook-mesos api list-response-job-count])
 
 (defn list-jobs
-  "Queries using the params from ctx and returns the job uuids that were found"
+  "Queries using the params from ctx and returns the jobs that were found as datomic entities."
   [db include-custom-executor? ctx]
   (timers/time!
     list-endpoint
@@ -1284,24 +1296,23 @@
           start-ms' (or start-ms (- end-ms (-> since-hours-ago t/hours t/in-millis)))
           start (Date. ^long start-ms')
           end (Date. ^long end-ms)
-          job-uuids (->> (timers/time!
+          job-ents (->> (timers/time!
                            fetch-jobs
                            (util/get-jobs-by-user-and-states db user states start end limit
                                                              name-filter-fn include-custom-executor? pool-name))
                          (sort-by :job/submit-time)
-                         reverse
-                         (map :job/uuid))
-          job-uuids (if (nil? limit)
-                      job-uuids
-                      (take limit job-uuids))]
+                         reverse)
+          job-ents (if (nil? limit)
+                      job-ents
+                      (take limit job-ents))]
       (histograms/update! list-request-param-time-range-ms (- end-ms start-ms'))
       (histograms/update! list-request-param-limit limit)
-      (histograms/update! list-response-job-count (count job-uuids))
-      job-uuids)))
+      (histograms/update! list-response-job-count (count job-ents))
+      job-ents)))
 
 (defn jobs-list-exist?
   [conn ctx]
-  [true {::jobs (list-jobs (d/db conn) true ctx)}])
+  [true {::jobs-entities (list-jobs (d/db conn) true ctx)}])
 
 (defn read-jobs-handler
   [conn is-authorized-fn resource-attrs]
@@ -2296,8 +2307,8 @@
     :handle-ok (fn [ctx]
                  (timers/time!
                    (timers/timer ["cook-scheduler" "handler" "list-endpoint-duration"])
-                   (let [job-uuids (list-jobs db false ctx)]
-                     (mapv (partial fetch-job-map db framework-id) job-uuids))))))
+                   (let [job-ents (list-jobs db false ctx)]
+                     (mapv (partial fetch-job-map-from-entity db framework-id) job-ents))))))
 
 ;;
 ;; /unscheduled_jobs
