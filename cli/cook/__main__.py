@@ -5,7 +5,7 @@ import logging
 import signal
 import sys
 
-from cook import util
+from cook import util, http
 from cook.cli import run
 from cook.util import print_error
 
@@ -36,4 +36,6 @@ def sigint_handler(_, __):
 signal.signal(signal.SIGINT, sigint_handler)
 
 if __name__ == '__main__':
+    import requests
+    http.inject_http_modules(requests, requests.adapters)
     main()
