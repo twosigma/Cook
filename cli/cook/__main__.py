@@ -5,7 +5,7 @@ import logging
 import signal
 import sys
 
-from cook import util, http
+from cook import util
 from cook.cli import run
 from cook.util import print_error
 
