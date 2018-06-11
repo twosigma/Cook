@@ -787,13 +787,16 @@ def wait_for_output_url(cook_url, job_uuid):
         return load_job(cook_url, job_uuid, assert_response=False)
 
     def predicate(job):
-        if 'output_url' in job['instances'][0]:
-            return True
-        else:
-            logger.info(f"Job {job['uuid']} had no output_url")
+        for instance in job['instances']:
+            if 'output_url' in instance:
+                return True
+            else:
+                logger.info(f"Job {job['uuid']} instance {instance['task_id']} had no output_url")
 
-    response = wait_until(query, predicate)
-    return response['instances'][0]
+    job = wait_until(query, predicate)
+    for instance in job['instances']:
+        if 'output_url' in instance:
+            return instance
 
 
 def list_jobs(cook_url, **kwargs):
