@@ -358,7 +358,8 @@
      :api-only? (fnk [[:config {api-only? false}]]
                   api-only?)
      :estimated-completion-constraint (fnk [[:config {estimated-completion-constraint nil}]]
-                                           estimated-completion-constraint)}))
+                                           (merge {:agent-start-grace-period-mins 10}
+                                                  estimated-completion-constraint))}))
 
 (defn read-config
   "Given a config file path, reads the config and returns the map"

@@ -194,7 +194,8 @@
 
   (let [conn (restore-fresh-database! "datomic:mem://test-estimated-completion-constraint")]
     (with-redefs [config/estimated-completion-config (constantly {:expected-runtime-multiplier 1.2
-                                                                  :host-lifetime-mins 60})
+                                                                  :host-lifetime-mins 60
+                                                                  :agent-start-grace-period-mins 10})
                   t/now (constantly (DateTime. 0))]
       (let [job-id (create-dummy-job conn)
             job (util/job-ent->map (d/entity (d/db conn) job-id))]
@@ -247,6 +248,23 @@
             job (util/job-ent->map (d/entity (d/db conn) job-id))
             constraint (constraints/build-estimated-completion-constraint job)]
         (is (= 1200 (:estimated-end-time constraint)))
+        (is (= 60 (:host-lifetime-mins constraint))))
+
+      (let [job-id (create-dummy-job conn :expected-runtime (* 90 60 1000))
+            job (util/job-ent->map (d/entity (d/db conn) job-id))
+            constraint (constraints/build-estimated-completion-constraint job)]
+        (is (= (* 50 1000 60) (:estimated-end-time constraint)))
+        (is (= 60 (:host-lifetime-mins constraint))))
+
+      (let [instance-duration (* 59 60 1000)
+            instance {:instance-status :instance.status/failed
+                      :reason :mesos-slave-removed
+                      :mesos-start-time (Date. 0)
+                      :end-time (Date. instance-duration)}
+            [job-id _] (create-dummy-job-with-instances conn :expected-runtime (+ instance-duration 10) :instances [instance])
+            job (util/job-ent->map (d/entity (d/db conn) job-id))
+            constraint (constraints/build-estimated-completion-constraint job)]
+        (is (= instance-duration (:estimated-end-time constraint)))
         (is (= 60 (:host-lifetime-mins constraint)))))))
 
 (deftest test-estimated-completion-constraint

@@ -187,7 +187,7 @@
    - :job/expected-runtime
    - the runtimes of all failed instances with :mesos-slave-removed as the reason"
   [{:keys [job/expected-runtime job/instance]}]
-  (let [{:keys [expected-runtime-multiplier host-lifetime-mins]} (config/estimated-completion-config)]
+  (let [{:keys [expected-runtime-multiplier host-lifetime-mins agent-start-grace-period-mins]} (config/estimated-completion-config)]
     (when (and expected-runtime-multiplier host-lifetime-mins)
       (let [agent-removed-failures (filter #(= :mesos-slave-removed (get-in % [:instance/reason :reason/name]))
                                            instance)
@@ -195,7 +195,10 @@
             scaled-expected-runtime (if expected-runtime
                                       (long (* expected-runtime expected-runtime-multiplier))
                                       0)
-            max-expected-runtime (apply max (conj agent-removed-runtimes scaled-expected-runtime))
+            capped-expected-runtime (min scaled-expected-runtime (-> host-lifetime-mins
+                                                                     (- agent-start-grace-period-mins)
+                                                                     (* 1000 60)))
+            max-expected-runtime (apply max (conj agent-removed-runtimes capped-expected-runtime))
             expected-end-time (+ (.getMillis (t/now)) max-expected-runtime)]
         (when (< 0 max-expected-runtime)
           (->estimated-completion-constraint expected-end-time host-lifetime-mins))))))

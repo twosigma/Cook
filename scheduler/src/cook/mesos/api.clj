@@ -32,6 +32,7 @@
             [cook.mesos.pool :as pool]
             [cook.mesos.quota :as quota]
             [cook.mesos.reason :as reason]
+            [cook.mesos.scheduler :as sched]
             [cook.mesos.schema :refer [constraint-operators host-placement-types straggler-handling-types]]
             [cook.mesos.share :as share]
             [cook.mesos.task-stats :as task-stats]
@@ -1370,7 +1371,7 @@
      :allowed? (partial job-kill-allowed? conn is-authorized-fn)
      :exists? (partial retrieve-jobs conn)
      :delete! (fn [ctx]
-                (cook.mesos/kill-job conn (::jobs-requested ctx))
+                (sched/kill-jobs conn (::jobs-requested ctx))
                 (cook.mesos/kill-instances conn (::instances-requested ctx)))}))
 
 (defn vectorize
@@ -1628,7 +1629,7 @@
                 (let [jobs (mapcat #(fetch-group-live-jobs (db conn) %)
                                    (::guuids ctx))
                       juuids (mapv :job/uuid jobs)]
-                  (cook.mesos/kill-job conn juuids)))}))
+                  (sched/kill-jobs conn juuids)))}))
 
 ;;
 ;; /queue

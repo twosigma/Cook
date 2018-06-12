@@ -24,7 +24,7 @@
             [clojure.edn :as edn]
             [clojure.string :as str]
             [clojure.tools.logging :as log]
-            [cook.config :refer (default-fitness-calculator)]
+            [cook.config :as config]
             [cook.datomic :as datomic]
             [cook.mesos.constraints :as constraints]
             [cook.mesos.dru :as dru]
@@ -1278,6 +1278,56 @@
     {:error-handler (fn [e]
                       (log/error e "Failed to kill cancelled tasks!"))}))
 
+(defn kill-jobs
+  "Kills jobs. It works by marking them completed, which will trigger the subscription
+   monitor to attempt to kill any instances"
+  [conn job-uuids]
+  (when (seq job-uuids)
+    (log/info "Killing some jobs!!")
+    (doseq [uuids (partition-all 50 job-uuids)]
+      (async/<!!
+       (datomic/transact-with-retries conn
+                                      (mapv
+                                       (fn [job-uuid]
+                                         [:db/add [:job/uuid job-uuid] :job/state :job.state/completed])
+                                       uuids)
+                                      (into (repeat 10 500) (repeat 10 1000)))))))
+
+(defn kill-estimated-completion-jobs
+  "Kills all jobs in the database which will not be able to launch because of the
+   estimated completion constraint"
+  [conn]
+  (let [{:keys [host-lifetime-mins agent-start-grace-period-mins]} (config/estimated-completion-config)]
+    (when (and host-lifetime-mins agent-start-grace-period-mins)
+      (let [max-runtime-ms (-> host-lifetime-mins
+                               (- agent-start-grace-period-mins)
+                               (* 60 1000))
+            pending-jobs (util/get-pending-job-ents (d/db conn))
+            killable-jobs (filter (fn [{:keys [job/instance]}]
+                                    (some (fn [{:keys [instance/end-time instance/mesos-start-time instance/start-time]}]
+                                            (when end-time
+                                              (let [duration (- (.getTime end-time)
+                                                                (.getTime (or mesos-start-time start-time)))]
+                                                (<= max-runtime-ms duration))))
+                                          instance))
+                                  pending-jobs)
+            killable-job-uuids (map :job/uuid killable-jobs)]
+        (log/info "Killing jobs due to long runtime: " killable-job-uuids)
+        (kill-jobs conn killable-job-uuids)))))
+
+(timers/deftimer [cook-mesos scheduler killing-estimated-completion-duration])
+
+(defn estimated-completion-killer
+  "Every trigger, kill jobs which cannot satisfy the estimated completion constraint"
+  [conn trigger-chan]
+  (util/chime-at-ch
+   trigger-chan
+   (fn estimated-completion-killer-event []
+     (timers/time!
+      killing-estimated-completion-duration
+      (kill-estimated-completion-jobs conn)))
+   {:error-handler (fn [e] (log/error e "Failed to kill estimated completion tasks"))}))
+
 (defn get-user->used-resources
   "Return a map from user'name to his allocated resources, in the form of
    {:cpus cpu :mem mem}
@@ -1501,7 +1551,7 @@
       (disableShortfallEvaluation) ;; We're not using the autoscaling features
       (withLeaseOfferExpirySecs (max (-> offer-incubate-time-ms time/millis time/in-seconds) 1)) ;; should be at least 1 second
       (withRejectAllExpiredOffers)
-      (withFitnessCalculator (config-string->fitness-calculator (or fitness-calculator default-fitness-calculator)))
+      (withFitnessCalculator (config-string->fitness-calculator (or fitness-calculator config/default-fitness-calculator)))
       (withFitnessGoodEnoughFunction (reify Func1
                                        (call [_ fitness]
                                          (> fitness good-enough-fitness))))
