@@ -17,7 +17,6 @@ from tests.cook import cli, util
 
 
 @pytest.mark.cli
-@unittest.skipIf(util.http_basic_auth_enabled(), 'Cook CLI does not currently support HTTP Basic Auth')
 @pytest.mark.timeout(util.DEFAULT_TEST_TIMEOUT_SECS)  # individual test timeout
 class CookCliTest(util.CookTest):
 
@@ -25,6 +24,7 @@ class CookCliTest(util.CookTest):
     def setUpClass(cls):
         cls.cook_url = util.retrieve_cook_url()
         util.init_cook_session(cls.cook_url)
+        cli.write_base_config()
 
     def setUp(self):
         self.cook_url = type(self).cook_url
@@ -281,8 +281,8 @@ class CookCliTest(util.CookTest):
     def test_assume_http_if_elided(self):
         url = urlparse(self.cook_url)
         url_sans_scheme = url.netloc
-        cp, uuids = cli.submit('ls', url_sans_scheme)
-        self.assertEqual(0, cp.returncode, cp.stderr)
+        cp, uuids = cli.submit('ls', url_sans_scheme, flags='--verbose')
+        self.assertEqual(0, cp.returncode, cli.output(cp))
 
     def test_double_dash_for_end_of_options(self):
         # Double-dash for 'end of options'
@@ -508,7 +508,7 @@ class CookCliTest(util.CookTest):
             self.assertIn(success_uuid, uuids)
             self.assertIn(failed_uuid, uuids)
         finally:
-            util.kill_jobs(self.cook_url, jobs=[waiting_uuid, running_uuid])
+            cli.kill([waiting_uuid, running_uuid], self.cook_url)
 
     def test_list_invalid_state(self):
         cp = cli.jobs(self.cook_url, '--foo')
@@ -628,7 +628,7 @@ class CookCliTest(util.CookTest):
             self.assertEqual(1, cp.returncode, cp.stdout)
             self.assertIn('currently has no instances', cli.decode(cp.stderr))
         finally:
-            util.kill_jobs(self.cook_url, uuids)
+            cli.kill(uuids, self.cook_url)
 
     def test_ssh_invalid_uuid(self):
         cp = cli.ssh(uuid.uuid4(), self.cook_url)
@@ -768,7 +768,7 @@ class CookCliTest(util.CookTest):
                 self.assertEqual(f'{start+i+j+1}\n', line.decode())
         finally:
             proc.kill()
-            util.kill_jobs(self.cook_url, jobs=uuids)
+            cli.kill(uuids, self.cook_url)
 
     def test_tail_zero_byte_file(self):
         cp, uuids = cli.submit('touch file.txt', self.cook_url)
@@ -975,6 +975,7 @@ class CookCliTest(util.CookTest):
 
         return util.wait_until(query, lambda out: 'Executor completed execution' in out)
 
+    @unittest.skipIf(util.http_basic_auth_enabled(), 'Cook Executor does not currently support HTTP Basic Auth')
     def test_show_progress_message(self):
         executor = util.get_job_executor_type(self.cook_url)
         line = util.progress_line(self.cook_url, 99, 'We are so close!')
@@ -1003,6 +1004,7 @@ class CookCliTest(util.CookTest):
             self.assertIn('Command exited with status 0', stdout)
             self.assertIn('Executor completed execution', stdout)
 
+    @unittest.skipIf(util.http_basic_auth_enabled(), 'Cook Executor does not currently support HTTP Basic Auth')
     def test_show_progress_message_custom_progress_file(self):
         executor = util.get_job_executor_type(self.cook_url)
         progress_file_env = util.retrieve_progress_file_env(self.cook_url)
@@ -1627,7 +1629,7 @@ class CookCliTest(util.CookTest):
             self.assertEqual(1, cp.returncode, cp.stdout)
             self.assertIn('currently has no instances', cli.decode(cp.stderr))
         finally:
-            util.kill_jobs(self.cook_url, jobs=[waiting_uuid])
+            cli.kill([waiting_uuid], self.cook_url)
 
     def test_cat_with_broken_pipe(self):
         iterations = 20
@@ -1754,7 +1756,7 @@ class CookCliTest(util.CookTest):
             self.assertIn(uuid_8, custom_application_grouped_jobs)
             self.assertIn(uuid_9, custom_application_grouped_jobs)
         finally:
-            util.kill_jobs(self.cook_url, jobs=all_uuids)
+            cli.kill(all_uuids, self.cook_url)
 
     def test_avoid_exit_on_connection_error(self):
         name = uuid.uuid4()

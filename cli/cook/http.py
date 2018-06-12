@@ -42,6 +42,16 @@ def configure(config):
     session = session_module.Session()
     session.mount('http://', http_adapter)
     session.headers['User-Agent'] = f"cs/{cook.version.VERSION} ({session.headers['User-Agent']})"
+    auth_config = http_config.get('auth', None)
+    if auth_config:
+        auth_type = auth_config.get('type')
+        if auth_type == 'basic':
+            basic_auth_config = auth_config.get('basic')
+            user = basic_auth_config.get('user')
+            session.auth = (user, basic_auth_config.get('pass'))
+            logging.debug(f'using http basic auth with user {user}')
+        else:
+            raise Exception(f'Encountered unsupported authentication type "{auth_type}".')
 
 
 def __post(url, json_body):
