@@ -38,7 +38,9 @@ def configure(config):
         auth_type = auth_config.get('type')
         if auth_type == 'basic':
             basic_auth_config = auth_config.get('basic')
-            session.auth = (basic_auth_config.get('user'), basic_auth_config.get('pass'))
+            user = basic_auth_config.get('user')
+            session.auth = (user, basic_auth_config.get('pass'))
+            logging.debug(f'using http basic auth with user {user}')
         else:
             raise Exception(f'Encountered unsupported authentication type "{auth_type}".')
 
