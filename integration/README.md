@@ -4,6 +4,13 @@ Our integration tests currently require Python 3.6.
 All dependencies are specified in [`requirements.txt`](./requirements.txt),
 and can be installed automatically via `pip`:
 
+Before running these tests, please make sure you've followed the instructions
+in the [Cook Readme](../README.md) Quickstart section. In particular, to run
+the integration tests in docker, you need to have minimesos running, and the
+cook scheduler running within docker. You also need to have 'jq' installed
+for json queries.
+
+
 ```bash
 $ pip install -r requirements.txt
 ```
