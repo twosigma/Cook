@@ -68,7 +68,7 @@
                                 :job.state/running])]
     (->> job-uuids
          (map first)
-         (sched/kill-jobs conn)))
+         (sched/kill-job conn)))
 
   (let [conn (d/connect "datomic:riak://db.example.com:8098/datomic/mesos-jobs?interface=http")]
     (println "testuser" (sched/get-used-quota (db conn) "testuser"))

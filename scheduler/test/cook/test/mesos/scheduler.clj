@@ -24,7 +24,6 @@
             [clojure.string :as str]
             [clojure.tools.logging :as log]
             [clojure.walk :as walk]
-            [cook.config :as config]
             [cook.mesos.heartbeat :as heartbeat]
             [cook.mesos.sandbox :as sandbox]
             [cook.mesos.scheduler :as sched]
@@ -42,7 +41,7 @@
            (com.netflix.fenzo SimpleAssignmentResult TaskAssignmentResult
                               TaskRequest TaskScheduler VMTaskFitnessCalculator)
            (com.netflix.fenzo.plugins BinPackingFitnessCalculators)
-           (java.util Date UUID)
+           (java.util UUID)
            (java.util.concurrent CountDownLatch TimeUnit)
            (org.mockito Mockito)))
 
@@ -2192,7 +2191,7 @@
                       (kill-task! [_ task-id]
                         (swap! killed-tasks #(conj % task-id))))
         driver-ref (ref mock-driver)]
-    (sched/kill-jobs conn [(:job/uuid (d/entity (d/db conn) job-id-1))])
+    (cook.mesos/kill-job conn [(:job/uuid (d/entity (d/db conn) job-id-1))])
     (let [job-ent (d/entity (d/db conn) job-id-1)
           instance-ent (d/entity (d/db conn) instance-id-1)]
       (is (= :job.state/completed (:job/state job-ent)))
@@ -2201,7 +2200,7 @@
           transaction-chan (async/chan (async/sliding-buffer 4096))
           _ (async/tap report-mult transaction-chan)
           kill-fn (cook.mesos.scheduler/monitor-tx-report-queue transaction-chan conn driver-ref)]
-      (sched/kill-jobs conn [(:job/uuid (d/entity (d/db conn) job-id-2))])
+      (cook.mesos/kill-job conn [(:job/uuid (d/entity (d/db conn) job-id-2))])
       (let [expected-tasks-killed [{:value (:instance/task-id (d/entity (d/db conn) instance-id-1))}
                                    {:value (:instance/task-id (d/entity (d/db conn) instance-id-2))}]
             tasks-killed? (fn [] (= expected-tasks-killed @killed-tasks))]
@@ -2253,25 +2252,3 @@
       (is (contains? reconciled-tasks {:task-id {:value (:instance/task-id unknown-instance)}
                                        :state :task-staging
                                        :slave-id {:value (:instance/slave-id unknown-instance)}})))))
-
-(deftest test-kill-estimated-completion-jobs
-  (with-redefs [config/estimated-completion-config (constantly {:host-lifetime-mins 60
-                                                                :agent-start-grace-period-mins 1})]
-    (let [conn (restore-fresh-database! "datomic:mem://test-kill-estimated-completion-jobs")
-          waiting-job-id (create-dummy-job conn :job-state :job.state/waiting
-                                           :expected-runtime (* 70 60 1000))
-          [short-job-id _] (create-dummy-job-with-instances conn :job-state :job.state/waiting
-                                                            :instances [{:start-time (Date. 0)
-                                                                         :end-time (Date. 1000)}
-                                                                        {:mesos-start-time (Date. 2000)
-                                                                         :end-time (Date. 3000)}])
-          [long-running-job-id _] (create-dummy-job-with-instances conn :job-state :job.state/waiting
-                                                                   :instances [{:start-time (Date. 0)
-                                                                                :end-time (Date. 1000)}
-                                                                               {:start-time (Date. 2000)
-                                                                                :end-time (Date. (+ 2000 (* 59 60 1000)))}])]
-      (sched/kill-estimated-completion-jobs conn)
-      (let [db (d/db conn)]
-        (is (= :job.state/waiting (:job/state (d/entity db waiting-job-id))))
-        (is (= :job.state/waiting (:job/state (d/entity db short-job-id))))
-        (is (= :job.state/completed (:job/state (d/entity db long-running-job-id))))))))

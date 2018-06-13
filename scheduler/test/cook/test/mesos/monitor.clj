@@ -16,9 +16,9 @@
 (ns cook.test.mesos.monitor
   (:require [clj-time.core :as time]
             [clojure.test :refer :all]
+            [cook.mesos :as mesos]
             [cook.mesos.api :as api]
             [cook.mesos.monitor :as monitor]
-            [cook.mesos.scheduler :as sched]
             [cook.mesos.share :as share]
             [cook.test.testutil :refer [restore-fresh-database! setup]]
             [datomic.api :as d :refer [db]]
@@ -109,7 +109,7 @@
     (is (= 0 (counter ["hungry" "users"])))
     (is (= 1 (counter ["satisfied" "users"])))
 
-    (sched/kill-jobs conn [(:uuid job1)])
+    (mesos/kill-job conn [(:uuid job1)])
     (monitor/set-stats-counters! (db conn) stats-atom)
     (is (= 0 (counter ["running" "all" "jobs"])))
     (is (= 0 (counter ["running" "all" "cpus"])))
@@ -168,7 +168,7 @@
     (is (= 0 (counter ["hungry" "users"])))
     (is (= 1 (counter ["satisfied" "users"])))
 
-    (sched/kill-jobs conn [(:uuid job2)])
+    (mesos/kill-job conn [(:uuid job2)])
     (monitor/set-stats-counters! (db conn) stats-atom)
     (is (= 0 (counter ["running" "all" "jobs"])))
     (is (= 0 (counter ["running" "all" "cpus"])))

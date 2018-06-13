@@ -150,7 +150,6 @@
                           ch)
               ch))]
     {:cancelled-task-trigger-chan (prepare-trigger-chan (time/seconds 3))
-     :estimated-completion-trigger-chan (prepare-trigger-chan (time/minutes 1))
      :lingering-task-trigger-chan (prepare-trigger-chan (time/minutes timeout-interval-minutes))
      :match-trigger-chan (prepare-trigger-chan (time/seconds 1))
      :optimizer-trigger-chan (prepare-trigger-chan (time/seconds (:optimizer-interval-seconds optimizer-config 10)))
@@ -191,7 +190,7 @@
   (let [{:keys [fenzo-fitness-calculator fenzo-floor-iterations-before-reset fenzo-floor-iterations-before-warn
                 fenzo-max-jobs-considered fenzo-scaleback good-enough-fitness]} fenzo-config
         {:keys [cancelled-task-trigger-chan lingering-task-trigger-chan optimizer-trigger-chan
-                rebalancer-trigger-chan straggler-trigger-chan estimated-completion-trigger-chan]} trigger-chans
+                rebalancer-trigger-chan straggler-trigger-chan]} trigger-chans
         {:keys [hostname server-port server-https-port]} server-config
         datomic-report-chan (async/chan (async/sliding-buffer 4096))
         mesos-heartbeat-chan (async/chan (async/buffer 4096))
@@ -240,7 +239,6 @@
                                     (cook.mesos.scheduler/lingering-task-killer mesos-datomic-conn driver task-constraints lingering-task-trigger-chan)
                                     (cook.mesos.scheduler/straggler-handler mesos-datomic-conn driver straggler-trigger-chan)
                                     (cook.mesos.scheduler/cancelled-task-killer mesos-datomic-conn driver cancelled-task-trigger-chan)
-                                    (cook.mesos.scheduler/estimated-completion-killer mesos-datomic-conn estimated-completion-trigger-chan)
                                     (cook.mesos.heartbeat/start-heartbeat-watcher! mesos-datomic-conn mesos-heartbeat-chan)
                                     (cook.mesos.rebalancer/start-rebalancer! {:config rebalancer-config
                                                                               :conn mesos-datomic-conn
@@ -300,6 +298,21 @@
      :driver current-driver
      :leader-selector leader-selector
      :framework-id framework-id}))
+
+(defn kill-job
+  "Kills jobs. It works by marking them completed, which will trigger the subscription
+   monitor to attempt to kill any instances"
+  [conn job-uuids]
+  (when (seq job-uuids)
+    (log/info "Killing some jobs!!")
+    (doseq [uuids (partition-all 50 job-uuids)]
+      (async/<!!
+        (transact-with-retries conn
+                               (mapv
+                                 (fn [job-uuid]
+                                   [:db/add [:job/uuid job-uuid] :job/state :job.state/completed])
+                                 uuids)
+                               (into (repeat 10 500) (repeat 10 1000)))))))
 
 (defn kill-instances
   "Kills instances.  Marks them as cancelled in datomic;
