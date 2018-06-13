@@ -195,11 +195,14 @@
             scaled-expected-runtime (if expected-runtime
                                       (long (* expected-runtime expected-runtime-multiplier))
                                       0)
-            capped-expected-runtime (min scaled-expected-runtime (-> host-lifetime-mins
-                                                                     (- agent-start-grace-period-mins)
-                                                                     (* 1000 60)))
-            max-expected-runtime (apply max (conj agent-removed-runtimes capped-expected-runtime))
-            expected-end-time (+ (.getMillis (t/now)) max-expected-runtime)]
+            max-expected-runtime (apply max (conj agent-removed-runtimes scaled-expected-runtime))
+            ; If a job has run "nearly" the entire lifetime of a host (host-lifetime-mins - agent-start-grace-period-mins)
+            ; then accept any host that has been alive for less than agent-start-grace-period-mins
+            longest-reasonable-runtime (-> host-lifetime-mins
+                                           (- agent-start-grace-period-mins)
+                                           (* 1000 60))
+            capped-expected-runtime (min max-expected-runtime longest-reasonable-runtime)
+            expected-end-time (+ (.getMillis (t/now)) capped-expected-runtime)]
         (when (< 0 max-expected-runtime)
           (->estimated-completion-constraint expected-end-time host-lifetime-mins))))))
 

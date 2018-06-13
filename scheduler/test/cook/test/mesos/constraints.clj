@@ -264,7 +264,7 @@
             [job-id _] (create-dummy-job-with-instances conn :expected-runtime (+ instance-duration 10) :instances [instance])
             job (util/job-ent->map (d/entity (d/db conn) job-id))
             constraint (constraints/build-estimated-completion-constraint job)]
-        (is (= instance-duration (:estimated-end-time constraint)))
+        (is (= (* 50 1000 60) (:estimated-end-time constraint)))
         (is (= 60 (:host-lifetime-mins constraint)))))))
 
 (deftest test-estimated-completion-constraint
