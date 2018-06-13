@@ -101,7 +101,7 @@
    Parameters:
    get-queue -- fn, no args fn that returns ordered list of jobs to run
    get-running -- fn, no args fn that returns a set of tasks running
-   get-offers -- fn, no args fn that returns a set of offers
+   get-offers -- fn, 1 arg fn that takes a pool keyword and returns a set of offers in that pool
    host-feed -- instance of HostFeed
    optimizer -- instance of Optimizer
    interval -- joda-time period
@@ -110,7 +110,9 @@
   [get-queue get-running get-offers host-feed optimizer]
   (let [queue (future (get-queue))
         running (future (get-running))
-        offers (future (get-offers))
+        ; This should be changed to call get-offers.
+        ; For now, the integration of the optimizer with pools is not yet clear.
+        offers (future [])
         host-infos (get-available-host-info host-feed)
         _ (s/validate [HostInfo] host-infos)
         schedule (produce-schedule optimizer @queue @running @offers host-infos)]

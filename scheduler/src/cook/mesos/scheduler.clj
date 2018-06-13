@@ -1643,7 +1643,7 @@
         (log/debug "Got offers:" offers)
         (let [pool->offers (group-by (fn [o]
                                        (or
-                                         (->> o :attributes (filter #(= "cook-pool" (:name %))) first :value-text)
+                                         (->> o :attributes (filter #(= "cook-pool" (:name %))) first :text)
                                          "no-pool"))
                                      offers)]
           (log/info "Offers by pool:" (pc/map-vals count pool->offers))
