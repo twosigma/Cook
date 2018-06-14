@@ -318,13 +318,10 @@ def retrieve_mesos_url(varname='MESOS_PORT', value='5050'):
     mesos_url = os.getenv('COOK_MESOS_LEADER_URL')
     if mesos_url is None:
         mesos_port = os.getenv(varname, value)
-        cook_url = retrieve_cook_url()
-        _wait_for_cook(cook_url)
-        mesos_master_hosts = settings(cook_url).get('mesos-master-hosts', ['localhost'])
-        resp = session.get('http://%s:%s/redirect' % (mesos_master_hosts[0], mesos_port), allow_redirects=False)
+        resp = session.get(f'http://localhost:{mesos_port}/redirect', allow_redirects=False)
         if resp.status_code != 307:
-            raise RuntimeError('Unable to find mesos leader, redirect endpoint returned %d' % resp.status_code)
-        mesos_url = 'http:%s' % resp.headers['Location']
+            raise RuntimeError(f'Unable to find mesos leader, redirect endpoint returned {resp.status_code}')
+        mesos_url = f"http:{resp.headers['Location']}"
     logger.info(f'Using mesos url {mesos_url}')
     return mesos_url
 
