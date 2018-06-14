@@ -1,5 +1,6 @@
 (ns cook.mesos.pool
-  (:require [clojure.tools.logging :as log]
+  (:require [clojure.string :as str]
+            [clojure.tools.logging :as log]
             [cook.config :as config]
             [datomic.api :as d])
   (:import [java.util UUID]))
@@ -70,7 +71,7 @@
   (let [pools (all-pools db)
         default-pool-name (config/default-pool)]
     (log/info "Pools in the database:" pools ", default pool:" default-pool-name)
-    (if default-pool-name
+    (if (and default-pool-name (not (str/blank? default-pool-name)))
       (when-not (some #(= default-pool-name (:pool/name %)) pools)
         (throw (ex-info "There is no pool in the database matching the configured default pool"
                         {:pools pools :default-pool-name default-pool-name})))
