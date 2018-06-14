@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.17.3] - 2018-06-14
+### Changed
+- Better authorization failed message on job deletion, from @dposada
+### Fixed
+- Handle edge case in estimated completion constraint, from @pschorf
+
 ## [1.17.2] - 2018-06-01
 ### Fixed
 - Issue where task reconciliation was failing, from @pschorf
