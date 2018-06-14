@@ -260,9 +260,6 @@ Optionally, you can include a "rebalancer" stanza.  If you do, on startup, Cook 
  :max-preemption::
   See the link:rebalancer-config.adoc[Rebalancer documentation]
 
- :min-utilization-threshold::
-  See the link:rebalancer-config.adoc[Rebalancer documentation]
-
 `:dru-scale`::
   This is only used to control the metrics reporting of DRU values.  On some clusters,
   the DRU's may be so small that when the values are fed to clj-metrics, they are

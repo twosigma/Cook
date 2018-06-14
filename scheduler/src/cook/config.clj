@@ -269,15 +269,6 @@
      :mesos-master (fnk [[:config {mesos nil}]]
                      (when mesos
                        (:master mesos)))
-     :mesos-master-hosts (fnk [[:config {mesos nil}]]
-                           (when mesos
-                             (if (:master-hosts mesos)
-                               (if (and (sequential? (:master-hosts mesos)) (every? string? (:master-hosts mesos)))
-                                 (:master-hosts mesos)
-                                 (throw (ex-info ":mesos-master should be a list of hostnames (e.g. [\"host1.example.com\", ...])" {})))
-                               (->> (:master mesos)
-                                    (re-seq #"[/|,]?([^/,:]+):\d+")
-                                    (mapv second)))))
      :mesos-failover-timeout (fnk [[:config {mesos nil}]]
                                (:failover-timeout-ms mesos))
      :mesos-leader-path (fnk [[:config {mesos nil}]]
