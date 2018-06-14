@@ -1410,10 +1410,10 @@ class CookTest(util.CookTest):
         statuses = ['completed']
         jobs = util.group_submit_retry(self.cook_url, command='exit 1', predicate_statuses=statuses)
         for job in jobs:
-            job_details = f'Job details: {json.dumps(job, sort_keys=True)}'
+            job_details = f'Job details: {json.dumps(job, sort_keys=True, indent=2)}'
             self.assertIn(job['status'], statuses, job_details)
-            self.assertEqual(job['retries_remaining'], 0, job_details)
-            self.assertEqual(len(job['instances']), 2, job_details)
+            self.assertEqual(0, job['retries_remaining'], job_details)
+            self.assertLessEqual(2, len(job['instances']), job_details)
 
     def test_400_on_group_query_without_uuid(self):
         resp = util.query_groups(self.cook_url)
