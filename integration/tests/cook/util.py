@@ -1061,7 +1061,7 @@ def default_pool(cook_url):
     """Returns the configured default pool, or None if one is not configured"""
     cook_settings = settings(cook_url)
     default_pool = get_in(cook_settings, 'pools', 'default')
-    return default_pool
+    return default_pool if default_pool != '' else None
 
 
 def all_pools(cook_url):
