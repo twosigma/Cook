@@ -68,6 +68,49 @@ class CookTest(util.CookTest):
         else:
             self.logger.info(f'Exit code not checked because cook executor was not used for {instance}')
 
+    @unittest.skipUnless(util.docker_tests_enabled(),
+                         'Requires setting the COOK_TEST_DOCKER_IMAGE environment variable')
+    def test_docker_fields(self):
+        docker_image = util.docker_image()
+        self.assertIsNotNone(docker_image)
+        container = {'type': 'docker',
+                     'docker': {'image': docker_image,
+                                'network': 'HOST',
+                                'force-pull-image': False,
+                                'parameters': [{'key': 'foo', 'value': 'bar'},
+                                               {'key': 'baz', 'value': 'qux'}]},
+                     'volumes': [{'host-path': '/var/lib/abc'},
+                                 {'mode': 'RW',
+                                  'host-path': '/var/lib/def'},
+                                 {'host-path': '/var/lib/ghi',
+                                  'container-path': '/var/lib/jkl'},
+                                 {'mode': 'RW',
+                                  'host-path': '/var/lib/mno',
+                                  'container-path': '/var/lib/pqr'}]}
+        job_uuid, resp = util.submit_job(self.cook_url, container=container)
+        self.assertEqual(resp.status_code, 201, msg=resp.content)
+        self.assertEqual(resp.content, str.encode(f"submitted jobs {job_uuid}"))
+        job = util.load_job(self.cook_url, job_uuid)
+        container = job['container']
+        docker = container['docker']
+        volumes = container['volumes']
+        self.assertEqual('DOCKER', container['type'])
+        self.assertEqual(docker_image, docker['image'])
+        self.assertEqual('HOST', docker['network'])
+        self.assertEqual(False, docker['force-pull-image'])
+        self.assertEqual(2, len(docker['parameters']))
+        self.assertEqual('bar', next(p['value'] for p in docker['parameters'] if p['key'] == 'foo'))
+        self.assertEqual('qux', next(p['value'] for p in docker['parameters'] if p['key'] == 'baz'))
+        self.assertEqual(4, len(volumes))
+        self.assertIn({'host-path': '/var/lib/abc'}, volumes)
+        self.assertIn({'mode': 'RW',
+                       'host-path': '/var/lib/def'}, volumes)
+        self.assertIn({'host-path': '/var/lib/ghi',
+                       'container-path': '/var/lib/jkl'}, volumes)
+        self.assertIn({'mode': 'RW',
+                       'host-path': '/var/lib/mno',
+                       'container-path': '/var/lib/pqr'}, volumes)
+
     def test_no_cook_executor_on_subsequent_instances(self):
         retry_limit = util.get_in(util.settings(self.cook_url), 'executor', 'retry-limit')
         if retry_limit is None:
@@ -1446,11 +1489,13 @@ class CookTest(util.CookTest):
 
     @pytest.mark.docker
     def test_basic_docker_job(self):
+        image = util.docker_image() or 'alpine:latest'
+        self.logger.debug(f'Using docker image {image}')
         job_uuid, resp = util.submit_job(
             self.cook_url,
             command='cat /.dockerenv',
             container={'type': 'DOCKER',
-                       'docker': {'image': os.getenv('COOK_TEST_DOCKER_IMAGE', 'alpine:latest')}})
+                       'docker': {'image': image}})
         self.assertEqual(resp.status_code, 201)
         job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
         self.assertEqual('success', job['instances'][0]['status'])
