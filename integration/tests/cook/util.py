@@ -368,6 +368,10 @@ def scheduler_info(cook_url):
     return resp.json()
 
 
+def docker_image():
+    return os.getenv('COOK_TEST_DOCKER_IMAGE')
+
+
 def minimal_job(**kwargs):
     job = {
         'command': 'echo Default Test Command',
@@ -378,12 +382,12 @@ def minimal_job(**kwargs):
         'priority': 1,
         'uuid': str(uuid.uuid4())
     }
-    docker_image = os.getenv('COOK_TEST_DOCKER_IMAGE')
-    if docker_image:
+    image = docker_image()
+    if image:
         job['container'] = {
             'type': 'docker',
             'docker': {
-                'image': docker_image,
+                'image': image,
                 'network': 'HOST',
                 'force-pull-image': False
             }
@@ -1114,8 +1118,7 @@ def _cook_executor_config():
 def is_cook_executor_in_use():
     """Returns true if the cook executor is configured and COOK_TEST_DOCKER_IMAGE is not set"""
     is_cook_executor_configured = is_not_blank(get_in(_cook_executor_config(), 'command'))
-    docker_image = os.getenv('COOK_TEST_DOCKER_IMAGE', None)
-    return is_cook_executor_configured and docker_image is None
+    return is_cook_executor_configured and docker_image() is None
 
 
 def max_slave_cpus(mesos_url):
@@ -1145,3 +1148,7 @@ class CookTest(unittest.TestCase):
         """Returns the name of the currently running test function"""
         test_id = self.id()
         return test_id.split('.')[-1]
+
+
+def docker_tests_enabled():
+    return docker_image() is not None
