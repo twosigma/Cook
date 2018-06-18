@@ -11,9 +11,6 @@
   (with-redefs [pool/all-pools (constantly [])
                 config/default-pool (constantly nil)]
     (is (nil? (pool/guard-invalid-default-pool nil))))
-  (with-redefs [pool/all-pools (constantly [])
-                config/default-pool (constantly "")]
-    (is (nil? (pool/guard-invalid-default-pool nil))))
   (with-redefs [pool/all-pools (constantly [{}])
                 config/default-pool (constantly nil)]
     (is (thrown-with-msg? ExceptionInfo

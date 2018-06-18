@@ -15,7 +15,7 @@
 ;;
 (ns cook.test.config
   (:require [clojure.test :refer :all]
-            [cook.config :refer (config env read-edn-config)]
+            [cook.config :refer (config default-pool env read-edn-config)]
             [cook.test.testutil :refer (setup)]))
 
 (deftest test-read-edn-config
@@ -33,3 +33,13 @@
   (with-redefs [config {:settings {:mesos-datomic-uri "bar"}}]
     (is (= "bar" (-> config :settings :mesos-datomic-uri))))
   (is (= "foo" (-> config :settings :mesos-datomic-uri))))
+
+(deftest test-default-pool
+  (with-redefs [config {:settings {:pools {:default "foo"}}}]
+    (is (= "foo" (default-pool))))
+  (with-redefs [config {:settings {:pools {:default ""}}}]
+    (is (nil? (default-pool))))
+  (with-redefs [config {:settings {:pools {:default nil}}}]
+    (is (nil? (default-pool))))
+  (with-redefs [config {:settings {}}]
+    (is (nil? (default-pool)))))

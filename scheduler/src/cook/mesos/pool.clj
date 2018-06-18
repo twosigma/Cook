@@ -71,7 +71,7 @@
   (let [pools (all-pools db)
         default-pool-name (config/default-pool)]
     (log/info "Pools in the database:" pools ", default pool:" default-pool-name)
-    (if (and default-pool-name (not (str/blank? default-pool-name)))
+    (if default-pool-name
       (when-not (some #(= default-pool-name (:pool/name %)) pools)
         (throw (ex-info "There is no pool in the database matching the configured default pool"
                         {:pools pools :default-pool-name default-pool-name})))
