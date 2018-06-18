@@ -7,9 +7,11 @@
 (defn same-origin?
   "Returns true if the request is from the same origin as the provided origin header"
   [{:keys [headers scheme]}]
-  (let [{:strs [host origin]} headers]
+  (let [{:strs [host origin x-forwarded-proto]} headers
+        scheme (or x-forwarded-proto
+                   (when scheme (name scheme)))]
     (when (and host origin scheme)
-      (= origin (str (name scheme) "://" host)))))
+      (= origin (str scheme "://" host)))))
 
 (defn request-allowed?
   "Returns true if the request is either from the same origin or matches a pattern in cors-origins.
