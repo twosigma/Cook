@@ -267,17 +267,10 @@
                             (when scheduler
                               (or (:good-enough-fitness scheduler) 0.8)))
      :mesos-master (fnk [[:config {mesos nil}]]
+                     (when (:master-hosts mesos)
+                       (log/warn "The :master-hosts configuration field is no longer used"))
                      (when mesos
                        (:master mesos)))
-     :mesos-master-hosts (fnk [[:config {mesos nil}]]
-                           (when mesos
-                             (if (:master-hosts mesos)
-                               (if (and (sequential? (:master-hosts mesos)) (every? string? (:master-hosts mesos)))
-                                 (:master-hosts mesos)
-                                 (throw (ex-info ":mesos-master should be a list of hostnames (e.g. [\"host1.example.com\", ...])" {})))
-                               (->> (:master mesos)
-                                    (re-seq #"[/|,]?([^/,:]+):\d+")
-                                    (mapv second)))))
      :mesos-failover-timeout (fnk [[:config {mesos nil}]]
                                (:failover-timeout-ms mesos))
      :mesos-leader-path (fnk [[:config {mesos nil}]]
@@ -332,6 +325,8 @@
                                       user-metrics-interval-seconds)
 
      :rebalancer (fnk [[:config {rebalancer nil}]]
+                   (when (:min-utilization-threshold rebalancer)
+                     (log/warn "The :min-utilization-threshold configuration field is no longer used"))
                    (merge {:interval-seconds 300
                            :dru-scale 1.0}
                           rebalancer))
@@ -358,8 +353,8 @@
      :api-only? (fnk [[:config {api-only? false}]]
                   api-only?)
      :estimated-completion-constraint (fnk [[:config {estimated-completion-constraint nil}]]
-                                           (merge {:agent-start-grace-period-mins 10}
-                                                  estimated-completion-constraint))}))
+                                        (merge {:agent-start-grace-period-mins 10}
+                                               estimated-completion-constraint))}))
 
 (defn read-config
   "Given a config file path, reads the config and returns the map"

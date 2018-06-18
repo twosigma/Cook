@@ -740,11 +740,6 @@ for a job. E.g. {:resources {:cpus 4 :mem 3} :constraints {\"unique_host_constra
   [{:db/id (d/tempid :db.part/user)
     :db/ident :rebalancer/config}
    {:db/id (d/tempid :db.part/db)
-    :db/ident :rebalancer.config/min-utilization-threshold
-    :db/valueType :db.type/double
-    :db/cardinality :db.cardinality/one
-    :db.install/_attribute :db.part/db}
-   {:db/id (d/tempid :db.part/db)
     :db/ident :rebalancer.config/safe-dru-threshold
     :db/valueType :db.type/double
     :db/cardinality :db.cardinality/one

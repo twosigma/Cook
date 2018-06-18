@@ -1135,8 +1135,7 @@
 (deftest test-update-datomic-params-via-config!
   (let [datomic-uri "datomic:mem://test-init-state"
         conn (restore-fresh-database! datomic-uri)
-        all-params {:min-utilization-threshold 0.75
-                    :safe-dru-threshold 1.0
+        all-params {:safe-dru-threshold 1.0
                     :min-dru-diff 0.5
                     :max-preemption 64.0}
         updated-params {:min-dru-diff 0.75 :max-preemption 128.0}

@@ -118,24 +118,6 @@
           (when mesos-principal
             [{:principal mesos-principal}]))))
 
-(defn get-mesos-utilization
-  "Queries the mesos master to get the utilization.
-   Returns the max of cpu and mem utilization as a decimal (e.g. 0.92)"
-  [mesos-master-hosts]
-  (let [mesos-master-urls (map #(str "http://" % ":5050/metrics/snapshot") mesos-master-hosts)
-        get-stats (fn [url] (some->> url
-                                     (http/get)
-                                     (:body)
-                                     (json/read-str)))
-        utilization (some-<>> mesos-master-urls
-                              (map get-stats)
-                              (filter #(pos? (get % "master/elected")))
-                              (first)
-                              (select-keys <> ["master/cpus_percent" "master/mem_percent"])
-                              (vals)
-                              (apply max))]
-    utilization))
-
 (defn make-trigger-chans
   "Creates a map of of the trigger channels expected by `start-mesos-scheduler`
    Each channel receives chime triggers at particular intervals and it is
@@ -165,8 +147,6 @@
    Parameters
    make-mesos-driver-fn          -- fn, function that accepts a mesos scheduler and framework id
                                     and returns a mesos driver
-   get-mesos-utilization         -- fn, function with no parameters, returns utilization of cluster [0,1]
-   mesos-master-hosts            -- seq[strings], url of mesos masters to query for cluster info
    curator-framework             -- curator object, object for interacting with zk
    mesos-datomic-conn            -- datomic conn, connection to datomic db for interacting with datomic
    mesos-datomic-mult            -- async channel, feed of db writes
@@ -183,7 +163,7 @@
    framework-id                  -- str, the Mesos framework id from the cook settings
    fenzo-config                  -- map, config for fenzo, See scheduler/docs/configuration.adoc for more details
    sandbox-syncer-state          -- map, representing the sandbox syncer object"
-  [{:keys [curator-framework fenzo-config framework-id get-mesos-utilization gpu-enabled? make-mesos-driver-fn
+  [{:keys [curator-framework fenzo-config framework-id gpu-enabled? make-mesos-driver-fn
            mea-culpa-failure-limit mesos-datomic-conn mesos-datomic-mult mesos-leadership-atom mesos-pending-jobs-atom
            mesos-run-as-user offer-cache offer-incubate-time-ms optimizer-config progress-config rebalancer-config
            sandbox-syncer-state server-config task-constraints trigger-chans zk-prefix]}]
@@ -243,7 +223,6 @@
                                     (cook.mesos.rebalancer/start-rebalancer! {:config rebalancer-config
                                                                               :conn mesos-datomic-conn
                                                                               :driver driver
-                                                                              :get-mesos-utilization get-mesos-utilization
                                                                               :offer-cache offer-cache
                                                                               :pending-jobs-atom mesos-pending-jobs-atom
                                                                               :rebalancer-reservation-atom rebalancer-reservation-atom

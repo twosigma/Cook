@@ -122,7 +122,6 @@
 ;;;               Rebalancer is willing to tolerate.
 ;;;
 ;;; max-preemption: The maximum number of preemptions Rebalancer can make in one cycle.
-;;; min-utilization-threshold: The minimal cluster utilization to trigger rebalancer. The idea is that the rebalancer should only run when the cluster is at high utilization. If the cluster is not at high utilization, its available resources should be used first before we perform any preemption.
 
 ;;; Before you read the code...Here are something you should know about
 ;;;
@@ -498,7 +497,6 @@
 
 (def datomic-params [:max-preemption
                      :min-dru-diff
-                     :min-utilization-threshold
                      :safe-dru-threshold])
 
 (defn read-datomic-params
@@ -522,7 +520,7 @@
               recognized-params))]))))
 
 (defn start-rebalancer!
-  [{:keys [config conn driver get-mesos-utilization offer-cache pending-jobs-atom
+  [{:keys [config conn driver offer-cache pending-jobs-atom
            rebalancer-reservation-atom trigger-chan view-incubating-offers]}]
   (binding [metrics-dru-scale (:dru-scale config)]
     (update-datomic-params-from-config! conn config)
@@ -530,18 +528,15 @@
       trigger-chan
       (fn trigger-rebalance-iteration []
         (log/info "Rebalance cycle starting")
-        (let [{:keys [min-utilization-threshold] :as params} (read-datomic-params conn)
-              utilization (get-mesos-utilization)
-              host->spare-resources (->> (view-incubating-offers)
-                                         (map (fn [v]
-                                                [(:hostname v)
-                                                 (select-keys (keywordize-keys (:resources v))
-                                                              [:cpus :mem :gpus])]))
-                                         (into {}))]
-          (if (and (seq params)
-                   min-utilization-threshold
-                   (> utilization min-utilization-threshold))
-            (let [{normal-pending-jobs :normal gpu-pending-jobs :gpu} @pending-jobs-atom]
+        (let [params (read-datomic-params conn)]
+          (if (seq params)
+            (let [host->spare-resources (->> (view-incubating-offers)
+                                             (map (fn [v]
+                                                    [(:hostname v)
+                                                     (select-keys (keywordize-keys (:resources v))
+                                                                  [:cpus :mem :gpus])]))
+                                             (into {}))
+                  {normal-pending-jobs :normal gpu-pending-jobs :gpu} @pending-jobs-atom]
               (rebalance! conn driver offer-cache normal-pending-jobs host->spare-resources
                           rebalancer-reservation-atom
                           (assoc params :category :normal
@@ -550,49 +545,6 @@
                           rebalancer-reservation-atom
                           (assoc params :category :gpu
                                         :compute-pending-job-dru compute-pending-gpu-job-dru)))
-            (log/info "Skipping rebalancing due to low cluster utilization"
-                      {:mesos-utilization (str utilization)
-                       :min-utilization-threshold (str min-utilization-threshold)}))))
+            (log/info "Skipping rebalancing because it's not cofigured"))))
       {:error-handler (fn [ex] (log/error ex "Rebalance failed"))})
     #(async/close! trigger-chan)))
-
-(comment
-  ; Useful function to simulate preemptions
-  (defn update-task-by-name
-    [name reason-name]
-    (let [conn (d/connect "datomic:mem://mesos-jobs")
-        running (ffirst (q '[:find ?status
-                         :in $ ?ident
-                         :where
-                         [?status :db/ident ?ident]
-                         ] (d/db conn) :instance.status/running))
-        task-eid (ffirst (q '[:find ?inst
-                         :in $ ?name ?status
-                         :where
-                         [?j :job/name ?name]
-                         [?j :job/instance ?inst]
-                         [?inst :instance/status ?status]
-                         ] (d/db conn) name running))
-        ]
-    @(d/transact
-        conn
-        [;; The database can become inconsistent if we make multiple calls to :instance/update-state in a single
-         ;; transaction; see the comment in the definition of :instance/update-state for more details
-         [:instance/update-state task-eid :instance.status/failed [:reason/name reason-name]]
-         [:db/add task-eid :instance/reason [:reason/name reason-name]]
-         [:db/add task-eid :instance/preempted? true]
-         ])))
-
-  (update-task-by-name "sometask" :unknown)
-  (update-task-by-name "sometask" :preempted-by-rebalancer)
-
-  (let [conn (d/connect "datomic:mem://mesos-jobs")]
-    (share/set-share! conn "default" :cpus 20.0 :mem 2500000.0))
-
-  (let [conn (d/connect "datomic:mem://mesos-jobs")
-        db (d/db conn)]
-    @(d/transact conn [{:db/id :rebalancer/config
-                        :rebalancer.config/max-preemption 64.0
-                        :rebalancer.config/min-dru-diff 0.0000000001
-                        :rebalancer.config/min-utilization-threshold 0.0
-                        :rebalancer.config/safe-dru-threshold 0.0}])))

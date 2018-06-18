@@ -111,10 +111,6 @@ We'll look at the configurable options in turn:
   This option sets the Mesos master connection string.
   For example, if you are running Mesos with a Zookeeper node on the local machine (a common development setup), you'd use the connection string `zk://localhost:2181/mesos`.
 
-`:master-hosts`::
-  This configures a list of hosts where Mesos master are running on. For example `["zk1.example.com", "zk2.example.com", "zk3.example.com"]`. +
-  When not set explicitly, Mesos master hosts are derived from Mesos master connection string. For example, if the connection string is `"zk://zk1.example.com:2181,zk2.example.com:2181,zk3.example.com:2181/mesos"`, master hosts will be set to `["zk1.example.com", "zk2.example.com", "zk3.example.com"]`.
-
 `:failover-timeout-ms`::
   This options sets the number of milliseconds that Mesos will wait for the Cook framework to reconnect.
   In development, you should set this to `nil`, which means that Mesos will treat any disconnection of Cook as the framework ending; this will kill all of Cook's tasks when it disconnects.
@@ -258,9 +254,6 @@ Optionally, you can include a "rebalancer" stanza.  If you do, on startup, Cook 
   See the link:rebalancer-config.adoc[Rebalancer documentation]
 
  :max-preemption::
-  See the link:rebalancer-config.adoc[Rebalancer documentation]
-
- :min-utilization-threshold::
   See the link:rebalancer-config.adoc[Rebalancer documentation]
 
 `:dru-scale`::

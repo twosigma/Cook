@@ -80,7 +80,7 @@
   {:mesos-scheduler (fnk [[:settings fenzo-fitness-calculator fenzo-floor-iterations-before-reset
                            fenzo-floor-iterations-before-warn fenzo-max-jobs-considered fenzo-scaleback
                            good-enough-fitness hostname mea-culpa-failure-limit mesos-failover-timeout mesos-framework-name
-                           mesos-gpu-enabled mesos-leader-path mesos-master mesos-master-hosts mesos-principal
+                           mesos-gpu-enabled mesos-leader-path mesos-master mesos-principal
                            mesos-role mesos-run-as-user offer-incubate-time-ms optimizer progress rebalancer server-port
                            task-constraints]
                           curator-framework framework-id mesos-datomic-mult mesos-leadership-atom
@@ -100,7 +100,6 @@
                                                                  :mesos-role mesos-role
                                                                  :mesos-framework-name mesos-framework-name
                                                                  :gpu-enabled? mesos-gpu-enabled})
-                                  get-mesos-utilization-fn (partial (util/lazy-load-var 'cook.mesos/get-mesos-utilization) mesos-master-hosts)
                                   trigger-chans ((util/lazy-load-var 'cook.mesos/make-trigger-chans) rebalancer progress optimizer task-constraints)]
                               (try
                                 (Class/forName "org.apache.mesos.Scheduler")
@@ -113,7 +112,6 @@
                                                   :fenzo-fitness-calculator fenzo-fitness-calculator
                                                   :good-enough-fitness good-enough-fitness}
                                    :framework-id framework-id
-                                   :get-mesos-utilization get-mesos-utilization-fn
                                    :gpu-enabled? mesos-gpu-enabled
                                    :make-mesos-driver-fn make-mesos-driver-fn
                                    :mea-culpa-failure-limit mea-culpa-failure-limit
