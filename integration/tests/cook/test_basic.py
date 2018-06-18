@@ -159,11 +159,14 @@ class CookTest(util.CookTest):
             instance = util.wait_for_instance(self.cook_url, uuid)
             self.assertEqual('cook', instance['executor'])
             job = util.wait_for_job(self.cook_url, uuid, 'completed')
-            self.assertEqual(job['state'], 'failed', json.dumps(job, indent=2))
-            self.assertEqual(job['retries_remaining'], 0, json.dumps(job, indent=2))
+            msg = json.dumps(job, indent=2)
+            self.assertEqual(job['state'], 'failed', msg)
+            self.assertEqual(job['retries_remaining'], 0, msg)
             instances = job['instances']
-            self.assertEqual(1, len(instances), json.dumps(job, indent=2))
-            self.assertEqual('Mesos executor terminated', instances[0]['reason_string'], json.dumps(job, indent=2))
+            instance = instances[0]
+            self.assertEqual(1, len(instances), msg)
+            self.assertEqual('Mesos executor terminated', instance['reason_string'], msg)
+            self.assertTrue(instance['reason_mea_culpa'], msg)
         finally:
             util.kill_jobs(self.cook_url, [uuid])
 
@@ -183,9 +186,10 @@ class CookTest(util.CookTest):
             failed_instances = [i for i in job['instances'] if i['status'] == 'failed']
             self.assertTrue(len(failed_instances) != 0, json.dumps(job, indent=2))
             for instance in failed_instances:
-                self.assertEqual('failed', instance['status'], json.dumps(instance, indent=2))
-                self.assertEqual('Mesos executor terminated', instance['reason_string'],
-                                 json.dumps(instance, indent=2))
+                msg = json.dumps(instance, indent=2)
+                self.assertEqual('failed', instance['status'], msg)
+                self.assertEqual('Mesos executor terminated', instance['reason_string'], msg)
+                self.assertTrue(instance['reason_mea_culpa'], msg)
         finally:
             util.kill_jobs(self.cook_url, [uuid])
 
@@ -233,8 +237,10 @@ class CookTest(util.CookTest):
         self.assertEqual(201, resp.status_code, msg=resp.content)
         job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
         self.assertEqual(1, len(job['instances']))
-        message = json.dumps(job['instances'][0], sort_keys=True)
-        self.assertEqual('failed', job['instances'][0]['status'], message)
+        instance = job['instances'][0]
+        message = json.dumps(instance, sort_keys=True)
+        self.assertEqual('failed', instance['status'], message)
+        self.assertFalse(instance['reason_mea_culpa'], message)
 
         instance = util.wait_for_sandbox_directory(self.cook_url, job_uuid)
         message = json.dumps(instance, sort_keys=True)
