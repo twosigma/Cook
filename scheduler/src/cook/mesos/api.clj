@@ -180,6 +180,7 @@
    (s/optional-key :output_url) s/Str
    (s/optional-key :cancelled) s/Bool
    (s/optional-key :reason_string) s/Str
+   (s/optional-key :reason_mea_culpa) s/Bool
    (s/optional-key :executor) s/Str
    (s/optional-key :exit_code) s/Int
    (s/optional-key :progress) s/Int
@@ -832,7 +833,8 @@
             exit-code (assoc :exit_code exit-code)
             url-path (assoc :output_url url-path)
             reason (assoc :reason_code (:reason/code reason)
-                          :reason_string (:reason/string reason))
+                          :reason_string (:reason/string reason)
+                          :reason_mea_culpa (:reason/mea-culpa? reason))
             progress (assoc :progress progress)
             progress-message (assoc :progress_message progress-message)
             sandbox-directory (assoc :sandbox_directory sandbox-directory))))
