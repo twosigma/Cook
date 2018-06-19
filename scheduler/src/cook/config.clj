@@ -406,7 +406,10 @@
 (defn default-pool
   "Returns the default pool name from the config map"
   []
-  (-> config :settings :pools :default))
+  (let [pool (-> config :settings :pools :default)]
+    (if (str/blank? pool)
+      nil
+      pool)))
 
 (defn api-only-mode?
   "Returns true if api-only? mode is turned on"

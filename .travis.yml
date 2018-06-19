@@ -45,6 +45,12 @@ matrix:
       before_script: cd integration && ./travis/prepare_integration.sh
       script: ./travis/run_integration.sh --executor=cook
 
+    - env: NAME='Cook Scheduler integration tests with no pools'
+      services: docker
+      install: sudo ./travis/install_mesos.sh
+      before_script: cd integration && ./travis/prepare_integration.sh
+      script: ./travis/run_integration.sh --pools=off
+
     - env: NAME='Cook Scheduler Simulator tests'
       services: docker
       install: sudo ./travis/install_mesos.sh
