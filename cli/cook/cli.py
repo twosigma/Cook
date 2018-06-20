@@ -13,7 +13,8 @@ parser.add_argument('--config', '-C', help='the configuration file to use')
 parser.add_argument('--silent', '-s', help='silent mode', dest='silent', action='store_true')
 parser.add_argument('--verbose', '-v', help='be more verbose/talkative (useful for debugging)',
                     dest='verbose', action='store_true')
-parser.add_argument('--version', help='output version information and exit', dest='version', action='store_true')
+parser.add_argument('--version', help='output version information and exit',
+                    version=f'%(prog)s version {version.VERSION}', action='version')
 
 subparsers = parser.add_subparsers(dest='action')
 
@@ -59,11 +60,6 @@ def run(args):
     sub-commands (actions) if necessary.
     """
     args = vars(parser.parse_args(args))
-
-    print_version = args.pop('version')
-    if print_version:
-        print(f'cs version {version.VERSION}')
-        return 0
 
     util.silent = args.pop('silent')
     verbose = args.pop('verbose') and not util.silent
