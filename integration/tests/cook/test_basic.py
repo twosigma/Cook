@@ -1551,15 +1551,21 @@ class CookTest(util.CookTest):
             agent_state = util.wait_until(agent_query, contains_executor_predicate).json()
             executor = util.get_executor(agent_state, instance['executor_id'])
 
-            container_id = 'mesos-%s.%s' % (agent['id'], executor['container'])
-            self.logger.debug('container_id: %s' % container_id)
+            container_name = 'mesos-%s.%s' % (agent['id'], executor['container'])
+            self.logger.debug(f'Container name: {container_name}')
 
             @retry(stop_max_delay=60000, wait_fixed=1000)  # Wait for docker container to start
             def get_docker_info():
                 job = util.load_job(self.cook_url, job_uuid)
                 self.logger.info(f'Job status is {job["status"]}: {job}')
-                self.logger.info('Running containers: %s' % subprocess.check_output(['docker', 'ps']).decode('utf-8'))
-                return json.loads(subprocess.check_output(['docker', 'inspect', container_id]).decode('utf-8'))
+                containers = subprocess.check_output(['docker', 'ps', '--all', '--last', '10']).decode('utf-8')
+                self.logger.info(f'Last 10 containers: {containers}')
+                docker_ps = ['docker', 'ps', '--all', '--filter', f'name={container_name}', '--format', '{{.ID}}']
+                container_id = subprocess.check_output(docker_ps).decode('utf-8').strip()
+                self.logger.debug(f'Container ID: [{container_id}]')
+                container_json = subprocess.check_output(['docker', 'inspect', container_id]).decode('utf-8')
+                self.logger.debug(f'Container JSON: {container_json}')
+                return json.loads(container_json)
 
             docker_info = get_docker_info()
             ports = docker_info[0]['HostConfig']['PortBindings']
