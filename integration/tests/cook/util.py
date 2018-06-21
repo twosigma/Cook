@@ -10,7 +10,7 @@ import time
 import unittest
 import uuid
 from datetime import datetime
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse
 
 import numpy
 import requests
@@ -317,8 +317,24 @@ def retrieve_cook_url(varname='COOK_SCHEDULER_URL', value='http://localhost:1232
 def retrieve_mesos_url(varname='MESOS_PORT', value='5050'):
     mesos_url = os.getenv('COOK_MESOS_LEADER_URL')
     if mesos_url is None:
+        mesos_master_host = 'localhost'
         mesos_port = os.getenv(varname, value)
-        resp = session.get(f'http://localhost:{mesos_port}/redirect', allow_redirects=False)
+        if os.getenv('COOK_TEST_DERIVE_MESOS_HOST') is not None:
+            cook_url = retrieve_cook_url()
+            _wait_for_cook(cook_url)
+            mesos_master = settings(cook_url).get('mesos-master')
+            if not mesos_master:
+                raise RuntimeError('Unable to derive Mesos host, mesos-master is not present in settings')
+
+            mesos_master_parts = mesos_master.split(',')
+            result = urlparse(mesos_master_parts[0])
+            if not result.hostname:
+                raise RuntimeError(f'Unable to derive Mesos host, hostname is not present in {result}')
+
+            mesos_master_host = result.hostname
+
+        logger.debug(f'Using mesos master host {mesos_master_host}')
+        resp = session.get(f'http://{mesos_master_host}:{mesos_port}/redirect', allow_redirects=False)
         if resp.status_code != 307:
             raise RuntimeError(f'Unable to find mesos leader, redirect endpoint returned {resp.status_code}')
         mesos_url = f"http:{resp.headers['Location']}"
