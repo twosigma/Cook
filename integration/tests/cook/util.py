@@ -319,7 +319,7 @@ def retrieve_mesos_url(varname='MESOS_PORT', value='5050'):
     if mesos_url is None:
         mesos_master_host = 'localhost'
         mesos_port = os.getenv(varname, value)
-        if os.getenv('COOK_TEST_DERIVE_MESOS_HOST'):
+        if os.getenv('COOK_TEST_DERIVE_MESOS_HOST') is not None:
             cook_url = retrieve_cook_url()
             _wait_for_cook(cook_url)
             mesos_master = settings(cook_url).get('mesos-master')
