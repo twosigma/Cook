@@ -19,7 +19,6 @@ In Cook's database, Rebalancer configuration options are facts about the entity 
 (let [conn (d/connect "(your-cook-database-url)")
         db (d/db conn)]
     @(d/transact conn [{:db/id :rebalancer/config
-                        :rebalancer.config/min-utilization-threshold 0.0
                         :rebalancer.config/safe-dru-threshold 0.0
                         :rebalancer.config/min-dru-diff 0.0000000001
                         :rebalancer.config/max-preemption 64.0}]))
@@ -38,7 +37,6 @@ Conversely, you can read the current configuration like this:
 * safe-dru-threshold: Task with a DRU lower than safe-dru-threshold will not be preempted. If safe-dru-threshold is set to 1.0, then tasks that consume resources in aggregate less than the user resource share will not be preempted.
 * min-dru-diff: The minimal DRU difference required to make a preemption action. This is also the maximal "unfairness" Rebalancer is willing to tolerate.
 * max-preemption: The maximum number of preemptions Rebalancer can make in one cycle.
-* min-utilization-threshold: The minimal cluster utilization to trigger rebalancer. The idea is that the rebalancer should only run when the cluster is at high utilization. If the cluster is not at high utilization, its available resources should be used first before we perform any preemption.
 
 === Configuring user shares
 

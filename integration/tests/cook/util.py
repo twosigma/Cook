@@ -7,9 +7,10 @@ import os
 import os.path
 import subprocess
 import time
+import unittest
 import uuid
 from datetime import datetime
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse
 
 import numpy
 import requests
@@ -27,10 +28,16 @@ DEFAULT_TEST_TIMEOUT_SECS = 600
 
 # default time limit used by most wait_* utility functions
 # 2 minutes should be more than sufficient on most cases
-DEFAULT_TIMEOUT_MS = 120000
+DEFAULT_TIMEOUT_MS = int(os.getenv('COOK_TEST_DEFAULT_TIMEOUT_MS', 120000))
 
 # Name of our custom HTTP header for user impersonation
 IMPERSONATION_HEADER = 'X-Cook-Impersonate'
+
+# Reason used by tests that should be skipped on clusters with ephemeral hosts
+EPHEMERAL_HOSTS_SKIP_REASON = 'If the cluster under test has ephemeral hosts, then it is generally ' \
+                              'a bad idea to use HOSTNAME EQUALS constraints, because it can cause ' \
+                              'the process responsible for launching hosts to launch hosts that ' \
+                              'never get used'
 
 
 def continuous_integration():
@@ -310,14 +317,27 @@ def retrieve_cook_url(varname='COOK_SCHEDULER_URL', value='http://localhost:1232
 def retrieve_mesos_url(varname='MESOS_PORT', value='5050'):
     mesos_url = os.getenv('COOK_MESOS_LEADER_URL')
     if mesos_url is None:
+        mesos_master_host = 'localhost'
         mesos_port = os.getenv(varname, value)
-        cook_url = retrieve_cook_url()
-        _wait_for_cook(cook_url)
-        mesos_master_hosts = settings(cook_url).get('mesos-master-hosts', ['localhost'])
-        resp = session.get('http://%s:%s/redirect' % (mesos_master_hosts[0], mesos_port), allow_redirects=False)
+        if os.getenv('COOK_TEST_DERIVE_MESOS_HOST') is not None:
+            cook_url = retrieve_cook_url()
+            _wait_for_cook(cook_url)
+            mesos_master = settings(cook_url).get('mesos-master')
+            if not mesos_master:
+                raise RuntimeError('Unable to derive Mesos host, mesos-master is not present in settings')
+
+            mesos_master_parts = mesos_master.split(',')
+            result = urlparse(mesos_master_parts[0])
+            if not result.hostname:
+                raise RuntimeError(f'Unable to derive Mesos host, hostname is not present in {result}')
+
+            mesos_master_host = result.hostname
+
+        logger.debug(f'Using mesos master host {mesos_master_host}')
+        resp = session.get(f'http://{mesos_master_host}:{mesos_port}/redirect', allow_redirects=False)
         if resp.status_code != 307:
-            raise RuntimeError('Unable to find mesos leader, redirect endpoint returned %d' % resp.status_code)
-        mesos_url = 'http:%s' % resp.headers['Location']
+            raise RuntimeError(f'Unable to find mesos leader, redirect endpoint returned {resp.status_code}')
+        mesos_url = f"http:{resp.headers['Location']}"
     logger.info(f'Using mesos url {mesos_url}')
     return mesos_url
 
@@ -361,6 +381,10 @@ def scheduler_info(cook_url):
     return resp.json()
 
 
+def docker_image():
+    return os.getenv('COOK_TEST_DOCKER_IMAGE')
+
+
 def minimal_job(**kwargs):
     job = {
         'command': 'echo Default Test Command',
@@ -371,6 +395,16 @@ def minimal_job(**kwargs):
         'priority': 1,
         'uuid': str(uuid.uuid4())
     }
+    image = docker_image()
+    if image:
+        job['container'] = {
+            'type': 'docker',
+            'docker': {
+                'image': image,
+                'network': 'HOST',
+                'force-pull-image': False
+            }
+        }
     job.update(kwargs)
     return job
 
@@ -430,7 +464,7 @@ def kill_jobs(cook_url, jobs, assert_response=True, expected_status_code=204):
     params = {'job': [unpack_uuid(j) for j in jobs]}
     response = session.delete(f'{cook_url}/rawscheduler', params=params)
     if assert_response:
-        assert expected_status_code == response.status_code, response.content
+        assert expected_status_code == response.status_code, response.text
     return response
 
 
@@ -454,10 +488,15 @@ def unpack_uuid(entity):
     return entity['uuid'] if isinstance(entity, dict) else entity
 
 
+def to_bool(v):
+    """Converts the given argument to a boolean value"""
+    return v is True or str(v).lower() in ['true', '1']
+
+
 def __get(cook_url, endpoint, assert_response=False, **kwargs):
     """Makes a GET request to the given root URL and endpoint"""
     if 'partial' in kwargs:
-        kwargs['partial'] = 'true' if (kwargs['partial'] in [True, 'true', '1']) else 'false'
+        kwargs['partial'] = 'true' if to_bool(kwargs['partial']) else 'false'
     response = session.get(f'{cook_url}/{endpoint}', params=kwargs)
     if assert_response:
         assert 200 == response.status_code
@@ -626,6 +665,9 @@ def wait_for_jobs(cook_url, job_ids, status, max_wait_ms=DEFAULT_TIMEOUT_MS):
         jobs = resp.json()
         for job in jobs:
             logger.info(f"Job {job['uuid']} has status {job['status']}, expecting {status}.")
+        if any(job['status'] == 'waiting' for job in jobs):
+            queue_length = len(query_queue(cook_url).json()['normal'])
+            logger.info(f'The queue length is {queue_length}.')
         return all([job['status'] == status for job in jobs])
 
     response = wait_until(query, predicate, max_wait_ms=max_wait_ms, wait_interval_ms=2000)
@@ -642,22 +684,22 @@ def wait_for_exit_code(cook_url, job_id, max_wait_ms=DEFAULT_TIMEOUT_MS):
     job_id = unpack_uuid(job_id)
 
     def query():
-        return query_jobs(cook_url, True, uuid=[job_id])
+        return query_jobs(cook_url, True, uuid=[job_id]).json()[0]
 
-    def predicate(resp):
-        job = resp.json()[0]
+    def predicate(job):
         if not job['instances']:
             logger.info(f"Job {job_id} has no instances.")
         else:
-            inst = job['instances'][0]
-            if 'exit_code' not in inst:
-                logger.info(f"Job {job_id} instance {inst['task_id']} has no exit code.")
-            else:
-                logger.info(f"Job {job_id} instance {inst['task_id']} has exit code {inst['exit_code']}.")
-                return True
+            for inst in job['instances']:
+                if 'exit_code' not in inst:
+                    logger.info(f"Job {job_id} instance {inst['task_id']} has no exit code.")
+                else:
+                    logger.info(f"Job {job_id} instance {inst['task_id']} has exit code {inst['exit_code']}.")
+                    job['instance-with-exit-code'] = inst
+                    return True
 
-    response = wait_until(query, predicate, max_wait_ms=max_wait_ms)
-    return response.json()[0]
+    job = wait_until(query, predicate, max_wait_ms=max_wait_ms)
+    return job['instance-with-exit-code']
 
 
 def wait_for_sandbox_directory(cook_url, job_id):
@@ -681,15 +723,18 @@ def wait_for_sandbox_directory(cook_url, job_id):
         if not job['instances']:
             logger.info(f"Job {job_id} has no instances.")
         else:
-            inst = job['instances'][0]
-            if 'sandbox_directory' not in inst:
-                logger.info(f"Job {job_id} instance {inst['task_id']} has no sandbox directory.")
-            else:
-                logger.info(
-                    f"Job {job_id} instance {inst['task_id']} has sandbox directory {inst['sandbox_directory']}.")
-                return True
+            for inst in job['instances']:
+                if 'sandbox_directory' not in inst:
+                    logger.info(f"Job {job_id} instance {inst['task_id']} has no sandbox directory.")
+                else:
+                    logger.info(
+                        f"Job {job_id} instance {inst['task_id']} has sandbox directory {inst['sandbox_directory']}.")
+                    return True
 
-    return wait_until(query, predicate, max_wait_ms=max_wait_ms, wait_interval_ms=250)
+    job = wait_until(query, predicate, max_wait_ms=max_wait_ms, wait_interval_ms=250)
+    for inst in job['instances']:
+        if 'sandbox_directory' in inst:
+            return inst
 
 
 def wait_for_end_time(cook_url, job_id, max_wait_ms=DEFAULT_TIMEOUT_MS):
@@ -759,13 +804,16 @@ def wait_for_output_url(cook_url, job_uuid):
         return load_job(cook_url, job_uuid, assert_response=False)
 
     def predicate(job):
-        if 'output_url' in job['instances'][0]:
-            return True
-        else:
-            logger.info(f"Job {job['uuid']} had no output_url")
+        for instance in job['instances']:
+            if 'output_url' in instance:
+                return True
+            else:
+                logger.info(f"Job {job['uuid']} instance {instance['task_id']} had no output_url")
 
-    response = wait_until(query, predicate)
-    return response['instances'][0]
+    job = wait_until(query, predicate)
+    for instance in job['instances']:
+        if 'output_url' in instance:
+            return instance
 
 
 def list_jobs(cook_url, **kwargs):
@@ -888,9 +936,7 @@ def group_submit_kill_retry(cook_url, retry_failed_jobs_only):
         # return final job details to caller for assertion checks
         jobs = query_jobs(cook_url, assert_response=True, uuid=jobs).json()
         for job in jobs:
-            logger.info(f'Dumping sandbox files for job {job}')
             for instance in job['instances']:
-                logger.info(f'Dumping sandbox files for instance {instance}')
                 mesos.dump_sandbox_files(session, instance, job)
         return jobs
     finally:
@@ -1032,7 +1078,7 @@ def default_pool(cook_url):
     """Returns the configured default pool, or None if one is not configured"""
     cook_settings = settings(cook_url)
     default_pool = get_in(cook_settings, 'pools', 'default')
-    return default_pool
+    return default_pool if default_pool != '' else None
 
 
 def all_pools(cook_url):
@@ -1045,3 +1091,77 @@ def active_pools(cook_url):
     """Returns the list of all active pools that exist"""
     pools, resp = all_pools(cook_url)
     return [p for p in pools if p['state'] == 'active'], resp
+
+
+@functools.lru_cache()
+def _cook_estimated_completion_constraint():
+    """Get the estimated completion constraint config from the /settings endpoint"""
+    cook_url = retrieve_cook_url()
+    _wait_for_cook(cook_url)
+    estimated_completion_constraint = settings(cook_url).get('estimated-completion-constraint', None)
+    logger.info(f"Cook's estimated completion constraint is {estimated_completion_constraint}")
+    return estimated_completion_constraint
+
+
+def has_ephemeral_hosts():
+    """Returns True if the cluster under test has ephemeral hosts"""
+    s = os.getenv('COOK_TEST_EPHEMERAL_HOSTS')
+    if s is not None:
+        return to_bool(s)
+    else:
+        try:
+            # If the estimated completion constraint is turned on, it's a
+            # good indication that the hosts on the cluster are ephemeral
+            return _cook_estimated_completion_constraint() is not None
+        except:
+            return False
+
+
+@functools.lru_cache()
+def _cook_executor_config():
+    """Get the cook executor config from the /settings endpoint"""
+    cook_url = retrieve_cook_url()
+    _wait_for_cook(cook_url)
+    init_cook_session(cook_url)
+    cook_executor_config = get_in(settings(cook_url), 'executor')
+    logger.info(f"Cook's executor config is {cook_executor_config}")
+    return cook_executor_config
+
+
+def is_cook_executor_in_use():
+    """Returns true if the cook executor is configured and COOK_TEST_DOCKER_IMAGE is not set"""
+    is_cook_executor_configured = is_not_blank(get_in(_cook_executor_config(), 'command'))
+    return is_cook_executor_configured and docker_image() is None
+
+
+def max_slave_cpus(mesos_url):
+    """Returns the max cpus of all current Mesos agents"""
+    slaves = get_mesos_state(mesos_url)['slaves']
+    max_slave_cpus = max([s['resources']['cpus'] for s in slaves])
+    return max_slave_cpus
+
+
+def task_constraint_cpus(cook_url):
+    """Returns the max cpus that can be submitted to the cluster"""
+    task_constraint_cpus = settings(cook_url)['task-constraints']['cpus']
+    return task_constraint_cpus
+
+
+def max_cpus(mesos_url, cook_url):
+    """Returns the maximum cpus we can submit that actually fits on a slave"""
+    slave_cpus = max_slave_cpus(mesos_url)
+    constraint_cpus = task_constraint_cpus(cook_url)
+    max_cpus = min(slave_cpus, constraint_cpus)
+    logging.debug(f'Max cpus we can submit that will get scheduled is {max_cpus}')
+    return max_cpus
+
+
+class CookTest(unittest.TestCase):
+    def current_name(self):
+        """Returns the name of the currently running test function"""
+        test_id = self.id()
+        return test_id.split('.')[-1]
+
+
+def docker_tests_enabled():
+    return docker_image() is not None

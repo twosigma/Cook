@@ -15,8 +15,7 @@
 ;;
 (ns cook.test.authorization
   (:use clojure.test)
-  (:require [cook.authorization :as auth]
-            [cook.mesos.api :as api]))
+  (:require [cook.authorization :as auth]))
 
 (def test-job-owner "the-job-owner")
 (def admin-user "admin")
@@ -26,7 +25,6 @@
                                  :admins #{admin-user "other-admin"}})
 
 (def open-auth-settings {:authorization-fn 'cook.authorization/open-auth})
-
 
 (deftest open-auth-test
   (testing "open auth allows any user to do anything to any object"
@@ -40,6 +38,20 @@
     (is (true? (auth/open-auth {} test-job-owner :create test-job)))
     (is (true? (auth/open-auth {} admin-user :read test-job)))))
 
+(deftest open-auth-no-job-killing-test
+  (testing "allows any user to do anything to any object, except killing a job"
+    (is (true? (auth/open-auth-no-job-killing {} "foo" :create test-job)))
+    (is (true? (auth/open-auth-no-job-killing {} "bar" :read test-job)))
+    (is (true? (auth/open-auth-no-job-killing {} "baz" :update test-job)))
+    (is (true? (auth/open-auth-no-job-killing {} "bazz" :get test-job)))
+    (is (true? (auth/open-auth-no-job-killing {} "bazzz" :retry test-job)))
+    (is (true? (auth/open-auth-no-job-killing {} test-job-owner :create test-job)))
+    (is (true? (auth/open-auth-no-job-killing {} admin-user :read test-job)))
+    (is (true? (auth/open-auth-no-job-killing {} "foo" :delete {:item :not-a-job})))
+
+    (is (false? (auth/open-auth-no-job-killing {} "frob" :delete test-job)))
+    (is (false? (auth/open-auth-no-job-killing {} (:owner test-job) :delete test-job)))
+    (is (false? (auth/open-auth-no-job-killing {} admin-user :delete test-job)))))
 
 (deftest configfile-admins-auth
   (testing "ordinary users can manipulate their own objects"

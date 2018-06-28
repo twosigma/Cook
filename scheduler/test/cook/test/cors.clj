@@ -13,6 +13,14 @@
   (is (cors/same-origin? {:headers {"host" "example.com"
                                     "origin" "http://example.com"}
                           :scheme :http}))
+  (is (cors/same-origin? {:headers {"host" "example.com"
+                                    "origin" "https://example.com"
+                                    "x-forwarded-proto" "https"}
+                          :scheme :http}))
+  (is (not (cors/same-origin? {:headers {"host" "example.com"
+                                         "origin" "https://example.com"
+                                         "x-forwarded-proto" "http"}
+                               :scheme :https})))
   (is (not (cors/same-origin? {:headers {"host" "example.com"}
                                :scheme :http})))
   (is (not (cors/same-origin? {:headers {"origin" "http://bad.example.com"

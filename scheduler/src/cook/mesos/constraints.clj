@@ -187,7 +187,7 @@
    - :job/expected-runtime
    - the runtimes of all failed instances with :mesos-slave-removed as the reason"
   [{:keys [job/expected-runtime job/instance]}]
-  (let [{:keys [expected-runtime-multiplier host-lifetime-mins]} (config/estimated-completion-config)]
+  (let [{:keys [expected-runtime-multiplier host-lifetime-mins agent-start-grace-period-mins]} (config/estimated-completion-config)]
     (when (and expected-runtime-multiplier host-lifetime-mins)
       (let [agent-removed-failures (filter #(= :mesos-slave-removed (get-in % [:instance/reason :reason/name]))
                                            instance)
@@ -196,7 +196,13 @@
                                       (long (* expected-runtime expected-runtime-multiplier))
                                       0)
             max-expected-runtime (apply max (conj agent-removed-runtimes scaled-expected-runtime))
-            expected-end-time (+ (.getMillis (t/now)) max-expected-runtime)]
+            ; If a job has run "nearly" the entire lifetime of a host (host-lifetime-mins - agent-start-grace-period-mins)
+            ; then accept any host that has been alive for less than agent-start-grace-period-mins
+            longest-reasonable-runtime (-> host-lifetime-mins
+                                           (- agent-start-grace-period-mins)
+                                           (* 1000 60))
+            capped-expected-runtime (min max-expected-runtime longest-reasonable-runtime)
+            expected-end-time (+ (.getMillis (t/now)) capped-expected-runtime)]
         (when (< 0 max-expected-runtime)
           (->estimated-completion-constraint expected-end-time host-lifetime-mins))))))
 

@@ -1503,6 +1503,7 @@
                              :progress_message "seventy-eight percent done"
                              :reason_code 1002
                              :reason_string "Preempted by rebalancer"
+                             :reason_mea_culpa true
                              :sandbox_directory "/path/to/working/directory"
                              :status "success")]
           (is (= expected-map (dissoc instance-map :start_time))))))))

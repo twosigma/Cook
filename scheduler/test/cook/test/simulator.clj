@@ -61,7 +61,6 @@
 
 (def default-rebalancer-config {:interval-seconds 5
                                 :dru-scale 1.0
-                                :min-utilization-threshold 0.0
                                 :safe-dru-threshold 1.0
                                 :min-dru-diff 0.5
                                 :max-preemption 100.0})
@@ -90,8 +89,6 @@
                               (cache/fifo-cache-factory :threshold 100)
                               (cache/ttl-cache-factory :ttl 10000)
                               atom))
-         get-mesos-utilization# (or (:get-mesos-utilization ~scheduler-config)
-                                    (fn [] 0.9))
          zk-prefix# (or (:zk-prefix ~scheduler-config)
                         "/cook")
          offer-incubate-time-ms# (or (:offer-incubate-time-ms ~scheduler-config)
@@ -130,7 +127,6 @@
            {:curator-framework curator-framework#
             :fenzo-config fenzo-config#
             :framework-id framework-id#
-            :get-mesos-utilization get-mesos-utilization#
             :gpu-enabled? gpu-enabled?#
             :make-mesos-driver-fn ~make-mesos-driver-fn
             :mea-culpa-failure-limit mea-culpa-failure-limit#

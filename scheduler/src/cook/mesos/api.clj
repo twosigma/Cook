@@ -180,6 +180,7 @@
    (s/optional-key :output_url) s/Str
    (s/optional-key :cancelled) s/Bool
    (s/optional-key :reason_string) s/Str
+   (s/optional-key :reason_mea_culpa) s/Bool
    (s/optional-key :executor) s/Str
    (s/optional-key :exit_code) s/Int
    (s/optional-key :progress) s/Int
@@ -832,10 +833,35 @@
             exit-code (assoc :exit_code exit-code)
             url-path (assoc :output_url url-path)
             reason (assoc :reason_code (:reason/code reason)
-                          :reason_string (:reason/string reason))
+                          :reason_string (:reason/string reason)
+                          :reason_mea_culpa (:reason/mea-culpa? reason))
             progress (assoc :progress progress)
             progress-message (assoc :progress_message progress-message)
             sandbox-directory (assoc :sandbox_directory sandbox-directory))))
+
+(defn- docker-parameter->response-map
+  [{:keys [docker.param/key docker.param/value]}]
+  {:key key
+   :value value})
+
+(defn- docker->response-map
+  [{:keys [docker/image docker/parameters docker/network docker/force-pull-image]}]
+  (cond-> {:image image}
+          parameters (assoc :parameters (map docker-parameter->response-map parameters))
+          network (assoc :network network)
+          (some? force-pull-image) (assoc :force-pull-image force-pull-image)))
+
+(defn- container-volume->response-map
+  [{:keys [container.volume/mode container.volume/host-path container.volume/container-path]}]
+  (cond-> {:host-path host-path}
+          mode (assoc :mode mode)
+          container-path (assoc :container-path container-path)))
+
+(defn- container->response-map
+  [{:keys [container/type container/docker container/volumes]}]
+  (cond-> {:type type}
+          docker (assoc :docker (docker->response-map docker))
+          volumes (assoc :volumes (map container-volume->response-map volumes))))
 
 (defn fetch-job-map
   [db framework-id job-uuid]
@@ -850,6 +876,7 @@
           progress-output-file (:job/progress-output-file job)
           progress-regex-string (:job/progress-regex-string job)
           pool (:job/pool job)
+          container (:job/container job)
           state (util/job-ent->state job)
           constraints (->> job
                            :job/constraint
@@ -889,7 +916,8 @@
               executor (assoc :executor (name executor))
               progress-output-file (assoc :progress-output-file progress-output-file)
               progress-regex-string (assoc :progress-regex-string progress-regex-string)
-              pool (assoc :pool (:pool/name pool))))))
+              pool (assoc :pool (:pool/name pool))
+              container (assoc :container (container->response-map container))))))
 
 (defn fetch-group-live-jobs
   "Get all jobs from a group that are currently running or waiting (not complete)"
@@ -1088,17 +1116,28 @@
         request-method (get-in ctx [:request :request-method])]
     (is-authorized-fn request-user request-method impersonator {:owner job-user :item :job})))
 
+(defn- job-uuids-from-context
+  [conn ctx]
+  (or (::jobs ctx)
+      (::jobs (second (retrieve-jobs conn ctx)))))
+
 (defn job-request-allowed?
-  ([conn is-authorized-fn ctx uuids]
+  ([conn is-authorized-fn ctx uuids action]
    (let [authorized? (partial user-authorized-for-job? conn is-authorized-fn ctx)]
      (if (every? authorized? uuids)
        [true {}]
-       [false {::error (str "You are not authorized to view access the following jobs "
+       [false {::error (str "You are not authorized to " action " the following jobs: "
                             (str/join \space (remove authorized? uuids)))}])))
+  ([conn is-authorized-fn ctx uuids]
+    (job-request-allowed? conn is-authorized-fn ctx uuids "view / access"))
   ([conn is-authorized-fn ctx]
-   (let [uuids (or (::jobs ctx)
-                   (::jobs (second (retrieve-jobs conn ctx))))]
+   (let [uuids (job-uuids-from-context conn ctx)]
      (job-request-allowed? conn is-authorized-fn ctx uuids))))
+
+(defn- job-kill-allowed?
+  [conn is-authorized-fn ctx]
+  (let [uuids (job-uuids-from-context conn ctx)]
+    (job-request-allowed? conn is-authorized-fn ctx uuids "kill")))
 
 (defn instance-request-allowed?
   [conn is-authorized-fn ctx]
@@ -1356,7 +1395,7 @@
   (base-cook-handler
     {:allowed-methods [:delete]
      :malformed? check-job-params-present
-     :allowed? (partial job-request-allowed? conn is-authorized-fn)
+     :allowed? (partial job-kill-allowed? conn is-authorized-fn)
      :exists? (partial retrieve-jobs conn)
      :delete! (fn [ctx]
                 (cook.mesos/kill-job conn (::jobs-requested ctx))
@@ -1378,7 +1417,7 @@
   ::jobs and ::groups, which specify the jobs and job groups."
   [conn {:keys [::groups ::jobs ::pool]}]
   (try
-    (log/info "Submitting jobs through raw api:" jobs)
+    (log/info "Submitting jobs through raw api:" (map #(dissoc % :command) jobs))
     (let [group-uuids (set (map :uuid groups))
           group-asserts (map (fn [guuid] [:entity/ensure-not-exists [:group/uuid guuid]])
                              group-uuids)
