@@ -17,10 +17,10 @@
 (ns cook.test.benchmark
   (:use clojure.test)
   (:require [cook.mesos.dru :as dru]
-            [cook.mesos.ranker :as ranker]
             [cook.mesos.scheduler :as sched]
             [cook.mesos.share :as share]
             [cook.mesos.util :as util]
+            [cook.test.mesos.ranker :as ranker]
             [cook.test.testutil :refer (restore-fresh-database! create-dummy-group create-dummy-job create-dummy-instance init-offer-cache poll-until)]
             [criterium.core :as cc]
             [datomic.api :as d]))
