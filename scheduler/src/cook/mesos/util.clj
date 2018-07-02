@@ -80,16 +80,19 @@
        (map first)))
 
 (let [default-pool (config/default-pool)]
-  (defn categorize-job
-    "Return the category of the job. Currently jobs can be :normal or :gpu. This
-     is used to give separate queues for scarce & non-scarce resources"
+  (defn job->pool
+    "TODO(DPO)"
     [job]
-    (let [categorize-job-miss
-          (fn [job]
-            (if default-pool
-              (-> job :job/pool :pool/name (or default-pool) keyword)
-              :no-pool))]
-      (lookup-cache-datomic-entity! categorize-job-cache categorize-job-miss job))))
+    (if default-pool
+      (-> job :job/pool :pool/name (or default-pool) keyword)
+      :no-pool)))
+
+;; TODO(DPO) Fix this name and docstring
+(defn categorize-job
+  "Return the category of the job. Currently jobs can be :normal or :gpu. This
+   is used to give separate queues for scarce & non-scarce resources"
+  [job]
+  (lookup-cache-datomic-entity! categorize-job-cache job->pool job))
 
 (defn without-ns
   [k]
