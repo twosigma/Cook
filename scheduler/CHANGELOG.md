@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.18.1] - 2018-07-03
+### Fixed
+- Consume entire request before sending response, from @pschorf
+
 ## [1.18.0] - 2018-06-25
 ### Added
 - Container fields to /jobs, from @dposada
