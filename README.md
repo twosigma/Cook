@@ -18,7 +18,7 @@ What is Cook?
 
 ## Releases 
 
-Check the [changelog](CHANGELOG.md) for release info.
+Check the [changelog](scheduler/CHANGELOG.md) for release info.
 
 ## Subproject Summary
 

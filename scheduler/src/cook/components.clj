@@ -38,8 +38,11 @@
             [ring.middleware.stacktrace :refer (wrap-stacktrace)]
             [ring.util.mime-type]
             [ring.util.response :refer (response)])
-  (:import java.security.Principal
+  (:import clojure.core.async.impl.channels.ManyToManyChannel
+           java.io.IOException
+           java.security.Principal
            javax.security.auth.Subject
+           javax.servlet.ServletInputStream
            org.apache.curator.framework.CuratorFrameworkFactory
            org.apache.curator.framework.state.ConnectionStateListener
            org.apache.curator.retry.BoundedExponentialBackoffRetry
@@ -215,6 +218,18 @@
         (h req)
         (auth-fn req)))))
 
+(defn- consume-request-stream [handler]
+  (fn [{:keys [body] :as request}]
+    (let [resp (handler request)]
+      (if (and (instance? ServletInputStream body)
+               (not (.isFinished ^ServletInputStream body))
+               (not (instance? ManyToManyChannel resp)))
+        (try
+          (slurp body)
+          (catch IOException e
+            (log/error e "Unable to consume request stream"))))
+      resp)))
+
 (def scheduler-server
   (graph/eager-compile
     {:route full-routes
@@ -239,7 +254,8 @@
                                                                wrap-params
                                                                (cors/cors-middleware cors-origins)
                                                                (health-check-middleware mesos-leadership-atom leader-reports-unhealthy)
-                                                               instrument))
+                                                               instrument
+                                                               consume-request-stream))
                                            :join? false
                                            :configurator configure-jet-logging
                                            :max-threads 200
