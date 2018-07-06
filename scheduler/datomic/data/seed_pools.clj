@@ -12,7 +12,8 @@
   @(d/transact conn [{:db/id (d/tempid :db.part/user)
                       :pool/name name
                       :pool/purpose "This is a pool for testing purposes"
-                      :pool/state state}]))
+                      :pool/state state
+                      :pool/dru-mode :pool.dru-mode/default}]))
 
 (defn pools
   [db]

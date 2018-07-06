@@ -199,7 +199,7 @@
 
 (defn handle-status-update
   "Takes a status update from mesos."
-  [conn driver ^TaskScheduler fenzo sync-agent-sandboxes-fn status]
+  [conn driver ^TaskScheduler pool->fenzo sync-agent-sandboxes-fn status]
   (log/info "Mesos status is:" status)
   (timers/time!
     handle-status-update-duration
@@ -237,11 +237,9 @@
                instance-runtime (- (.getTime current-time) ; Used for reporting
                                    (.getTime (or (:instance/start-time instance-ent) current-time)))
                job-resources (util/job-ent->resources job-ent)
-               ;fenzo (-> job-ent :job/pool pool->keyword )
-               ]
+               fenzo (-> job-ent util/job->pool pool->fenzo)]
            (when (#{:instance.status/success :instance.status/failed} instance-status)
              (log/debug "Unassigning task" task-id "from" (:instance/hostname instance-ent))
-             (println "fenzo" fenzo)
              (try
                (locking fenzo
                  (.. fenzo

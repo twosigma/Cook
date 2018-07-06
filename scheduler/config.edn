@@ -25,6 +25,8 @@
        :levels {"datomic.db" :warn
                 "datomic.kv-cluster" :warn
                 "datomic.peer" :warn
+                "cook.mesos.rebalancer" :debug
+                "cook.mesos.scheduler" :debug
                 :default :info}}
  :metrics {:jmx true
            :user-metrics-interval-seconds 60}
@@ -41,7 +43,11 @@
        :keystore-type "pkcs12"
        :keystore-pass "cookstore"}
  :rate-limit {:user-limit-per-m 1000000}
- :rebalancer {:dru-scale 1}
+ :rebalancer {:dru-scale 1
+              :interval-seconds 30
+              :max-preemption 500.0
+              :min-dru-diff 1.0
+              :safe-dru-threshold 1.0}
  :sandbox-syncer {:sync-interval-ms 1000}
  :scheduler {:offer-incubate-ms 15000
              :task-constraints {:cpus 10

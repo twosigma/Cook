@@ -86,4 +86,4 @@
 ;;; - define constant for the "no-pool" magic string
 ;;; - make all relevant metrics pool-specific
 ;;; - create a separate travis build for testing a cluster without pools
-;;; - add is-gpu? to the pool schema to allow for different ranking function
+;;; - add "dru-mode" to the pool schema to allow for different ranking function
