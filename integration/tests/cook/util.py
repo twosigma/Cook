@@ -665,9 +665,6 @@ def wait_for_jobs(cook_url, job_ids, status, max_wait_ms=DEFAULT_TIMEOUT_MS):
         jobs = resp.json()
         for job in jobs:
             logger.info(f"Job {job['uuid']} has status {job['status']}, expecting {status}.")
-        if any(job['status'] == 'waiting' for job in jobs):
-            queue_length = len(query_queue(cook_url).json()['normal'])
-            logger.info(f'The queue length is {queue_length}.')
         return all([job['status'] == status for job in jobs])
 
     response = wait_until(query, predicate, max_wait_ms=max_wait_ms, wait_interval_ms=2000)
@@ -862,9 +859,10 @@ def unscheduled_jobs(cook_url, *job_uuids, partial=None):
     return job_reasons, resp
 
 
-def wait_for_instance(cook_url, job_uuid):
+def wait_for_instance(cook_url, job_uuid, max_wait_ms=DEFAULT_TIMEOUT_MS, wait_interval_ms=1000):
     """Waits for the job with the given job_uuid to have a single instance, and returns the instance uuid"""
-    job = wait_until(lambda: load_job(cook_url, job_uuid), lambda j: len(j['instances']) == 1)
+    job = wait_until(lambda: load_job(cook_url, job_uuid), lambda j: len(j['instances']) == 1,
+                     max_wait_ms=max_wait_ms, wait_interval_ms=wait_interval_ms)
     instance = job['instances'][0]
     instance['parent'] = job
     return instance
@@ -1134,6 +1132,13 @@ def is_cook_executor_in_use():
     return is_cook_executor_configured and docker_image() is None
 
 
+def slave_cpus(mesos_url, hostname):
+    """Returns the cpus of the specified Mesos agent"""
+    slaves = get_mesos_state(mesos_url)['slaves']
+    slave_cpus = next(s['resources']['cpus'] for s in slaves if s['hostname'] == hostname)
+    return slave_cpus
+
+
 def max_slave_cpus(mesos_url):
     """Returns the max cpus of all current Mesos agents"""
     slaves = get_mesos_state(mesos_url)['slaves']
@@ -1165,3 +1170,13 @@ class CookTest(unittest.TestCase):
 
 def docker_tests_enabled():
     return docker_image() is not None
+
+
+@functools.lru_cache()
+def is_preemption_enabled():
+    """Returns true if task preemption is enabled on the cluster"""
+    cook_url = retrieve_cook_url()
+    init_cook_session(cook_url)
+    _wait_for_cook(cook_url)
+    max_preemption = settings(cook_url)['rebalancer'].get('max-preemption')
+    return max_preemption is not None

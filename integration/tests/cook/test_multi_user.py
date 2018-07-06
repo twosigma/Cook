@@ -19,6 +19,7 @@ class MultiUserCookTest(util.CookTest):
 
     def setUp(self):
         self.cook_url = type(self).cook_url
+        self.mesos_url = util.retrieve_mesos_url()
         self.logger = logging.getLogger(__name__)
         self.user_factory = util.UserFactory(self)
 
@@ -211,3 +212,56 @@ class MultiUserCookTest(util.CookTest):
             with admin:
                 util.kill_jobs(self.cook_url, all_job_uuids)
                 util.reset_limit(self.cook_url, 'quota', user.name, reason=self.current_name())
+
+    @unittest.skipUnless(util.is_preemption_enabled(), 'Preemption is not enabled on the cluster')
+    def test_preemption(self):
+        admin = self.user_factory.admin()
+        user = self.user_factory.new_user()
+        all_job_uuids = []
+        try:
+            small_cpus = 0.1
+            with admin:
+                # Lower the user's cpu share
+                util.set_limit(self.cook_url, 'share', user.name, cpus=small_cpus)
+
+            with user:
+                # Submit a small job
+                base_priority = 99
+                command = 'sleep 600'
+                uuid_small, _ = util.submit_job(self.cook_url, priority=base_priority, cpus=small_cpus, command=command)
+                all_job_uuids.append(uuid_small)
+                instance = util.wait_for_instance(self.cook_url, uuid_small)
+                hostname = instance['hostname']
+                cpus = util.slave_cpus(self.mesos_url, hostname)
+
+                # Submit a lower-priority job that fills the rest of the agent
+                constraints = [["HOSTNAME", "EQUALS", hostname]]
+                uuid_low_priority, _ = util.submit_job(self.cook_url, priority=base_priority-1, cpus=cpus - small_cpus,
+                                                       command=command, constraints=constraints)
+                all_job_uuids.append(uuid_low_priority)
+                instance = util.wait_for_instance(self.cook_url, uuid_low_priority)
+                self.assertEqual(hostname, instance['hostname'])
+
+                # Submit a higher-priority job that should trigger preemption
+                uuid_high_priority, _ = util.submit_job(self.cook_url, priority=base_priority+1, cpus=small_cpus*2,
+                                                        command=command, constraints=constraints)
+                all_job_uuids.append(uuid_high_priority)
+                max_wait_ms = util.settings(self.cook_url)['rebalancer']['interval-seconds'] * 1000 * 1.5
+                self.logger.info(f'Waiting up to {max_wait_ms} milliseconds for preemption to happen')
+                instance = util.wait_for_instance(self.cook_url, uuid_high_priority,
+                                                  max_wait_ms=max_wait_ms, wait_interval_ms=5000)
+                self.assertEqual(hostname, instance['hostname'])
+
+                # Assert that the lower-priority job was preempted
+                job = util.load_job(self.cook_url, uuid_low_priority)
+                for instance in job['instances']:
+                    self.logger.debug(f'Checking if instance was preempted: {instance}')
+                    if instance['reason_string'] == 'Preempted by rebalancer':
+                        break
+                else:
+                    self.fail(f'Job was not preempted: {job}')
+        finally:
+            with admin:
+                if all_job_uuids:
+                    util.kill_jobs(self.cook_url, all_job_uuids)
+                util.reset_limit(self.cook_url, 'share', user.name, reason=self.current_name())
