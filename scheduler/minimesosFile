@@ -41,6 +41,66 @@ minimesos {
         imageTag = "1.0.0-0.1.0"
         loggingLevel = "# INHERIT FROM CLUSTER"
         portNumber = 5051
+        attributes = "cook-pool:gamma"
+
+        resources {
+            cpu {
+                role = "*"
+                value = 4
+            }
+
+            disk {
+                role = "*"
+                value = 200
+            }
+
+            mem {
+                role = "*"
+                value = 2048
+            }
+
+            ports {
+                role = "*"
+                value = "[31000-32000]"
+            }
+        }
+    }
+
+    agent {
+        imageName = "containersol/mesos-agent"
+        imageTag = "1.0.0-0.1.0"
+        loggingLevel = "# INHERIT FROM CLUSTER"
+        portNumber = 5051
+        attributes = "cook-pool:alpha"
+
+        resources {
+            cpu {
+                role = "*"
+                value = 4
+            }
+
+            disk {
+                role = "*"
+                value = 200
+            }
+
+            mem {
+                role = "*"
+                value = 2048
+            }
+
+            ports {
+                role = "*"
+                value = "[31000-32000]"
+            }
+        }
+    }
+
+    agent {
+        imageName = "containersol/mesos-agent"
+        imageTag = "1.0.0-0.1.0"
+        loggingLevel = "# INHERIT FROM CLUSTER"
+        portNumber = 5051
         attributes = "cook-pool:alpha"
 
         resources {

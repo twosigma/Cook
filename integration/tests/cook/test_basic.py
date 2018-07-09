@@ -52,7 +52,7 @@ class CookTest(util.CookTest):
         self.assertEqual(resp.status_code, 201, msg=resp.content)
         self.assertEqual(resp.content, str.encode(f"submitted jobs {job_uuid}"))
         job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
-        self.assertIn('success', (i['status'] for i in job['instances']))
+        self.assertIn('success', [i['status'] for i in job['instances']], json.dumps(job, indent=2))
         self.assertEqual(False, job['disable_mea_culpa_retries'])
         self.assertTrue(len(util.wait_for_output_url(self.cook_url, job_uuid)['output_url']) > 0)
 
@@ -1476,14 +1476,18 @@ class CookTest(util.CookTest):
         uuids, resp = util.submit_jobs(self.cook_url, job_spec, clones=100, groups=[group])
         self.assertEqual(201, resp.status_code, resp.content)
         try:
+            default_pool = util.default_pool(self.cook_url)
+            pool = default_pool if default_pool is not None else 'no-pool'
+            self.logger.info(f'Checking the queue endpoint for pool {pool}')
+
             def query_queue():
                 return util.query_queue(self.cook_url)
 
             def queue_predicate(resp):
-                return any([job['job/uuid'] in uuids for job in resp.json()['normal']])
+                return any([job['job/uuid'] in uuids for job in resp.json()[pool]])
 
             resp = util.wait_until(query_queue, queue_predicate)
-            job = [job for job in resp.json()['normal'] if job['job/uuid'] in uuids][0]
+            job = [job for job in resp.json()[pool] if job['job/uuid'] in uuids][0]
             job_group = job['group/_job'][0]
             self.assertEqual(200, resp.status_code, resp.content)
             self.assertTrue('group/_job' in job.keys())
@@ -1789,20 +1793,26 @@ class CookTest(util.CookTest):
         uuids, resp = util.submit_jobs(self.cook_url, jobs, groups=[group])
         self.assertEqual(201, resp.status_code, resp.content)
         try:
+            reasons = [
+                # We expect the reason to be either our attribute-equals constraint:
+                "Host had a different attribute than other jobs in the group.",
+                # Or, if there are no other offers, we simply don't have enough cpus:
+                "Not enough cpus available."
+            ]
+
             def query():
                 unscheduled_jobs, _ = util.unscheduled_jobs(self.cook_url, *[j['uuid'] for j in jobs])
-                self.logger.info(f"unscheduled_jobs response: {unscheduled_jobs}")
+                self.logger.info(f"unscheduled_jobs response: {json.dumps(unscheduled_jobs, indent=2)}")
                 no_hosts = [reason for job in unscheduled_jobs for reason in job['reasons']
                             if reason['reason'] == "The job couldn't be placed on any available hosts."]
                 for no_hosts_reason in no_hosts:
                     for sub_reason in no_hosts_reason['data']['reasons']:
-                        if sub_reason['reason'] == "Host had a different attribute than other jobs in the group.":
+                        if sub_reason['reason'] in reasons:
                             return sub_reason
                 return None
 
             reason = util.wait_until(query, lambda r: r is not None)
-            self.assertEqual(reason['reason'],
-                             "Host had a different attribute than other jobs in the group.")
+            self.assertIn(reason['reason'], reasons)
         finally:
             util.kill_jobs(self.cook_url, uuids)
 

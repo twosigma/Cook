@@ -25,6 +25,7 @@
        :levels {"datomic.db" :warn
                 "datomic.kv-cluster" :warn
                 "datomic.peer" :warn
+                "cook.mesos.fenzo-utils" :debug
                 "cook.mesos.rebalancer" :debug
                 "cook.mesos.scheduler" :debug
                 :default :info}}

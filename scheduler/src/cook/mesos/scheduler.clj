@@ -776,9 +776,8 @@
 (defn pending-jobs->considerable-jobs
   "Limit the pending jobs to considerable jobs based on usage and quota.
    Further limit the considerable jobs to a maximum of num-considerable jobs."
-  [db pending-jobs user->quota user->usage num-considerable]
-  ;;; TODO(DPO) Add pool name to the log below
-  (log/debug "There are" (count pending-jobs) "pending jobs:" pending-jobs)
+  [db pending-jobs user->quota user->usage num-considerable pool]
+  (log/debug "In" pool "pool, there are" (count pending-jobs) "pending jobs:" pending-jobs)
   (->> pending-jobs
        (filter-based-on-quota user->quota user->usage)
        (filter (fn [job] (util/job-allowed-to-start? db job)))
@@ -786,13 +785,12 @@
 
 (defn matches->job-uuids
   "Returns the matched job uuid sets by category."
-  [matches]
+  [matches pool]
   (let [jobs (->> matches
                   (mapcat #(-> % :tasks))
                   (map #(-> % .getRequest :job)))
         job-uuids (set (map :job/uuid jobs))]
-    ;;; TODO(DPO) Add pool name to the log below
-    (log/debug "matched jobs:" (count job-uuids))
+    (log/debug "In" pool "pool, matched jobs:" (count job-uuids))
     ;;; TODO(DPO) Fix the metrics below to include the pool
     ;(when (seq matches)
     ;  (let [matched-normal-jobs-resource-requirements (-> jobs :normal util/sum-resources-of-jobs)]
@@ -914,7 +912,7 @@
               considerable-jobs (timers/time!
                                   handle-resource-offer!-considerable-jobs-duration
                                   (pending-jobs->considerable-jobs
-                                    db pending-jobs user->quota user->usage num-considerable))
+                                    db pending-jobs user->quota user->usage num-considerable pool))
               {:keys [matches failures]} (timers/time!
                                            handle-resource-offer!-match-duration
                                            (match-offer-to-schedule db fenzo considerable-jobs offers rebalancer-reservation-atom))
@@ -924,7 +922,7 @@
                                  (:offer lease))
               matched-job-uuids (timers/time!
                                   handle-resource-offer!-match-job-uuids-duration
-                                  (matches->job-uuids matches))
+                                  (matches->job-uuids matches pool))
               first-considerable-job-resources (-> considerable-jobs first util/job-ent->resources)
               matched-considerable-jobs-head? (contains? matched-job-uuids (-> considerable-jobs first :job/uuid))]
 
@@ -1021,7 +1019,7 @@
                                                (if (cache/has? c slave-id)
                                                  (cache/hit c slave-id)
                                                  (cache/miss c slave-id attrs)))))
-                      _ (log/debug "Passing following offers to handle-resource-offers!" offers)
+                      _ (log/debug "In" pool "pool, passing following offers to handle-resource-offers!" offers)
                       user->quota (quota/create-user->quota-fn (d/db conn) nil)
                       matched-head? (handle-resource-offers! conn @driver-atom fenzo framework-id pending-jobs-atom
                                                              mesos-run-as-user @user->usage-future user->quota
