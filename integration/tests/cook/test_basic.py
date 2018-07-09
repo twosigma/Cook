@@ -1302,7 +1302,7 @@ class CookTest(util.CookTest):
         group_uuid = group_spec['uuid']
         try:
             job_fast = util.minimal_job(group=group_uuid, priority=99, max_retries=2)
-            job_slow = util.minimal_job(group=group_uuid, command=f'sleep {slow_job_wait_seconds}')
+            job_slow = util.minimal_job(group=group_uuid, command=f'sleep {slow_job_wait_seconds}', max_retries=2)
             _, resp = util.submit_jobs(self.cook_url, [job_fast, job_slow], groups=[group_spec])
             self.assertEqual(resp.status_code, 201, resp.text)
             # Wait for the fast job to finish, and the slow job to start
