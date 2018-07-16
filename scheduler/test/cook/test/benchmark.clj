@@ -17,7 +17,7 @@
 (ns cook.test.benchmark
   (:use clojure.test)
   (:require [cook.mesos.dru :as dru]
-            [cook.mesos.scheduler :as sched]
+            [cook.mesos.ranker :as ranker]
             [cook.mesos.share :as share]
             [cook.mesos.util :as util]
             [cook.test.testutil :refer (restore-fresh-database! create-dummy-group create-dummy-job create-dummy-instance init-offer-cache poll-until)]
@@ -42,15 +42,15 @@
     (testing "rank-jobs"
       (let [db (d/db conn)
             task-constraints {:memory-gb 100 :cpus 30}
-            offensive-jobs-ch (sched/make-offensive-job-stifler conn)
-            offensive-job-filter (partial sched/filter-offensive-jobs task-constraints offensive-jobs-ch)]
+            offensive-jobs-ch (ranker/make-offensive-job-stifler conn)
+            offensive-job-filter (partial ranker/filter-offensive-jobs task-constraints offensive-jobs-ch)]
         (println "============ rank-jobs timing ============")
-        (cc/quick-bench (sched/rank-jobs db offensive-job-filter))))
+        (cc/quick-bench (ranker/rank-jobs db offensive-job-filter))))
     (testing "rank-jobs minus offensive-job-filter"
       (let [db (d/db conn)
             offensive-job-filter identity]
         (println "============ rank-jobs minus offensive-job-filter timing ============")
-        (cc/quick-bench (sched/rank-jobs db offensive-job-filter))))
+        (cc/quick-bench (ranker/rank-jobs db offensive-job-filter))))
     (testing "sort-jobs-by-dru-helper"
       (let [db (d/db conn)
             pending-task-ents (util/get-pending-job-ents db)
@@ -59,9 +59,9 @@
             user->dru-divisors (share/create-user->share-fn db nil)]
         (do
           (println "============ sort-jobs-by-dru timing ============")
-          (cc/quick-bench (sched/sort-jobs-by-dru-helper pending-task-ents
-                                                         running-task-ents
-                                                         user->dru-divisors
-                                                         sort-task-scored-task-pairs
-                                                         sched/sort-jobs-hierarchy-duration))
+          (cc/quick-bench (ranker/sort-jobs-by-dru-helper pending-task-ents
+                                                          running-task-ents
+                                                          user->dru-divisors
+                                                          sort-task-scored-task-pairs
+                                                          ranker/sort-jobs-hierarchy-duration))
           nil)))))
