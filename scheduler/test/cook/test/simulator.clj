@@ -10,13 +10,14 @@
             [clojure.data.csv :as csv]
             [clojure.data.json :as json]
             [clojure.java.io :as io]
-            [clojure.tools.cli :refer  [parse-opts]]
+            [clojure.tools.cli :refer [parse-opts]]
             [clojure.tools.logging :as log]
             [clojure.walk :refer (keywordize-keys)]
             [com.rpl.specter :refer (transform ALL MAP-VALS MAP-KEYS select FIRST)]
             [cook.config :refer (executor-config, init-logger)]
             [cook.mesos :as c]
             [cook.mesos.mesos-mock :as mm]
+            [cook.mesos.ranker :as ranker]
             [cook.mesos.share :as share]
             [cook.mesos.util :as util]
             [cook.test.testutil :refer (restore-fresh-database! poll-until)]
@@ -139,6 +140,7 @@
             :offer-incubate-time-ms offer-incubate-time-ms#
             :optimizer-config optimizer-config#
             :progress-config progress-config#
+            :rank-jobs-fn ranker/rank-jobs
             :rebalancer-config rebalancer-config#
             :sandbox-syncer-state sandbox-syncer-state#
             :server-config host-settings#

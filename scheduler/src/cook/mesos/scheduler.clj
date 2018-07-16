@@ -1470,8 +1470,8 @@
   [{:keys [conn driver-atom fenzo-fitness-calculator fenzo-floor-iterations-before-reset
            fenzo-floor-iterations-before-warn fenzo-max-jobs-considered fenzo-scaleback framework-id good-enough-fitness
            gpu-enabled? heartbeat-ch mea-culpa-failure-limit mesos-run-as-user offer-cache offer-incubate-time-ms
-           pending-jobs-atom progress-config rebalancer-reservation-atom sandbox-syncer-state task-constraints
-           trigger-chans]}]
+           pending-jobs-atom progress-config rank-jobs-fn rebalancer-reservation-atom sandbox-syncer-state
+           task-constraints trigger-chans]}]
 
   (persist-mea-culpa-failure-limit! conn mea-culpa-failure-limit)
 
@@ -1487,7 +1487,7 @@
         progress-aggregator-chan (progress-update-aggregator progress-config progress-state-chan)
         handle-progress-message (fn handle-progress-message-curried [progress-message-map]
                                   (handle-progress-message! progress-aggregator-chan progress-message-map))]
-    (ranker/start-jobs-prioritizer! conn pending-jobs-atom task-constraints rank-trigger-chan)
+    (ranker/start-jobs-prioritizer! conn pending-jobs-atom task-constraints rank-trigger-chan rank-jobs-fn)
     {:scheduler (create-mesos-scheduler framework-id gpu-enabled? conn heartbeat-ch fenzo offers-chan
                                         match-trigger-chan handle-progress-message sandbox-syncer-state)
      :view-incubating-offers (fn get-resources-atom [] @resources-atom)}))

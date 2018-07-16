@@ -161,10 +161,10 @@
         {}))))
 
 (defn start-jobs-prioritizer!
-  [conn pending-jobs-atom task-constraints trigger-chan]
+  [conn pending-jobs-atom task-constraints trigger-chan rank-jobs-fn]
   (let [offensive-jobs-ch (make-offensive-job-stifler conn)
         offensive-job-filter (partial filter-offensive-jobs task-constraints offensive-jobs-ch)]
     (util/chime-at-ch trigger-chan
                       (fn rank-jobs-event []
                         (reset! pending-jobs-atom
-                                (rank-jobs (d/db conn) offensive-job-filter))))))
+                                (rank-jobs-fn (d/db conn) offensive-job-filter))))))
