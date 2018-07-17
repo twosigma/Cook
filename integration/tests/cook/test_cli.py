@@ -1816,8 +1816,8 @@ class CookCliTest(util.CookTest):
                     "outputs": [],
                     "source": [
                         "%%bash\n",
-                        f"uuid=$(cs --url {self.cook_url} submit ls | tail -1)\n",
-                        f"cs --url {self.cook_url} show $uuid"
+                        f"uuid=$({cli.command()} --url {self.cook_url} submit ls | tail -1)\n",
+                        f"{cli.command()} --url {self.cook_url} show $uuid"
                     ]
                 }
             ],
