@@ -39,7 +39,7 @@ class MultiUserCookTest(util.CookTest):
             self.assertEqual('failed', job['state'])
         finally:
             with user1:
-                util.kill_jobs(self.cook_url, [job_uuid])
+                util.kill_jobs(self.cook_url, [job_uuid], assert_response=False)
 
     def test_group_delete_permission(self):
         user1, user2 = self.user_factory.new_users(2)
@@ -57,7 +57,7 @@ class MultiUserCookTest(util.CookTest):
             self.assertEqual('failed', job['state'])
         finally:
             with user1:
-                util.kill_jobs(self.cook_url, [job_uuid])
+                util.kill_jobs(self.cook_url, [job_uuid], assert_response=False)
 
     def test_multi_user_usage(self):
         users = self.user_factory.new_users(6)
@@ -104,7 +104,7 @@ class MultiUserCookTest(util.CookTest):
             # Terminate all of the jobs
             if all_job_uuids:
                 with self.user_factory.admin():
-                    util.kill_jobs(self.cook_url, all_job_uuids)
+                    util.kill_jobs(self.cook_url, all_job_uuids, assert_response=False)
 
     def test_job_cpu_quota(self):
         admin = self.user_factory.admin()
@@ -142,7 +142,7 @@ class MultiUserCookTest(util.CookTest):
                 self.assertEqual(resp.status_code, 400, resp.text)
         finally:
             with admin:
-                util.kill_jobs(self.cook_url, all_job_uuids)
+                util.kill_jobs(self.cook_url, all_job_uuids, assert_response=False)
                 util.reset_limit(self.cook_url, 'quota', user.name, reason=self.current_name())
 
     def test_job_mem_quota(self):
@@ -181,7 +181,7 @@ class MultiUserCookTest(util.CookTest):
                 self.assertEqual(resp.status_code, 400, resp.text)
         finally:
             with admin:
-                util.kill_jobs(self.cook_url, all_job_uuids)
+                util.kill_jobs(self.cook_url, all_job_uuids, assert_response=False)
                 util.reset_limit(self.cook_url, 'quota', user.name, reason=self.current_name())
 
     def test_job_count_quota(self):
@@ -210,7 +210,7 @@ class MultiUserCookTest(util.CookTest):
                 self.assertEqual(resp.status_code, 400, resp.text)
         finally:
             with admin:
-                util.kill_jobs(self.cook_url, all_job_uuids)
+                util.kill_jobs(self.cook_url, all_job_uuids, assert_response=False)
                 util.reset_limit(self.cook_url, 'quota', user.name, reason=self.current_name())
 
     @unittest.skipUnless(util.is_preemption_enabled(), 'Preemption is not enabled on the cluster')
@@ -264,6 +264,5 @@ class MultiUserCookTest(util.CookTest):
                                 max_wait_ms=max_wait_ms, wait_interval_ms=5000)
         finally:
             with admin:
-                if all_job_uuids:
-                    util.kill_jobs(self.cook_url, all_job_uuids)
+                util.kill_jobs(self.cook_url, all_job_uuids, assert_response=False)
                 util.reset_limit(self.cook_url, 'share', user.name, reason=self.current_name())
