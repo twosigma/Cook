@@ -15,9 +15,11 @@
 ;;
 (ns cook.mesos.ranker
   (:require [clojure.core.async :as async]
+            [clojure.set :as set]
             [clojure.tools.logging :as log]
             [cook.datomic :as datomic]
             [cook.mesos.dru :as dru]
+            [cook.mesos.rebalancer :as rebalancer]
             [cook.mesos.share :as share]
             [cook.mesos.util :as util]
             [datomic.api :as d]
@@ -117,23 +119,27 @@
 
 (defn sort-jobs-by-dru-category
   "Returns a map from job category to a list of job entities, ordered by dru"
-  [unfiltered-db]
-  ;; This function does not use the filtered db when it is not necessary in order to get better performance
-  ;; The filtered db is not necessary when an entity could only arrive at a given state if it was already committed
-  ;; e.g. running jobs or when it is always considered committed e.g. shares
-  ;; The unfiltered db can also be used on pending job entities once the filtered db is used to limit
-  ;; to only those jobs that have been committed.
-  (let [category->pending-job-ents (group-by util/categorize-job (util/get-pending-job-ents unfiltered-db))
-        category->pending-task-ents (pc/map-vals #(map util/create-task-ent %1) category->pending-job-ents)
-        category->running-task-ents (group-by (comp util/categorize-job :job/_instance)
-                                              (util/get-running-task-ents unfiltered-db))
-        user->dru-divisors (share/create-user->share-fn unfiltered-db nil)
-        category->sort-jobs-by-dru-fn {:normal sort-normal-jobs-by-dru, :gpu sort-gpu-jobs-by-dru}]
-    (letfn [(sort-jobs-by-dru-category-helper [[category sort-jobs-by-dru]]
-              (let [pending-tasks (category->pending-task-ents category)
-                    running-tasks (category->running-task-ents category)]
-                [category (sort-jobs-by-dru pending-tasks running-tasks user->dru-divisors)]))]
-      (into {} (map sort-jobs-by-dru-category-helper) category->sort-jobs-by-dru-fn))))
+  ([unfiltered-db]
+   (let [pending-job-ents (util/get-pending-job-ents unfiltered-db)
+         pending-task-ents (map util/create-task-ent pending-job-ents)
+         running-task-ents (util/get-running-task-ents unfiltered-db)]
+     (sort-jobs-by-dru-category unfiltered-db pending-task-ents running-task-ents)))
+  ([unfiltered-db pending-task-ents running-task-ents]
+    ;; This function does not use the filtered db when it is not necessary in order to get better performance
+    ;; The filtered db is not necessary when an entity could only arrive at a given state if it was already committed
+    ;; e.g. running jobs or when it is always considered committed e.g. shares
+    ;; The unfiltered db can also be used on pending job entities once the filtered db is used to limit
+    ;; to only those jobs that have been committed.
+   (let [job->category (comp util/categorize-job :job/_instance)
+         category->pending-task-ents (group-by job->category pending-task-ents)
+         category->running-task-ents (group-by job->category running-task-ents)
+         user->dru-divisors (share/create-user->share-fn unfiltered-db nil)
+         category->sort-jobs-by-dru-fn {:normal sort-normal-jobs-by-dru, :gpu sort-gpu-jobs-by-dru}]
+     (letfn [(sort-jobs-by-dru-category-helper [[category sort-jobs-by-dru]]
+               (let [pending-tasks (category->pending-task-ents category)
+                     running-tasks (category->running-task-ents category)]
+                 [category (sort-jobs-by-dru pending-tasks running-tasks user->dru-divisors)]))]
+       (into {} (map sort-jobs-by-dru-category-helper) category->sort-jobs-by-dru-fn)))))
 
 (timers/deftimer [cook-mesos scheduler rank-jobs-duration])
 (meters/defmeter [cook-mesos scheduler rank-jobs-failures])
@@ -155,6 +161,196 @@
                    "The first 20 pending normal jobs:" (take 20 (:normal jobs))
                    "The first 5 pending gpu jobs:" (take 5 (:gpu jobs)))
         jobs)
+      (catch Throwable t
+        (log/error t "Failed to rank jobs")
+        (meters/mark! rank-jobs-failures)
+        {}))))
+
+(defn get-running-and-pending-tasks
+  "Returns a map containing the running tasks, pending tasks, pending jobs and all tasks in the queue."
+  [unfiltered-db]
+  (let [pending-jobs (util/get-pending-job-ents unfiltered-db)
+        pending-tasks (map util/create-task-ent pending-jobs)
+        running-tasks (util/get-running-task-ents unfiltered-db)]
+    {:all-tasks (concat pending-tasks running-tasks)
+     :pending-jobs pending-jobs
+     :pending-tasks pending-tasks
+     :running-tasks running-tasks}))
+
+(defn job->resources
+  "Takes a job entity and returns a map of the resource usage of that job,
+   specifically :cpus, :gpus (when available), and :mem."
+  [job-ent]
+  (select-keys (util/job-ent->resources job-ent) [:cpus :gpus :mem]))
+
+(defn user->tasks-to-user->requested-resources
+  "Converts user->tasks to user->requested-resources where resource usage is computed using job->resources."
+  [user->tasks]
+  (pc/map-vals
+    (fn [tasks]
+      (->> tasks
+           (map :job/_instance)
+           (map job->resources)
+           (apply merge-with +)))
+    user->tasks))
+
+(defn compute-user->resource-weights
+  "Computes the user->resource-weights based on the ratio of the user's share to the default share."
+  [unfiltered-db users]
+  (let [user->dru-divisors (share/create-user->share-fn unfiltered-db nil)
+        default-dru-divisors (user->dru-divisors share/default-user)]
+    (pc/map-from-keys #(merge-with / (user->dru-divisors %) default-dru-divisors) users)))
+
+(defn compute-fair-share-resources
+  "Returns a map containing the following:
+   :ideal-running-job-ids which are the ids of all the jobs the fair scheduler thinks should be running,
+   :user->allocated-resources which is a map summarizing the fair share resources allocated to each user."
+  [total-resources user->requested-resources user->resource-weights]
+  (let [default-resources (pc/map-from-keys (constantly 0.0) (keys total-resources))
+        user->requested-resources (pc/map-vals #(merge default-resources %) user->requested-resources)]
+    (loop [all-under-share-users #{}
+           user->allocated-resources {}
+           available-resources total-resources
+           remaining-user->requested-resources user->requested-resources]
+      (if (seq remaining-user->requested-resources)
+        (let [resource-weights (select-keys
+                                 (->> (select-keys user->resource-weights (keys remaining-user->requested-resources))
+                                      vals
+                                      (apply merge-with +))
+                                 (keys available-resources))
+              fair-share-resources-per-unit-weight (merge-with / available-resources resource-weights)
+              user->fair-share-resources (pc/map-from-keys
+                                           (fn [user]
+                                             (->> (select-keys (user->resource-weights user) (keys available-resources))
+                                                  (merge-with * fair-share-resources-per-unit-weight)))
+                                           (keys remaining-user->requested-resources))
+              under-share-users (filter (fn under-share? [user]
+                                          (let [fair-share-resources (user->fair-share-resources user)
+                                                requested-resources (remaining-user->requested-resources user)]
+                                            (every? #(<= (get requested-resources %) (get fair-share-resources %))
+                                                    (keys requested-resources))))
+                                        (keys remaining-user->requested-resources))]
+          (if (seq under-share-users)
+            (let [under-share-user->allocated-resources (select-keys remaining-user->requested-resources under-share-users)
+                  allocated-resources (apply merge-with + (vals under-share-user->allocated-resources))]
+              (recur (into all-under-share-users under-share-users)
+                     (merge user->allocated-resources under-share-user->allocated-resources)
+                     (merge-with - available-resources allocated-resources)
+                     (apply dissoc remaining-user->requested-resources under-share-users)))
+            ;; find the closest fit user, allocated resources for her and continue
+            (let [user->requested-resources->fit-rating (pc/map-from-keys
+                                                          (fn compute-resource-fit-rating [user]
+                                                            (let [requested-resources (user->requested-resources user)
+                                                                  fair-share-resources (user->fair-share-resources user)]
+                                                              (merge-with / requested-resources fair-share-resources)))
+                                                          (keys remaining-user->requested-resources))
+                  user->fit-rating (pc/map-vals #(reduce max (vals %)) user->requested-resources->fit-rating)
+                  [user _] (reduce (fn [[u1 v1] [u2 v2]] (if (<= v1 v2) [u1 v1] [u2 v2]))
+                                   (seq user->fit-rating))
+                  allocated-resources (merge-with min (user->requested-resources user) (user->fair-share-resources user))]
+              (recur all-under-share-users
+                     (assoc user->allocated-resources user allocated-resources)
+                     (merge-with - available-resources allocated-resources)
+                     (dissoc remaining-user->requested-resources user)))))
+        {:under-share-users all-under-share-users
+         :user->allocated-resources user->allocated-resources}))))
+
+(defn allocate-tasks
+  "Given the user's fair share resources, return the map of user to job ids that should be scheduled.
+   The scheduled jobs are traversed in sorted order and considered eligible for scheduling as long as
+   the user's cumulative resource usage is under the user's fair share of resources."
+  [user->sorted-tasks user->fair-share-resources under-share-users]
+  (pc/map-from-keys
+    (fn user->scheduled-job-ids [user]
+      (if (contains? under-share-users user)
+        (do
+          (log/debug user "scheduling all" (count (user->sorted-tasks user)) "jobs of" user)
+          (->> (user->sorted-tasks user)
+               (map #(-> % :job/_instance :db/id))
+               (into #{})))
+        (let [fair-share-resources (user->fair-share-resources user)
+              zero-resources (pc/map-vals (constantly 0) fair-share-resources)]
+          (loop [scheduled-job-ids #{}
+                 allocated-resources zero-resources
+                 [task & remaining-tasks] (user->sorted-tasks user)]
+            (if (and task
+                     (every? #(< (get allocated-resources %) (get fair-share-resources %))
+                             (keys fair-share-resources)))
+              (recur (conj scheduled-job-ids (-> task :job/_instance :db/id))
+                     (merge-with + allocated-resources (-> task :job/_instance job->resources))
+                     remaining-tasks)
+              (do
+                (log/debug "skipping scheduling" (inc (count remaining-tasks)) "jobs of" user)
+                scheduled-job-ids))))))
+    (keys user->sorted-tasks)))
+
+(defn fairly-sort-jobs-by-dru-category
+  "Computes the fair schedule of jobs that should be running for a given user.
+   Returns a map containing the following keys:
+   :ideal-scheduled-job-ids is the set of job ids that should be running as per the
+   fair share allocation, and
+   :category->sorted-pending-jobs the pending jobs by category that should currently be scheduled as
+   per the fair share allocation."
+  [total-resources unfiltered-db]
+  (let [{:keys [all-tasks pending-tasks running-tasks]} (get-running-and-pending-tasks unfiltered-db)
+        user->tasks (group-by #(-> % :job/_instance :job/user) all-tasks)
+        user->requested-resources (user->tasks-to-user->requested-resources user->tasks)
+        user->resource-weights (compute-user->resource-weights unfiltered-db (keys user->tasks))
+        {:keys [under-share-users user->allocated-resources]}
+        (compute-fair-share-resources total-resources user->requested-resources user->resource-weights)
+        task-comparator (util/same-user-task-comparator)
+        user->sorted-tasks (pc/map-vals #(sort task-comparator %) user->tasks)
+        user->scheduled-job-ids (allocate-tasks user->sorted-tasks user->allocated-resources under-share-users)
+        scheduled-job-ids (reduce set/union #{} (vals user->scheduled-job-ids))
+        scheduled-pending-tasks (filter #(contains? scheduled-job-ids (-> % :job/_instance :db/id)) pending-tasks)
+        category->sorted-pending-jobs (sort-jobs-by-dru-category unfiltered-db scheduled-pending-tasks running-tasks)]
+    (log/info "after fairness processing"
+              {:pending-jobs {:scheduled (count scheduled-pending-tasks)
+                              :total (count pending-tasks)}})
+    {:category->sorted-pending-jobs category->sorted-pending-jobs
+     :ideal-scheduled-job-ids scheduled-job-ids}))
+
+(def total-resources-atom
+  "The total resources available to the scheduler, initialized to zero resources."
+  (atom {:cpus 0 :mem 0}))
+
+(defn- retrieve-total-resources
+  "Returns the total resources available to the scheduler.
+   Throws an error if the total resources have not been initialized."
+  []
+  (let [total-resources @total-resources-atom]
+    (when (= {:cpus 0 :mem 0} total-resources)
+      (throw (ex-info "total-resources has not been initialized!" {:total-resources total-resources})))
+    total-resources))
+
+(defn fairly-sort-jobs-by-dru-category-wrapper
+  "Returns a map from job category to a list of job entities, ordered by dru that should
+   be scheduled as per the fair share allocation."
+  [unfiltered-db]
+  (let [total-resources (retrieve-total-resources)
+        {:keys [category->sorted-pending-jobs ideal-scheduled-job-ids]}
+        (fairly-sort-jobs-by-dru-category total-resources unfiltered-db)]
+    ;; communicate the expected running jobs to the rebalancer
+    (reset! rebalancer/non-preemptable-scored-task?-atom
+            (fn non-preemptable-scored-task?
+              [{:keys [task]}]
+              (contains? ideal-scheduled-job-ids (-> task :job/_instance :db/id))))
+    ;; return the category->sorted-pending-jobs
+    category->sorted-pending-jobs))
+
+(defn fairness-based-rank-jobs
+  "Return a map of lists of job entities ordered by dru, keyed by category that should
+   be scheduled as per the fair share allocation.
+   It ranks the jobs by dru first and then apply several filters if provided."
+  [unfiltered-db offensive-job-filter]
+  (timers/time!
+    rank-jobs-duration
+    (try
+      (->> (fairly-sort-jobs-by-dru-category-wrapper unfiltered-db)
+           ;; Apply the offensive job filter first before taking.
+           (pc/map-vals offensive-job-filter)
+           (pc/map-vals #(map util/job-ent->map %))
+           (pc/map-vals #(remove nil? %)))
       (catch Throwable t
         (log/error t "Failed to rank jobs")
         (meters/mark! rank-jobs-failures)

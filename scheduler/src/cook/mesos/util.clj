@@ -617,7 +617,7 @@
 
 (defn task->feature-vector
   "Vector of comparable features of a task.
-   Last two elements are aribitary tie breakers.
+   Last two elements are arbitrary tie breakers.
    Use :db/id because they guarantee uniqueness for different entities
    (:db/id task) is not sufficient because synthetic task entities don't have :db/id
    This assumes there are at most one synthetic task for a job, otherwise uniqueness invariant will break"

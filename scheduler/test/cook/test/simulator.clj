@@ -121,7 +121,10 @@
          optimizer-config# (or (:optimizer-config ~scheduler-config)
                                {})
          trigger-chans# (or (:trigger-chans ~scheduler-config)
-                            (c/make-trigger-chans rebalancer-config# progress-config# optimizer-config# task-constraints#))]
+                            (c/make-trigger-chans rebalancer-config# progress-config# optimizer-config# task-constraints#))
+         rank-jobs-fn# (if (:ideally-fair-mode ~scheduler-config)
+                         ranker/fairness-based-rank-jobs
+                         ranker/rank-jobs)]
      (try
        (with-redefs [executor-config (constantly executor-config#)]
          (c/start-mesos-scheduler
@@ -140,7 +143,7 @@
             :offer-incubate-time-ms offer-incubate-time-ms#
             :optimizer-config optimizer-config#
             :progress-config progress-config#
-            :rank-jobs-fn ranker/rank-jobs
+            :rank-jobs-fn rank-jobs-fn#
             :rebalancer-config rebalancer-config#
             :sandbox-syncer-state sandbox-syncer-state#
             :server-config host-settings#
@@ -291,6 +294,13 @@
 
    Returns a list of the task entities run"
   [mesos-hosts trace cycle-step-ms config]
+  (let [total-resources (->> mesos-hosts
+                             (map :resources)
+                             (map #(select-keys % [:cpus :gpus :mem]))
+                             (map #(map-vals (fn [m] (get m "*")) %))
+                             (apply merge-with +))]
+    (log/info "simulate: total mesos hosts resources" total-resources)
+    (reset! ranker/total-resources-atom total-resources))
   (let [simulation-time (-> trace first :submit-time-ms)
         mesos-datomic-conn (restore-fresh-database! (get config :datomic-url "datomic:mem://mock-mesos"))
         offer-trigger-chan (async/chan)
