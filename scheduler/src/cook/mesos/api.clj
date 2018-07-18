@@ -250,6 +250,7 @@
    (s/optional-key :progress-regex-string) NonEmptyString
    (s/optional-key :group) s/Uuid
    (s/optional-key :disable-mea-culpa-retries) s/Bool
+   (s/optional-key :supports-data-locality) s/Bool
    :cpus PosDouble
    :mem PosDouble
    (s/optional-key :gpus) (s/both s/Int (s/pred pos? 'pos?))
@@ -529,7 +530,8 @@
   [pool commit-latch-id job :- Job]
   (let [{:keys [uuid command max-retries max-runtime expected-runtime priority cpus mem gpus
                 user name ports uris env labels container group application disable-mea-culpa-retries
-                constraints executor progress-output-file progress-regex-string]
+                constraints executor progress-output-file progress-regex-string
+                supports-data-locality]
          :or {group nil
               disable-mea-culpa-retries false}} job
         db-id (d/tempid :db.part/user)
@@ -612,7 +614,8 @@
                     executor (assoc :job/executor executor)
                     progress-output-file (assoc :job/progress-output-file progress-output-file)
                     progress-regex-string (assoc :job/progress-regex-string progress-regex-string)
-                    pool (assoc :job/pool (:db/id pool)))]
+                    pool (assoc :job/pool (:db/id pool))
+                    supports-data-locality (assoc :job/supports-data-locality supports-data-locality))]
 
     ;; TODO batch these transactions to improve performance
     (-> ports
@@ -703,7 +706,8 @@
   [db user task-constraints gpu-enabled? new-group-uuids
    {:keys [cpus mem gpus uuid command priority max-retries max-runtime expected-runtime name
            uris ports env labels container group application disable-mea-culpa-retries
-           constraints executor progress-output-file progress-regex-string]
+           constraints executor progress-output-file progress-regex-string
+           supports-data-locality]
     :or {group nil
          disable-mea-culpa-retries false}
     :as job}
@@ -740,7 +744,8 @@
                  (when executor {:executor executor})
                  (when progress-output-file {:progress-output-file progress-output-file})
                  (when progress-regex-string {:progress-regex-string progress-regex-string})
-                 (when application {:application application}))]
+                 (when application {:application application})
+                 (when supports-data-locality {:supports-data-locality supports-data-locality}))]
     (s/validate Job munged)
     (when (and (:gpus munged) (not gpu-enabled?))
       (throw (ex-info (str "GPU support is not enabled") {:gpus gpus})))
@@ -911,6 +916,7 @@
                    :state state
                    :status (name (:job/state job))
                    :submit_time submit-time
+                   :supports_data_locality (:job/supports-data-locality job false)
                    :uris (:uris resources)
                    :user (:job/user job)
                    :uuid (:job/uuid job)}]
