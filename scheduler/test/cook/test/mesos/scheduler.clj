@@ -24,6 +24,8 @@
             [clojure.string :as str]
             [clojure.tools.logging :as log]
             [clojure.walk :as walk]
+            [cook.config :as config]
+            [cook.mesos.data-locality :as dl]
             [cook.mesos.heartbeat :as heartbeat]
             [cook.mesos.sandbox :as sandbox]
             [cook.mesos.scheduler :as sched]
@@ -1695,29 +1697,83 @@
                  @rebalancer-reservation-atom)))))))
 
 
-(def dummy-fitness-calculator
-  "This calculator simply returns 0.0 for every Fenzo fitness calculation."
-  (reify VMTaskFitnessCalculator
-    (getName [_] "Dummy Fitness Calculator")
-    (calculateFitness [_ task-request target-vm task-tracker-state]
-      0.0)))
+(deftest test-handle-resource-offers-with-data-locality
+  (let [test-user (System/getProperty "user.name")
+        uri "datomic:mem://test-handle-resource-offers"
+        launched-tasks-atom (atom [])
+        driver (reify msched/SchedulerDriver
+                 (launch-tasks! [_ offer-id tasks]
+                   (swap! launched-tasks-atom concat tasks)))
+        offer-maker (fn [cpus mem gpus]
+                      {:resources [{:name "cpus", :scalar cpus, :type :value-scalar, :role "cook"}
+                                   {:name "mem", :scalar mem, :type :value-scalar, :role "cook"}
+                                   {:name "gpus", :scalar gpus, :type :value-scalar, :role "cook"}]
+                       :id {:value (str "id-" (UUID/randomUUID))}
+                       :slave-id {:value (str "slave-" (UUID/randomUUID))}
+                       :hostname (str "host-" (UUID/randomUUID))})
+        framework-id #mesomatic.types.FrameworkID{:value "my-framework-id"}
+        offers-chan (async/chan (async/buffer 10))
+        offer-1 (offer-maker 10 2048 0)
+        offer-2 (offer-maker 20 16384 0)
+        offer-3 (offer-maker 30 8192 0)
+        run-handle-resource-offers! (fn [num-considerable offers & {:keys [user-quota user->usage rebalancer-reservation-atom job-name->uuid]
+                                                                    :or {rebalancer-reservation-atom (atom {})
+                                                                         job-name->uuid {}}}]
+                                      (reset! launched-tasks-atom [])
+                                      (let [conn (restore-fresh-database! uri)
+                                            test-db (d/db conn)
+                                            driver-atom (atom nil)
 
-(deftest test-config-string->fitness-calculator
-  (testing "clojure symbol"
-    (is (instance? VMTaskFitnessCalculator
-                   (sched/config-string->fitness-calculator
-                     "cook.test.mesos.scheduler/dummy-fitness-calculator"))))
-  (testing "java class on classpath"
-    (is (instance? VMTaskFitnessCalculator
-                   (sched/config-string->fitness-calculator
-                     cook.config/default-fitness-calculator))))
-
-  (testing "bad input"
-    (is (thrown? IllegalArgumentException (sched/config-string->fitness-calculator "not-a-valid-anything"))))
-
-  (testing "something other than a VMTaskFitnessCalculator"
-    (is (thrown? IllegalArgumentException (sched/config-string->fitness-calculator
-                                            "System/out")))))
+                                            ^TaskScheduler fenzo (with-redefs [config/data-local-fitness-config (constantly {:maximum-cost 100
+                                                                                                                             :data-locality-weight 0.95
+                                                                                                                             :base-calculator BinPackingFitnessCalculators/cpuMemBinPacker})]
+                                                                   (sched/make-fenzo-scheduler driver-atom 1500
+                                                                                               "cook.mesos.data-locality/make-data-local-fitness-calculator"
+                                                                                               0.8))
+                                            group-ent-id (create-dummy-group conn)
+                                            get-uuid (fn [name] (get job-name->uuid name (d/squuid)))
+                                            job-1 (d/entity (d/db conn) (create-dummy-job conn
+                                                                                          :uuid (get-uuid "job-1")
+                                                                                          :group group-ent-id
+                                                                                          :name "job-1"
+                                                                                          :ncpus 3
+                                                                                          :memory 2048
+                                                                                          :supports-data-locality true))
+                                            job-2 (d/entity (d/db conn) (create-dummy-job conn
+                                                                                          :uuid (get-uuid "job-2")
+                                                                                          :group group-ent-id
+                                                                                          :name "job-2"
+                                                                                          :ncpus 13
+                                                                                          :memory 1024
+                                                                                          :supports-data-locality true))
+                                            _ (reset! dl/data-local-costs {(get-uuid "job-1") {(:hostname offer-1) 0.0
+                                                                                              (:hostname offer-2) 0.0
+                                                                                              (:hostname offer-3) 100.0}
+                                                                           (get-uuid "job-2") {(:hostname offer-1) 0.0
+                                                                                              (:hostname offer-2) 0.0
+                                                                                              (:hostname offer-3) 0.0}})
+                                            entity->map (fn [entity]
+                                                          (util/job-ent->map entity (d/db conn)))
+                                            category->pending-jobs (->> {:normal [job-1 job-2]}
+                                                                        (pc/map-vals (partial map entity->map)))
+                                            category->pending-jobs-atom (atom category->pending-jobs)
+                                            user->usage (or user->usage {test-user {:count 1, :cpus 2, :mem 1024, :gpus 0}})
+                                            user->quota (or user-quota {test-user {:count 10, :cpus 50, :mem 32768, :gpus 10}})
+                                            mesos-run-as-user nil
+                                            result (sched/handle-resource-offers!
+                                                     conn driver fenzo framework-id category->pending-jobs-atom mesos-run-as-user
+                                                     user->usage user->quota num-considerable offers-chan offers rebalancer-reservation-atom)]
+                                        result))]
+    (testing "enough offers for all normal jobs"
+      (let [num-considerable 10
+            offers [offer-1 offer-2 offer-3]]
+        (is (run-handle-resource-offers! num-considerable offers :job-name->uuid {"job-1" (d/squuid) "job-2" (d/squuid)}))
+        (let [launched-tasks @launched-tasks-atom
+              task-1 (first (filter #(.startsWith (:name %) "job-1") launched-tasks))
+              task-2 (first (filter #(.startsWith (:name %) "job-2") launched-tasks))]
+          (is (= 2 (count launched-tasks)))
+          (is (= (:slave-id offer-1) (:slave-id task-1)))
+          (is (= (:slave-id offer-2) (:slave-id task-2))))))))
 
 (deftest test-in-order-status-update-processing
   (let [status-store (atom {})

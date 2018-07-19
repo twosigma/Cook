@@ -24,7 +24,7 @@
             [clojure.edn :as edn]
             [clojure.string :as str]
             [clojure.tools.logging :as log]
-            [cook.config :refer (default-fitness-calculator)]
+            [cook.config :as config]
             [cook.datomic :as datomic]
             [cook.mesos.constraints :as constraints]
             [cook.mesos.dru :as dru]
@@ -1467,41 +1467,13 @@
 (meters/defmeter [cook-mesos scheduler mesos-error])
 (meters/defmeter [cook-mesos scheduler offer-chan-full-error])
 
-(defn config-string->fitness-calculator
-  "Given a string specified in the configuration, attempt to resolve it
-  to and return an instance of com.netflix.fenzo.VMTaskFitnessCalculator.
-  The config string can either be a reference to a clojure symbol, or to a
-  static member of a java class (for example, one of the fitness calculators
-  that ship with Fenzo).  An exception will be thrown if a VMTaskFitnessCalculator
-  can't be found using either method."
-  ^VMTaskFitnessCalculator
-  [config-string]
-  (let [calculator
-        (try
-          (-> config-string symbol resolve deref)
-          (catch NullPointerException e
-            (log/debug "fitness-calculator" config-string
-                       "couldn't be resolved to a clojure symbol."
-                       "Seeing if it refers to a java static field...")
-            (try
-              (let [[java-class-name field-name] (str/split config-string #"/")
-                    java-class (-> java-class-name symbol resolve)]
-                (clojure.lang.Reflector/getStaticField java-class field-name))
-              (catch Exception e
-                (throw (IllegalArgumentException.
-                         (str config-string " could not be resolved to a clojure symbol or to a java static field")))))))]
-    (if (instance? VMTaskFitnessCalculator calculator)
-      calculator
-      (throw (IllegalArgumentException.
-               (str config-string " is not a VMTaskFitnessCalculator"))))))
-
 (defn make-fenzo-scheduler
   [driver offer-incubate-time-ms fitness-calculator good-enough-fitness]
   (.. (TaskScheduler$Builder.)
       (disableShortfallEvaluation) ;; We're not using the autoscaling features
       (withLeaseOfferExpirySecs (max (-> offer-incubate-time-ms time/millis time/in-seconds) 1)) ;; should be at least 1 second
       (withRejectAllExpiredOffers)
-      (withFitnessCalculator (config-string->fitness-calculator (or fitness-calculator default-fitness-calculator)))
+      (withFitnessCalculator (config/config-string->fitness-calculator (or fitness-calculator config/default-fitness-calculator)))
       (withFitnessGoodEnoughFunction (reify Func1
                                        (call [_ fitness]
                                          (> fitness good-enough-fitness))))

@@ -55,6 +55,7 @@
             [swiss.arrows :refer :all])
   (:import (clojure.lang Atom Var)
            com.codahale.metrics.ScheduledReporter
+           com.netflix.fenzo.VMTaskFitnessCalculator
            (java.io OutputStreamWriter)
            (java.net ServerSocket URLEncoder)
            (java.util Date UUID)
@@ -2268,6 +2269,7 @@
     (instance? ServerSocket v) (str v)
     (instance? Var v) (str v)
     (instance? ScheduledReporter v) (str v)
+    (instance? VMTaskFitnessCalculator v) (.getName v)
     :else v))
 
 (defn settings-handler

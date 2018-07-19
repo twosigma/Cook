@@ -15,8 +15,10 @@
 ;;
 (ns cook.test.config
   (:require [clojure.test :refer :all]
-            [cook.config :refer (config default-pool env read-edn-config)]
-            [cook.test.testutil :refer (setup)]))
+            [cook.config :refer (config default-pool env read-edn-config
+                                 config-string->fitness-calculator)]
+            [cook.test.testutil :refer (setup)])
+  (:import com.netflix.fenzo.VMTaskFitnessCalculator))
 
 (deftest test-read-edn-config
   (is (= {} (read-edn-config "{}")))
@@ -43,3 +45,35 @@
     (is (nil? (default-pool))))
   (with-redefs [config {:settings {}}]
     (is (nil? (default-pool)))))
+
+
+(def dummy-fitness-calculator
+  "This calculator simply returns 0.0 for every Fenzo fitness calculation."
+  (reify VMTaskFitnessCalculator
+    (getName [_] "Dummy Fitness Calculator")
+    (calculateFitness [_ task-request target-vm task-tracker-state]
+      0.0)))
+
+(defn make-dummy-fitness-calculator []
+  dummy-fitness-calculator)
+
+(deftest test-config-string->fitness-calculator
+  (testing "clojure symbol"
+    (is (instance? VMTaskFitnessCalculator
+                   (config-string->fitness-calculator
+                     "cook.test.config/dummy-fitness-calculator"))))
+  (testing "java class on classpath"
+    (is (instance? VMTaskFitnessCalculator
+                   (config-string->fitness-calculator
+                     cook.config/default-fitness-calculator))))
+  (testing "clojure function"
+    (is (instance? VMTaskFitnessCalculator
+                   (config-string->fitness-calculator
+                    "cook.test.config/make-dummy-fitness-calculator"))))
+
+  (testing "bad input"
+    (is (thrown? IllegalArgumentException (config-string->fitness-calculator "not-a-valid-anything"))))
+
+  (testing "something other than a VMTaskFitnessCalculator"
+    (is (thrown? IllegalArgumentException (config-string->fitness-calculator
+                                            "System/out")))))
