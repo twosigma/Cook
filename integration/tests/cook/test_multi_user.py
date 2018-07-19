@@ -242,7 +242,7 @@ class MultiUserCookTest(util.CookTest):
                     job_cpus = [max_cpus] * num_max_cpu_jobs
                     job_cpus.append(desired_cpus - num_max_cpu_jobs * max_cpus)
 
-                # Submit a lower-priority job that fills the rest of the agent
+                # Submit lower priority jobs that fill the rest of the agent
                 constraints = [["HOSTNAME", "EQUALS", hostname]]
                 low_priority_uuids = []
                 for cpus in job_cpus:
@@ -262,7 +262,7 @@ class MultiUserCookTest(util.CookTest):
                                                         command=command, constraints=constraints)
                 all_job_uuids.append(uuid_high_priority)
 
-                # Assert that the lower-priority job was preempted
+                # Assert that one of the lower-priority jobs was preempted
                 def job_was_preempted(jobs):
                     for job in jobs:
                         for instance in job['instances']:
