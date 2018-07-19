@@ -165,8 +165,8 @@
    sandbox-syncer-state          -- map, representing the sandbox syncer object"
   [{:keys [curator-framework fenzo-config framework-id gpu-enabled? make-mesos-driver-fn
            mea-culpa-failure-limit mesos-datomic-conn mesos-datomic-mult mesos-leadership-atom mesos-pending-jobs-atom
-           mesos-run-as-user offer-cache offer-incubate-time-ms optimizer-config progress-config rebalancer-config
-           sandbox-syncer-state server-config task-constraints trigger-chans zk-prefix]}]
+           mesos-run-as-user offer-cache offer-incubate-time-ms optimizer-config progress-config rank-jobs-fn
+           rebalancer-config sandbox-syncer-state server-config task-constraints trigger-chans zk-prefix]}]
   (let [{:keys [fenzo-fitness-calculator fenzo-floor-iterations-before-reset fenzo-floor-iterations-before-warn
                 fenzo-max-jobs-considered fenzo-scaleback good-enough-fitness]} fenzo-config
         {:keys [cancelled-task-trigger-chan lingering-task-trigger-chan optimizer-trigger-chan
@@ -207,6 +207,7 @@
                                           :offer-incubate-time-ms offer-incubate-time-ms
                                           :pending-jobs-atom mesos-pending-jobs-atom
                                           :progress-config progress-config
+                                          :rank-jobs-fn rank-jobs-fn
                                           :rebalancer-reservation-atom rebalancer-reservation-atom
                                           :sandbox-syncer-state sandbox-syncer-state
                                           :task-constraints task-constraints

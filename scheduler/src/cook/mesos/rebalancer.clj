@@ -293,6 +293,11 @@
       (histograms/update! positive-dru-diffs (dru-at-scale diff)))
     (> diff min-dru-diff)))
 
+;; TODO this should become a function and return a DI-ed function
+(def non-preemptable-scored-task?-atom
+  "allows external processes to configure which jobs are non-preemptable"
+  (atom (constantly false)))
+
 (defn compute-preemption-decision
   "Takes state, parameters and a pending job entity, returns a preemption decision
    A preemption decision is a map that describes a possible way to perform preemption on a host. It has a hostname, a seq of tasks
@@ -309,6 +314,7 @@
          ;; This will preserve the ordering of task->scored-task
          host->scored-tasks (->> task->scored-task
                                  vals
+                                 (remove @non-preemptable-scored-task?-atom)
                                  (remove #(< (:dru %) safe-dru-threshold))
                                  (filter (partial exceeds-min-diff? pending-job-dru min-dru-diff))
                                  (group-by (fn [{:keys [task]}]

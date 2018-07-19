@@ -103,7 +103,8 @@
                                                                  :mesos-role mesos-role
                                                                  :mesos-framework-name mesos-framework-name
                                                                  :gpu-enabled? mesos-gpu-enabled})
-                                  trigger-chans ((util/lazy-load-var 'cook.mesos/make-trigger-chans) rebalancer progress optimizer task-constraints)]
+                                  trigger-chans ((util/lazy-load-var 'cook.mesos/make-trigger-chans) rebalancer progress optimizer task-constraints)
+                                  rank-jobs-fn (util/lazy-load-var 'cook.mesos.ranker/rank-jobs)]
                               (try
                                 (Class/forName "org.apache.mesos.Scheduler")
                                 ((util/lazy-load-var 'cook.mesos/start-mesos-scheduler)
@@ -127,6 +128,7 @@
                                    :offer-incubate-time-ms offer-incubate-time-ms
                                    :optimizer-config optimizer
                                    :progress-config progress
+                                   :rank-jobs-fn rank-jobs-fn
                                    :rebalancer-config rebalancer
                                    :sandbox-syncer-state sandbox-syncer-state
                                    :server-config {:hostname hostname
