@@ -27,6 +27,7 @@
             [plumbing.core :refer (fnk)]
             [plumbing.graph :as graph])
   (:import (com.google.common.io Files)
+           (com.netflix.fenzo VMTaskFitnessCalculator)
            (java.io File)
            (java.net InetAddress)
            (org.apache.curator.test TestingServer)
@@ -97,6 +98,37 @@
     quota)
   (get-ttl [_ _]
     ttl))
+
+(defn config-string->fitness-calculator
+  "Given a string specified in the configuration, attempt to resolve it
+  to and return an instance of com.netflix.fenzo.VMTaskFitnessCalculator.
+  The config string can either be a reference to a clojure symbol, or to a
+  static member of a java class (for example, one of the fitness calculators
+  that ship with Fenzo).  An exception will be thrown if a VMTaskFitnessCalculator
+  can't be found using either method."
+  ^VMTaskFitnessCalculator
+  [config-string]
+  (let [calculator
+        (try
+          (let [value (-> config-string symbol resolve deref)]
+            (if (fn? value)
+              (value)
+              value))
+          (catch NullPointerException e
+            (log/debug "fitness-calculator" config-string
+                       "couldn't be resolved to a clojure symbol."
+                       "Seeing if it refers to a java static field...")
+            (try
+              (let [[java-class-name field-name] (str/split config-string #"/")
+                    java-class (-> java-class-name symbol resolve)]
+                (clojure.lang.Reflector/getStaticField java-class field-name))
+              (catch Exception e
+                (throw (IllegalArgumentException.
+                         (str config-string " could not be resolved to a clojure symbol or to a java static field")))))))]
+    (if (instance? VMTaskFitnessCalculator calculator)
+      calculator
+      (throw (IllegalArgumentException.
+               (str config-string " is not a VMTaskFitnessCalculator"))))))
 
 (def config-settings
   "Parses the settings out of a config file"
@@ -354,7 +386,12 @@
                   api-only?)
      :estimated-completion-constraint (fnk [[:config {estimated-completion-constraint nil}]]
                                         (merge {:agent-start-grace-period-mins 10}
-                                               estimated-completion-constraint))}))
+                                               estimated-completion-constraint))
+     :data-local-fitness-calculator (fnk [[:config {data-local-fitness-calculator {}}]]
+                                         {:base-calculator (config-string->fitness-calculator
+                                                            (get data-local-fitness-calculator :base-calculator  "com.netflix.fenzo.plugins.BinPackingFitnessCalculators/cpuMemBinPacker"))
+                                          :data-locality-weight (get data-local-fitness-calculator :data-locality-weight 0.95)
+                                          :maximum-cost (get data-local-fitness-calculator :maximum-cost 100)})}))
 
 (defn read-config
   "Given a config file path, reads the config and returns the map"
@@ -419,3 +456,7 @@
 (defn estimated-completion-config
   []
   (-> config :settings :estimated-completion-constraint))
+
+(defn data-local-fitness-config
+  []
+  (-> config :settings :data-local-fitness-calculator))
