@@ -51,8 +51,7 @@
   "This calculator simply returns 0.0 for every Fenzo fitness calculation."
   (reify VMTaskFitnessCalculator
     (getName [_] "Dummy Fitness Calculator")
-    (calculateFitness [_ task-request target-vm task-tracker-state]
-      0.0)))
+    (calculateFitness [_ _ _ _] 0.0)))
 
 (defn make-dummy-fitness-calculator []
   dummy-fitness-calculator)

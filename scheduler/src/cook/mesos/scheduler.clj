@@ -1473,7 +1473,7 @@
       (disableShortfallEvaluation) ;; We're not using the autoscaling features
       (withLeaseOfferExpirySecs (max (-> offer-incubate-time-ms time/millis time/in-seconds) 1)) ;; should be at least 1 second
       (withRejectAllExpiredOffers)
-      (withFitnessCalculator (config/config-string->fitness-calculator (or fitness-calculator config/default-fitness-calculator)))
+      (withFitnessCalculator (config/fitness-calculator fitness-calculator))
       (withFitnessGoodEnoughFunction (reify Func1
                                        (call [_ fitness]
                                          (> fitness good-enough-fitness))))
