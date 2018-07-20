@@ -542,7 +542,11 @@
                                                            (select-keys (keywordize-keys (:resources v))
                                                                         [:cpus :mem :gpus])]))
                                                    (into {}))
-                        pool-ent (d/entity (d/db conn) [:pool/name (name pool)])]
+                        pool-name (name pool)
+                        pool-ent (if (= :no-pool pool)
+                                   {:pool/name pool-name
+                                    :pool/dru-mode :pool.dru-mode/default}
+                                   (d/entity (d/db conn) [:pool/name pool-name]))]
                     (rebalance! conn driver offer-cache pending-jobs host->spare-resources
                                 rebalancer-reservation-atom
                                 (assoc params :pool-ent pool-ent))))
