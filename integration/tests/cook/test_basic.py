@@ -1145,7 +1145,8 @@ class CookTest(util.CookTest):
         job2 = util.minimal_job(uuid=job1['uuid'])
         resp = util.session.post('%s/rawscheduler' % self.cook_url,
                                  json={'jobs': [job1, job2]})
-        self.assertEqual(resp.status_code, 500)
+        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(f'Duplicate job uuids: ["{job1["uuid"]}"]', resp.json()['error'], resp.text)
 
     @pytest.mark.xfail
     @unittest.skipIf(util.has_ephemeral_hosts(), util.EPHEMERAL_HOSTS_SKIP_REASON)

@@ -1524,7 +1524,8 @@
                          user (get-in ctx [:request :authorization/user])
                          override-group-immutability? (boolean (get params :override-group-immutability))
                          pool-name (get params :pool)
-                         pool (when pool-name (d/entity (d/db conn) [:pool/name pool-name]))]
+                         pool (when pool-name (d/entity (d/db conn) [:pool/name pool-name]))
+                         uuid->count (pc/map-vals count (group-by :uuid jobs))]
                      (try
                        (cond
                          (empty? params)
@@ -1536,6 +1537,13 @@
 
                          (and pool (not (pool/accepts-submissions? pool)))
                          [true {::error (str pool-name " is not accepting job submissions.")}]
+
+                         (some true? (map (fn [[uuid count]] (< 1 count)) uuid->count))
+                         [true {::error (str "Duplicate job uuids: " (->> uuid->count
+                                                                          (filter (fn [[uuid count]] (< 1 count)))
+                                                                          (map first)
+                                                                          (map str)
+                                                                          (into [])))}]
 
                          :else
                          (let [groups (mapv #(validate-and-munge-group (db conn) %) groups)
