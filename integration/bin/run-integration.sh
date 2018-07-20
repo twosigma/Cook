@@ -55,6 +55,9 @@ COOK_NAME=cook-scheduler-${COOK_PORT}
 COOK_IP=$(docker inspect ${COOK_NAME} | jq -r '.[].NetworkSettings.IPAddress')
 COOK_URL="http://${COOK_IP}:${COOK_PORT}"
 
+MESOS_MASTER_NAME=$(docker ps -q -f name=minimesos-master)
+MESOS_MASTER_IP=$(docker inspect $MESOS_MASTER_NAME | jq -r '.[].NetworkSettings.IPAddress')
+
 COOK_MULTICLUSTER_ENV=""
 if [ -n "${COOK_MULTI_CLUSTER+1}" ];
 then
@@ -77,6 +80,7 @@ docker create \
        --name=cook-integration \
        -e "COOK_SCHEDULER_URL=${COOK_URL}" \
        -e "USER=root" \
+       -e "COOK_MESOS_LEADER_URL=http://${MESOS_MASTER_IP}:5050" \
        ${COOK_MULTICLUSTER_ENV} ${DOCKER_VOLUME_ARGS} \
        cook-integration:latest \
        "$@"
