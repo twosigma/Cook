@@ -514,9 +514,19 @@
       "mesos" :executor/mesos
       (throw (IllegalArgumentException. (str "Unsupported executor type: " executor))))))
 
+(defn- make-commit-latch
+  "Makes a new commit-latch.
+   Returns a pair of (commit-latch-id, commit-latch)"
+  []
+  (let [commit-latch-id (d/tempid :db.part/user)
+        commit-latch {:db/id commit-latch-id
+                      :commit-latch/committed? true
+                      :commit-latch/uuid (UUID/randomUUID)}]
+    [commit-latch-id commit-latch]))
+
 (s/defn make-job-txn
   "Creates the necessary txn data to insert a job into the database"
-  [pool job :- Job]
+  [pool commit-latch-id job :- Job]
   (let [{:keys [uuid command max-retries max-runtime expected-runtime priority cpus mem gpus
                 user name ports uris env labels container group application disable-mea-culpa-retries
                 constraints executor progress-output-file progress-regex-string]
@@ -580,10 +590,6 @@
                                    {:db/id gpus-id
                                     :resource/type :resource.type/gpus
                                     :resource/amount (double gpus)}]))])
-        commit-latch-id (d/tempid :db.part/user)
-        commit-latch {:db/id commit-latch-id
-                      :commit-latch/committed? true
-                      :commit-latch/uuid (UUID/randomUUID)}
         txn (cond-> {:db/id db-id
                      :job/command command
                      :job/commit-latch commit-latch-id
@@ -616,8 +622,7 @@
         (into labels)
         (into container)
         (into maybe-datoms)
-        (conj txn)
-        (conj commit-latch))))
+        (conj txn))))
 
 (defn make-type-parameter-txn
   "Makes txn map for an entity conforming to the pattern of
@@ -1430,7 +1435,8 @@
                                (map make-default-group))
           groups (into (vec implicit-groups) groups)
           job-asserts (map (fn [j] [:entity/ensure-not-exists [:job/uuid (:uuid j)]]) jobs)
-          job-txns (mapcat (partial make-job-txn pool) jobs)
+          [commit-latch-id commit-latch] (make-commit-latch)
+          job-txns (mapcat (partial make-job-txn pool commit-latch-id) jobs)
           job-uuids->dbids (->> job-txns
                                 ;; Not all txns are for the top level job
                                 (filter :job/uuid)
@@ -1449,6 +1455,7 @@
          conn
          (-> (vec group-asserts)
              (into job-asserts)
+             (conj commit-latch)
              (into job-txns)
              (into group-txns)))
 
