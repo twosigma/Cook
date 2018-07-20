@@ -74,10 +74,6 @@ then
    COOK_MULTICLUSTER_ENV="${COOK_MULTICLUSTER_ENV} -e COOK_SLAVE_URL=${COOK_SLAVE_URL} -e COOK_MASTER_SLAVE=${COOK_MASTER_SLAVE}"
 fi
 
-MESOS_MASTER_NAME=$(docker ps -q -f name=minimesos-master)
-MESOS_MASTER_IP=$(docker inspect $MESOS_MASTER_NAME | jq -r '.[].NetworkSettings.IPAddress')
-
-
 docker create \
        --rm \
        --name=cook-integration \

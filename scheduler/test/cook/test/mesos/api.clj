@@ -1208,7 +1208,6 @@
                    :retries_remaining 1
                    :state "waiting"
                    :status "waiting"
-                   :supports_data_locality false
                    :uris nil}
                   ;; Only assoc these fields if the job specifies one
                   application (assoc :application application)

@@ -888,6 +888,7 @@
           progress-regex-string (:job/progress-regex-string job)
           pool (:job/pool job)
           container (:job/container job)
+          supports-data-locality (:job/supports-data-locality job)
           state (util/job-ent->state job)
           constraints (->> job
                            :job/constraint
@@ -917,7 +918,6 @@
                    :state state
                    :status (name (:job/state job))
                    :submit_time submit-time
-                   :supports_data_locality (:job/supports-data-locality job false)
                    :uris (:uris resources)
                    :user (:job/user job)
                    :uuid (:job/uuid job)}]
@@ -929,7 +929,8 @@
               progress-output-file (assoc :progress-output-file progress-output-file)
               progress-regex-string (assoc :progress-regex-string progress-regex-string)
               pool (assoc :pool (:pool/name pool))
-              container (assoc :container (container->response-map container))))))
+              container (assoc :container (container->response-map container))
+              supports-data-locality (assoc :supports-data-locality supports-data-locality)))))
 
 (defn fetch-group-live-jobs
   "Get all jobs from a group that are currently running or waiting (not complete)"

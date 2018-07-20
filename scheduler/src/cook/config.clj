@@ -460,3 +460,8 @@
 (defn data-local-fitness-config
   []
   (-> config :settings :data-local-fitness-calculator))
+
+(defn fitness-calculator
+  "Returns the fitness calculator specified by fitness-calculator, or the default if nil"
+  [fitness-calculator]
+  (config-string->fitness-calculator (or fitness-calculator default-fitness-calculator)))
