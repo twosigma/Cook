@@ -34,8 +34,8 @@
   (getName [this] (-> this .getClass .getSimpleName))
   (calculateFitness [this task-request target-vm tracker-state]
     (let [base-fitness (.calculateFitness base-calculator task-request target-vm tracker-state)
-          {:keys [job/uuid job/supports-data-locality]} (:job task-request)]
-      (if supports-data-locality
+          {:keys [job/uuid job/data-local]} (:job task-request)]
+      (if data-local
         (let [normalized-fitness (get-normalized-fitness uuid (.getHostname target-vm) maximum-cost)
               data-local-fitness (* data-locality-weight normalized-fitness)]
           (+ data-local-fitness (* (- 1 data-locality-weight) base-fitness)))

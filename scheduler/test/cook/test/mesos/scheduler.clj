@@ -1738,14 +1738,14 @@
                                                                                             :name "job-1"
                                                                                             :ncpus 3
                                                                                             :memory 2048
-                                                                                            :supports-data-locality true))
+                                                                                            :data-local true))
                                               job-2 (d/entity (d/db conn) (create-dummy-job conn
                                                                                             :uuid (get-uuid "job-2")
                                                                                             :group group-ent-id
                                                                                             :name "job-2"
                                                                                             :ncpus 13
                                                                                             :memory 1024
-                                                                                            :supports-data-locality true))
+                                                                                            :data-local true))
                                               _ (dl/update-data-local-costs {(get-uuid "job-1") {(:hostname offer-1) 0.0
                                                                                                  (:hostname offer-2) 0.0
                                                                                                  (:hostname offer-3) 100.0}

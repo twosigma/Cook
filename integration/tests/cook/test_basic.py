@@ -2471,7 +2471,7 @@ class CookTest(util.CookTest):
 
 
     def test_data_local_support(self):
-        uuid, resp = util.submit_job(self.cook_url, supports_data_locality=True)
+        uuid, resp = util.submit_job(self.cook_url, data_local=True)
         self.assertEqual(201, resp.status_code, resp.text)
         job = util.load_job(self.cook_url, uuid)
-        self.assertEqual(True, job['supports_data_locality'], job)
+        self.assertEqual(True, job['data_local'], job)

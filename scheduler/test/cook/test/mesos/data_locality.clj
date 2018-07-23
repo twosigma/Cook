@@ -63,9 +63,9 @@
                                                       data-locality-weight
                                                       maximum-cost)
           job-1 {:job/uuid (UUID/randomUUID)
-                 :job/supports-data-locality true}
+                 :job/data-local true}
           job-2 {:job/uuid (UUID/randomUUID)
-                 :job/supports-data-locality false}]
+                 :job/data-local false}]
       (dl/update-data-local-costs {(:job/uuid job-1) {"hostA" 0
                                                       "hostB" 20}
                                    (:job/uuid job-2) {"hostA" 0

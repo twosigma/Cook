@@ -251,7 +251,7 @@
    (s/optional-key :progress-regex-string) NonEmptyString
    (s/optional-key :group) s/Uuid
    (s/optional-key :disable-mea-culpa-retries) s/Bool
-   (s/optional-key :supports-data-locality) s/Bool
+   (s/optional-key :data-local) s/Bool
    :cpus PosDouble
    :mem PosDouble
    (s/optional-key :gpus) (s/both s/Int (s/pred pos? 'pos?))
@@ -532,7 +532,7 @@
   (let [{:keys [uuid command max-retries max-runtime expected-runtime priority cpus mem gpus
                 user name ports uris env labels container group application disable-mea-culpa-retries
                 constraints executor progress-output-file progress-regex-string
-                supports-data-locality]
+                data-local]
          :or {group nil
               disable-mea-culpa-retries false}} job
         db-id (d/tempid :db.part/user)
@@ -616,7 +616,7 @@
                     progress-output-file (assoc :job/progress-output-file progress-output-file)
                     progress-regex-string (assoc :job/progress-regex-string progress-regex-string)
                     pool (assoc :job/pool (:db/id pool))
-                    supports-data-locality (assoc :job/supports-data-locality supports-data-locality))]
+                    data-local (assoc :job/data-local data-local))]
 
     ;; TODO batch these transactions to improve performance
     (-> ports
@@ -708,7 +708,7 @@
    {:keys [cpus mem gpus uuid command priority max-retries max-runtime expected-runtime name
            uris ports env labels container group application disable-mea-culpa-retries
            constraints executor progress-output-file progress-regex-string
-           supports-data-locality]
+           data-local]
     :or {group nil
          disable-mea-culpa-retries false}
     :as job}
@@ -746,7 +746,7 @@
                  (when progress-output-file {:progress-output-file progress-output-file})
                  (when progress-regex-string {:progress-regex-string progress-regex-string})
                  (when application {:application application})
-                 (when supports-data-locality {:supports-data-locality supports-data-locality}))]
+                 (when data-local {:data-local data-local}))]
     (s/validate Job munged)
     (when (and (:gpus munged) (not gpu-enabled?))
       (throw (ex-info (str "GPU support is not enabled") {:gpus gpus})))
@@ -888,7 +888,7 @@
           progress-regex-string (:job/progress-regex-string job)
           pool (:job/pool job)
           container (:job/container job)
-          supports-data-locality (:job/supports-data-locality job)
+          data-local (:job/data-local job)
           state (util/job-ent->state job)
           constraints (->> job
                            :job/constraint
@@ -930,7 +930,7 @@
               progress-regex-string (assoc :progress-regex-string progress-regex-string)
               pool (assoc :pool (:pool/name pool))
               container (assoc :container (container->response-map container))
-              supports-data-locality (assoc :supports-data-locality supports-data-locality)))))
+              data-local (assoc :data-local data-local)))))
 
 (defn fetch-group-live-jobs
   "Get all jobs from a group that are currently running or waiting (not complete)"
