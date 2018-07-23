@@ -73,10 +73,7 @@
           task-ent5 (d/entity (d/db conn) task5)
           task-ent6 (d/entity (d/db conn) task6)
           task-ent7 (d/entity (d/db conn) task7)
-          task-ent8 (d/entity (d/db conn) task8)
-
-          tasks (shuffle [task-ent1 task-ent2 task-ent3 task-ent4
-                           task-ent5 task-ent6 task-ent7 task-ent8])]
+          task-ent8 (d/entity (d/db conn) task8)]
       (let [_ (share/set-share! conn "default" nil
                                 "Limits for new cluster"
                                 :mem 25.0 :cpus 25.0 :gpus 1.0)
@@ -91,8 +88,10 @@
             db (d/db conn)
             running-tasks (util/get-running-task-ents db)
             pending-jobs []
+            pool-ent {:pool/name :no-pool
+                      :pool/dru-mode :pool.dru-mode/default}
             {:keys [task->scored-task user->sorted-running-task-ents]}
-            (rebalancer/init-state db running-tasks pending-jobs {} :normal)]
+            (rebalancer/init-state db running-tasks pending-jobs {} pool-ent)]
         (is (= [task-ent4 task-ent3 task-ent8 task-ent7
                 task-ent6 task-ent2 task-ent1 task-ent5]
                (keys task->scored-task)))
