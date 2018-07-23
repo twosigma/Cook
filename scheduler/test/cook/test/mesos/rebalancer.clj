@@ -1277,23 +1277,21 @@
     (let [datomic-uri "datomic:mem://test-reserve-hosts-integration"
           conn (restore-fresh-database! datomic-uri)
           job-id (create-dummy-job conn :user "user1" :memory 6.0 :ncpus 6.0)
-          job (d/entity (d/db conn) job-id)
+          {:keys [job/uuid] :as job} (d/entity (d/db conn) job-id)
           first-decision [{:task ["a" "b"]
                            :hostname "hostA"
                            :to-make-room-for job}]
           second-decision [{:task ["a" "b"]
                             :hostname "hostB"
                             :to-make-room-for job}]
-          ^TaskRequest task-request (sched/make-task-request (d/db conn) job)
-          match [{:tasks [(SimpleAssignmentResult. [] nil task-request)]}]
           rebalancer-reservation-atom (atom {})]
       (rebalancer/reserve-hosts! rebalancer-reservation-atom first-decision)
-      (is (= {(:job/uuid job) "hostA"} (:job-uuid->reserved-host @rebalancer-reservation-atom)))
+      (is (= {uuid "hostA"} (:job-uuid->reserved-host @rebalancer-reservation-atom)))
       (is (= #{} (:launched-job-uuids @rebalancer-reservation-atom)))
 
-      (sched/update-host-reservations! rebalancer-reservation-atom match)
+      (sched/update-host-reservations! rebalancer-reservation-atom #{uuid})
       (is (= {} (:job-uuid->reserved-host @rebalancer-reservation-atom)))
-      (is (= #{(:job/uuid job)} (:launched-job-uuids @rebalancer-reservation-atom)))
+      (is (= #{uuid} (:launched-job-uuids @rebalancer-reservation-atom)))
 
       (rebalancer/reserve-hosts! rebalancer-reservation-atom second-decision)
       (is (= {}) (:job-uuid->reserved-host @rebalancer-reservation-atom))
