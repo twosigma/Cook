@@ -15,6 +15,7 @@
                           (pc/map-vals (fn [cost] (-> cost (min maximum-cost) (max 0)))
                                        host->cost)))
            (reset! data-local-costs))))
+
   (defn get-data-local-costs
     "Returns the current cost for jobs to run on each host"
     []
