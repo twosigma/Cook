@@ -109,9 +109,9 @@
     (let [datomic-uri "datomic:mem://test-compute-pending-job-dru"
           conn (restore-fresh-database! datomic-uri)
           job1 (create-dummy-job conn :name "job1" :user "ljin" :memory 10.0 :ncpus 10.0)
-          job2 (create-dummy-job conn :name "job2" :user "ljin" :memory 5.0  :ncpus 5.0)
+          job2 (create-dummy-job conn :name "job2" :user "ljin" :memory 5.0 :ncpus 5.0)
           job3 (create-dummy-job conn :name "job3" :user "ljin" :memory 15.0 :ncpus 25.0)
-          job4 (create-dummy-job conn :name "job4"  :user "ljin" :memory 25.0 :ucpus 15.0)
+          job4 (create-dummy-job conn :name "job4" :user "ljin" :memory 25.0 :ucpus 15.0)
           job5 (create-dummy-job conn :name "job5" :user "wzhao" :memory 8.0 :ncpus 8.0)
           job6 (create-dummy-job conn :name "job6" :user "wzhao" :memory 10.0 :ncpus 10.0)
           job7 (create-dummy-job conn :name "job7" :user "wzhao" :memory 10.0 :ncpus 10.0)
@@ -121,23 +121,14 @@
           job10 (create-dummy-job conn :name "job10" :user "sunil" :memory 20.0 :ncpus 20.0)
           job11 (create-dummy-job conn :name "job11" :user "ljin" :memory 10.0 :ucpus 10.0)
 
-          task1 (create-dummy-instance conn job1 :instance-status :instance.status/running)
-          task2 (create-dummy-instance conn job2 :instance-status :instance.status/running)
-          task3 (create-dummy-instance conn job3 :instance-status :instance.status/running)
-          task4 (create-dummy-instance conn job4 :instance-status :instance.status/running)
-          task5 (create-dummy-instance conn job5 :instance-status :instance.status/running)
-          task6 (create-dummy-instance conn job6 :instance-status :instance.status/running)
-          task7 (create-dummy-instance conn job7 :instance-status :instance.status/running)
-          task8 (create-dummy-instance conn job8 :instance-status :instance.status/running)
-
-          task-ent1 (d/entity (d/db conn) task1)
-          task-ent2 (d/entity (d/db conn) task2)
-          task-ent3 (d/entity (d/db conn) task3)
-          task-ent4 (d/entity (d/db conn) task4)
-          task-ent5 (d/entity (d/db conn) task5)
-          task-ent6 (d/entity (d/db conn) task6)
-          task-ent7 (d/entity (d/db conn) task7)
-          task-ent8 (d/entity (d/db conn) task8)
+          _ (create-dummy-instance conn job1 :instance-status :instance.status/running)
+          _ (create-dummy-instance conn job2 :instance-status :instance.status/running)
+          _ (create-dummy-instance conn job3 :instance-status :instance.status/running)
+          _ (create-dummy-instance conn job4 :instance-status :instance.status/running)
+          _ (create-dummy-instance conn job5 :instance-status :instance.status/running)
+          _ (create-dummy-instance conn job6 :instance-status :instance.status/running)
+          _ (create-dummy-instance conn job7 :instance-status :instance.status/running)
+          _ (create-dummy-instance conn job8 :instance-status :instance.status/running)
 
           _ (share/set-share! conn "default" nil
                               "limits for new cluster"
@@ -146,7 +137,9 @@
           db (d/db conn)
           running-tasks (util/get-running-task-ents db)
           pending-jobs (map #(d/entity db %) [job9 job10 job11])
-          state (rebalancer/init-state db running-tasks pending-jobs {} :normal)]
+          pool-ent {:pool/name :no-pool
+                    :pool/dru-mode :pool.dru-mode/default}
+          state (rebalancer/init-state db running-tasks pending-jobs {} pool-ent)]
       (is (= 1.92 (rebalancer/compute-pending-normal-job-dru state (d/entity db job9))))
       (is (= 0.8 (rebalancer/compute-pending-normal-job-dru state (d/entity db job10))))
       (is (= 2.6 (rebalancer/compute-pending-normal-job-dru state (d/entity db job11)))))))
