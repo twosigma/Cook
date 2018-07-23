@@ -44,6 +44,7 @@ import org.apache.http.ParseException;
 import org.apache.http.StatusLine;
 import org.apache.http.auth.AuthSchemeProvider;
 import org.apache.http.auth.AuthScope;
+
 import org.apache.http.auth.Credentials;
 import org.apache.http.auth.UsernamePasswordCredentials;
 import org.apache.http.client.CredentialsProvider;
@@ -1234,5 +1235,24 @@ public class JobClient implements Closeable, JobClientInterface {
             throws JobClientException {
             JobClient.this.abort(uuids, _impersonatedUser);
         }
+    }
+
+    /** If UUID's are generated purely randomly, they have poor locality. This code generates random (variant 4, RFC4122)
+     * UUID's that are temporally clustered, such that two UUID's generated closer in time, will share a longer prefix than
+     * those generated further apart in time. These should be used for Cook job UUID's, group UUID's and any
+     * other UUID's passed to cook. They can be worth a 10x-30x performance improvement, increasing job submission rate
+     * to over 1000 jobs/second.
+     *
+     * Implementation details (do not depend on this): We generate these UUID's by taking the lowest 40 bits of the
+     * system time (in milliseconds) and using those as the most significant 5 bytes. When the timestamp rolls over
+     * (after 30 years) we lose a tiny bit of locality.
+     * @return
+     */
+    public static UUID makeTemporalUUID() {
+        long millis = System.currentTimeMillis();
+        long millisMasked = millis & ((1L<<40)-1);
+        UUID baseUUID = UUID.randomUUID();
+        long baseUUIDHighMasked = baseUUID.getMostSignificantBits() & ((1<<24)-1);
+        return new UUID(baseUUIDHighMasked | (millisMasked<<24),baseUUID.getLeastSignificantBits());
     }
 }
