@@ -1096,26 +1096,25 @@
             running-tasks-sample-size 10240
             pending-jobs-sample-size 1024
 
-            _ (doseq [x (range running-tasks-sample-size)]
+            _ (doseq [_ (range running-tasks-sample-size)]
                 (let [[[user mem cpus]] (gen/sample running-job-gen 1)
                       [host] (gen/sample host-gen 1)
                       job-eid (create-dummy-job conn :user user :memory mem :cpus cpus)
-                      task-eid (create-dummy-instance conn job-eid :instance-status :instance.status/running :hostname host)]))
+                      _ (create-dummy-instance conn job-eid :instance-status :instance.status/running :hostname host)]))
 
-            _ (doseq [x (range pending-jobs-sample-size)]
+            _ (doseq [_ (range pending-jobs-sample-size)]
                 (let [[[user mem cpus]] (gen/sample pending-job-gen 1)
-                      job-eid (create-dummy-job conn :user user :memory mem :cpus cpus)]))
+                      _ (create-dummy-job conn :user user :memory mem :cpus cpus)]))
 
             db (d/db conn)
 
             pending-job-ents (util/get-pending-job-ents db)
-            [pending-job-ents-to-run task-ents-to-preempt] (time (rebalancer/rebalance db offer-cache
-                                                                                       pending-job-ents {}
-                                                                                       (atom {})
-                                                                                       {:max-preemption 128
-                                                                                        :safe-dru-threshold 1.0
-                                                                                        :min-dru-diff 0.5
-                                                                                        :category :normal}))]))))
+            pool-ent {:pool/dru-mode :pool.dru-mode/default}]
+        (rebalancer/rebalance db offer-cache
+                              pending-job-ents {}
+                              (atom {})
+                              {:max-preemption 128
+                               :pool-ent pool-ent})))))
 
 
 (deftest test-update-datomic-params-via-config!
