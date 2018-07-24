@@ -1824,8 +1824,9 @@
                       {:request-method :post
                        :scheme :http
                        :uri "/rawscheduler"
+                       :authorization/user "user"
                        :headers {"Content-Type" "application/json"}
-                       :body-params {"jobs" [(basic-job)]}})]
+                       :body-params {:jobs [(minimal-job)]}})]
     (with-redefs [api/no-job-exceeds-quota? (constantly true)]
       (testing "successful-job-creation-response"
         (with-redefs [api/create-jobs! (fn [in-conn _]
@@ -1851,4 +1852,16 @@
           (let [handler (api/create-jobs-handler conn task-constraints gpu-enabled? is-authorized-fn)
                 {:keys [body status]} (handler (new-request))]
             (is (= 500 status))
-            (is (str/includes? body "Exception occurred while creating job - Thrown from test"))))))))
+            (is (str/includes? body "Exception occurred while creating job - Thrown from test")))))
+
+      (testing "should fail with duplicate uuids"
+        (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
+              {:keys [uuid] :as j1} (minimal-job)
+              j2 (assoc (minimal-job) :uuid uuid)
+              j3 (minimal-job)
+              request (assoc-in (new-request) [:body-params :jobs] [j1 j2 j3])
+              handler (api/create-jobs-handler conn task-constraints gpu-enabled? is-authorized-fn)
+              {:keys [body status]} (handler request)]
+          (is (= 400 status))
+          (is (str/includes? body (str uuid)))
+          (is (not (str/includes? body (str (:uuid j3))))))))))
