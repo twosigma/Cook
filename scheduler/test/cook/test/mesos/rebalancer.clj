@@ -186,13 +186,14 @@
 
 (defn initialize-rebalancer
   [db pending-job-ids]
-  (let  [pending-jobs (map #(d/entity db %) pending-job-ids)
-         running-tasks (util/get-running-task-ents db)
-         {:keys [task->scored-task user->sorted-running-task-ents user->dru-divisors]}
-           (rebalancer/init-state db running-tasks pending-jobs {} :normal)]
+  (let [pending-jobs (map #(d/entity db %) pending-job-ids)
+        running-tasks (util/get-running-task-ents db)
+        pool-ent {:pool/name :no-pool
+                  :pool/dru-mode :pool.dru-mode/default}
+        {:keys [task->scored-task user->sorted-running-task-ents user->dru-divisors]}
+        (rebalancer/init-state db running-tasks pending-jobs {} pool-ent)]
     [task->scored-task user->sorted-running-task-ents user->dru-divisors]))
 
-;(test-compute-preemption-decision)
 (deftest test-compute-preemption-decision
   (testing "test without group constraints"
     (let [datomic-uri "datomic:mem://test-compute-preemption-decision"
@@ -202,8 +203,6 @@
           job2 (create-dummy-job conn :user "ljin" :memory 5.0  :ncpus 5.0)
           job3 (create-dummy-job conn :user "ljin" :memory 15.0 :ncpus 25.0)
           job4 (create-dummy-job conn :user "ljin" :memory 25.0 :ncpus 15.0)
-          job5 (create-dummy-job conn :user "wzhao" :memory 8.0 :ncpus 8.0)
-          job6 (create-dummy-job conn :user "wzhao" :memory 10.0 :ncpus 10.0)
           job7 (create-dummy-job conn :user "wzhao" :memory 10.0 :ncpus 10.0)
           job8 (create-dummy-job conn :user "wzhao" :memory 10.0 :ncpus 10.0)
 
@@ -214,45 +213,15 @@
           job13 (create-dummy-job conn :user "sunil" :memory 45.0 :ncpus 45.0)
           job14 (create-dummy-job conn :user "sunil" :memory 80.0 :ncpus 80.0)
 
-          task1 (create-dummy-instance conn
-                                             job1
-                                             :instance-status :instance.status/running
-                                             :hostname "hostA")
-          task2 (create-dummy-instance conn
-                                             job2
-                                             :instance-status :instance.status/running
-                                             :hostname "hostA")
-          task3 (create-dummy-instance conn
-                                             job3
-                                             :instance-status :instance.status/running
-                                             :hostname "hostB")
-          task4 (create-dummy-instance conn
-                                             job4
-                                             :instance-status :instance.status/running
-                                             :hostname "hostB")
-          task5 (create-dummy-instance conn
-                                             job5
-                                             :instance-status :instance.status/running
-                                             :hostname "hostA")
-          task6 (create-dummy-instance conn
-                                             job6
-                                             :instance-status :instance.status/running
-                                             :hostname "hostB")
-          task7 (create-dummy-instance conn
-                                             job7
-                                             :instance-status :instance.status/running
-                                             :hostname "hostA")
-          task8 (create-dummy-instance conn
-                                             job8
-                                             :instance-status :instance.status/running
-                                             :hostname "hostB")
+          _ (create-dummy-instance conn job1 :instance-status :instance.status/running :hostname "hostA")
+          _ (create-dummy-instance conn job2 :instance-status :instance.status/running :hostname "hostA")
+          task3 (create-dummy-instance conn job3 :instance-status :instance.status/running :hostname "hostB")
+          task4 (create-dummy-instance conn job4 :instance-status :instance.status/running :hostname "hostB")
+          task7 (create-dummy-instance conn job7 :instance-status :instance.status/running :hostname "hostA")
+          task8 (create-dummy-instance conn job8 :instance-status :instance.status/running :hostname "hostB")
 
-          task-ent1 (d/entity (d/db conn) task1)
-          task-ent2 (d/entity (d/db conn) task2)
           task-ent3 (d/entity (d/db conn) task3)
           task-ent4 (d/entity (d/db conn) task4)
-          task-ent5 (d/entity (d/db conn) task5)
-          task-ent6 (d/entity (d/db conn) task6)
           task-ent7 (d/entity (d/db conn) task7)
           task-ent8 (d/entity (d/db conn) task8)
 
@@ -598,7 +567,7 @@
         (let [group-id (create-dummy-group conn :host-placement
                          {:host-placement/type :host-placement.type/attribute-equals
                           :host-placement/parameters {:host-placement.attribute-equals/attribute attr-name}})
-              [running-job running-task] (create-running-job conn "steel" :user "diego" :ncpus 1.0 :group group-id)
+              [_ running-task] (create-running-job conn "steel" :user "diego" :ncpus 1.0 :group group-id)
               _ (util/update-offer-cache! offer-cache (:instance/slave-id (d/entity (d/db conn) running-task))
                                           {attr-name "west" "HOSTNAME" "steel"})
               ; Pending job will need to run in host with attr-name=west
@@ -622,7 +591,7 @@
         (let [group-id (create-dummy-group conn :host-placement
                          {:host-placement/type :host-placement.type/attribute-equals
                           :host-placement/parameters {:host-placement.attribute-equals/attribute attr-name}})
-              [running-job running-task] (create-running-job conn "steel" :user "diego" :ncpus 1.0 :group group-id)
+              [_ running-task] (create-running-job conn "steel" :user "diego" :ncpus 1.0 :group group-id)
               _ (util/update-offer-cache! offer-cache (:instance/slave-id (d/entity (d/db conn) running-task))
                                           {attr-name "south" "HOSTNAME" "steel"}) 
               ; Pending job will need to run in hist with attr-name=south, but no such host exists
@@ -670,9 +639,8 @@
                                   :mem 20.0 :cpus 20.0 :gpus 1.0)
               offer-cache (init-offer-cache)
               ; Fill up hosts with preemptable tasks
-              preemptable (doall
-                            (for [[user host] user->host]
-                              (do (create-and-cache-running-job conn host offer-cache hostname->props :user user :ncpus 200.0))))
+              _ (doall (for [[user host] user->host]
+                         (do (create-and-cache-running-job conn host offer-cache hostname->props :user user :ncpus 200.0))))
               group-id (create-dummy-group conn :host-placement
                          {:host-placement/type :host-placement.type/balanced
                           :host-placement/parameters {:host-placement.balanced/attribute attr-name
