@@ -9,7 +9,6 @@ set -ev
 
 export PROJECT_DIR=`pwd`
 
-PYTEST_MARKS=''
 COOK_AUTH=one-user
 COOK_EXECUTOR=mesos
 COOK_POOLS=on
@@ -150,7 +149,8 @@ cd ${PROJECT_DIR}
 export COOK_MULTI_CLUSTER=
 export COOK_MASTER_SLAVE=
 export COOK_SLAVE_URL=http://localhost:12323
-pytest -n4 -v --color=no --timeout-method=thread --boxed -m "${PYTEST_MARKS}" || test_failures=true
+pytest -n4 -v --color=no --timeout-method=thread --boxed -m "not serial" || test_failures=true
+pytest -n0 -v --color=no --timeout-method=thread --boxed -m "serial" || test_failures=true
 
 # If there were failures, then we should save the logs
 if [ "$test_failures" = true ]; then

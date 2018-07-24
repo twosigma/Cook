@@ -214,6 +214,7 @@ class MultiUserCookTest(util.CookTest):
                 util.reset_limit(self.cook_url, 'quota', user.name, reason=self.current_name())
 
     @unittest.skipUnless(util.is_preemption_enabled(), 'Preemption is not enabled on the cluster')
+    @pytest.mark.serial
     def test_preemption(self):
         admin = self.user_factory.admin()
         user = self.user_factory.new_user()
@@ -267,7 +268,7 @@ class MultiUserCookTest(util.CookTest):
                     for job in jobs:
                         for instance in job['instances']:
                             self.logger.debug(f'Checking if instance was preempted: {instance}')
-                            if instance['reason_string'] == 'Preempted by rebalancer':
+                            if instance.get('reason_string') == 'Preempted by rebalancer':
                                 return True
                             else:
                                 self.logger.info(f'Job has not been preempted: {job}')
