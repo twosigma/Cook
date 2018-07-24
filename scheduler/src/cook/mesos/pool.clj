@@ -33,9 +33,11 @@
   "Returns:
    - The given pool name if not-nil
    - The default pool name, if configured
-   - A random UUID"
+   - `nil-pool`
+   Returning `nil-pool` instead of `nil` allows this to be used as an argument to a datomic function
+   or comparison operator"
   [pool-name]
-  (or pool-name (config/default-pool) (str (UUID/randomUUID))))
+  (or pool-name (config/default-pool) nil-pool))
 
 (defn default-pool?
   "Returns true if pool-name is equal to the default pool name"
