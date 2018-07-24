@@ -920,7 +920,7 @@
   (let [datomic-uri "datomic:mem://test-rebalance"
         conn (restore-fresh-database! datomic-uri)
         job1 (create-dummy-job conn :user "ljin" :memory 10.0 :ncpus 10.0)
-        job2 (create-dummy-job conn :user "ljin" :memory 5.0  :ncpus 5.0)
+        job2 (create-dummy-job conn :user "ljin" :memory 5.0 :ncpus 5.0)
         job3 (create-dummy-job conn :user "ljin" :memory 15.0 :ncpus 25.0)
         job4 (create-dummy-job conn :user "ljin" :memory 25.0 :ncpus 15.0)
         job5 (create-dummy-job conn :user "wzhao" :memory 8.0 :ncpus 8.0)
@@ -928,58 +928,22 @@
         job7 (create-dummy-job conn :user "wzhao" :memory 10.0 :ncpus 10.0)
         job8 (create-dummy-job conn :user "wzhao" :memory 10.0 :ncpus 10.0)
 
-        job9 (create-dummy-job conn :user "wzhao" :memory 15.0 :ncpus 15.0)
-        job10 (create-dummy-job conn :user "sunil" :memory 15.0 :ncpus 15.0)
-        job11 (create-dummy-job conn :user "ljin" :memory 15.0 :ncpus 15.0)
-        job12 (create-dummy-job conn :user "sunil" :memory 15.0 :ncpus 15.0)
-        job13 (create-dummy-job conn :user "sunil" :memory 15.0 :ncpus 15.0)
-        job14 (create-dummy-job conn :user "sunil" :memory 15.0 :ncpus 15.0)
-
-        task1 (create-dummy-instance conn
-                                     job1
-                                     :instance-status :instance.status/running
-                                     :hostname "hostA")
-        task2 (create-dummy-instance conn
-                                     job2
-                                     :instance-status :instance.status/running
-                                     :hostname "hostA")
-        task3 (create-dummy-instance conn
-                                     job3
-                                     :instance-status :instance.status/running
-                                     :hostname "hostB")
-        task4 (create-dummy-instance conn
-                                     job4
-                                     :instance-status :instance.status/running
-                                     :hostname "hostB")
-        task5 (create-dummy-instance conn
-                                     job5
-                                     :instance-status :instance.status/running
-                                     :hostname "hostA")
-        task6 (create-dummy-instance conn
-                                     job6
-                                     :instance-status :instance.status/running
-                                     :hostname "hostB")
-        task7 (create-dummy-instance conn
-                                     job7
-                                     :instance-status :instance.status/running
-                                     :hostname "hostA")
-        task8 (create-dummy-instance conn
-                                     job8
-                                     :instance-status :instance.status/running
-                                     :hostname "hostB")
+        _ (create-dummy-instance conn job1 :instance-status :instance.status/running :hostname "hostA")
+        _ (create-dummy-instance conn job2 :instance-status :instance.status/running :hostname "hostA")
+        task3 (create-dummy-instance conn job3 :instance-status :instance.status/running :hostname "hostB")
+        task4 (create-dummy-instance conn job4 :instance-status :instance.status/running :hostname "hostB")
+        _ (create-dummy-instance conn job5 :instance-status :instance.status/running :hostname "hostA")
+        _ (create-dummy-instance conn job6 :instance-status :instance.status/running :hostname "hostB")
+        _ (create-dummy-instance conn job7 :instance-status :instance.status/running :hostname "hostA")
+        task8 (create-dummy-instance conn job8 :instance-status :instance.status/running :hostname "hostB")
         _ (share/set-share! conn "default" nil
                             "limits for new cluster"
                             :mem 25.0 :cpus 25.0)
 
         db (d/db conn)
 
-        task-ent1 (d/entity db task1)
-        task-ent2 (d/entity db task2)
         task-ent3 (d/entity db task3)
         task-ent4 (d/entity db task4)
-        task-ent5 (d/entity db task5)
-        task-ent6 (d/entity db task6)
-        task-ent7 (d/entity db task7)
         task-ent8 (d/entity db task8)
 
         job9 (create-dummy-job conn :user "wzhao" :memory 5.0 :ncpus 5.0)
@@ -1004,23 +968,25 @@
         job27 (create-dummy-job conn :user "sunil" :memory 5.0 :ncpus 5.0)
         job28 (create-dummy-job conn :user "sunil" :memory 5.0 :ncpus 5.0)
 
+        pool-ent {:pool/dru-mode :pool.dru-mode/default
+                  :pool/name :no-pool}
         test-cases [{:jobs [job9 job10 job11 job12 job13
                             job14 job15 job16 job17 job18]
-                     :params {:max-preemption 128 :safe-dru-threshold 1.0 :min-dru-diff 0.0 :category :normal}
+                     :params {:max-preemption 128 :safe-dru-threshold 1.0 :min-dru-diff 0.0 :pool-ent pool-ent}
                      :expected-jobs-to-run [job9 job10 job11]
                      :expected-tasks-to-preempt [task-ent4]
                      :available-resources {}
                      :test-name "simple test"}
                     {:jobs [job9 job10 job11 job12 job13
                             job14 job15 job16 job17 job18]
-                     :params {:max-preemption 128 :safe-dru-threshold 1.0 :min-dru-diff 0.0 :category :normal}
+                     :params {:max-preemption 128 :safe-dru-threshold 1.0 :min-dru-diff 0.0 :pool-ent pool-ent}
                      :expected-jobs-to-run [job9 job10 job11 job12 job13]
                      :expected-tasks-to-preempt [task-ent4]
                      :available-resources {"hostB" {:mem 0.0 :cpus 10.0}}
                      :test-name "simple test with available resources"}
                     {:jobs [job19 job20 job21 job22 job23
                             job24 job25 job26 job27 job28]
-                     :params {:max-preemption 128 :safe-dru-threshold 1.0 :min-dru-diff 0.0 :category :normal}
+                     :params {:max-preemption 128 :safe-dru-threshold 1.0 :min-dru-diff 0.0 :pool-ent pool-ent}
                      :expected-jobs-to-run [job19 job20 job21 job22 job23
                                             job24 job25 job26]
                      :expected-tasks-to-preempt [task-ent4 task-ent3]
@@ -1028,7 +994,7 @@
                      :test-name "simple test 2"}
                     {:jobs [job19 job20 job21 job22 job23
                             job24 job25 job26 job27 job28]
-                     :params {:max-preemption 128 :safe-dru-threshold 1.0 :min-dru-diff 0.0 :category :normal}
+                     :params {:max-preemption 128 :safe-dru-threshold 1.0 :min-dru-diff 0.0 :pool-ent pool-ent}
                      :expected-jobs-to-run [job19 job20 job21 job22 job23
                                             job24 job25 job26]
                      :expected-tasks-to-preempt [task-ent4]
@@ -1036,7 +1002,7 @@
                      :test-name "simple test 2 with available resources"}
                     {:jobs [job19 job20 job21 job22 job23
                             job24 job25 job26 job27 job28]
-                     :params {:max-preemption 128 :safe-dru-threshold 1.0 :min-dru-diff 0.0 :category :normal}
+                     :params {:max-preemption 128 :safe-dru-threshold 1.0 :min-dru-diff 0.0 :pool-ent pool-ent}
                      :expected-jobs-to-run [job19 job20 job21 job22 job23
                                             job24 job25 job26 job27 job28]
                      :expected-tasks-to-preempt [task-ent4 task-ent3 task-ent8]
