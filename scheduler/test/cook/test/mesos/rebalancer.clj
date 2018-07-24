@@ -744,7 +744,7 @@
     (let [datomic-uri "datomic:mem://test-next-state"
           conn (restore-fresh-database! datomic-uri)
           job1 (create-dummy-job conn :user "ljin" :memory 10.0 :ncpus 10.0 :name "job1")
-          job2 (create-dummy-job conn :user "ljin" :memory 5.0  :ncpus 5.0 :name "job2")
+          job2 (create-dummy-job conn :user "ljin" :memory 5.0 :ncpus 5.0 :name "job2")
           job3 (create-dummy-job conn :user "ljin" :memory 15.0 :ncpus 25.0 :name "job3")
           job4 (create-dummy-job conn :user "ljin" :memory 25.0 :ncpus 15.0 :name "job4")
           job5 (create-dummy-job conn :user "wzhao" :memory 8.0 :ncpus 8.0 :name "job5")
@@ -795,10 +795,10 @@
                                        :slave-id "testA"
                                        :hostname "hostA")
           task8 (create-dummy-instance conn
-                                             job8
-                                             :instance-status :instance.status/running
-                                             :slave-id "testB"
-                                             :hostname "hostB")
+                                       job8
+                                       :instance-status :instance.status/running
+                                       :slave-id "testB"
+                                       :hostname "hostB")
           _ (share/set-share! conn "default" nil
                               "limits for new cluster"
                               :mem 25.0 :cpus 25.0 :gpus 1.0)
@@ -821,7 +821,9 @@
           pending-job-ents (map #(d/entity db %) [job9 job10 job11 job12 job13 job14])
           host->spare-resources {"hostA" {:mem 50.0 :cpus 50.0}}
           user->dru-divisors {"ljin" {:mem 25.0 :cpus 25.0 :gpus 1.0} "wzhao" {:mem 25.0 :cpus 25.0 :gpus 1.0} "sunil" {:mem 25.0 :cpus 25.0 :gpus 1.0}}
-          state (rebalancer/init-state db running-task-ents pending-job-ents host->spare-resources :normal)]
+          pool-ent {:pool/name :no-pool
+                    :pool/dru-mode :pool.dru-mode/default}
+          state (rebalancer/init-state db running-task-ents pending-job-ents host->spare-resources pool-ent)]
       (let [task-ent9 {:job/_instance job-ent9
                        :instance/hostname "hostB"
                        :instance/slave-id "testB"
@@ -858,8 +860,7 @@
             host->spare-resources' {"hostA" {:mem 50.0 :cpus 50.0 :gpus 0.0}}]
         (let [{task->scored-task'' :task->scored-task
                user->sorted-running-task-ents'' :user->sorted-running-task-ents
-               host->spare-resources'' :host->spare-resources
-               user->dru-divisors'' :user->dru-divisors}
+               host->spare-resources'' :host->spare-resources}
               (rebalancer/next-state state job-ent10 {:hostname "hostA" :task [task-ent2 task-ent7] :mem 65.0 :cpus 65.0})]
           (is (= user->sorted-running-task-ents' user->sorted-running-task-ents''))
           (is (= host->spare-resources' host->spare-resources''))
@@ -884,8 +885,7 @@
 
         (let [{task->scored-task'' :task->scored-task
                user->sorted-running-task-ents'' :user->sorted-running-task-ents
-               host->spare-resources'' :host->spare-resources
-               user->dru-divisors'' :user->dru-divisors}
+               host->spare-resources'' :host->spare-resources}
               (rebalancer/next-state state job-ent12 {:hostname "hostA" :task [] :mem 50.0 :cpus 50.0})]
           (is (= user->sorted-running-task-ents' user->sorted-running-task-ents''))
           (is (= host->spare-resources' host->spare-resources''))
