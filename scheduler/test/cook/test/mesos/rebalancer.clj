@@ -1079,7 +1079,9 @@
   (testing "reserves host for multiple preemptions"
     (let [datomic-uri "datomic:mem://test-rebalance-host-reservation"
           conn (restore-fresh-database! datomic-uri)
-          params {:max-preemption 128 :safe-dru-threshold 1.0 :min-dru-diff 0.0 :category :normal}
+          pool-ent {:pool/name :no-pool
+                    :pool/dru-mode :pool.dru-mode/default}
+          params {:max-preemption 128 :safe-dru-threshold 1.0 :min-dru-diff 0.0 :pool-ent pool-ent}
           offer-cache (init-offer-cache)
           job1 (create-dummy-job conn :user "user1" :memory 6.0 :ncpus 6.0)
           job2 (create-dummy-job conn :user "user1" :memory 6.0 :ncpus 6.0)
@@ -1117,7 +1119,9 @@
   (testing "does not reserve host for single preempted task"
     (let [datomic-uri "datomic:mem://test-rebalance-host-reservation-single"
           conn (restore-fresh-database! datomic-uri)
-          params {:max-preemption 128 :safe-dru-threshold 1.0 :min-dru-diff 0.0 :category :normal}
+          pool-ent {:pool/name :no-pool
+                    :pool/dru-mode :pool.dru-mode/default}
+          params {:max-preemption 128 :safe-dru-threshold 1.0 :min-dru-diff 0.0 :pool-ent pool-ent}
           offer-cache (init-offer-cache)
           job1 (create-dummy-job conn :user "user1" :memory 6.0 :ncpus 6.0)
           job2 (create-dummy-job conn :user "user2" :memory 1.0 :ncpus 1.0)
@@ -1149,7 +1153,9 @@
   (testing "does not reserve host for job already launched"
     (let [datomic-uri "datomic:mem://test-rebalance-host-reservation"
           conn (restore-fresh-database! datomic-uri)
-          params {:max-preemption 128 :safe-dru-threshold 1.0 :min-dru-diff 0.0 :category :normal}
+          pool-ent {:pool/name :no-pool
+                    :pool/dru-mode :pool.dru-mode/default}
+          params {:max-preemption 128 :safe-dru-threshold 1.0 :min-dru-diff 0.0 :pool-ent pool-ent}
           offer-cache (init-offer-cache)
           job1 (create-dummy-job conn :user "user1" :memory 6.0 :ncpus 6.0)
           job2 (create-dummy-job conn :user "user1" :memory 6.0 :ncpus 6.0)
