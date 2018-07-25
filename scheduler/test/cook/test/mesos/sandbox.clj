@@ -26,18 +26,18 @@
   (:import (java.util.concurrent CountDownLatch TimeUnit)))
 
 (deftest test-agent->task-id->sandbox
-  (let [agent->task-id->field-value (fn [an-agent task-id] (get @an-agent task-id))
+  (let [agent->task-id->value (fn [an-agent task-id] (get @an-agent task-id))
         task-id->sandbox-agent (agent {})]
     (send task-id->sandbox-agent sandbox/aggregate-instance-field "sandbox-directory" "t0" "s0")
     (send task-id->sandbox-agent sandbox/aggregate-instance-field "sandbox-directory" "t2" "s2")
     (send task-id->sandbox-agent sandbox/aggregate-instance-field "sandbox-directory" "t3" "s3")
     (await task-id->sandbox-agent)
 
-    (is (= "s0" (agent->task-id->field-value task-id->sandbox-agent "t0")))
-    (is (nil? (agent->task-id->field-value task-id->sandbox-agent "t1")))
-    (is (= "s2" (agent->task-id->field-value task-id->sandbox-agent "t2")))
-    (is (= "s3" (agent->task-id->field-value task-id->sandbox-agent "t3")))
-    (is (nil? (agent->task-id->field-value task-id->sandbox-agent "t4")))))
+    (is (= "s0" (agent->task-id->value task-id->sandbox-agent "t0")))
+    (is (nil? (agent->task-id->value task-id->sandbox-agent "t1")))
+    (is (= "s2" (agent->task-id->value task-id->sandbox-agent "t2")))
+    (is (= "s3" (agent->task-id->value task-id->sandbox-agent "t3")))
+    (is (nil? (agent->task-id->value task-id->sandbox-agent "t4")))))
 
 (defmacro assert-clear-agent-state-result
   [initial-state clear-data expected-state]

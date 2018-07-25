@@ -31,41 +31,41 @@
 (defn clear-agent-state
   "Clears the published entries from the aggregated state of the agent.
    Since we expect instances to have the same field value, we do not check for value equality."
-  [task-id->field-value field-name published-task-id->field-value]
+  [task-id->value field-name published-task-id->value]
   (let [field-aggregator-pending-count (counters/counter ["cook-mesos" "scheduler" field-name "aggregator-pending-count"])
-        task-id->field-value' (apply dissoc task-id->field-value (keys published-task-id->field-value))]
+        task-id->value' (apply dissoc task-id->value (keys published-task-id->value))]
     (counters/clear! field-aggregator-pending-count)
-    (counters/inc! field-aggregator-pending-count (count task-id->field-value'))
-    task-id->field-value'))
+    (counters/inc! field-aggregator-pending-count (count task-id->value'))
+    task-id->value'))
 
 (defn aggregate-instance-field
-  "Aggregates the field-value specified in `data` into the current field-value state `task-id->field-value`.
-   Existing entries in task-id->field-value take precedence during aggregation.
+  "Aggregates the value specified in `data` into the current value state `task-id->value`.
+   Existing entries in task-id->value take precedence during aggregation.
    It provides two overloaded versions:
-   1. Aggregates an individual task-id and field-value pair.
-   2. Aggregates a collection (map) of task-id to field-value mappings.
-   It returns the new task-id->field-value state."
-  ([task-id->field-value field-name task-id field-value]
+   1. Aggregates an individual task-id and value pair.
+   2. Aggregates a collection (map) of task-id to value mappings.
+   It returns the new task-id->value state."
+  ([task-id->value field-name task-id value]
    (let [field-aggregator-message-rate (meters/meter ["cook-mesos" "scheduler" field-name "aggregator-message-rate"])
          field-aggregator-pending-count (counters/counter ["cook-mesos" "scheduler" field-name "aggregator-pending-count"])]
      (meters/mark! field-aggregator-message-rate)
-     (if (and task-id field-value (not (contains? task-id->field-value task-id)))
-       (let [task-id->field-value' (assoc task-id->field-value task-id field-value)]
+     (if (and task-id value (not (contains? task-id->value task-id)))
+       (let [task-id->value' (assoc task-id->value task-id value)]
          (counters/inc! field-aggregator-pending-count)
-         task-id->field-value')
-       task-id->field-value)))
-  ([task-id->field-value field-name candidate-task-id->field-value]
-   (reduce (fn [accum-task-id->field-value [task-id field-value]]
-             (aggregate-instance-field accum-task-id->field-value field-name task-id field-value))
-           task-id->field-value
-           candidate-task-id->field-value)))
+         task-id->value')
+       task-id->value)))
+  ([task-id->value field-name candidate-task-id->value]
+   (reduce (fn [accum-task-id->value [task-id value]]
+             (aggregate-instance-field accum-task-id->value field-name task-id value))
+           task-id->value
+           candidate-task-id->value)))
 
 (defn publish-instance-field-to-datomic!
-  "Transacts the latest aggregated task-id->field-value to datomic.
+  "Transacts the latest aggregated task-id->value to datomic.
    No more than batch-size facts are updated in individual datomic transactions."
-  [instance-field datomic-conn batch-size task-id->field-value-agent]
-  (let [task-id->field-value @task-id->field-value-agent
-        task-count (count task-id->field-value)
+  [instance-field datomic-conn batch-size task-id->value-agent]
+  (let [task-id->value @task-id->value-agent
+        task-count (count task-id->value)
         field-name (name instance-field)
         field-updater-pending-entries (histograms/histogram ["cook-mesos" "scheduler" field-name "updater-pending-entries"])
         field-updater-publish-rate (meters/meter ["cook-mesos" "scheduler" field-name "updater-publish-rate"])
@@ -78,18 +78,18 @@
       (log/info "Publishing" field-name "of" task-count "instance(s)")
       (timers/time!
         field-updater-publish-duration
-        (doseq [task-id->field-value-partition (partition-all batch-size task-id->field-value)]
+        (doseq [task-id->value-partition (partition-all batch-size task-id->value)]
           (try
-            (letfn [(build-txns [[task-id field-value]]
-                      [:db/add [:instance/task-id task-id] instance-field field-value])]
-              (let [txns (map build-txns task-id->field-value-partition)]
+            (letfn [(build-txns [[task-id value]]
+                      [:db/add [:instance/task-id task-id] instance-field value])]
+              (let [txns (map build-txns task-id->value-partition)]
                 (when (seq txns)
                   (log/info "Inserting" (count txns) "facts in" field-name "state update")
                   (meters/mark! field-updater-tx-rate)
                   (timers/time!
                     field-updater-tx-duration
                     @(d/transact datomic-conn txns)))))
-            (send task-id->field-value-agent clear-agent-state field-name task-id->field-value-partition)
+            (send task-id->value-agent clear-agent-state field-name task-id->value-partition)
             (catch Exception e
               (log/error e (str field-name " batch update error")))))))
     {}))
