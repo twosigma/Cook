@@ -13,6 +13,8 @@
                         :impersonators #{"poser" "other-impersonator"}}
  :cors-origins ["https?://cors.example.com"]
  :database {:datomic-uri #config/env "COOK_DATOMIC_URI"}
+ :data-local-fitness-calculator {:update-interval-ms 1000
+                                 :cost-endpoint #config/env "DATA_LOCAL_ENDPOINT"}
  :executor {:command #config/env "COOK_EXECUTOR_COMMAND"
             :environment {"EXECUTOR_DEFAULT_PROGRESS_OUTPUT_NAME" "stdout"}
             :portion #config/env-int "COOK_EXECUTOR_PORTION"
@@ -50,7 +52,8 @@
               :min-dru-diff 1.0
               :safe-dru-threshold 1.0}
  :sandbox-syncer {:sync-interval-ms 1000}
- :scheduler {:offer-incubate-ms 15000
+ :scheduler {:fenzo-fitness-calculator "cook.mesos.data-locality/make-data-local-fitness-calculator"
+             :offer-incubate-ms 15000
              :task-constraints {:cpus 10
                                 :memory-gb 48
                                 :retry-limit 15

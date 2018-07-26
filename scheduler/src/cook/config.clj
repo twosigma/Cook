@@ -395,7 +395,11 @@
                                          {:base-calculator (config-string->fitness-calculator
                                                             (get data-local-fitness-calculator :base-calculator  "com.netflix.fenzo.plugins.BinPackingFitnessCalculators/cpuMemBinPacker"))
                                           :data-locality-weight (get data-local-fitness-calculator :data-locality-weight 0.95)
-                                          :maximum-cost (get data-local-fitness-calculator :maximum-cost 100)})}))
+                                          :maximum-cost (get data-local-fitness-calculator :maximum-cost 100)
+                                          :cost-endpoint (get data-local-fitness-calculator :cost-endpoint nil)
+                                          :batch-size (get data-local-fitness-calculator :batch-size 500)
+                                          :update-interval-ms (get data-local-fitness-calculator :update-interval-ms nil)
+                                          :launch-wait-seconds (get data-local-fitness-calculator :launch-wait-seconds 60)})}))
 
 (defn read-config
   "Given a config file path, reads the config and returns the map"
@@ -464,6 +468,10 @@
 (defn data-local-fitness-config
   []
   (-> config :settings :data-local-fitness-calculator))
+
+(defn fitness-calculator-config
+  []
+  (-> config :settings :fenzo-fitness-calculator))
 
 (defn fitness-calculator
   "Returns the fitness calculator specified by fitness-calculator, or the default if nil"

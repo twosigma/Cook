@@ -107,11 +107,16 @@ case "$COOK_POOLS" in
     exit 1
 esac
 
+pip install flask
+export DATA_LOCAL_SERVICE="http://localhost:5000"
+export DATA_LOCAL_ENDPOINT="${DATA_LOCAL_SERVICE}/api/v1/lookup"
+FLASK_APP=${PROJECT_DIR}/src/data_locality_service.py flask run &
+
 # Seed running jobs, which are used to test the task reconciler
 cd ${SCHEDULER_DIR}
 lein exec -p datomic/data/seed_running_jobs.clj ${COOK_DATOMIC_URI_1}
 
-# Start three cook schedulers. 
+# Start three cook schedulers.
 # We want one cluster with two cooks to run MasterSlaveTest, and a second cluster to run MultiClusterTest.
 # The basic tests will run against cook-framework-1
 ## on travis, ports on 172.17.0.1 are bindable from the host OS, and are also

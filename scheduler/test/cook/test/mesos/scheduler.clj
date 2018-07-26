@@ -1782,12 +1782,13 @@
                                                                                             :ncpus 13
                                                                                             :memory 1024
                                                                                             :data-local true))
-                                              _ (dl/update-data-local-costs {(get-uuid "job-1") {(:hostname offer-1) 0.0
-                                                                                                 (:hostname offer-2) 0.0
-                                                                                                 (:hostname offer-3) 100.0}
-                                                                             (get-uuid "job-2") {(:hostname offer-1) 0.0
-                                                                                                 (:hostname offer-2) 0.0
-                                                                                                 (:hostname offer-3) 0.0}})
+                                              _ (dl/update-data-local-costs {(str (get-uuid "job-1")) {(:hostname offer-1) 0.0
+                                                                                                       (:hostname offer-2) 0.0
+                                                                                                       (:hostname offer-3) 100.0}
+                                                                             (str (get-uuid "job-2")) {(:hostname offer-1) 0.0
+                                                                                                       (:hostname offer-2) 0.0
+                                                                                                       (:hostname offer-3) 0.0}}
+                                                                            [])
                                               entity->map (fn [entity]
                                                             (util/job-ent->map entity (d/db conn)))
                                               pool->pending-jobs (->> {:normal [job-1 job-2]}

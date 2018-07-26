@@ -14,11 +14,13 @@
 ;; limitations under the License.
 ;;
 (ns cook.mesos.constraints
-  (:require [clj-time.core :as t]
+  (:require [clj-time.coerce :as tc]
+            [clj-time.core :as t]
             [clojure.core.cache :as cache]
             [clojure.set :as set]
             [clojure.tools.logging :as log]
             [cook.config :as config]
+            [cook.mesos.data-locality :as dl]
             [cook.mesos.group :as group]
             [swiss.arrows :refer :all])
   (:import com.netflix.fenzo.VirtualMachineLease
@@ -129,6 +131,30 @@
     [this _ vm-attributes _]
     (job-constraint-evaluate this _ vm-attributes)))
 
+(defrecord data-locality-constraint [job launch-wait-seconds]
+  JobConstraint
+  (job-constraint-name [this] (get-class-name this))
+  (job-constraint-evaluate [_ _ _]
+    (let [{:keys [job/submit-time job/uuid]} job
+          data-locality-costs (dl/get-data-local-costs)
+          launch-after-age (t/plus (tc/from-date submit-time) (t/seconds launch-wait-seconds))
+          launch-without-data? (t/after? (t/now) launch-after-age)]
+      (if (or launch-without-data?
+              (contains? data-locality-costs (str uuid)))
+        [true nil]
+        [false "No data locality data available"])))
+  (job-constraint-evaluate [this _ _ _]
+    (job-constraint-evaluate this _ _)))
+
+(defn build-data-locality-constraint
+  "If the job supports data local and the data local fitness calculator is in use,
+   returns a data-locality-constraint"
+  [{:keys [job/data-local] :as job}]
+  (let [{:keys [launch-wait-seconds]} (config/data-local-fitness-config)
+        fitness-calculator (config/fitness-calculator-config)]
+    (when (and data-local (= fitness-calculator dl/data-local-fitness-calculator))
+      (->data-locality-constraint job launch-wait-seconds))))
+
 (defrecord user-defined-constraint [constraints]
   JobConstraint
   (job-constraint-name [this] (get-class-name this))
@@ -206,7 +232,7 @@
         (when (< 0 max-expected-runtime)
           (->estimated-completion-constraint expected-end-time host-lifetime-mins))))))
 
-(def job-constraint-constructors [build-novel-host-constraint build-gpu-host-constraint build-user-defined-constraint build-estimated-completion-constraint])
+(def job-constraint-constructors [build-novel-host-constraint build-gpu-host-constraint build-user-defined-constraint build-estimated-completion-constraint build-data-locality-constraint])
 
 (defn fenzoize-job-constraint
   "Makes the JobConstraint 'constraint' Fenzo-compatible."
