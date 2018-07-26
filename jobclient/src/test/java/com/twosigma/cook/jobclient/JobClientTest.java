@@ -262,4 +262,53 @@ public class JobClientTest {
         Assert.assertEquals(1, deleteCounter.get());
         Assert.assertEquals(1, postCounter.get());
     }
+
+    @Test
+    /** Note that this test is nondeterministic. The chances of spurious failure (right now) are < 1-in-a-million. */
+    public void testJobClient() {
+        long minHi = Long.MAX_VALUE;
+        long maxHi = Long.MIN_VALUE;
+        long minLo = Long.MAX_VALUE;
+        long maxLo = Long.MIN_VALUE;
+        for (int ii = 0 ; ii < 200 ; ii++) {
+            UUID uuid = JobClient.makeTemporalUUID();
+
+            maxHi = Math.max(maxHi,uuid.getMostSignificantBits());
+            minHi = Math.min(minHi,uuid.getMostSignificantBits());
+            maxLo = Math.max(maxLo,uuid.getLeastSignificantBits());
+            minLo = Math.min(minLo,uuid.getLeastSignificantBits());
+        }
+
+        // If we pick 1000 random UUID's, they should have certain patterns between min and max.
+        //    * The temporal bits should be clustered into a small bit of the bitspace.
+        //    * The random bit max and min should be widely separated.
+        //    * The random bit max and min should be close, but not too close, to aspymototes
+
+        // High bits are a count seconds since epoch, so we expect there to be at least
+        // NOTE: Will be flaky test if generation takes >5 second, which would be weird.
+        // However, travis can be slow. If so, try increasing this.
+
+        // Temporal bits (the high 32 count seconds) should tightly clustered;
+        // This assumes generation takes at most 5 seconds.
+        Assert.assertTrue(maxHi-minHi < (5L<<32));
+
+        // And we should have some difference between min and max; Most of lowest 24 bits are random after all.
+        Assert.assertTrue(maxHi-minHi > (1L<<16));
+
+        // Low order bits in UUID are always negative, due to a type flag encoded in UUID's.
+        // Negate this to make it nicer to manipulate as java's signed longs.
+        minLo = -minLo;
+        maxLo = -maxLo;
+
+        // Premise of these checks is that the minimum should be 'close' to the smallest it can be, but not too close.
+        // Expect this to be close to 1<<63, less than 1<<63, but not too close.
+        Assert.assertTrue( minLo < (1L << 63) - (1L<<32)); // Not too close, not closer than ~1/1E9.
+        Assert.assertTrue( minLo > (1L << 63) - (1L<<60)); // Close, within 8% of end.
+
+        // Expect this to be clsoe to 1<<62, and greater than 1<<62, but not too close.
+        Assert.assertTrue( maxLo > (1L<<62)+(1L << 32)); // Not too close
+        Assert.assertTrue( maxLo < (1L<<62)+(1L << 59)); // Close
+
+        // If these pass, we've hopefully got at least 62 bits of randomness.
+    }
 }

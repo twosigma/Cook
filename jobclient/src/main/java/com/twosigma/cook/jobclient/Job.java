@@ -117,7 +117,7 @@ final public class Job {
 
             // Set the default values.
             if (_uuid == null) {
-                _uuid = UUID.randomUUID();
+                _uuid = JobClient.makeTemporalUUID();
             }
             if (_retries == null) {
                 _retries = 5;

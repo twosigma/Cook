@@ -55,6 +55,7 @@
             [swiss.arrows :refer :all])
   (:import (clojure.lang Atom Var)
            com.codahale.metrics.ScheduledReporter
+           com.netflix.fenzo.VMTaskFitnessCalculator
            (java.io OutputStreamWriter)
            (java.net ServerSocket URLEncoder)
            (java.util Date UUID)
@@ -250,6 +251,7 @@
    (s/optional-key :progress-regex-string) NonEmptyString
    (s/optional-key :group) s/Uuid
    (s/optional-key :disable-mea-culpa-retries) s/Bool
+   (s/optional-key :data-local) s/Bool
    :cpus PosDouble
    :mem PosDouble
    (s/optional-key :gpus) (s/both s/Int (s/pred pos? 'pos?))
@@ -529,7 +531,8 @@
   [pool commit-latch-id job :- Job]
   (let [{:keys [uuid command max-retries max-runtime expected-runtime priority cpus mem gpus
                 user name ports uris env labels container group application disable-mea-culpa-retries
-                constraints executor progress-output-file progress-regex-string]
+                constraints executor progress-output-file progress-regex-string
+                data-local]
          :or {group nil
               disable-mea-culpa-retries false}} job
         db-id (d/tempid :db.part/user)
@@ -612,7 +615,8 @@
                     executor (assoc :job/executor executor)
                     progress-output-file (assoc :job/progress-output-file progress-output-file)
                     progress-regex-string (assoc :job/progress-regex-string progress-regex-string)
-                    pool (assoc :job/pool (:db/id pool)))]
+                    pool (assoc :job/pool (:db/id pool))
+                    data-local (assoc :job/data-local data-local))]
 
     ;; TODO batch these transactions to improve performance
     (-> ports
@@ -703,7 +707,8 @@
   [db user task-constraints gpu-enabled? new-group-uuids
    {:keys [cpus mem gpus uuid command priority max-retries max-runtime expected-runtime name
            uris ports env labels container group application disable-mea-culpa-retries
-           constraints executor progress-output-file progress-regex-string]
+           constraints executor progress-output-file progress-regex-string
+           data-local]
     :or {group nil
          disable-mea-culpa-retries false}
     :as job}
@@ -740,7 +745,8 @@
                  (when executor {:executor executor})
                  (when progress-output-file {:progress-output-file progress-output-file})
                  (when progress-regex-string {:progress-regex-string progress-regex-string})
-                 (when application {:application application}))]
+                 (when application {:application application})
+                 (when data-local {:data-local data-local}))]
     (s/validate Job munged)
     (when (and (:gpus munged) (not gpu-enabled?))
       (throw (ex-info (str "GPU support is not enabled") {:gpus gpus})))
@@ -882,6 +888,7 @@
           progress-regex-string (:job/progress-regex-string job)
           pool (:job/pool job)
           container (:job/container job)
+          data-local (:job/data-local job)
           state (util/job-ent->state job)
           constraints (->> job
                            :job/constraint
@@ -922,7 +929,8 @@
               progress-output-file (assoc :progress-output-file progress-output-file)
               progress-regex-string (assoc :progress-regex-string progress-regex-string)
               pool (assoc :pool (:pool/name pool))
-              container (assoc :container (container->response-map container))))))
+              container (assoc :container (container->response-map container))
+              data-local (assoc :data-local data-local)))))
 
 (defn fetch-group-live-jobs
   "Get all jobs from a group that are currently running or waiting (not complete)"
@@ -2262,6 +2270,7 @@
     (instance? ServerSocket v) (str v)
     (instance? Var v) (str v)
     (instance? ScheduledReporter v) (str v)
+    (instance? VMTaskFitnessCalculator v) (.getName v)
     :else v))
 
 (defn settings-handler

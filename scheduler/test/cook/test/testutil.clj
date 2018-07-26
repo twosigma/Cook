@@ -94,7 +94,7 @@
   "Return the entity id for the created dummy job."
   [conn & {:keys [command committed? container custom-executor? disable-mea-culpa-retries env executor gpus group
                   job-state max-runtime memory name ncpus pool priority retry-count submit-time under-investigation user
-                  uuid expected-runtime]
+                  uuid expected-runtime data-local]
            :or {command "dummy command"
                 committed? true
                 disable-mea-culpa-retries false
@@ -106,6 +106,7 @@
                 priority 50
                 retry-count 5
                 submit-time (java.util.Date.)
+                data-local false
                 under-investigation false
                 user (System/getProperty "user.name")
                 uuid (d/squuid)}}]
@@ -131,6 +132,7 @@
                                          :resource/amount (double memory)}]
                          :job/state job-state
                          :job/submit-time submit-time
+                         :job/data-local data-local
                          :job/under-investigation under-investigation
                          :job/user user
                          :job/uuid uuid}

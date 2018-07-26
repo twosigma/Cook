@@ -74,7 +74,6 @@ then
    COOK_MULTICLUSTER_ENV="${COOK_MULTICLUSTER_ENV} -e COOK_SLAVE_URL=${COOK_SLAVE_URL} -e COOK_MASTER_SLAVE=${COOK_MASTER_SLAVE}"
 fi
 
-
 docker create \
        --rm \
        --name=cook-integration \
