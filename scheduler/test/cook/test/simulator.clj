@@ -112,6 +112,7 @@
                            :sequence-cache-threshold 1000}
          rebalancer-config# (merge default-rebalancer-config (:rebalancer-config ~scheduler-config))
          framework-id# "cool-framework-id"
+         exit-code-syncer-state# {:task-id->exit-code-agent (agent {})}
          sandbox-syncer-state# {:task-id->sandbox-agent (agent {})}
          host-settings# {:server-port 12321 :hostname "localhost"}
          mesos-leadership-atom# (atom false)
@@ -124,6 +125,7 @@
        (with-redefs [executor-config (constantly executor-config#)]
          (c/start-mesos-scheduler
            {:curator-framework curator-framework#
+            :exit-code-syncer-state exit-code-syncer-state#
             :fenzo-config fenzo-config#
             :framework-id framework-id#
             :gpu-enabled? gpu-enabled?#

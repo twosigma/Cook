@@ -86,7 +86,7 @@
                            mesos-gpu-enabled mesos-leader-path mesos-master mesos-principal
                            mesos-role mesos-run-as-user offer-incubate-time-ms optimizer progress rebalancer server-port
                            task-constraints]
-                          curator-framework framework-id mesos-datomic-mult mesos-leadership-atom
+                          curator-framework exit-code-syncer-state framework-id mesos-datomic-mult mesos-leadership-atom
                           mesos-agent-attributes-cache pool->pending-jobs-atom sandbox-syncer-state]
                       (if (cook.config/api-only-mode?)
                         (if curator-framework
@@ -108,6 +108,7 @@
                                 (Class/forName "org.apache.mesos.Scheduler")
                                 ((util/lazy-load-var 'cook.mesos/start-mesos-scheduler)
                                   {:curator-framework curator-framework
+                                   :exit-code-syncer-state exit-code-syncer-state
                                    :fenzo-config {:fenzo-max-jobs-considered fenzo-max-jobs-considered
                                                   :fenzo-scaleback fenzo-scaleback
                                                   :fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-warn
@@ -291,6 +292,9 @@
                                     (cache/lru-cache-factory :threshold max-size)
                                     (cache/ttl-cache-factory :ttl ttl-ms)
                                     atom))
+     :exit-code-syncer-state (fnk [[:settings [:exit-code-syncer publish-batch-size publish-interval-ms]]]
+                               ((util/lazy-load-var 'cook.mesos.sandbox/prepare-exit-code-publisher)
+                                 datomic/conn publish-batch-size publish-interval-ms))
      :sandbox-syncer-state (fnk [[:settings [:sandbox-syncer max-consecutive-sync-failure
                                              publish-batch-size publish-interval-ms sync-interval-ms]]
                                  framework-id mesos-agent-query-cache]

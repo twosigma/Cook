@@ -163,7 +163,7 @@
    framework-id                  -- str, the Mesos framework id from the cook settings
    fenzo-config                  -- map, config for fenzo, See scheduler/docs/configuration.adoc for more details
    sandbox-syncer-state          -- map, representing the sandbox syncer object"
-  [{:keys [curator-framework fenzo-config framework-id gpu-enabled? make-mesos-driver-fn
+  [{:keys [curator-framework exit-code-syncer-state fenzo-config framework-id gpu-enabled? make-mesos-driver-fn
            mea-culpa-failure-limit mesos-datomic-conn mesos-datomic-mult mesos-leadership-atom pool->pending-jobs-atom
            mesos-run-as-user agent-attributes-cache offer-incubate-time-ms optimizer-config progress-config rebalancer-config
            sandbox-syncer-state server-config task-constraints trigger-chans zk-prefix]}]
@@ -192,6 +192,7 @@
                                         (sched/create-datomic-scheduler
                                          {:conn mesos-datomic-conn
                                           :driver-atom current-driver
+                                          :exit-code-syncer-state exit-code-syncer-state
                                           :fenzo-fitness-calculator fenzo-fitness-calculator
                                           :fenzo-floor-iterations-before-reset fenzo-floor-iterations-before-reset
                                           :fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-warn

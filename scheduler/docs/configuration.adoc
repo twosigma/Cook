@@ -86,6 +86,15 @@ If need it to bind to another port, you can specify that with the `:local-port` 
   `max-size` is the maximum number of elements in the cache before the LRU eviction semantics apply. The default is 1000.
   `ttl-ms` is the default time in milliseconds that entries are allowed to reside in the cache. The default is 60000, i.e. 1 minute.
 
+`:exit-code-syncer`::
+  The Cook scheduler throttles the rate at which it publishes task exit-codes.
+  This allows us to handle high rate of incoming exit-code messages in a graceful manner.
+  `exit-code-syncer` is a map with the following possible keys: `publish-batch-size` and `publish-interval-ms`.
+  The `publish-batch-size` is an integer representing the number of facts that are updated in individual datomic instance exit-code directory update transactions.
+  The default value is 100.
+  The `publish-interval-ms` is an integer representing the number of millisecond intervals at which exit-code directories updates will be published to datomic.
+  The default value is 2500.
+
 `:sandbox-syncer`::
   The Cook scheduler throttles the rate at which it publishes task sandbox directories.
   This allows us to handle high rate of incoming progress messages in a graceful manner.

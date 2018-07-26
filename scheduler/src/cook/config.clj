@@ -140,6 +140,11 @@
                             agent-query-cache))
      :cors-origins (fnk [[:config {cors-origins nil}]]
                      (map re-pattern (or cors-origins [])))
+     :exit-code-syncer (fnk [[:config {exit-code-syncer nil}]]
+                       (merge
+                         {:publish-batch-size 100
+                          :publish-interval-ms 2500}
+                         exit-code-syncer))
      :sandbox-syncer (fnk [[:config {sandbox-syncer nil}]]
                        (merge
                          {:max-consecutive-sync-failure 15
