@@ -24,6 +24,8 @@
             [clojure.string :as str]
             [clojure.tools.logging :as log]
             [clojure.walk :as walk]
+            [cook.config :as config]
+            [cook.mesos.data-locality :as dl]
             [cook.mesos.heartbeat :as heartbeat]
             [cook.mesos.sandbox :as sandbox]
             [cook.mesos.scheduler :as sched]
@@ -1695,29 +1697,83 @@
                  @rebalancer-reservation-atom)))))))
 
 
-(def dummy-fitness-calculator
-  "This calculator simply returns 0.0 for every Fenzo fitness calculation."
-  (reify VMTaskFitnessCalculator
-    (getName [_] "Dummy Fitness Calculator")
-    (calculateFitness [_ task-request target-vm task-tracker-state]
-      0.0)))
+(deftest test-handle-resource-offers-with-data-locality
+  (with-redefs [config/data-local-fitness-config (constantly {:maximum-cost 100
+                                                              :data-locality-weight 0.95
+                                                              :base-calculator BinPackingFitnessCalculators/cpuMemBinPacker})]
+    (let [test-user (System/getProperty "user.name")
+          uri "datomic:mem://test-handle-resource-offers"
+          launched-tasks-atom (atom [])
+          driver (reify msched/SchedulerDriver
+                   (launch-tasks! [_ offer-id tasks]
+                     (swap! launched-tasks-atom concat tasks)))
+          offer-maker (fn [cpus mem gpus]
+                        {:resources [{:name "cpus", :scalar cpus, :type :value-scalar, :role "cook"}
+                                     {:name "mem", :scalar mem, :type :value-scalar, :role "cook"}
+                                     {:name "gpus", :scalar gpus, :type :value-scalar, :role "cook"}]
+                         :id {:value (str "id-" (UUID/randomUUID))}
+                         :slave-id {:value (str "slave-" (UUID/randomUUID))}
+                         :hostname (str "host-" (UUID/randomUUID))})
+          framework-id #mesomatic.types.FrameworkID{:value "my-framework-id"}
+          offers-chan (async/chan (async/buffer 10))
+          offer-1 (offer-maker 10 2048 0)
+          offer-2 (offer-maker 20 16384 0)
+          offer-3 (offer-maker 30 8192 0)
+          run-handle-resource-offers! (fn [num-considerable offers & {:keys [user-quota user->usage rebalancer-reservation-atom job-name->uuid]
+                                                                      :or {rebalancer-reservation-atom (atom {})
+                                                                           job-name->uuid {}}}]
+                                        (reset! launched-tasks-atom [])
+                                        (let [conn (restore-fresh-database! uri)
+                                              test-db (d/db conn)
+                                              driver-atom (atom nil)
 
-(deftest test-config-string->fitness-calculator
-  (testing "clojure symbol"
-    (is (instance? VMTaskFitnessCalculator
-                   (sched/config-string->fitness-calculator
-                     "cook.test.mesos.scheduler/dummy-fitness-calculator"))))
-  (testing "java class on classpath"
-    (is (instance? VMTaskFitnessCalculator
-                   (sched/config-string->fitness-calculator
-                     cook.config/default-fitness-calculator))))
-
-  (testing "bad input"
-    (is (thrown? IllegalArgumentException (sched/config-string->fitness-calculator "not-a-valid-anything"))))
-
-  (testing "something other than a VMTaskFitnessCalculator"
-    (is (thrown? IllegalArgumentException (sched/config-string->fitness-calculator
-                                            "System/out")))))
+                                              ^TaskScheduler fenzo (sched/make-fenzo-scheduler driver-atom 1500
+                                                                                               "cook.mesos.data-locality/make-data-local-fitness-calculator"
+                                                                                               0.8)
+                                              group-ent-id (create-dummy-group conn)
+                                              get-uuid (fn [name] (get job-name->uuid name (d/squuid)))
+                                              job-1 (d/entity (d/db conn) (create-dummy-job conn
+                                                                                            :uuid (get-uuid "job-1")
+                                                                                            :group group-ent-id
+                                                                                            :name "job-1"
+                                                                                            :ncpus 3
+                                                                                            :memory 2048
+                                                                                            :data-local true))
+                                              job-2 (d/entity (d/db conn) (create-dummy-job conn
+                                                                                            :uuid (get-uuid "job-2")
+                                                                                            :group group-ent-id
+                                                                                            :name "job-2"
+                                                                                            :ncpus 13
+                                                                                            :memory 1024
+                                                                                            :data-local true))
+                                              _ (dl/update-data-local-costs {(get-uuid "job-1") {(:hostname offer-1) 0.0
+                                                                                                 (:hostname offer-2) 0.0
+                                                                                                 (:hostname offer-3) 100.0}
+                                                                             (get-uuid "job-2") {(:hostname offer-1) 0.0
+                                                                                                 (:hostname offer-2) 0.0
+                                                                                                 (:hostname offer-3) 0.0}})
+                                              entity->map (fn [entity]
+                                                            (util/job-ent->map entity (d/db conn)))
+                                              category->pending-jobs (->> {:normal [job-1 job-2]}
+                                                                          (pc/map-vals (partial map entity->map)))
+                                              category->pending-jobs-atom (atom category->pending-jobs)
+                                              user->usage (or user->usage {test-user {:count 1, :cpus 2, :mem 1024, :gpus 0}})
+                                              user->quota (or user-quota {test-user {:count 10, :cpus 50, :mem 32768, :gpus 10}})
+                                              mesos-run-as-user nil
+                                              result (sched/handle-resource-offers!
+                                                      conn driver fenzo framework-id category->pending-jobs-atom mesos-run-as-user
+                                                      user->usage user->quota num-considerable offers-chan offers rebalancer-reservation-atom)]
+                                          result))]
+      (testing "enough offers for all normal jobs"
+        (let [num-considerable 10
+              offers [offer-1 offer-2 offer-3]]
+          (is (run-handle-resource-offers! num-considerable offers :job-name->uuid {"job-1" (d/squuid) "job-2" (d/squuid)}))
+          (let [launched-tasks @launched-tasks-atom
+                task-1 (first (filter #(.startsWith (:name %) "job-1") launched-tasks))
+                task-2 (first (filter #(.startsWith (:name %) "job-2") launched-tasks))]
+            (is (= 2 (count launched-tasks)))
+            (is (= (:slave-id offer-1) (:slave-id task-1)))
+            (is (= (:slave-id offer-2) (:slave-id task-2)))))))))
 
 (deftest test-in-order-status-update-processing
   (let [status-store (atom {})
@@ -1828,255 +1884,6 @@
         (is (= [foo bar] (->> "T2" (get @messages-store) vec)))
         (is (= [foo bar fie] (->> "T3" (get @messages-store) vec)))
         (is (= [foo] (->> "T4" (get @messages-store) vec)))))))
-
-(defn- progress-entry
-  [message percent sequence & {:keys [instance-id]}]
-  (cond-> {:progress-message message
-           :progress-percent percent
-           :progress-sequence sequence}
-          instance-id (assoc :instance-id instance-id)))
-
-(deftest test-progress-aggregator
-  (let [pending-threshold 10
-        sequence-cache-store-fn (fn [& {:keys [data threshold] :or {data {} threshold 100}}]
-                                  (atom (cache/lru-cache-factory data :threshold threshold)))]
-    (testing "basic update from initial state"
-      (is (= {"i1" (progress-entry "i1.m1" 10 1)}
-             (sched/progress-aggregator
-               pending-threshold
-               (sequence-cache-store-fn)
-               {}
-               (progress-entry "i1.m1" 10 1 :instance-id "i1")))))
-
-    (testing "update state for known instance"
-      (let [sequence-cache-store (sequence-cache-store-fn :data {"i1" 1})]
-        (is (= {"i1" (progress-entry "i1.m2" 20 2)}
-               (sched/progress-aggregator
-                 pending-threshold
-                 sequence-cache-store
-                 {"i1" (progress-entry "i1.m1" 10 1)}
-                 (progress-entry "i1.m2" 20 2 :instance-id "i1"))))
-        (is (= {"i1" 2} (.cache @sequence-cache-store)))))
-
-    (testing "skip update state when missing progress-sequence"
-      (let [sequence-cache-store (sequence-cache-store-fn :data {"i1" 1})]
-        (is (= {"i1" (progress-entry "i1.m1" 10 1)}
-               (sched/progress-aggregator
-                 pending-threshold
-                 sequence-cache-store
-                 {"i1" (progress-entry "i1.m1" 10 1)}
-                 (progress-entry "i1.m2" 20 nil :instance-id "i1"))))
-        (is (= {"i1" 1} (.cache @sequence-cache-store)))))
-
-    (testing "do not update state for outdated message"
-      (let [sequence-cache-store (sequence-cache-store-fn :data {"i1" 2})]
-        (is (= {"i1" (progress-entry "i1.m2" 20 2)}
-               (sched/progress-aggregator
-                 pending-threshold
-                 sequence-cache-store
-                 {"i1" (progress-entry "i1.m2" 20 2)}
-                 (progress-entry "i1.m1" 10 1 :instance-id "i1"))))
-        (is (= {"i1" 2} (.cache @sequence-cache-store)))))
-
-    (testing "handle threshold exceeded"
-      (let [sequence-cache-store (sequence-cache-store-fn :data {"i1" 1})]
-        (is (= {"i1" (progress-entry "i1.m1" 10 1)}
-               (sched/progress-aggregator
-                 1
-                 sequence-cache-store
-                 {"i1" (progress-entry "i1.m1" 10 1)}
-                 (progress-entry "i2.m2" 20 2 :instance-id "i2"))))
-        (is (= {"i1" 1} (.cache @sequence-cache-store)))))
-
-    (testing "handle threshold limit reached"
-      (let [sequence-cache-store (sequence-cache-store-fn :data {"i1" 1})]
-        (is (= {"i1" (progress-entry "i1.m1" 10 1)
-                "i2" (progress-entry "i2.m2" 20 2)}
-               (sched/progress-aggregator
-                 2
-                 sequence-cache-store
-                 {"i1" (progress-entry "i1.m1" 10 1)}
-                 (progress-entry "i2.m2" 20 2 :instance-id "i2"))))
-        (is (= {"i1" 1, "i2" 2} (.cache @sequence-cache-store)))))))
-
-(deftest test-progress-update-aggregator
-  (let [progress-config {:pending-threshold 10
-                         :publish-interval-ms 10000
-                         :sequence-cache-threshold 10}
-        actual-progress-aggregator sched/progress-aggregator
-        redef-progress-aggregator (fn redef-progress-aggregator
-                                    [pending-threshold sequence-cache-store instance-id->progress-state {:keys [response-chan] :as data}]
-                                    (let [result (actual-progress-aggregator pending-threshold sequence-cache-store instance-id->progress-state data)]
-                                      (when response-chan
-                                        (async/close! response-chan))
-                                      result))]
-    (with-redefs [sched/progress-aggregator redef-progress-aggregator]
-      (letfn [(send [progress-aggregator-chan message & {:keys [sync] :or {sync false}}]
-                (let [message (cond-> message
-                                      sync (assoc :response-chan (async/promise-chan)))
-                      put-result (async/>!! progress-aggregator-chan message)]
-                  (when sync
-                    (or (not put-result)
-                        (-> message :response-chan async/<!!)))))]
-
-        (testing "no progress to publish"
-          (let [progress-state-chan (async/chan 1)
-                progress-aggregator-chan
-                (sched/progress-update-aggregator progress-config progress-state-chan)]
-
-            (is (= {} (async/<!! progress-state-chan)))
-            (is (= {} (async/<!! progress-state-chan)))
-
-            (async/close! progress-state-chan)
-            (async/close! progress-aggregator-chan)
-            (poll-until #(nil? (async/<!! progress-state-chan)) 100 1000)))
-
-        (testing "basic progress publishing"
-          (let [progress-state-chan (async/chan)
-                progress-aggregator-chan
-                (sched/progress-update-aggregator progress-config progress-state-chan)]
-            (send progress-aggregator-chan (progress-entry "i1.m1" 10 1 :instance-id "i1"))
-            (send progress-aggregator-chan (progress-entry "i2.m1" 10 1 :instance-id "i2"))
-            (send progress-aggregator-chan (progress-entry "i3.m1" 10 1 :instance-id "i3"))
-            (send progress-aggregator-chan (progress-entry "i2.m2" 25 2 :instance-id "i2"))
-            (send progress-aggregator-chan (progress-entry "i1.m2" 45 2 :instance-id "i1") :sync true)
-
-            (is (= {"i1" (progress-entry "i1.m2" 45 2)
-                    "i2" (progress-entry "i2.m2" 25 2)
-                    "i3" (progress-entry "i3.m1" 10 1)}
-                   (async/<!! progress-state-chan)))
-            (is (= {} (async/<!! progress-state-chan)))
-
-            (async/close! progress-state-chan)
-            (async/close! progress-aggregator-chan)
-            (poll-until #(nil? (async/<!! progress-state-chan)) 100 1000)))
-
-        (testing "basic progress overflow on channel"
-          (let [progress-aggregator-counter (atom 0)]
-            (with-redefs [sched/progress-aggregator
-                          (fn progress-aggregator
-                            [pending-threshold sequence-cache-store instance-id->progress-state {:keys [response-chan] :as data}]
-                            (swap! progress-aggregator-counter inc)
-                            (Thread/sleep 100) ;; delay processing of message to cause queue to build up
-                            (redef-progress-aggregator pending-threshold sequence-cache-store instance-id->progress-state data))]
-
-              (let [progress-state-chan (async/chan)
-                    progress-aggregator-chan
-                    (sched/progress-update-aggregator progress-config progress-state-chan)]
-                (dotimes [n 100]
-                  (send progress-aggregator-chan (progress-entry (str "i1.m" n) n n :instance-id "i1")))
-                (send progress-aggregator-chan (progress-entry "i1.m100" 100 100 :instance-id "i1") :sync true)
-
-                (is (< @progress-aggregator-counter 100))
-                (is (= {"i1" (progress-entry "i1.m100" 100 100)}
-                       (async/<!! progress-state-chan)))
-                (is (= {} (async/<!! progress-state-chan)))
-
-                (async/close! progress-state-chan)
-                (async/close! progress-aggregator-chan)
-                (poll-until #(nil? (async/<!! progress-state-chan)) 100 1000)))))))))
-
-(deftest test-progress-update-transactor
-  (let [uri "datomic:mem://test-progress-update-transactor"
-        conn (restore-fresh-database! uri)]
-    (testing "update-progress single instance"
-      (let [j1 (create-dummy-job conn :user "user1" :ncpus 1.0 :memory 3.0 :job-state :job.state/running)
-            i1 (create-dummy-instance conn j1)
-            publish-progress-trigger-chan (async/chan)
-            batch-size 2
-            {:keys [cancel-handle progress-state-chan]} (sched/progress-update-transactor publish-progress-trigger-chan batch-size conn)
-            response-chan (async/promise-chan)]
-        ;; publish the data
-        (async/>!! publish-progress-trigger-chan response-chan)
-        (async/>!! progress-state-chan {i1 (progress-entry "i1.m1" 10 1)})
-        ;; force db transactions
-        (async/<!! response-chan)
-        ;; assert the state of the db
-        (let [test-db (d/db conn)
-              {:keys [:instance/progress :instance/progress-message] :as instance}
-              (->> i1 (d/entity test-db) d/touch)]
-          (is instance)
-          (is (= 10 progress))
-          (is (= "i1.m1" progress-message)))
-
-        (cancel-handle)
-        (async/close! progress-state-chan)))
-
-    (testing "update-progress multiple instances"
-      (let [num-jobs-or-instances 1500
-            all-jobs (map (fn [index] (create-dummy-job conn :user (str "user" index) :ncpus 1.0 :memory 3.0 :job-state :job.state/running))
-                          (range num-jobs-or-instances))
-            all-instance-ids (map (fn [job] (create-dummy-instance conn job))
-                                  all-jobs)
-            publish-progress-trigger-chan (async/chan)
-            batch-size 100
-            {:keys [cancel-handle progress-state-chan]} (sched/progress-update-transactor publish-progress-trigger-chan batch-size conn)
-            instance-id->progress-state (pc/map-from-keys (fn [instance-id]
-                                                            (let [progress (rand-int 100)]
-                                                              {:progress-message (str instance-id ".m" progress)
-                                                               :progress-percent progress}))
-                                                          all-instance-ids)
-            response-chan (async/promise-chan)]
-        ;; publish the data
-        (async/>!! publish-progress-trigger-chan response-chan)
-        (async/>!! progress-state-chan instance-id->progress-state)
-        ;; force db transactions
-        (async/<!! response-chan)
-        ;; assert the state of the db
-        (let [test-db (d/db conn)
-              actual-instance-id->progress-state (pc/map-from-keys (fn [instance-id]
-                                                                     (let [{:keys [:instance/progress :instance/progress-message] :as instance}
-                                                                           (->> instance-id (d/entity test-db) d/touch)]
-                                                                       {:progress-message progress-message
-                                                                        :progress-percent progress}))
-                                                                   all-instance-ids)]
-          (is (= instance-id->progress-state actual-instance-id->progress-state)))
-
-        (cancel-handle)
-        (async/close! progress-state-chan)))
-
-    (testing "update-progress publish latest data"
-      (let [num-jobs-or-instances 100
-            all-jobs (map (fn [index] (create-dummy-job conn :user (str "user" index) :ncpus 1.0 :memory 3.0 :job-state :job.state/running))
-                          (range num-jobs-or-instances))
-            all-instance-ids (map (fn [job] (create-dummy-instance conn job))
-                                  all-jobs)
-            publish-progress-trigger-chan (async/chan)
-            batch-size 10
-            {:keys [cancel-handle progress-state-chan]} (sched/progress-update-transactor publish-progress-trigger-chan batch-size conn)
-            instance-id->progress-state (pc/map-from-keys (fn [instance-id]
-                                                            (let [progress (rand-int 100)]
-                                                              {:progress-message (str instance-id ".m" progress)
-                                                               :progress-percent progress}))
-                                                          all-instance-ids)
-            response-chan-1 (async/promise-chan)
-            response-chan-2 (async/promise-chan)]
-        ;; generate half the data
-        (async/>!! publish-progress-trigger-chan response-chan-1)
-        (let [n (int (/ num-jobs-or-instances 2))
-              instance-id->progress-state' (into {} (take n instance-id->progress-state))]
-          (async/>!! progress-state-chan instance-id->progress-state'))
-        ;; force a publish
-        (async/<!! response-chan-1)
-        ;; generate rest of the data
-        (async/>!! publish-progress-trigger-chan response-chan-2)
-        (let [n num-jobs-or-instances
-              instance-id->progress-state' (into {} (take n instance-id->progress-state))]
-          (async/>!! progress-state-chan instance-id->progress-state'))
-        ;; force a publish
-        (async/<!! response-chan-2)
-        ;; assert the state of the db
-        (let [test-db (d/db conn)
-              actual-instance-id->progress-state (pc/map-from-keys (fn [instance-id]
-                                                                     (let [{:keys [:instance/progress :instance/progress-message] :as instance}
-                                                                           (->> instance-id (d/entity test-db) d/touch)]
-                                                                       {:progress-message progress-message
-                                                                        :progress-percent progress}))
-                                                                   all-instance-ids)]
-          (is (= instance-id->progress-state actual-instance-id->progress-state)))
-
-        (cancel-handle)
-        (async/close! progress-state-chan)))))
 
 (defn- task-id->instance-entity
   [db-conn task-id]

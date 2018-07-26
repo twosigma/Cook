@@ -1308,7 +1308,17 @@
           (is (= (expected-job-map job framework-id)
                  (-> (api/fetch-job-map (db conn) framework-id uuid)
                      (dissoc :submit_time)
-                     (update :executor name)))))))))
+                     (update :executor name))))))
+
+      (testing "should work with data locality support"
+        (let [conn (restore-fresh-database! "datomic:mem://data-locality-submit")
+              {:keys [uuid] :as job} (assoc (minimal-job) :supports_data_locality true)
+              framework-id #mesomatic.types.FrameworkID{:value "framework-id"}]
+          (is (= {::api/results (str "submitted jobs " uuid)}
+                 (api/create-jobs! conn {::api/jobs [job]})))
+          (is (= (expected-job-map job framework-id)
+                 (-> (api/fetch-job-map (db conn) framework-id uuid)
+                     (dissoc :submit_time)))))))))
 
 (deftest test-destroy-jobs
   (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")

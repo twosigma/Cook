@@ -2478,3 +2478,10 @@ class CookTest(util.CookTest):
             else:
                 resp = util.get_limit(self.cook_url, limit, user)
                 self.assertFalse('pools' in resp.json())
+
+
+    def test_data_local_support(self):
+        uuid, resp = util.submit_job(self.cook_url, data_local=True)
+        self.assertEqual(201, resp.status_code, resp.text)
+        job = util.load_job(self.cook_url, uuid)
+        self.assertEqual(True, job['data_local'], job)

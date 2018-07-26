@@ -26,29 +26,31 @@
   (:import (java.util.concurrent CountDownLatch TimeUnit)))
 
 (deftest test-agent->task-id->sandbox
-  (let [task-id->sandbox-agent (agent {})]
-    (send task-id->sandbox-agent sandbox/aggregate-sandbox "t0" "s0")
-    (send task-id->sandbox-agent sandbox/aggregate-sandbox "t2" "s2")
-    (send task-id->sandbox-agent sandbox/aggregate-sandbox "t3" "s3")
+  (let [agent->task-id->value (fn [an-agent task-id] (get @an-agent task-id))
+        task-id->sandbox-agent (agent {})]
+    (send task-id->sandbox-agent sandbox/aggregate-instance-field "sandbox-directory" "t0" "s0")
+    (send task-id->sandbox-agent sandbox/aggregate-instance-field "sandbox-directory" "t2" "s2")
+    (send task-id->sandbox-agent sandbox/aggregate-instance-field "sandbox-directory" "t3" "s3")
     (await task-id->sandbox-agent)
 
-    (is (= "s0" (sandbox/agent->task-id->sandbox task-id->sandbox-agent "t0")))
-    (is (nil? (sandbox/agent->task-id->sandbox task-id->sandbox-agent "t1")))
-    (is (= "s2" (sandbox/agent->task-id->sandbox task-id->sandbox-agent "t2")))
-    (is (= "s3" (sandbox/agent->task-id->sandbox task-id->sandbox-agent "t3")))
-    (is (nil? (sandbox/agent->task-id->sandbox task-id->sandbox-agent "t4")))))
+    (is (= "s0" (agent->task-id->value task-id->sandbox-agent "t0")))
+    (is (nil? (agent->task-id->value task-id->sandbox-agent "t1")))
+    (is (= "s2" (agent->task-id->value task-id->sandbox-agent "t2")))
+    (is (= "s3" (agent->task-id->value task-id->sandbox-agent "t3")))
+    (is (nil? (agent->task-id->value task-id->sandbox-agent "t4")))))
 
 (defmacro assert-clear-agent-state-result
   [initial-state clear-data expected-state]
-  `(let [task-id->sandbox-agent# (agent ~initial-state)]
-     (counters/clear! sandbox/sandbox-aggregator-pending-count)
-     (counters/inc! sandbox/sandbox-aggregator-pending-count (count ~initial-state))
+  `(let [task-id->sandbox-agent# (agent ~initial-state)
+         aggregator-pending-count# (counters/counter ["cook-mesos" "scheduler""sandbox-directory" "aggregator-pending-count"])]
+     (counters/clear! aggregator-pending-count#)
+     (counters/inc! aggregator-pending-count# (count ~initial-state))
 
-     (send task-id->sandbox-agent# sandbox/clear-agent-state ~clear-data)
+     (send task-id->sandbox-agent# sandbox/clear-agent-state "sandbox-directory" ~clear-data)
      (await task-id->sandbox-agent#)
 
      (is (= @task-id->sandbox-agent# ~expected-state))
-     (is (= (counters/value sandbox/sandbox-aggregator-pending-count) (count ~expected-state)))))
+     (is (= (counters/value aggregator-pending-count#) (count ~expected-state)))))
 
 (deftest test-clear-agent-state
   (assert-clear-agent-state-result nil nil nil)
@@ -65,42 +67,44 @@
   (assert-clear-agent-state-result {"a" 1, "b" 2} {"c" 3, "d" 4} {"a" 1, "b" 2})
   (assert-clear-agent-state-result {"a" 1, "b" 2, "c" 3, "d" 4} {"c" 3, "d" 4} {"a" 1, "b" 2}))
 
-(defmacro assert-aggregate-sandbox-single
+(defmacro assert-aggregate-instance-field-single
   [initial-state task-id sandbox expected-state]
-  `(let [task-id->sandbox-agent# (agent ~initial-state)]
-     (counters/clear! sandbox/sandbox-aggregator-pending-count)
-     (counters/inc! sandbox/sandbox-aggregator-pending-count (count ~initial-state))
+  `(let [task-id->sandbox-agent# (agent ~initial-state)
+         aggregator-pending-count# (counters/counter ["cook-mesos" "scheduler""sandbox-directory" "aggregator-pending-count"])]
+     (counters/clear! aggregator-pending-count#)
+     (counters/inc! aggregator-pending-count# (count ~initial-state))
 
-     (send task-id->sandbox-agent# sandbox/aggregate-sandbox ~task-id ~sandbox)
+     (send task-id->sandbox-agent# sandbox/aggregate-instance-field "sandbox-directory" ~task-id ~sandbox)
      (await task-id->sandbox-agent#)
 
      (is (= @task-id->sandbox-agent# ~expected-state))
-     (is (= (counters/value sandbox/sandbox-aggregator-pending-count) (count ~expected-state)))))
+     (is (= (counters/value aggregator-pending-count#) (count ~expected-state)))))
 
-(deftest test-aggregate-sandbox-single
-  (assert-aggregate-sandbox-single {} "a" 1 {"a" 1})
-  (assert-aggregate-sandbox-single {"a" 1} "a" 2 {"a" 1})
-  (assert-aggregate-sandbox-single {"x" 7, "y" 8, "z" 9} "a" 1 {"a" 1, "x" 7, "y" 8, "z" 9}))
+(deftest test-aggregate-instance-field-single
+  (assert-aggregate-instance-field-single {} "a" 1 {"a" 1})
+  (assert-aggregate-instance-field-single {"a" 1} "a" 2 {"a" 1})
+  (assert-aggregate-instance-field-single {"x" 7, "y" 8, "z" 9} "a" 1 {"a" 1, "x" 7, "y" 8, "z" 9}))
 
-(defmacro assert-aggregate-sandbox-multiple
+(defmacro assert-aggregate-instance-field-multiple
   [initial-state aggregate-data expected-state]
-  `(let [task-id->sandbox-agent# (agent ~initial-state)]
-     (counters/clear! sandbox/sandbox-aggregator-pending-count)
-     (counters/inc! sandbox/sandbox-aggregator-pending-count (count ~initial-state))
+  `(let [task-id->sandbox-agent# (agent ~initial-state)
+         aggregator-pending-count# (counters/counter ["cook-mesos" "scheduler""sandbox-directory" "aggregator-pending-count"])]
+     (counters/clear! aggregator-pending-count#)
+     (counters/inc! aggregator-pending-count# (count ~initial-state))
 
-     (send task-id->sandbox-agent# sandbox/aggregate-sandbox ~aggregate-data)
+     (send task-id->sandbox-agent# sandbox/aggregate-instance-field "sandbox-directory" ~aggregate-data)
      (await task-id->sandbox-agent#)
 
      (is (= @task-id->sandbox-agent# ~expected-state))
-     (is (= (counters/value sandbox/sandbox-aggregator-pending-count) (count ~expected-state)))))
+     (is (= (counters/value aggregator-pending-count#) (count ~expected-state)))))
 
-(deftest test-aggregate-sandbox-multiple
-  (assert-aggregate-sandbox-multiple {} {"a" 1} {"a" 1})
-  (assert-aggregate-sandbox-multiple {} {"a" 1, "b" 2, "c" 2} {"a" 1, "b" 2, "c" 2})
-  (assert-aggregate-sandbox-multiple {"a" 1} {"a" 2} {"a" 1})
-  (assert-aggregate-sandbox-multiple {"x" 7, "y" 8} {"a" 1, "x" 7} {"a" 1, "x" 7, "y" 8})
-  (assert-aggregate-sandbox-multiple {"x" 7, "y" 8} {"a" 1, "b" 2, "x" 7} {"a" 1, "b" 2, "x" 7, "y" 8})
-  (assert-aggregate-sandbox-multiple {"x" 7, "y" 8, "z" 9} {"a" 1} {"a" 1, "x" 7, "y" 8, "z" 9}))
+(deftest test-aggregate-instance-field-multiple
+  (assert-aggregate-instance-field-multiple {} {"a" 1} {"a" 1})
+  (assert-aggregate-instance-field-multiple {} {"a" 1, "b" 2, "c" 2} {"a" 1, "b" 2, "c" 2})
+  (assert-aggregate-instance-field-multiple {"a" 1} {"a" 2} {"a" 1})
+  (assert-aggregate-instance-field-multiple {"x" 7, "y" 8} {"a" 1, "x" 7} {"a" 1, "x" 7, "y" 8})
+  (assert-aggregate-instance-field-multiple {"x" 7, "y" 8} {"a" 1, "b" 2, "x" 7} {"a" 1, "b" 2, "x" 7, "y" 8})
+  (assert-aggregate-instance-field-multiple {"x" 7, "y" 8, "z" 9} {"a" 1} {"a" 1, "x" 7, "y" 8, "z" 9}))
 
 (defn- retrieve-sandbox
   [db-conn task-id]
@@ -131,7 +135,8 @@
         (doseq [[task-id sandbox] task-id->sandbox-in-db]
           (tu/create-dummy-instance db-conn (tu/create-dummy-job db-conn) :task-id task-id :sandbox-directory sandbox))
 
-        (sandbox/publish-sandbox-to-datomic! db-conn batch-size task-id->sandbox-agent)
+        (sandbox/publish-instance-field-to-datomic!
+          :instance/sandbox-directory db-conn batch-size task-id->sandbox-agent)
         (await task-id->sandbox-agent)
 
         (is (= num-tasks (-> task-id->sandbox-in-db (merge task-id->sandbox-not-in-db) count)))
@@ -149,13 +154,14 @@
         task-id->sandbox-publish-history-atom (atom [])
         task-id->sandbox-state {:a 1, :b 2, :c 3}
         task-id->sandbox-agent (agent task-id->sandbox-state)]
-    (with-redefs [sandbox/publish-sandbox-to-datomic!
-                  (fn [datomic-conn batch-size task-id->sandbox-agent]
+    (with-redefs [sandbox/publish-instance-field-to-datomic!
+                  (fn [instance-field datomic-conn batch-size task-id->sandbox-agent]
+                    (is (= :instance/sandbox-directory instance-field))
                     (is (= db-conn datomic-conn))
                     (is (= publish-batch-size batch-size))
                     (swap! task-id->sandbox-publish-history-atom conj @task-id->sandbox-agent)
                     (.countDown latch)
-                    (send task-id->sandbox-agent sandbox/clear-agent-state @task-id->sandbox-agent)
+                    (send task-id->sandbox-agent sandbox/clear-agent-state "sandbox-directory" @task-id->sandbox-agent)
                     (await task-id->sandbox-agent)
                     (Thread/sleep publish-interval-ms))]
 
