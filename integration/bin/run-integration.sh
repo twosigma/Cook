@@ -74,12 +74,15 @@ then
    COOK_MULTICLUSTER_ENV="${COOK_MULTICLUSTER_ENV} -e COOK_SLAVE_URL=${COOK_SLAVE_URL} -e COOK_MASTER_SLAVE=${COOK_MASTER_SLAVE}"
 fi
 
+DATA_LOCAL_IP=$(docker inspect data-local | jq -r '.[].NetworkSettings.IPAddress')
+
 docker create \
        --rm \
        --name=cook-integration \
        -e "COOK_SCHEDULER_URL=${COOK_URL}" \
        -e "USER=root" \
        -e "COOK_MESOS_LEADER_URL=http://${MESOS_MASTER_IP}:5050" \
+       -e "DATA_LOCAL_SERVICE=http://${DATA_LOCAL_IP}:5000" \
        ${COOK_MULTICLUSTER_ENV} ${DOCKER_VOLUME_ARGS} \
        cook-integration:latest \
        "$@"
