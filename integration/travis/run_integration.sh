@@ -80,6 +80,7 @@ cd ${TRAVIS_BUILD_DIR}/travis
 $(./minimesos info | grep MINIMESOS)
 export COOK_ZOOKEEPER="${MINIMESOS_ZOOKEEPER_IP}:2181"
 export MINIMESOS_ZOOKEEPER=${MINIMESOS_ZOOKEEPER%;}
+export MINIMESOS_MASTER=${MINIMESOS_MASTER%;}
 
 SCHEDULER_DIR=${TRAVIS_BUILD_DIR}/scheduler
 ./datomic-free-0.9.5394/bin/transactor ${SCHEDULER_DIR}/datomic/datomic_transactor.properties &
@@ -149,6 +150,8 @@ cd ${PROJECT_DIR}
 export COOK_MULTI_CLUSTER=
 export COOK_MASTER_SLAVE=
 export COOK_SLAVE_URL=http://localhost:12323
+export COOK_MESOS_LEADER_URL=${MINIMESOS_MASTER}
+echo "Using Mesos leader URL: ${COOK_MESOS_LEADER_URL}"
 pytest -n4 -v --color=no --timeout-method=thread --boxed -m "not serial" || test_failures=true
 pytest -n0 -v --color=no --timeout-method=thread --boxed -m "serial" || test_failures=true
 
