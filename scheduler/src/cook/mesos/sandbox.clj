@@ -28,77 +28,70 @@
             [metrics.meters :as meters]
             [metrics.timers :as timers]))
 
-(def sandbox-aggregator-message-rate (meters/meter ["cook-mesos" "scheduler" "sandbox-aggregator-message-rate"]))
-(def sandbox-aggregator-pending-count (counters/counter ["cook-mesos" "scheduler" "sandbox-aggregator-pending-count"]))
-(def sandbox-pending-sync-host-count (counters/counter ["cook-mesos" "scheduler" "sandbox-pending-sync-host-count"]))
-(def sandbox-updater-pending-entries (histograms/histogram ["cook-mesos" "scheduler" "sandbox-updater-pending-entries"]))
-(def sandbox-updater-publish-duration (timers/timer ["cook-mesos" "scheduler" "sandbox-updater-publish-duration"]))
-(def sandbox-updater-publish-rate (meters/meter ["cook-mesos" "scheduler" "sandbox-updater-publish-rate"]))
-(def sandbox-updater-tx-duration (timers/timer ["cook-mesos" "scheduler" "sandbox-updater-tx-duration"]))
-(def sandbox-updater-tx-rate (meters/meter ["cook-mesos" "scheduler" "sandbox-updater-tx-rate"]))
-(def sandbox-updater-unprocessed-count (counters/counter ["cook-mesos" "scheduler" "sandbox-updater-unprocessed-count"]))
-(def sandbox-updater-unprocessed-entries (histograms/histogram ["cook-mesos" "scheduler" "sandbox-updater-unprocessed-entries"]))
-
-(defn agent->task-id->sandbox
-  "Returns the sandbox in the current agent state."
-  [task-id->sandbox-agent task-id]
-  (get @task-id->sandbox-agent task-id))
-
 (defn clear-agent-state
   "Clears the published entries from the aggregated state of the agent.
-   Since we expect instances to have the same sandbox, we do not check for value equality."
-  [task-id->sandbox published-task-id->sandbox]
-  (let [task-id->sandbox' (apply dissoc task-id->sandbox (keys published-task-id->sandbox))]
-    (counters/clear! sandbox-aggregator-pending-count)
-    (counters/inc! sandbox-aggregator-pending-count (count task-id->sandbox'))
-    task-id->sandbox'))
+   Since we expect instances to have the same field value, we do not check for value equality."
+  [task-id->value field-name published-task-id->value]
+  (let [field-aggregator-pending-count (counters/counter ["cook-mesos" "scheduler" field-name "aggregator-pending-count"])
+        task-id->value' (apply dissoc task-id->value (keys published-task-id->value))]
+    (counters/clear! field-aggregator-pending-count)
+    (counters/inc! field-aggregator-pending-count (count task-id->value'))
+    task-id->value'))
 
-(defn aggregate-sandbox
-  "Aggregates the sandbox specified in `data` into the current sandbox state `task-id->sandbox`.
-   Existing entries in task-id->sandbox take precedence during aggregation.
+(defn aggregate-instance-field
+  "Aggregates the value specified in `data` into the current value state `task-id->value`.
+   Existing entries in task-id->value take precedence during aggregation.
    It provides two overloaded versions:
-   1. Aggregates an individual task-id and sandbox pair.
-   2. Aggregates a collection (map) of task-id to sandbox mappings.
-   It returns the new task-id->sandbox state."
-  ([task-id->sandbox task-id sandbox]
-   (meters/mark! sandbox-aggregator-message-rate)
-   (if (and task-id sandbox (not (contains? task-id->sandbox task-id)))
-     (let [task-id->sandbox' (assoc task-id->sandbox task-id sandbox)]
-       (counters/inc! sandbox-aggregator-pending-count)
-       task-id->sandbox')
-     task-id->sandbox))
-  ([task-id->sandbox candidate-task-id->sandbox]
-   (reduce (fn [accum-task-id->sandbox [task-id sandbox]]
-             (aggregate-sandbox accum-task-id->sandbox task-id sandbox))
-           task-id->sandbox
-           candidate-task-id->sandbox)))
+   1. Aggregates an individual task-id and value pair.
+   2. Aggregates a collection (map) of task-id to value mappings.
+   It returns the new task-id->value state."
+  ([task-id->value field-name task-id value]
+   (let [field-aggregator-message-rate (meters/meter ["cook-mesos" "scheduler" field-name "aggregator-message-rate"])
+         field-aggregator-pending-count (counters/counter ["cook-mesos" "scheduler" field-name "aggregator-pending-count"])]
+     (meters/mark! field-aggregator-message-rate)
+     (if (and task-id value (not (contains? task-id->value task-id)))
+       (let [task-id->value' (assoc task-id->value task-id value)]
+         (counters/inc! field-aggregator-pending-count)
+         task-id->value')
+       task-id->value)))
+  ([task-id->value field-name candidate-task-id->value]
+   (reduce (fn [accum-task-id->value [task-id value]]
+             (aggregate-instance-field accum-task-id->value field-name task-id value))
+           task-id->value
+           candidate-task-id->value)))
 
-(defn publish-sandbox-to-datomic!
-  "Transacts the latest aggregated task-id->sandbox to datomic.
+(defn publish-instance-field-to-datomic!
+  "Transacts the latest aggregated task-id->value to datomic.
    No more than batch-size facts are updated in individual datomic transactions."
-  [datomic-conn batch-size task-id->sandbox-agent]
-  (let [task-id->sandbox @task-id->sandbox-agent
-        task-count (count task-id->sandbox)]
-    (histograms/update! sandbox-updater-pending-entries task-count)
-    (meters/mark! sandbox-updater-publish-rate)
+  [instance-field datomic-conn batch-size task-id->value-agent]
+  (let [task-id->value @task-id->value-agent
+        task-count (count task-id->value)
+        field-name (name instance-field)
+        field-updater-pending-entries (histograms/histogram ["cook-mesos" "scheduler" field-name "updater-pending-entries"])
+        field-updater-publish-rate (meters/meter ["cook-mesos" "scheduler" field-name "updater-publish-rate"])
+        field-updater-publish-duration (timers/timer ["cook-mesos" "scheduler" field-name "updater-publish-duration"])
+        field-updater-tx-duration (timers/timer ["cook-mesos" "scheduler" field-name "updater-tx-duration"])
+        field-updater-tx-rate (meters/meter ["cook-mesos" "scheduler" field-name "updater-tx-rate"])]
+    (histograms/update! field-updater-pending-entries task-count)
+    (meters/mark! field-updater-publish-rate)
     (when (pos? task-count)
-      (log/info "Publishing" task-count "instance sandbox directories")
+      (log/info "Publishing" field-name "of" task-count "instance(s)")
       (timers/time!
-        sandbox-updater-publish-duration
-        (doseq [task-id->sandbox-partition (partition-all batch-size task-id->sandbox)]
+        field-updater-publish-duration
+        (doseq [task-id->value-partition (partition-all batch-size task-id->value)]
           (try
-            (letfn [(build-sandbox-txns [[task-id sandbox]]
-                      [:db/add [:instance/task-id task-id] :instance/sandbox-directory sandbox])]
-              (let [txns (map build-sandbox-txns task-id->sandbox-partition)]
+            (letfn [(build-txns [[task-id value]]
+                      [:db/add [:instance/task-id task-id] instance-field value])]
+              (let [txns (map build-txns task-id->value-partition)]
                 (when (seq txns)
-                  (log/info "Inserting" (count txns) "facts in sandbox state update")
-                  (meters/mark! sandbox-updater-tx-rate)
+                  (log/info "Inserting" (count txns) "facts in" field-name "state update")
+                  (meters/mark! field-updater-tx-rate)
                   (timers/time!
-                    sandbox-updater-tx-duration
+                    field-updater-tx-duration
                     @(d/transact datomic-conn txns)))))
-            (send task-id->sandbox-agent clear-agent-state task-id->sandbox-partition)
+            (send task-id->value-agent clear-agent-state field-name task-id->value-partition)
             (catch Exception e
-              (log/error e "Sandbox batch update error"))))))
+              (log/error e (str field-name " batch update error")))))))
     {}))
 
 (defn retrieve-sandbox-directories-on-agent
@@ -126,6 +119,10 @@
          (map (fn executor-state->task-id->sandbox-directory [{:strs [id directory]}]
                 [id directory]))
          (into {}))))
+
+(def sandbox-pending-sync-host-count (counters/counter ["cook-mesos" "scheduler" "sandbox-pending-sync-host-count"]))
+(def sandbox-updater-unprocessed-count (counters/counter ["cook-mesos" "scheduler" "sandbox-updater-unprocessed-count"]))
+(def sandbox-updater-unprocessed-entries (histograms/histogram ["cook-mesos" "scheduler" "sandbox-updater-unprocessed-entries"]))
 
 (defn- update-pending-sync-host-counter!
   "Updates the sandbox-pending-sync-host-count to the number of pending sync hosts and returns the input."
@@ -203,7 +200,7 @@
                 (str/join "," missing-task-ids)))
     (->> (set/union unprocessed-task-ids-prev filtered-task-ids)
          (remove-processed-task-ids! unprocessed-host->task-ids-atom host))
-    (send task-id->sandbox-agent aggregate-sandbox filtered-task-id->sandbox-directory)))
+    (send task-id->sandbox-agent aggregate-instance-field "sandbox-directory" filtered-task-id->sandbox-directory)))
 
 (defn refresh-agent-cache-entry
   "If the entry for the specified agent is not cached:
@@ -248,7 +245,7 @@
   "Sends a message to the agent to update the sandbox information."
   [{:keys [task-id->sandbox-agent]} {:strs [sandbox-directory task-id]}]
   (when task-id->sandbox-agent
-    (send task-id->sandbox-agent aggregate-sandbox task-id sandbox-directory)))
+    (send task-id->sandbox-agent aggregate-instance-field "sandbox-directory" task-id sandbox-directory)))
 
 (defn sync-agent-sandboxes
   "Asynchronously triggers state syncing from the mesos agent.
@@ -268,7 +265,8 @@
   (chime/chime-at
     (periodic/periodic-seq (time/now) (time/millis publish-interval-ms))
     (fn sandbox-publisher-task [_]
-      (publish-sandbox-to-datomic! datomic-conn publish-batch-size task-id->sandbox-agent))
+      (publish-instance-field-to-datomic!
+        :instance/sandbox-directory datomic-conn publish-batch-size task-id->sandbox-agent))
     {:error-handler (fn sandbox-publisher-error-handler [ex]
                       (log/error ex "Instance sandbox directory publish failed"))}))
 
