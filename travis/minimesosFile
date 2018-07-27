@@ -18,36 +18,20 @@ minimesos {
                 role = "*"
                 value = 4
             }
-            cpu {
-                role = "cook"
-                value = 4
-            }
 
             disk {
                 role = "*"
-                value = 10000
-            }
-            disk {
-                role = "cook"
-                value = 10000
+                value = 200
             }
 
             mem {
                 role = "*"
-                value = 4096
-            }
-            mem {
-                role = "cook"
-                value = 4096
+                value = 2048
             }
 
             ports {
                 role = "*"
                 value = "[31000-32000]"
-            }
-            ports {
-                role = "cook"
-                value = "[32000-33000]"
             }
         }
     }
@@ -64,128 +48,20 @@ minimesos {
                 role = "*"
                 value = 4
             }
-            cpu {
-                role = "cook"
-                value = 4
-            }
 
             disk {
                 role = "*"
-                value = 10000
-            }
-            disk {
-                role = "cook"
-                value = 10000
+                value = 200
             }
 
             mem {
                 role = "*"
-                value = 4096
-            }
-            mem {
-                role = "cook"
-                value = 4096
+                value = 2048
             }
 
             ports {
                 role = "*"
                 value = "[31000-32000]"
-            }
-            ports {
-                role = "cook"
-                value = "[32000-33000]"
-            }
-        }
-    }
-
-    agent {
-        imageName = "containersol/mesos-agent"
-        imageTag = "1.0.0-0.1.0"
-        loggingLevel = "# INHERIT FROM CLUSTER"
-        portNumber = 5051
-        attributes = "cook-pool:gamma"
-
-        resources {
-            cpu {
-                role = "*"
-                value = 4
-            }
-            cpu {
-                role = "cook"
-                value = 4
-            }
-
-            disk {
-                role = "*"
-                value = 10000
-            }
-            disk {
-                role = "cook"
-                value = 10000
-            }
-
-            mem {
-                role = "*"
-                value = 4096
-            }
-            mem {
-                role = "cook"
-                value = 4096
-            }
-
-            ports {
-                role = "*"
-                value = "[31000-32000]"
-            }
-            ports {
-                role = "cook"
-                value = "[32000-33000]"
-            }
-        }
-    }
-
-    agent {
-        imageName = "containersol/mesos-agent"
-        imageTag = "1.0.0-0.1.0"
-        loggingLevel = "# INHERIT FROM CLUSTER"
-        portNumber = 5051
-        attributes = "cook-pool:gamma"
-	
-        resources {
-            cpu {
-                role = "*"
-                value = 4
-            }
-            cpu {
-                role = "cook"
-                value = 4
-            }
-
-            disk {
-                role = "*"
-                value = 10000
-            }
-            disk {
-                role = "cook"
-                value = 10000
-            }
-
-            mem {
-                role = "*"
-                value = 4096
-            }
-            mem {
-                role = "cook"
-                value = 4096
-            }
-
-            ports {
-                role = "*"
-                value = "[31000-32000]"
-            }
-            ports {
-                role = "cook"
-                value = "[32000-33000]"
             }
         }
     }
@@ -196,42 +72,26 @@ minimesos {
         loggingLevel = "# INHERIT FROM CLUSTER"
         portNumber = 5051
         attributes = "cook-pool:alpha"
-	
+
         resources {
             cpu {
                 role = "*"
                 value = 4
             }
-            cpu {
-                role = "cook"
-                value = 4
-            }
 
             disk {
                 role = "*"
-                value = 10000
-            }
-            disk {
-                role = "cook"
-                value = 10000
+                value = 200
             }
 
             mem {
                 role = "*"
-                value = 4096
-            }
-            mem {
-                role = "cook"
-                value = 4096
+                value = 2048
             }
 
             ports {
                 role = "*"
                 value = "[31000-32000]"
-            }
-            ports {
-                role = "cook"
-                value = "[32000-33000]"
             }
         }
     }
@@ -242,42 +102,26 @@ minimesos {
         loggingLevel = "# INHERIT FROM CLUSTER"
         portNumber = 5051
         attributes = "cook-pool:alpha"
-	
+
         resources {
             cpu {
                 role = "*"
                 value = 4
             }
-            cpu {
-                role = "cook"
-                value = 4
-            }
 
             disk {
                 role = "*"
-                value = 10000
-            }
-            disk {
-                role = "cook"
-                value = 10000
+                value = 200
             }
 
             mem {
                 role = "*"
-                value = 4096
-            }
-            mem {
-                role = "cook"
-                value = 4096
+                value = 2048
             }
 
             ports {
                 role = "*"
                 value = "[31000-32000]"
-            }
-            ports {
-                role = "cook"
-                value = "[32000-33000]"
             }
         }
     }
@@ -288,6 +132,13 @@ minimesos {
         imageName = "containersol/mesos-master"
         imageTag = "1.0.0-0.1.0"
         loggingLevel = "# INHERIT FROM CLUSTER"
+    }
+
+    // Minimesos currently has an NPE without marathon
+    // https://github.com/ContainerSolutions/minimesos/issues/532
+    marathon {
+        imageName = "mesosphere/marathon"
+        imageTag = "v1.3.5"
     }
 
     zookeeper {
