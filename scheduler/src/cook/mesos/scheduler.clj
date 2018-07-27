@@ -537,7 +537,7 @@
         _ (log/debug "offer to scheduleOnce" offers)
         _ (log/debug "tasks to scheduleOnce" considerable)
         leases (mapv #(->VirtualMachineLeaseAdapter % t) offers)
-        considerable->task-id (plumbing.core/map-from-keys (fn [_] (str (java.util.UUID/randomUUID))) considerable)
+        considerable->task-id (plumbing.core/map-from-keys (fn [_] (str (d/squuid))) considerable)
         guuid->considerable-cotask-ids (util/make-guuid->considerable-cotask-ids considerable->task-id)
         running-cotask-cache (atom (cache/fifo-cache-factory {} :threshold (max 1 (count considerable))))
         job-uuid->reserved-host (or (:job-uuid->reserved-host @rebalancer-reservation-atom) {})

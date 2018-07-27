@@ -523,7 +523,7 @@
   (let [commit-latch-id (d/tempid :db.part/user)
         commit-latch {:db/id commit-latch-id
                       :commit-latch/committed? true
-                      :commit-latch/uuid (UUID/randomUUID)}]
+                      :commit-latch/uuid (d/squuid)}]
     [commit-latch-id commit-latch]))
 
 (s/defn make-job-txn
