@@ -90,7 +90,7 @@ final public class Group {
 
             // set the default values
             if (_uuid == null)
-                _uuid = UUID.randomUUID();
+                _uuid = JobClient.makeTemporalUUID();
             if (_status == null)
                 _status = Status.INITIALIZED;
             if (_name == null)
