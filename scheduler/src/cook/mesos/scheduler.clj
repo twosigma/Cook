@@ -1498,7 +1498,8 @@
               (if-let [offers-chan (-> pool-name keyword pool->offers-chan)]
                 (receive-offers offers-chan match-trigger-chan driver offers)
                 (log/warn "Encountered" (count offers) "offer(s) for non-existent pool" pool-name)))
-            pool->offers)))
+            pool->offers)
+          (log/debug "Finished receiving offers for all pools")))
       (status-update
         [this driver status]
         (meters/mark! handle-status-update-rate)
