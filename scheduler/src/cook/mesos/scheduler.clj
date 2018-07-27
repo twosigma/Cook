@@ -771,7 +771,7 @@
    be accepted or rejected at the end of the function."
   [conn driver ^TaskScheduler fenzo framework-id pool->pending-jobs-atom mesos-run-as-user
    user->usage user->quota num-considerable offers-chan offers rebalancer-reservation-atom pool]
-  (log/debug "invoked handle-resource-offers!")
+  (log/debug "In" pool "pool, invoked handle-resource-offers!")
   (let [offer-stash (atom nil)] ;; This is a way to ensure we never lose offers fenzo assigned if an error occurs in the middle of processing
     ;; TODO: It is possible to have an offer expire by mesos because we recycle it a bunch of times.
     ;; TODO: If there is an exception before offers are sent to fenzo (scheduleOnce) then the offers will be lost. This is fine with offer expiration, but not great.
@@ -787,7 +787,7 @@
               {:keys [matches failures]} (timers/time!
                                            handle-resource-offer!-match-duration
                                            (match-offer-to-schedule db fenzo considerable-jobs offers rebalancer-reservation-atom))
-              _ (log/debug "got matches:" matches)
+              _ (log/debug "In" pool "pool, got matches:" matches)
               offers-scheduled (for [{:keys [leases]} matches
                                      lease leases]
                                  (:offer lease))
@@ -813,13 +813,13 @@
             :else
             (do
               (swap! pool->pending-jobs-atom remove-matched-jobs-from-pending-jobs matched-job-uuids pool)
-              (log/debug "updated pool->pending-jobs-atom:" @pool->pending-jobs-atom)
+              (log/debug "In" pool "pool, updated pool->pending-jobs-atom:" @pool->pending-jobs-atom)
               (launch-matched-tasks! matches conn db driver fenzo framework-id mesos-run-as-user)
               (update-host-reservations! rebalancer-reservation-atom matched-job-uuids)
               matched-considerable-jobs-head?)))
         (catch Throwable t
           (meters/mark! handle-resource-offer!-errors)
-          (log/error t "Error in match:" (ex-data t))
+          (log/error t "In" pool "pool, error in match:" (ex-data t))
           (when-let [offers @offer-stash]
             (async/go
               (async/>! offers-chan offers)))
