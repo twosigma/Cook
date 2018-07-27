@@ -578,6 +578,14 @@
     (meters/mark! scheduler-offer-declined)
     (mesos/decline-offer driver id)))
 
+(defn decline-offers-safe
+  "TODO(DPO)"
+  [driver offers]
+  (try
+    (decline-offers driver (map :id offers))
+    (catch Exception e
+      (log/error e "Unable to decline offers!"))))
+
 (timers/deftimer [cook-mesos scheduler handle-resource-offer!-duration])
 (timers/deftimer [cook-mesos scheduler handle-resource-offer!-transact-task-duration])
 (timers/deftimer [cook-mesos scheduler handle-resource-offer!-process-matches-duration])
@@ -1390,10 +1398,7 @@
     (do (log/warn "Offer chan is full. Are we not handling offers fast enough?")
         (meters/mark! offer-chan-full-error)
         (future
-          (try
-            (decline-offers driver (map :id offers))
-            (catch Exception e
-              (log/error e "Unable to decline offers!")))))))
+          (decline-offers-safe driver offers)))))
 
 (let [in-order-queue-counter (counters/counter ["cook-mesos" "scheduler" "in-order-queue-size"])
       in-order-queue-timer (timers/timer ["cook-mesos" "scheduler" "in-order-queue-delay-duration"])
@@ -1491,13 +1496,27 @@
                                        (or
                                          (->> o :attributes (filter #(= "cook-pool" (:name %))) first :text)
                                          "no-pool"))
-                                     offers)]
+                                     offers)
+              using-pools? (config/default-pool)
+              offer-count (count offers)]
           (log/info "Offers by pool:" (pc/map-vals count pool->offers))
           (run!
             (fn [[pool-name offers]]
-              (if-let [offers-chan (-> pool-name keyword pool->offers-chan)]
-                (receive-offers offers-chan match-trigger-chan driver offers)
-                (log/warn "Encountered" (count offers) "offer(s) for non-existent pool" pool-name)))
+              (if using-pools?
+                (if-let [offers-chan (-> pool-name keyword pool->offers-chan)]
+                  (do
+                    (log/info "Processing" offer-count "offer(s) for known pool" pool-name)
+                    (receive-offers offers-chan match-trigger-chan driver offers))
+                  (do
+                    (log/warn "Declining" offer-count "offer(s) for non-existent pool" pool-name)
+                    (decline-offers-safe driver offers)))
+                (if-let [offers-chan (:no-pool pool->offers-chan)]
+                  (do
+                    (log/info "Processing" offer-count "offer(s) for pool" pool-name "despite not using pools")
+                    (receive-offers offers-chan match-trigger-chan driver offers))
+                  (do
+                    (log/error "Declining" offer-count "offer(s) for pool" pool-name "(missing :no-pool offer chan)")
+                    (decline-offers-safe driver offers)))))
             pool->offers)
           (log/debug "Finished receiving offers for all pools")))
       (status-update

@@ -1,6 +1,5 @@
 (ns cook.mesos.pool
-  (:require [clojure.string :as str]
-            [clojure.tools.logging :as log]
+  (:require [clojure.tools.logging :as log]
             [cook.config :as config]
             [datomic.api :as d])
   (:import [java.util UUID]))
