@@ -86,5 +86,3 @@
 ;;; - make configurable the name of the attribute that marks the pool on each offer
 ;;; - define constant for the "no-pool" magic string
 ;;; - make all relevant metrics pool-specific
-;;; - create a separate travis build for testing a cluster without pools
-;;; - add "dru-mode" to the pool schema to allow for different ranking function
