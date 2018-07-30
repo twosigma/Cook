@@ -3,7 +3,9 @@ language: java
 jdk: oraclejdk8
 
 branches:
-  only: master
+  only: 
+    - master
+    - pool-scheduling
 
 cache:
   directories:
