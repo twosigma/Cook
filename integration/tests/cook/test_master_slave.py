@@ -31,7 +31,7 @@ class MasterSlaveTest(unittest.TestCase):
         try:
             slave_queue = util.session.get('%s/queue' % self.slave_url, allow_redirects=False)
             self.assertEqual(307, slave_queue.status_code)
-            default_pool = util.default_pool(self.cook_url)
+            default_pool = util.default_pool(self.master_url)
             pool = default_pool if default_pool is not None else 'no-pool'
             self.logger.info(f'Checking the queue endpoint for pool {pool}')
 
