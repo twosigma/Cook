@@ -253,7 +253,6 @@ class MultiUserCookTest(util.CookTest):
                     low_priority_uuids.append(uuid)
 
                 all_job_uuids.extend(low_priority_uuids)
-                low_priority_instances = []
                 for uuid in low_priority_uuids:
                     instance = util.wait_for_running_instance(self.cook_url, uuid)
                     self.assertEqual(hostname, instance['hostname'])
@@ -276,8 +275,8 @@ class MultiUserCookTest(util.CookTest):
 
                 max_wait_ms = util.settings(self.cook_url)['rebalancer']['interval-seconds'] * 1000 * 1.5
                 self.logger.info(f'Waiting up to {max_wait_ms} milliseconds for preemption to happen')
-                util.wait_until(lambda: [util.load_job(self.cook_url, uuid) for uuid in low_priority_uuids], job_was_preempted,
-                                max_wait_ms=max_wait_ms, wait_interval_ms=5000)
+                util.wait_until(lambda: [util.load_job(self.cook_url, uuid) for uuid in low_priority_uuids],
+                                job_was_preempted, max_wait_ms=max_wait_ms, wait_interval_ms=5000)
         finally:
             with admin:
                 util.kill_jobs(self.cook_url, all_job_uuids, assert_response=False)
