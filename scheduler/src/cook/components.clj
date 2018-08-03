@@ -87,7 +87,7 @@
                            mesos-role mesos-run-as-user offer-incubate-time-ms optimizer progress rebalancer server-port
                            task-constraints]
                           curator-framework framework-id mesos-datomic-mult mesos-leadership-atom
-                          mesos-offer-cache mesos-pending-jobs-atom sandbox-syncer-state]
+                          mesos-agent-attributes-cache mesos-pending-jobs-atom sandbox-syncer-state]
                       (if (cook.config/api-only-mode?)
                         (if curator-framework
                           (throw (ex-info "This node is configured for API-only mode, but also has a curator configured"
@@ -123,7 +123,7 @@
                                    :mesos-leadership-atom mesos-leadership-atom
                                    :mesos-pending-jobs-atom mesos-pending-jobs-atom
                                    :mesos-run-as-user mesos-run-as-user
-                                   :offer-cache mesos-offer-cache
+                                   :agent-attributes-cache mesos-agent-attributes-cache
                                    :offer-incubate-time-ms offer-incubate-time-ms
                                    :optimizer-config optimizer
                                    :progress-config progress
@@ -300,12 +300,12 @@
                                  max-consecutive-sync-failure mesos-agent-query-cache)))
      :mesos-leadership-atom (fnk [] (atom false))
      :mesos-pending-jobs-atom (fnk [] (atom {}))
-     :mesos-offer-cache (fnk [[:settings {offer-cache nil}]]
-                          (when offer-cache
-                            (-> {}
-                                (cache/lru-cache-factory :threshold (:max-size offer-cache))
-                                (cache/ttl-cache-factory :ttl (:ttl-ms offer-cache))
-                                atom)))
+     :mesos-agent-attributes-cache (fnk [[:settings {agent-attributes-cache nil}]]
+                                     (when agent-attributes-cache
+                                       (log/info "Agent attributes cache max size =" (:max-size agent-attributes-cache))
+                                       (-> {}
+                                           (cache/lru-cache-factory :threshold (:max-size agent-attributes-cache))
+                                           atom)))
      :curator-framework curator-framework}))
 
 (defn -main

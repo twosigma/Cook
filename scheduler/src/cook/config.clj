@@ -269,12 +269,11 @@
      :offer-incubate-time-ms (fnk [[:config {scheduler nil}]]
                                (when scheduler
                                  (or (:offer-incubate-ms scheduler) 15000)))
-     :offer-cache (fnk [[:config {scheduler nil}]]
-                    (when scheduler
-                      (merge
-                        {:max-size 2000
-                         :ttl-ms 15000}
-                        (:offer-cache scheduler))))
+     :agent-attributes-cache (fnk [[:config {scheduler nil}]]
+                               (when scheduler
+                                 (merge
+                                   {:max-size 2000}
+                                   (:offer-cache scheduler))))
      :mea-culpa-failure-limit (fnk [[:config {scheduler nil}]]
                                 (:mea-culpa-failure-limit scheduler))
      :fenzo-max-jobs-considered (fnk [[:config {scheduler nil}]]

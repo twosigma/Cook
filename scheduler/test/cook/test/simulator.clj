@@ -84,11 +84,10 @@
                          (async/mult (async/chan)))
          pending-jobs-atom# (or (:mesos-pending-jobs-atom ~scheduler-config)
                                 (atom []))
-         offer-cache# (or (:offer-cache ~scheduler-config)
-                          (-> {}
-                              (cache/fifo-cache-factory :threshold 100)
-                              (cache/ttl-cache-factory :ttl 10000)
-                              atom))
+         agent-attributes-cache# (or (:mesos-agent-attributes-cache ~scheduler-config)
+                                     (-> {}
+                                         (cache/fifo-cache-factory :threshold 100)
+                                         atom))
          zk-prefix# (or (:zk-prefix ~scheduler-config)
                         "/cook")
          offer-incubate-time-ms# (or (:offer-incubate-time-ms ~scheduler-config)
@@ -135,7 +134,7 @@
             :mesos-leadership-atom mesos-leadership-atom#
             :mesos-pending-jobs-atom pending-jobs-atom#
             :mesos-run-as-user nil
-            :offer-cache offer-cache#
+            :agent-attributes-cache agent-attributes-cache#
             :offer-incubate-time-ms offer-incubate-time-ms#
             :optimizer-config optimizer-config#
             :progress-config progress-config#
