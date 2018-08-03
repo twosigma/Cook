@@ -297,15 +297,16 @@
   "Takes state, parameters and a pending job entity, returns a preemption decision
    A preemption decision is a map that describes a possible way to perform preemption on a host. It has a hostname, a seq of tasks
    to preempt and available mem and cpus on the host after the preemption."
-  [db offer-cache
+  [db agent-attributes-cache
    {:keys [task->scored-task host->spare-resources compute-pending-job-dru preempted-tasks] :as state}
-   {:keys [min-dru-diff safe-dru-threshold] :as params}
+   {:keys [min-dru-diff safe-dru-threshold]}
    pending-job-ent
    cotask-cache]
   (timers/time!
    compute-preemption-decision-duration
    (let [{pending-job-mem :mem pending-job-cpus :cpus pending-job-gpus :gpus} (util/job-ent->resources pending-job-ent)
          pending-job-dru (compute-pending-job-dru state pending-job-ent)
+         _ (log/debug "DRU =" pending-job-dru "for pending job" pending-job-ent)
          ;; This will preserve the ordering of task->scored-task
          host->scored-tasks (->> task->scored-task
                                  vals
@@ -320,13 +321,13 @@
                                               (into {}))
 
          job-constraints (constraints/make-rebalancer-job-constraints
-                           pending-job-ent (partial util/get-slave-attrs-from-cache offer-cache))
+                           pending-job-ent (partial util/get-slave-attrs-from-cache agent-attributes-cache))
          group-constraints (->> pending-job-ent
                                 :group/_job
                                 (map #(constraints/make-rebalancer-group-constraint
                                         db
                                         %
-                                        (partial util/get-slave-attrs-from-cache offer-cache)
+                                        (partial util/get-slave-attrs-from-cache agent-attributes-cache)
                                         preempted-tasks
                                         cotask-cache))
                                 (remove nil?))
@@ -373,9 +374,9 @@
 
 (defn compute-next-state-and-preemption-decision
   "Takes state, params and a pending job entity, returns new state and preemption decision"
-  [db offer-cache state params pending-job cotask-cache]
+  [db agent-attributes-cache state params pending-job cotask-cache]
   (log/debug "Trying to find space for: " pending-job)
-  (if-let [preemption-decision (compute-preemption-decision db offer-cache state params pending-job cotask-cache)]
+  (if-let [preemption-decision (compute-preemption-decision db agent-attributes-cache state params pending-job cotask-cache)]
     [(next-state state pending-job preemption-decision)
      (assoc preemption-decision
             :to-make-room-for pending-job)]
@@ -401,7 +402,7 @@
    Returns a list of pending job entities to run and a list of task entities to preempt
 
    category is :normal or :gpu, depending on which type of job we're working with"
-  [db offer-cache pending-job-ents host->spare-resources rebalancer-reservation-atom
+  [db agent-attributes-cache pending-job-ents host->spare-resources rebalancer-reservation-atom
    {:keys [max-preemption category] :as params}]
   (let [timer (timers/start rebalance-duration)
         jobs-to-make-room-for (->> pending-job-ents
@@ -415,7 +416,7 @@
            [pending-job-ent & jobs-to-make-room-for] jobs-to-make-room-for
            preemption-decisions []]
       (if (and pending-job-ent (pos? remaining-preemption))
-        (let [[state' preemption-decision] (compute-next-state-and-preemption-decision db offer-cache state params pending-job-ent cotask-cache)]
+        (let [[state' preemption-decision] (compute-next-state-and-preemption-decision db agent-attributes-cache state params pending-job-ent cotask-cache)]
           (if preemption-decision
             (recur state'
                    (dec remaining-preemption)
@@ -448,12 +449,12 @@
 
 
 (defn rebalance!
-  [conn driver offer-cache pending-job-ents host->spare-resources rebalancer-reservation-atom
+  [conn driver agent-attributes-cache pending-job-ents host->spare-resources rebalancer-reservation-atom
    params]
   (try
     (log/info "Rebalancing...Params:" params)
     (let [db (mt/db conn)
-          preemption-decisions (rebalance db offer-cache pending-job-ents host->spare-resources rebalancer-reservation-atom params)]
+          preemption-decisions (rebalance db agent-attributes-cache pending-job-ents host->spare-resources rebalancer-reservation-atom params)]
       (doseq [{job-ent-to-make-room-for :to-make-room-for
                task-ents-to-preempt :task} preemption-decisions]
         ;; Ensure that uuids are loaded in entity
@@ -520,7 +521,7 @@
               recognized-params))]))))
 
 (defn start-rebalancer!
-  [{:keys [config conn driver offer-cache pending-jobs-atom
+  [{:keys [config conn driver agent-attributes-cache pending-jobs-atom
            rebalancer-reservation-atom trigger-chan view-incubating-offers]}]
   (binding [metrics-dru-scale (:dru-scale config)]
     (update-datomic-params-from-config! conn config)
@@ -537,11 +538,11 @@
                                                                   [:cpus :mem :gpus])]))
                                              (into {}))
                   {normal-pending-jobs :normal gpu-pending-jobs :gpu} @pending-jobs-atom]
-              (rebalance! conn driver offer-cache normal-pending-jobs host->spare-resources
+              (rebalance! conn driver agent-attributes-cache normal-pending-jobs host->spare-resources
                           rebalancer-reservation-atom
                           (assoc params :category :normal
                                         :compute-pending-job-dru compute-pending-normal-job-dru))
-              (rebalance! conn driver offer-cache gpu-pending-jobs host->spare-resources
+              (rebalance! conn driver agent-attributes-cache gpu-pending-jobs host->spare-resources
                           rebalancer-reservation-atom
                           (assoc params :category :gpu
                                         :compute-pending-job-dru compute-pending-gpu-job-dru)))

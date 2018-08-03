@@ -857,7 +857,7 @@
 (counters/defcounter [cook-mesos scheduler offer-chan-depth])
 
 (defn make-offer-handler
-  [conn driver-atom fenzo framework-id pending-jobs-atom offer-cache max-considerable scaleback
+  [conn driver-atom fenzo framework-id pending-jobs-atom agent-attributes-cache max-considerable scaleback
    floor-iterations-before-warn floor-iterations-before-reset trigger-chan rebalancer-reservation-atom
    mesos-run-as-user]
   (let [chan-length 100
@@ -899,10 +899,10 @@
                                 :let [slave-id (-> offer :slave-id :value)
                                       attrs (get-offer-attr-map offer)]]
                           ; Cache all used offers (offer-cache is a map of hostnames to most recent offer)
-                          (swap! offer-cache (fn [c]
-                                               (if (cache/has? c slave-id)
-                                                 (cache/hit c slave-id)
-                                                 (cache/miss c slave-id attrs)))))
+                          (swap! agent-attributes-cache (fn [c]
+                                                          (if (cache/has? c slave-id)
+                                                            (cache/hit c slave-id)
+                                                            (cache/miss c slave-id attrs)))))
                       _ (log/debug "Passing following offers to handle-resource-offers!" offers)
                       user->quota (quota/create-user->quota-fn (d/db conn) nil)
                       matched-head? (handle-resource-offers! conn @driver-atom fenzo framework-id pending-jobs-atom mesos-run-as-user @user->usage-future user->quota num-considerable offers-chan offers rebalancer-reservation-atom)]
@@ -1499,7 +1499,7 @@
 (defn create-datomic-scheduler
   [{:keys [conn driver-atom fenzo-fitness-calculator fenzo-floor-iterations-before-reset
            fenzo-floor-iterations-before-warn fenzo-max-jobs-considered fenzo-scaleback framework-id good-enough-fitness
-           gpu-enabled? heartbeat-ch mea-culpa-failure-limit mesos-run-as-user offer-cache offer-incubate-time-ms
+           gpu-enabled? heartbeat-ch mea-culpa-failure-limit mesos-run-as-user agent-attributes-cache offer-incubate-time-ms
            pending-jobs-atom progress-config rebalancer-reservation-atom sandbox-syncer-state task-constraints
            trigger-chans]}]
 
@@ -1509,7 +1509,7 @@
         fenzo (make-fenzo-scheduler driver-atom offer-incubate-time-ms fenzo-fitness-calculator good-enough-fitness)
         [offers-chan resources-atom]
         (make-offer-handler
-          conn driver-atom fenzo framework-id pending-jobs-atom offer-cache fenzo-max-jobs-considered
+          conn driver-atom fenzo framework-id pending-jobs-atom agent-attributes-cache fenzo-max-jobs-considered
           fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset match-trigger-chan
           rebalancer-reservation-atom mesos-run-as-user)
         {:keys [batch-size]} progress-config
