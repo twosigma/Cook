@@ -16,9 +16,7 @@
 (ns cook.test.mesos.rebalancer
   (:use clojure.test)
   (:require [clojure.core.cache :as cache]
-            [clojure.data.priority-map :as pm]
             [clojure.test.check.generators :as gen]
-            [cook.mesos :as mesos]
             [cook.mesos.dru :as dru]
             [cook.mesos.rebalancer :as rebalancer :refer (->State)]
             [cook.mesos.scheduler :as sched]
@@ -26,7 +24,8 @@
             [cook.mesos.util :as util]
             [cook.test.testutil :refer (restore-fresh-database! create-dummy-job create-dummy-instance
                                                                 create-dummy-group init-agent-attributes-cache)]
-            [datomic.api :as d :refer (q)]))
+            [datomic.api :as d :refer (q)])
+  (:import (com.netflix.fenzo SimpleAssignmentResult TaskRequest)))
 
 (defn create-running-job
   [conn host & args]
