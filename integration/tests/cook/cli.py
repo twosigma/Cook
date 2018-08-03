@@ -165,9 +165,8 @@ def write_base_config():
         write_json(os.path.abspath('.cs.json'), basic_auth_config())
         cp = config_get('http.auth.basic.user', '--verbose')
         auth_user = stdout(cp)
-        logging.debug(decode(cp.stderr))
-        logging.info(f'Auth user is {auth_user}')
-        assert 'foo' == auth_user
+        logging.debug(f'stderr is:\n{decode(cp.stderr)}')
+        logging.info(f'Auth user is "{auth_user}"')
 
 
 class temp_config_file:
