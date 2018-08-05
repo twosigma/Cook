@@ -1,3 +1,4 @@
+import json
 import logging
 import unittest
 
@@ -229,7 +230,8 @@ class MultiUserCookTest(util.CookTest):
                 # Submit a small job
                 base_priority = 99
                 command = 'sleep 600'
-                uuid_small, _ = util.submit_job(self.cook_url, priority=base_priority, cpus=small_cpus, command=command)
+                uuid_small, _ = util.submit_job(self.cook_url, priority=base_priority, cpus=small_cpus,
+                                                command=command, name='small_job')
                 all_job_uuids.append(uuid_small)
                 instance = util.wait_for_running_instance(self.cook_url, uuid_small)
                 hostname = instance['hostname']
@@ -247,9 +249,8 @@ class MultiUserCookTest(util.CookTest):
                 constraints = [["HOSTNAME", "EQUALS", hostname]]
                 low_priority_uuids = []
                 for cpus in job_cpus:
-                    uuid, _ = util.submit_job(self.cook_url, priority=base_priority - 1,
-                                              cpus=cpus,
-                                              command=command, constraints=constraints)
+                    uuid, _ = util.submit_job(self.cook_url, priority=base_priority - 1, cpus=cpus, command=command,
+                                              constraints=constraints, name='lower_priority_filler_job')
                     low_priority_uuids.append(uuid)
 
                 all_job_uuids.extend(low_priority_uuids)
@@ -258,25 +259,35 @@ class MultiUserCookTest(util.CookTest):
                     self.assertEqual(hostname, instance['hostname'])
 
                 # Submit a higher-priority job that should trigger preemption
-                uuid_high_priority, _ = util.submit_job(self.cook_url, priority=base_priority + 1, cpus=small_cpus * 2,
-                                                        command=command, constraints=constraints)
+                uuid_high_priority, _ = util.submit_job(self.cook_url, priority=base_priority + 1,
+                                                        cpus=small_cpus * 2, command=command,
+                                                        constraints=constraints, name='higher_priority_job')
                 all_job_uuids.append(uuid_high_priority)
 
                 # Assert that one of the lower-priority jobs was preempted
+                def low_priority_jobs():
+                    jobs = [util.load_job(self.cook_url, uuid) for uuid in low_priority_uuids]
+                    one_hour_in_millis = 60 * 60 * 1000
+                    start = util.current_milli_time() - one_hour_in_millis
+                    end = util.current_milli_time()
+                    running = util.jobs(self.cook_url, user=user.name, state='running', start=start, end=end).json()
+                    waiting = util.jobs(self.cook_url, user=user.name, state='waiting', start=start, end=end).json()
+                    self.logger.info(f'Currently running jobs: {json.dumps(running, indent=2)}')
+                    self.logger.info(f'Currently waiting jobs: {json.dumps(waiting, indent=2)}')
+                    return jobs
+
                 def job_was_preempted(jobs):
                     for job in jobs:
                         for instance in job['instances']:
                             self.logger.debug(f'Checking if instance was preempted: {instance}')
                             if instance.get('reason_string') == 'Preempted by rebalancer':
                                 return True
-                            else:
-                                self.logger.info(f'Job has not been preempted: {job}')
+                    self.logger.info(f'Job(s) have not been preempted: {jobs}')
                     return False
 
                 max_wait_ms = util.settings(self.cook_url)['rebalancer']['interval-seconds'] * 1000 * 1.5
                 self.logger.info(f'Waiting up to {max_wait_ms} milliseconds for preemption to happen')
-                util.wait_until(lambda: [util.load_job(self.cook_url, uuid) for uuid in low_priority_uuids],
-                                job_was_preempted, max_wait_ms=max_wait_ms, wait_interval_ms=5000)
+                util.wait_until(low_priority_jobs, job_was_preempted, max_wait_ms=max_wait_ms, wait_interval_ms=5000)
         finally:
             with admin:
                 util.kill_jobs(self.cook_url, all_job_uuids, assert_response=False)

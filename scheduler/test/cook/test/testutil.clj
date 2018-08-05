@@ -225,12 +225,11 @@
                     (mapply create-dummy-instance conn job arg-map))]
     [job (vec instances)]))
 
-(defn init-offer-cache
+(defn init-agent-attributes-cache
   [& init]
   (-> init
       (or {})
       (cache/fifo-cache-factory :threshold 10000)
-      (cache/ttl-cache-factory :ttl (* 1000 60))
       atom))
 
 (defn poll-until

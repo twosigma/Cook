@@ -717,16 +717,9 @@
            set))))
 
 (defn get-slave-attrs-from-cache
-  "Looks up a slave property (properties are a union of the slave's attributes and its hostname) in the offer-cache"
-  [offer-cache-atom slave-id]
-  (cache/lookup @offer-cache-atom slave-id))
-
-(defn update-offer-cache!
-  [offer-cache-atom slave-id props]
-  (swap! offer-cache-atom (fn [c]
-                            (if (cache/has? c slave-id)
-                              (cache/hit c slave-id)
-                              (cache/miss c slave-id props)))))
+  "Looks up a slave property (properties are a union of the slave's attributes and its hostname) in the provided cache"
+  [agent-attributes-cache-atom slave-id]
+  (cache/lookup @agent-attributes-cache-atom slave-id))
 
 (defn clear-uncommitted-jobs
   "Retracts entities that have not been committed as of now and were submitted before

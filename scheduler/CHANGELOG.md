@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.19.1] - 2018-07-30
+### Changed
+- Performance improvements to job submission, from @scrosby and @pschorf
+
 ## [1.19.0] - 2018-07-26
 ### Added
 - data-local field to jobs, from @pschorf

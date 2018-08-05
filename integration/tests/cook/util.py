@@ -1180,3 +1180,8 @@ def is_preemption_enabled():
     _wait_for_cook(cook_url)
     max_preemption = settings(cook_url)['rebalancer'].get('max-preemption')
     return max_preemption is not None
+
+
+def current_milli_time():
+    """Returns the current epoch time in milliseconds"""
+    return int(round(time.time() * 1000))

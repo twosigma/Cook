@@ -858,16 +858,12 @@ class CookTest(util.CookTest):
         self.assertFalse(util.contains_job_uuid(resp.json(), job_uuid_6), job_uuid_6)
 
     def test_list_jobs_by_pool(self):
-
-        def current_milli_time():
-            return int(round(time.time() * 1000))
-
         # Submit two jobs to each active pool -- one that will be
         # running or waiting for a while, and another that will complete
         jobs = []
         name = str(uuid.uuid4())
         pools, _ = util.active_pools(self.cook_url)
-        start = current_milli_time()
+        start = util.current_milli_time()
         for pool in pools:
             pool_name = pool['name']
             job_uuid, resp = util.submit_job(self.cook_url, pool=pool_name, name=name, command='sleep 300')
@@ -876,7 +872,7 @@ class CookTest(util.CookTest):
             job_uuid, resp = util.submit_job(self.cook_url, pool=pool_name, name=name, command='exit 0')
             self.assertEqual(201, resp.status_code)
             jobs.append(util.wait_for_job(self.cook_url, job_uuid, 'completed'))
-        end = current_milli_time() + 1
+        end = util.current_milli_time() + 1
 
         try:
             completed = ['completed']
@@ -2478,7 +2474,6 @@ class CookTest(util.CookTest):
             else:
                 resp = util.get_limit(self.cook_url, limit, user)
                 self.assertFalse('pools' in resp.json())
-
 
     def test_data_local_support(self):
         uuid, resp = util.submit_job(self.cook_url, data_local=True)

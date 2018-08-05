@@ -16,19 +16,16 @@
 (ns cook.test.mesos.rebalancer
   (:use clojure.test)
   (:require [clojure.core.cache :as cache]
-            [clojure.data.priority-map :as pm]
             [clojure.test.check.generators :as gen]
-            [cook.mesos :as mesos]
             [cook.mesos.dru :as dru]
             [cook.mesos.rebalancer :as rebalancer :refer (->State)]
             [cook.mesos.scheduler :as sched]
             [cook.mesos.share :as share]
             [cook.mesos.util :as util]
             [cook.test.testutil :refer (restore-fresh-database! create-dummy-job create-dummy-instance
-                                                                create-dummy-group init-offer-cache)]
+                                                                create-dummy-group init-agent-attributes-cache)]
             [datomic.api :as d :refer (q)])
-  (:import [com.netflix.fenzo SimpleAssignmentResult
-                              TaskRequest]))
+  (:import (com.netflix.fenzo SimpleAssignmentResult TaskRequest)))
 
 (defn create-running-job
   [conn host & args]
@@ -36,12 +33,19 @@
         inst (create-dummy-instance conn job :instance-status :instance.status/running :hostname host)]
   [job inst]))
 
+(defn- update-agent-attributes-cache!
+  [agent-attributes-cache-atom slave-id props]
+  (swap! agent-attributes-cache-atom (fn [c]
+                                       (if (cache/has? c slave-id)
+                                         (cache/hit c slave-id)
+                                         (cache/miss c slave-id props)))))
+
 (defn create-and-cache-running-job
-  [conn hostname offer-cache hostname->props & args]
+  [conn hostname agent-attributes-cache hostname->props & args]
   (let [job (apply create-dummy-job (cons conn args))
         inst (create-dummy-instance conn job :instance-status :instance.status/running :hostname hostname)
         slave-id (:instance/slave-id (d/entity (d/db conn) inst))]
-  (util/update-offer-cache! offer-cache slave-id (get hostname->props hostname))
+  (update-agent-attributes-cache! agent-attributes-cache slave-id (get hostname->props hostname))
   [job inst]))
 
 (deftest test-init-state
@@ -229,7 +233,7 @@
                               "limits for new cluster"
                               :mem 25.0 :cpus 25.0 :gpus 1.0)
 
-          offer-cache (init-offer-cache)
+          agent-attributes-cache (init-agent-attributes-cache)
           db (d/db conn)
           pending-job-ids (list job9 job10 job11 job12 job13 job14)
           [task->scored-task user->sorted-running-task-ents user->dru-divisors]
@@ -242,7 +246,7 @@
                   {:dru 1.52 :task [task-ent4 task-ent3 task-ent8] :mem 50.0 :cpus 50.0}]})
 
       (is (= {:hostname "hostB" :dru 2.2 :task [task-ent4] :mem 25.0 :cpus 15.0 :gpus 0.0}
-             (rebalancer/compute-preemption-decision db offer-cache
+             (rebalancer/compute-preemption-decision db agent-attributes-cache
                                                      (->State task->scored-task
                                                               user->sorted-running-task-ents
                                                               {}
@@ -254,7 +258,7 @@
                                                      cotask-cache)))
 
       (is (= {:hostname "hostB" :dru Double/MAX_VALUE :task nil :mem 15.0 :cpus 15.0 :gpus 0.0}
-             (rebalancer/compute-preemption-decision db offer-cache
+             (rebalancer/compute-preemption-decision db agent-attributes-cache
                                                      (->State task->scored-task
                                                               user->sorted-running-task-ents
                                                               {"hostB" {:mem 15.0 :cpus 15.0}}
@@ -266,7 +270,7 @@
                                                      cotask-cache)))
 
       (is (= {:hostname "hostA" :dru Double/MAX_VALUE :task nil :mem 20.0 :cpus 20.0 :gpus 0.0}
-             (rebalancer/compute-preemption-decision db offer-cache
+             (rebalancer/compute-preemption-decision db agent-attributes-cache
                                                      (->State task->scored-task
                                                               user->sorted-running-task-ents
                                                               {"hostA" {:mem 20.0 :cpus 20.0}
@@ -279,7 +283,7 @@
                                                      cotask-cache)))
 
       (is (= {:hostname "hostB" :dru 2.2 :task [task-ent4] :mem 35.0 :cpus 25.0 :gpus 0.0}
-             (rebalancer/compute-preemption-decision db offer-cache
+             (rebalancer/compute-preemption-decision db agent-attributes-cache
                                                      (->State task->scored-task
                                                               user->sorted-running-task-ents
                                                               {"hostA" {:mem 10.0 :cpus 10.0}
@@ -292,7 +296,7 @@
                                                      cotask-cache)))
 
       (is (= {:hostname "hostB" :dru 2.2 :task [task-ent4] :mem 25.0 :cpus 15.0 :gpus 0.0}
-             (rebalancer/compute-preemption-decision db offer-cache
+             (rebalancer/compute-preemption-decision db agent-attributes-cache
                                                      (->State task->scored-task
                                                               user->sorted-running-task-ents
                                                               {}
@@ -304,7 +308,7 @@
                                                      cotask-cache)))
 
       (is (= nil
-             (rebalancer/compute-preemption-decision db offer-cache
+             (rebalancer/compute-preemption-decision db agent-attributes-cache
                                                      (->State task->scored-task
                                                               user->sorted-running-task-ents
                                                               {}
@@ -316,7 +320,7 @@
                                                      cotask-cache)))
 
       (is (= nil
-             (rebalancer/compute-preemption-decision db offer-cache
+             (rebalancer/compute-preemption-decision db agent-attributes-cache
                                                      (->State task->scored-task
                                                               user->sorted-running-task-ents
                                                               {}
@@ -328,7 +332,7 @@
                                                      cotask-cache)))
 
       (is (= {:hostname "hostA" :dru Double/MAX_VALUE :task nil :mem 40.0 :cpus 40.0 :gpus 0.0}
-             (rebalancer/compute-preemption-decision db offer-cache
+             (rebalancer/compute-preemption-decision db agent-attributes-cache
                                                      (->State task->scored-task
                                                               user->sorted-running-task-ents
                                                               {"hostA" {:mem 40.0 :cpus 40.0}}
@@ -340,7 +344,7 @@
                                                      cotask-cache)))
 
       (is (= nil
-             (rebalancer/compute-preemption-decision db offer-cache
+             (rebalancer/compute-preemption-decision db agent-attributes-cache
                                                      (->State task->scored-task
                                                               user->sorted-running-task-ents
                                                               {"hostA" {:mem 35.0 :cpus 35.0}}
@@ -352,7 +356,7 @@
                                                      cotask-cache)))
 
       (is (= {:hostname "hostB" :dru 2.2 :task [task-ent4] :mem 55.0 :cpus 45.0 :gpus 0.0}
-             (rebalancer/compute-preemption-decision db offer-cache
+             (rebalancer/compute-preemption-decision db agent-attributes-cache
                                                      (->State task->scored-task
                                                               user->sorted-running-task-ents
                                                               {"hostA" {:mem 35.0 :cpus 35.0}
@@ -365,7 +369,7 @@
                                                      cotask-cache)))
 
       (is (= nil
-             (rebalancer/compute-preemption-decision db offer-cache
+             (rebalancer/compute-preemption-decision db agent-attributes-cache
                                                      (->State task->scored-task
                                                               user->sorted-running-task-ents
                                                               {}
@@ -377,7 +381,7 @@
                                                      cotask-cache)))
 
       (is (= nil
-             (rebalancer/compute-preemption-decision db offer-cache
+             (rebalancer/compute-preemption-decision db agent-attributes-cache
                                                      (->State task->scored-task
                                                               user->sorted-running-task-ents
                                                               {}
@@ -389,7 +393,7 @@
                                                      cotask-cache)))
 
       (is (= nil
-             (rebalancer/compute-preemption-decision db offer-cache
+             (rebalancer/compute-preemption-decision db agent-attributes-cache
                                                      (->State task->scored-task
                                                               user->sorted-running-task-ents
                                                               {}
@@ -410,13 +414,13 @@
                        "sticks" {"HOSTNAME" "sticks"}
                        "bricks" {"HOSTNAME" "bricks"}
                        "rebar" {"HOSTNAME" "rebar"}}
-          offer-cache (init-offer-cache)
+          agent-attributes-cache (init-agent-attributes-cache)
           cotask-cache (atom (cache/fifo-cache-factory {} :threshold 100))]
       (share/set-share! conn "default" nil "new cluster settings"
                         :mem 10.0 :cpus 10.0 :gpus 10.0)
       ; Fill up hosts with preemptable tasks
       (doall (for [[user host] user->host]
-               (create-and-cache-running-job conn host offer-cache hostname->props
+               (create-and-cache-running-job conn host agent-attributes-cache hostname->props
                    :user user
                    :ncpus 100.0)))
       (testing "try placing a job that has failed everywhere except rebar"
@@ -429,7 +433,7 @@
               [task->scored-task user->sorted-running-task-ents user->dru-divisors]
                 (initialize-rebalancer db (list pending-job))]
           (is (= "rebar"
-                (:hostname (rebalancer/compute-preemption-decision db offer-cache
+                (:hostname (rebalancer/compute-preemption-decision db agent-attributes-cache
                                                                    (->State task->scored-task
                                                                             user->sorted-running-task-ents
                                                                             {}
@@ -455,7 +459,7 @@
               [task->scored-task user->sorted-running-task-ents user->dru-divisors]
                 (initialize-rebalancer db (list pending-job))]
           (is (= "rebar"
-                (:hostname (rebalancer/compute-preemption-decision db offer-cache
+                (:hostname (rebalancer/compute-preemption-decision db agent-attributes-cache
                                                                    (->State task->scored-task
                                                                             user->sorted-running-task-ents
                                                                             {}
@@ -471,7 +475,7 @@
               [task->scored-task user->sorted-running-task-ents user->dru-divisors]
                 (initialize-rebalancer db (list pending-job))]
           (is (not (nil?
-                 (:hostname (rebalancer/compute-preemption-decision db offer-cache
+                 (:hostname (rebalancer/compute-preemption-decision db agent-attributes-cache
                                                                  (->State task->scored-task
                                                                           user->sorted-running-task-ents
                                                                           {}
@@ -493,13 +497,13 @@
                        "sticks" {"HOSTNAME" "sticks"}
                        "bricks" {"HOSTNAME" "bricks"}
                        "rebar" {"HOSTNAME" "rebar"}}
-          offer-cache (init-offer-cache)
+          agent-attributes-cache (init-agent-attributes-cache)
           cotask-cache (atom (cache/fifo-cache-factory {} :threshold 100))]
       (share/set-share! conn "default" nil "new cluster settings"
                         :mem 10.0 :cpus 10.0 :gpus 1.0)
       ; Fill up hosts with preemptable tasks
       (doall (for [[user host] user->host]
-               (do (create-and-cache-running-job conn host offer-cache hostname->props :user user :ncpus 100.0))))
+               (do (create-and-cache-running-job conn host agent-attributes-cache hostname->props :user user :ncpus 100.0))))
       (testing "try placing job with one unconstrained-host available"
         (let [; Make a group with unique host-placement and with jobs in all but one host (rebar)
               group-hosts ["straw" "sticks" "bricks"]
@@ -510,7 +514,7 @@
               [task->scored-task user->sorted-running-task-ents user->dru-divisors]
                 (initialize-rebalancer db (list pending-job))]
           (is (= "rebar"
-                (:hostname (rebalancer/compute-preemption-decision db offer-cache
+                (:hostname (rebalancer/compute-preemption-decision db agent-attributes-cache
                                                                    (->State task->scored-task
                                                                             user->sorted-running-task-ents
                                                                             {}
@@ -531,7 +535,7 @@
               [task->scored-task user->sorted-running-task-ents user->dru-divisors]
                 (initialize-rebalancer db (list pending-job))]
           (is (= nil
-                (rebalancer/compute-preemption-decision db offer-cache
+                (rebalancer/compute-preemption-decision db agent-attributes-cache
                                                         (->State task->scored-task
                                                                  user->sorted-running-task-ents
                                                                  {}
@@ -555,20 +559,20 @@
                            "sticks" {"az" "east" "HOSTNAME" "sticks"}
                            "bricks" {"az" "east" "HOSTNAME" "bricks"}
                            "rebar" {"az" "west" "HOSTNAME" "rebar"}}
-          offer-cache (init-offer-cache)
+          agent-attributes-cache (init-agent-attributes-cache)
           cotask-cache (atom (cache/fifo-cache-factory {} :threshold 100))]
       (share/set-share! conn "default" nil "new cluster limits"
                         :mem 10.0 :cpus 10.0 :gpus 1.0)
       ; Fill up hosts with preemptable tasks
       (doall (for [[user host] user->host]
-               (do (create-and-cache-running-job conn host offer-cache hostname->props :user user :ncpus 100.0))))
+               (do (create-and-cache-running-job conn host agent-attributes-cache hostname->props :user user :ncpus 100.0))))
 
       (testing "try placing job with one unconstrained-host available"
         (let [group-id (create-dummy-group conn :host-placement
                          {:host-placement/type :host-placement.type/attribute-equals
                           :host-placement/parameters {:host-placement.attribute-equals/attribute attr-name}})
-              [_ running-task] (create-running-job conn "steel" :user "diego" :ncpus 1.0 :group group-id)
-              _ (util/update-offer-cache! offer-cache (:instance/slave-id (d/entity (d/db conn) running-task))
+              [running-job running-task] (create-running-job conn "steel" :user "diego" :ncpus 1.0 :group group-id)
+              _ (update-agent-attributes-cache! agent-attributes-cache (:instance/slave-id (d/entity (d/db conn) running-task))
                                           {attr-name "west" "HOSTNAME" "steel"})
               ; Pending job will need to run in host with attr-name=west
               pending-job (create-dummy-job conn :user "diego" :ncpus 1.0 :group group-id)
@@ -576,7 +580,7 @@
               [task->scored-task user->sorted-running-task-ents user->dru-divisors]
                 (initialize-rebalancer db (list pending-job))]
           (is (= "rebar"
-                (:hostname (rebalancer/compute-preemption-decision db offer-cache
+                (:hostname (rebalancer/compute-preemption-decision db agent-attributes-cache
                                                                    (->State task->scored-task
                                                                             user->sorted-running-task-ents
                                                                             {}
@@ -591,8 +595,8 @@
         (let [group-id (create-dummy-group conn :host-placement
                          {:host-placement/type :host-placement.type/attribute-equals
                           :host-placement/parameters {:host-placement.attribute-equals/attribute attr-name}})
-              [_ running-task] (create-running-job conn "steel" :user "diego" :ncpus 1.0 :group group-id)
-              _ (util/update-offer-cache! offer-cache (:instance/slave-id (d/entity (d/db conn) running-task))
+              [running-job running-task] (create-running-job conn "steel" :user "diego" :ncpus 1.0 :group group-id)
+              _ (update-agent-attributes-cache! agent-attributes-cache (:instance/slave-id (d/entity (d/db conn) running-task))
                                           {attr-name "south" "HOSTNAME" "steel"}) 
               ; Pending job will need to run in hist with attr-name=south, but no such host exists
               pending-job (create-dummy-job conn :user "diego" :ncpus 1.0 :group group-id)
@@ -600,7 +604,7 @@
               [task->scored-task user->sorted-running-task-ents user->dru-divisors]
                 (initialize-rebalancer db (list pending-job))]
           (is (= nil
-                (rebalancer/compute-preemption-decision db offer-cache
+                (rebalancer/compute-preemption-decision db agent-attributes-cache
                                                         (->State task->scored-task
                                                                  user->sorted-running-task-ents
                                                                  {}
@@ -637,10 +641,11 @@
         (let [conn (restore-fresh-database! datomic-uri)
               _ (share/set-share! conn "default" nil "new cluster limits"
                                   :mem 20.0 :cpus 20.0 :gpus 1.0)
-              offer-cache (init-offer-cache)
+              agent-attributes-cache (init-agent-attributes-cache)
               ; Fill up hosts with preemptable tasks
-              _ (doall (for [[user host] user->host]
-                         (do (create-and-cache-running-job conn host offer-cache hostname->props :user user :ncpus 200.0))))
+              preemptable (doall
+                            (for [[user host] user->host]
+                              (do (create-and-cache-running-job conn host agent-attributes-cache hostname->props :user user :ncpus 200.0))))
               group-id (create-dummy-group conn :host-placement
                          {:host-placement/type :host-placement.type/balanced
                           :host-placement/parameters {:host-placement.balanced/attribute attr-name
@@ -648,7 +653,7 @@
               group-hosts ["straw" "sticks" "bricks" "rebar" "concrete" "steel" "gold" "titanium" "straw" "sticks" "bricks" "rebar" "concrete" "steel" "gold"]
               ; Each az has 2 jobs running, except north. Pending job can only go in a host with az north, either rebar
               ; or titanium
-              _ (doall (map #(create-and-cache-running-job conn % offer-cache hostname->props
+              _ (doall (map #(create-and-cache-running-job conn % agent-attributes-cache hostname->props
                                                            :user "diego" :ncpus 1.0 :group group-id) group-hosts))
               pending-job (create-dummy-job conn :user "diego" :ncpus 1.0 :group group-id)
               db (d/db conn)
@@ -656,7 +661,7 @@
                 (initialize-rebalancer db (list pending-job))]
           (let [preempted-host (:hostname (rebalancer/compute-preemption-decision
                                              db
-                                             offer-cache
+                                             agent-attributes-cache
                                              (->State task->scored-task
                                                       user->sorted-running-task-ents
                                                       {}
@@ -672,11 +677,11 @@
         (let [conn (restore-fresh-database! datomic-uri)
               _ (share/set-share! conn "default" nil "new cluster limits"
                                   :mem 20.0 :cpus 20.0 :gpus 1.0)
-              offer-cache (init-offer-cache)
+              agent-attributes-cache (init-agent-attributes-cache)
               ; Fill up hosts with preemptable tasks
               preemptable (doall
                             (for [[user host] user->host]
-                              (do (create-and-cache-running-job conn host offer-cache hostname->props :user user :ncpus 200.0))))
+                              (do (create-and-cache-running-job conn host agent-attributes-cache hostname->props :user user :ncpus 200.0))))
               group-id (create-dummy-group conn :host-placement
                          {:host-placement/type :host-placement.type/balanced
                           :host-placement/parameters {:host-placement.balanced/attribute attr-name
@@ -684,7 +689,7 @@
               ; Each az has 2 jobs running, except north (rebar and titanium) and south (gold and bricks).
               ; north and south only have 1 job running.
               group-hosts ["straw" "sticks" "bricks" "rebar" "concrete" "steel" "gold" "titanium" "straw" "sticks" "bricks" "rebar" "concrete" "steel"]
-              _ (doall (map #(create-and-cache-running-job conn % offer-cache hostname->props
+              _ (doall (map #(create-and-cache-running-job conn % agent-attributes-cache hostname->props
                                                            :user "diego" :ncpus 1.0 :group group-id) group-hosts))
               ; But the task preempted this cycle is titanium (last preemptable), therefore only
               ; gold and bricks are open for further preemption.
@@ -695,7 +700,7 @@
                 (initialize-rebalancer db (list pending-job))]
           (let [preempted-host (:hostname (rebalancer/compute-preemption-decision
                                              db
-                                             offer-cache
+                                             agent-attributes-cache
                                              (->State task->scored-task
                                                       user->sorted-running-task-ents
                                                       {}
@@ -986,9 +991,9 @@
                         "test update"
                         :mem mem :cpus cpus))
     (let [db (d/db conn)
-          offer-cache (init-offer-cache)
+          agent-attributes-cache (init-agent-attributes-cache)
           pending-job-ents (map #(d/entity db %) jobs)
-          preemption-decisions (rebalancer/rebalance db offer-cache
+          preemption-decisions (rebalancer/rebalance db agent-attributes-cache
                                                      pending-job-ents 
                                                      available-resources 
                                                      (atom {})
@@ -1022,7 +1027,7 @@
           running-job-gen  (gen/tuple running-user-gen mem-gen cpus-gen)
           pending-job-gen  (gen/tuple pending-user-gen mem-gen cpus-gen)]
       (let [conn (restore-fresh-database! datomic-uri)
-            offer-cache (init-offer-cache)
+            agent-attributes-cache (init-agent-attributes-cache)
             _ (share/set-share! conn "default" nil
                                 "limits for new cluster"
                                 :mem 1024.0 :cpus Double/MAX_VALUE)
@@ -1043,7 +1048,7 @@
 
             pending-job-ents (util/get-pending-job-ents db)
             pool-ent {:pool/dru-mode :pool.dru-mode/default}]
-        (rebalancer/rebalance db offer-cache
+        (rebalancer/rebalance db agent-attributes-cache
                               pending-job-ents {}
                               (atom {})
                               {:max-preemption 128
@@ -1082,7 +1087,7 @@
           pool-ent {:pool/name :no-pool
                     :pool/dru-mode :pool.dru-mode/default}
           params {:max-preemption 128 :safe-dru-threshold 1.0 :min-dru-diff 0.0 :pool-ent pool-ent}
-          offer-cache (init-offer-cache)
+          agent-attributes-cache (init-agent-attributes-cache)
           job1 (create-dummy-job conn :user "user1" :memory 6.0 :ncpus 6.0)
           job2 (create-dummy-job conn :user "user1" :memory 6.0 :ncpus 6.0)
           job4 (create-dummy-job conn :user "user2" :memory 10.0 :ncpus 10.0)
@@ -1104,7 +1109,7 @@
       (let [db (d/db conn)
             [{:keys [hostname task to-make-room-for]}]
             (rebalancer/rebalance db
-                                  offer-cache
+                                  agent-attributes-cache
                                   (util/get-pending-job-ents db)
                                   {"hostA" {:cpus 0.0 :mem 0.0 :gpus 0.0}}
                                   reservations
@@ -1122,7 +1127,7 @@
           pool-ent {:pool/name :no-pool
                     :pool/dru-mode :pool.dru-mode/default}
           params {:max-preemption 128 :safe-dru-threshold 1.0 :min-dru-diff 0.0 :pool-ent pool-ent}
-          offer-cache (init-offer-cache)
+          agent-attributes-cache (init-agent-attributes-cache)
           job1 (create-dummy-job conn :user "user1" :memory 6.0 :ncpus 6.0)
           job2 (create-dummy-job conn :user "user2" :memory 1.0 :ncpus 1.0)
           task1 (create-dummy-instance conn
@@ -1139,7 +1144,7 @@
       (let [db (d/db conn)
             [{:keys [hostname task to-make-room-for]}]
             (rebalancer/rebalance db
-                                  offer-cache
+                                  agent-attributes-cache
                                   (util/get-pending-job-ents db)
                                   {"hostA" {:cpus 0.0 :mem 0.0 :gpus 0.0}}
                                   reservations
@@ -1156,7 +1161,7 @@
           pool-ent {:pool/name :no-pool
                     :pool/dru-mode :pool.dru-mode/default}
           params {:max-preemption 128 :safe-dru-threshold 1.0 :min-dru-diff 0.0 :pool-ent pool-ent}
-          offer-cache (init-offer-cache)
+          agent-attributes-cache (init-agent-attributes-cache)
           job1 (create-dummy-job conn :user "user1" :memory 6.0 :ncpus 6.0)
           job2 (create-dummy-job conn :user "user1" :memory 6.0 :ncpus 6.0)
           job4 (create-dummy-job conn :user "user2" :memory 10.0 :ncpus 10.0)
@@ -1178,7 +1183,7 @@
       (let [db (d/db conn)
             [{:keys [hostname task to-make-room-for]}]
             (rebalancer/rebalance db
-                                  offer-cache
+                                  agent-attributes-cache
                                   (util/get-pending-job-ents db)
                                   {"hostA" {:cpus 0.0 :mem 0.0 :gpus 0.0}}
                                   reservations

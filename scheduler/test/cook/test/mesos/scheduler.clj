@@ -32,7 +32,7 @@
             [cook.mesos.share :as share]
             [cook.mesos.util :as util]
             [cook.test.testutil :refer [restore-fresh-database! create-dummy-group create-dummy-job
-                                        create-dummy-instance init-offer-cache poll-until wait-for
+                                        create-dummy-instance init-agent-attributes-cache poll-until wait-for
                                         create-dummy-job-with-instances]]
             [criterium.core :as crit]
             [datomic.api :as d :refer (q db)]

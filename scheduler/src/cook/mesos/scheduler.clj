@@ -538,7 +538,7 @@
         _ (log/debug "offer to scheduleOnce" offers)
         _ (log/debug "tasks to scheduleOnce" considerable)
         leases (mapv #(->VirtualMachineLeaseAdapter % t) offers)
-        considerable->task-id (plumbing.core/map-from-keys (fn [_] (str (java.util.UUID/randomUUID))) considerable)
+        considerable->task-id (plumbing.core/map-from-keys (fn [_] (str (d/squuid))) considerable)
         guuid->considerable-cotask-ids (util/make-guuid->considerable-cotask-ids considerable->task-id)
         running-cotask-cache (atom (cache/fifo-cache-factory {} :threshold (max 1 (count considerable))))
         job-uuid->reserved-host (or (:job-uuid->reserved-host @rebalancer-reservation-atom) {})
@@ -852,7 +852,7 @@
 (counters/defcounter [cook-mesos scheduler offer-chan-depth])
 
 (defn make-offer-handler
-  [conn driver-atom fenzo framework-id pending-jobs-atom offer-cache max-considerable scaleback
+  [conn driver-atom fenzo framework-id pending-jobs-atom agent-attributes-cache max-considerable scaleback
    floor-iterations-before-warn floor-iterations-before-reset trigger-chan rebalancer-reservation-atom
    mesos-run-as-user pool]
   (let [chan-length 100
@@ -894,10 +894,10 @@
                                 :let [slave-id (-> offer :slave-id :value)
                                       attrs (get-offer-attr-map offer)]]
                           ; Cache all used offers (offer-cache is a map of hostnames to most recent offer)
-                          (swap! offer-cache (fn [c]
-                                               (if (cache/has? c slave-id)
-                                                 (cache/hit c slave-id)
-                                                 (cache/miss c slave-id attrs)))))
+                          (swap! agent-attributes-cache (fn [c]
+                                                          (if (cache/has? c slave-id)
+                                                            (cache/hit c slave-id)
+                                                            (cache/miss c slave-id attrs)))))
                       _ (log/debug "In" pool "pool, passing following offers to handle-resource-offers!" offers)
                       user->quota (quota/create-user->quota-fn (d/db conn) nil)
                       matched-head? (handle-resource-offers! conn @driver-atom fenzo framework-id pending-jobs-atom
@@ -1529,14 +1529,14 @@
 (defn create-datomic-scheduler
   [{:keys [conn driver-atom fenzo-fitness-calculator fenzo-floor-iterations-before-reset
            fenzo-floor-iterations-before-warn fenzo-max-jobs-considered fenzo-scaleback framework-id good-enough-fitness
-           gpu-enabled? heartbeat-ch mea-culpa-failure-limit mesos-run-as-user offer-cache offer-incubate-time-ms
+           gpu-enabled? heartbeat-ch mea-culpa-failure-limit mesos-run-as-user agent-attributes-cache offer-incubate-time-ms
            pending-jobs-atom progress-config rebalancer-reservation-atom sandbox-syncer-state task-constraints
            trigger-chans]}]
 
   (persist-mea-culpa-failure-limit! conn mea-culpa-failure-limit)
 
   (let [{:keys [match-trigger-chan progress-updater-trigger-chan rank-trigger-chan]} trigger-chans
-        pools (pool/all-pools (d/db conn))
+<<      pools (pool/all-pools (d/db conn))
         pools' (if (-> pools count pos?)
                  pools
                  [{:pool/name "no-pool"}])
@@ -1548,7 +1548,7 @@
                         fenzo (pool->fenzo pool)
                         [offers-chan resources-atom]
                         (make-offer-handler
-                          conn driver-atom fenzo framework-id pending-jobs-atom offer-cache fenzo-max-jobs-considered
+                          conn driver-atom fenzo framework-id pending-jobs-atom agent-attributes-cache fenzo-max-jobs-considered
                           fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset
                           match-trigger-chan rebalancer-reservation-atom mesos-run-as-user pool)]
                     (-> m
@@ -1556,7 +1556,7 @@
                         (assoc-in [:pool->resources-atom pool] resources-atom))))
                 {}
                 pools')
-        {:keys [batch-size]} progress-config
+==      {:keys [batch-size]} progress-config
         {:keys [progress-state-chan]} (progress/progress-update-transactor progress-updater-trigger-chan batch-size conn)
         progress-aggregator-chan (progress/progress-update-aggregator progress-config progress-state-chan)
         handle-progress-message (fn handle-progress-message-curried [progress-message-map]
