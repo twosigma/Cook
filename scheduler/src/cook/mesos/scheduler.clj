@@ -1536,7 +1536,7 @@
   (persist-mea-culpa-failure-limit! conn mea-culpa-failure-limit)
 
   (let [{:keys [match-trigger-chan progress-updater-trigger-chan rank-trigger-chan]} trigger-chans
-<<      pools (pool/all-pools (d/db conn))
+        pools (pool/all-pools (d/db conn))
         pools' (if (-> pools count pos?)
                  pools
                  [{:pool/name "no-pool"}])
@@ -1556,7 +1556,7 @@
                         (assoc-in [:pool->resources-atom pool] resources-atom))))
                 {}
                 pools')
-==      {:keys [batch-size]} progress-config
+        {:keys [batch-size]} progress-config
         {:keys [progress-state-chan]} (progress/progress-update-transactor progress-updater-trigger-chan batch-size conn)
         progress-aggregator-chan (progress/progress-update-aggregator progress-config progress-state-chan)
         handle-progress-message (fn handle-progress-message-curried [progress-message-map]
