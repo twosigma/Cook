@@ -1418,11 +1418,12 @@
     (testing "empty matched jobs"
       (let [category->pending-jobs {:gpu (create-jobs-in-range 10 15)
                                     :normal (create-jobs-in-range 1 10)}
-            category->matched-job-uuids {:gpu #{}
-                                         :normal #{}}
+            matched-job-uuids #{}
             expected-category->pending-jobs category->pending-jobs]
         (is (= expected-category->pending-jobs
-               (sched/remove-matched-jobs-from-pending-jobs category->pending-jobs category->matched-job-uuids)))))
+               (sched/remove-matched-jobs-from-pending-jobs category->pending-jobs matched-job-uuids :gpu)))
+        (is (= expected-category->pending-jobs
+               (sched/remove-matched-jobs-from-pending-jobs category->pending-jobs matched-job-uuids :normal)))))
 
     (testing "unknown matched jobs"
       (let [category->pending-jobs {:gpu (create-jobs-in-range 10 15)
@@ -1431,7 +1432,9 @@
                                          :normal (set (range 20 25))}
             expected-category->pending-jobs category->pending-jobs]
         (is (= expected-category->pending-jobs
-               (sched/remove-matched-jobs-from-pending-jobs category->pending-jobs category->matched-job-uuids)))))
+               (sched/remove-matched-jobs-from-pending-jobs category->pending-jobs (:gpu category->matched-job-uuids) :gpu)))
+        (is (= expected-category->pending-jobs
+               (sched/remove-matched-jobs-from-pending-jobs category->pending-jobs (:normal category->matched-job-uuids) :normal)))))
 
     (testing "non-empty matched normal jobs"
       (let [category->pending-jobs {:gpu (create-jobs-in-range 10 15)
@@ -1440,8 +1443,10 @@
                                          :normal (set (range 1 5))}
             expected-category->pending-jobs {:gpu (create-jobs-in-range 10 15)
                                              :normal (create-jobs-in-range 5 10)}]
-        (is (= expected-category->pending-jobs
-               (sched/remove-matched-jobs-from-pending-jobs category->pending-jobs category->matched-job-uuids)))))
+        (is (= (:gpu expected-category->pending-jobs)
+               (:gpu (sched/remove-matched-jobs-from-pending-jobs category->pending-jobs (:gpu category->matched-job-uuids) :gpu))))
+        (is (= (:normal expected-category->pending-jobs)
+               (:normal (sched/remove-matched-jobs-from-pending-jobs category->pending-jobs (:normal category->matched-job-uuids) :normal))))))
 
     (testing "non-empty matched gpu jobs"
       (let [category->pending-jobs {:gpu (create-jobs-in-range 10 15)
@@ -1450,8 +1455,10 @@
                                          :normal #{}}
             expected-category->pending-jobs {:gpu (create-jobs-in-range 12 15)
                                              :normal (create-jobs-in-range 1 10)}]
-        (is (= expected-category->pending-jobs
-               (sched/remove-matched-jobs-from-pending-jobs category->pending-jobs category->matched-job-uuids)))))
+        (is (= (:gpu expected-category->pending-jobs)
+               (:gpu (sched/remove-matched-jobs-from-pending-jobs category->pending-jobs (:gpu category->matched-job-uuids) :gpu))))
+        (is (= (:normal expected-category->pending-jobs)
+               (:normal (sched/remove-matched-jobs-from-pending-jobs category->pending-jobs (:normal category->matched-job-uuids) :normal))))))
 
     (testing "non-empty matched normal and gpu jobs"
       (let [category->pending-jobs {:normal (create-jobs-in-range 1 10)
@@ -1460,8 +1467,10 @@
                                          :normal (set (range 5 10))}
             expected-category->pending-jobs {:gpu (create-jobs-in-range 12 15)
                                              :normal (create-jobs-in-range 1 5)}]
-        (is (= expected-category->pending-jobs
-               (sched/remove-matched-jobs-from-pending-jobs category->pending-jobs category->matched-job-uuids)))))))
+        (is (= (:gpu expected-category->pending-jobs)
+               (:gpu (sched/remove-matched-jobs-from-pending-jobs category->pending-jobs (:gpu category->matched-job-uuids) :gpu))))
+        (is (= (:normal expected-category->pending-jobs)
+               (:normal (sched/remove-matched-jobs-from-pending-jobs category->pending-jobs (:normal category->matched-job-uuids) :normal))))))))
 
 (deftest test-handle-resource-offers
   (let [test-user (System/getProperty "user.name")
