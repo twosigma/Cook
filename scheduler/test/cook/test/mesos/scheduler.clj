@@ -859,13 +859,13 @@
                                 "Needs some GPUs"
                                 :gpus 2.0)
             db (d/db conn)]
-        (is (= [ljin-2 wzhao-1 ljin-3 ljin-4 wzhao-2] (map :db/id (:gpu (sched/sort-jobs-by-dru-category db)))))))
+        (is (= (sort [ljin-2 wzhao-1 ljin-3 ljin-4 wzhao-2]) (sort (map :db/id (:no-pool (sched/sort-jobs-by-dru-category db))))))))
     (testing "one user has single gpu share"
       (let [_ (share/set-share! conn "ljin" nil
                                 "Doesn't need lots of gpus"
                                 :gpus 1.0)
             db (d/db conn)]
-        (is (= [wzhao-1 wzhao-2 ljin-2 ljin-3 ljin-4] (map :db/id (:gpu (sched/sort-jobs-by-dru-category db)))))))))
+        (is (= (sort [wzhao-1 wzhao-2 ljin-2 ljin-3 ljin-4]) (sort (map :db/id (:no-pool (sched/sort-jobs-by-dru-category db))))))))))
 
 (deftest test-cancelled-task-killer
   (let [uri "datomic:mem://test-gpu-shares"
@@ -1306,57 +1306,79 @@
         job-4 (entity->map (d/entity test-db (create-dummy-job conn :group group-ent-id :ncpus 11 :memory 1024)))
         job-5 (entity->map (d/entity test-db (create-dummy-job conn :group group-ent-id :ncpus 5 :memory 2048 :gpus 2)))
         job-6 (entity->map (d/entity test-db (create-dummy-job conn :group group-ent-id :ncpus 19 :memory 1024 :gpus 4)))
-        category->pending-jobs {:normal [job-1 job-2 job-3 job-4], :gpu [job-5 job-6]}]
+        non-gpu-jobs [job-1 job-2 job-3 job-4]
+        gpu-jobs [job-5 job-6]]
 
     (testing "jobs inside usage quota"
       (let [user->usage {test-user {:count 1, :cpus 2, :mem 1024, :gpus 0}}
             user->quota {test-user {:count 10, :cpus 50, :mem 32768, :gpus 10}}
             num-considerable 5]
-        (is (= {:normal [job-1 job-2 job-3 job-4], :gpu [job-5 job-6]}
+        (is (= non-gpu-jobs
                (sched/pending-jobs->considerable-jobs
-                 (d/db conn) category->pending-jobs user->quota user->usage num-considerable)))))
+                 (d/db conn) non-gpu-jobs user->quota user->usage num-considerable nil)))
+        (is (= gpu-jobs
+               (sched/pending-jobs->considerable-jobs
+                 (d/db conn) gpu-jobs user->quota user->usage num-considerable nil)))))
     (testing "jobs inside usage quota limited by num-considerable of 3"
       (let [user->usage {test-user {:count 1, :cpus 2, :mem 1024, :gpus 0}}
             user->quota {test-user {:count 10, :cpus 50, :mem 32768, :gpus 10}}
             num-considerable 3]
-        (is (= {:normal [job-1 job-2 job-3], :gpu [job-5 job-6]}
+        (is (= [job-1 job-2 job-3]
                (sched/pending-jobs->considerable-jobs
-                 (d/db conn) category->pending-jobs user->quota user->usage num-considerable)))))
+                 (d/db conn) non-gpu-jobs user->quota user->usage num-considerable nil)))
+        (is (= gpu-jobs
+               (sched/pending-jobs->considerable-jobs
+                 (d/db conn) gpu-jobs user->quota user->usage num-considerable nil)))))
     (testing "jobs inside usage quota limited by num-considerable of 2"
       (let [user->usage {test-user {:count 1, :cpus 2, :mem 1024, :gpus 0}}
             user->quota {test-user {:count 10, :cpus 50, :mem 32768, :gpus 10}}
             num-considerable 2]
-        (is (= {:normal [job-1 job-2], :gpu [job-5 job-6]}
+        (is (= [job-1 job-2]
                (sched/pending-jobs->considerable-jobs
-                 (d/db conn) category->pending-jobs user->quota user->usage num-considerable)))))
+                 (d/db conn) non-gpu-jobs user->quota user->usage num-considerable nil)))
+        (is (= gpu-jobs
+               (sched/pending-jobs->considerable-jobs
+                 (d/db conn) gpu-jobs user->quota user->usage num-considerable nil)))))
     (testing "jobs inside usage quota limited by num-considerable of 1"
       (let [user->usage {test-user {:count 1, :cpus 2, :mem 1024, :gpus 0}}
             user->quota {test-user {:count 10, :cpus 50, :mem 32768, :gpus 10}}
             num-considerable 1]
-        (is (= {:normal [job-1], :gpu [job-5]}
+        (is (= [job-1]
                (sched/pending-jobs->considerable-jobs
-                 (d/db conn) category->pending-jobs user->quota user->usage num-considerable)))))
+                 (d/db conn) non-gpu-jobs user->quota user->usage num-considerable nil)))
+        (is (= [job-5]
+               (sched/pending-jobs->considerable-jobs
+                 (d/db conn) gpu-jobs user->quota user->usage num-considerable nil)))))
     (testing "some jobs inside usage quota"
       (let [user->usage {test-user {:count 1, :cpus 2, :mem 1024, :gpus 0}}
             user->quota {test-user {:count 5, :cpus 10, :mem 4096, :gpus 10}}
             num-considerable 5]
-        (is (= {:normal [job-1], :gpu [job-5]}
+        (is (= [job-1]
                (sched/pending-jobs->considerable-jobs
-                 (d/db conn) category->pending-jobs user->quota user->usage num-considerable)))))
+                 (d/db conn) non-gpu-jobs user->quota user->usage num-considerable nil)))
+        (is (= [job-5]
+               (sched/pending-jobs->considerable-jobs
+                 (d/db conn) gpu-jobs user->quota user->usage num-considerable nil)))))
     (testing "some jobs inside usage quota - quota gpus not ignored"
       (let [user->usage {test-user {:count 1, :cpus 2, :mem 1024, :gpus 0}}
             user->quota {test-user {:count 5, :cpus 10, :mem 4096, :gpus 0}}
             num-considerable 5]
-        (is (= {:normal [job-1], :gpu []}
+        (is (= [job-1]
                (sched/pending-jobs->considerable-jobs
-                 (d/db conn) category->pending-jobs user->quota user->usage num-considerable)))))
+                 (d/db conn) non-gpu-jobs user->quota user->usage num-considerable nil)))
+        (is (= []
+               (sched/pending-jobs->considerable-jobs
+                 (d/db conn) gpu-jobs user->quota user->usage num-considerable nil)))))
     (testing "all jobs exceed quota"
       (let [user->usage {test-user {:count 1, :cpus 2, :mem 1024, :gpus 0}}
             user->quota {test-user {:count 5, :cpus 3, :mem 4096, :gpus 10}}
             num-considerable 5]
-        (is (= {:normal [], :gpu []}
+        (is (= []
                (sched/pending-jobs->considerable-jobs
-                 (d/db conn) category->pending-jobs user->quota user->usage num-considerable)))))))
+                 (d/db conn) non-gpu-jobs user->quota user->usage num-considerable nil)))
+        (is (= []
+               (sched/pending-jobs->considerable-jobs
+                 (d/db conn) gpu-jobs user->quota user->usage num-considerable nil)))))))
 
 (deftest test-matches->category->job-uuids
   (let [create-task-result (fn [job-uuid cpus mem gpus]
@@ -1972,7 +1994,7 @@
             (let [task-id (get-task-id n)]
               (swap! executing-tasks-atom conj task-id)
               (->> {:task-id {:value task-id}, :state :task-running}
-                   (sched/handle-status-update db-conn nil nil sync-agent-sandboxes-fn)))
+                   (sched/handle-status-update db-conn nil (constantly nil) sync-agent-sandboxes-fn)))
             (Thread/sleep 5))
           async/thread
           async/<!!)
