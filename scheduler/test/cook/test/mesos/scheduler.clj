@@ -1719,7 +1719,7 @@
           uri "datomic:mem://test-handle-resource-offers"
           launched-tasks-atom (atom [])
           driver (reify msched/SchedulerDriver
-                   (launch-tasks! [_ offer-id tasks]
+                   (launch-tasks! [_ _ tasks]
                      (swap! launched-tasks-atom concat tasks)))
           offer-maker (fn [cpus mem gpus]
                         {:resources [{:name "cpus", :scalar cpus, :type :value-scalar, :role "cook"}
@@ -1738,7 +1738,6 @@
                                                                            job-name->uuid {}}}]
                                         (reset! launched-tasks-atom [])
                                         (let [conn (restore-fresh-database! uri)
-                                              test-db (d/db conn)
                                               driver-atom (atom nil)
 
                                               ^TaskScheduler fenzo (sched/make-fenzo-scheduler driver-atom 1500
@@ -1776,7 +1775,7 @@
                                               mesos-run-as-user nil
                                               result (sched/handle-resource-offers!
                                                       conn driver fenzo framework-id category->pending-jobs-atom mesos-run-as-user
-                                                      user->usage user->quota num-considerable offers-chan offers rebalancer-reservation-atom)]
+                                                      user->usage user->quota num-considerable offers-chan offers rebalancer-reservation-atom :normal)]
                                           result))]
       (testing "enough offers for all normal jobs"
         (let [num-considerable 10
