@@ -594,24 +594,16 @@
         conn (restore-fresh-database! uri)
         constraints {:memory-gb 10.0
                      :cpus 5.0}
-        ;; a job which breaks the memory constraint
-        job-id-1 (create-dummy-job conn :user "tsram"
-                                   :job-state :job.state/waiting
-                                   :memory (* 1024 (+ (:memory-gb constraints) 2.0))
-                                   :ncpus (- (:cpus constraints) 1.0))
         ;; a job which follows all constraints
-        job-id-2 (create-dummy-job conn :user "tsram"
-                                   :job-state :job.state/waiting
-                                   :memory (* 1024 (- (:memory-gb constraints) 2.0))
-                                   :ncpus (- (:cpus constraints) 1.0))
+        job-id (create-dummy-job conn :user "tsram"
+                                 :job-state :job.state/waiting
+                                 :memory (* 1024 (- (:memory-gb constraints) 2.0))
+                                 :ncpus (- (:cpus constraints) 1.0))
         test-db (d/db conn)
-        job-entity-1 (d/entity test-db job-id-1)
-        job-entity-2 (d/entity test-db job-id-2)
-        jobs [job-entity-1 job-entity-2]
+        job-entity (d/entity test-db job-id)
         offensive-jobs-ch (sched/make-offensive-job-stifler conn)
         offensive-job-filter (partial sched/filter-offensive-jobs constraints offensive-jobs-ch)]
-    (is (= {:normal (list (util/job-ent->map job-entity-2))
-            :gpu ()}
+    (is (= {:no-pool (list (util/job-ent->map job-entity))}
            (sched/rank-jobs test-db offensive-job-filter)))))
 
 (deftest test-virtual-machine-lease-adapter
