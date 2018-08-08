@@ -70,16 +70,22 @@
         (if-let [impersonated-principal (get-in req [:headers "x-cook-impersonate"])]
           (let [impersonated-user (cook.util/principal->username impersonated-principal)]
             (log/debug "User" user "is attempting to impersonate" impersonated-user)
-            (if-not (contains? impersonators-set user)
-              ; Case: this user isn't authorized to impersonate
-              (-> (response (str "User " user " does not have impersonation privileges."))
-                  (status 403)
-                  (header "Content-Type" "text/plain"))
+            (cond
+              ; Case: self-impersonation
+              ; Simply ignore the impersonation, treating it as a normal request from the user.
+              (= impersonated-user user)
+              (h req)
               ; Case: impersonation looks OK so far
               ; Note that the is-authorized-fn (via the impersonation-authorized-wrapper function)
               ; will later look for the :authorization/impersonator value and ensure that
               ; the target operation is allowed to be impersonated (see components.clj).
-              (h (assoc req :authorization/user impersonated-user :authorization/impersonator user))))
+              (contains? impersonators-set user)
+              (h (assoc req :authorization/user impersonated-user :authorization/impersonator user))
+              ; Case: this user isn't authorized to impersonate
+              :else
+              (-> (response (str "User " user " does not have impersonation privileges."))
+                  (status 403)
+                  (header "Content-Type" "text/plain"))))
           ; Case: not attempting to impersonate
           (h req)))
       ; we don't add this middleware if no impersonators are configured

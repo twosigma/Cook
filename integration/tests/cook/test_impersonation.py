@@ -47,7 +47,7 @@ class ImpersonationCookTest(util.CookTest):
             # unauthorized impersonation attempts by job owner
             with user1.impersonating(user2):
                 util.kill_jobs(self.cook_url, [job_uuid], expected_status_code=403)
-            with user1.impersonating(user1):
+            with user1.impersonating(self.admin):
                 util.kill_jobs(self.cook_url, [job_uuid], expected_status_code=403)
             with user1:
                 util.kill_jobs(self.cook_url, [job_uuid])
@@ -114,3 +114,21 @@ class ImpersonationCookTest(util.CookTest):
             # reset user share back to default
             resp = util.reset_limit(self.cook_url, 'share', user1.name, reason=self.current_name())
             self.assertEqual(resp.status_code, 403, resp.text)
+
+    def test_self_impersonate(self):
+        user1 = self.user_factory.new_user()
+        job_uuids = []
+        try:
+            # normal user can self-impersonate
+            with user1.impersonating(user1):
+                job_uuid, resp = util.submit_job(self.cook_url, command='sleep 1')
+                self.assertEqual(resp.status_code, 201, resp.text)
+                job_uuids.append(job_uuid)
+            # admin can self-impersonate for admin endpoints
+            # i.e., self-impersonation is treated as a non-impersonated request
+            with self.admin.impersonating(self.admin):
+                resp = util.query_queue(self.cook_url)
+                self.assertEqual(resp.status_code, 200, resp.text)
+        finally:
+            with self.admin:
+                util.kill_jobs(self.cook_url, [j for j in job_uuids if j])
