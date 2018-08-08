@@ -910,7 +910,7 @@
                                                :task-id task-id)]
         ; Wait for async database transaction inside handle-status-update
         (->> (make-dummy-status-update task-id :reason-gc-error :task-killed)
-             (sched/handle-status-update conn driver fenzo sync-agent-sandboxes-fn)
+             (sched/handle-status-update conn driver (constantly fenzo) sync-agent-sandboxes-fn)
              async/<!!)
 
         (is (= :instance.status/failed
@@ -935,7 +935,7 @@
               original-end-time (get-end-time)]
           (Thread/sleep 100)
           (->> (make-dummy-status-update task-id :reason-gc-error :task-killed)
-               (sched/handle-status-update conn driver fenzo sync-agent-sandboxes-fn)
+               (sched/handle-status-update conn driver (constantly fenzo) sync-agent-sandboxes-fn)
                async/<!!)
           (is (= original-end-time (get-end-time))))))
 
@@ -960,7 +960,7 @@
                                                :reason :max-runtime-exceeded)] ; Previous reason is not mea-culpa
         ; Status update says slave got restarted (mea-culpa)
         (->> (make-dummy-status-update task-id :mesos-slave-restarted :task-killed)
-             (sched/handle-status-update conn driver fenzo sync-agent-sandboxes-fn)
+             (sched/handle-status-update conn driver (constantly fenzo) sync-agent-sandboxes-fn)
              async/<!!)
         ; Assert old reason persists
         (is (= :max-runtime-exceeded
@@ -997,7 +997,7 @@
                                :reason :unknown)
         (reset! synced-agents-atom [])
         (->> (make-dummy-status-update task-id-a :mesos-slave-restarted :task-running)
-             (sched/handle-status-update conn driver fenzo sync-agent-sandboxes-fn)
+             (sched/handle-status-update conn driver (constantly fenzo) sync-agent-sandboxes-fn)
              async/<!!)
         (is (true? (contains? @tasks-killed task-id-a)))
         (is (= ["www.test-host.com"] @synced-agents-atom))))
@@ -1019,19 +1019,19 @@
                                :task-id task-id)
         (is (nil? (mesos-start-time)))
         (->> (make-dummy-status-update task-id :unknown :task-staging)
-             (sched/handle-status-update conn driver fenzo sync-agent-sandboxes-fn)
+             (sched/handle-status-update conn driver (constantly fenzo) sync-agent-sandboxes-fn)
              async/<!!)
         (is (nil? (mesos-start-time)))
         (reset! synced-agents-atom [])
         (->> (make-dummy-status-update task-id :unknown :task-running)
-             (sched/handle-status-update conn driver fenzo sync-agent-sandboxes-fn)
+             (sched/handle-status-update conn driver (constantly fenzo) sync-agent-sandboxes-fn)
              async/<!!)
         (is (= ["www.test-host.com"] @synced-agents-atom))
         (is (not (nil? (mesos-start-time))))
         (let [first-observed-start-time (.getTime (mesos-start-time))]
           (is (not (nil? first-observed-start-time)))
           (->> (make-dummy-status-update task-id :unknown :task-running)
-               (sched/handle-status-update conn driver fenzo sync-agent-sandboxes-fn)
+               (sched/handle-status-update conn driver (constantly fenzo) sync-agent-sandboxes-fn)
                async/<!!)
           (is (= first-observed-start-time (.getTime (mesos-start-time)))))))))
 
