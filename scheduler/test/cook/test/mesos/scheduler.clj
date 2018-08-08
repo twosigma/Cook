@@ -1379,7 +1379,7 @@
                  (d/db conn) gpu-jobs user->quota user->usage num-considerable nil)))))))
 
 (deftest test-matches->category->job-uuids
-  (let [create-task-result (fn [job-uuid cpus mem gpus]
+  (let [create-task-result (fn [job-uuid _ _ gpus]
                              (-> (Mockito/when (.getRequest (Mockito/mock TaskAssignmentResult)))
                                  (.thenReturn (sched/make-task-request
                                                 (Object.)
@@ -1396,19 +1396,21 @@
         job-5 (create-task-result "job-5" 5 2048 2)
         job-6 (create-task-result "job-6" 6 1024 3)
         job-7 (create-task-result "job-7" 7 1024 nil)]
-    (is (= {:gpu #{"job-3" "job-5" "job-6"}
-            :normal #{"job-1" "job-2" "job-4" "job-7"}}
+    (is (= #{"job-3" "job-5" "job-6"}
            (sched/matches->job-uuids
-             [{:tasks [job-1 job-2 job-3]}, {:tasks #{job-4 job-5}}, {:tasks [job-6]}, {:tasks [job-7]}])))
-    (is (= {:normal #{"job-1" "job-2" "job-4" "job-7"}}
+             [{:tasks [job-3]}, {:tasks #{job-5}}, {:tasks [job-6]}] nil)))
+    (is (= #{"job-1" "job-2" "job-4" "job-7"}
            (sched/matches->job-uuids
-             [{:tasks [job-1 job-2]}, {:tasks #{job-4}}, {:tasks #{}}, {:tasks [job-7]}])))
-    (is (= {:gpu #{"job-3" "job-5" "job-6"}}
+             [{:tasks [job-1 job-2]}, {:tasks #{job-4}}, {:tasks [job-7]}] nil)))
+    (is (= #{"job-1" "job-2" "job-4" "job-7"}
            (sched/matches->job-uuids
-             [{:tasks [job-3]}, {:tasks #{job-5}}, {:tasks #{job-6}}, {:tasks []}])))
-    (is (= {}
+             [{:tasks [job-1 job-2]}, {:tasks #{job-4}}, {:tasks #{}}, {:tasks [job-7]}] nil)))
+    (is (= #{"job-3" "job-5" "job-6"}
            (sched/matches->job-uuids
-             [{:tasks []}, {:tasks #{}}, {:tasks #{}}, {:tasks []}])))))
+             [{:tasks [job-3]}, {:tasks #{job-5}}, {:tasks #{job-6}}, {:tasks []}] nil)))
+    (is (= #{}
+           (sched/matches->job-uuids
+             [{:tasks []}, {:tasks #{}}, {:tasks #{}}, {:tasks []}] nil)))))
 
 (deftest test-remove-matched-jobs-from-pending-jobs
   (let [create-jobs-in-range (fn [start-inc end-exc]
