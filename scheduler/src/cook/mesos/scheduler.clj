@@ -1226,7 +1226,7 @@
 (defn- pool-map
   "TODO(DPO)"
   [pools val-fn]
-  (into {} (map (fn [p] [(pool->keyword p) (val-fn)]) pools)))
+  (into {} (map (fn [p] [(pool->keyword p) (val-fn p)]) pools)))
 
 (defn sort-jobs-by-dru-category
   "Returns a map from job category to a list of job entities, ordered by dru"
@@ -1240,15 +1240,23 @@
         category->pending-task-ents (pc/map-vals #(map util/create-task-ent %1) category->pending-job-ents)
         category->running-task-ents (group-by (comp util/categorize-job :job/_instance)
                                               (util/get-running-task-ents unfiltered-db))
-        user->dru-divisors (share/create-user->share-fn unfiltered-db nil)
-        category->sort-jobs-by-dru-fn (let [pools (pool/all-pools unfiltered-db)]
-                                        (if (-> pools count pos?)
-                                          (pool-map pools (constantly sort-normal-jobs-by-dru))
-                                          {:no-pool sort-normal-jobs-by-dru}))]
+        pools (pool/all-pools unfiltered-db)
+        using-pools? (-> pools count pos?)
+        pool->user->dru-divisors (if using-pools?
+                                   (pool-map pools (fn [{:keys [pool/name]}]
+                                                     (share/create-user->share-fn unfiltered-db name)))
+                                   {:no-pool (share/create-user->share-fn unfiltered-db nil)})
+        category->sort-jobs-by-dru-fn (if using-pools?
+                                        (pool-map pools (fn [{:keys [pool/dru-mode]}]
+                                                          (case dru-mode
+                                                            :pool.dru-mode/default sort-normal-jobs-by-dru
+                                                            :pool.dru-mode/gpu sort-gpu-jobs-by-dru)))
+                                        {:no-pool sort-normal-jobs-by-dru})]
     (letfn [(sort-jobs-by-dru-category-helper [[category sort-jobs-by-dru]]
-             (let [pending-tasks (category->pending-task-ents category)
-                   running-tasks (category->running-task-ents category)]
-               [category (sort-jobs-by-dru pending-tasks running-tasks user->dru-divisors)]))]
+              (let [pending-tasks (category->pending-task-ents category)
+                    running-tasks (category->running-task-ents category)
+                    user->dru-divisors (pool->user->dru-divisors category)]
+                [category (sort-jobs-by-dru pending-tasks running-tasks user->dru-divisors)]))]
       (into {} (map sort-jobs-by-dru-category-helper) category->sort-jobs-by-dru-fn))))
 
 (timers/deftimer [cook-mesos scheduler filter-offensive-jobs-duration])
@@ -1540,8 +1548,8 @@
         pools' (if (-> pools count pos?)
                  pools
                  [{:pool/name "no-pool"}])
-        pool->fenzo (pool-map pools' #(make-fenzo-scheduler driver-atom offer-incubate-time-ms
-                                                            fenzo-fitness-calculator good-enough-fitness))
+        pool->fenzo (pool-map pools' (fn [_] (make-fenzo-scheduler driver-atom offer-incubate-time-ms
+                                                                   fenzo-fitness-calculator good-enough-fitness)))
         {:keys [pool->offers-chan pool->resources-atom]}
         (reduce (fn [m pool-ent]
                   (let [pool (pool->keyword pool-ent)

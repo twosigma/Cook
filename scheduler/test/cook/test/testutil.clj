@@ -294,8 +294,9 @@
 
 (defn create-pool
   "Creates an active pool with the given name for use in unit testing"
-  [conn name]
+  [conn name & {:keys [dru-mode] :or {dru-mode :pool.dru-mode/default}}]
   @(d/transact conn [{:db/id (d/tempid :db.part/user)
                       :pool/name name
                       :pool/purpose "This is a pool for unit testing"
-                      :pool/state :pool.state/active}]))
+                      :pool/state :pool.state/active
+                      :pool/dru-mode dru-mode}]))

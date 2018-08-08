@@ -33,7 +33,7 @@
             [cook.mesos.util :as util]
             [cook.test.testutil :refer [restore-fresh-database! create-dummy-group create-dummy-job
                                         create-dummy-instance init-agent-attributes-cache poll-until wait-for
-                                        create-dummy-job-with-instances]]
+                                        create-dummy-job-with-instances create-pool]]
             [criterium.core :as crit]
             [datomic.api :as d :refer (q db)]
             [mesomatic.scheduler :as msched]
@@ -189,13 +189,13 @@
                                 "limits for new cluster"
                                 :mem 10.0 :cpus 10.0)
             db (d/db conn)]
-        (is (= [j2 j3 j6 j4 j8] (map :db/id (:normal (sched/sort-jobs-by-dru-category db)))))))
+        (is (= [j2 j3 j6 j4 j8] (map :db/id (:no-pool (sched/sort-jobs-by-dru-category db)))))))
 
     (testing "sort-jobs-by-dru one user has non-default share"
       (let [_ (share/set-share! conn "default" nil "limits for new cluster" :mem 10.0 :cpus 10.0)
             _ (share/set-share! conn "sunil" nil "needs more resources" :mem 100.0 :cpus 100.0)
             db (d/db conn)]
-        (is (= [j8 j2 j3 j6 j4] (map :db/id (:normal (sched/sort-jobs-by-dru-category db))))))))
+        (is (= [j8 j2 j3 j6 j4] (map :db/id (:no-pool (sched/sort-jobs-by-dru-category db))))))))
 
   (testing "test-sort-jobs-by-dru:normal-jobs"
     (let [uri "datomic:mem://test-sort-jobs-by-dru-normal-jobs"
@@ -205,16 +205,17 @@
           j3n (create-dummy-job conn :user "u2" :job-state :job.state/waiting :memory 1500 :ncpus 1.0)
           j4n (create-dummy-job conn :user "u2" :job-state :job.state/waiting :memory 1500 :ncpus 1.0 :priority 30)
           test-db (d/db conn)]
-      (is (= [j2n j3n j1n j4n] (map :db/id (:normal (sched/sort-jobs-by-dru-category test-db)))))
+      (is (= [j2n j3n j1n j4n] (map :db/id (:no-pool (sched/sort-jobs-by-dru-category test-db)))))
       (is (empty? (:gpu (sched/sort-jobs-by-dru-category test-db))))))
 
   (testing "test-sort-jobs-by-dru:gpu-jobs"
     (let [uri "datomic:mem://test-sort-jobs-by-dru-gpu-jobs"
           conn (restore-fresh-database! uri)
-          j1g (create-dummy-job conn :user "u1" :job-state :job.state/waiting :memory 1000 :ncpus 1.0 :gpus 10.0)
-          j2g (create-dummy-job conn :user "u1" :job-state :job.state/waiting :memory 1000 :ncpus 1.0 :gpus 25.0 :priority 90)
-          j3g (create-dummy-job conn :user "u2" :job-state :job.state/waiting :memory 1500 :ncpus 1.0 :gpus 20.0)
-          j4g (create-dummy-job conn :user "u2" :job-state :job.state/waiting :memory 1500 :ncpus 1.0 :gpus 10.0 :priority 30)
+          _ (create-pool conn "gpu" :dru-mode :pool.dru-mode/gpu)
+          j1g (create-dummy-job conn :user "u1" :job-state :job.state/waiting :memory 1000 :ncpus 1.0 :gpus 10.0 :pool "gpu")
+          j2g (create-dummy-job conn :user "u1" :job-state :job.state/waiting :memory 1000 :ncpus 1.0 :gpus 25.0 :pool "gpu" :priority 90)
+          j3g (create-dummy-job conn :user "u2" :job-state :job.state/waiting :memory 1500 :ncpus 1.0 :gpus 20.0 :pool "gpu")
+          j4g (create-dummy-job conn :user "u2" :job-state :job.state/waiting :memory 1500 :ncpus 1.0 :gpus 10.0 :pool "gpu" :priority 30)
           test-db (d/db conn)]
       (is (empty? (:normal (sched/sort-jobs-by-dru-category test-db))))
       (is (= [j3g j2g j4g j1g] (map :db/id (:gpu (sched/sort-jobs-by-dru-category test-db)))))))
@@ -222,14 +223,16 @@
   (testing "test-sort-jobs-by-dru:mixed-jobs"
     (let [uri "datomic:mem://test-sort-jobs-by-dru-mixed-jobs"
           conn (restore-fresh-database! uri)
-          j1n (create-dummy-job conn :user "u1" :job-state :job.state/waiting :memory 1000 :ncpus 1.0)
-          j2n (create-dummy-job conn :user "u1" :job-state :job.state/waiting :memory 1000 :ncpus 1.0 :priority 90)
-          j3n (create-dummy-job conn :user "u2" :job-state :job.state/waiting :memory 1500 :ncpus 1.0)
-          j4n (create-dummy-job conn :user "u2" :job-state :job.state/waiting :memory 1500 :ncpus 1.0 :priority 30)
-          j1g (create-dummy-job conn :user "u1" :job-state :job.state/waiting :memory 1000 :ncpus 1.0 :gpus 10.0)
-          j2g (create-dummy-job conn :user "u1" :job-state :job.state/waiting :memory 1000 :ncpus 1.0 :gpus 25.0 :priority 90)
-          j3g (create-dummy-job conn :user "u2" :job-state :job.state/waiting :memory 1500 :ncpus 1.0 :gpus 20.0)
-          j4g (create-dummy-job conn :user "u2" :job-state :job.state/waiting :memory 1500 :ncpus 1.0 :gpus 10.0 :priority 30)
+          _ (create-pool conn "normal" :dru-mode :pool.dru-mode/default)
+          _ (create-pool conn "gpu" :dru-mode :pool.dru-mode/gpu)
+          j1n (create-dummy-job conn :user "u1" :job-state :job.state/waiting :memory 1000 :ncpus 1.0 :pool "normal")
+          j2n (create-dummy-job conn :user "u1" :job-state :job.state/waiting :memory 1000 :ncpus 1.0 :pool "normal" :priority 90)
+          j3n (create-dummy-job conn :user "u2" :job-state :job.state/waiting :memory 1500 :ncpus 1.0 :pool "normal")
+          j4n (create-dummy-job conn :user "u2" :job-state :job.state/waiting :memory 1500 :ncpus 1.0 :pool "normal" :priority 30)
+          j1g (create-dummy-job conn :user "u1" :job-state :job.state/waiting :memory 1000 :ncpus 1.0 :pool "gpu" :gpus 10.0)
+          j2g (create-dummy-job conn :user "u1" :job-state :job.state/waiting :memory 1000 :ncpus 1.0 :pool "gpu" :gpus 25.0 :priority 90)
+          j3g (create-dummy-job conn :user "u2" :job-state :job.state/waiting :memory 1500 :ncpus 1.0 :pool "gpu" :gpus 20.0)
+          j4g (create-dummy-job conn :user "u2" :job-state :job.state/waiting :memory 1500 :ncpus 1.0 :pool "gpu" :gpus 10.0 :priority 30)
           test-db (d/db conn)]
       (is (= [j2n j3n j1n j4n] (map :db/id (:normal (sched/sort-jobs-by-dru-category test-db)))))
       (is (= [j3g j2g j4g j1g] (map :db/id (:gpu (sched/sort-jobs-by-dru-category test-db))))))))
@@ -834,12 +837,15 @@
 (deftest test-gpu-share-prioritization
   (let [uri "datomic:mem://test-gpu-shares"
         conn (restore-fresh-database! uri)
-        ljin-1 (create-dummy-job conn :user "ljin" :ncpus 5.0 :memory 5.0 :gpus 1.0)
-        ljin-2 (create-dummy-job conn :user "ljin" :ncpus 5.0 :memory 5.0 :gpus 1.0)
-        ljin-3 (create-dummy-job conn :user "ljin" :ncpus 5.0 :memory 5.0 :gpus 1.0)
-        ljin-4 (create-dummy-job conn :user "ljin" :ncpus 5.0 :memory 5.0 :gpus 1.0)
-        wzhao-1 (create-dummy-job conn :user "wzhao" :ncpus 5.0 :memory 5.0 :gpus 1.0)
-        wzhao-2 (create-dummy-job conn :user "wzhao" :ncpus 5.0 :memory 5.0 :gpus 1.0)
+        pool-name "gpu"
+        pool-keyword (keyword pool-name)
+        _ (create-pool conn pool-name :dru-mode :pool.dru-mode/gpu)
+        ljin-1 (create-dummy-job conn :user "ljin" :ncpus 5.0 :memory 5.0 :gpus 1.0 :pool pool-name)
+        ljin-2 (create-dummy-job conn :user "ljin" :ncpus 5.0 :memory 5.0 :gpus 1.0 :pool pool-name)
+        ljin-3 (create-dummy-job conn :user "ljin" :ncpus 5.0 :memory 5.0 :gpus 1.0 :pool pool-name)
+        ljin-4 (create-dummy-job conn :user "ljin" :ncpus 5.0 :memory 5.0 :gpus 1.0 :pool pool-name)
+        wzhao-1 (create-dummy-job conn :user "wzhao" :ncpus 5.0 :memory 5.0 :gpus 1.0 :pool pool-name)
+        wzhao-2 (create-dummy-job conn :user "wzhao" :ncpus 5.0 :memory 5.0 :gpus 1.0 :pool pool-name)
         ; Update ljin-1 to running
         inst (create-dummy-instance conn ljin-1 :instance-status :instance.status/unknown)
         _ @(d/transact conn [[:instance/update-state inst :instance.status/running [:reason/name :unknown]]])
@@ -847,17 +853,17 @@
                             "limits for new cluster"
                             :cpus 1.0 :mem 2.0 :gpus 1.0)]
     (testing "one user has double gpu share"
-      (let [_ (share/set-share! conn "ljin" nil
+      (let [_ (share/set-share! conn "ljin" pool-name
                                 "Needs some GPUs"
                                 :gpus 2.0)
             db (d/db conn)]
-        (is (= (sort [ljin-2 wzhao-1 ljin-3 ljin-4 wzhao-2]) (sort (map :db/id (:no-pool (sched/sort-jobs-by-dru-category db))))))))
+        (is (= (sort [ljin-2 wzhao-1 ljin-3 ljin-4 wzhao-2]) (sort (map :db/id (pool-keyword (sched/sort-jobs-by-dru-category db))))))))
     (testing "one user has single gpu share"
-      (let [_ (share/set-share! conn "ljin" nil
+      (let [_ (share/set-share! conn "ljin" pool-name
                                 "Doesn't need lots of gpus"
                                 :gpus 1.0)
             db (d/db conn)]
-        (is (= (sort [wzhao-1 wzhao-2 ljin-2 ljin-3 ljin-4]) (sort (map :db/id (:no-pool (sched/sort-jobs-by-dru-category db))))))))))
+        (is (= (sort [wzhao-1 wzhao-2 ljin-2 ljin-3 ljin-4]) (sort (map :db/id (pool-keyword (sched/sort-jobs-by-dru-category db))))))))))
 
 (deftest test-cancelled-task-killer
   (let [uri "datomic:mem://test-gpu-shares"
@@ -1942,7 +1948,7 @@
                 (let [task-id (get-task-id n)]
                   (swap! executing-tasks-atom conj task-id)
                   (->> {:task-id {:value task-id}, :state :task-running}
-                       (sched/handle-status-update db-conn nil nil sync-agent-sandboxes-fn)))
+                       (sched/handle-status-update db-conn nil {} sync-agent-sandboxes-fn)))
                 (Thread/sleep 5))
               async/thread
               async/<!!)

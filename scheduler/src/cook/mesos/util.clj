@@ -82,10 +82,12 @@
 (let [default-pool (config/default-pool)]
   (defn job->pool
     "TODO(DPO)"
-    [job]
-    (if default-pool
-      (-> job :job/pool :pool/name (or default-pool) keyword)
-      :no-pool)))
+    [{:keys [job/pool]}]
+    (if pool
+      (-> pool :pool/name keyword)
+      (if default-pool
+        (keyword default-pool)
+        :no-pool))))
 
 ;; TODO(DPO) Fix this name and docstring
 (defn categorize-job
