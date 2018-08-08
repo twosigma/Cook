@@ -849,7 +849,7 @@
         ; Update ljin-1 to running
         inst (create-dummy-instance conn ljin-1 :instance-status :instance.status/unknown)
         _ @(d/transact conn [[:instance/update-state inst :instance.status/running [:reason/name :unknown]]])
-        _ (share/set-share! conn "default" nil
+        _ (share/set-share! conn "default" pool-name
                             "limits for new cluster"
                             :cpus 1.0 :mem 2.0 :gpus 1.0)]
     (testing "one user has double gpu share"
@@ -857,13 +857,13 @@
                                 "Needs some GPUs"
                                 :gpus 2.0)
             db (d/db conn)]
-        (is (= (sort [ljin-2 wzhao-1 ljin-3 ljin-4 wzhao-2]) (sort (map :db/id (pool-keyword (sched/sort-jobs-by-dru-category db))))))))
+        (is (= [ljin-2 wzhao-1 ljin-3 ljin-4 wzhao-2] (map :db/id (pool-keyword (sched/sort-jobs-by-dru-category db)))))))
     (testing "one user has single gpu share"
       (let [_ (share/set-share! conn "ljin" pool-name
                                 "Doesn't need lots of gpus"
                                 :gpus 1.0)
             db (d/db conn)]
-        (is (= (sort [wzhao-1 wzhao-2 ljin-2 ljin-3 ljin-4]) (sort (map :db/id (pool-keyword (sched/sort-jobs-by-dru-category db))))))))))
+        (is (= [wzhao-1 wzhao-2 ljin-2 ljin-3 ljin-4] (map :db/id (pool-keyword (sched/sort-jobs-by-dru-category db)))))))))
 
 (deftest test-cancelled-task-killer
   (let [uri "datomic:mem://test-gpu-shares"
