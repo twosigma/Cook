@@ -12,12 +12,12 @@
            com.netflix.fenzo.plugins.BinPackingFitnessCalculators
            java.util.UUID))
 
-(let [data-local-costs (atom {})
-      last-update-time (atom {})]
+(let [job-uuid->host-name->cost-atom (atom {})
+      job-uuid->last-update-time-atom (atom {})]
 
   (defn reset-data-local-costs! []
-    (reset! data-local-costs {})
-    (reset! last-update-time {}))
+    (reset! job-uuid->host-name->cost-atom {})
+    (reset! job-uuid->last-update-time-atom {}))
 
   (defn update-data-local-costs
     "Updates the current data local costs. Costs larger than the configured max-cost will be capped at max-cost
@@ -28,11 +28,11 @@
                                                (pc/map-vals (fn [cost] (-> cost (min maximum-cost) (max 0)))
                                                             host->cost))
                                              job->host->cost)]
-      (swap! data-local-costs (fn update-data-local-costs-atom
+      (swap! job-uuid->host-name->cost-atom (fn update-job-uuid->host-name->cost-atom-atom
                                 [current]
                                 (let [remove-old-values (apply dissoc current uuids-to-remove)]
                                   (merge remove-old-values clean-job->host->cost))))
-      (swap! last-update-time (fn update-last-update-time
+      (swap! job-uuid->last-update-time-atom (fn update-last-update-time
                                 [current]
                                 (let [remove-old-values (apply dissoc current uuids-to-remove)
                                       new-values (pc/map-from-keys (constantly (t/now)) (keys clean-job->host->cost))]
@@ -41,7 +41,13 @@
   (defn get-data-local-costs
     "Returns the current cost for jobs to run on each host"
     []
-    @data-local-costs)
+    @job-uuid->host-name->cost-atom)
+
+
+  (defn get-last-update-time
+    "Returns the last update time information"
+    []
+    @job-uuid->last-update-time-atom)
 
   (defn job-ids-to-update
     "Return the list of job ids to update data locality costs for in the next iteration.
@@ -51,19 +57,19 @@
           pending-jobs (->> db
                             util/get-pending-job-ents
                             (filter :job/data-local))
-          last-update-time-val @last-update-time
-          have-data?->job (group-by (fn [job] (contains? last-update-time-val (:job/uuid job)))
+          job-uuid->last-update-time @job-uuid->last-update-time-atom
+          have-data?->job (group-by (fn [job] (contains? job-uuid->last-update-time (:job/uuid job)))
                                     pending-jobs)
           missing-data (->> (get have-data?->job false [])
                             (sort-by :job/submit-time)
                             (map :job/uuid))
           sorted-have-data (->> (get have-data?->job true [])
                                 (map :job/uuid)
-                                (sort-by last-update-time-val))
+                                (sort-by job-uuid->last-update-time))
           pending-job-uuids (->> pending-jobs
                                  (map :job/uuid)
                                  (into (hash-set)))
-          no-longer-waiting (set/difference (into (hash-set) (keys last-update-time-val))
+          no-longer-waiting (set/difference (-> job-uuid->last-update-time keys set)
                                             pending-job-uuids)]
       {:to-fetch (into [] (take batch-size (concat missing-data sorted-have-data)))
        :to-remove no-longer-waiting})))
@@ -94,9 +100,10 @@
   [db]
   (let [{:keys [to-fetch to-remove]} (job-ids-to-update db)]
     (when (not (empty? to-fetch))
-      (log/debug "Updating data local costs for " to-fetch)
+      (log/debug "Updating data local costs for" to-fetch)
       (let [new-costs (fetch-data-local-costs to-fetch)]
-        (log/debug "Got updated costs " new-costs)
+        (log/info "Got updated costs for" (count new-costs) "jobs")
+        (log/debug "Got updated costs" new-costs)
         (update-data-local-costs new-costs to-remove)))))
 
 (defn start-update-cycles!

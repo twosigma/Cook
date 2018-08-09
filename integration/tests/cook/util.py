@@ -1185,3 +1185,7 @@ def is_preemption_enabled():
 def current_milli_time():
     """Returns the current epoch time in milliseconds"""
     return int(round(time.time() * 1000))
+
+
+def data_local_service_is_set():
+    return os.getenv('DATA_LOCAL_SERVICE', None) is not None
