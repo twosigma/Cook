@@ -29,6 +29,7 @@
             [cook.config :as config]
             [cook.cors :as cors]
             [cook.datomic :as datomic]
+            [cook.mesos.data-locality :as dl]
             [cook.mesos.pool :as pool]
             [cook.mesos.quota :as quota]
             [cook.mesos.reason :as reason]
@@ -2498,6 +2499,32 @@
                     (->> (pool/all-pools db)
                          (mapv pool-entity->consumable-map))))}))
 
+(def DataLocalUpdateTimeResponse
+  {s/Str s/Str})
+
+(def DataLocalCostResponse
+  {s/Str s/Num})
+
+(defn data-local-update-time-handler
+  "Handler for return the last update time of data locality"
+  []
+  (base-cook-handler
+   {:allowed-methods [:get]
+    :handle-ok (fn [_]
+                 (pc/map-vals (partial tf/unparse iso-8601-format)
+                              (dl/get-last-update-time)))}))
+
+(defn data-local-cost-handler
+  "Handler which returns the data locality costs for a given job"
+  []
+  (base-cook-handler
+   {:allowed-methods [:get]
+    :exists? (fn [ctx]
+               (contains? (dl/get-data-local-costs) (get-in ctx [:request :params :uuid])))
+    :handle-ok (fn [ctx]
+                 (let [cost (dl/get-data-local-costs)]
+                   (cost (get-in ctx [:request :params :uuid]))))}))
+
 (defn- streaming-json-encoder
   "Takes as input the response body which can be converted into JSON,
   and returns a function which takes a ServletResponse and writes the JSON
@@ -2807,6 +2834,23 @@
                               :description "The pools were returned."}}
              :get {:summary "Returns the pools."
                    :handler (pools-handler)}})))
+
+      (c-api/context
+       "/data-local/:uuid" []
+       :path-params [uuid :- s/Uuid]
+       (c-api/resource
+        {:produces ["application/json"]
+         :responses {200 {:schema DataLocalCostResponse}}
+         :get {:summary "Returns summary information on the current data locality status"
+               :handler (data-local-cost-handler)}}))
+
+      (c-api/context
+       "/data-local" []
+       (c-api/resource
+        {:produces ["application/json"]
+         :responses {200 {:schema DataLocalUpdateTimeResponse}}
+         :get {:summary "Returns summary information on the current data locality status"
+               :handler (data-local-update-time-handler)}}))
 
       (ANY "/queue" []
         (waiting-jobs mesos-pending-jobs-fn is-authorized-fn mesos-leadership-atom leader-selector))

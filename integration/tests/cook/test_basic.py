@@ -1,3 +1,4 @@
+import datetime
 import json
 import logging
 import math
@@ -2472,6 +2473,7 @@ class CookTest(util.CookTest):
                 self.assertFalse('pools' in resp.json())
 
     @pytest.mark.serial
+    @unittest.skipUnless(util.data_local_service_is_set(), "Requires a data local service")
     def test_data_local_support(self):
         max_cost = util.settings(self.cook_url)['data-local-fitness-calculator']['maximum-cost']
         slaves = util.get_mesos_state(self.mesos_url)['slaves']
@@ -2523,10 +2525,10 @@ class CookTest(util.CookTest):
 
 
     def test_data_local_constraint(self):
-        num_slaves = len(util.get_mesos_state(self.mesos_url)['slaves'])
         uuid, resp = util.submit_job(self.cook_url, data_local=True)
         self.assertEqual(201, resp.status_code, resp.text)
 
+        # Because the job has no data in the data locality service, it shouldn't be scheduled for a period of time.
         def query_unscheduled():
             resp = util.unscheduled_jobs(self.cook_url, uuid)[0][0]
             placement_reasons = [reason for reason in resp['reasons']
@@ -2540,3 +2542,38 @@ class CookTest(util.CookTest):
         data_locality_reasons = [r for r in reason['data']['reasons']
                                  if r['reason'] == 'data-locality-constraint']
         self.assertEqual(1, len(data_locality_reasons))
+
+
+    @pytest.mark.serial
+    @unittest.skipUnless(util.data_local_service_is_set(), "Requires a data local service")
+    def test_data_local_debug_endpoint(self):
+        try:
+            job_uuid, resp = util.submit_job(self.cook_url, constraints=[["HOSTNAME",
+                                                                          "EQUALS",
+                                                                          "lol won't get scheduled"]],
+                                             data_local=True)
+            slaves = util.get_mesos_state(self.mesos_url)['slaves']
+            costs = []
+            for slave in slaves:
+                costs.append({'node': slave['hostname'], 'cost': 0})
+            data_local_service = os.getenv('DATA_LOCAL_SERVICE')
+            util.session.post(f'{data_local_service}/api/v1/set', json={str(job_uuid): costs})
+
+            def get_last_update_time():
+                resp = util.session.get(f'{self.cook_url}/data-local')
+                return resp.json()
+
+            last_update = util.wait_until(get_last_update_time, lambda x: str(job_uuid) in x)
+            datetime.datetime.strptime(last_update[str(job_uuid)], '%Y-%m-%dT%H:%M:%S.%fZ')
+
+            cost_resp = util.session.get(f'{self.cook_url}/data-local/{str(job_uuid)}')
+            self.assertEqual(200, cost_resp.status_code)
+            expected_costs = {}
+            for slave in slaves:
+                expected_costs[slave['hostname']] = 0
+            self.assertEqual(expected_costs, cost_resp.json())
+
+            missing_resp = util.session.get(f'{self.cook_url}/data-local/{str(uuid.uuid4())}')
+            self.assertEqual(404, missing_resp.status_code, missing_resp.text)
+        finally:
+            util.kill_jobs(self.cook_url, [job_uuid])

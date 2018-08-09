@@ -1226,3 +1226,6 @@ def num_hosts_to_consider(cook_url, mesos_url):
     num_hosts = len(hosts_to_consider(cook_url, mesos_url))
     logging.info(f'There are {num_hosts} hosts to consider')
     return num_hosts
+
+def data_local_service_is_set():
+    return os.getenv('DATA_LOCAL_SERVICE', None) is not None
