@@ -2372,22 +2372,30 @@ class CookTest(util.CookTest):
             pool_name = pool['name']
             self.logger.info(f'Testing quota check for pool {pool_name}')
             quota = util.get_limit(self.cook_url, 'quota', user, pool_name).json()
-            cpus_over_quota = quota['cpus'] + 0.1
-            mem_over_quota = quota['mem'] + 1
-            self.assertLessEqual(cpus_over_quota, task_constraint_cpus)
-            self.assertLessEqual(mem_over_quota, task_constraint_mem)
 
             # cpus
-            job_uuid, resp = util.submit_job(self.cook_url, pool=pool_name, cpus=0.1)
-            self.assertEqual(201, resp.status_code, msg=resp.content)
-            job_uuid, resp = util.submit_job(self.cook_url, pool=pool_name, cpus=cpus_over_quota)
-            self.assertEqual(422, resp.status_code, msg=resp.content)
+            cpus_over_quota = quota['cpus'] + 0.1
+            if cpus_over_quota > task_constraint_cpus:
+                self.logger.info(f'Unable to check CPU quota on {pool_name} because the quota ({quota["cpus"]}) is '
+                                 f'higher than the task constraint ({task_constraint_cpus})')
+            else:
+                self.assertLessEqual(cpus_over_quota, task_constraint_cpus)
+                job_uuid, resp = util.submit_job(self.cook_url, pool=pool_name, cpus=0.1)
+                self.assertEqual(201, resp.status_code, msg=resp.content)
+                job_uuid, resp = util.submit_job(self.cook_url, pool=pool_name, cpus=cpus_over_quota)
+                self.assertEqual(422, resp.status_code, msg=resp.content)
 
             # mem
-            job_uuid, resp = util.submit_job(self.cook_url, pool=pool_name, mem=32)
-            self.assertEqual(201, resp.status_code, msg=resp.content)
-            job_uuid, resp = util.submit_job(self.cook_url, pool=pool_name, mem=mem_over_quota)
-            self.assertEqual(422, resp.status_code, msg=resp.content)
+            mem_over_quota = quota['mem'] + 1
+            if mem_over_quota > task_constraint_mem:
+                self.logger.info(f'Unable to check mem quota on {pool_name} because the quota ({quota["mem"]}) is '
+                                 f'higher than the task constraint ({task_constraint_mem})')
+            else:
+                self.assertLessEqual(mem_over_quota, task_constraint_mem)
+                job_uuid, resp = util.submit_job(self.cook_url, pool=pool_name, mem=32)
+                self.assertEqual(201, resp.status_code, msg=resp.content)
+                job_uuid, resp = util.submit_job(self.cook_url, pool=pool_name, mem=mem_over_quota)
+                self.assertEqual(422, resp.status_code, msg=resp.content)
 
     def test_decrease_retries_below_attempts(self):
         uuid, resp = util.submit_job(self.cook_url, command='exit 1', max_retries=2)
