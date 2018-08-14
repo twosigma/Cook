@@ -670,11 +670,10 @@
                   (map #(-> % .getRequest :job)))
         job-uuids (set (map :job/uuid jobs))]
     (log/debug "In" pool "pool, matched jobs:" (count job-uuids))
-    ;;; TODO(DPO) Fix the metrics below to include the pool
-    ;(when (seq matches)
-    ;  (let [matched-normal-jobs-resource-requirements (-> jobs :normal util/sum-resources-of-jobs)]
-    ;    (meters/mark! matched-tasks-cpus (:cpus matched-normal-jobs-resource-requirements))
-    ;    (meters/mark! matched-tasks-mem (:mem matched-normal-jobs-resource-requirements))))
+    (when (seq matches)
+      (let [matched-normal-jobs-resource-requirements (util/sum-resources-of-jobs jobs)]
+        (meters/mark! matched-tasks-cpus (:cpus matched-normal-jobs-resource-requirements))
+        (meters/mark! matched-tasks-mem (:mem matched-normal-jobs-resource-requirements))))
     job-uuids))
 
 (defn remove-matched-jobs-from-pending-jobs
