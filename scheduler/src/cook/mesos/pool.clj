@@ -79,10 +79,3 @@
       (when (-> pools count pos?)
         (throw (ex-info "There are pools in the database, but no default pool is configured"
                         {:pools pools}))))))
-
-;;; TODO List for pool scheduling
-;;; - add schema validation on pool names so that keywordizing them is sane
-;;; - circle back and fix all docstrings and function names to clarify category vs. pool
-;;; - make configurable the name of the attribute that marks the pool on each offer
-;;; - define constant for the "no-pool" magic string
-;;; - make all relevant metrics pool-specific
