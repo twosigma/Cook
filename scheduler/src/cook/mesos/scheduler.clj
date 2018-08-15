@@ -579,7 +579,7 @@
     (mesos/decline-offer driver id)))
 
 (defn decline-offers-safe
-  "TODO(DPO)"
+  "Declines a collection of offers, catching exceptions"
   [driver offers]
   (try
     (decline-offers driver (map :id offers))
@@ -1217,12 +1217,13 @@
                            dru/sorted-task-cumulative-gpu-score-pairs sort-gpu-jobs-hierarchy-duration))
 
 (defn- pool->keyword
-  "TODO(DPO)"
+  "Given a pool entity, returns the keyword-ized name"
   [pool]
   (-> pool :pool/name keyword))
 
 (defn- pool-map
-  "TODO(DPO)"
+  "Given a collection of pools, and a function val-fn that takes a pool,
+  returns a map from keyword-ized pool name to (val-fn pool)"
   [pools val-fn]
   (into {} (map (fn [p] [(pool->keyword p) (val-fn p)]) pools)))
 
