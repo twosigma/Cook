@@ -65,7 +65,7 @@
   (lookup-cache! cache :db/id miss-fn entity))
 
 (defonce ^Cache job-ent->resources-cache (new-cache))
-(defonce ^Cache categorize-job-cache (new-cache))
+(defonce ^Cache job-ent->pool-cache (new-cache))
 (defonce ^Cache task-ent->user-cache (new-cache))
 (defonce ^Cache job-ent->user-cache (new-cache))
 (defonce ^Cache task->feature-vector-cache (new-cache))
@@ -79,22 +79,17 @@
           db)
        (map first)))
 
-(let [default-pool (config/default-pool)]
+(let [default-pool (config/default-pool)
+      miss-fn (fn [{:keys [job/pool]}]
+                (if pool
+                  (-> pool :pool/name keyword)
+                  (if default-pool
+                    (keyword default-pool)
+                    :no-pool)))]
   (defn job->pool
-    "TODO(DPO)"
-    [{:keys [job/pool]}]
-    (if pool
-      (-> pool :pool/name keyword)
-      (if default-pool
-        (keyword default-pool)
-        :no-pool))))
-
-;; TODO(DPO) Fix this name and docstring
-(defn categorize-job
-  "Return the category of the job. Currently jobs can be :normal or :gpu. This
-   is used to give separate queues for scarce & non-scarce resources"
-  [job]
-  (lookup-cache-datomic-entity! categorize-job-cache job->pool job))
+    "Return the pool of the job."
+    [job]
+    (lookup-cache-datomic-entity! job-ent->pool-cache miss-fn job)))
 
 (defn without-ns
   [k]

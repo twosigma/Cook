@@ -69,7 +69,7 @@
   "Flush the caches. Needed in unit tests. We centralize initialization by using it to initialize the caches too."
   []
   (.invalidateAll util/job-ent->resources-cache)
-  (.invalidateAll util/categorize-job-cache)
+  (.invalidateAll util/job-ent->pool-cache)
   (.invalidateAll util/task-ent->user-cache)
   (.invalidateAll util/task->feature-vector-cache)
   (.invalidateAll util/job-ent->user-cache))

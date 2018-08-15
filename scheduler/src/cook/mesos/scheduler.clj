@@ -763,7 +763,6 @@
                 (getTaskAssigner)
                 (call task-request hostname))))))))
 
-;;; TODO(DPO) Investigate if this needs to change to account for pools
 (defn update-host-reservations!
   "Updates the rebalancer-reservation-atom with the result of the match cycle.
    - Releases reservations for jobs that were matched
@@ -1235,9 +1234,9 @@
   ;; e.g. running jobs or when it is always considered committed e.g. shares
   ;; The unfiltered db can also be used on pending job entities once the filtered db is used to limit
   ;; to only those jobs that have been committed.
-  (let [category->pending-job-ents (group-by util/categorize-job (util/get-pending-job-ents unfiltered-db))
+  (let [category->pending-job-ents (group-by util/job->pool (util/get-pending-job-ents unfiltered-db))
         category->pending-task-ents (pc/map-vals #(map util/create-task-ent %1) category->pending-job-ents)
-        category->running-task-ents (group-by (comp util/categorize-job :job/_instance)
+        category->running-task-ents (group-by (comp util/job->pool :job/_instance)
                                               (util/get-running-task-ents unfiltered-db))
         pools (pool/all-pools unfiltered-db)
         using-pools? (-> pools count pos?)

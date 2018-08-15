@@ -218,7 +218,7 @@
    (let [running-task-ents (filter (fn [task]
                                      (-> task
                                          :job/_instance
-                                         util/categorize-job
+                                         util/job->pool
                                          (= (keyword (:pool/name pool-ent)))))
                                    running-task-ents)
          user->dru-divisors (dru/init-user->dru-divisors db running-task-ents pending-job-ents)
