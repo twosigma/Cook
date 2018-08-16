@@ -292,3 +292,43 @@ class MultiUserCookTest(util.CookTest):
             with admin:
                 util.kill_jobs(self.cook_url, all_job_uuids, assert_response=False)
                 util.reset_limit(self.cook_url, 'share', user.name, reason=self.current_name())
+
+    @unittest.skipUnless(util.are_pools_enabled(), 'Pools are not enabled on the cluster')
+    @pytest.mark.serial
+    def test_pool_scheduling(self):
+        admin = self.user_factory.admin()
+        user = self.user_factory.new_user()
+        pools, _ = util.active_pools(self.cook_url)
+        all_job_uuids = []
+        try:
+            self.assertLess(1, len(pools))
+
+            cpus = 0.1
+            with admin:
+                for pool in pools:
+                    # Lower the user's cpu quota on this pool
+                    util.set_limit(self.cook_url, 'quota', user.name, cpus=cpus, pool=pool['name'])
+
+            with user:
+                blocked_job_uuids = []
+                for pool in pools:
+                    pool_name = pool['name']
+
+                    # Submit a job that fills the user's quota on this pool
+                    job_uuid, _ = util.submit_job(self.cook_url, cpus=cpus, command='sleep 600', pool=pool_name)
+                    all_job_uuids.append(job_uuid)
+                    util.wait_for_running_instance(self.cook_url, job_uuid)
+
+                    # Submit a job that should not get scheduled
+                    job_uuid, _ = util.submit_job(self.cook_url, cpus=cpus, command='ls', pool=pool_name)
+                    all_job_uuids.append(job_uuid)
+                    blocked_job_uuids.append(job_uuid)
+
+                for job_uuid in blocked_job_uuids:
+                    job = util.load_job(self.cook_url, job_uuid)
+                    self.assertEqual('waiting', job['status'])
+        finally:
+            with admin:
+                util.kill_jobs(self.cook_url, all_job_uuids, assert_response=False)
+                for pool in pools:
+                    util.reset_limit(self.cook_url, 'quota', user.name, reason=self.current_name(), pool=pool['name'])

@@ -639,13 +639,19 @@
               [user->usage' (below-quota? (user->quota user) (get user->usage' user))]))]
     (util/filter-sequential filter-with-quota user->usage queue)))
 
+(defn- pool->keyword
+  "Given a pool entity, returns the keyword-ized name"
+  [pool]
+  (-> pool :pool/name keyword))
+
 (defn generate-user-usage-map
   "Returns a mapping from user to usage stats"
-  [unfiltered-db]
+  [unfiltered-db pool]
   (timers/time!
     generate-user-usage-map-duration
     (->> (util/get-running-task-ents unfiltered-db)
          (map :job/_instance)
+         (remove #(not= pool (util/job->pool %)))
          (group-by :job/user)
          (pc/map-vals (fn [jobs]
                         (->> jobs
@@ -881,7 +887,7 @@
                       ;;  2. Once the above two items are addressed, user->usage should always correctly
                       ;;     reflect *Cook*'s understanding of the state of the world at this point.
                       ;;     When this happens, users should never exceed their quota
-                      user->usage-future (future (generate-user-usage-map (d/db conn)))
+                      user->usage-future (future (generate-user-usage-map (d/db conn) pool))
                       ;; Try to clear the channel
                       offers (->> (util/read-chan offers-chan chan-length)
                                   ((fn decrement-offer-chan-depth [offer-lists]
@@ -897,7 +903,7 @@
                                                             (cache/hit c slave-id)
                                                             (cache/miss c slave-id attrs)))))
                       _ (log/debug "In" pool "pool, passing following offers to handle-resource-offers!" offers)
-                      user->quota (quota/create-user->quota-fn (d/db conn) nil)
+                      user->quota (quota/create-user->quota-fn (d/db conn) (name pool))
                       matched-head? (handle-resource-offers! conn @driver-atom fenzo framework-id pending-jobs-atom
                                                              mesos-run-as-user @user->usage-future user->quota
                                                              num-considerable offers-chan offers
@@ -1215,11 +1221,6 @@
   [pending-task-ents running-task-ents user->dru-divisors]
   (sort-jobs-by-dru-helper pending-task-ents running-task-ents user->dru-divisors
                            dru/sorted-task-cumulative-gpu-score-pairs sort-gpu-jobs-hierarchy-duration))
-
-(defn- pool->keyword
-  "Given a pool entity, returns the keyword-ized name"
-  [pool]
-  (-> pool :pool/name keyword))
 
 (defn- pool-map
   "Given a collection of pools, and a function val-fn that takes a pool,

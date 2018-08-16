@@ -1185,3 +1185,12 @@ def is_preemption_enabled():
 def current_milli_time():
     """Returns the current epoch time in milliseconds"""
     return int(round(time.time() * 1000))
+
+
+@functools.lru_cache()
+def are_pools_enabled():
+    """Returns true if there are at least 2 active pools on the cluster"""
+    cook_url = retrieve_cook_url()
+    init_cook_session(cook_url)
+    _wait_for_cook(cook_url)
+    return len(active_pools(cook_url)[0]) > 1
