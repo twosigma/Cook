@@ -56,7 +56,7 @@
   [read-limit-fn err-msg db job]
   (when (= (:job/state job) :job.state/waiting)
     (let [user (:job/user job)
-          pool-name (-> job util/job->pool name)
+          pool-name (-> job :job/pool :pool/name)
           ways (how-job-would-exceed-resource-limits
                 (read-limit-fn db user pool-name)
                 (util/jobs-by-user-and-state db user :job.state/running pool-name)
@@ -110,7 +110,7 @@
   (let [db (d/db conn)
         user (:job/user job)
         job-uuid (:job/uuid job)
-        pool-name (-> job util/job->pool name)
+        pool-name (-> job :job/pool :pool/name)
         running-tasks (map
                        (fn [j] (->> j
                                     :job/instance
