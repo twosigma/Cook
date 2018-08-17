@@ -3,8 +3,9 @@ import logging
 import unittest
 
 import pytest
+from retrying import retry
 
-from tests.cook import mesos, util
+from tests.cook import mesos, reasons, util
 
 
 @pytest.mark.multi_user
@@ -301,32 +302,51 @@ class MultiUserCookTest(util.CookTest):
         pools, _ = util.active_pools(self.cook_url)
         all_job_uuids = []
         try:
+            default_pool = util.default_pool(self.cook_url)
             self.assertLess(1, len(pools))
+            self.assertIsNotNone(default_pool)
 
             cpus = 0.1
             with admin:
                 for pool in pools:
                     # Lower the user's cpu quota on this pool
-                    util.set_limit(self.cook_url, 'quota', user.name, cpus=cpus, pool=pool['name'])
+                    pool_name = pool['name']
+                    quota_multiplier = 1 if pool_name == default_pool else 2
+                    util.set_limit(self.cook_url, 'quota', user.name, cpus=cpus * quota_multiplier, pool=pool_name)
 
             with user:
-                blocked_job_uuids = []
                 for pool in pools:
                     pool_name = pool['name']
 
                     # Submit a job that fills the user's quota on this pool
-                    job_uuid, _ = util.submit_job(self.cook_url, cpus=cpus, command='sleep 600', pool=pool_name)
-                    all_job_uuids.append(job_uuid)
-                    util.wait_for_running_instance(self.cook_url, job_uuid)
+                    quota = util.get_limit(self.cook_url, 'quota', user.name, pool_name).json()
+                    quota_cpus = quota['cpus']
+                    filling_job_uuid, _ = util.submit_job(self.cook_url, cpus=quota_cpus,
+                                                          command='sleep 600', pool=pool_name)
+                    all_job_uuids.append(filling_job_uuid)
+                    util.wait_for_running_instance(self.cook_url, filling_job_uuid)
 
                     # Submit a job that should not get scheduled
                     job_uuid, _ = util.submit_job(self.cook_url, cpus=cpus, command='ls', pool=pool_name)
                     all_job_uuids.append(job_uuid)
-                    blocked_job_uuids.append(job_uuid)
-
-                for job_uuid in blocked_job_uuids:
                     job = util.load_job(self.cook_url, job_uuid)
                     self.assertEqual('waiting', job['status'])
+
+                    # Assert that the unscheduled reason and data are correct
+                    @retry(stop_max_delay=60000, wait_fixed=5000)
+                    def check_unscheduled_reason():
+                        jobs, _ = util.unscheduled_jobs(self.cook_url, job_uuid)
+                        self.logger.info(f'Unscheduled jobs: {jobs}')
+                        self.assertEqual(job_uuid, jobs[0]['uuid'])
+                        job_reasons = jobs[0]['reasons']
+                        # Check the spot-in-queue reason
+                        reason = next(r for r in job_reasons if r['reason'] == 'You have 1 other jobs ahead in the '
+                                                                               'queue.')
+                        self.assertEqual({'jobs': [filling_job_uuid]}, reason['data'])
+                        # Check the exceeding-quota reason
+                        reason = next(r for r in job_reasons if r['reason'] == reasons.JOB_WOULD_EXCEED_QUOTA)
+                        self.assertEqual({'cpus': {'limit': quota_cpus, 'usage': quota_cpus + cpus}}, reason['data'])
+                    check_unscheduled_reason()
         finally:
             with admin:
                 util.kill_jobs(self.cook_url, all_job_uuids, assert_response=False)

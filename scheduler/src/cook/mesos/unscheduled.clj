@@ -56,9 +56,10 @@
   [read-limit-fn err-msg db job]
   (when (= (:job/state job) :job.state/waiting)
     (let [user (:job/user job)
+          pool-name (-> job util/job->pool name)
           ways (how-job-would-exceed-resource-limits
-                (read-limit-fn db user nil)
-                (util/jobs-by-user-and-state db user :job.state/running)
+                (read-limit-fn db user pool-name)
+                (util/jobs-by-user-and-state db user :job.state/running pool-name)
                 job)]
       (when (seq ways)
         [err-msg ways]))))
@@ -109,14 +110,15 @@
   (let [db (d/db conn)
         user (:job/user job)
         job-uuid (:job/uuid job)
+        pool-name (-> job util/job->pool name)
         running-tasks (map
                        (fn [j] (->> j
                                     :job/instance
                                     (filter util/instance-running?)
                                     last))
-                       (util/jobs-by-user-and-state db user :job.state/running))
+                       (util/jobs-by-user-and-state db user :job.state/running pool-name))
         pending-tasks (map util/create-task-ent
-                           (util/jobs-by-user-and-state db user :job.state/waiting))
+                           (util/jobs-by-user-and-state db user :job.state/waiting pool-name))
         all-tasks (into running-tasks pending-tasks)
         sorted-tasks (vec (sort (util/same-user-task-comparator) all-tasks))
         queue-pos (first

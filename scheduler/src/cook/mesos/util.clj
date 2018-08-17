@@ -511,15 +511,18 @@
   "Returns all job entities for a particular user
    in a particular state.  Unlike get-jobs-by-user-and-state, doesn't
   impose any other conditions."
-  [db user state]
-  (->> (q '[:find [?j ...]
-            :in $ ?user ?state
-            :where
-            [?j :job/state ?state]
-            [?j :job/user ?user]]
-          db user state)
-       (map (partial d/entity db))
-       (map d/touch)))
+  [db user state pool-name]
+  (let [requesting-default-pool? (pool/requesting-default-pool? pool-name)
+        pool-name' (pool/pool-name-or-default pool-name)]
+    (->> (q '[:find [?j ...]
+              :in $ ?user ?state ?pool-name ?requesting-default-pool
+              :where
+              [?j :job/state ?state]
+              [?j :job/user ?user]
+              [(cook.mesos.pool/check-pool $ ?j :job/pool ?pool-name ?requesting-default-pool)]]
+            db user state pool-name' requesting-default-pool?)
+         (map (partial d/entity db))
+         (map d/touch))))
 
 (timers/deftimer [cook-mesos scheduler get-running-tasks-duration])
 
