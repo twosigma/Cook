@@ -402,9 +402,7 @@
 
 (defn rebalance
   "Takes a db, a list of pending job entities, a map of spare resources and params.
-   Returns a list of pending job entities to run and a list of task entities to preempt
-
-   category is :normal or :gpu, depending on which type of job we're working with"
+   Returns a list of pending job entities to run and a list of task entities to preempt"
   [db agent-attributes-cache pending-job-ents host->spare-resources rebalancer-reservation-atom
    {:keys [max-preemption pool-ent] :as params}]
   (let [timer (timers/start rebalance-duration)

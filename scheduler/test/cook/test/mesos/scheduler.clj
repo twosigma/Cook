@@ -169,7 +169,7 @@
         {:scheduled scheduled :result result})
       {:result result})))
 
-(deftest test-sort-jobs-by-dru-category
+(deftest test-sort-jobs-by-dru-pool
   (let [uri "datomic:mem://test-sort-jobs-by-dru"
         conn (restore-fresh-database! uri)
         j1 (create-dummy-job conn :user "ljin" :ncpus 1.0 :memory 3.0 :job-state :job.state/running)
@@ -189,13 +189,13 @@
                                 "limits for new cluster"
                                 :mem 10.0 :cpus 10.0)
             db (d/db conn)]
-        (is (= [j2 j3 j6 j4 j8] (map :db/id (:no-pool (sched/sort-jobs-by-dru-category db)))))))
+        (is (= [j2 j3 j6 j4 j8] (map :db/id (:no-pool (sched/sort-jobs-by-dru-pool db)))))))
 
     (testing "sort-jobs-by-dru one user has non-default share"
       (let [_ (share/set-share! conn "default" nil "limits for new cluster" :mem 10.0 :cpus 10.0)
             _ (share/set-share! conn "sunil" nil "needs more resources" :mem 100.0 :cpus 100.0)
             db (d/db conn)]
-        (is (= [j8 j2 j3 j6 j4] (map :db/id (:no-pool (sched/sort-jobs-by-dru-category db))))))))
+        (is (= [j8 j2 j3 j6 j4] (map :db/id (:no-pool (sched/sort-jobs-by-dru-pool db))))))))
 
   (testing "test-sort-jobs-by-dru:normal-jobs"
     (let [uri "datomic:mem://test-sort-jobs-by-dru-normal-jobs"
@@ -205,8 +205,8 @@
           j3n (create-dummy-job conn :user "u2" :job-state :job.state/waiting :memory 1500 :ncpus 1.0)
           j4n (create-dummy-job conn :user "u2" :job-state :job.state/waiting :memory 1500 :ncpus 1.0 :priority 30)
           test-db (d/db conn)]
-      (is (= [j2n j3n j1n j4n] (map :db/id (:no-pool (sched/sort-jobs-by-dru-category test-db)))))
-      (is (empty? (:gpu (sched/sort-jobs-by-dru-category test-db))))))
+      (is (= [j2n j3n j1n j4n] (map :db/id (:no-pool (sched/sort-jobs-by-dru-pool test-db)))))
+      (is (empty? (:gpu (sched/sort-jobs-by-dru-pool test-db))))))
 
   (testing "test-sort-jobs-by-dru:gpu-jobs"
     (let [uri "datomic:mem://test-sort-jobs-by-dru-gpu-jobs"
@@ -217,8 +217,8 @@
           j3g (create-dummy-job conn :user "u2" :job-state :job.state/waiting :memory 1500 :ncpus 1.0 :gpus 20.0 :pool "gpu")
           j4g (create-dummy-job conn :user "u2" :job-state :job.state/waiting :memory 1500 :ncpus 1.0 :gpus 10.0 :pool "gpu" :priority 30)
           test-db (d/db conn)]
-      (is (empty? (:normal (sched/sort-jobs-by-dru-category test-db))))
-      (is (= [j3g j2g j4g j1g] (map :db/id (:gpu (sched/sort-jobs-by-dru-category test-db)))))))
+      (is (empty? (:normal (sched/sort-jobs-by-dru-pool test-db))))
+      (is (= [j3g j2g j4g j1g] (map :db/id (:gpu (sched/sort-jobs-by-dru-pool test-db)))))))
 
   (testing "test-sort-jobs-by-dru:mixed-jobs"
     (let [uri "datomic:mem://test-sort-jobs-by-dru-mixed-jobs"
@@ -234,8 +234,8 @@
           j3g (create-dummy-job conn :user "u2" :job-state :job.state/waiting :memory 1500 :ncpus 1.0 :pool "gpu" :gpus 20.0)
           j4g (create-dummy-job conn :user "u2" :job-state :job.state/waiting :memory 1500 :ncpus 1.0 :pool "gpu" :gpus 10.0 :priority 30)
           test-db (d/db conn)]
-      (is (= [j2n j3n j1n j4n] (map :db/id (:normal (sched/sort-jobs-by-dru-category test-db)))))
-      (is (= [j3g j2g j4g j1g] (map :db/id (:gpu (sched/sort-jobs-by-dru-category test-db))))))))
+      (is (= [j2n j3n j1n j4n] (map :db/id (:normal (sched/sort-jobs-by-dru-pool test-db)))))
+      (is (= [j3g j2g j4g j1g] (map :db/id (:gpu (sched/sort-jobs-by-dru-pool test-db))))))))
 
 (d/delete-database "datomic:mem://preemption-testdb")
 (d/create-database "datomic:mem://preemption-testdb")
@@ -857,13 +857,13 @@
                                 "Needs some GPUs"
                                 :gpus 2.0)
             db (d/db conn)]
-        (is (= [ljin-2 wzhao-1 ljin-3 ljin-4 wzhao-2] (map :db/id (pool-keyword (sched/sort-jobs-by-dru-category db)))))))
+        (is (= [ljin-2 wzhao-1 ljin-3 ljin-4 wzhao-2] (map :db/id (pool-keyword (sched/sort-jobs-by-dru-pool db)))))))
     (testing "one user has single gpu share"
       (let [_ (share/set-share! conn "ljin" pool-name
                                 "Doesn't need lots of gpus"
                                 :gpus 1.0)
             db (d/db conn)]
-        (is (= [wzhao-1 wzhao-2 ljin-2 ljin-3 ljin-4] (map :db/id (pool-keyword (sched/sort-jobs-by-dru-category db)))))))))
+        (is (= [wzhao-1 wzhao-2 ljin-2 ljin-3 ljin-4] (map :db/id (pool-keyword (sched/sort-jobs-by-dru-pool db)))))))))
 
 (deftest test-cancelled-task-killer
   (let [uri "datomic:mem://test-gpu-shares"
@@ -1290,8 +1290,8 @@
       (is (= [(make-job 1 2 2048) (make-job 2 1 1024)]
              (sched/filter-based-on-quota {test-user {:count 4, :cpus 20, :mem 6144}} user->usage queue))))))
 
-(deftest test-category->pending-jobs->category->considerable-jobs
-  (let [uri "datomic:mem://test-category-pending-jobs-category-considerable-jobs"
+(deftest test-pending-jobs->considerable-jobs
+  (let [uri "datomic:mem://test-pending-jobs-considerable-jobs"
         conn (restore-fresh-database! uri)
         test-db (d/db conn)
         test-user (System/getProperty "user.name")
@@ -1378,7 +1378,7 @@
                (sched/pending-jobs->considerable-jobs
                  (d/db conn) gpu-jobs user->quota user->usage num-considerable nil)))))))
 
-(deftest test-matches->category->job-uuids
+(deftest test-matches->job-uuids
   (let [create-task-result (fn [job-uuid _ _ gpus]
                              (-> (Mockito/when (.getRequest (Mockito/mock TaskAssignmentResult)))
                                  (.thenReturn (sched/make-task-request
@@ -1416,61 +1416,61 @@
   (let [create-jobs-in-range (fn [start-inc end-exc]
                                (map (fn [id] {:job/uuid id}) (range start-inc end-exc)))]
     (testing "empty matched jobs"
-      (let [category->pending-jobs {:gpu (create-jobs-in-range 10 15)
-                                    :normal (create-jobs-in-range 1 10)}
+      (let [pool->pending-jobs {:gpu (create-jobs-in-range 10 15)
+                                :normal (create-jobs-in-range 1 10)}
             matched-job-uuids #{}
-            expected-category->pending-jobs category->pending-jobs]
-        (is (= expected-category->pending-jobs
-               (sched/remove-matched-jobs-from-pending-jobs category->pending-jobs matched-job-uuids :gpu)))
-        (is (= expected-category->pending-jobs
-               (sched/remove-matched-jobs-from-pending-jobs category->pending-jobs matched-job-uuids :normal)))))
+            expected-pool->pending-jobs pool->pending-jobs]
+        (is (= expected-pool->pending-jobs
+               (sched/remove-matched-jobs-from-pending-jobs pool->pending-jobs matched-job-uuids :gpu)))
+        (is (= expected-pool->pending-jobs
+               (sched/remove-matched-jobs-from-pending-jobs pool->pending-jobs matched-job-uuids :normal)))))
 
     (testing "unknown matched jobs"
-      (let [category->pending-jobs {:gpu (create-jobs-in-range 10 15)
-                                    :normal (create-jobs-in-range 1 10)}
-            category->matched-job-uuids {:gpu (set (range 30 35))
-                                         :normal (set (range 20 25))}
-            expected-category->pending-jobs category->pending-jobs]
-        (is (= expected-category->pending-jobs
-               (sched/remove-matched-jobs-from-pending-jobs category->pending-jobs (:gpu category->matched-job-uuids) :gpu)))
-        (is (= expected-category->pending-jobs
-               (sched/remove-matched-jobs-from-pending-jobs category->pending-jobs (:normal category->matched-job-uuids) :normal)))))
+      (let [pool->pending-jobs {:gpu (create-jobs-in-range 10 15)
+                                :normal (create-jobs-in-range 1 10)}
+            pool->matched-job-uuids {:gpu (set (range 30 35))
+                                     :normal (set (range 20 25))}
+            expected-pool->pending-jobs pool->pending-jobs]
+        (is (= expected-pool->pending-jobs
+               (sched/remove-matched-jobs-from-pending-jobs pool->pending-jobs (:gpu pool->matched-job-uuids) :gpu)))
+        (is (= expected-pool->pending-jobs
+               (sched/remove-matched-jobs-from-pending-jobs pool->pending-jobs (:normal pool->matched-job-uuids) :normal)))))
 
     (testing "non-empty matched normal jobs"
-      (let [category->pending-jobs {:gpu (create-jobs-in-range 10 15)
-                                    :normal (create-jobs-in-range 1 10)}
-            category->matched-job-uuids {:gpu #{}
-                                         :normal (set (range 1 5))}
-            expected-category->pending-jobs {:gpu (create-jobs-in-range 10 15)
+      (let [pool->pending-jobs {:gpu (create-jobs-in-range 10 15)
+                                :normal (create-jobs-in-range 1 10)}
+            pool->matched-job-uuids {:gpu #{}
+                                     :normal (set (range 1 5))}
+            expected-pool->pending-jobs {:gpu (create-jobs-in-range 10 15)
                                              :normal (create-jobs-in-range 5 10)}]
-        (is (= (:gpu expected-category->pending-jobs)
-               (:gpu (sched/remove-matched-jobs-from-pending-jobs category->pending-jobs (:gpu category->matched-job-uuids) :gpu))))
-        (is (= (:normal expected-category->pending-jobs)
-               (:normal (sched/remove-matched-jobs-from-pending-jobs category->pending-jobs (:normal category->matched-job-uuids) :normal))))))
+        (is (= (:gpu expected-pool->pending-jobs)
+               (:gpu (sched/remove-matched-jobs-from-pending-jobs pool->pending-jobs (:gpu pool->matched-job-uuids) :gpu))))
+        (is (= (:normal expected-pool->pending-jobs)
+               (:normal (sched/remove-matched-jobs-from-pending-jobs pool->pending-jobs (:normal pool->matched-job-uuids) :normal))))))
 
     (testing "non-empty matched gpu jobs"
-      (let [category->pending-jobs {:gpu (create-jobs-in-range 10 15)
-                                    :normal (create-jobs-in-range 1 10)}
-            category->matched-job-uuids {:gpu (set (range 10 12))
-                                         :normal #{}}
-            expected-category->pending-jobs {:gpu (create-jobs-in-range 12 15)
-                                             :normal (create-jobs-in-range 1 10)}]
-        (is (= (:gpu expected-category->pending-jobs)
-               (:gpu (sched/remove-matched-jobs-from-pending-jobs category->pending-jobs (:gpu category->matched-job-uuids) :gpu))))
-        (is (= (:normal expected-category->pending-jobs)
-               (:normal (sched/remove-matched-jobs-from-pending-jobs category->pending-jobs (:normal category->matched-job-uuids) :normal))))))
+      (let [pool->pending-jobs {:gpu (create-jobs-in-range 10 15)
+                                :normal (create-jobs-in-range 1 10)}
+            pool->matched-job-uuids {:gpu (set (range 10 12))
+                                     :normal #{}}
+            expected-pool->pending-jobs {:gpu (create-jobs-in-range 12 15)
+                                         :normal (create-jobs-in-range 1 10)}]
+        (is (= (:gpu expected-pool->pending-jobs)
+               (:gpu (sched/remove-matched-jobs-from-pending-jobs pool->pending-jobs (:gpu pool->matched-job-uuids) :gpu))))
+        (is (= (:normal expected-pool->pending-jobs)
+               (:normal (sched/remove-matched-jobs-from-pending-jobs pool->pending-jobs (:normal pool->matched-job-uuids) :normal))))))
 
     (testing "non-empty matched normal and gpu jobs"
-      (let [category->pending-jobs {:normal (create-jobs-in-range 1 10)
-                                    :gpu (create-jobs-in-range 10 15)}
-            category->matched-job-uuids {:gpu (set (range 10 12))
-                                         :normal (set (range 5 10))}
-            expected-category->pending-jobs {:gpu (create-jobs-in-range 12 15)
-                                             :normal (create-jobs-in-range 1 5)}]
-        (is (= (:gpu expected-category->pending-jobs)
-               (:gpu (sched/remove-matched-jobs-from-pending-jobs category->pending-jobs (:gpu category->matched-job-uuids) :gpu))))
-        (is (= (:normal expected-category->pending-jobs)
-               (:normal (sched/remove-matched-jobs-from-pending-jobs category->pending-jobs (:normal category->matched-job-uuids) :normal))))))))
+      (let [pool->pending-jobs {:normal (create-jobs-in-range 1 10)
+                                :gpu (create-jobs-in-range 10 15)}
+            pool->matched-job-uuids {:gpu (set (range 10 12))
+                                     :normal (set (range 5 10))}
+            expected-pool->pending-jobs {:gpu (create-jobs-in-range 12 15)
+                                         :normal (create-jobs-in-range 1 5)}]
+        (is (= (:gpu expected-pool->pending-jobs)
+               (:gpu (sched/remove-matched-jobs-from-pending-jobs pool->pending-jobs (:gpu pool->matched-job-uuids) :gpu))))
+        (is (= (:normal expected-pool->pending-jobs)
+               (:normal (sched/remove-matched-jobs-from-pending-jobs pool->pending-jobs (:normal pool->matched-job-uuids) :normal))))))))
 
 (deftest test-handle-resource-offers
   (let [test-user (System/getProperty "user.name")
@@ -1563,14 +1563,14 @@
                                                                                       :gpus 4))
                                             entity->map (fn [entity]
                                                           (util/job-ent->map entity (d/db conn)))
-                                            category->pending-jobs (->> {:normal [job-1 job-2 job-3 job-4] :gpu [job-5 job-6]}
-                                                                        (pc/map-vals (partial map entity->map)))
-                                            category->pending-jobs-atom (atom category->pending-jobs)
+                                            pool->pending-jobs (->> {:normal [job-1 job-2 job-3 job-4] :gpu [job-5 job-6]}
+                                                                    (pc/map-vals (partial map entity->map)))
+                                            pool->pending-jobs-atom (atom pool->pending-jobs)
                                             user->usage (or user->usage {test-user {:count 1, :cpus 2, :mem 1024, :gpus 0}})
                                             user->quota (or user-quota {test-user {:count 10, :cpus 50, :mem 32768, :gpus 10}})
                                             mesos-run-as-user nil
                                             result (sched/handle-resource-offers!
-                                                     conn driver fenzo framework-id category->pending-jobs-atom mesos-run-as-user
+                                                     conn driver fenzo framework-id pool->pending-jobs-atom mesos-run-as-user
                                                      user->usage user->quota num-considerable offers-chan offers rebalancer-reservation-atom pool)]
                                         (async/>!! offers-chan :end-marker)
                                         result))]
@@ -1775,14 +1775,14 @@
                                                                                                  (:hostname offer-3) 0.0}})
                                               entity->map (fn [entity]
                                                             (util/job-ent->map entity (d/db conn)))
-                                              category->pending-jobs (->> {:normal [job-1 job-2]}
-                                                                          (pc/map-vals (partial map entity->map)))
-                                              category->pending-jobs-atom (atom category->pending-jobs)
+                                              pool->pending-jobs (->> {:normal [job-1 job-2]}
+                                                                      (pc/map-vals (partial map entity->map)))
+                                              pool->pending-jobs-atom (atom pool->pending-jobs)
                                               user->usage (or user->usage {test-user {:count 1, :cpus 2, :mem 1024, :gpus 0}})
                                               user->quota (or user-quota {test-user {:count 10, :cpus 50, :mem 32768, :gpus 10}})
                                               mesos-run-as-user nil
                                               result (sched/handle-resource-offers!
-                                                      conn driver fenzo framework-id category->pending-jobs-atom mesos-run-as-user
+                                                      conn driver fenzo framework-id pool->pending-jobs-atom mesos-run-as-user
                                                       user->usage user->quota num-considerable offers-chan offers rebalancer-reservation-atom :normal)]
                                           result))]
       (testing "enough offers for all normal jobs"

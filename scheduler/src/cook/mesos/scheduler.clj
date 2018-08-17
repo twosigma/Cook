@@ -669,7 +669,7 @@
        (take num-considerable)))
 
 (defn matches->job-uuids
-  "Returns the matched job uuid sets by category."
+  "Returns the matched job uuids."
   [matches pool]
   (let [jobs (->> matches
                   (mapcat #(-> % :tasks))
@@ -683,7 +683,7 @@
     job-uuids))
 
 (defn remove-matched-jobs-from-pending-jobs
-  "Removes matched jobs from category->pending-jobs."
+  "Removes matched jobs from pool->pending-jobs."
   [pool->pending-jobs matched-job-uuids pool]
   (update-in pool->pending-jobs [pool]
              (fn [jobs]
@@ -1228,17 +1228,17 @@
   [pools val-fn]
   (into {} (map (fn [p] [(pool->keyword p) (val-fn p)]) pools)))
 
-(defn sort-jobs-by-dru-category
-  "Returns a map from job category to a list of job entities, ordered by dru"
+(defn sort-jobs-by-dru-pool
+  "Returns a map from job pool to a list of job entities, ordered by dru"
   [unfiltered-db]
   ;; This function does not use the filtered db when it is not necessary in order to get better performance
   ;; The filtered db is not necessary when an entity could only arrive at a given state if it was already committed
   ;; e.g. running jobs or when it is always considered committed e.g. shares
   ;; The unfiltered db can also be used on pending job entities once the filtered db is used to limit
   ;; to only those jobs that have been committed.
-  (let [category->pending-job-ents (group-by util/job->pool (util/get-pending-job-ents unfiltered-db))
-        category->pending-task-ents (pc/map-vals #(map util/create-task-ent %1) category->pending-job-ents)
-        category->running-task-ents (group-by (comp util/job->pool :job/_instance)
+  (let [pool->pending-job-ents (group-by util/job->pool (util/get-pending-job-ents unfiltered-db))
+        pool->pending-task-ents (pc/map-vals #(map util/create-task-ent %1) pool->pending-job-ents)
+        pool->running-task-ents (group-by (comp util/job->pool :job/_instance)
                                               (util/get-running-task-ents unfiltered-db))
         pools (pool/all-pools unfiltered-db)
         using-pools? (-> pools count pos?)
@@ -1246,18 +1246,18 @@
                                    (pool-map pools (fn [{:keys [pool/name]}]
                                                      (share/create-user->share-fn unfiltered-db name)))
                                    {:no-pool (share/create-user->share-fn unfiltered-db nil)})
-        category->sort-jobs-by-dru-fn (if using-pools?
-                                        (pool-map pools (fn [{:keys [pool/dru-mode]}]
-                                                          (case dru-mode
-                                                            :pool.dru-mode/default sort-normal-jobs-by-dru
-                                                            :pool.dru-mode/gpu sort-gpu-jobs-by-dru)))
+        pool->sort-jobs-by-dru-fn (if using-pools?
+                                    (pool-map pools (fn [{:keys [pool/dru-mode]}]
+                                                      (case dru-mode
+                                                        :pool.dru-mode/default sort-normal-jobs-by-dru
+                                                        :pool.dru-mode/gpu sort-gpu-jobs-by-dru)))
                                         {:no-pool sort-normal-jobs-by-dru})]
-    (letfn [(sort-jobs-by-dru-category-helper [[category sort-jobs-by-dru]]
-              (let [pending-tasks (category->pending-task-ents category)
-                    running-tasks (category->running-task-ents category)
-                    user->dru-divisors (pool->user->dru-divisors category)]
-                [category (sort-jobs-by-dru pending-tasks running-tasks user->dru-divisors)]))]
-      (into {} (map sort-jobs-by-dru-category-helper) category->sort-jobs-by-dru-fn))))
+    (letfn [(sort-jobs-by-dru-pool-helper [[pool sort-jobs-by-dru]]
+              (let [pending-tasks (pool->pending-task-ents pool)
+                    running-tasks (pool->running-task-ents pool)
+                    user->dru-divisors (pool->user->dru-divisors pool)]
+                [pool (sort-jobs-by-dru pending-tasks running-tasks user->dru-divisors)]))]
+      (into {} (map sort-jobs-by-dru-pool-helper) pool->sort-jobs-by-dru-fn))))
 
 (timers/deftimer [cook-mesos scheduler filter-offensive-jobs-duration])
 
@@ -1324,14 +1324,14 @@
 (meters/defmeter [cook-mesos scheduler rank-jobs-failures])
 
 (defn rank-jobs
-  "Return a map of lists of job entities ordered by dru, keyed by category.
+  "Return a map of lists of job entities ordered by dru, keyed by pool.
 
    It ranks the jobs by dru first and then apply several filters if provided."
   [unfiltered-db offensive-job-filter]
   (timers/time!
     rank-jobs-duration
     (try
-      (->> (sort-jobs-by-dru-category unfiltered-db)
+      (->> (sort-jobs-by-dru-pool unfiltered-db)
            ;; Apply the offensive job filter first before taking.
            (pc/map-vals offensive-job-filter)
            (pc/map-vals #(map util/job-ent->map %))
