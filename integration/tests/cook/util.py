@@ -1135,7 +1135,9 @@ def is_cook_executor_in_use():
 def slave_cpus(mesos_url, hostname):
     """Returns the cpus of the specified Mesos agent"""
     slaves = get_mesos_state(mesos_url)['slaves']
-    slave_cpus = next(s['resources']['cpus'] for s in slaves if s['hostname'] == hostname)
+    # Here we need to use unreserved_resources because Mesos might only
+    # send offers for the unreserved (role = "*") portions of the agents.
+    slave_cpus = next(s['unreserved_resources']['cpus'] for s in slaves if s['hostname'] == hostname)
     return slave_cpus
 
 
