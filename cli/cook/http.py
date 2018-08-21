@@ -1,3 +1,4 @@
+import importlib
 import json
 import logging
 from urllib.parse import urljoin
@@ -9,36 +10,26 @@ from cook.util import print_error
 
 session = None
 timeouts = None
-session_module = None
-adapters_module = None
-
-
-def inject_http_modules(_session_module, _adapters_module):
-    """Injects the provided modules as the http session and adapter modules"""
-    global session_module
-    global adapters_module
-    session_module = _session_module
-    adapters_module = _adapters_module
 
 
 def configure(config):
     """Configures HTTP timeouts and retries to be used"""
     global session
     global timeouts
-    global session_module
-    global adapters_module
     http_config = config.get('http')
+    modules_config = http_config.get('modules')
+    session_module_name = modules_config.get('session-module')
+    adapters_module_name = modules_config.get('adapters-module')
+    session_module = importlib.import_module(session_module_name)
+    adapters_module = importlib.import_module(adapters_module_name)
+    logging.getLogger(session_module_name).setLevel(logging.DEBUG)
     logging.getLogger('urllib3').setLevel(logging.DEBUG)
     connect_timeout = http_config.get('connect-timeout')
     read_timeout = http_config.get('read-timeout')
     timeouts = (connect_timeout, read_timeout)
     logging.debug('using http timeouts: %s', timeouts)
     retries = http_config.get('retries')
-    if not adapters_module:
-        adapters_module = requests.adapters
     http_adapter = adapters_module.HTTPAdapter(max_retries=retries)
-    if not session_module:
-        session_module = requests
     session = session_module.Session()
     session.mount('http://', http_adapter)
     session.headers['User-Agent'] = f"cs/{cook.version.VERSION} ({session.headers['User-Agent']})"
