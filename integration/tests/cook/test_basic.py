@@ -1683,12 +1683,7 @@ class CookTest(util.CookTest):
         finally:
             util.kill_jobs(self.cook_url, uuids)
 
-    @pytest.mark.xfail
     def test_balanced_host_constraint_cannot_place(self):
-        """
-        Marked as explicit due to broken constraints handling.
-        See GitHub issue #579.
-        """
         state = util.get_mesos_state(self.mesos_url)
         num_hosts = len(state['slaves'])
         if num_hosts > 10:
@@ -1736,8 +1731,7 @@ class CookTest(util.CookTest):
         finally:
             util.kill_jobs(self.cook_url, uuids)
 
-    @pytest.mark.xfail(reason='Sometimes fails on Travis')
-    def test_balanced_host_constraint(self):
+    def test_balanced_host_constraint_can_place(self):
         state = util.get_mesos_state(self.mesos_url)
         num_hosts = len(state['slaves'])
         minimum_hosts = min(10, num_hosts)
