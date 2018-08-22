@@ -1619,7 +1619,6 @@ class CookTest(util.CookTest):
         self.assertEqual(1, len(jobs))
         self.assertEqual(job_uuid_1, jobs[0]['uuid'])
 
-    @pytest.mark.xfail(reason='Sometimes fails on Travis')
     def test_unique_host_constraint(self):
         state = util.get_mesos_state(self.mesos_url)
         num_hosts = len(state['slaves'])
