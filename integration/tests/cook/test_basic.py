@@ -1144,13 +1144,8 @@ class CookTest(util.CookTest):
         self.assertEqual(resp.status_code, 400)
         self.assertEqual(f'Duplicate job uuids: ["{job1["uuid"]}"]', resp.json()['error'], resp.text)
 
-    @pytest.mark.xfail
     @unittest.skipIf(util.has_ephemeral_hosts(), util.EPHEMERAL_HOSTS_SKIP_REASON)
     def test_hostname_equals_job_constraint(self):
-        """
-        Marked as explicit due to:
-        RuntimeError: Job ... had status running - expected completed
-        """
         state = util.get_mesos_state(self.mesos_url)
         hosts = [agent['hostname'] for agent in state['slaves']][:10]
 
