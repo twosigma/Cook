@@ -24,7 +24,6 @@ class PoolsCookTest(util.CookTest):
         self.user_factory = util.UserFactory(self)
 
     @unittest.skipUnless(util.are_pools_enabled(), 'Pools are not enabled on the cluster')
-    @pytest.mark.serial
     def test_pool_scheduling(self):
         admin = self.user_factory.admin()
         user = self.user_factory.new_user()

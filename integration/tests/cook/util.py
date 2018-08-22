@@ -1196,3 +1196,17 @@ def are_pools_enabled():
     init_cook_session(cook_url)
     _wait_for_cook(cook_url)
     return len(active_pools(cook_url)[0]) > 1
+
+
+def default_pool_num_hosts(cook_url, mesos_url):
+    """
+    Returns the number of hosts in the default pool, or the
+    total number of hosts if the cluster is not using pools
+    """
+    state = get_mesos_state(mesos_url)
+    slaves = state['slaves']
+    pool = default_pool(cook_url)
+    slaves = [s for s in slaves if s['attributes']['cook-pool'] == pool] if pool else slaves
+    num_hosts = len(slaves)
+    logging.info(f'There are {num_hosts} hosts in the default pool')
+    return num_hosts
