@@ -117,6 +117,8 @@
 
 (def iso-8601-format (:date-time tf/formatters))
 
+(def partition-date-format (:basic-date tf/formatters))
+
 (s/defschema CookInfo
   "Schema for the /info endpoint response"
   {:authentication-scheme s/Str
@@ -201,10 +203,30 @@
   [s]
   (re-matches #"[\.a-zA-Z0-9_-]{1,128}" s))
 
+(defn non-empty-max-128-characters
+  [s]
+  (< 0 (.length s) 129))
+
+(defn date?
+  [s]
+  (re-matches #"[0-9]{8}" s))
+
 (def Application
   "Schema for the application a job corresponds to"
   {:name (s/constrained s/Str non-empty-max-128-characters-and-alphanum?)
    :version (s/constrained s/Str non-empty-max-128-characters-and-alphanum?)})
+
+(def Dataset
+  "Schema for a job dataset"
+  {:dataset {(s/constrained s/Str non-empty-max-128-characters)
+             (s/constrained s/Str non-empty-max-128-characters)}
+   :partitions [{(s/constrained s/Str non-empty-max-128-characters)
+                 (s/constrained s/Str non-empty-max-128-characters)}]})
+
+(def DatePartition
+  "Schema for a date partition"
+  {(s/required-key "begin") (s/constrained s/Str date?)
+   (s/required-key "end") (s/constrained s/Str date?)})
 
 (def Constraint
   "Schema for user defined job host constraint"
@@ -260,7 +282,8 @@
    ;; a lower case character or a digit, and has length between 2 to (62 + 2).
    :user UserName
    (s/optional-key :application) Application
-   (s/optional-key :expected-runtime) PosInt})
+   (s/optional-key :expected-runtime) PosInt
+   (s/optional-key :datasets) [Dataset]})
 
 (def Job
   "Full schema for a job"
@@ -277,6 +300,8 @@
              (s/optional-key :max-runtime) PosInt
              (s/optional-key :name) JobName
              (s/optional-key :priority) JobPriority
+             (s/optional-key :datasets) [{:dataset {s/Keyword s/Str}
+                                          (s/optional-key :partitions) [{s/Keyword s/Str}]}]
              ;; The Java job client used to send the
              ;; status field on job submission. At some
              ;; point, that changed, but we will keep
@@ -527,13 +552,23 @@
                       :commit-latch/uuid (d/squuid)}]
     [commit-latch-id commit-latch]))
 
+(defn- make-partition-ent
+  [partition-type partition]
+  (let [coerce-date (fn coerce-date [date-str]
+                      (tc/to-date (tf/parse partition-date-format date-str)))]
+    (case partition-type
+      "date"
+      {
+       :dataset.partition/begin (coerce-date (partition "begin"))
+       :dataset.partition/end (coerce-date (partition "end"))})))
+
 (s/defn make-job-txn
   "Creates the necessary txn data to insert a job into the database"
   [pool commit-latch-id job :- Job]
   (let [{:keys [uuid command max-retries max-runtime expected-runtime priority cpus mem gpus
                 user name ports uris env labels container group application disable-mea-culpa-retries
                 constraints executor progress-output-file progress-regex-string
-                data-local]
+                data-local datasets]
          :or {group nil
               disable-mea-culpa-retries false}} job
         db-id (d/tempid :db.part/user)
@@ -594,6 +629,21 @@
                                    {:db/id gpus-id
                                     :resource/type :resource.type/gpus
                                     :resource/amount (double gpus)}]))])
+        datasets (map (fn [{:strs [dataset partitions]}]
+                        (let [parameters (map (fn [[k v]] {:db/id (d/tempid :db.part/user)
+                                                           :dataset.parameter/key k
+                                                           :dataset.parameter/value v})
+                                              dataset)]
+                          (if (contains? dataset "partition-type")
+                            (let [partition-type (get dataset "partition-type")
+                                  partitions (map (partial make-partition-ent partition-type) partitions)]
+                              {:db/id (d/tempid :db.part/user)
+                               :dataset/parameters parameters
+                               :dataset/partition-type partition-type
+                               :dataset/partitions partitions})
+                            {:db/id (d/tempid :db.part/user)
+                             :dataset/parameters parameters})))
+                      datasets)
         txn (cond-> {:db/id db-id
                      :job/command command
                      :job/commit-latch commit-latch-id
@@ -617,7 +667,8 @@
                     progress-output-file (assoc :job/progress-output-file progress-output-file)
                     progress-regex-string (assoc :job/progress-regex-string progress-regex-string)
                     pool (assoc :job/pool (:db/id pool))
-                    data-local (assoc :job/data-local data-local))]
+                    data-local (assoc :job/data-local data-local)
+                    (not (empty? datasets)) (assoc :job/datasets datasets))]
 
     ;; TODO batch these transactions to improve performance
     (-> ports
@@ -627,6 +678,7 @@
         (into labels)
         (into container)
         (into maybe-datoms)
+        (into datasets)
         (conj txn))))
 
 (defn make-type-parameter-txn
@@ -701,6 +753,30 @@
    :host-placement (make-default-host-placement)
    :straggler-handling default-straggler-handling})
 
+(defn validate-partitions
+  [{:keys [dataset partitions] :as in}]
+  (let [partition-type (get dataset "partition-type" nil)]
+    (cond
+      (nil? partition-type)
+      (when-not (empty? partitions)
+        (throw (ex-info "Dataset with partitions must supply partition-type"
+                        {:dataset dataset})))
+      (= "date" partition-type)
+      (doall (map (partial s/validate DatePartition) partitions))
+      :else
+      (throw (ex-info "Dataset with unsupported partition type"
+                      {:dataset dataset}))))
+  in)
+
+(defn munge-datasets
+  [datasets]
+  (->> datasets
+       (map (fn [{:keys [dataset partitions]}]
+              (cond-> {:dataset (walk/stringify-keys dataset)}
+                partitions
+                (assoc :partitions (into #{} (walk/stringify-keys partitions))))))
+       (into #{})))
+
 (defn validate-and-munge-job
   "Takes the user, the parsed json from the job and a list of the uuids of
    new-groups (submitted in the same request as the job). Returns proper Job
@@ -709,7 +785,7 @@
    {:keys [cpus mem gpus uuid command priority max-retries max-runtime expected-runtime name
            uris ports env labels container group application disable-mea-culpa-retries
            constraints executor progress-output-file progress-regex-string
-           data-local]
+           data-local datasets]
     :or {group nil
          disable-mea-culpa-retries false}
     :as job}
@@ -747,6 +823,7 @@
                  (when progress-output-file {:progress-output-file progress-output-file})
                  (when progress-regex-string {:progress-regex-string progress-regex-string})
                  (when application {:application application})
+                 (when datasets {:datasets (munge-datasets datasets)})
                  (when data-local {:data-local data-local}))]
     (s/validate Job munged)
     (when (and (:gpus munged) (not gpu-enabled?))
@@ -769,6 +846,8 @@
     (doseq [{:keys [executable? extract?] :as uri} (:uris munged)
             :when (and (not (nil? executable?)) (not (nil? extract?)))]
       (throw (ex-info "Uri cannot set executable and extract" uri)))
+    (doseq [dataset (:datasets munged)]
+      (validate-partitions dataset))
     (when (and group-uuid
                (not (valid-group-uuid? db
                                        new-group-uuids
@@ -875,6 +954,13 @@
           docker (assoc :docker (docker->response-map docker))
           volumes (assoc :volumes (map container-volume->response-map volumes))))
 
+(defn- make-partition-map
+  [partition-type partition]
+  (let [format-date (fn format-date [date] (tf/unparse partition-date-format (tc/from-date date)))]
+    (case partition-type
+      "date" {"begin" (format-date (:dataset.partition/begin partition))
+              "end" (format-date (:dataset.partition/end partition))})))
+
 (defn fetch-job-map
   [db framework-id job-uuid]
   (timers/time!
@@ -900,6 +986,17 @@
           instances (map #(fetch-instance-map db %1) (:job/instance job))
           submit-time (when (:job/submit-time job) ; due to a bug, submit time may not exist for some jobs
                         (.getTime (:job/submit-time job)))
+          datasets (when (not (empty? (:job/datasets job)))
+                     (->> (:job/datasets job)
+                          (map (fn [dataset]
+                                 (let [partitions (when (not (empty? (:dataset/partitions dataset)))
+                                                    (->> (:dataset/partitions dataset)
+                                                         (map (partial make-partition-map (:dataset/partition-type dataset)))
+                                                         (into #{})))]
+                                   (cond-> {"dataset" (into {} (map (fn [p] [(:dataset.parameter/key p) (:dataset.parameter/value p)])
+                                                                    (:dataset/parameters dataset)))}
+                                     partitions (assoc "partitions" partitions)))))
+                          (into #{})))
           job-map {:command (:job/command job)
                    :constraints constraints
                    :cpus (:cpus resources)
@@ -931,7 +1028,8 @@
               progress-regex-string (assoc :progress-regex-string progress-regex-string)
               pool (assoc :pool (:pool/name pool))
               container (assoc :container (container->response-map container))
-              data-local (assoc :data-local data-local)))))
+              data-local (assoc :data-local data-local)
+              datasets (assoc :datasets datasets)))))
 
 (defn fetch-group-live-jobs
   "Get all jobs from a group that are currently running or waiting (not complete)"

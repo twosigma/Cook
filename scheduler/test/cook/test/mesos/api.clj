@@ -37,7 +37,8 @@
             [datomic.api :as d :refer [q db]]
             [mesomatic.scheduler :as msched]
             [schema.core :as s])
-  (:import com.fasterxml.jackson.core.JsonGenerationException
+  (:import clojure.lang.ExceptionInfo
+           com.fasterxml.jackson.core.JsonGenerationException
            com.google.protobuf.ByteString
            java.io.ByteArrayOutputStream
            java.net.ServerSocket
@@ -1183,7 +1184,7 @@
           ; will have to dissoc it.
           [{:keys [mem max-retries max-runtime expected-runtime name gpus
                    command ports priority uuid user cpus application
-                   disable-mea-culpa-retries executor]
+                   disable-mea-culpa-retries executor datasets]
             :or {disable-mea-culpa-retries false}}
            framework-id]
           (cond-> {;; Fields we will fill in from the provided args:
@@ -1212,7 +1213,8 @@
                   ;; Only assoc these fields if the job specifies one
                   application (assoc :application application)
                   expected-runtime (assoc :expected-runtime expected-runtime)
-                  executor (assoc :executor executor)))]
+                  executor (assoc :executor executor)
+                  datasets (assoc :datasets datasets)))]
 
     (testing "Job creation"
       (testing "should work with a minimal job manually inserted"
@@ -1257,6 +1259,21 @@
           (is (thrown-with-msg? ExecutionException
                                 (re-pattern (str ".*:job/uuid.*" uuid ".*already exists"))
                                 (api/create-jobs! conn {::api/jobs [job]})))))
+
+      (testing "should work with datasets"
+        (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
+              framework-id #mesomatic.types.FrameworkID{:value "framework-id"}
+              {:keys [uuid] :as job} (assoc (minimal-job) :datasets #{{"dataset" {"foo" "bar"}}
+                                                                      {"dataset" {"foo" "bar"
+                                                                                  "partition-type" "date"}
+                                                                       "partitions" #{{"begin" "20180101"
+                                                                                      "end" "20180201"}
+                                                                                     {"begin" "20180301"
+                                                                                      "end" "20180401"}}}})]
+          (is (= {::api/results (str "submitted jobs " uuid)}
+                 (api/create-jobs! conn {::api/jobs [job]})))
+          (is (= (expected-job-map job framework-id)
+                 (dissoc (api/fetch-job-map (db conn) framework-id uuid) :submit_time)))))
 
       (testing "should work when the job specifies an application"
         (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
@@ -1873,3 +1890,23 @@
           (is (= 400 status))
           (is (str/includes? body (str uuid)))
           (is (not (str/includes? body (str (:uuid j3))))))))))
+
+(deftest test-validate-partitions
+  (is (api/validate-partitions {:dataset {"foo" "bar"}}))
+  (is (thrown-with-msg? ExceptionInfo #"supply partition-type"
+                        (api/validate-partitions {:dataset {"foo" "bar"}
+                                                  :partitions [{}]})))
+  (is (api/validate-partitions {:dataset {"foo" "bar"
+                                          "partition-type" "date"}
+                                :partitions [{"begin" "20180801"
+                                              "end" "20180801"}]}))
+  (is (thrown-with-msg? ExceptionInfo #"unsupported partition type"
+                        (api/validate-partitions {:dataset {"partition-type" "foo"}})))
+  (is (thrown-with-msg? ExceptionInfo #"\"foo\" disallowed-key"
+                        (api/validate-partitions {:dataset {"partition-type" "date"}
+                                                  :partitions [{"begin" "20180101"
+                                                                "end" "20180101"
+                                                                "foo" "bar"}]})))
+  (is (thrown-with-msg? ExceptionInfo #"\"end\" missing"
+                        (api/validate-partitions {:dataset {"partition-type" "date"}
+                                                  :partitions [{"begin" "20180101"}]}))))
