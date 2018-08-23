@@ -16,6 +16,7 @@
 (ns cook.test.mesos
   (:use clojure.test)
   (:require [clojure.core.async :as async]
+            [cook.config :as config]
             [cook.curator :as curator]
             [cook.datomic]
             [cook.mesos :as mesos]
@@ -276,3 +277,19 @@
         (async/untap mult chan)
         (async/close! chan)
         (d/delete-database test-db-uri)))))
+
+
+(deftest test-make-trigger-chans
+  (with-redefs [config/data-local-fitness-config (constantly {:update-interval-ms nil})]
+    (let [trigger-chans (mesos/make-trigger-chans {:interval-seconds 1}
+                                                  {:publish-interval-ms 1000}
+                                                  {:optimizer-interval-seconds 1}
+                                                  {})]
+      (is (nil? (:update-data-local-costs-trigger-chan trigger-chans)))))
+
+  (with-redefs [config/data-local-fitness-config (constantly {:update-interval-ms 1000})]
+    (let [trigger-chans (mesos/make-trigger-chans {:interval-seconds 1}
+                                                  {:publish-interval-ms 1000}
+                                                  {:optimizer-interval-seconds 1}
+                                                  {})]
+      (is (:update-data-local-costs-trigger-chan trigger-chans)))))

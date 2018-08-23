@@ -106,6 +106,11 @@ case "$COOK_POOLS" in
     exit 1
 esac
 
+pip install flask
+export DATA_LOCAL_SERVICE="http://localhost:5000"
+export DATA_LOCAL_ENDPOINT="${DATA_LOCAL_SERVICE}/api/v1/lookup"
+FLASK_APP=${PROJECT_DIR}/src/data_locality_service.py flask run &
+
 # Start three cook schedulers. We want one cluster with two cooks to run MasterSlaveTest, and a second cluster to run MultiClusterTest.
 # The basic tests will run against cook-framework-1
 cd ${SCHEDULER_DIR}

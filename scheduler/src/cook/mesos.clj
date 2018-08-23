@@ -21,7 +21,9 @@
             [clojure.core.async :as async]
             [clojure.data.json :as json]
             [clojure.tools.logging :as log]
+            [cook.config :as config]
             [cook.datomic :refer (transact-with-retries)]
+            [cook.mesos.data-locality :as dl]
             [cook.mesos.heartbeat]
             [cook.mesos.monitor]
             [cook.mesos.optimizer]
@@ -126,19 +128,23 @@
    {:keys [timeout-interval-minutes]
     :or {timeout-interval-minutes 1}
     :as task-constraints}]
-  (letfn [(prepare-trigger-chan [interval]
-            (let [ch (async/chan (async/sliding-buffer 1))]
-              (async/pipe (chime-ch (periodic/periodic-seq (time/now) interval))
-                          ch)
-              ch))]
-    {:cancelled-task-trigger-chan (prepare-trigger-chan (time/seconds 3))
-     :lingering-task-trigger-chan (prepare-trigger-chan (time/minutes timeout-interval-minutes))
-     :match-trigger-chan (prepare-trigger-chan (time/seconds 1))
-     :optimizer-trigger-chan (prepare-trigger-chan (time/seconds (:optimizer-interval-seconds optimizer-config 10)))
-     :progress-updater-trigger-chan (prepare-trigger-chan (time/millis (:publish-interval-ms progress-config)))
-     :rank-trigger-chan (prepare-trigger-chan (time/seconds 5))
-     :rebalancer-trigger-chan (prepare-trigger-chan (time/seconds (:interval-seconds rebalancer-config)))
-     :straggler-trigger-chan (prepare-trigger-chan (time/minutes timeout-interval-minutes))}))
+  (let [{:keys [update-interval-ms]} (config/data-local-fitness-config)
+        prepare-trigger-chan (fn prepare-trigger-chan [interval]
+                               (let [ch (async/chan (async/sliding-buffer 1))]
+                                 (async/pipe (chime-ch (periodic/periodic-seq (time/now) interval))
+                                             ch)
+                                 ch))]
+    (cond->
+        {:cancelled-task-trigger-chan (prepare-trigger-chan (time/seconds 3))
+         :lingering-task-trigger-chan (prepare-trigger-chan (time/minutes timeout-interval-minutes))
+         :match-trigger-chan (prepare-trigger-chan (time/seconds 1))
+         :optimizer-trigger-chan (prepare-trigger-chan (time/seconds (:optimizer-interval-seconds optimizer-config 10)))
+         :progress-updater-trigger-chan (prepare-trigger-chan (time/millis (:publish-interval-ms progress-config)))
+         :rank-trigger-chan (prepare-trigger-chan (time/seconds 5))
+         :rebalancer-trigger-chan (prepare-trigger-chan (time/seconds (:interval-seconds rebalancer-config)))
+         :straggler-trigger-chan (prepare-trigger-chan (time/minutes timeout-interval-minutes))}
+      update-interval-ms
+      (assoc :update-data-local-costs-trigger-chan (prepare-trigger-chan (time/millis update-interval-ms))))))
 
 (defn start-mesos-scheduler
   "Starts a leader elector. When the process is leader, it starts the mesos
@@ -239,6 +245,8 @@
                                                                                     view-incubating-offers
                                                                                     optimizer-config
                                                                                     optimizer-trigger-chan))
+                                    (when (:update-data-local-costs-trigger-chan trigger-chans)
+                                      (dl/start-update-cycles! mesos-datomic-conn (:update-data-local-costs-trigger-chan trigger-chans)))
                                     (counters/inc! mesos-leader)
                                     (async/tap mesos-datomic-mult datomic-report-chan)
                                     (cook.mesos.scheduler/monitor-tx-report-queue datomic-report-chan mesos-datomic-conn current-driver)
