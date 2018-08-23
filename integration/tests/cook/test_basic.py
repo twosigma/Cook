@@ -1630,8 +1630,7 @@ class CookTest(util.CookTest):
 
     @pytest.mark.xfail(reason='Sometimes fails on Travis')
     def test_unique_host_constraint(self):
-        state = util.get_mesos_state(self.mesos_url)
-        num_hosts = len(state['slaves'])
+        num_hosts = util.default_pool_num_hosts(self.cook_url, self.mesos_url)
         group = {'uuid': str(uuid.uuid4()),
                  'host-placement': {'type': 'unique'}}
         job_spec = {'group': group['uuid'], 'command': 'sleep 600'}
