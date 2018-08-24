@@ -215,11 +215,12 @@
   ([db running-task-ents pending-job-ents host->spare-resources pool-ent]
    (init-state db running-task-ents pending-job-ents host->spare-resources pool-ent []))
   ([db running-task-ents pending-job-ents host->spare-resources pool-ent preempted-tasks]
-   (let [running-task-ents (filter (fn [task]
+   (let [pool (keyword (:pool/name pool-ent))
+         running-task-ents (filter (fn [task]
                                      (-> task
                                          :job/_instance
                                          util/job->pool
-                                         (= (keyword (:pool/name pool-ent)))))
+                                         (= pool)))
                                    running-task-ents)
          user->dru-divisors (dru/init-user->dru-divisors db running-task-ents pending-job-ents)
          user->sorted-running-task-ents (->> running-task-ents
