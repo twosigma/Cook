@@ -107,9 +107,9 @@
         (is (= [task-ent5 task-ent6 task-ent7 task-ent8]
                (seq (get user->sorted-running-task-ents "wzhao"))))))))
 
-(deftest test-pending-normal-job-dru
+(deftest test-compute-pending-default-job-dru
   (testing "test1"
-    (let [datomic-uri "datomic:mem://test-compute-pending-job-dru"
+    (let [datomic-uri "datomic:mem://test-compute-pending-default-job-dru"
           conn (restore-fresh-database! datomic-uri)
           job1 (create-dummy-job conn :name "job1" :user "ljin" :memory 10.0 :ncpus 10.0)
           job2 (create-dummy-job conn :name "job2" :user "ljin" :memory 5.0 :ncpus 5.0)
@@ -143,9 +143,9 @@
           pool-ent {:pool/name :no-pool
                     :pool/dru-mode :pool.dru-mode/default}
           state (rebalancer/init-state db running-tasks pending-jobs {} pool-ent)]
-      (is (= 1.92 (rebalancer/compute-pending-normal-job-dru state (d/entity db job9))))
-      (is (= 0.8 (rebalancer/compute-pending-normal-job-dru state (d/entity db job10))))
-      (is (= 2.6 (rebalancer/compute-pending-normal-job-dru state (d/entity db job11)))))))
+      (is (= 1.92 (rebalancer/compute-pending-default-job-dru state (d/entity db job9))))
+      (is (= 0.8 (rebalancer/compute-pending-default-job-dru state (d/entity db job10))))
+      (is (= 2.6 (rebalancer/compute-pending-default-job-dru state (d/entity db job11)))))))
 
 (deftest test-pending-gpu-job-dru
   (let [datomic-uri "datomic:mem://test-rebalancer/compute-pending-normal-job-dru"
@@ -251,7 +251,7 @@
                                                               user->sorted-running-task-ents
                                                               {}
                                                               user->dru-divisors
-                                                              rebalancer/compute-pending-normal-job-dru
+                                                              rebalancer/compute-pending-default-job-dru
                                                               [])
                                                      {:min-dru-diff 0.05 :safe-dru-threshold 1.0}
                                                      (d/entity db job9)
@@ -263,7 +263,7 @@
                                                               user->sorted-running-task-ents
                                                               {"hostB" {:mem 15.0 :cpus 15.0}}
                                                               user->dru-divisors
-                                                              rebalancer/compute-pending-normal-job-dru
+                                                              rebalancer/compute-pending-default-job-dru
                                                               [])
                                                      {:min-dru-diff 0.5 :safe-dru-threshold 1.0}
                                                      (d/entity db job9)
@@ -276,7 +276,7 @@
                                                               {"hostA" {:mem 20.0 :cpus 20.0}
                                                                "hostB" {:mem 10.0 :cpus 10.0}}
                                                               user->dru-divisors
-                                                              rebalancer/compute-pending-normal-job-dru
+                                                              rebalancer/compute-pending-default-job-dru
                                                               [])
                                                      {:min-dru-diff 0.5 :safe-dru-threshold 1.0}
                                                      (d/entity db job9)
@@ -289,7 +289,7 @@
                                                               {"hostA" {:mem 10.0 :cpus 10.0}
                                                                "hostB" {:mem 10.0 :cpus 10.0}}
                                                               user->dru-divisors
-                                                              rebalancer/compute-pending-normal-job-dru
+                                                              rebalancer/compute-pending-default-job-dru
                                                               [])
                                                      {:min-dru-diff 0.0 :safe-dru-threshold 1.0}
                                                      (d/entity db job9)
@@ -301,7 +301,7 @@
                                                               user->sorted-running-task-ents
                                                               {}
                                                               user->dru-divisors
-                                                              rebalancer/compute-pending-normal-job-dru
+                                                              rebalancer/compute-pending-default-job-dru
                                                               [])
                                                      {:min-dru-diff 0.5 :safe-dru-threshold 1.0}
                                                      (d/entity db job10)
@@ -313,7 +313,7 @@
                                                               user->sorted-running-task-ents
                                                               {}
                                                               user->dru-divisors
-                                                              rebalancer/compute-pending-normal-job-dru
+                                                              rebalancer/compute-pending-default-job-dru
                                                               [])
                                                      {:min-dru-diff 0.5 :safe-dru-threshold 1.0}
                                                      (d/entity db job11)
@@ -325,7 +325,7 @@
                                                               user->sorted-running-task-ents
                                                               {}
                                                               user->dru-divisors
-                                                              rebalancer/compute-pending-normal-job-dru
+                                                              rebalancer/compute-pending-default-job-dru
                                                               [])
                                                      {:min-dru-diff 0.0 :safe-dru-threshold 1.0}
                                                      (d/entity db job12)
@@ -337,7 +337,7 @@
                                                               user->sorted-running-task-ents
                                                               {"hostA" {:mem 40.0 :cpus 40.0}}
                                                               user->dru-divisors
-                                                              rebalancer/compute-pending-normal-job-dru
+                                                              rebalancer/compute-pending-default-job-dru
                                                               [])
                                                      {:min-dru-diff 0.5 :safe-dru-threshold 1.0}
                                                      (d/entity db job12)
@@ -349,7 +349,7 @@
                                                               user->sorted-running-task-ents
                                                               {"hostA" {:mem 35.0 :cpus 35.0}}
                                                               user->dru-divisors
-                                                              rebalancer/compute-pending-normal-job-dru
+                                                              rebalancer/compute-pending-default-job-dru
                                                               [])
                                                      {:min-dru-diff 0.0 :safe-dru-threshold 1.0}
                                                      (d/entity db job12)
@@ -362,7 +362,7 @@
                                                               {"hostA" {:mem 35.0 :cpus 35.0}
                                                                "hostB" {:mem 30.0 :cpus 30.0}}
                                                               user->dru-divisors
-                                                              rebalancer/compute-pending-normal-job-dru
+                                                              rebalancer/compute-pending-default-job-dru
                                                               [])
                                                      {:min-dru-diff 0.5 :safe-dru-threshold 1.0}
                                                      (d/entity db job12)
@@ -374,7 +374,7 @@
                                                               user->sorted-running-task-ents
                                                               {}
                                                               user->dru-divisors
-                                                              rebalancer/compute-pending-normal-job-dru
+                                                              rebalancer/compute-pending-default-job-dru
                                                               [])
                                                      {:min-dru-diff 0.5 :safe-dru-threshold 1.0}
                                                      (d/entity db job13)
@@ -386,7 +386,7 @@
                                                               user->sorted-running-task-ents
                                                               {}
                                                               user->dru-divisors
-                                                              rebalancer/compute-pending-normal-job-dru
+                                                              rebalancer/compute-pending-default-job-dru
                                                               [])
                                                      {:min-dru-diff 2.0 :safe-dru-threshold 1.0}
                                                      (d/entity db job13)
@@ -398,7 +398,7 @@
                                                               user->sorted-running-task-ents
                                                               {}
                                                               user->dru-divisors
-                                                              rebalancer/compute-pending-normal-job-dru
+                                                              rebalancer/compute-pending-default-job-dru
                                                               [])
                                                      {:min-dru-diff 0.5 :safe-dru-threshold 1.0}
                                                      (d/entity db job14)
@@ -438,7 +438,7 @@
                                                                             user->sorted-running-task-ents
                                                                             {}
                                                                             user->dru-divisors
-                                                                            rebalancer/compute-pending-normal-job-dru
+                                                                            rebalancer/compute-pending-default-job-dru
                                                                             [])
                                                                    {:min-dru-diff 0.05 :safe-dru-threshold 1.0}
                                                                    (d/entity db pending-job)
@@ -464,7 +464,7 @@
                                                                             user->sorted-running-task-ents
                                                                             {}
                                                                             user->dru-divisors
-                                                                            rebalancer/compute-pending-normal-job-dru
+                                                                            rebalancer/compute-pending-default-job-dru
                                                                             [])
                                                                    {:min-dru-diff 0.05 :safe-dru-threshold 1.0}
                                                                    (d/entity db pending-job)
@@ -480,7 +480,7 @@
                                                                           user->sorted-running-task-ents
                                                                           {}
                                                                           user->dru-divisors
-                                                                          rebalancer/compute-pending-normal-job-dru
+                                                                          rebalancer/compute-pending-default-job-dru
                                                                           [])
                                                                  {:min-dru-diff 0.05 :safe-dru-threshold 1.0}
                                                                  (d/entity db pending-job)
@@ -519,7 +519,7 @@
                                                                             user->sorted-running-task-ents
                                                                             {}
                                                                             user->dru-divisors
-                                                                            rebalancer/compute-pending-normal-job-dru
+                                                                            rebalancer/compute-pending-default-job-dru
                                                                             [])
                                                                    {:min-dru-diff 0.05 :safe-dru-threshold 1.0}
                                                                    (d/entity db pending-job)
@@ -540,7 +540,7 @@
                                                                  user->sorted-running-task-ents
                                                                  {}
                                                                  user->dru-divisors
-                                                                 rebalancer/compute-pending-normal-job-dru
+                                                                 rebalancer/compute-pending-default-job-dru
                                                                  [])
                                                         {:min-dru-diff 0.05 :safe-dru-threshold 1.0}
                                                         (d/entity db pending-job)
@@ -585,7 +585,7 @@
                                                                             user->sorted-running-task-ents
                                                                             {}
                                                                             user->dru-divisors
-                                                                            rebalancer/compute-pending-normal-job-dru
+                                                                            rebalancer/compute-pending-default-job-dru
                                                                             [])
                                                                    {:min-dru-diff 0.05 :safe-dru-threshold 1.0}
                                                                    (d/entity db pending-job)
@@ -609,7 +609,7 @@
                                                                  user->sorted-running-task-ents
                                                                  {}
                                                                  user->dru-divisors
-                                                                 rebalancer/compute-pending-normal-job-dru
+                                                                 rebalancer/compute-pending-default-job-dru
                                                                  [])
                                                         {:min-dru-diff 0.05 :safe-dru-threshold 1.0}
                                                         (d/entity db pending-job)
@@ -666,7 +666,7 @@
                                                       user->sorted-running-task-ents
                                                       {}
                                                       user->dru-divisors
-                                                      rebalancer/compute-pending-normal-job-dru
+                                                      rebalancer/compute-pending-default-job-dru
                                                       [])
                                              {:min-dru-diff 0.05 :safe-dru-threshold 1.0}
                                              (d/entity db pending-job)
@@ -705,7 +705,7 @@
                                                       user->sorted-running-task-ents
                                                       {}
                                                       user->dru-divisors
-                                                      rebalancer/compute-pending-normal-job-dru
+                                                      rebalancer/compute-pending-default-job-dru
                                                       [task-preempted-this-cycle])
                                              {:min-dru-diff 0.05 :safe-dru-threshold 1.0}
                                              (d/entity db pending-job)

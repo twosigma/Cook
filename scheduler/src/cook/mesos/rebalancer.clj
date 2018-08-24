@@ -179,7 +179,7 @@
 
     pending-job-dru))
 
-(defn compute-pending-normal-job-dru
+(defn compute-pending-default-job-dru
   "Takes state and a pending job entity, returns the dru of the pending-job. In the case where the pending job causes user's dominant
    resource type to change, the dru is not accurate and is only a upper bound. However, this inaccuracy won't affect the correctness
    of the algorithm.
@@ -245,7 +245,7 @@
               host->spare-resources
               user->dru-divisors
               (case pool-dru-mode
-                :pool.dru-mode/default compute-pending-normal-job-dru
+                :pool.dru-mode/default compute-pending-default-job-dru
                 :pool.dru-mode/gpu compute-pending-gpu-job-dru)
               preempted-tasks))))
 
