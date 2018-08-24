@@ -84,13 +84,15 @@
                                          jobs))
         request {:batch (UUID/randomUUID)
                  :tasks (map (fn [job] {:task_id (str (:job/uuid job))
-                                        :datasets (:job/datasets job)}))}
-        _ (log/debug "Updating data local costs for: " job-uuid->datasets)
+                                        :datasets (:job/datasets job)})
+                             jobs)}
+        _ (log/debug "Updating data local costs :" (cheshire/generate-string request))
         {:keys [body]} (http/post cost-endpoint {:body (cheshire/generate-string request)
                                                  :content-type :json
                                                  :accept :json
                                                  :as :json-string-keys
                                                  :spnego-auth true})
+        _ (log/debug "Got response:" body)
         costs (body "costs")]
     (->> costs
          (map (fn [{:strs [task_id node_costs]}]

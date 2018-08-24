@@ -30,6 +30,7 @@
                 "cook.mesos.fenzo-utils" :debug
                 "cook.mesos.rebalancer" :debug
                 "cook.mesos.scheduler" :debug
+                "cook.mesos.data-locality" :debug
                 :default :info}}
  :metrics {:jmx true
            :user-metrics-interval-seconds 60}

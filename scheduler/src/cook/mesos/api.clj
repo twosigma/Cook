@@ -220,8 +220,8 @@
   "Schema for a job dataset"
   {:dataset {(s/constrained s/Str non-empty-max-128-characters)
              (s/constrained s/Str non-empty-max-128-characters)}
-   :partitions [{(s/constrained s/Str non-empty-max-128-characters)
-                 (s/constrained s/Str non-empty-max-128-characters)}]})
+   (s/optional-key :partitions) [{(s/constrained s/Str non-empty-max-128-characters)
+                                  (s/constrained s/Str non-empty-max-128-characters)}]})
 
 (def DatePartition
   "Schema for a date partition"
@@ -282,7 +282,7 @@
    :user UserName
    (s/optional-key :application) Application
    (s/optional-key :expected-runtime) PosInt
-   (s/optional-key :datasets) [Dataset]})
+   (s/optional-key :datasets) #{Dataset}})
 
 (def Job
   "Full schema for a job"
@@ -328,7 +328,9 @@
               (s/optional-key :gpus) s/Int
               (s/optional-key :groups) [s/Uuid]
               (s/optional-key :instances) [Instance]
-              (s/optional-key :pool) s/Str})
+              (s/optional-key :pool) s/Str
+              (s/optional-key :datasets) #{{:dataset {s/Str s/Str}
+                                            (s/optional-key :partitions) #{{s/Str s/Str}}}}})
       prepare-schema-response))
 
 (def JobResponseDeprecated
@@ -2575,30 +2577,42 @@
                          (mapv pool-entity->consumable-map))))}))
 
 (def DataLocalUpdateTimeResponse
-  {s/Str s/Str})
+  {s/Uuid (s/maybe s/Str)})
 
 (def DataLocalCostResponse
   {s/Str s/Num})
 
 (defn data-local-update-time-handler
   "Handler for return the last update time of data locality"
-  []
+  [conn]
   (base-cook-handler
    {:allowed-methods [:get]
     :handle-ok (fn [_]
-                 (pc/map-vals (partial tf/unparse iso-8601-format)
-                              (dl/get-last-update-time)))}))
+                 (let [uuid->datasets (->> (d/db conn)
+                                          util/get-pending-job-ents
+                                          (filter (fn [j] (not (empty? (:job/datasets j)))))
+                                          (map (fn [j] [(:job/uuid j) (util/make-dataset-maps (:job/datasets j))]))
+                                          (into {}))
+                       datasets->update-time (dl/get-last-update-time)]
+                   (pc/map-vals (fn [datasets]
+                                  (when-let [update-time (get datasets->update-time datasets nil)]
+                                    (tf/unparse iso-8601-format update-time)))
+                                uuid->datasets)))}))
 
 (defn data-local-cost-handler
   "Handler which returns the data locality costs for a given job"
-  []
+  [conn]
   (base-cook-handler
    {:allowed-methods [:get]
     :exists? (fn [ctx]
-               (contains? (dl/get-data-local-costs) (get-in ctx [:request :params :uuid])))
-    :handle-ok (fn [ctx]
-                 (let [cost (dl/get-data-local-costs)]
-                   (cost (get-in ctx [:request :params :uuid]))))}))
+               (let [uuid (get-in ctx [:request :params :uuid])
+                     job-ent (d/entity (d/db conn) [:job/uuid (UUID/fromString uuid)])
+                     datasets (util/make-dataset-maps (:job/datasets job-ent))]
+                 (if-let [costs (get (dl/get-data-local-costs) datasets nil)]
+                   {:costs costs}
+                   false)))
+    :handle-ok (fn [{:keys [costs]}]
+                 costs)}))
 
 (defn- streaming-json-encoder
   "Takes as input the response body which can be converted into JSON,
@@ -2917,7 +2931,7 @@
         {:produces ["application/json"]
          :responses {200 {:schema DataLocalCostResponse}}
          :get {:summary "Returns summary information on the current data locality status"
-               :handler (data-local-cost-handler)}}))
+               :handler (data-local-cost-handler conn)}}))
 
       (c-api/context
        "/data-local" []
@@ -2925,7 +2939,7 @@
         {:produces ["application/json"]
          :responses {200 {:schema DataLocalUpdateTimeResponse}}
          :get {:summary "Returns summary information on the current data locality status"
-               :handler (data-local-update-time-handler)}}))
+               :handler (data-local-update-time-handler conn)}}))
 
       (ANY "/queue" []
         (waiting-jobs mesos-pending-jobs-fn is-authorized-fn mesos-leadership-atom leader-selector))
