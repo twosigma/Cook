@@ -852,12 +852,15 @@
       "date" {"begin" (format-date (:dataset.partition/begin partition))
               "end" (format-date (:dataset.partition/end partition))})))
 
-(defn make-dataset-map
-  [{:keys [dataset/partitions dataset/partition-type dataset/parameters]}]
-  (let [partitions (when (not (empty? partitions))
-                     (->> partitions
-                          (map (partial make-partition-map partition-type))
-                          (into #{})))]
-    (cond-> {:dataset (into {} (map (fn [p] [(:dataset.parameter/key p) (:dataset.parameter/value p)])
-                                    parameters))}
-      partitions (assoc :partitions partitions))))
+(defn make-dataset-maps
+  [datasets]
+  (->> datasets
+       (map (fn [{:keys [dataset/partitions dataset/partition-type dataset/parameters]}]
+              (let [partitions (when (not (empty? partitions))
+                                 (->> partitions
+                                      (map (partial make-partition-map partition-type))
+                                      (into #{})))]
+                (cond-> {:dataset (into {} (map (fn [p] [(:dataset.parameter/key p) (:dataset.parameter/value p)])
+                                                parameters))}
+                  partitions (assoc :partitions partitions)))))
+       (into #{})))

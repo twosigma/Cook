@@ -274,7 +274,6 @@
    (s/optional-key :progress-regex-string) NonEmptyString
    (s/optional-key :group) s/Uuid
    (s/optional-key :disable-mea-culpa-retries) s/Bool
-   (s/optional-key :data-local) s/Bool
    :cpus PosDouble
    :mem PosDouble
    (s/optional-key :gpus) (s/both s/Int (s/pred pos? 'pos?))
@@ -567,8 +566,7 @@
   [pool commit-latch-id job :- Job]
   (let [{:keys [uuid command max-retries max-runtime expected-runtime priority cpus mem gpus
                 user name ports uris env labels container group application disable-mea-culpa-retries
-                constraints executor progress-output-file progress-regex-string
-                data-local datasets]
+                constraints executor progress-output-file progress-regex-string datasets]
          :or {group nil
               disable-mea-culpa-retries false}} job
         db-id (d/tempid :db.part/user)
@@ -667,7 +665,6 @@
                     progress-output-file (assoc :job/progress-output-file progress-output-file)
                     progress-regex-string (assoc :job/progress-regex-string progress-regex-string)
                     pool (assoc :job/pool (:db/id pool))
-                    data-local (assoc :job/data-local data-local)
                     (not (empty? datasets)) (assoc :job/datasets datasets))]
 
     ;; TODO batch these transactions to improve performance
@@ -784,8 +781,7 @@
   [db user task-constraints gpu-enabled? new-group-uuids
    {:keys [cpus mem gpus uuid command priority max-retries max-runtime expected-runtime name
            uris ports env labels container group application disable-mea-culpa-retries
-           constraints executor progress-output-file progress-regex-string
-           data-local datasets]
+           constraints executor progress-output-file progress-regex-string datasets]
     :or {group nil
          disable-mea-culpa-retries false}
     :as job}
@@ -823,8 +819,7 @@
                  (when progress-output-file {:progress-output-file progress-output-file})
                  (when progress-regex-string {:progress-regex-string progress-regex-string})
                  (when application {:application application})
-                 (when datasets {:datasets (munge-datasets datasets)})
-                 (when data-local {:data-local data-local}))]
+                 (when datasets {:datasets (munge-datasets datasets)}))]
     (s/validate Job munged)
     (when (and (:gpus munged) (not gpu-enabled?))
       (throw (ex-info (str "GPU support is not enabled") {:gpus gpus})))
@@ -968,7 +963,6 @@
           progress-regex-string (:job/progress-regex-string job)
           pool (:job/pool job)
           container (:job/container job)
-          data-local (:job/data-local job)
           state (util/job-ent->state job)
           constraints (->> job
                            :job/constraint
@@ -980,7 +974,7 @@
           submit-time (when (:job/submit-time job) ; due to a bug, submit time may not exist for some jobs
                         (.getTime (:job/submit-time job)))
           datasets (when (not (empty? (:job/datasets job)))
-                     (into #{} (map util/make-dataset-map (:job/datasets job))))
+                     (util/make-dataset-maps (:job/datasets job)))
           job-map {:command (:job/command job)
                    :constraints constraints
                    :cpus (:cpus resources)
@@ -1012,7 +1006,6 @@
               progress-regex-string (assoc :progress-regex-string progress-regex-string)
               pool (assoc :pool (:pool/name pool))
               container (assoc :container (container->response-map container))
-              data-local (assoc :data-local data-local)
               datasets (assoc :datasets datasets)))))
 
 (defn fetch-group-live-jobs

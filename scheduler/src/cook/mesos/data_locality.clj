@@ -60,7 +60,7 @@
                             (map (fn [{:keys [job/uuid job/submit-time job/datasets]}]
                                    {:job/uuid uuid
                                     :job/submit-time submit-time
-                                    :job/datasets (into #{} (map util/make-dataset-map datasets))})))
+                                    :job/datasets (util/make-dataset-maps datasets)})))
           datasets->last-update-time @datasets->last-update-time-atom
           have-data?->job (group-by (fn [job] (contains? datasets->last-update-time (:job/datasets job)))
                                     pending-jobs)

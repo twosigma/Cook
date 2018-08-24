@@ -22,6 +22,7 @@
             [cook.config :as config]
             [cook.mesos.data-locality :as dl]
             [cook.mesos.group :as group]
+            [cook.mesos.util :as util]
             [swiss.arrows :refer :all])
   (:import com.netflix.fenzo.VirtualMachineLease
            java.util.Date))
@@ -135,12 +136,13 @@
   JobConstraint
   (job-constraint-name [this] (get-class-name this))
   (job-constraint-evaluate [_ _ _]
-    (let [{:keys [job/submit-time job/uuid]} job
+    (let [{:keys [job/submit-time job/datasets]} job
+          datasets (util/make-dataset-maps datasets)
           data-locality-costs (dl/get-data-local-costs)
           launch-after-age (t/plus (tc/from-date submit-time) (t/seconds launch-wait-seconds))
           launch-without-data? (t/after? (t/now) launch-after-age)]
       (if (or launch-without-data?
-              (contains? data-locality-costs (str uuid)))
+              (contains? data-locality-costs datasets))
         [true nil]
         [false "No data locality data available"])))
   (job-constraint-evaluate [this _ _ _]
@@ -149,10 +151,10 @@
 (defn build-data-locality-constraint
   "If the job supports data local and the data local fitness calculator is in use,
    returns a data-locality-constraint"
-  [{:keys [job/data-local] :as job}]
+  [{:keys [job/datasets] :as job}]
   (let [{:keys [launch-wait-seconds]} (config/data-local-fitness-config)
         fitness-calculator (config/fitness-calculator-config)]
-    (when (and data-local (= fitness-calculator dl/data-local-fitness-calculator))
+    (when (and (not (empty? datasets)) (= fitness-calculator dl/data-local-fitness-calculator))
       (->data-locality-constraint job launch-wait-seconds))))
 
 (defrecord user-defined-constraint [constraints]
