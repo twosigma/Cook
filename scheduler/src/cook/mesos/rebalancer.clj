@@ -448,16 +448,10 @@
 
 
 (defn rebalance!
-  [conn driver agent-attributes-cache pending-job-ents host->spare-resources rebalancer-reservation-atom
-   {:keys [max-preemption pool-ent] :as params}]
+  [db conn driver agent-attributes-cache rebalancer-reservation-atom params init-state jobs-to-make-room-for]
   (try
     (log/info "Rebalancing...Params:" params)
-    (let [db (mt/db conn)
-          jobs-to-make-room-for (->> pending-job-ents
-                                     (filter (partial util/job-allowed-to-start? db))
-                                     (take max-preemption))
-          init-state (init-state db (util/get-running-task-ents db) jobs-to-make-room-for host->spare-resources pool-ent)
-          preemption-decisions (rebalance db agent-attributes-cache rebalancer-reservation-atom
+    (let [preemption-decisions (rebalance db agent-attributes-cache rebalancer-reservation-atom
                                           params init-state jobs-to-make-room-for)]
       (doseq [{job-ent-to-make-room-for :to-make-room-for
                task-ents-to-preempt :task} preemption-decisions]
@@ -533,7 +527,7 @@
       trigger-chan
       (fn trigger-rebalance-iteration []
         (log/info "Rebalance cycle starting")
-        (let [params (read-datomic-params conn)]
+        (let [{:keys [max-preemption] :as params} (read-datomic-params conn)]
           (if (seq params)
             (do
               (run!
@@ -548,10 +542,16 @@
                         pool-ent (if (= :no-pool pool)
                                    {:pool/name pool-name
                                     :pool/dru-mode :pool.dru-mode/default}
-                                   (d/entity (d/db conn) [:pool/name pool-name]))]
-                    (rebalance! conn driver agent-attributes-cache pending-jobs host->spare-resources
-                                rebalancer-reservation-atom
-                                (assoc params :pool-ent pool-ent))))
+                                   (d/entity (d/db conn) [:pool/name pool-name]))
+                        db (mt/db conn)
+                        jobs-to-make-room-for (->> pending-jobs
+                                                   (filter (partial util/job-allowed-to-start? db))
+                                                   (take max-preemption))
+                        init-state (init-state db (util/get-running-task-ents db) jobs-to-make-room-for
+                                               host->spare-resources pool-ent)]
+                    (log/info "Rebalancing for pool" pool-name)
+                    (rebalance! db conn driver agent-attributes-cache rebalancer-reservation-atom
+                                params init-state jobs-to-make-room-for)))
                 @pending-jobs-atom)
               (log/info "Rebalance cycle ended"))
             (log/info "Skipping rebalancing because it's not cofigured"))))
