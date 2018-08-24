@@ -578,14 +578,6 @@
     (meters/mark! scheduler-offer-declined)
     (mesos/decline-offer driver id)))
 
-(defn decline-offers-safe
-  "Declines a collection of offers, catching exceptions"
-  [driver offers]
-  (try
-    (decline-offers driver (map :id offers))
-    (catch Exception e
-      (log/error e "Unable to decline offers!"))))
-
 (timers/deftimer [cook-mesos scheduler handle-resource-offer!-duration])
 (timers/deftimer [cook-mesos scheduler handle-resource-offer!-transact-task-duration])
 (timers/deftimer [cook-mesos scheduler handle-resource-offer!-process-matches-duration])
@@ -1395,6 +1387,14 @@
   (when (number? limits)
     @(d/transact conn [{:db/id :scheduler/config
                         :scheduler.config/mea-culpa-failure-limit limits}])))
+
+(defn decline-offers-safe
+  "Declines a collection of offers, catching exceptions"
+  [driver offers]
+  (try
+    (decline-offers driver (map :id offers))
+    (catch Exception e
+      (log/error e "Unable to decline offers!"))))
 
 (defn receive-offers
   [offers-chan match-trigger-chan driver offers]
