@@ -1226,7 +1226,9 @@
   "Given a collection of pools, and a function val-fn that takes a pool,
   returns a map from keyword-ized pool name to (val-fn pool)"
   [pools val-fn]
-  (into {} (map (fn [p] [(pool->keyword p) (val-fn p)]) pools)))
+  (->> pools
+       (pc/map-from-keys val-fn)
+       (pc/map-keys pool->keyword)))
 
 (defn sort-jobs-by-dru-pool
   "Returns a map from job pool to a list of job entities, ordered by dru"
