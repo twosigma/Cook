@@ -110,8 +110,7 @@
   [get-queue get-running get-offers host-feed optimizer]
   (let [queue (future (get-queue))
         running (future (get-running))
-        ; This should be changed to call get-offers.
-        ; For now, the integration of the optimizer with pools is not yet clear.
+        ; TODO: Call get-offers. Integration of the optimizer with pools is not yet implemented.
         offers (future [])
         host-infos (get-available-host-info host-feed)
         _ (s/validate [HostInfo] host-infos)
