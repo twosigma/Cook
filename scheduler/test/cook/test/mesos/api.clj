@@ -1263,10 +1263,10 @@
       (testing "should work with datasets"
         (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
               framework-id #mesomatic.types.FrameworkID{:value "framework-id"}
-              {:keys [uuid] :as job} (assoc (minimal-job) :datasets #{{"dataset" {"foo" "bar"}}
-                                                                      {"dataset" {"foo" "bar"
+              {:keys [uuid] :as job} (assoc (minimal-job) :datasets #{{:dataset {"foo" "bar"}}
+                                                                      {:dataset {"foo" "bar"
                                                                                   "partition-type" "date"}
-                                                                       "partitions" #{{"begin" "20180101"
+                                                                       :partitions #{{"begin" "20180101"
                                                                                       "end" "20180201"}
                                                                                      {"begin" "20180301"
                                                                                       "end" "20180401"}}}})]

@@ -90,11 +90,21 @@
       @(d/transact conn t))
     conn))
 
+(defn- make-dataset-entity
+  [{:keys [dataset partitions]}]
+  ; TODO - partitions
+  {:db/id (d/tempid :db.part/user)
+   :dataset/parameters (map (fn [[k v]]
+                              {:db/id (d/tempid :db.part/user)
+                               :dataset.parameter/key k
+                               :dataset.parameter/value v})
+                            dataset)})
+
 (defn create-dummy-job
   "Return the entity id for the created dummy job."
   [conn & {:keys [command committed? container custom-executor? disable-mea-culpa-retries env executor gpus group
                   job-state max-runtime memory name ncpus pool priority retry-count submit-time under-investigation user
-                  uuid expected-runtime data-local]
+                  uuid expected-runtime datasets]
            :or {command "dummy command"
                 committed? true
                 disable-mea-culpa-retries false
@@ -106,7 +116,6 @@
                 priority 50
                 retry-count 5
                 submit-time (java.util.Date.)
-                data-local false
                 under-investigation false
                 user (System/getProperty "user.name")
                 uuid (d/squuid)}}]
@@ -132,7 +141,6 @@
                                          :resource/amount (double memory)}]
                          :job/state job-state
                          :job/submit-time submit-time
-                         :job/data-local data-local
                          :job/under-investigation under-investigation
                          :job/user user
                          :job/uuid uuid}
@@ -142,7 +150,9 @@
                         (when pool
                           {:job/pool (d/entid (d/db conn) [:pool/name pool])})
                         (when expected-runtime
-                          {:job/expected-runtime expected-runtime}))
+                          {:job/expected-runtime expected-runtime})
+                        (when datasets
+                          {:job/datasets (map make-dataset-entity datasets)}))
         job-info (if gpus
                    (update-in job-info [:job/resource] conj {:resource/type :resource.type/gpus
                                                              :resource/amount (double gpus)})

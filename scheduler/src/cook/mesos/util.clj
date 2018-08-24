@@ -33,6 +33,7 @@
     [java.util.concurrent TimeUnit]
     [java.util Date]))
 
+(def partition-date-format (:basic-date tf/formatters))
 
 (defn new-cache []
   "Build a new cache"
@@ -843,3 +844,20 @@
   (if (nil? s)
     d
     (Integer/parseInt s)))
+
+(defn- make-partition-map
+  [partition-type partition]
+  (let [format-date (fn format-date [date] (tf/unparse partition-date-format (tc/from-date date)))]
+    (case partition-type
+      "date" {"begin" (format-date (:dataset.partition/begin partition))
+              "end" (format-date (:dataset.partition/end partition))})))
+
+(defn make-dataset-map
+  [{:keys [dataset/partitions dataset/partition-type dataset/parameters]}]
+  (let [partitions (when (not (empty? partitions))
+                     (->> partitions
+                          (map (partial make-partition-map partition-type))
+                          (into #{})))]
+    (cond-> {:dataset (into {} (map (fn [p] [(:dataset.parameter/key p) (:dataset.parameter/value p)])
+                                    parameters))}
+      partitions (assoc :partitions partitions))))

@@ -629,7 +629,7 @@
                                    {:db/id gpus-id
                                     :resource/type :resource.type/gpus
                                     :resource/amount (double gpus)}]))])
-        datasets (map (fn [{:strs [dataset partitions]}]
+        datasets (map (fn [{:keys [dataset partitions]}]
                         (let [parameters (map (fn [[k v]] {:db/id (d/tempid :db.part/user)
                                                            :dataset.parameter/key k
                                                            :dataset.parameter/value v})
@@ -954,13 +954,6 @@
           docker (assoc :docker (docker->response-map docker))
           volumes (assoc :volumes (map container-volume->response-map volumes))))
 
-(defn- make-partition-map
-  [partition-type partition]
-  (let [format-date (fn format-date [date] (tf/unparse partition-date-format (tc/from-date date)))]
-    (case partition-type
-      "date" {"begin" (format-date (:dataset.partition/begin partition))
-              "end" (format-date (:dataset.partition/end partition))})))
-
 (defn fetch-job-map
   [db framework-id job-uuid]
   (timers/time!
@@ -987,16 +980,7 @@
           submit-time (when (:job/submit-time job) ; due to a bug, submit time may not exist for some jobs
                         (.getTime (:job/submit-time job)))
           datasets (when (not (empty? (:job/datasets job)))
-                     (->> (:job/datasets job)
-                          (map (fn [dataset]
-                                 (let [partitions (when (not (empty? (:dataset/partitions dataset)))
-                                                    (->> (:dataset/partitions dataset)
-                                                         (map (partial make-partition-map (:dataset/partition-type dataset)))
-                                                         (into #{})))]
-                                   (cond-> {"dataset" (into {} (map (fn [p] [(:dataset.parameter/key p) (:dataset.parameter/value p)])
-                                                                    (:dataset/parameters dataset)))}
-                                     partitions (assoc "partitions" partitions)))))
-                          (into #{})))
+                     (into #{} (map util/make-dataset-map (:job/datasets job))))
           job-map {:command (:job/command job)
                    :constraints constraints
                    :cpus (:cpus resources)
