@@ -1781,12 +1781,12 @@ class CookTest(util.CookTest):
         uuids, resp = util.submit_jobs(self.cook_url, jobs, groups=[group])
         self.assertEqual(201, resp.status_code, resp.content)
         try:
-            reasons = [
+            reasons = {
                 # We expect the reason to be either our attribute-equals constraint:
                 "Host had a different attribute than other jobs in the group.",
                 # Or, if there are no other offers, we simply don't have enough cpus:
                 "Not enough cpus available."
-            ]
+            }
 
             def query():
                 unscheduled_jobs, _ = util.unscheduled_jobs(self.cook_url, *[j['uuid'] for j in jobs])
