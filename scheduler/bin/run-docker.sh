@@ -52,7 +52,7 @@ if [ "$(docker ps -aq -f name=${NAME})" ]; then
     docker stop ${NAME}
 fi
 
-$(minimesos info | grep MINIMESOS)
+$(${DIR}/../../travis/minimesos info | grep MINIMESOS)
 EXIT_CODE=$?
 if [ ${EXIT_CODE} -eq 0 ]
 then
