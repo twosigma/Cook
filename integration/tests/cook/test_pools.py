@@ -20,6 +20,7 @@ class PoolsCookTest(util.CookTest):
 
     def setUp(self):
         self.cook_url = type(self).cook_url
+        self.mesos_url = util.retrieve_mesos_url()
         self.logger = logging.getLogger(__name__)
         self.user_factory = util.UserFactory(self)
 
@@ -52,7 +53,9 @@ class PoolsCookTest(util.CookTest):
                     filling_job_uuid, _ = util.submit_job(self.cook_url, cpus=quota_cpus,
                                                           command='sleep 600', pool=pool_name)
                     all_job_uuids.append(filling_job_uuid)
-                    util.wait_for_running_instance(self.cook_url, filling_job_uuid)
+                    instance = util.wait_for_running_instance(self.cook_url, filling_job_uuid)
+                    slave_pool = util.slave_pool(self.mesos_url, instance['hostname'])
+                    self.assertEqual(pool_name, slave_pool)
 
                     # Submit a job that should not get scheduled
                     job_uuid, _ = util.submit_job(self.cook_url, cpus=cpus, command='ls', pool=pool_name)

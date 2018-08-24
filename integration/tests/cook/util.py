@@ -1141,6 +1141,13 @@ def slave_cpus(mesos_url, hostname):
     return slave_cpus
 
 
+def slave_pool(mesos_url, hostname):
+    """Returns the pool of the specified Mesos agent, or None if the agent doesn't have the attribute"""
+    slaves = get_mesos_state(mesos_url)['slaves']
+    pool = next(s.get('attributes', {}).get('cook-pool', None) for s in slaves if s['hostname'] == hostname)
+    return pool
+
+
 def max_slave_cpus(mesos_url):
     """Returns the max cpus of all current Mesos agents"""
     slaves = get_mesos_state(mesos_url)['slaves']
