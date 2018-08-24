@@ -1205,7 +1205,7 @@ def are_pools_enabled():
     return len(active_pools(cook_url)[0]) > 1
 
 
-def default_pool_num_hosts(cook_url, mesos_url):
+def num_hosts_to_consider(cook_url, mesos_url):
     """
     Returns the number of hosts in the default pool, or the
     total number of hosts if the cluster is not using pools

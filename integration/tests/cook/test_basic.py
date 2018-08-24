@@ -1630,7 +1630,7 @@ class CookTest(util.CookTest):
 
     @pytest.mark.xfail(reason='Sometimes fails on Travis')
     def test_unique_host_constraint(self):
-        num_hosts = util.default_pool_num_hosts(self.cook_url, self.mesos_url)
+        num_hosts = util.num_hosts_to_consider(self.cook_url, self.mesos_url)
         group = {'uuid': str(uuid.uuid4()),
                  'host-placement': {'type': 'unique'}}
         job_spec = {'group': group['uuid'], 'command': 'sleep 600'}
@@ -1683,7 +1683,7 @@ class CookTest(util.CookTest):
             util.kill_jobs(self.cook_url, uuids)
 
     def test_balanced_host_constraint_cannot_place(self):
-        num_hosts = util.default_pool_num_hosts(self.cook_url, self.mesos_url)
+        num_hosts = util.num_hosts_to_consider(self.cook_url, self.mesos_url)
         if num_hosts > 10:
             # Skip this test on large clusters
             self.logger.info(f"Skipping test due to cluster size of {num_hosts} greater than 10")
@@ -1730,7 +1730,7 @@ class CookTest(util.CookTest):
             util.kill_jobs(self.cook_url, uuids)
 
     def test_balanced_host_constraint_can_place(self):
-        num_hosts = util.default_pool_num_hosts(self.cook_url, self.mesos_url)
+        num_hosts = util.num_hosts_to_consider(self.cook_url, self.mesos_url)
         minimum_hosts = min(10, num_hosts)
         group = {'uuid': str(uuid.uuid4()),
                  'host-placement': {'type': 'balanced',
