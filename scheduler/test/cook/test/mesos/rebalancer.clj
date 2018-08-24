@@ -889,6 +889,18 @@
             (doall (for [[scored expected] scored->expected]
               (is (= scored expected))))))))))
 
+(defn rebalance
+  "Calculates the jobs to make for and the initial state, and then delegates to rebalancer/rebalance"
+  [db agent-attributes-cache pending-job-ents host->spare-resources rebalancer-reservation-atom
+   {:keys [max-preemption pool-ent] :as params}]
+  (let [jobs-to-make-room-for (->> pending-job-ents
+                                   (filter (partial util/job-allowed-to-start? db))
+                                   (take max-preemption))
+        init-state (rebalancer/init-state db (util/get-running-task-ents db) jobs-to-make-room-for
+                                          host->spare-resources pool-ent)]
+    (rebalancer/rebalance db agent-attributes-cache rebalancer-reservation-atom
+                          params init-state jobs-to-make-room-for)))
+
 (deftest test-rebalance
   (let [datomic-uri "datomic:mem://test-rebalance"
         conn (restore-fresh-database! datomic-uri)
@@ -993,11 +1005,8 @@
     (let [db (d/db conn)
           agent-attributes-cache (init-agent-attributes-cache)
           pending-job-ents (map #(d/entity db %) jobs)
-          preemption-decisions (rebalancer/rebalance db agent-attributes-cache
-                                                     pending-job-ents 
-                                                     available-resources 
-                                                     (atom {})
-                                                     params)
+          preemption-decisions (rebalance db agent-attributes-cache pending-job-ents
+                                          available-resources (atom {}) params)
           pending-job-ents-to-run (map :to-make-room-for preemption-decisions)
           task-ents-to-preempt (mapcat :task preemption-decisions)]
       (is (= (map #(d/entity db %) expected-jobs-to-run)
@@ -1048,11 +1057,8 @@
 
             pending-job-ents (util/get-pending-job-ents db)
             pool-ent {:pool/dru-mode :pool.dru-mode/default}]
-        (rebalancer/rebalance db agent-attributes-cache
-                              pending-job-ents {}
-                              (atom {})
-                              {:max-preemption 128
-                               :pool-ent pool-ent})))))
+        (rebalance db agent-attributes-cache pending-job-ents {} (atom {})
+                   {:max-preemption 128, :pool-ent pool-ent})))))
 
 
 (deftest test-update-datomic-params-via-config!
@@ -1108,12 +1114,8 @@
                         :mem 10.0 :cpus 10.0)
       (let [db (d/db conn)
             [{:keys [hostname task to-make-room-for]}]
-            (rebalancer/rebalance db
-                                  agent-attributes-cache
-                                  (util/get-pending-job-ents db)
-                                  {"hostA" {:cpus 0.0 :mem 0.0 :gpus 0.0}}
-                                  reservations
-                                  params)]
+            (rebalance db agent-attributes-cache (util/get-pending-job-ents db)
+                       {"hostA" {:cpus 0.0 :mem 0.0 :gpus 0.0}} reservations params)]
         (is (= "hostA" hostname))
         (is (= job4 (:db/id to-make-room-for)))
         (is (= [task1 task2] (map :db/id task)))
@@ -1143,12 +1145,8 @@
                         :mem 1.0 :cpus 1.0)
       (let [db (d/db conn)
             [{:keys [hostname task to-make-room-for]}]
-            (rebalancer/rebalance db
-                                  agent-attributes-cache
-                                  (util/get-pending-job-ents db)
-                                  {"hostA" {:cpus 0.0 :mem 0.0 :gpus 0.0}}
-                                  reservations
-                                  params)]
+            (rebalance db agent-attributes-cache (util/get-pending-job-ents db)
+                       {"hostA" {:cpus 0.0 :mem 0.0 :gpus 0.0}} reservations params)]
         (is (= "hostA" hostname))
         (is (= job2 (:db/id to-make-room-for)))
         (is (= [task1] (map :db/id task)))
@@ -1182,12 +1180,8 @@
                         :mem 10.0 :cpus 10.0)
       (let [db (d/db conn)
             [{:keys [hostname task to-make-room-for]}]
-            (rebalancer/rebalance db
-                                  agent-attributes-cache
-                                  (util/get-pending-job-ents db)
-                                  {"hostA" {:cpus 0.0 :mem 0.0 :gpus 0.0}}
-                                  reservations
-                                  params)]
+            (rebalance db agent-attributes-cache (util/get-pending-job-ents db)
+                       {"hostA" {:cpus 0.0 :mem 0.0 :gpus 0.0}} reservations params)]
         (is (= "hostA" hostname))
         (is (= job4 (:db/id to-make-room-for)))
         (is (= [task1 task2] (map :db/id task)))

@@ -402,15 +402,10 @@
                                           :launched-job-uuids #{}}))))
 
 (defn rebalance
-  "Takes a db, a list of pending job entities, a map of spare resources and params.
-   Returns a list of pending job entities to run and a list of task entities to preempt"
-  [db agent-attributes-cache pending-job-ents host->spare-resources rebalancer-reservation-atom
-   {:keys [max-preemption pool-ent] :as params}]
+  "Returns a list of pending job entities to run and a list of task entities to preempt"
+  [db agent-attributes-cache rebalancer-reservation-atom
+   {:keys [max-preemption] :as params} init-state jobs-to-make-room-for]
   (let [timer (timers/start rebalance-duration)
-        jobs-to-make-room-for (->> pending-job-ents
-                                   (filter (partial util/job-allowed-to-start? db))
-                                   (take max-preemption))
-        init-state (init-state db (util/get-running-task-ents db) jobs-to-make-room-for host->spare-resources pool-ent)
         cotask-cache (atom (cache/lru-cache-factory {} :threshold (max 1 max-preemption)))]
     (log/debug "Jobs to make room for:" jobs-to-make-room-for)
     (loop [state init-state
@@ -418,7 +413,9 @@
            [pending-job-ent & jobs-to-make-room-for] jobs-to-make-room-for
            preemption-decisions []]
       (if (and pending-job-ent (pos? remaining-preemption))
-        (let [[state' preemption-decision] (compute-next-state-and-preemption-decision db agent-attributes-cache state params pending-job-ent cotask-cache)]
+        (let [[state' preemption-decision]
+              (compute-next-state-and-preemption-decision db agent-attributes-cache state
+                                                          params pending-job-ent cotask-cache)]
           (if preemption-decision
             (recur state'
                    (dec remaining-preemption)
@@ -452,11 +449,16 @@
 
 (defn rebalance!
   [conn driver agent-attributes-cache pending-job-ents host->spare-resources rebalancer-reservation-atom
-   params]
+   {:keys [max-preemption pool-ent] :as params}]
   (try
     (log/info "Rebalancing...Params:" params)
     (let [db (mt/db conn)
-          preemption-decisions (rebalance db agent-attributes-cache pending-job-ents host->spare-resources rebalancer-reservation-atom params)]
+          jobs-to-make-room-for (->> pending-job-ents
+                                     (filter (partial util/job-allowed-to-start? db))
+                                     (take max-preemption))
+          init-state (init-state db (util/get-running-task-ents db) jobs-to-make-room-for host->spare-resources pool-ent)
+          preemption-decisions (rebalance db agent-attributes-cache rebalancer-reservation-atom
+                                          params init-state jobs-to-make-room-for)]
       (doseq [{job-ent-to-make-room-for :to-make-room-for
                task-ents-to-preempt :task} preemption-decisions]
         ;; Ensure that uuids are loaded in entity
