@@ -23,11 +23,10 @@
     "Updates the current data local costs. Costs larger than the configured max-cost will be capped at max-cost
      and negative costs will be reset to 0."
     [datasets->host->cost datasets-to-remove]
-    (let [{:keys [maximum-cost]} (config/data-local-fitness-config)
-          clean-datasets->host->cost (pc/map-vals (fn [host->cost]
-                                                   (pc/map-vals (fn [cost] (-> cost (min maximum-cost) (max 0)))
-                                                                host->cost))
-                                                 datasets->host->cost)]
+    (let [clean-datasets->host->cost (pc/map-vals (fn [host->cost]
+                                                    (pc/map-vals (fn [cost] (-> cost (min 1.0) (max 0)))
+                                                                 host->cost))
+                                                  datasets->host->cost)]
       (swap! datasets->host-name->cost-atom (fn update-datasets->host-name->cost-atom-atom
                                 [current]
                                 (let [remove-old-values (apply dissoc current datasets-to-remove)]
@@ -121,22 +120,15 @@
                     {:error-handler (fn [e]
                                       (log/error e "Error updating data local costs"))}))
 
-(defn get-normalized-fitness
-  "Returns the fitness for the job to run on the given host, normalized by max-cost.
-   If the host doesn't have a cost specified, assume max-cost."
-  [datasets hostname max-cost]
-  (let [data-local-costs (get-data-local-costs)
-        cost (get-in data-local-costs [datasets hostname] max-cost)]
-    (- 1 (double (/ cost max-cost)))))
-
-(deftype DataLocalFitnessCalculator [^VMTaskFitnessCalculator base-calculator data-locality-weight maximum-cost]
+(deftype DataLocalFitnessCalculator [^VMTaskFitnessCalculator base-calculator data-locality-weight]
   VMTaskFitnessCalculator
   (getName [this] (-> this .getClass .getSimpleName))
   (calculateFitness [this task-request target-vm tracker-state]
     (let [base-fitness (.calculateFitness base-calculator task-request target-vm tracker-state)
           {:keys [job/uuid job/datasets]} (:job task-request)]
       (if datasets
-        (let [normalized-fitness (get-normalized-fitness datasets (.getHostname target-vm) maximum-cost)
+        (let [normalized-fitness (- 1.0
+                                    (get-in (get-data-local-costs) [datasets (.getHostname target-vm)] 1.0))
               data-local-fitness (* data-locality-weight normalized-fitness)]
           (+ data-local-fitness (* (- 1 data-locality-weight) base-fitness)))
         base-fitness))))
@@ -146,5 +138,5 @@
 (defn make-data-local-fitness-calculator
   "Loads settings from configuration to build a data local fitness calculator"
   []
-  (let [{:keys [base-calculator data-locality-weight maximum-cost]} (config/data-local-fitness-config)]
-    (->DataLocalFitnessCalculator base-calculator data-locality-weight maximum-cost)))
+  (let [{:keys [base-calculator data-locality-weight]} (config/data-local-fitness-config)]
+    (->DataLocalFitnessCalculator base-calculator data-locality-weight)))

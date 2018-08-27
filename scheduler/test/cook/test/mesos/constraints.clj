@@ -309,8 +309,7 @@
   (testing "requires data for newer jobs"
     (dl/reset-data-local-costs!)
     (with-redefs [config/fitness-calculator-config (constantly dl/data-local-fitness-calculator)
-                  config/data-local-fitness-config (constantly {:launch-wait-seconds 60
-                                                                :maximum-cost 100})]
+                  config/data-local-fitness-config (constantly {:launch-wait-seconds 60})]
       (let [with-data-datasets #{{:dataset {"a" "a"}}}
             _ (dl/update-data-local-costs {with-data-datasets {"hostA" 0}} [])
             with-data-constraint (constraints/build-data-locality-constraint {:job/uuid (UUID/randomUUID)

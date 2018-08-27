@@ -10,59 +10,39 @@
             VMTaskFitnessCalculator
             VirtualMachineCurrentState]))
 
-(deftest test-get-normalized-cost
-  (with-redefs [config/data-local-fitness-config (constantly {:maximum-cost 100})]
-    (let [d1 #{{:dataset {"a" "a"}}}
-          d2 #{{:dataset {"b" "b"}}}
-          d3 #{{:dataset {"c" "c"}}}]
-      (dl/reset-data-local-costs!)
-      (dl/update-data-local-costs {d1 {"hostA" 10
-                                       "hostB" 20}
-                                   d2 {"hostA" 30}}
-                                  [])
-      (testing "correctly normalizes costs"
-        (is (= 0.75 (dl/get-normalized-fitness d1 "hostA" 40)))
-        (is (= 0.5 (dl/get-normalized-fitness d1 "hostB" 40)))
-        (is (= 0.25 (dl/get-normalized-fitness d2 "hostA" 40))))
-
-      (testing "uses max cost for missing host or job"
-        (is (= 0.0 (dl/get-normalized-fitness d2 "hostB" 40)))
-        (is (= 0.0 (dl/get-normalized-fitness d3 "hostA" 40)))))))
-
 (deftest test-update-data-local-costs
-  (with-redefs [config/data-local-fitness-config (constantly {:maximum-cost 100})]
-    (testing "sanitizes input costs"
-      (let [job-1 (str (UUID/randomUUID))
-            job-2 (str (UUID/randomUUID))]
-        (dl/reset-data-local-costs!)
-        (dl/update-data-local-costs {job-1 {"hostA" 200
-                                            "hostB" 20
-                                            "hostC" -20}
-                                     job-2 {"hostB" 1000}}
-                                    [])
-        (is (= {job-1 {"hostA" 100
-                       "hostB" 20
-                       "hostC" 0}
-                job-2 {"hostB" 100}}
-               (dl/get-data-local-costs)))))
+  (testing "sanitizes input costs"
+    (let [job-1 (str (UUID/randomUUID))
+          job-2 (str (UUID/randomUUID))]
+      (dl/reset-data-local-costs!)
+      (dl/update-data-local-costs {job-1 {"hostA" 2.0
+                                          "hostB" 0.2
+                                          "hostC" -20}
+                                   job-2 {"hostB" 10.0}}
+                                  [])
+      (is (= {job-1 {"hostA" 1.0
+                     "hostB" 0.2
+                     "hostC" 0}
+              job-2 {"hostB" 1.0}}
+             (dl/get-data-local-costs)))))
 
-    (testing "correctly updates existing values"
-      (let [job-1 (UUID/randomUUID)
-            job-2 (UUID/randomUUID)
-            job-3 (UUID/randomUUID)
-            job-4 (UUID/randomUUID)]
-        (dl/reset-data-local-costs!)
-        (dl/update-data-local-costs {job-1 {"hostA" 100}
-                                     job-2 {"hostB" 200}
-                                     job-4 {"hostC" 300}}
-                                    [])
-        (dl/update-data-local-costs {job-3 {"hostB" 300}
-                                     job-4 {"hostA" 200}}
-                                    [job-2])
-        (is (= {job-1 {"hostA" 100}
-                job-3 {"hostB" 300}
-                job-4 {"hostA" 200}})
-            (dl/get-data-local-costs))))))
+  (testing "correctly updates existing values"
+    (let [job-1 (UUID/randomUUID)
+          job-2 (UUID/randomUUID)
+          job-3 (UUID/randomUUID)
+          job-4 (UUID/randomUUID)]
+      (dl/reset-data-local-costs!)
+      (dl/update-data-local-costs {job-1 {"hostA" 100}
+                                   job-2 {"hostB" 200}
+                                   job-4 {"hostC" 300}}
+                                  [])
+      (dl/update-data-local-costs {job-3 {"hostB" 300}
+                                   job-4 {"hostA" 200}}
+                                  [job-2])
+      (is (= {job-1 {"hostA" 100}
+              job-3 {"hostB" 300}
+              job-4 {"hostA" 200}})
+          (dl/get-data-local-costs)))))
 
 (deftype FixedFitnessCalculator [fitness]
   VMTaskFitnessCalculator
@@ -78,40 +58,36 @@
     TaskRequest)
 
 (deftest test-data-local-fitness-calculator
-  (with-redefs [config/data-local-fitness-config (constantly {:maximum-cost 100})]
-    (let [base-fitness 0.5
-          base-calculator (FixedFitnessCalculator. base-fitness)
-          maximum-cost 40
-          data-locality-weight 0.9
-          base-fitness-portion (* base-fitness (- 1 data-locality-weight))
-          calculator (dl/->DataLocalFitnessCalculator base-calculator
-                                                      data-locality-weight
-                                                      maximum-cost)
-          [d1 d2] [#{{:dataset {"a" "a"}}} #{{:dataset {"b" "b"}}}]
-          job-1 {:job/uuid (UUID/randomUUID)
-                 :job/datasets d1}
-          job-2 {:job/uuid (UUID/randomUUID)}]
-      (dl/update-data-local-costs {d1 {"hostA" 0
-                                       "hostB" 20}
-                                   d2 {"hostA" 0
-                                       "hostB" 0}}
-                                  [])
-      (testing "uses base fitness for jobs that do not support data locality"
-        (is (= base-fitness (.calculateFitness calculator (FakeTaskRequest. job-2) (fake-vm-for-host "hostA") nil)))
-        (is (= base-fitness (.calculateFitness calculator (FakeTaskRequest. job-2) (fake-vm-for-host "hostB") nil))))
+  (let [base-fitness 0.5
+        base-calculator (FixedFitnessCalculator. base-fitness)
+        data-locality-weight 0.9
+        base-fitness-portion (* base-fitness (- 1 data-locality-weight))
+        calculator (dl/->DataLocalFitnessCalculator base-calculator
+                                                    data-locality-weight)
+        [d1 d2] [#{{:dataset {"a" "a"}}} #{{:dataset {"b" "b"}}}]
+        job-1 {:job/uuid (UUID/randomUUID)
+               :job/datasets d1}
+        job-2 {:job/uuid (UUID/randomUUID)}]
+    (dl/update-data-local-costs {d1 {"hostA" 0
+                                     "hostB" 0.5}
+                                 d2 {"hostA" 0
+                                     "hostB" 0}}
+                                [])
+    (testing "uses base fitness for jobs that do not support data locality"
+      (is (= base-fitness (.calculateFitness calculator (FakeTaskRequest. job-2) (fake-vm-for-host "hostA") nil)))
+      (is (= base-fitness (.calculateFitness calculator (FakeTaskRequest. job-2) (fake-vm-for-host "hostB") nil))))
 
-      (testing "calculates fitness for jobs that support data locality"
-        (is (= (+ data-locality-weight base-fitness-portion)
-               (.calculateFitness calculator (FakeTaskRequest. job-1) (fake-vm-for-host "hostA") nil)))
-        (is (= (+ (* 0.5 data-locality-weight) base-fitness-portion)
-               (.calculateFitness calculator (FakeTaskRequest. job-1) (fake-vm-for-host "hostB") nil)))
-        (is (= base-fitness-portion
-               (.calculateFitness calculator (FakeTaskRequest. job-1) (fake-vm-for-host "hostC") nil)))))))
+    (testing "calculates fitness for jobs that support data locality"
+      (is (= (+ data-locality-weight base-fitness-portion)
+             (.calculateFitness calculator (FakeTaskRequest. job-1) (fake-vm-for-host "hostA") nil)))
+      (is (= (+ (* 0.5 data-locality-weight) base-fitness-portion)
+             (.calculateFitness calculator (FakeTaskRequest. job-1) (fake-vm-for-host "hostB") nil)))
+      (is (= base-fitness-portion
+             (.calculateFitness calculator (FakeTaskRequest. job-1) (fake-vm-for-host "hostC") nil))))))
 
 
 (deftest test-jobs-to-update
-  (with-redefs [config/data-local-fitness-config (constantly {:batch-size 3
-                                                              :maximum-cost 100})]
+  (with-redefs [config/data-local-fitness-config (constantly {:batch-size 3})]
     (dl/reset-data-local-costs!)
     (testing "does not update data for running and completed jobs"
       (let [conn (restore-fresh-database! "datomic:mem://test-job-ids-to-update")
@@ -174,12 +150,11 @@
 
 
 (deftest test-fetch-and-update-data-local-costs
-  (let [first-cost {"hostA" 100}
-        second-cost {"hostA" 50}
-        third-cost {"hostA" 20}
+  (let [first-cost {"hostA" 1.0}
+        second-cost {"hostA" 0.5}
+        third-cost {"hostA" 0.2}
         current-cost-atom (atom first-cost)]
-    (with-redefs [config/data-local-fitness-config (constantly {:batch-size 2
-                                                                :maximum-cost 100})
+    (with-redefs [config/data-local-fitness-config (constantly {:batch-size 2})
                   dl/fetch-data-local-costs (fn [jobs]
                                               (pc/map-from-keys (fn [_] @current-cost-atom)
                                                                 (map :job/datasets jobs)))]

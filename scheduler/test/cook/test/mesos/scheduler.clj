@@ -1735,8 +1735,7 @@
 
 
 (deftest test-handle-resource-offers-with-data-locality
-  (with-redefs [config/data-local-fitness-config (constantly {:maximum-cost 100
-                                                              :data-locality-weight 0.95
+  (with-redefs [config/data-local-fitness-config (constantly {:data-locality-weight 0.95
                                                               :base-calculator BinPackingFitnessCalculators/cpuMemBinPacker})]
     (let [test-user (System/getProperty "user.name")
           uri "datomic:mem://test-handle-resource-offers"

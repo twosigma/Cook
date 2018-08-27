@@ -395,7 +395,6 @@
                                          {:base-calculator (config-string->fitness-calculator
                                                             (get data-local-fitness-calculator :base-calculator  "com.netflix.fenzo.plugins.BinPackingFitnessCalculators/cpuMemBinPacker"))
                                           :data-locality-weight (get data-local-fitness-calculator :data-locality-weight 0.95)
-                                          :maximum-cost (get data-local-fitness-calculator :maximum-cost 100)
                                           :cost-endpoint (get data-local-fitness-calculator :cost-endpoint nil)
                                           :batch-size (get data-local-fitness-calculator :batch-size 500)
                                           :update-interval-ms (get data-local-fitness-calculator :update-interval-ms nil)

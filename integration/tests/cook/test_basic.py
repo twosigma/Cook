@@ -2475,11 +2475,10 @@ class CookTest(util.CookTest):
     @pytest.mark.serial
     @unittest.skipUnless(util.data_local_service_is_set(), "Requires a data local service")
     def test_data_local_support(self):
-        max_cost = util.settings(self.cook_url)['data-local-fitness-calculator']['maximum-cost']
         slaves = util.get_mesos_state(self.mesos_url)['slaves']
         costs = []
         for slave in slaves:
-            costs.append({'node': slave['hostname'], 'cost': max_cost})
+            costs.append({'node': slave['hostname'], 'cost': 1.0})
         costs[0]['cost'] = 0
         job_uuid = uuid.uuid4()
         data_local_service = os.getenv('DATA_LOCAL_SERVICE')
