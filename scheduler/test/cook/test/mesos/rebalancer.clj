@@ -92,7 +92,7 @@
             db (d/db conn)
             running-tasks (util/get-running-task-ents db)
             pending-jobs []
-            pool-ent {:pool/name :no-pool
+            pool-ent {:pool/name "no-pool"
                       :pool/dru-mode :pool.dru-mode/default}
             {:keys [task->scored-task user->sorted-running-task-ents]}
             (rebalancer/init-state db running-tasks pending-jobs {} pool-ent)]
@@ -140,7 +140,7 @@
           db (d/db conn)
           running-tasks (util/get-running-task-ents db)
           pending-jobs (map #(d/entity db %) [job9 job10 job11])
-          pool-ent {:pool/name :no-pool
+          pool-ent {:pool/name "no-pool"
                     :pool/dru-mode :pool.dru-mode/default}
           state (rebalancer/init-state db running-tasks pending-jobs {} pool-ent)]
       (is (= 1.92 (rebalancer/compute-pending-default-job-dru state (d/entity db job9))))
@@ -179,7 +179,7 @@
         db (d/db conn)
         running-tasks (util/get-running-task-ents db)
         pending-jobs (map #(d/entity db %) [job9 job10 job11])
-        pool-ent {:pool/name :no-pool
+        pool-ent {:pool/name "no-pool"
                   :pool/dru-mode :pool.dru-mode/gpu}
         state (rebalancer/init-state db running-tasks pending-jobs {} pool-ent)]
     (is (= (rebalancer/compute-pending-gpu-job-dru state (d/entity db job2))
@@ -192,7 +192,7 @@
   [db pending-job-ids]
   (let [pending-jobs (map #(d/entity db %) pending-job-ids)
         running-tasks (util/get-running-task-ents db)
-        pool-ent {:pool/name :no-pool
+        pool-ent {:pool/name "no-pool"
                   :pool/dru-mode :pool.dru-mode/default}
         {:keys [task->scored-task user->sorted-running-task-ents user->dru-divisors]}
         (rebalancer/init-state db running-tasks pending-jobs {} pool-ent)]
@@ -794,7 +794,7 @@
           pending-job-ents (map #(d/entity db %) [job9 job10 job11 job12 job13 job14])
           host->spare-resources {"hostA" {:mem 50.0 :cpus 50.0}}
           user->dru-divisors {"ljin" {:mem 25.0 :cpus 25.0 :gpus 1.0} "wzhao" {:mem 25.0 :cpus 25.0 :gpus 1.0} "sunil" {:mem 25.0 :cpus 25.0 :gpus 1.0}}
-          pool-ent {:pool/name :no-pool
+          pool-ent {:pool/name "no-pool"
                     :pool/dru-mode :pool.dru-mode/default}
           state (rebalancer/init-state db running-task-ents pending-job-ents host->spare-resources pool-ent)]
       (let [task-ent9 {:job/_instance job-ent9
@@ -954,7 +954,7 @@
         job28 (create-dummy-job conn :user "sunil" :memory 5.0 :ncpus 5.0)
 
         pool-ent {:pool/dru-mode :pool.dru-mode/default
-                  :pool/name :no-pool}
+                  :pool/name "no-pool"}
         test-cases [{:jobs [job9 job10 job11 job12 job13
                             job14 job15 job16 job17 job18]
                      :params {:max-preemption 128 :safe-dru-threshold 1.0 :min-dru-diff 0.0 :pool-ent pool-ent}
@@ -1090,7 +1090,7 @@
   (testing "reserves host for multiple preemptions"
     (let [datomic-uri "datomic:mem://test-rebalance-host-reservation"
           conn (restore-fresh-database! datomic-uri)
-          pool-ent {:pool/name :no-pool
+          pool-ent {:pool/name "no-pool"
                     :pool/dru-mode :pool.dru-mode/default}
           params {:max-preemption 128 :safe-dru-threshold 1.0 :min-dru-diff 0.0 :pool-ent pool-ent}
           agent-attributes-cache (init-agent-attributes-cache)
@@ -1126,7 +1126,7 @@
   (testing "does not reserve host for single preempted task"
     (let [datomic-uri "datomic:mem://test-rebalance-host-reservation-single"
           conn (restore-fresh-database! datomic-uri)
-          pool-ent {:pool/name :no-pool
+          pool-ent {:pool/name "no-pool"
                     :pool/dru-mode :pool.dru-mode/default}
           params {:max-preemption 128 :safe-dru-threshold 1.0 :min-dru-diff 0.0 :pool-ent pool-ent}
           agent-attributes-cache (init-agent-attributes-cache)
@@ -1156,7 +1156,7 @@
   (testing "does not reserve host for job already launched"
     (let [datomic-uri "datomic:mem://test-rebalance-host-reservation"
           conn (restore-fresh-database! datomic-uri)
-          pool-ent {:pool/name :no-pool
+          pool-ent {:pool/name "no-pool"
                     :pool/dru-mode :pool.dru-mode/default}
           params {:max-preemption 128 :safe-dru-threshold 1.0 :min-dru-diff 0.0 :pool-ent pool-ent}
           agent-attributes-cache (init-agent-attributes-cache)

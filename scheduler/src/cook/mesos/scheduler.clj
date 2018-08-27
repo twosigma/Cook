@@ -631,11 +631,6 @@
               [user->usage' (below-quota? (user->quota user) (get user->usage' user))]))]
     (util/filter-sequential filter-with-quota user->usage queue)))
 
-(defn- pool->keyword
-  "Given a pool entity, returns the keyword-ized name"
-  [pool]
-  (-> pool :pool/name keyword))
-
 (defn generate-user-usage-map
   "Returns a mapping from user to usage stats"
   [unfiltered-db pool]
@@ -1216,11 +1211,11 @@
 
 (defn- pool-map
   "Given a collection of pools, and a function val-fn that takes a pool,
-  returns a map from keyword-ized pool name to (val-fn pool)"
+  returns a map from pool name to (val-fn pool)"
   [pools val-fn]
   (->> pools
        (pc/map-from-keys val-fn)
-       (pc/map-keys pool->keyword)))
+       (pc/map-keys :pool/name)))
 
 (defn sort-jobs-by-dru-pool
   "Returns a map from job pool to a list of job entities, ordered by dru"
@@ -1239,13 +1234,13 @@
         pool->user->dru-divisors (if using-pools?
                                    (pool-map pools (fn [{:keys [pool/name]}]
                                                      (share/create-user->share-fn unfiltered-db name)))
-                                   {:no-pool (share/create-user->share-fn unfiltered-db nil)})
+                                   {"no-pool" (share/create-user->share-fn unfiltered-db nil)})
         pool->sort-jobs-by-dru-fn (if using-pools?
                                     (pool-map pools (fn [{:keys [pool/dru-mode]}]
                                                       (case dru-mode
                                                         :pool.dru-mode/default sort-normal-jobs-by-dru
                                                         :pool.dru-mode/gpu sort-gpu-jobs-by-dru)))
-                                        {:no-pool sort-normal-jobs-by-dru})]
+                                    {"no-pool" sort-normal-jobs-by-dru})]
     (letfn [(sort-jobs-by-dru-pool-helper [[pool sort-jobs-by-dru]]
               (let [pending-tasks (pool->pending-task-ents pool)
                     running-tasks (pool->running-task-ents pool)
@@ -1513,19 +1508,19 @@
           (run!
             (fn [[pool-name offers]]
               (if using-pools?
-                (if-let [offers-chan (-> pool-name keyword pool->offers-chan)]
+                (if-let [offers-chan (get pool->offers-chan pool-name)]
                   (do
                     (log/info "Processing" offer-count "offer(s) for known pool" pool-name)
                     (receive-offers offers-chan match-trigger-chan driver offers))
                   (do
                     (log/warn "Declining" offer-count "offer(s) for non-existent pool" pool-name)
                     (decline-offers-safe driver offers)))
-                (if-let [offers-chan (:no-pool pool->offers-chan)]
+                (if-let [offers-chan (get pool->offers-chan "no-pool")]
                   (do
-                    (log/info "Processing" offer-count "offer(s) for pool" pool-name "despite not using pools")
+                    (log/info "Processing" offer-count "offer(s) for pool" pool-name "(not using pools)")
                     (receive-offers offers-chan match-trigger-chan driver offers))
                   (do
-                    (log/error "Declining" offer-count "offer(s) for pool" pool-name "(missing :no-pool offer chan)")
+                    (log/error "Declining" offer-count "offer(s) for pool" pool-name "(missing no-pool offer chan)")
                     (decline-offers-safe driver offers)))))
             pool->offers)
           (log/debug "Finished receiving offers for all pools")))
@@ -1554,7 +1549,7 @@
                                                                    fenzo-fitness-calculator good-enough-fitness)))
         {:keys [pool->offers-chan pool->resources-atom]}
         (reduce (fn [m pool-ent]
-                  (let [pool (pool->keyword pool-ent)
+                  (let [pool (:pool/name pool-ent)
                         fenzo (pool->fenzo pool)
                         [offers-chan resources-atom]
                         (make-offer-handler

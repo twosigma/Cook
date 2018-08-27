@@ -81,11 +81,7 @@
 
 (let [default-pool (config/default-pool)
       miss-fn (fn [{:keys [job/pool]}]
-                (if pool
-                  (-> pool :pool/name keyword)
-                  (if default-pool
-                    (keyword default-pool)
-                    :no-pool)))]
+                (or (:pool/name pool) default-pool "no-pool"))]
   (defn job->pool
     "Return the pool of the job."
     [job]

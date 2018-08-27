@@ -214,8 +214,8 @@
    user->dru-divisors A map from user to dru divisors."
   ([db running-task-ents pending-job-ents host->spare-resources pool-ent]
    (init-state db running-task-ents pending-job-ents host->spare-resources pool-ent []))
-  ([db running-task-ents pending-job-ents host->spare-resources pool-ent preempted-tasks]
-   (let [pool (keyword (:pool/name pool-ent))
+  ([db running-task-ents pending-job-ents host->spare-resources {:keys [pool/name pool/dru-mode]} preempted-tasks]
+   (let [pool name
          running-task-ents (filter (fn [task]
                                      (-> task
                                          :job/_instance
@@ -229,13 +229,12 @@
                                                     [user (into (sorted-set-by (util/same-user-task-comparator))
                                                                 task-ents)]))
                                              (into {}))
-         pool-dru-mode (:pool/dru-mode pool-ent)
-         scored-task-pairs (case pool-dru-mode
+         scored-task-pairs (case dru-mode
                              :pool.dru-mode/default (dru/sorted-task-scored-task-pairs
                                                       user->dru-divisors user->sorted-running-task-ents)
                              :pool.dru-mode/gpu (dru/sorted-task-cumulative-gpu-score-pairs
                                                   user->dru-divisors user->sorted-running-task-ents))
-         task->scored-task (into (pm/priority-map-keyfn (case pool-dru-mode
+         task->scored-task (into (pm/priority-map-keyfn (case dru-mode
                                                           :pool.dru-mode/default (juxt (comp - :dru)
                                                                                        (comp util/task-ent->user :task))
                                                           :pool.dru-mode/gpu (fnil - 0)))
@@ -244,7 +243,7 @@
               user->sorted-running-task-ents
               host->spare-resources
               user->dru-divisors
-              (case pool-dru-mode
+              (case dru-mode
                 :pool.dru-mode/default compute-pending-default-job-dru
                 :pool.dru-mode/gpu compute-pending-gpu-job-dru)
               preempted-tasks))))
