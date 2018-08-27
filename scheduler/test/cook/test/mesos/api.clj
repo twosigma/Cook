@@ -1410,8 +1410,6 @@
     (let [uri "datomic:mem://test-instance-progress"
           conn (restore-fresh-database! uri)
           driver (reify msched/SchedulerDriver)
-          driver-atom (atom nil)
-          fenzo (sched/make-fenzo-scheduler driver-atom 1500 nil 0.8)
           make-status-update (fn [task-id reason state progress]
                                (let [task {:task-id {:value task-id}
                                            :reason reason
@@ -1421,7 +1419,7 @@
           job-id (create-dummy-job conn :user "user" :job-state :job.state/running)
           sync-agent-sandboxes-fn (constantly true)
           send-status-update #(->> (make-status-update "task1" :unknown :task-running %)
-                                   (sched/handle-status-update conn driver {:no-pool fenzo} sync-agent-sandboxes-fn)
+                                   (sched/handle-status-update conn driver {} sync-agent-sandboxes-fn)
                                    async/<!!)
           instance-id (create-dummy-instance conn job-id
                                              :instance-status :instance.status/running

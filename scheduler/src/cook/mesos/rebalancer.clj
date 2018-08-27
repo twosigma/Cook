@@ -537,18 +537,17 @@
                                                            (select-keys (keywordize-keys (:resources v))
                                                                         [:cpus :mem :gpus])]))
                                                    (into {}))
-                        pool-name (name pool)
-                        pool-ent (if (= :no-pool pool)
-                                   {:pool/name pool-name
+                        pool-ent (if (= "no-pool" pool)
+                                   {:pool/name pool
                                     :pool/dru-mode :pool.dru-mode/default}
-                                   (d/entity (d/db conn) [:pool/name pool-name]))
+                                   (d/entity (d/db conn) [:pool/name pool]))
                         db (mt/db conn)
                         jobs-to-make-room-for (->> pending-jobs
                                                    (filter (partial util/job-allowed-to-start? db))
                                                    (take max-preemption))
                         init-state (init-state db (util/get-running-task-ents db) jobs-to-make-room-for
                                                host->spare-resources pool-ent)]
-                    (log/info "Rebalancing for pool" pool-name)
+                    (log/info "Rebalancing for pool" pool)
                     (rebalance! db conn driver agent-attributes-cache rebalancer-reservation-atom
                                 params init-state jobs-to-make-room-for)))
                 @pending-jobs-atom)
