@@ -1535,7 +1535,7 @@
   [{:keys [conn driver-atom fenzo-fitness-calculator fenzo-floor-iterations-before-reset
            fenzo-floor-iterations-before-warn fenzo-max-jobs-considered fenzo-scaleback framework-id good-enough-fitness
            gpu-enabled? heartbeat-ch mea-culpa-failure-limit mesos-run-as-user agent-attributes-cache offer-incubate-time-ms
-           pending-jobs-atom progress-config rebalancer-reservation-atom sandbox-syncer-state task-constraints
+           pool->pending-jobs-atom progress-config rebalancer-reservation-atom sandbox-syncer-state task-constraints
            trigger-chans]}]
 
   (persist-mea-culpa-failure-limit! conn mea-culpa-failure-limit)
@@ -1553,7 +1553,7 @@
                         fenzo (pool->fenzo pool)
                         [offers-chan resources-atom]
                         (make-offer-handler
-                          conn driver-atom fenzo framework-id pending-jobs-atom agent-attributes-cache fenzo-max-jobs-considered
+                          conn driver-atom fenzo framework-id pool->pending-jobs-atom agent-attributes-cache fenzo-max-jobs-considered
                           fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset
                           match-trigger-chan rebalancer-reservation-atom mesos-run-as-user pool)]
                     (-> m
@@ -1566,7 +1566,7 @@
         progress-aggregator-chan (progress/progress-update-aggregator progress-config progress-state-chan)
         handle-progress-message (fn handle-progress-message-curried [progress-message-map]
                                   (progress/handle-progress-message! progress-aggregator-chan progress-message-map))]
-    (start-jobs-prioritizer! conn pending-jobs-atom task-constraints rank-trigger-chan)
+    (start-jobs-prioritizer! conn pool->pending-jobs-atom task-constraints rank-trigger-chan)
     {:scheduler (create-mesos-scheduler framework-id gpu-enabled? conn heartbeat-ch pool->fenzo pool->offers-chan
                                         match-trigger-chan handle-progress-message sandbox-syncer-state)
      :view-incubating-offers (fn get-resources-atom [p]

@@ -32,7 +32,7 @@ class MasterSlaveTest(unittest.TestCase):
             slave_queue = util.session.get('%s/queue' % self.slave_url, allow_redirects=False)
             self.assertEqual(307, slave_queue.status_code)
             default_pool = util.default_pool(self.master_url)
-            pool = default_pool if default_pool is not None else 'no-pool'
+            pool = default_pool or 'no-pool'
             self.logger.info(f'Checking the queue endpoint for pool {pool}')
 
             @retry(stop_max_delay=30000, wait_fixed=1000)  # Need to wait for a rank cycle

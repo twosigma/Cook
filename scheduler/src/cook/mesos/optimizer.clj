@@ -101,7 +101,7 @@
    Parameters:
    get-queue -- fn, no args fn that returns ordered list of jobs to run
    get-running -- fn, no args fn that returns a set of tasks running
-   get-offers -- fn, 1 arg fn that takes a pool keyword and returns a set of offers in that pool
+   get-offers -- fn, 1 arg fn that takes a pool name and returns a set of offers in that pool
    host-feed -- instance of HostFeed
    optimizer -- instance of Optimizer
    interval -- joda-time period

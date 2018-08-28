@@ -518,7 +518,7 @@
               recognized-params))]))))
 
 (defn start-rebalancer!
-  [{:keys [config conn driver agent-attributes-cache pending-jobs-atom
+  [{:keys [config conn driver agent-attributes-cache pool->pending-jobs-atom
            rebalancer-reservation-atom trigger-chan view-incubating-offers]}]
   (binding [metrics-dru-scale (:dru-scale config)]
     (update-datomic-params-from-config! conn config)
@@ -550,7 +550,7 @@
                     (log/info "Rebalancing for pool" pool)
                     (rebalance! db conn driver agent-attributes-cache rebalancer-reservation-atom
                                 params init-state jobs-to-make-room-for)))
-                @pending-jobs-atom)
+                @pool->pending-jobs-atom)
               (log/info "Rebalance cycle ended"))
             (log/info "Skipping rebalancing because it's not cofigured"))))
       {:error-handler (fn [ex] (log/error ex "Rebalance failed"))})

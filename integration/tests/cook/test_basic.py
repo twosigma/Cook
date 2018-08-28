@@ -1474,7 +1474,7 @@ class CookTest(util.CookTest):
         self.assertEqual(201, resp.status_code, resp.content)
         try:
             default_pool = util.default_pool(self.cook_url)
-            pool = default_pool if default_pool is not None else 'no-pool'
+            pool = default_pool or 'no-pool'
             self.logger.info(f'Checking the queue endpoint for pool {pool}')
 
             def query_queue():

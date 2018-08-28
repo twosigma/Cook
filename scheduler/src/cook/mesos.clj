@@ -155,7 +155,7 @@
    mea-culpa-failure-limit       -- long, max failures of mea culpa reason before it is considered a 'real' failure
                                     see scheduler/docs/configuration.adoc for more details
    task-constraints              -- map, constraints on task. See scheduler/docs/configuration.adoc for more details
-   mesos-pending-jobs-atom       -- atom, Populate (and update) list of pending jobs into atom
+   pool->pending-jobs-atom       -- atom, Populate (and update) map from pool name to list of pending jobs into atom
    agent-attributes-cache        -- atom, map from agent id to most recent agent attributes
    gpu-enabled?                  -- boolean, whether cook will schedule gpus
    rebalancer-config             -- map, config for rebalancer. See scheduler/docs/rebalancer-config.adoc for details
@@ -164,7 +164,7 @@
    fenzo-config                  -- map, config for fenzo, See scheduler/docs/configuration.adoc for more details
    sandbox-syncer-state          -- map, representing the sandbox syncer object"
   [{:keys [curator-framework fenzo-config framework-id gpu-enabled? make-mesos-driver-fn
-           mea-culpa-failure-limit mesos-datomic-conn mesos-datomic-mult mesos-leadership-atom mesos-pending-jobs-atom
+           mea-culpa-failure-limit mesos-datomic-conn mesos-datomic-mult mesos-leadership-atom pool->pending-jobs-atom
            mesos-run-as-user agent-attributes-cache offer-incubate-time-ms optimizer-config progress-config rebalancer-config
            sandbox-syncer-state server-config task-constraints trigger-chans zk-prefix]}]
   (let [{:keys [fenzo-fitness-calculator fenzo-floor-iterations-before-reset fenzo-floor-iterations-before-warn
@@ -205,7 +205,7 @@
                                           :mesos-run-as-user mesos-run-as-user
                                           :agent-attributes-cache agent-attributes-cache
                                           :offer-incubate-time-ms offer-incubate-time-ms
-                                          :pending-jobs-atom mesos-pending-jobs-atom
+                                          :pool->pending-jobs-atom pool->pending-jobs-atom
                                           :progress-config progress-config
                                           :rebalancer-reservation-atom rebalancer-reservation-atom
                                           :sandbox-syncer-state sandbox-syncer-state
@@ -224,7 +224,7 @@
                                                                               :conn mesos-datomic-conn
                                                                               :driver driver
                                                                               :agent-attributes-cache agent-attributes-cache
-                                                                              :pending-jobs-atom mesos-pending-jobs-atom
+                                                                              :pool->pending-jobs-atom pool->pending-jobs-atom
                                                                               :rebalancer-reservation-atom rebalancer-reservation-atom
                                                                               :trigger-chan rebalancer-trigger-chan
                                                                               :view-incubating-offers view-incubating-offers})
@@ -233,7 +233,7 @@
                                                                                       ;; TODO Use filter of queue that scheduler uses to filter to considerable.
                                                                                       ;;      Specifically, think about filtering to jobs that are waiting and 
                                                                                       ;;      think about how to handle quota 
-                                                                                      @mesos-pending-jobs-atom)
+                                                                                      @pool->pending-jobs-atom)
                                                                                     (fn get-running []
                                                                                       (cook.mesos.util/get-running-task-ents (d/db mesos-datomic-conn)))
                                                                                     view-incubating-offers
