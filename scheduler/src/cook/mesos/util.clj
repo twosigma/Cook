@@ -70,6 +70,7 @@
 (defonce ^Cache task-ent->user-cache (new-cache))
 (defonce ^Cache job-ent->user-cache (new-cache))
 (defonce ^Cache task->feature-vector-cache (new-cache))
+(defonce ^Cache job-uuid->dataset-maps-cache (new-cache))
 
 (defn get-all-resource-types
   "Return a list of all supported resources types. Example, :cpus :mem :gpus ..."
@@ -852,9 +853,10 @@
       "date" {"begin" (format-date (:dataset.partition/begin partition))
               "end" (format-date (:dataset.partition/end partition))})))
 
-(defn make-dataset-maps
-  [datasets]
-  (->> datasets
+(defn- make-dataset-maps
+  [job]
+  (->> job
+       :job/datasets
        (map (fn [{:keys [dataset/partitions dataset/partition-type dataset/parameters]}]
               (let [partitions (when (not (empty? partitions))
                                  (->> partitions
@@ -864,3 +866,11 @@
                                                 parameters))}
                   partitions (assoc :partitions partitions)))))
        (into #{})))
+
+(defn get-dataset-maps
+  "Returns the (possibly cached) datasets for the given job"
+  [job]
+  (lookup-cache! job-uuid->dataset-maps-cache
+                 :job/uuid
+                 make-dataset-maps
+                 job))

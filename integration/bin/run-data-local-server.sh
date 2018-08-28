@@ -10,6 +10,7 @@ NAME=data-local
 echo "Building docker images for ${NAME}"
 docker build -t ${NAME} ${SRC_DIR}
 
+# Expose port 5000 (default flask port)
 docker create \
        -i \
        -t \

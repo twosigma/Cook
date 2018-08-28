@@ -136,8 +136,8 @@
   JobConstraint
   (job-constraint-name [this] (get-class-name this))
   (job-constraint-evaluate [_ _ _]
-    (let [{:keys [job/submit-time job/datasets]} job
-          datasets (util/make-dataset-maps datasets)
+    (let [{:keys [job/submit-time]} job
+          datasets (util/get-dataset-maps job)
           data-locality-costs (dl/get-data-local-costs)
           launch-after-age (t/plus (tc/from-date submit-time) (t/seconds launch-wait-seconds))
           launch-without-data? (t/after? (t/now) launch-after-age)]

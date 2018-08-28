@@ -209,7 +209,10 @@
 
 (defn date?
   [s]
-  (re-matches #"[0-9]{8}" s))
+  (try
+    (tf/parse partition-date-format s)
+    true
+    (catch Exception e false)))
 
 (def Application
   "Schema for the application a job corresponds to"
@@ -976,7 +979,7 @@
           submit-time (when (:job/submit-time job) ; due to a bug, submit time may not exist for some jobs
                         (.getTime (:job/submit-time job)))
           datasets (when (not (empty? (:job/datasets job)))
-                     (util/make-dataset-maps (:job/datasets job)))
+                     (util/get-dataset-maps job))
           job-map {:command (:job/command job)
                    :constraints constraints
                    :cpus (:cpus resources)
@@ -2591,7 +2594,7 @@
                  (let [uuid->datasets (->> (d/db conn)
                                           util/get-pending-job-ents
                                           (filter (fn [j] (not (empty? (:job/datasets j)))))
-                                          (map (fn [j] [(:job/uuid j) (util/make-dataset-maps (:job/datasets j))]))
+                                          (map (fn [j] [(:job/uuid j) (util/get-dataset-maps j)]))
                                           (into {}))
                        datasets->update-time (dl/get-last-update-time)]
                    (pc/map-vals (fn [datasets]
@@ -2607,7 +2610,7 @@
     :exists? (fn [ctx]
                (let [uuid (get-in ctx [:request :params :uuid])
                      job-ent (d/entity (d/db conn) [:job/uuid (UUID/fromString uuid)])
-                     datasets (util/make-dataset-maps (:job/datasets job-ent))]
+                     datasets (util/get-dataset-maps job-ent)]
                  (if-let [costs (get (dl/get-data-local-costs) datasets nil)]
                    {:costs costs}
                    false)))

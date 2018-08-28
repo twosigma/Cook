@@ -5,12 +5,16 @@
             [clojure.set :as set]
             [cook.config :as config]
             [cook.mesos.util :as util]
+            [metrics.histograms :as histograms]
+            [metrics.timers :as timers]
             [plumbing.core :as pc]
             [clojure.tools.logging :as log]
             [datomic.api :as d])
   (:import com.netflix.fenzo.VMTaskFitnessCalculator
            com.netflix.fenzo.plugins.BinPackingFitnessCalculators
            java.util.UUID))
+
+(histograms/defhistogram [cook-mesos data-locality cost-staleness])
 
 (let [datasets->host-name->cost-atom (atom {})
       datasets->last-update-time-atom (atom {})]
@@ -35,6 +39,8 @@
                                                     (pc/map-vals (fn [cost] (-> cost (min 1.0) (max 0)))
                                                                  host->cost))
                                                   datasets->host->cost)]
+      (doseq [[_ update-time] (filter (fn [[datasets _]] (not (contains? stale-datasets datasets))) datasets->last-update-time)]
+        (histograms/update! cost-staleness (t/in-millis (t/interval update-time now))))
       (swap! datasets->host-name->cost-atom (fn update-datasets->host-name->cost-atom-atom
                                 [current]
                                 (let [remove-old-values (apply dissoc current datasets-to-remove)]
@@ -64,10 +70,10 @@
           pending-jobs (->> db
                             util/get-pending-job-ents
                             (filter (fn [j] (not (empty? (:job/datasets j)))))
-                            (map (fn [{:keys [job/uuid job/submit-time job/datasets]}]
+                            (map (fn [{:keys [job/uuid job/submit-time] :as job}]
                                    {:job/uuid uuid
                                     :job/submit-time submit-time
-                                    :job/datasets (util/make-dataset-maps datasets)})))
+                                    :job/datasets (util/get-dataset-maps job)})))
           datasets->last-update-time @datasets->last-update-time-atom
           have-data?->job (group-by (fn [job] (contains? datasets->last-update-time (:job/datasets job)))
                                     pending-jobs)
@@ -120,11 +126,15 @@
         (log/debug "Got updated costs" new-costs)
         (update-data-local-costs new-costs to-remove)))))
 
+(timers/deftimer [cook-mesos data-locality cost-update-duration])
+
 (defn start-update-cycles!
   [datomic-conn trigger-chan]
   (log/info "Starting data local service update chan")
   (util/chime-at-ch trigger-chan
-                    (fn [] (fetch-and-update-data-local-costs (d/db datomic-conn)))
+                    (fn [] (timers/time!
+                            cost-update-duration
+                            (fetch-and-update-data-local-costs (d/db datomic-conn))))
                     {:error-handler (fn [e]
                                       (log/error e "Error updating data local costs"))}))
 

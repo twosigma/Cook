@@ -193,7 +193,6 @@
                                    :datasets #{{:dataset {"bar" "baz"}}})
               db (d/db conn)
               [id1 id2] (map #(:job/uuid (d/entity db %)) [j1 j2])]
-          (dl/update-data-local-costs {#{{"foo" "bar"}} first-cost} [])
           (dl/fetch-and-update-data-local-costs db)
           (is (= {#{{:dataset {"foo" "bar"}}} first-cost
                   #{{:dataset {"bar" "baz"}}} first-cost}

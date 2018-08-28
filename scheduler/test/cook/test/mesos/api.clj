@@ -1910,3 +1910,8 @@
   (is (thrown-with-msg? ExceptionInfo #"\"end\" missing"
                         (api/validate-partitions {:dataset {"partition-type" "date"}
                                                   :partitions [{"begin" "20180101"}]}))))
+
+(deftest test-date?
+  (is (api/date? "20180101"))
+  (is (not (api/date? "2018-01-01")))
+  (is (not (api/date? "20180132"))))
