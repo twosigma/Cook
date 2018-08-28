@@ -132,7 +132,7 @@
             :mesos-datomic-conn ~conn
             :mesos-datomic-mult mesos-mult#
             :mesos-leadership-atom mesos-leadership-atom#
-            :mesos-pending-jobs-atom pending-jobs-atom#
+            :pool->pending-jobs-atom pending-jobs-atom#
             :mesos-run-as-user nil
             :agent-attributes-cache agent-attributes-cache#
             :offer-incubate-time-ms offer-incubate-time-ms#
