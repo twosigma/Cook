@@ -1135,8 +1135,17 @@ def is_cook_executor_in_use():
 def slave_cpus(mesos_url, hostname):
     """Returns the cpus of the specified Mesos agent"""
     slaves = get_mesos_state(mesos_url)['slaves']
-    slave_cpus = next(s['resources']['cpus'] for s in slaves if s['hostname'] == hostname)
+    # Here we need to use unreserved_resources because Mesos might only
+    # send offers for the unreserved (role = "*") portions of the agents.
+    slave_cpus = next(s['unreserved_resources']['cpus'] for s in slaves if s['hostname'] == hostname)
     return slave_cpus
+
+
+def slave_pool(mesos_url, hostname):
+    """Returns the pool of the specified Mesos agent, or None if the agent doesn't have the attribute"""
+    slaves = get_mesos_state(mesos_url)['slaves']
+    pool = next(s.get('attributes', {}).get('cook-pool', None) for s in slaves if s['hostname'] == hostname)
+    return pool
 
 
 def max_slave_cpus(mesos_url):
@@ -1185,3 +1194,26 @@ def is_preemption_enabled():
 def current_milli_time():
     """Returns the current epoch time in milliseconds"""
     return int(round(time.time() * 1000))
+
+
+@functools.lru_cache()
+def are_pools_enabled():
+    """Returns true if there are at least 2 active pools on the cluster"""
+    cook_url = retrieve_cook_url()
+    init_cook_session(cook_url)
+    _wait_for_cook(cook_url)
+    return len(active_pools(cook_url)[0]) > 1
+
+
+def num_hosts_to_consider(cook_url, mesos_url):
+    """
+    Returns the number of hosts in the default pool, or the
+    total number of hosts if the cluster is not using pools
+    """
+    state = get_mesos_state(mesos_url)
+    slaves = state['slaves']
+    pool = default_pool(cook_url)
+    slaves = [s for s in slaves if s['attributes']['cook-pool'] == pool] if pool else slaves
+    num_hosts = len(slaves)
+    logging.info(f'There are {num_hosts} hosts in the default pool')
+    return num_hosts

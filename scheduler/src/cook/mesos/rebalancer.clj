@@ -179,7 +179,7 @@
 
     pending-job-dru))
 
-(defn compute-pending-normal-job-dru
+(defn compute-pending-default-job-dru
   "Takes state and a pending job entity, returns the dru of the pending-job. In the case where the pending job causes user's dominant
    resource type to change, the dru is not accurate and is only a upper bound. However, this inaccuracy won't affect the correctness
    of the algorithm.
@@ -212,14 +212,15 @@
    value
    host->spare-resources A map from host to spare resources.
    user->dru-divisors A map from user to dru divisors."
-  ([db running-task-ents pending-job-ents host->spare-resources category]
-   (init-state db running-task-ents pending-job-ents host->spare-resources category []))
-  ([db running-task-ents pending-job-ents host->spare-resources category preempted-tasks]
-   (let [running-task-ents (filter (fn [task]
+  ([db running-task-ents pending-job-ents host->spare-resources pool-ent]
+   (init-state db running-task-ents pending-job-ents host->spare-resources pool-ent []))
+  ([db running-task-ents pending-job-ents host->spare-resources {:keys [pool/name pool/dru-mode]} preempted-tasks]
+   (let [pool name
+         running-task-ents (filter (fn [task]
                                      (-> task
                                          :job/_instance
-                                         util/categorize-job
-                                         (= category)))
+                                         util/job->pool
+                                         (= pool)))
                                    running-task-ents)
          user->dru-divisors (dru/init-user->dru-divisors db running-task-ents pending-job-ents)
          user->sorted-running-task-ents (->> running-task-ents
@@ -228,21 +229,23 @@
                                                     [user (into (sorted-set-by (util/same-user-task-comparator))
                                                                 task-ents)]))
                                              (into {}))
-         scored-task-pairs (case category
-                             :normal (dru/sorted-task-scored-task-pairs user->dru-divisors user->sorted-running-task-ents)
-                             :gpu (dru/sorted-task-cumulative-gpu-score-pairs user->dru-divisors user->sorted-running-task-ents))
-         task->scored-task (into (pm/priority-map-keyfn (case category
-                                                          :normal (juxt (comp - :dru)
-                                                                        (comp util/task-ent->user :task))
-                                                          :gpu (fnil - 0)))
+         scored-task-pairs (case dru-mode
+                             :pool.dru-mode/default (dru/sorted-task-scored-task-pairs
+                                                      user->dru-divisors user->sorted-running-task-ents)
+                             :pool.dru-mode/gpu (dru/sorted-task-cumulative-gpu-score-pairs
+                                                  user->dru-divisors user->sorted-running-task-ents))
+         task->scored-task (into (pm/priority-map-keyfn (case dru-mode
+                                                          :pool.dru-mode/default (juxt (comp - :dru)
+                                                                                       (comp util/task-ent->user :task))
+                                                          :pool.dru-mode/gpu (fnil - 0)))
                                  scored-task-pairs)]
      (->State task->scored-task
               user->sorted-running-task-ents
               host->spare-resources
               user->dru-divisors
-              (case category
-                :normal compute-pending-normal-job-dru
-                :gpu compute-pending-gpu-job-dru)
+              (case dru-mode
+                :pool.dru-mode/default compute-pending-default-job-dru
+                :pool.dru-mode/gpu compute-pending-gpu-job-dru)
               preempted-tasks))))
 
 
@@ -398,17 +401,10 @@
                                           :launched-job-uuids #{}}))))
 
 (defn rebalance
-  "Takes a db, a list of pending job entities, a map of spare resources and params.
-   Returns a list of pending job entities to run and a list of task entities to preempt
-
-   category is :normal or :gpu, depending on which type of job we're working with"
-  [db agent-attributes-cache pending-job-ents host->spare-resources rebalancer-reservation-atom
-   {:keys [max-preemption category] :as params}]
+  "Returns a list of pending job entities to run and a list of task entities to preempt"
+  [db agent-attributes-cache rebalancer-reservation-atom
+   {:keys [max-preemption] :as params} init-state jobs-to-make-room-for]
   (let [timer (timers/start rebalance-duration)
-        jobs-to-make-room-for (->> pending-job-ents
-                                   (filter (partial util/job-allowed-to-start? db))
-                                   (take max-preemption))
-        init-state (init-state db (util/get-running-task-ents db) jobs-to-make-room-for host->spare-resources category)
         cotask-cache (atom (cache/lru-cache-factory {} :threshold (max 1 max-preemption)))]
     (log/debug "Jobs to make room for:" jobs-to-make-room-for)
     (loop [state init-state
@@ -416,7 +412,9 @@
            [pending-job-ent & jobs-to-make-room-for] jobs-to-make-room-for
            preemption-decisions []]
       (if (and pending-job-ent (pos? remaining-preemption))
-        (let [[state' preemption-decision] (compute-next-state-and-preemption-decision db agent-attributes-cache state params pending-job-ent cotask-cache)]
+        (let [[state' preemption-decision]
+              (compute-next-state-and-preemption-decision db agent-attributes-cache state
+                                                          params pending-job-ent cotask-cache)]
           (if preemption-decision
             (recur state'
                    (dec remaining-preemption)
@@ -449,12 +447,11 @@
 
 
 (defn rebalance!
-  [conn driver agent-attributes-cache pending-job-ents host->spare-resources rebalancer-reservation-atom
-   params]
+  [db conn driver agent-attributes-cache rebalancer-reservation-atom params init-state jobs-to-make-room-for]
   (try
     (log/info "Rebalancing...Params:" params)
-    (let [db (mt/db conn)
-          preemption-decisions (rebalance db agent-attributes-cache pending-job-ents host->spare-resources rebalancer-reservation-atom params)]
+    (let [preemption-decisions (rebalance db agent-attributes-cache rebalancer-reservation-atom
+                                          params init-state jobs-to-make-room-for)]
       (doseq [{job-ent-to-make-room-for :to-make-room-for
                task-ents-to-preempt :task} preemption-decisions]
         ;; Ensure that uuids are loaded in entity
@@ -521,7 +518,7 @@
               recognized-params))]))))
 
 (defn start-rebalancer!
-  [{:keys [config conn driver agent-attributes-cache pending-jobs-atom
+  [{:keys [config conn driver agent-attributes-cache pool->pending-jobs-atom
            rebalancer-reservation-atom trigger-chan view-incubating-offers]}]
   (binding [metrics-dru-scale (:dru-scale config)]
     (update-datomic-params-from-config! conn config)
@@ -529,23 +526,32 @@
       trigger-chan
       (fn trigger-rebalance-iteration []
         (log/info "Rebalance cycle starting")
-        (let [params (read-datomic-params conn)]
+        (let [{:keys [max-preemption] :as params} (read-datomic-params conn)]
           (if (seq params)
-            (let [host->spare-resources (->> (view-incubating-offers)
-                                             (map (fn [v]
-                                                    [(:hostname v)
-                                                     (select-keys (keywordize-keys (:resources v))
-                                                                  [:cpus :mem :gpus])]))
-                                             (into {}))
-                  {normal-pending-jobs :normal gpu-pending-jobs :gpu} @pending-jobs-atom]
-              (rebalance! conn driver agent-attributes-cache normal-pending-jobs host->spare-resources
-                          rebalancer-reservation-atom
-                          (assoc params :category :normal
-                                        :compute-pending-job-dru compute-pending-normal-job-dru))
-              (rebalance! conn driver agent-attributes-cache gpu-pending-jobs host->spare-resources
-                          rebalancer-reservation-atom
-                          (assoc params :category :gpu
-                                        :compute-pending-job-dru compute-pending-gpu-job-dru)))
+            (do
+              (run!
+                (fn [[pool pending-jobs]]
+                  (let [host->spare-resources (->> (view-incubating-offers pool)
+                                                   (map (fn [v]
+                                                          [(:hostname v)
+                                                           (select-keys (keywordize-keys (:resources v))
+                                                                        [:cpus :mem :gpus])]))
+                                                   (into {}))
+                        pool-ent (if (= "no-pool" pool)
+                                   {:pool/name pool
+                                    :pool/dru-mode :pool.dru-mode/default}
+                                   (d/entity (d/db conn) [:pool/name pool]))
+                        db (mt/db conn)
+                        jobs-to-make-room-for (->> pending-jobs
+                                                   (filter (partial util/job-allowed-to-start? db))
+                                                   (take max-preemption))
+                        init-state (init-state db (util/get-running-task-ents db) jobs-to-make-room-for
+                                               host->spare-resources pool-ent)]
+                    (log/info "Rebalancing for pool" pool)
+                    (rebalance! db conn driver agent-attributes-cache rebalancer-reservation-atom
+                                params init-state jobs-to-make-room-for)))
+                @pool->pending-jobs-atom)
+              (log/info "Rebalance cycle ended"))
             (log/info "Skipping rebalancing because it's not cofigured"))))
       {:error-handler (fn [ex] (log/error ex "Rebalance failed"))})
     #(async/close! trigger-chan)))

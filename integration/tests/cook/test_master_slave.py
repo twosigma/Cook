@@ -31,12 +31,15 @@ class MasterSlaveTest(unittest.TestCase):
         try:
             slave_queue = util.session.get('%s/queue' % self.slave_url, allow_redirects=False)
             self.assertEqual(307, slave_queue.status_code)
+            default_pool = util.default_pool(self.master_url)
+            pool = default_pool or 'no-pool'
+            self.logger.info(f'Checking the queue endpoint for pool {pool}')
 
             @retry(stop_max_delay=30000, wait_fixed=1000)  # Need to wait for a rank cycle
             def check_queue():
                 master_queue = util.session.get(slave_queue.headers['Location'])
                 self.assertEqual(200, master_queue.status_code, master_queue.content)
-                self.assertTrue(any([job['job/uuid'] in uuids for job in master_queue.json()['normal']]))
+                self.assertTrue(any([job['job/uuid'] in uuids for job in master_queue.json()[pool]]))
 
             check_queue()
         finally:

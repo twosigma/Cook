@@ -52,7 +52,7 @@ class CookTest(util.CookTest):
         self.assertEqual(resp.status_code, 201, msg=resp.content)
         self.assertEqual(resp.content, str.encode(f"submitted jobs {job_uuid}"))
         job = util.wait_for_job(self.cook_url, job_uuid, 'completed')
-        self.assertIn('success', (i['status'] for i in job['instances']))
+        self.assertIn('success', [i['status'] for i in job['instances']], json.dumps(job, indent=2))
         self.assertEqual(False, job['disable_mea_culpa_retries'])
         self.assertTrue(len(util.wait_for_output_url(self.cook_url, job_uuid)['output_url']) > 0)
 
@@ -1468,14 +1468,18 @@ class CookTest(util.CookTest):
         uuids, resp = util.submit_jobs(self.cook_url, job_spec, clones=100, groups=[group])
         self.assertEqual(201, resp.status_code, resp.content)
         try:
+            default_pool = util.default_pool(self.cook_url)
+            pool = default_pool or 'no-pool'
+            self.logger.info(f'Checking the queue endpoint for pool {pool}')
+
             def query_queue():
                 return util.query_queue(self.cook_url)
 
             def queue_predicate(resp):
-                return any([job['job/uuid'] in uuids for job in resp.json()['normal']])
+                return any([job['job/uuid'] in uuids for job in resp.json()[pool]])
 
             resp = util.wait_until(query_queue, queue_predicate)
-            job = [job for job in resp.json()['normal'] if job['job/uuid'] in uuids][0]
+            job = [job for job in resp.json()[pool] if job['job/uuid'] in uuids][0]
             job_group = job['group/_job'][0]
             self.assertEqual(200, resp.status_code, resp.content)
             self.assertTrue('group/_job' in job.keys())
@@ -1620,8 +1624,7 @@ class CookTest(util.CookTest):
         self.assertEqual(job_uuid_1, jobs[0]['uuid'])
 
     def test_unique_host_constraint(self):
-        state = util.get_mesos_state(self.mesos_url)
-        num_hosts = len(state['slaves'])
+        num_hosts = util.num_hosts_to_consider(self.cook_url, self.mesos_url)
         group = {'uuid': str(uuid.uuid4()),
                  'host-placement': {'type': 'unique'}}
         job_spec = {'group': group['uuid'], 'command': 'sleep 600'}
@@ -1674,8 +1677,7 @@ class CookTest(util.CookTest):
             util.kill_jobs(self.cook_url, uuids)
 
     def test_balanced_host_constraint_cannot_place(self):
-        state = util.get_mesos_state(self.mesos_url)
-        num_hosts = len(state['slaves'])
+        num_hosts = util.num_hosts_to_consider(self.cook_url, self.mesos_url)
         if num_hosts > 10:
             # Skip this test on large clusters
             self.logger.info(f"Skipping test due to cluster size of {num_hosts} greater than 10")
@@ -1722,8 +1724,7 @@ class CookTest(util.CookTest):
             util.kill_jobs(self.cook_url, uuids)
 
     def test_balanced_host_constraint_can_place(self):
-        state = util.get_mesos_state(self.mesos_url)
-        num_hosts = len(state['slaves'])
+        num_hosts = util.num_hosts_to_consider(self.cook_url, self.mesos_url)
         minimum_hosts = min(10, num_hosts)
         group = {'uuid': str(uuid.uuid4()),
                  'host-placement': {'type': 'balanced',
@@ -1774,20 +1775,26 @@ class CookTest(util.CookTest):
         uuids, resp = util.submit_jobs(self.cook_url, jobs, groups=[group])
         self.assertEqual(201, resp.status_code, resp.content)
         try:
+            reasons = {
+                # We expect the reason to be either our attribute-equals constraint:
+                "Host had a different attribute than other jobs in the group.",
+                # Or, if there are no other offers, we simply don't have enough cpus:
+                "Not enough cpus available."
+            }
+
             def query():
                 unscheduled_jobs, _ = util.unscheduled_jobs(self.cook_url, *[j['uuid'] for j in jobs])
-                self.logger.info(f"unscheduled_jobs response: {unscheduled_jobs}")
+                self.logger.info(f"unscheduled_jobs response: {json.dumps(unscheduled_jobs, indent=2)}")
                 no_hosts = [reason for job in unscheduled_jobs for reason in job['reasons']
                             if reason['reason'] == "The job couldn't be placed on any available hosts."]
                 for no_hosts_reason in no_hosts:
                     for sub_reason in no_hosts_reason['data']['reasons']:
-                        if sub_reason['reason'] == "Host had a different attribute than other jobs in the group.":
+                        if sub_reason['reason'] in reasons:
                             return sub_reason
                 return None
 
             reason = util.wait_until(query, lambda r: r is not None)
-            self.assertEqual(reason['reason'],
-                             "Host had a different attribute than other jobs in the group.")
+            self.assertIn(reason['reason'], reasons)
         finally:
             util.kill_jobs(self.cook_url, uuids)
 
@@ -2350,22 +2357,30 @@ class CookTest(util.CookTest):
             pool_name = pool['name']
             self.logger.info(f'Testing quota check for pool {pool_name}')
             quota = util.get_limit(self.cook_url, 'quota', user, pool_name).json()
-            cpus_over_quota = quota['cpus'] + 0.1
-            mem_over_quota = quota['mem'] + 1
-            self.assertLessEqual(cpus_over_quota, task_constraint_cpus)
-            self.assertLessEqual(mem_over_quota, task_constraint_mem)
 
             # cpus
-            job_uuid, resp = util.submit_job(self.cook_url, pool=pool_name, cpus=0.1)
-            self.assertEqual(201, resp.status_code, msg=resp.content)
-            job_uuid, resp = util.submit_job(self.cook_url, pool=pool_name, cpus=cpus_over_quota)
-            self.assertEqual(422, resp.status_code, msg=resp.content)
+            cpus_over_quota = quota['cpus'] + 0.1
+            if cpus_over_quota > task_constraint_cpus:
+                self.logger.info(f'Unable to check CPU quota on {pool_name} because the quota ({quota["cpus"]}) is '
+                                 f'higher than the task constraint ({task_constraint_cpus})')
+            else:
+                self.assertLessEqual(cpus_over_quota, task_constraint_cpus)
+                job_uuid, resp = util.submit_job(self.cook_url, pool=pool_name, cpus=0.1)
+                self.assertEqual(201, resp.status_code, msg=resp.content)
+                job_uuid, resp = util.submit_job(self.cook_url, pool=pool_name, cpus=cpus_over_quota)
+                self.assertEqual(422, resp.status_code, msg=resp.content)
 
             # mem
-            job_uuid, resp = util.submit_job(self.cook_url, pool=pool_name, mem=32)
-            self.assertEqual(201, resp.status_code, msg=resp.content)
-            job_uuid, resp = util.submit_job(self.cook_url, pool=pool_name, mem=mem_over_quota)
-            self.assertEqual(422, resp.status_code, msg=resp.content)
+            mem_over_quota = quota['mem'] + 1
+            if mem_over_quota > task_constraint_mem:
+                self.logger.info(f'Unable to check mem quota on {pool_name} because the quota ({quota["mem"]}) is '
+                                 f'higher than the task constraint ({task_constraint_mem})')
+            else:
+                self.assertLessEqual(mem_over_quota, task_constraint_mem)
+                job_uuid, resp = util.submit_job(self.cook_url, pool=pool_name, mem=32)
+                self.assertEqual(201, resp.status_code, msg=resp.content)
+                job_uuid, resp = util.submit_job(self.cook_url, pool=pool_name, mem=mem_over_quota)
+                self.assertEqual(422, resp.status_code, msg=resp.content)
 
     def test_decrease_retries_below_attempts(self):
         uuid, resp = util.submit_job(self.cook_url, command='exit 1', max_retries=2)

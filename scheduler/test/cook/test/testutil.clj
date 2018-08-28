@@ -69,7 +69,7 @@
   "Flush the caches. Needed in unit tests. We centralize initialization by using it to initialize the caches too."
   []
   (.invalidateAll util/job-ent->resources-cache)
-  (.invalidateAll util/categorize-job-cache)
+  (.invalidateAll util/job-ent->pool-cache)
   (.invalidateAll util/task-ent->user-cache)
   (.invalidateAll util/task->feature-vector-cache)
   (.invalidateAll util/job-ent->user-cache))
@@ -294,8 +294,9 @@
 
 (defn create-pool
   "Creates an active pool with the given name for use in unit testing"
-  [conn name]
+  [conn name & {:keys [dru-mode] :or {dru-mode :pool.dru-mode/default}}]
   @(d/transact conn [{:db/id (d/tempid :db.part/user)
                       :pool/name name
                       :pool/purpose "This is a pool for unit testing"
-                      :pool/state :pool.state/active}]))
+                      :pool/state :pool.state/active
+                      :pool/dru-mode dru-mode}]))

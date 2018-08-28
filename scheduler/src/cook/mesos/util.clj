@@ -18,6 +18,7 @@
             [clj-time.core :as t]
             [clj-time.format :as tf]
             [clj-time.periodic :refer [periodic-seq]]
+            [cook.config :as config]
             [cook.mesos.pool :as pool]
             [cook.mesos.schema :as schema]
             [clojure.core.async :as async]
@@ -64,7 +65,7 @@
   (lookup-cache! cache :db/id miss-fn entity))
 
 (defonce ^Cache job-ent->resources-cache (new-cache))
-(defonce ^Cache categorize-job-cache (new-cache))
+(defonce ^Cache job-ent->pool-cache (new-cache))
 (defonce ^Cache task-ent->user-cache (new-cache))
 (defonce ^Cache job-ent->user-cache (new-cache))
 (defonce ^Cache task->feature-vector-cache (new-cache))
@@ -78,17 +79,13 @@
           db)
        (map first)))
 
-(defn categorize-job
-  "Return the category of the job. Currently jobs can be :normal or :gpu. This
-   is used to give separate queues for scarce & non-scarce resources"
-  [job]
-  (let [categorize-job-miss
-        (fn [job]
-          (let [resources (:job/resource job)]
-            (if (some #(= :resource.type/gpus (:resource/type %)) resources)
-              :gpu
-              :normal)))]
-    (lookup-cache-datomic-entity! categorize-job-cache categorize-job-miss job)))
+(let [default-pool (config/default-pool)
+      miss-fn (fn [{:keys [job/pool]}]
+                (or (:pool/name pool) default-pool "no-pool"))]
+  (defn job->pool
+    "Return the pool of the job."
+    [job]
+    (lookup-cache-datomic-entity! job-ent->pool-cache miss-fn job)))
 
 (defn without-ns
   [k]
@@ -510,15 +507,18 @@
   "Returns all job entities for a particular user
    in a particular state.  Unlike get-jobs-by-user-and-state, doesn't
   impose any other conditions."
-  [db user state]
-  (->> (q '[:find [?j ...]
-            :in $ ?user ?state
-            :where
-            [?j :job/state ?state]
-            [?j :job/user ?user]]
-          db user state)
-       (map (partial d/entity db))
-       (map d/touch)))
+  [db user state pool-name]
+  (let [requesting-default-pool? (pool/requesting-default-pool? pool-name)
+        pool-name' (pool/pool-name-or-default pool-name)]
+    (->> (q '[:find [?j ...]
+              :in $ ?user ?state ?pool-name ?requesting-default-pool
+              :where
+              [?j :job/state ?state]
+              [?j :job/user ?user]
+              [(cook.mesos.pool/check-pool $ ?j :job/pool ?pool-name ?requesting-default-pool)]]
+            db user state pool-name' requesting-default-pool?)
+         (map (partial d/entity db))
+         (map d/touch))))
 
 (timers/deftimer [cook-mesos scheduler get-running-tasks-duration])
 

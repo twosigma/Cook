@@ -720,6 +720,12 @@ for a job. E.g. {:resources {:cpus 4 :mem 3} :constraints {\"unique_host_constra
     :db/doc "The state of the pool."
     :db/valueType :db.type/keyword
     :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :pool/dru-mode
+    :db/doc "The DRU mode of the pool."
+    :db/valueType :db.type/keyword
+    :db/cardinality :db.cardinality/one
     :db.install/_attribute :db.part/db}])
 
 (def migration-add-index-to-job-state
@@ -821,7 +827,14 @@ for a job. E.g. {:resources {:cpus 4 :mem 3} :constraints {\"unique_host_constra
     :db/doc "Signifies that the pool is active."}
    {:db/id (d/tempid :db.part/user)
     :db/ident :pool.state/inactive
-    :db/doc "Signifies that the pool is inactive and should not be used."}])
+    :db/doc "Signifies that the pool is inactive and should not be used."}
+   ;; Pool DRU modes
+   {:db/id (d/tempid :db.part/user)
+    :db/ident :pool.dru-mode/default
+    :db/doc "Signifies that the pool is using the default DRU calculations."}
+   {:db/id (d/tempid :db.part/user)
+    :db/ident :pool.dru-mode/gpu
+    :db/doc "Signifies that the pool is using the GPU-specific DRU calculations."}])
 
 (def straggler-handling-types
   (->> schema-attributes

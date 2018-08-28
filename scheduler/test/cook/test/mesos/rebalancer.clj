@@ -77,10 +77,7 @@
           task-ent5 (d/entity (d/db conn) task5)
           task-ent6 (d/entity (d/db conn) task6)
           task-ent7 (d/entity (d/db conn) task7)
-          task-ent8 (d/entity (d/db conn) task8)
-
-          tasks (shuffle [task-ent1 task-ent2 task-ent3 task-ent4
-                           task-ent5 task-ent6 task-ent7 task-ent8])]
+          task-ent8 (d/entity (d/db conn) task8)]
       (let [_ (share/set-share! conn "default" nil
                                 "Limits for new cluster"
                                 :mem 25.0 :cpus 25.0 :gpus 1.0)
@@ -95,8 +92,10 @@
             db (d/db conn)
             running-tasks (util/get-running-task-ents db)
             pending-jobs []
+            pool-ent {:pool/name "no-pool"
+                      :pool/dru-mode :pool.dru-mode/default}
             {:keys [task->scored-task user->sorted-running-task-ents]}
-            (rebalancer/init-state db running-tasks pending-jobs {} :normal)]
+            (rebalancer/init-state db running-tasks pending-jobs {} pool-ent)]
         (is (= [task-ent4 task-ent3 task-ent8 task-ent7
                 task-ent6 task-ent2 task-ent1 task-ent5]
                (keys task->scored-task)))
@@ -108,14 +107,14 @@
         (is (= [task-ent5 task-ent6 task-ent7 task-ent8]
                (seq (get user->sorted-running-task-ents "wzhao"))))))))
 
-(deftest test-pending-normal-job-dru
+(deftest test-compute-pending-default-job-dru
   (testing "test1"
-    (let [datomic-uri "datomic:mem://test-compute-pending-job-dru"
+    (let [datomic-uri "datomic:mem://test-compute-pending-default-job-dru"
           conn (restore-fresh-database! datomic-uri)
           job1 (create-dummy-job conn :name "job1" :user "ljin" :memory 10.0 :ncpus 10.0)
-          job2 (create-dummy-job conn :name "job2" :user "ljin" :memory 5.0  :ncpus 5.0)
+          job2 (create-dummy-job conn :name "job2" :user "ljin" :memory 5.0 :ncpus 5.0)
           job3 (create-dummy-job conn :name "job3" :user "ljin" :memory 15.0 :ncpus 25.0)
-          job4 (create-dummy-job conn :name "job4"  :user "ljin" :memory 25.0 :ucpus 15.0)
+          job4 (create-dummy-job conn :name "job4" :user "ljin" :memory 25.0 :ucpus 15.0)
           job5 (create-dummy-job conn :name "job5" :user "wzhao" :memory 8.0 :ncpus 8.0)
           job6 (create-dummy-job conn :name "job6" :user "wzhao" :memory 10.0 :ncpus 10.0)
           job7 (create-dummy-job conn :name "job7" :user "wzhao" :memory 10.0 :ncpus 10.0)
@@ -125,23 +124,14 @@
           job10 (create-dummy-job conn :name "job10" :user "sunil" :memory 20.0 :ncpus 20.0)
           job11 (create-dummy-job conn :name "job11" :user "ljin" :memory 10.0 :ucpus 10.0)
 
-          task1 (create-dummy-instance conn job1 :instance-status :instance.status/running)
-          task2 (create-dummy-instance conn job2 :instance-status :instance.status/running)
-          task3 (create-dummy-instance conn job3 :instance-status :instance.status/running)
-          task4 (create-dummy-instance conn job4 :instance-status :instance.status/running)
-          task5 (create-dummy-instance conn job5 :instance-status :instance.status/running)
-          task6 (create-dummy-instance conn job6 :instance-status :instance.status/running)
-          task7 (create-dummy-instance conn job7 :instance-status :instance.status/running)
-          task8 (create-dummy-instance conn job8 :instance-status :instance.status/running)
-
-          task-ent1 (d/entity (d/db conn) task1)
-          task-ent2 (d/entity (d/db conn) task2)
-          task-ent3 (d/entity (d/db conn) task3)
-          task-ent4 (d/entity (d/db conn) task4)
-          task-ent5 (d/entity (d/db conn) task5)
-          task-ent6 (d/entity (d/db conn) task6)
-          task-ent7 (d/entity (d/db conn) task7)
-          task-ent8 (d/entity (d/db conn) task8)
+          _ (create-dummy-instance conn job1 :instance-status :instance.status/running)
+          _ (create-dummy-instance conn job2 :instance-status :instance.status/running)
+          _ (create-dummy-instance conn job3 :instance-status :instance.status/running)
+          _ (create-dummy-instance conn job4 :instance-status :instance.status/running)
+          _ (create-dummy-instance conn job5 :instance-status :instance.status/running)
+          _ (create-dummy-instance conn job6 :instance-status :instance.status/running)
+          _ (create-dummy-instance conn job7 :instance-status :instance.status/running)
+          _ (create-dummy-instance conn job8 :instance-status :instance.status/running)
 
           _ (share/set-share! conn "default" nil
                               "limits for new cluster"
@@ -150,10 +140,12 @@
           db (d/db conn)
           running-tasks (util/get-running-task-ents db)
           pending-jobs (map #(d/entity db %) [job9 job10 job11])
-          state (rebalancer/init-state db running-tasks pending-jobs {} :normal)]
-      (is (= 1.92 (rebalancer/compute-pending-normal-job-dru state (d/entity db job9))))
-      (is (= 0.8 (rebalancer/compute-pending-normal-job-dru state (d/entity db job10))))
-      (is (= 2.6 (rebalancer/compute-pending-normal-job-dru state (d/entity db job11)))))))
+          pool-ent {:pool/name "no-pool"
+                    :pool/dru-mode :pool.dru-mode/default}
+          state (rebalancer/init-state db running-tasks pending-jobs {} pool-ent)]
+      (is (= 1.92 (rebalancer/compute-pending-default-job-dru state (d/entity db job9))))
+      (is (= 0.8 (rebalancer/compute-pending-default-job-dru state (d/entity db job10))))
+      (is (= 2.6 (rebalancer/compute-pending-default-job-dru state (d/entity db job11)))))))
 
 (deftest test-pending-gpu-job-dru
   (let [datomic-uri "datomic:mem://test-rebalancer/compute-pending-normal-job-dru"
@@ -171,23 +163,14 @@
         job10 (create-dummy-job conn :name "job10" :user "sunil" :memory 20.0 :ncpus 20.0 :gpus 1.0)
         job11 (create-dummy-job conn :name "job11" :user "ljin" :memory 10.0 :ucpus 10.0 :gpus 2.0)
 
-        task1 (create-dummy-instance conn job1 :instance-status :instance.status/running)
-        task2 (create-dummy-instance conn job2 :instance-status :instance.status/running)
-        task3 (create-dummy-instance conn job3 :instance-status :instance.status/running)
-        task4 (create-dummy-instance conn job4 :instance-status :instance.status/running)
-        task5 (create-dummy-instance conn job5 :instance-status :instance.status/running)
-        task6 (create-dummy-instance conn job6 :instance-status :instance.status/running)
-        task7 (create-dummy-instance conn job7 :instance-status :instance.status/running)
-        task8 (create-dummy-instance conn job8 :instance-status :instance.status/running)
-
-        task-ent1 (d/entity (d/db conn) task1)
-        task-ent2 (d/entity (d/db conn) task2)
-        task-ent3 (d/entity (d/db conn) task3)
-        task-ent4 (d/entity (d/db conn) task4)
-        task-ent5 (d/entity (d/db conn) task5)
-        task-ent6 (d/entity (d/db conn) task6)
-        task-ent7 (d/entity (d/db conn) task7)
-        task-ent8 (d/entity (d/db conn) task8)
+        _ (create-dummy-instance conn job1 :instance-status :instance.status/running)
+        _ (create-dummy-instance conn job2 :instance-status :instance.status/running)
+        _ (create-dummy-instance conn job3 :instance-status :instance.status/running)
+        _ (create-dummy-instance conn job4 :instance-status :instance.status/running)
+        _ (create-dummy-instance conn job5 :instance-status :instance.status/running)
+        _ (create-dummy-instance conn job6 :instance-status :instance.status/running)
+        _ (create-dummy-instance conn job7 :instance-status :instance.status/running)
+        _ (create-dummy-instance conn job8 :instance-status :instance.status/running)
 
         _ (share/set-share! conn "default" nil
                             "limits for new cluster"
@@ -196,7 +179,9 @@
         db (d/db conn)
         running-tasks (util/get-running-task-ents db)
         pending-jobs (map #(d/entity db %) [job9 job10 job11])
-        state (rebalancer/init-state db running-tasks pending-jobs {} :gpu)]
+        pool-ent {:pool/name "no-pool"
+                  :pool/dru-mode :pool.dru-mode/gpu}
+        state (rebalancer/init-state db running-tasks pending-jobs {} pool-ent)]
     (is (= (rebalancer/compute-pending-gpu-job-dru state (d/entity db job2))
            (rebalancer/compute-pending-gpu-job-dru state (d/entity db job6))))
     (is (= 5.0 (rebalancer/compute-pending-gpu-job-dru state (d/entity db job9))))
@@ -205,13 +190,14 @@
 
 (defn initialize-rebalancer
   [db pending-job-ids]
-  (let  [pending-jobs (map #(d/entity db %) pending-job-ids)
-         running-tasks (util/get-running-task-ents db)
-         {:keys [task->scored-task user->sorted-running-task-ents user->dru-divisors]}
-           (rebalancer/init-state db running-tasks pending-jobs {} :normal)]
+  (let [pending-jobs (map #(d/entity db %) pending-job-ids)
+        running-tasks (util/get-running-task-ents db)
+        pool-ent {:pool/name "no-pool"
+                  :pool/dru-mode :pool.dru-mode/default}
+        {:keys [task->scored-task user->sorted-running-task-ents user->dru-divisors]}
+        (rebalancer/init-state db running-tasks pending-jobs {} pool-ent)]
     [task->scored-task user->sorted-running-task-ents user->dru-divisors]))
 
-;(test-compute-preemption-decision)
 (deftest test-compute-preemption-decision
   (testing "test without group constraints"
     (let [datomic-uri "datomic:mem://test-compute-preemption-decision"
@@ -221,8 +207,6 @@
           job2 (create-dummy-job conn :user "ljin" :memory 5.0  :ncpus 5.0)
           job3 (create-dummy-job conn :user "ljin" :memory 15.0 :ncpus 25.0)
           job4 (create-dummy-job conn :user "ljin" :memory 25.0 :ncpus 15.0)
-          job5 (create-dummy-job conn :user "wzhao" :memory 8.0 :ncpus 8.0)
-          job6 (create-dummy-job conn :user "wzhao" :memory 10.0 :ncpus 10.0)
           job7 (create-dummy-job conn :user "wzhao" :memory 10.0 :ncpus 10.0)
           job8 (create-dummy-job conn :user "wzhao" :memory 10.0 :ncpus 10.0)
 
@@ -233,45 +217,15 @@
           job13 (create-dummy-job conn :user "sunil" :memory 45.0 :ncpus 45.0)
           job14 (create-dummy-job conn :user "sunil" :memory 80.0 :ncpus 80.0)
 
-          task1 (create-dummy-instance conn
-                                             job1
-                                             :instance-status :instance.status/running
-                                             :hostname "hostA")
-          task2 (create-dummy-instance conn
-                                             job2
-                                             :instance-status :instance.status/running
-                                             :hostname "hostA")
-          task3 (create-dummy-instance conn
-                                             job3
-                                             :instance-status :instance.status/running
-                                             :hostname "hostB")
-          task4 (create-dummy-instance conn
-                                             job4
-                                             :instance-status :instance.status/running
-                                             :hostname "hostB")
-          task5 (create-dummy-instance conn
-                                             job5
-                                             :instance-status :instance.status/running
-                                             :hostname "hostA")
-          task6 (create-dummy-instance conn
-                                             job6
-                                             :instance-status :instance.status/running
-                                             :hostname "hostB")
-          task7 (create-dummy-instance conn
-                                             job7
-                                             :instance-status :instance.status/running
-                                             :hostname "hostA")
-          task8 (create-dummy-instance conn
-                                             job8
-                                             :instance-status :instance.status/running
-                                             :hostname "hostB")
+          _ (create-dummy-instance conn job1 :instance-status :instance.status/running :hostname "hostA")
+          _ (create-dummy-instance conn job2 :instance-status :instance.status/running :hostname "hostA")
+          task3 (create-dummy-instance conn job3 :instance-status :instance.status/running :hostname "hostB")
+          task4 (create-dummy-instance conn job4 :instance-status :instance.status/running :hostname "hostB")
+          task7 (create-dummy-instance conn job7 :instance-status :instance.status/running :hostname "hostA")
+          task8 (create-dummy-instance conn job8 :instance-status :instance.status/running :hostname "hostB")
 
-          task-ent1 (d/entity (d/db conn) task1)
-          task-ent2 (d/entity (d/db conn) task2)
           task-ent3 (d/entity (d/db conn) task3)
           task-ent4 (d/entity (d/db conn) task4)
-          task-ent5 (d/entity (d/db conn) task5)
-          task-ent6 (d/entity (d/db conn) task6)
           task-ent7 (d/entity (d/db conn) task7)
           task-ent8 (d/entity (d/db conn) task8)
 
@@ -297,7 +251,7 @@
                                                               user->sorted-running-task-ents
                                                               {}
                                                               user->dru-divisors
-                                                              rebalancer/compute-pending-normal-job-dru
+                                                              rebalancer/compute-pending-default-job-dru
                                                               [])
                                                      {:min-dru-diff 0.05 :safe-dru-threshold 1.0}
                                                      (d/entity db job9)
@@ -309,7 +263,7 @@
                                                               user->sorted-running-task-ents
                                                               {"hostB" {:mem 15.0 :cpus 15.0}}
                                                               user->dru-divisors
-                                                              rebalancer/compute-pending-normal-job-dru
+                                                              rebalancer/compute-pending-default-job-dru
                                                               [])
                                                      {:min-dru-diff 0.5 :safe-dru-threshold 1.0}
                                                      (d/entity db job9)
@@ -322,7 +276,7 @@
                                                               {"hostA" {:mem 20.0 :cpus 20.0}
                                                                "hostB" {:mem 10.0 :cpus 10.0}}
                                                               user->dru-divisors
-                                                              rebalancer/compute-pending-normal-job-dru
+                                                              rebalancer/compute-pending-default-job-dru
                                                               [])
                                                      {:min-dru-diff 0.5 :safe-dru-threshold 1.0}
                                                      (d/entity db job9)
@@ -335,7 +289,7 @@
                                                               {"hostA" {:mem 10.0 :cpus 10.0}
                                                                "hostB" {:mem 10.0 :cpus 10.0}}
                                                               user->dru-divisors
-                                                              rebalancer/compute-pending-normal-job-dru
+                                                              rebalancer/compute-pending-default-job-dru
                                                               [])
                                                      {:min-dru-diff 0.0 :safe-dru-threshold 1.0}
                                                      (d/entity db job9)
@@ -347,7 +301,7 @@
                                                               user->sorted-running-task-ents
                                                               {}
                                                               user->dru-divisors
-                                                              rebalancer/compute-pending-normal-job-dru
+                                                              rebalancer/compute-pending-default-job-dru
                                                               [])
                                                      {:min-dru-diff 0.5 :safe-dru-threshold 1.0}
                                                      (d/entity db job10)
@@ -359,7 +313,7 @@
                                                               user->sorted-running-task-ents
                                                               {}
                                                               user->dru-divisors
-                                                              rebalancer/compute-pending-normal-job-dru
+                                                              rebalancer/compute-pending-default-job-dru
                                                               [])
                                                      {:min-dru-diff 0.5 :safe-dru-threshold 1.0}
                                                      (d/entity db job11)
@@ -371,7 +325,7 @@
                                                               user->sorted-running-task-ents
                                                               {}
                                                               user->dru-divisors
-                                                              rebalancer/compute-pending-normal-job-dru
+                                                              rebalancer/compute-pending-default-job-dru
                                                               [])
                                                      {:min-dru-diff 0.0 :safe-dru-threshold 1.0}
                                                      (d/entity db job12)
@@ -383,7 +337,7 @@
                                                               user->sorted-running-task-ents
                                                               {"hostA" {:mem 40.0 :cpus 40.0}}
                                                               user->dru-divisors
-                                                              rebalancer/compute-pending-normal-job-dru
+                                                              rebalancer/compute-pending-default-job-dru
                                                               [])
                                                      {:min-dru-diff 0.5 :safe-dru-threshold 1.0}
                                                      (d/entity db job12)
@@ -395,7 +349,7 @@
                                                               user->sorted-running-task-ents
                                                               {"hostA" {:mem 35.0 :cpus 35.0}}
                                                               user->dru-divisors
-                                                              rebalancer/compute-pending-normal-job-dru
+                                                              rebalancer/compute-pending-default-job-dru
                                                               [])
                                                      {:min-dru-diff 0.0 :safe-dru-threshold 1.0}
                                                      (d/entity db job12)
@@ -408,7 +362,7 @@
                                                               {"hostA" {:mem 35.0 :cpus 35.0}
                                                                "hostB" {:mem 30.0 :cpus 30.0}}
                                                               user->dru-divisors
-                                                              rebalancer/compute-pending-normal-job-dru
+                                                              rebalancer/compute-pending-default-job-dru
                                                               [])
                                                      {:min-dru-diff 0.5 :safe-dru-threshold 1.0}
                                                      (d/entity db job12)
@@ -420,7 +374,7 @@
                                                               user->sorted-running-task-ents
                                                               {}
                                                               user->dru-divisors
-                                                              rebalancer/compute-pending-normal-job-dru
+                                                              rebalancer/compute-pending-default-job-dru
                                                               [])
                                                      {:min-dru-diff 0.5 :safe-dru-threshold 1.0}
                                                      (d/entity db job13)
@@ -432,7 +386,7 @@
                                                               user->sorted-running-task-ents
                                                               {}
                                                               user->dru-divisors
-                                                              rebalancer/compute-pending-normal-job-dru
+                                                              rebalancer/compute-pending-default-job-dru
                                                               [])
                                                      {:min-dru-diff 2.0 :safe-dru-threshold 1.0}
                                                      (d/entity db job13)
@@ -444,7 +398,7 @@
                                                               user->sorted-running-task-ents
                                                               {}
                                                               user->dru-divisors
-                                                              rebalancer/compute-pending-normal-job-dru
+                                                              rebalancer/compute-pending-default-job-dru
                                                               [])
                                                      {:min-dru-diff 0.5 :safe-dru-threshold 1.0}
                                                      (d/entity db job14)
@@ -484,7 +438,7 @@
                                                                             user->sorted-running-task-ents
                                                                             {}
                                                                             user->dru-divisors
-                                                                            rebalancer/compute-pending-normal-job-dru
+                                                                            rebalancer/compute-pending-default-job-dru
                                                                             [])
                                                                    {:min-dru-diff 0.05 :safe-dru-threshold 1.0}
                                                                    (d/entity db pending-job)
@@ -510,7 +464,7 @@
                                                                             user->sorted-running-task-ents
                                                                             {}
                                                                             user->dru-divisors
-                                                                            rebalancer/compute-pending-normal-job-dru
+                                                                            rebalancer/compute-pending-default-job-dru
                                                                             [])
                                                                    {:min-dru-diff 0.05 :safe-dru-threshold 1.0}
                                                                    (d/entity db pending-job)
@@ -526,7 +480,7 @@
                                                                           user->sorted-running-task-ents
                                                                           {}
                                                                           user->dru-divisors
-                                                                          rebalancer/compute-pending-normal-job-dru
+                                                                          rebalancer/compute-pending-default-job-dru
                                                                           [])
                                                                  {:min-dru-diff 0.05 :safe-dru-threshold 1.0}
                                                                  (d/entity db pending-job)
@@ -565,7 +519,7 @@
                                                                             user->sorted-running-task-ents
                                                                             {}
                                                                             user->dru-divisors
-                                                                            rebalancer/compute-pending-normal-job-dru
+                                                                            rebalancer/compute-pending-default-job-dru
                                                                             [])
                                                                    {:min-dru-diff 0.05 :safe-dru-threshold 1.0}
                                                                    (d/entity db pending-job)
@@ -586,7 +540,7 @@
                                                                  user->sorted-running-task-ents
                                                                  {}
                                                                  user->dru-divisors
-                                                                 rebalancer/compute-pending-normal-job-dru
+                                                                 rebalancer/compute-pending-default-job-dru
                                                                  [])
                                                         {:min-dru-diff 0.05 :safe-dru-threshold 1.0}
                                                         (d/entity db pending-job)
@@ -631,7 +585,7 @@
                                                                             user->sorted-running-task-ents
                                                                             {}
                                                                             user->dru-divisors
-                                                                            rebalancer/compute-pending-normal-job-dru
+                                                                            rebalancer/compute-pending-default-job-dru
                                                                             [])
                                                                    {:min-dru-diff 0.05 :safe-dru-threshold 1.0}
                                                                    (d/entity db pending-job)
@@ -655,7 +609,7 @@
                                                                  user->sorted-running-task-ents
                                                                  {}
                                                                  user->dru-divisors
-                                                                 rebalancer/compute-pending-normal-job-dru
+                                                                 rebalancer/compute-pending-default-job-dru
                                                                  [])
                                                         {:min-dru-diff 0.05 :safe-dru-threshold 1.0}
                                                         (d/entity db pending-job)
@@ -712,7 +666,7 @@
                                                       user->sorted-running-task-ents
                                                       {}
                                                       user->dru-divisors
-                                                      rebalancer/compute-pending-normal-job-dru
+                                                      rebalancer/compute-pending-default-job-dru
                                                       [])
                                              {:min-dru-diff 0.05 :safe-dru-threshold 1.0}
                                              (d/entity db pending-job)
@@ -751,7 +705,7 @@
                                                       user->sorted-running-task-ents
                                                       {}
                                                       user->dru-divisors
-                                                      rebalancer/compute-pending-normal-job-dru
+                                                      rebalancer/compute-pending-default-job-dru
                                                       [task-preempted-this-cycle])
                                              {:min-dru-diff 0.05 :safe-dru-threshold 1.0}
                                              (d/entity db pending-job)
@@ -763,7 +717,7 @@
     (let [datomic-uri "datomic:mem://test-next-state"
           conn (restore-fresh-database! datomic-uri)
           job1 (create-dummy-job conn :user "ljin" :memory 10.0 :ncpus 10.0 :name "job1")
-          job2 (create-dummy-job conn :user "ljin" :memory 5.0  :ncpus 5.0 :name "job2")
+          job2 (create-dummy-job conn :user "ljin" :memory 5.0 :ncpus 5.0 :name "job2")
           job3 (create-dummy-job conn :user "ljin" :memory 15.0 :ncpus 25.0 :name "job3")
           job4 (create-dummy-job conn :user "ljin" :memory 25.0 :ncpus 15.0 :name "job4")
           job5 (create-dummy-job conn :user "wzhao" :memory 8.0 :ncpus 8.0 :name "job5")
@@ -814,10 +768,10 @@
                                        :slave-id "testA"
                                        :hostname "hostA")
           task8 (create-dummy-instance conn
-                                             job8
-                                             :instance-status :instance.status/running
-                                             :slave-id "testB"
-                                             :hostname "hostB")
+                                       job8
+                                       :instance-status :instance.status/running
+                                       :slave-id "testB"
+                                       :hostname "hostB")
           _ (share/set-share! conn "default" nil
                               "limits for new cluster"
                               :mem 25.0 :cpus 25.0 :gpus 1.0)
@@ -840,7 +794,9 @@
           pending-job-ents (map #(d/entity db %) [job9 job10 job11 job12 job13 job14])
           host->spare-resources {"hostA" {:mem 50.0 :cpus 50.0}}
           user->dru-divisors {"ljin" {:mem 25.0 :cpus 25.0 :gpus 1.0} "wzhao" {:mem 25.0 :cpus 25.0 :gpus 1.0} "sunil" {:mem 25.0 :cpus 25.0 :gpus 1.0}}
-          state (rebalancer/init-state db running-task-ents pending-job-ents host->spare-resources :normal)]
+          pool-ent {:pool/name "no-pool"
+                    :pool/dru-mode :pool.dru-mode/default}
+          state (rebalancer/init-state db running-task-ents pending-job-ents host->spare-resources pool-ent)]
       (let [task-ent9 {:job/_instance job-ent9
                        :instance/hostname "hostB"
                        :instance/slave-id "testB"
@@ -877,8 +833,7 @@
             host->spare-resources' {"hostA" {:mem 50.0 :cpus 50.0 :gpus 0.0}}]
         (let [{task->scored-task'' :task->scored-task
                user->sorted-running-task-ents'' :user->sorted-running-task-ents
-               host->spare-resources'' :host->spare-resources
-               user->dru-divisors'' :user->dru-divisors}
+               host->spare-resources'' :host->spare-resources}
               (rebalancer/next-state state job-ent10 {:hostname "hostA" :task [task-ent2 task-ent7] :mem 65.0 :cpus 65.0})]
           (is (= user->sorted-running-task-ents' user->sorted-running-task-ents''))
           (is (= host->spare-resources' host->spare-resources''))
@@ -903,8 +858,7 @@
 
         (let [{task->scored-task'' :task->scored-task
                user->sorted-running-task-ents'' :user->sorted-running-task-ents
-               host->spare-resources'' :host->spare-resources
-               user->dru-divisors'' :user->dru-divisors}
+               host->spare-resources'' :host->spare-resources}
               (rebalancer/next-state state job-ent12 {:hostname "hostA" :task [] :mem 50.0 :cpus 50.0})]
           (is (= user->sorted-running-task-ents' user->sorted-running-task-ents''))
           (is (= host->spare-resources' host->spare-resources''))
@@ -935,11 +889,23 @@
             (doall (for [[scored expected] scored->expected]
               (is (= scored expected))))))))))
 
+(defn rebalance
+  "Calculates the jobs to make for and the initial state, and then delegates to rebalancer/rebalance"
+  [db agent-attributes-cache pending-job-ents host->spare-resources rebalancer-reservation-atom
+   {:keys [max-preemption pool-ent] :as params}]
+  (let [jobs-to-make-room-for (->> pending-job-ents
+                                   (filter (partial util/job-allowed-to-start? db))
+                                   (take max-preemption))
+        init-state (rebalancer/init-state db (util/get-running-task-ents db) jobs-to-make-room-for
+                                          host->spare-resources pool-ent)]
+    (rebalancer/rebalance db agent-attributes-cache rebalancer-reservation-atom
+                          params init-state jobs-to-make-room-for)))
+
 (deftest test-rebalance
   (let [datomic-uri "datomic:mem://test-rebalance"
         conn (restore-fresh-database! datomic-uri)
         job1 (create-dummy-job conn :user "ljin" :memory 10.0 :ncpus 10.0)
-        job2 (create-dummy-job conn :user "ljin" :memory 5.0  :ncpus 5.0)
+        job2 (create-dummy-job conn :user "ljin" :memory 5.0 :ncpus 5.0)
         job3 (create-dummy-job conn :user "ljin" :memory 15.0 :ncpus 25.0)
         job4 (create-dummy-job conn :user "ljin" :memory 25.0 :ncpus 15.0)
         job5 (create-dummy-job conn :user "wzhao" :memory 8.0 :ncpus 8.0)
@@ -947,58 +913,22 @@
         job7 (create-dummy-job conn :user "wzhao" :memory 10.0 :ncpus 10.0)
         job8 (create-dummy-job conn :user "wzhao" :memory 10.0 :ncpus 10.0)
 
-        job9 (create-dummy-job conn :user "wzhao" :memory 15.0 :ncpus 15.0)
-        job10 (create-dummy-job conn :user "sunil" :memory 15.0 :ncpus 15.0)
-        job11 (create-dummy-job conn :user "ljin" :memory 15.0 :ncpus 15.0)
-        job12 (create-dummy-job conn :user "sunil" :memory 15.0 :ncpus 15.0)
-        job13 (create-dummy-job conn :user "sunil" :memory 15.0 :ncpus 15.0)
-        job14 (create-dummy-job conn :user "sunil" :memory 15.0 :ncpus 15.0)
-
-        task1 (create-dummy-instance conn
-                                     job1
-                                     :instance-status :instance.status/running
-                                     :hostname "hostA")
-        task2 (create-dummy-instance conn
-                                     job2
-                                     :instance-status :instance.status/running
-                                     :hostname "hostA")
-        task3 (create-dummy-instance conn
-                                     job3
-                                     :instance-status :instance.status/running
-                                     :hostname "hostB")
-        task4 (create-dummy-instance conn
-                                     job4
-                                     :instance-status :instance.status/running
-                                     :hostname "hostB")
-        task5 (create-dummy-instance conn
-                                     job5
-                                     :instance-status :instance.status/running
-                                     :hostname "hostA")
-        task6 (create-dummy-instance conn
-                                     job6
-                                     :instance-status :instance.status/running
-                                     :hostname "hostB")
-        task7 (create-dummy-instance conn
-                                     job7
-                                     :instance-status :instance.status/running
-                                     :hostname "hostA")
-        task8 (create-dummy-instance conn
-                                     job8
-                                     :instance-status :instance.status/running
-                                     :hostname "hostB")
+        _ (create-dummy-instance conn job1 :instance-status :instance.status/running :hostname "hostA")
+        _ (create-dummy-instance conn job2 :instance-status :instance.status/running :hostname "hostA")
+        task3 (create-dummy-instance conn job3 :instance-status :instance.status/running :hostname "hostB")
+        task4 (create-dummy-instance conn job4 :instance-status :instance.status/running :hostname "hostB")
+        _ (create-dummy-instance conn job5 :instance-status :instance.status/running :hostname "hostA")
+        _ (create-dummy-instance conn job6 :instance-status :instance.status/running :hostname "hostB")
+        _ (create-dummy-instance conn job7 :instance-status :instance.status/running :hostname "hostA")
+        task8 (create-dummy-instance conn job8 :instance-status :instance.status/running :hostname "hostB")
         _ (share/set-share! conn "default" nil
                             "limits for new cluster"
                             :mem 25.0 :cpus 25.0)
 
         db (d/db conn)
 
-        task-ent1 (d/entity db task1)
-        task-ent2 (d/entity db task2)
         task-ent3 (d/entity db task3)
         task-ent4 (d/entity db task4)
-        task-ent5 (d/entity db task5)
-        task-ent6 (d/entity db task6)
-        task-ent7 (d/entity db task7)
         task-ent8 (d/entity db task8)
 
         job9 (create-dummy-job conn :user "wzhao" :memory 5.0 :ncpus 5.0)
@@ -1023,23 +953,25 @@
         job27 (create-dummy-job conn :user "sunil" :memory 5.0 :ncpus 5.0)
         job28 (create-dummy-job conn :user "sunil" :memory 5.0 :ncpus 5.0)
 
+        pool-ent {:pool/dru-mode :pool.dru-mode/default
+                  :pool/name "no-pool"}
         test-cases [{:jobs [job9 job10 job11 job12 job13
                             job14 job15 job16 job17 job18]
-                     :params {:max-preemption 128 :safe-dru-threshold 1.0 :min-dru-diff 0.0 :category :normal}
+                     :params {:max-preemption 128 :safe-dru-threshold 1.0 :min-dru-diff 0.0 :pool-ent pool-ent}
                      :expected-jobs-to-run [job9 job10 job11]
                      :expected-tasks-to-preempt [task-ent4]
                      :available-resources {}
                      :test-name "simple test"}
                     {:jobs [job9 job10 job11 job12 job13
                             job14 job15 job16 job17 job18]
-                     :params {:max-preemption 128 :safe-dru-threshold 1.0 :min-dru-diff 0.0 :category :normal}
+                     :params {:max-preemption 128 :safe-dru-threshold 1.0 :min-dru-diff 0.0 :pool-ent pool-ent}
                      :expected-jobs-to-run [job9 job10 job11 job12 job13]
                      :expected-tasks-to-preempt [task-ent4]
                      :available-resources {"hostB" {:mem 0.0 :cpus 10.0}}
                      :test-name "simple test with available resources"}
                     {:jobs [job19 job20 job21 job22 job23
                             job24 job25 job26 job27 job28]
-                     :params {:max-preemption 128 :safe-dru-threshold 1.0 :min-dru-diff 0.0 :category :normal}
+                     :params {:max-preemption 128 :safe-dru-threshold 1.0 :min-dru-diff 0.0 :pool-ent pool-ent}
                      :expected-jobs-to-run [job19 job20 job21 job22 job23
                                             job24 job25 job26]
                      :expected-tasks-to-preempt [task-ent4 task-ent3]
@@ -1047,7 +979,7 @@
                      :test-name "simple test 2"}
                     {:jobs [job19 job20 job21 job22 job23
                             job24 job25 job26 job27 job28]
-                     :params {:max-preemption 128 :safe-dru-threshold 1.0 :min-dru-diff 0.0 :category :normal}
+                     :params {:max-preemption 128 :safe-dru-threshold 1.0 :min-dru-diff 0.0 :pool-ent pool-ent}
                      :expected-jobs-to-run [job19 job20 job21 job22 job23
                                             job24 job25 job26]
                      :expected-tasks-to-preempt [task-ent4]
@@ -1055,7 +987,7 @@
                      :test-name "simple test 2 with available resources"}
                     {:jobs [job19 job20 job21 job22 job23
                             job24 job25 job26 job27 job28]
-                     :params {:max-preemption 128 :safe-dru-threshold 1.0 :min-dru-diff 0.0 :category :normal}
+                     :params {:max-preemption 128 :safe-dru-threshold 1.0 :min-dru-diff 0.0 :pool-ent pool-ent}
                      :expected-jobs-to-run [job19 job20 job21 job22 job23
                                             job24 job25 job26 job27 job28]
                      :expected-tasks-to-preempt [task-ent4 task-ent3 task-ent8]
@@ -1073,11 +1005,8 @@
     (let [db (d/db conn)
           agent-attributes-cache (init-agent-attributes-cache)
           pending-job-ents (map #(d/entity db %) jobs)
-          preemption-decisions (rebalancer/rebalance db agent-attributes-cache
-                                                     pending-job-ents 
-                                                     available-resources 
-                                                     (atom {})
-                                                     params)
+          preemption-decisions (rebalance db agent-attributes-cache pending-job-ents
+                                          available-resources (atom {}) params)
           pending-job-ents-to-run (map :to-make-room-for preemption-decisions)
           task-ents-to-preempt (mapcat :task preemption-decisions)]
       (is (= (map #(d/entity db %) expected-jobs-to-run)
@@ -1114,26 +1043,22 @@
             running-tasks-sample-size 10240
             pending-jobs-sample-size 1024
 
-            _ (doseq [x (range running-tasks-sample-size)]
+            _ (doseq [_ (range running-tasks-sample-size)]
                 (let [[[user mem cpus]] (gen/sample running-job-gen 1)
                       [host] (gen/sample host-gen 1)
                       job-eid (create-dummy-job conn :user user :memory mem :cpus cpus)
-                      task-eid (create-dummy-instance conn job-eid :instance-status :instance.status/running :hostname host)]))
+                      _ (create-dummy-instance conn job-eid :instance-status :instance.status/running :hostname host)]))
 
-            _ (doseq [x (range pending-jobs-sample-size)]
+            _ (doseq [_ (range pending-jobs-sample-size)]
                 (let [[[user mem cpus]] (gen/sample pending-job-gen 1)
-                      job-eid (create-dummy-job conn :user user :memory mem :cpus cpus)]))
+                      _ (create-dummy-job conn :user user :memory mem :cpus cpus)]))
 
             db (d/db conn)
 
             pending-job-ents (util/get-pending-job-ents db)
-            [pending-job-ents-to-run task-ents-to-preempt] (time (rebalancer/rebalance db agent-attributes-cache
-                                                                                       pending-job-ents {}
-                                                                                       (atom {})
-                                                                                       {:max-preemption 128
-                                                                                        :safe-dru-threshold 1.0
-                                                                                        :min-dru-diff 0.5
-                                                                                        :category :normal}))]))))
+            pool-ent {:pool/dru-mode :pool.dru-mode/default}]
+        (rebalance db agent-attributes-cache pending-job-ents {} (atom {})
+                   {:max-preemption 128, :pool-ent pool-ent})))))
 
 
 (deftest test-update-datomic-params-via-config!
@@ -1165,7 +1090,9 @@
   (testing "reserves host for multiple preemptions"
     (let [datomic-uri "datomic:mem://test-rebalance-host-reservation"
           conn (restore-fresh-database! datomic-uri)
-          params {:max-preemption 128 :safe-dru-threshold 1.0 :min-dru-diff 0.0 :category :normal}
+          pool-ent {:pool/name "no-pool"
+                    :pool/dru-mode :pool.dru-mode/default}
+          params {:max-preemption 128 :safe-dru-threshold 1.0 :min-dru-diff 0.0 :pool-ent pool-ent}
           agent-attributes-cache (init-agent-attributes-cache)
           job1 (create-dummy-job conn :user "user1" :memory 6.0 :ncpus 6.0)
           job2 (create-dummy-job conn :user "user1" :memory 6.0 :ncpus 6.0)
@@ -1187,12 +1114,8 @@
                         :mem 10.0 :cpus 10.0)
       (let [db (d/db conn)
             [{:keys [hostname task to-make-room-for]}]
-            (rebalancer/rebalance db
-                                  agent-attributes-cache
-                                  (util/get-pending-job-ents db)
-                                  {"hostA" {:cpus 0.0 :mem 0.0 :gpus 0.0}}
-                                  reservations
-                                  params)]
+            (rebalance db agent-attributes-cache (util/get-pending-job-ents db)
+                       {"hostA" {:cpus 0.0 :mem 0.0 :gpus 0.0}} reservations params)]
         (is (= "hostA" hostname))
         (is (= job4 (:db/id to-make-room-for)))
         (is (= [task1 task2] (map :db/id task)))
@@ -1203,7 +1126,9 @@
   (testing "does not reserve host for single preempted task"
     (let [datomic-uri "datomic:mem://test-rebalance-host-reservation-single"
           conn (restore-fresh-database! datomic-uri)
-          params {:max-preemption 128 :safe-dru-threshold 1.0 :min-dru-diff 0.0 :category :normal}
+          pool-ent {:pool/name "no-pool"
+                    :pool/dru-mode :pool.dru-mode/default}
+          params {:max-preemption 128 :safe-dru-threshold 1.0 :min-dru-diff 0.0 :pool-ent pool-ent}
           agent-attributes-cache (init-agent-attributes-cache)
           job1 (create-dummy-job conn :user "user1" :memory 6.0 :ncpus 6.0)
           job2 (create-dummy-job conn :user "user2" :memory 1.0 :ncpus 1.0)
@@ -1220,12 +1145,8 @@
                         :mem 1.0 :cpus 1.0)
       (let [db (d/db conn)
             [{:keys [hostname task to-make-room-for]}]
-            (rebalancer/rebalance db
-                                  agent-attributes-cache
-                                  (util/get-pending-job-ents db)
-                                  {"hostA" {:cpus 0.0 :mem 0.0 :gpus 0.0}}
-                                  reservations
-                                  params)]
+            (rebalance db agent-attributes-cache (util/get-pending-job-ents db)
+                       {"hostA" {:cpus 0.0 :mem 0.0 :gpus 0.0}} reservations params)]
         (is (= "hostA" hostname))
         (is (= job2 (:db/id to-make-room-for)))
         (is (= [task1] (map :db/id task)))
@@ -1235,7 +1156,9 @@
   (testing "does not reserve host for job already launched"
     (let [datomic-uri "datomic:mem://test-rebalance-host-reservation"
           conn (restore-fresh-database! datomic-uri)
-          params {:max-preemption 128 :safe-dru-threshold 1.0 :min-dru-diff 0.0 :category :normal}
+          pool-ent {:pool/name "no-pool"
+                    :pool/dru-mode :pool.dru-mode/default}
+          params {:max-preemption 128 :safe-dru-threshold 1.0 :min-dru-diff 0.0 :pool-ent pool-ent}
           agent-attributes-cache (init-agent-attributes-cache)
           job1 (create-dummy-job conn :user "user1" :memory 6.0 :ncpus 6.0)
           job2 (create-dummy-job conn :user "user1" :memory 6.0 :ncpus 6.0)
@@ -1257,12 +1180,8 @@
                         :mem 10.0 :cpus 10.0)
       (let [db (d/db conn)
             [{:keys [hostname task to-make-room-for]}]
-            (rebalancer/rebalance db
-                                  agent-attributes-cache
-                                  (util/get-pending-job-ents db)
-                                  {"hostA" {:cpus 0.0 :mem 0.0 :gpus 0.0}}
-                                  reservations
-                                  params)]
+            (rebalance db agent-attributes-cache (util/get-pending-job-ents db)
+                       {"hostA" {:cpus 0.0 :mem 0.0 :gpus 0.0}} reservations params)]
         (is (= "hostA" hostname))
         (is (= job4 (:db/id to-make-room-for)))
         (is (= [task1 task2] (map :db/id task)))
@@ -1296,23 +1215,21 @@
     (let [datomic-uri "datomic:mem://test-reserve-hosts-integration"
           conn (restore-fresh-database! datomic-uri)
           job-id (create-dummy-job conn :user "user1" :memory 6.0 :ncpus 6.0)
-          job (d/entity (d/db conn) job-id)
+          {:keys [job/uuid] :as job} (d/entity (d/db conn) job-id)
           first-decision [{:task ["a" "b"]
                            :hostname "hostA"
                            :to-make-room-for job}]
           second-decision [{:task ["a" "b"]
                             :hostname "hostB"
                             :to-make-room-for job}]
-          ^TaskRequest task-request (sched/make-task-request (d/db conn) job)
-          match [{:tasks [(SimpleAssignmentResult. [] nil task-request)]}]
           rebalancer-reservation-atom (atom {})]
       (rebalancer/reserve-hosts! rebalancer-reservation-atom first-decision)
-      (is (= {(:job/uuid job) "hostA"} (:job-uuid->reserved-host @rebalancer-reservation-atom)))
+      (is (= {uuid "hostA"} (:job-uuid->reserved-host @rebalancer-reservation-atom)))
       (is (= #{} (:launched-job-uuids @rebalancer-reservation-atom)))
 
-      (sched/update-host-reservations! rebalancer-reservation-atom match)
+      (sched/update-host-reservations! rebalancer-reservation-atom #{uuid})
       (is (= {} (:job-uuid->reserved-host @rebalancer-reservation-atom)))
-      (is (= #{(:job/uuid job)} (:launched-job-uuids @rebalancer-reservation-atom)))
+      (is (= #{uuid} (:launched-job-uuids @rebalancer-reservation-atom)))
 
       (rebalancer/reserve-hosts! rebalancer-reservation-atom second-decision)
       (is (= {}) (:job-uuid->reserved-host @rebalancer-reservation-atom))
