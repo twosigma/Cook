@@ -398,7 +398,8 @@
                                           :cost-endpoint (get data-local-fitness-calculator :cost-endpoint nil)
                                           :batch-size (get data-local-fitness-calculator :batch-size 500)
                                           :update-interval-ms (get data-local-fitness-calculator :update-interval-ms nil)
-                                          :launch-wait-seconds (get data-local-fitness-calculator :launch-wait-seconds 60)})}))
+                                          :launch-wait-seconds (get data-local-fitness-calculator :launch-wait-seconds 60)
+                                          :cache-ttl-ms (get data-local-fitness-calculator :cache-ttl-ms 300000)})}))
 
 (defn read-config
   "Given a config file path, reads the config and returns the map"

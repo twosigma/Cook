@@ -22,8 +22,16 @@
   (defn update-data-local-costs
     "Updates the current data local costs. Costs larger than the configured max-cost will be capped at max-cost
      and negative costs will be reset to 0."
-    [datasets->host->cost datasets-to-remove]
-    (let [clean-datasets->host->cost (pc/map-vals (fn [host->cost]
+    [datasets->host->cost stale-datasets]
+    (let [{:keys [cache-ttl-ms]} (config/data-local-fitness-config)
+          datasets->last-update-time @datasets->last-update-time-atom
+          now (t/now)
+          datasets-to-remove (filter (fn [datasets]
+                                       (when-let [update-time (datasets->last-update-time datasets nil)]
+                                         (< cache-ttl-ms
+                                            (t/in-millis (t/interval update-time now)))))
+                                     stale-datasets)
+          clean-datasets->host->cost (pc/map-vals (fn [host->cost]
                                                     (pc/map-vals (fn [cost] (-> cost (min 1.0) (max 0)))
                                                                  host->cost))
                                                   datasets->host->cost)]

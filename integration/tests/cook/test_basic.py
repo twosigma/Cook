@@ -2492,7 +2492,8 @@ class CookTest(util.CookTest):
         self.assertEqual([{'dataset': {'foo': 'bar'}}], job['datasets'], job)
 
         instance = util.wait_for_instance(self.cook_url, job_uuid)
-        self.assertEqual(costs[0]['node'], instance['hostname'])
+        debug_costs = util.session.get(f'{self.cook_url}/data-local/{str(job_uuid)}').json()
+        self.assertEqual(costs[0]['node'], instance['hostname'], debug_costs)
 
 
     @unittest.skipIf(os.getenv('COOK_TEST_SKIP_RECONCILE') is not None,

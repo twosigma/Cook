@@ -1,6 +1,8 @@
 (ns cook.test.mesos.data-locality
   (:use clojure.test)
-  (:require [cook.config :as config]
+  (:require [clj-time.coerce :as tc]
+            [clj-time.core :as t]
+            [cook.config :as config]
             [cook.mesos.data-locality :as dl]
             [cook.test.testutil :refer (restore-fresh-database! create-dummy-job)]
             [datomic.api :as d]
@@ -11,38 +13,61 @@
             VirtualMachineCurrentState]))
 
 (deftest test-update-data-local-costs
-  (testing "sanitizes input costs"
-    (let [job-1 (str (UUID/randomUUID))
-          job-2 (str (UUID/randomUUID))]
-      (dl/reset-data-local-costs!)
-      (dl/update-data-local-costs {job-1 {"hostA" 2.0
-                                          "hostB" 0.2
-                                          "hostC" -20}
-                                   job-2 {"hostB" 10.0}}
-                                  [])
-      (is (= {job-1 {"hostA" 1.0
-                     "hostB" 0.2
-                     "hostC" 0}
-              job-2 {"hostB" 1.0}}
-             (dl/get-data-local-costs)))))
+  (with-redefs [config/data-local-fitness-config (constantly {:cache-ttl-ms 5000})]
+    (testing "sanitizes input costs"
+      (let [job-1 (str (UUID/randomUUID))
+            job-2 (str (UUID/randomUUID))]
+        (dl/reset-data-local-costs!)
+        (dl/update-data-local-costs {job-1 {"hostA" 2.0
+                                            "hostB" 0.2
+                                            "hostC" -20}
+                                     job-2 {"hostB" 10.0}}
+                                    [])
+        (is (= {job-1 {"hostA" 1.0
+                       "hostB" 0.2
+                       "hostC" 0}
+                job-2 {"hostB" 1.0}}
+               (dl/get-data-local-costs)))))
 
-  (testing "correctly updates existing values"
-    (let [job-1 (UUID/randomUUID)
-          job-2 (UUID/randomUUID)
-          job-3 (UUID/randomUUID)
-          job-4 (UUID/randomUUID)]
+    (testing "correctly updates existing values"
+      (let [job-1 (UUID/randomUUID)
+            job-2 (UUID/randomUUID)
+            job-3 (UUID/randomUUID)
+            job-4 (UUID/randomUUID)]
+        (dl/reset-data-local-costs!)
+        (dl/update-data-local-costs {job-1 {"hostA" 100}
+                                     job-2 {"hostB" 200}
+                                     job-4 {"hostC" 300}}
+                                    [])
+        (dl/update-data-local-costs {job-3 {"hostB" 300}
+                                     job-4 {"hostA" 200}}
+                                    [])
+        (is (= {job-1 {"hostA" 100}
+                job-2 {"hostB" 200}
+                job-3 {"hostB" 300}
+                job-4 {"hostA" 200}})
+            (dl/get-data-local-costs))))
+
+    (testing "waits until ttl expiry to remove elements"
       (dl/reset-data-local-costs!)
-      (dl/update-data-local-costs {job-1 {"hostA" 100}
-                                   job-2 {"hostB" 200}
-                                   job-4 {"hostC" 300}}
-                                  [])
-      (dl/update-data-local-costs {job-3 {"hostB" 300}
-                                   job-4 {"hostA" 200}}
-                                  [job-2])
-      (is (= {job-1 {"hostA" 100}
-              job-3 {"hostB" 300}
-              job-4 {"hostA" 200}})
-          (dl/get-data-local-costs)))))
+      (let [older-datasets #{{:dataset {"a" "a"}}}
+            newer-datasets #{{:dataset {"b" "b"}}}
+            cost {"hostA" 1.0}]
+        (with-redefs [t/now (constantly (tc/from-long 0))]
+          (dl/update-data-local-costs {older-datasets cost}
+                                      []))
+        (with-redefs [t/now (constantly (tc/from-long 4000))]
+          (dl/update-data-local-costs {newer-datasets cost}
+                                      [older-datasets]))
+        (is (= {older-datasets cost
+                newer-datasets cost}
+               (dl/get-data-local-costs)))
+
+        (with-redefs [t/now (constantly (tc/from-long 8000))]
+          (dl/update-data-local-costs {} [newer-datasets older-datasets]))
+
+        (is (= {newer-datasets cost}
+               (dl/get-data-local-costs)))))))
 
 (deftype FixedFitnessCalculator [fitness]
   VMTaskFitnessCalculator
@@ -154,7 +179,8 @@
         second-cost {"hostA" 0.5}
         third-cost {"hostA" 0.2}
         current-cost-atom (atom first-cost)]
-    (with-redefs [config/data-local-fitness-config (constantly {:batch-size 2})
+    (with-redefs [config/data-local-fitness-config (constantly {:batch-size 2
+                                                                :cache-ttl-ms 30000})
                   dl/fetch-data-local-costs (fn [jobs]
                                               (pc/map-from-keys (fn [_] @current-cost-atom)
                                                                 (map :job/datasets jobs)))]
