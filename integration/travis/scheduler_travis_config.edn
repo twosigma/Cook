@@ -57,5 +57,6 @@
                 "cook.mesos.data-locality" :debug
                 "cook.mesos.rebalancer" :debug
                 "cook.mesos.scheduler" :debug
+                "cook.mesos.data-locality" :debug
                 :default :info}}
  :pools {:default #config/env "COOK_DEFAULT_POOL"}}
