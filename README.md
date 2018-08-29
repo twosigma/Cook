@@ -35,13 +35,12 @@ Please visit the `scheduler` subproject first to get started.
 The quickest way to get Mesos and Cook running locally is with [docker](https://www.docker.com/) and [minimesos](https://minimesos.org/). 
 
 1. Install `docker`
-2. Install `minimesos`
-3. Clone down this repo
-4. `cd scheduler`
-5. Run `bin/build-docker-image.sh` to build the Cook scheduler image
-6. Run `minimesos up` to start Mesos and ZooKeeper
-7. Run `bin/run-docker.sh` to start the Cook scheduler
-8. Cook should now be listening locally on port 12321
+1. Clone down this repo
+1. `cd scheduler`
+1. Run `bin/build-docker-image.sh` to build the Cook scheduler image
+1. Run `../travis/minimesos up` to start Mesos and ZooKeeper using minimesos
+1. Run `bin/run-docker.sh` to start the Cook scheduler
+1. Cook should now be listening locally on port 12321
 
 ## Contributing
 
