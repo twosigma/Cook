@@ -333,3 +333,35 @@
     (assoc publisher-state
       :publisher-cancel-fn publisher-cancel-fn
       :syncer-cancel-fn syncer-cancel-fn)))
+
+(defn aggregate-exit-code
+  "Sends a message to the agent to update the exit-code information."
+  [{:keys [task-id->exit-code-agent]} task-id exit-code]
+  (when task-id->exit-code-agent
+    (send task-id->exit-code-agent aggregate-instance-field "exit-code" task-id exit-code)))
+
+(defn start-exit-code-publisher
+  "Launches a timer task that triggers publishing of the task-id->exit-code state to datomic.
+   The task is invoked at intervals of publish-interval-ms ms."
+  [task-id->exit-code-agent datomic-conn publish-batch-size publish-interval-ms]
+  (log/info "Starting exit-code publisher at intervals of" publish-interval-ms "ms")
+  (chime/chime-at
+    (periodic/periodic-seq (time/now) (time/millis publish-interval-ms))
+    (fn exit-code-publisher-task [_]
+      (publish-instance-field-to-datomic!
+        :instance/exit-code datomic-conn publish-batch-size task-id->exit-code-agent))
+    {:error-handler (fn exit-code-publisher-error-handler [ex]
+                      (log/error ex "Instance exit-code directory publish failed"))}))
+
+(defn prepare-exit-code-publisher
+  "This function initializes the exit-code publisher as well as helper function to send individual
+   exit-code entries.
+   It returns a map with the following entries:
+   :publisher-cancel-fn - fn that take no arguments and that terminates the publisher.
+   :task-id->exit-code-agent - The agent that manages the task-id->exit-code aggregation and publishing."
+  [datomic-conn publish-batch-size publish-interval-ms]
+  (let [task-id->exit-code-agent (agent {}) ;; stores all the pending task-id->exit-code state
+        publisher-cancel-fn (start-exit-code-publisher
+                              task-id->exit-code-agent datomic-conn publish-batch-size publish-interval-ms)]
+    {:publisher-cancel-fn publisher-cancel-fn
+     :task-id->exit-code-agent task-id->exit-code-agent}))
