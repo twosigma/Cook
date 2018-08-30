@@ -1628,8 +1628,8 @@ class CookTest(util.CookTest):
         group = {'uuid': str(uuid.uuid4()),
                  'host-placement': {'type': 'unique'}}
         job_spec = {'group': group['uuid'], 'command': 'sleep 600'}
-        # Don't submit too many jobs for the test. If the cluster is larger than 19 hosts, only submit 20 jobs.
-        num_jobs = min(num_hosts + 1, 20)
+        # Don't submit too many jobs for the test. If the cluster is larger than 9 hosts, only submit 10 jobs.
+        num_jobs = min(num_hosts + 1, 10)
         uuids, resp = util.submit_jobs(self.cook_url, job_spec, num_jobs, groups=[group])
         self.assertEqual(resp.status_code, 201, resp.content)
         try:
