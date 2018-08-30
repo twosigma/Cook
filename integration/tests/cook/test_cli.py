@@ -12,6 +12,7 @@ import uuid
 from urllib.parse import urlparse
 
 from nbconvert.preprocessors import ExecutePreprocessor
+from retrying import retry
 
 from tests.cook import cli, util
 
@@ -1844,28 +1845,38 @@ class CookCliTest(util.CookTest):
             "nbformat_minor": 2
         }
         notebook_filename = 'unexecuted_notebook.ipynb'
-        executed_notebook_filename = 'executed_notebook.ipynb'
         try:
             with open(notebook_filename, 'w') as f:
                 f.write(json.dumps(notebook, indent=2))
             with open(notebook_filename) as f:
                 nb = nbformat.read(f, as_version=4)
-            ep = ExecutePreprocessor(timeout=600, kernel_name='python3')
-            ep.preprocess(nb, {'metadata': {'path': './'}})
-            with open(executed_notebook_filename, 'wt') as f:
-                nbformat.write(nb, f)
-            with open(executed_notebook_filename) as f:
-                notebook_json = f.read()
-            notebook = json.loads(notebook_json)
-            cell = notebook['cells'][0]
-            output = cell['outputs'][0]
-            self.assertEqual(1, len(notebook['cells']))
-            self.assertEqual('code', cell['cell_type'])
-            self.assertEqual(1, cell['execution_count'])
-            self.assertEqual(1, len(cell['outputs']))
-            self.assertEqual('stdout', output['name'], ''.join(output['text']))
-            self.assertEqual('\n', output['text'][0])
-            self.assertIn('=== Job: ', output['text'][1])
+
+            # This sometimes fails, which is why it's in a retry
+            @retry(stop_max_delay=60000, wait_fixed=1000)
+            def preprocess_notebook():
+                self.logger.debug('Attempting to preprocess notebook')
+                ep = ExecutePreprocessor(timeout=600, kernel_name='python3')
+                ep.preprocess(nb, {'metadata': {'path': './'}})
+                self.logger.debug('Notebook successfully preprocessed')
+
+            preprocess_notebook()
+            executed_notebook_filename = 'executed_notebook.ipynb'
+            try:
+                with open(executed_notebook_filename, 'wt') as f:
+                    nbformat.write(nb, f)
+                with open(executed_notebook_filename) as f:
+                    notebook_json = f.read()
+                notebook = json.loads(notebook_json)
+                cell = notebook['cells'][0]
+                output = cell['outputs'][0]
+                self.assertEqual(1, len(notebook['cells']))
+                self.assertEqual('code', cell['cell_type'])
+                self.assertEqual(1, cell['execution_count'])
+                self.assertEqual(1, len(cell['outputs']))
+                self.assertEqual('stdout', output['name'], ''.join(output['text']))
+                self.assertEqual('\n', output['text'][0])
+                self.assertIn('=== Job: ', output['text'][1])
+            finally:
+                os.remove(executed_notebook_filename)
         finally:
             os.remove(notebook_filename)
-            os.remove(executed_notebook_filename)
