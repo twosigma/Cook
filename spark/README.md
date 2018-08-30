@@ -68,6 +68,22 @@ requires shuffle-service):
   --conf spark.dynamicAllocation.maxExecutors=10
 ```
 
+## Cook-specific options
+
+* `spark.cores.max`:
+  The number of cores to request of Cook (default 0).
+* `spark.executor.failures`:
+  The number of times an executor can fail before Spark will not relaunch the executor (default 5).
+  An executor fails after using its 5 attempts in Cook.
+* `spark.cook.priority`:
+  Priority weight [0, 100] of the submitted tasks (default 75). Higher values mean higher priority.
+* `spark.cook.cores.per.job.max`:
+  The number of cores per task (default 5). The total number of tasks is computed using the following formula:
+  `ceil(spark.cores.max / spark.cook.cores.per.max.job)`
+* `spark.executor.cook.hdfs.conf.remote`:
+  If set, must be the URI accessible from the Cook cluster.
+  The payload should be a gzipped tarball, which will be unpacked in the classpath to configure HDFS.
+
 For more configuration options please refer to [Dynamic Allocation](http://spark.apache.org/docs/latest/configuration.html#dynamic-allocation) documentation.
 
 &copy; Two Sigma Open Source, LLC
