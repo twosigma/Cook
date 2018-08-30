@@ -1649,7 +1649,7 @@ class CookTest(util.CookTest):
                     # All of the jobs should be running
                     return num_running == num_jobs_total
 
-            jobs = util.wait_until(query, num_running_predicate, max_wait_ms=60000)
+            jobs = util.wait_until(query, num_running_predicate)
             hosts = [job['instances'][0]['hostname'] for job in jobs
                      if job['status'] == 'running']
             # Only one job should run on each host
