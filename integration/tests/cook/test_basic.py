@@ -1640,6 +1640,8 @@ class CookTest(util.CookTest):
                 num_jobs_total = len(response)
                 num_running = len([j for j in response if j['status'] == 'running'])
                 num_waiting = len([j for j in response if j['status'] == 'waiting'])
+                self.logger.info(f'There are {num_jobs_total} total jobs, {num_running} running jobs, '
+                                 f'and {num_waiting} waiting job(s)')
                 if num_jobs_total == num_hosts + 1:
                     # One job should not be scheduled
                     return (num_running == num_jobs_total - 1) and (num_waiting == 1)
