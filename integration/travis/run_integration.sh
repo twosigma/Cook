@@ -131,7 +131,6 @@ LIBPROCESS_IP=172.17.0.1 COOK_DATOMIC="${COOK_DATOMIC_URI_2}" COOK_PORT=22321 CO
 timeout 180s bash -c "wait_for_cook 12321" || curl_error=true
 if [ "$curl_error" = true ]; then
   echo "$(date +%H:%M:%S) Timed out waiting for cook to start listening"
-  cat log/cook-12321.log
   ${TRAVIS_BUILD_DIR}/travis/upload_logs.sh
   exit 1
 fi
