@@ -9,10 +9,12 @@ import time
 import unittest
 import uuid
 from collections import Counter
+from datetime import datetime
 from urllib.parse import urlparse
 
 import dateutil.parser
 import pytest
+from pytz import utc
 from retrying import retry
 
 from tests.cook import reasons, mesos
@@ -589,7 +591,6 @@ class CookTest(util.CookTest):
                 self.assertEqual(200, resp.status_code, msg=resp.content)
                 jobs = resp.json()
                 for job in jobs:
-                    # print "%s %s" % (job['uuid'], job['status'])
                     self.assertEquals(state, job['status'])
         finally:
             util.kill_jobs(self.cook_url, job_specs)
@@ -2473,3 +2474,19 @@ class CookTest(util.CookTest):
         self.assertEqual(201, resp.status_code, resp.text)
         job = util.load_job(self.cook_url, uuid)
         self.assertEqual(True, job['data_local'], job)
+
+    def test_reconciliation(self):
+        user = self.determine_user()
+        info = util.scheduler_info(self.cook_url)
+        cook_start_dt = dateutil.parser.parse(info['start-time'])
+        cook_start_ms = (cook_start_dt - datetime.fromtimestamp(0, tz=utc)).total_seconds() * 1000
+        start = int(cook_start_ms - 40000)
+        end = util.current_milli_time()
+        resp = util.jobs(self.cook_url, user=user, state=['failed', 'running', 'waiting'],
+                         start=start, end=end, limit=4, name='running_job_*')
+        self.assertEqual(200, resp.status_code, msg=resp.content)
+        jobs = resp.json()
+        self.assertEqual(4, len(jobs))
+        for job in jobs:
+            self.assertEquals('completed', job['status'], job)
+            self.assertEquals('failed', job['state'])
