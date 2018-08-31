@@ -562,8 +562,7 @@
                       (tc/to-date (tf/parse partition-date-format date-str)))]
     (case partition-type
       "date"
-      {
-       :dataset.partition/begin (coerce-date (partition "begin"))
+      {:dataset.partition/begin (coerce-date (partition "begin"))
        :dataset.partition/end (coerce-date (partition "end"))})))
 
 (s/defn make-job-txn
@@ -680,7 +679,6 @@
         (into labels)
         (into container)
         (into maybe-datoms)
-        (into datasets)
         (conj txn))))
 
 (defn make-type-parameter-txn
