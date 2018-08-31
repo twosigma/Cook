@@ -1628,8 +1628,8 @@ class CookTest(util.CookTest):
         group = {'uuid': str(uuid.uuid4()),
                  'host-placement': {'type': 'unique'}}
         job_spec = {'group': group['uuid'], 'command': 'sleep 600'}
-        # Don't submit too many jobs for the test. If the cluster is larger than 19 hosts, only submit 20 jobs.
-        num_jobs = min(num_hosts + 1, 20)
+        # Don't submit too many jobs for the test. If the cluster is larger than 9 hosts, only submit 10 jobs.
+        num_jobs = min(num_hosts + 1, 10)
         uuids, resp = util.submit_jobs(self.cook_url, job_spec, num_jobs, groups=[group])
         self.assertEqual(resp.status_code, 201, resp.content)
         try:
@@ -1640,6 +1640,8 @@ class CookTest(util.CookTest):
                 num_jobs_total = len(response)
                 num_running = len([j for j in response if j['status'] == 'running'])
                 num_waiting = len([j for j in response if j['status'] == 'waiting'])
+                self.logger.info(f'There are {num_jobs_total} total jobs, {num_running} running jobs, '
+                                 f'and {num_waiting} waiting job(s)')
                 if num_jobs_total == num_hosts + 1:
                     # One job should not be scheduled
                     return (num_running == num_jobs_total - 1) and (num_waiting == 1)
@@ -1647,7 +1649,7 @@ class CookTest(util.CookTest):
                     # All of the jobs should be running
                     return num_running == num_jobs_total
 
-            jobs = util.wait_until(query, num_running_predicate, max_wait_ms=60000)
+            jobs = util.wait_until(query, num_running_predicate)
             hosts = [job['instances'][0]['hostname'] for job in jobs
                      if job['status'] == 'running']
             # Only one job should run on each host

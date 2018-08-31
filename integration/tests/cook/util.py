@@ -1205,15 +1205,24 @@ def are_pools_enabled():
     return len(active_pools(cook_url)[0]) > 1
 
 
-def num_hosts_to_consider(cook_url, mesos_url):
+def hosts_to_consider(cook_url, mesos_url):
     """
-    Returns the number of hosts in the default pool, or the
-    total number of hosts if the cluster is not using pools
+    Returns the hosts in the default pool, or all hosts if the cluster is not using pools
     """
     state = get_mesos_state(mesos_url)
     slaves = state['slaves']
     pool = default_pool(cook_url)
     slaves = [s for s in slaves if s['attributes']['cook-pool'] == pool] if pool else slaves
-    num_hosts = len(slaves)
-    logging.info(f'There are {num_hosts} hosts in the default pool')
+    num_to_log = min(len(slaves), 10)
+    logging.info(f'First {num_to_log} hosts to consider: {json.dumps(slaves[:num_to_log], indent=2)}')
+    return slaves
+
+
+def num_hosts_to_consider(cook_url, mesos_url):
+    """
+    Returns the number of hosts in the default pool, or the
+    total number of hosts if the cluster is not using pools
+    """
+    num_hosts = len(hosts_to_consider(cook_url, mesos_url))
+    logging.info(f'There are {num_hosts} hosts to consider')
     return num_hosts
