@@ -148,7 +148,7 @@
         (let [normalized-fitness (- 1.0
                                     (get-in (get-data-local-costs) [datasets (.getHostname target-vm)] 1.0))
               data-local-fitness (* data-locality-weight normalized-fitness)]
-          (log/debug "Computed data local fitness:" {:hostname (.getHostName target-vm)
+          (log/debug "Computed data local fitness:" {:hostname (.getHostname target-vm)
                                                      :job uuid
                                                      :costs (get (get-data-local-costs) datasets)})
           (+ data-local-fitness (* (- 1 data-locality-weight) base-fitness)))
