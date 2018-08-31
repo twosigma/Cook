@@ -2475,11 +2475,8 @@ class CookTest(util.CookTest):
     @pytest.mark.serial
     @unittest.skipUnless(util.data_local_service_is_set(), "Requires a data local service")
     def test_data_local_support(self):
-        if util.are_pools_enabled():
-            pool = util.default_pool(self.cook_url)
-            slaves = util.slaves_in_pool(self.mesos_url, pool)
-        else:
-            slaves = util.get_mesos_state(self.mesos_url)['slaves']
+        pool = util.default_pool(self.cook_url)
+        slaves = util.slaves_in_pool(self.mesos_url, pool)
 
         costs = []
         for slave in slaves:
