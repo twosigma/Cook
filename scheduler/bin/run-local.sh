@@ -48,23 +48,6 @@ then
     keytool -genkeypair -keystore ${COOK_KEYSTORE_PATH} -storetype PKCS12 -storepass cookstore -dname "CN=cook, OU=Cook Developers, O=Two Sigma Investments, L=New York, ST=New York, C=US" -keyalg RSA -keysize 2048
 fi
 
-set +e
-lsof -Pi :5000 -sTCP:LISTEN
-LSOF_EXIT=$?
-set -e
-if [ ${LSOF_EXIT} -ne 0 ];
-then
-    # Nothing listening on port 5000
-    if ! [ -x "$(command -v flask)" ]; then
-        echo "Please install flask"
-        exit 1
-    fi
-
-    INTEGRATION_DIR="$(dirname ${SCHEDULER_DIR})/integration"
-
-    FLASK_APP=${INTEGRATION_DIR}/src/data_locality_service.py flask run &
-fi
-
 echo "Mesos Master IP is ${MASTER_IP}"
 
 echo "Creating environment variables..."
