@@ -42,7 +42,7 @@
                   :job/submit-time (Date.)
                   :job/data-local false
                   :job/under-investigation false
-                  :job/user (System/getProperty "user.name")
+                  :job/user "seed_running_jobs_user"
                   :job/uuid (d/squuid)}
         tx-data [job-info commit-latch]]
     (d/resolve-tempid (d/db conn) (:tempids @(d/transact conn tx-data)) id)))

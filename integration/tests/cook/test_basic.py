@@ -2482,15 +2482,15 @@ class CookTest(util.CookTest):
         This test relies on 4 running jobs being seeded in Datomic *before* Cook Scheduler starts
         up, so that when it does start up and the reconciler runs, it can reconcile those tasks
         (i.e. discover that they are not actually running in Mesos and mark them as failed). See
-        scheduler/datomic/data/seed_running_jobs.clj for the details of this seeding.
+        scheduler/datomic/data/seed_running_jobs.clj for the details of this job-seeding.
         """
-        user = self.determine_user()
         info = util.scheduler_info(self.cook_url)
         cook_start_dt = dateutil.parser.parse(info['start-time'])
         cook_start_ms = (cook_start_dt - datetime.fromtimestamp(0, tz=utc)).total_seconds() * 1000
         start = int(cook_start_ms - 40000)
         end = util.current_milli_time()
-        resp = util.jobs(self.cook_url, user=user, state=['failed', 'running', 'waiting'],
+        resp = util.jobs(self.cook_url, user='seed_running_jobs_user',
+                         state=['failed', 'running', 'waiting'],
                          start=start, end=end, limit=4, name='running_job_*')
         self.assertEqual(200, resp.status_code, msg=resp.content)
         jobs = resp.json()
