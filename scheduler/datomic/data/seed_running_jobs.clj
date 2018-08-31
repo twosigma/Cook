@@ -30,7 +30,7 @@
                   :job/command "echo hello"
                   :job/commit-latch commit-latch-id
                   :job/disable-mea-culpa-retries false
-                  :job/max-retries 5
+                  :job/max-retries 1
                   :job/max-runtime Long/MAX_VALUE
                   :job/name name
                   :job/priority 50

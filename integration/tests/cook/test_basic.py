@@ -2475,7 +2475,15 @@ class CookTest(util.CookTest):
         job = util.load_job(self.cook_url, uuid)
         self.assertEqual(True, job['data_local'], job)
 
+    @unittest.skipIf(os.getenv('COOK_TEST_SKIP_RECONCILE') is not None,
+                     'Requires not setting the COOK_TEST_SKIP_RECONCILE environment variable')
     def test_reconciliation(self):
+        """
+        This test relies on 4 running jobs being seeded in Datomic *before* Cook Scheduler starts
+        up, so that when it does start up and the reconciler runs, it can reconcile those tasks
+        (i.e. discover that they are not actually running in Mesos and mark them as failed). See
+        scheduler/datomic/data/seed_running_jobs.clj for the details of this seeding.
+        """
         user = self.determine_user()
         info = util.scheduler_info(self.cook_url)
         cook_start_dt = dateutil.parser.parse(info['start-time'])
@@ -2488,5 +2496,8 @@ class CookTest(util.CookTest):
         jobs = resp.json()
         self.assertEqual(4, len(jobs))
         for job in jobs:
-            self.assertEquals('completed', job['status'], job)
-            self.assertEquals('failed', job['state'])
+            instances = job['instances']
+            self.assertEqual('completed', job['status'], job)
+            self.assertEqual('failed', job['state'])
+            self.assertEqual(1, len(instances))
+            self.assertEqual('Mesos task reconciliation', instances[0]['reason_string'])
