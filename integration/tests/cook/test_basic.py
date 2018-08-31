@@ -2472,31 +2472,6 @@ class CookTest(util.CookTest):
                 resp = util.get_limit(self.cook_url, limit, user)
                 self.assertFalse('pools' in resp.json())
 
-    @pytest.mark.serial
-    @unittest.skipUnless(util.data_local_service_is_set(), "Requires a data local service")
-    def test_data_local_support(self):
-        pool = util.default_pool(self.cook_url)
-        slaves = util.slaves_in_pool(self.mesos_url, pool)
-
-        costs = []
-        for slave in slaves:
-            costs.append({'node': slave['hostname'], 'cost': 1.0})
-        costs[0]['cost'] = 0
-        job_uuid = uuid.uuid4()
-        data_local_service = os.getenv('DATA_LOCAL_SERVICE')
-        util.session.post(f'{data_local_service}/api/v1/set', json={str(job_uuid): costs})
-
-        spec = util.minimal_job(uuid=str(job_uuid), datasets=[{'dataset': {'foo': 'bar'}}])
-        _, resp = util.submit_jobs(self.cook_url, [spec])
-        self.assertEqual(201, resp.status_code, resp.text)
-
-        job = util.load_job(self.cook_url, job_uuid)
-        self.assertEqual([{'dataset': {'foo': 'bar'}}], job['datasets'], job)
-
-        instance = util.wait_for_instance(self.cook_url, job_uuid)
-        debug_costs = util.session.get(f'{self.cook_url}/data-local/{str(job_uuid)}').json()
-        self.assertEqual(costs[0]['node'], instance['hostname'], debug_costs)
-
 
     @unittest.skipIf(os.getenv('COOK_TEST_SKIP_RECONCILE') is not None,
                      'Requires not setting the COOK_TEST_SKIP_RECONCILE environment variable')
@@ -2579,5 +2554,4 @@ class CookTest(util.CookTest):
             missing_resp = util.session.get(f'{self.cook_url}/data-local/{str(uuid.uuid4())}')
             self.assertEqual(404, missing_resp.status_code, missing_resp.text)
         finally:
-            pass
-#            util.kill_jobs(self.cook_url, [job_uuid], assert_response=False)
+            util.kill_jobs(self.cook_url, [job_uuid], assert_response=False)
