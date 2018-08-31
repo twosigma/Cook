@@ -145,7 +145,7 @@
     (let [base-fitness (.calculateFitness base-calculator task-request target-vm tracker-state)
           {:keys [job/uuid] :as job} (:job task-request)
           datasets (util/get-dataset-maps job)]
-      (if datasets
+      (if-not (empty? datasets)
         (let [normalized-fitness (- 1.0
                                     (get-in (get-data-local-costs) [datasets (.getHostname target-vm)] 1.0))
               data-local-fitness (* data-locality-weight normalized-fitness)]

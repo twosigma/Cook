@@ -83,16 +83,19 @@
     TaskRequest)
 
 (deftest test-data-local-fitness-calculator
-  (let [base-fitness 0.5
+  (let [conn (restore-fresh-database! "datomic:mem://test-data-local-fitness-calculator")
+        base-fitness 0.5
         base-calculator (FixedFitnessCalculator. base-fitness)
         data-locality-weight 0.9
         base-fitness-portion (* base-fitness (- 1 data-locality-weight))
         calculator (dl/->DataLocalFitnessCalculator base-calculator
                                                     data-locality-weight)
         [d1 d2] [#{{:dataset {"a" "a"}}} #{{:dataset {"b" "b"}}}]
-        job-1 {:job/uuid (UUID/randomUUID)
-               :job/datasets d1}
-        job-2 {:job/uuid (UUID/randomUUID)}]
+        j1 (create-dummy-job conn :job-state :job.state/waiting
+                             :datasets d1)
+        j2 (create-dummy-job conn :job-state :job.state/waiting)
+        job-1 (d/entity (d/db conn) j1)
+        job-2 (d/entity (d/db conn) j2)]
     (dl/update-data-local-costs {d1 {"hostA" 0
                                      "hostB" 0.5}
                                  d2 {"hostA" 0
