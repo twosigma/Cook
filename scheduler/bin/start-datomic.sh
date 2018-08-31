@@ -3,19 +3,22 @@
 set -euf -o pipefail
 
 PROJECT_DIR="$(dirname $0)/.."
+DATOMIC_VERSION="0.9.5394"
+DATOMIC_DIR="${PROJECT_DIR}/datomic/datomic-free-${DATOMIC_VERSION}"
 
-if [ "$(docker inspect datomic-free | jq -r ' .[] | .State.Status')" != "running" ];
+if [ ! -d "${DATOMIC_DIR}" ];
 then
-    echo "Starting datomic"
-    docker create --rm -p 4334-4336:4334-4336 --network=cook_nw -e ALT_HOST=datomic-free --name datomic-free akiel/datomic-free:0.9.5206
-
-    # Datomic needs the metatransaction code in it's classpath, so we need to build cook and copy the jar into the container
-    echo "Building cook"
-    cd $PROJECT_DIR
-    lein jar
-    COOK_VERSION=$(lein print :version | tr -d '"')
-    docker cp target/cook-${COOK_VERSION}.jar datomic-free:/datomic-free-0.9.5206/lib
-
-    echo "Starting datomic"
-    docker start datomic-free
+    unzip "${PROJECT_DIR}/datomic/datomic-free-${DATOMIC_VERSION}.zip" -d "${PROJECT_DIR}/datomic"
 fi
+
+COOK_VERSION=$(lein print :version | tr -d '"')
+
+if [ ! -f "${DATOMIC_DIR}/lib/cook-${COOK_VERSION}.jar" ];
+then
+    lein uberjar
+    cp "${PROJECT_DIR}/target/cook-${COOK_VERSION}.jar" "${DATOMIC_DIR}/lib/"
+fi
+
+"${DATOMIC_DIR}/bin/transactor" $(realpath "${PROJECT_DIR}/datomic/datomic_transactor.properties")
+
+
