@@ -6,9 +6,9 @@
 INTEGRATION_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && cd .. && pwd )"
 NAME=cook-integration
 
-echo "Building docker images for ${NAME}"
+echo "Building docker images for ${NAME} IN $(dirname ${INTEGRATION_DIR})/cli"
 cd $(dirname ${INTEGRATION_DIR})/cli
-tar -czf ${INTEGRATION_DIR}/cli.tar.gz .
+tar -c . | gzip -n >${INTEGRATION_DIR}/cli.tar.gz
 cd ${INTEGRATION_DIR}
 docker build -t ${NAME} ${INTEGRATION_DIR}
 rm cli.tar.gz
