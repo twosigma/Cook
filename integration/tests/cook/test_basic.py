@@ -2487,7 +2487,7 @@ class CookTest(util.CookTest):
         info = util.scheduler_info(self.cook_url)
         cook_start_dt = dateutil.parser.parse(info['start-time'])
         cook_start_ms = (cook_start_dt - datetime.fromtimestamp(0, tz=utc)).total_seconds() * 1000
-        start = int(cook_start_ms - 40000)
+        start = int(cook_start_ms - 240000)
         end = util.current_milli_time()
         resp = util.jobs(self.cook_url, user='seed_running_jobs_user',
                          state=['failed', 'running', 'waiting'],
