@@ -1209,6 +1209,8 @@ def hosts_to_consider(cook_url, mesos_url):
     """
     Returns the hosts in the default pool, or all hosts if the cluster is not using pools
     """
+    state = get_mesos_state(mesos_url)
+    slaves = state['slaves']
     pool = default_pool(cook_url)
     slaves = [s for s in slaves if s['attributes']['cook-pool'] == pool] if pool else slaves
     num_to_log = min(len(slaves), 10)
