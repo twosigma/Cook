@@ -107,9 +107,13 @@ case "$COOK_POOLS" in
     exit 1
 esac
 
-# Start three cook schedulers. We want one cluster with two cooks to run MasterSlaveTest, and a second cluster to run MultiClusterTest.
-# The basic tests will run against cook-framework-1
+# Seed running jobs, which are used to test the task reconciler
 cd ${SCHEDULER_DIR}
+lein exec -p datomic/data/seed_running_jobs.clj ${COOK_DATOMIC_URI_1}
+
+# Start three cook schedulers. 
+# We want one cluster with two cooks to run MasterSlaveTest, and a second cluster to run MultiClusterTest.
+# The basic tests will run against cook-framework-1
 ## on travis, ports on 172.17.0.1 are bindable from the host OS, and are also
 ## available for processes inside minimesos containers to connect to
 export COOK_EXECUTOR_COMMAND=${COOK_EXECUTOR_COMMAND}

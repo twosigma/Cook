@@ -948,7 +948,7 @@
 ;; TODO test that this fenzo recovery system actually works
 (defn reconcile-tasks
   "Finds all non-completed tasks, and has Mesos let us know if any have changed."
-  [db driver framework-id fenzo]
+  [db driver pool->fenzo]
   (let [running-tasks (q '[:find ?task-id ?status ?slave-id
                            :in $ [?status ...]
                            :where
@@ -968,7 +968,8 @@
                                              task-ent (d/entity db [:instance/task-id task-id])
                                              hostname (:instance/hostname task-ent)]]
                                    (when-let [job (util/job-ent->map (:job/_instance task-ent))]
-                                     (let [task-request (make-task-request db job :task-id task-id)]
+                                     (let [task-request (make-task-request db job :task-id task-id)
+                                           ^TaskScheduler fenzo (-> job util/job->pool pool->fenzo)]
                                        ;; Need to lock on fenzo when accessing taskAssigner because taskAssigner and
                                        ;; scheduleOnce can not be called at the same time.
                                        (locking fenzo
@@ -990,20 +991,6 @@
             (catch Exception e
               (log/error e "Reconciliation error")))))
       (log/info "Finished reconciling all tasks"))))
-
-(timers/deftimer [cook-mesos scheduler reconciler-duration])
-
-;; TODO this should be running and enabled
-(defn reconciler
-  [conn driver framework-id fenzo & {:keys [interval]
-                            :or {interval (* 30 60 1000)}}]
-  (log/info "Starting reconciler. Interval millis:" interval)
-  (chime-at (periodic/periodic-seq (time/now) (time/millis interval))
-            (fn [time]
-              (timers/time!
-                reconciler-duration
-                (reconcile-jobs conn)
-                (reconcile-tasks (db conn) driver framework-id fenzo)))))
 
 ;; Unfortunately, clj-time.core/millis only accepts ints, not longs.
 ;; The Period class has a constructor that accepts "long milliseconds",
@@ -1457,7 +1444,7 @@
         (future
           (try
             (reconcile-jobs conn)
-            (reconcile-tasks (db conn) driver configured-framework-id pool->fenzo)
+            (reconcile-tasks (db conn) driver pool->fenzo)
             (catch Exception e
               (log/error e "Reconciliation error")))))
       (reregistered
@@ -1466,7 +1453,7 @@
         (future
           (try
             (reconcile-jobs conn)
-            (reconcile-tasks (db conn) driver configured-framework-id pool->fenzo)
+            (reconcile-tasks (db conn) driver pool->fenzo)
             (catch Exception e
               (log/error e "Reconciliation error")))))
       ;; Ignore this--we can just wait for new offers

@@ -9,10 +9,12 @@ import time
 import unittest
 import uuid
 from collections import Counter
+from datetime import datetime
 from urllib.parse import urlparse
 
 import dateutil.parser
 import pytest
+from pytz import utc
 from retrying import retry
 
 from tests.cook import reasons, mesos
@@ -589,7 +591,6 @@ class CookTest(util.CookTest):
                 self.assertEqual(200, resp.status_code, msg=resp.content)
                 jobs = resp.json()
                 for job in jobs:
-                    # print "%s %s" % (job['uuid'], job['status'])
                     self.assertEquals(state, job['status'])
         finally:
             util.kill_jobs(self.cook_url, job_specs)
@@ -2475,3 +2476,30 @@ class CookTest(util.CookTest):
         self.assertEqual(201, resp.status_code, resp.text)
         job = util.load_job(self.cook_url, uuid)
         self.assertEqual(True, job['data_local'], job)
+
+    @unittest.skipIf(os.getenv('COOK_TEST_SKIP_RECONCILE') is not None,
+                     'Requires not setting the COOK_TEST_SKIP_RECONCILE environment variable')
+    def test_reconciliation(self):
+        """
+        This test relies on 4 running jobs being seeded in Datomic *before* Cook Scheduler starts
+        up, so that when it does start up and the reconciler runs, it can reconcile those tasks
+        (i.e. discover that they are not actually running in Mesos and mark them as failed). See
+        scheduler/datomic/data/seed_running_jobs.clj for the details of this job-seeding.
+        """
+        info = util.scheduler_info(self.cook_url)
+        cook_start_dt = dateutil.parser.parse(info['start-time'])
+        cook_start_ms = (cook_start_dt - datetime.fromtimestamp(0, tz=utc)).total_seconds() * 1000
+        start = int(cook_start_ms - 240000)
+        end = util.current_milli_time()
+        resp = util.jobs(self.cook_url, user='seed_running_jobs_user',
+                         state=['failed', 'running', 'waiting'],
+                         start=start, end=end, limit=4, name='running_job_*')
+        self.assertEqual(200, resp.status_code, msg=resp.content)
+        jobs = resp.json()
+        self.assertEqual(4, len(jobs))
+        for job in jobs:
+            instances = job['instances']
+            self.assertEqual('completed', job['status'], job)
+            self.assertEqual('failed', job['state'])
+            self.assertEqual(1, len(instances))
+            self.assertEqual('Mesos task reconciliation', instances[0]['reason_string'])

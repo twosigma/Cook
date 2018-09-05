@@ -2069,7 +2069,6 @@
 
 (deftest test-reconcile-tasks
   (let [conn (restore-fresh-database! "datomic:mem://test-reconcile-tasks")
-        framework-id #mesomatic.types.FrameworkID{:value "my-original-framework-id"}
         fenzo (make-dummy-scheduler)
         task-atom (atom [])
         mock-driver (reify msched/SchedulerDriver
@@ -2084,7 +2083,7 @@
         _ (create-dummy-job-with-instances conn
                                            :job-state :job.state/completed
                                            :instances [{:instance-status :instance.status/success}])]
-    (sched/reconcile-tasks (d/db conn) mock-driver framework-id fenzo)
+    (sched/reconcile-tasks (d/db conn) mock-driver (constantly fenzo))
     (let [reconciled-tasks (set @task-atom)
           running-instance (d/entity (d/db conn) running-instance-id)
           unknown-instance (d/entity (d/db conn) unknown-instance-id)]

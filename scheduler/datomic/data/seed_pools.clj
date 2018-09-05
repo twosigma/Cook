@@ -25,26 +25,8 @@
        (map (partial d/entity db))
        (map d/touch)))
 
-(defn retry
-  [tries f & args]
-  (let [res (try {:value (apply f args)}
-                 (catch Exception e
-                   (if (= 0 tries)
-                     (throw e)
-                     {:exception e})))]
-    (if (:exception res)
-      (do
-        (Thread/sleep 5000)
-        (recur (dec tries) f args))
-      (:value res))))
-
-(defn connect
-  []
-  (println "Attempting to connect to" uri)
-  (datomic/create-connection {:settings {:mesos-datomic-uri uri}}))
-
 (try
-  (let [conn (retry 10 connect)]
+  (let [conn (datomic/create-connection {:settings {:mesos-datomic-uri uri}})]
     (println "Connected to Datomic:" conn)
     (create-pool conn "alpha" :pool.state/active)
     (create-pool conn "beta" :pool.state/inactive)
