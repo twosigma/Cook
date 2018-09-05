@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.20.0] - 2018-09-05
+### Added
+- Per-pool job scheduling, from @dposada and @pschorf
+- Support for self-impersonation requests from normal users, from @DaoWen
+- Exit code syncer to handle a high rate of incoming exit code messages, from @shamsimam
+### Changed
+- Removed TTL from agent attributes cache, from @dposada
+
 ## [1.19.1] - 2018-07-30
 ### Changed
 - Performance improvements to job submission, from @scrosby and @pschorf
