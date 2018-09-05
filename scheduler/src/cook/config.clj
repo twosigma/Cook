@@ -391,15 +391,16 @@
      :estimated-completion-constraint (fnk [[:config {estimated-completion-constraint nil}]]
                                         (merge {:agent-start-grace-period-mins 10}
                                                estimated-completion-constraint))
-     :data-local-fitness-calculator (fnk [[:config {data-local-fitness-calculator {}}]]
-                                         {:base-calculator (config-string->fitness-calculator
-                                                            (get data-local-fitness-calculator :base-calculator  "com.netflix.fenzo.plugins.BinPackingFitnessCalculators/cpuMemBinPacker"))
-                                          :data-locality-weight (get data-local-fitness-calculator :data-locality-weight 0.95)
-                                          :cost-endpoint (get data-local-fitness-calculator :cost-endpoint nil)
-                                          :batch-size (get data-local-fitness-calculator :batch-size 500)
-                                          :update-interval-ms (get data-local-fitness-calculator :update-interval-ms nil)
-                                          :launch-wait-seconds (get data-local-fitness-calculator :launch-wait-seconds 60)
-                                          :cache-ttl-ms (get data-local-fitness-calculator :cache-ttl-ms 300000)})}))
+     :data-local-fitness-calculator (fnk [[:config {data-local {}}]]
+                                         (let [fitness-calculator (get data-local :fitness-calculator {})]
+                                           {:base-calculator (config-string->fitness-calculator
+                                                              (get fitness-calculator :base-calculator  "com.netflix.fenzo.plugins.BinPackingFitnessCalculators/cpuMemBinPacker"))
+                                            :data-locality-weight (get fitness-calculator :data-locality-weight 0.95)
+                                            :cost-endpoint (get fitness-calculator :cost-endpoint nil)
+                                            :batch-size (get fitness-calculator :batch-size 500)
+                                            :update-interval-ms (get fitness-calculator :update-interval-ms nil)
+                                            :launch-wait-seconds (get fitness-calculator :launch-wait-seconds 60)
+                                            :cache-ttl-ms (get fitness-calculator :cache-ttl-ms 300000)}))}))
 
 (defn read-config
   "Given a config file path, reads the config and returns the map"
@@ -467,7 +468,7 @@
 
 (defn data-local-fitness-config
   []
-  (-> config :settings :data-local-fitness-calculator))
+  (-> config :settings :data-local :fitness-calculator))
 
 (defn fitness-calculator-config
   []

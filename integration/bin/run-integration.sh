@@ -87,7 +87,9 @@ docker create \
        -e "COOK_SCHEDULER_URL=${COOK_URL}" \
        -e "USER=root" \
        -e "COOK_MESOS_LEADER_URL=http://${MESOS_MASTER_IP}:5050" \
-       ${DATA_LOCAL_ENV} ${COOK_MULTICLUSTER_ENV} ${DOCKER_VOLUME_ARGS} \
+       ${COOK_MULTICLUSTER_ENV} \
+       ${DATA_LOCAL_ENV} \
+       ${DOCKER_VOLUME_ARGS} \
        cook-integration:latest \
        "$@"
 

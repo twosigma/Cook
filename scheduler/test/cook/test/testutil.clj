@@ -92,7 +92,7 @@
 
 (defn- make-dataset-entity
   [{:keys [dataset partitions]}]
-  ; TODO - partitions
+  ; TODO - support partitions
   {:db/id (d/tempid :db.part/user)
    :dataset/parameters (map (fn [[k v]]
                               {:db/id (d/tempid :db.part/user)
@@ -102,9 +102,9 @@
 
 (defn create-dummy-job
   "Return the entity id for the created dummy job."
-  [conn & {:keys [command committed? container custom-executor? disable-mea-culpa-retries env executor gpus group
+  [conn & {:keys [command committed? container custom-executor? datasets disable-mea-culpa-retries env executor gpus group
                   job-state max-runtime memory name ncpus pool priority retry-count submit-time under-investigation user
-                  uuid expected-runtime datasets]
+                  uuid expected-runtime]
            :or {command "dummy command"
                 committed? true
                 disable-mea-culpa-retries false

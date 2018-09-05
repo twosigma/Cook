@@ -4,7 +4,7 @@
 # Builds a docker image and launches the data local service.
 
 INTEGRATION_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && cd .. && pwd )"
-SRC_DIR="${INTEGRATION_DIR}/src"
+SRC_DIR="${INTEGRATION_DIR}/src/data_locality"
 NAME=data-local
 
 echo "Building docker images for ${NAME}"

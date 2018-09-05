@@ -1,7 +1,9 @@
 (ns cook.mesos.data-locality
   (:require [cheshire.core :as cheshire]
             [clj-http.client :as http]
+            [clj-time.coerce :as tc]
             [clj-time.core :as t]
+            [clj-time.format :as tf]
             [clojure.set :as set]
             [cook.config :as config]
             [cook.mesos.util :as util]
@@ -10,9 +12,43 @@
             [plumbing.core :as pc]
             [clojure.tools.logging :as log]
             [datomic.api :as d])
-  (:import com.netflix.fenzo.VMTaskFitnessCalculator
+  (:import com.google.common.cache.Cache
+           com.netflix.fenzo.VMTaskFitnessCalculator
            com.netflix.fenzo.plugins.BinPackingFitnessCalculators
            java.util.UUID))
+
+(def partition-date-format (:basic-date tf/formatters))
+
+(defonce ^Cache job-uuid->dataset-maps-cache (util/new-cache))
+
+(defn- make-partition-map
+  [partition-type partition]
+  (let [format-date (fn format-date [date] (tf/unparse partition-date-format (tc/from-date date)))]
+    (case partition-type
+      "date" {"begin" (format-date (:dataset.partition/begin partition))
+              "end" (format-date (:dataset.partition/end partition))})))
+
+(defn- make-dataset-maps
+  [job]
+  (->> job
+       :job/datasets
+       (map (fn [{:keys [dataset/partitions dataset/partition-type dataset/parameters]}]
+              (let [partitions (when (not (empty? partitions))
+                                 (->> partitions
+                                      (map (partial make-partition-map partition-type))
+                                      (into #{})))]
+                (cond-> {:dataset (into {} (map (fn [p] [(:dataset.parameter/key p) (:dataset.parameter/value p)])
+                                                parameters))}
+                  partitions (assoc :partitions partitions)))))
+       (into #{})))
+
+(defn get-dataset-maps
+  "Returns the (possibly cached) datasets for the given job"
+  [job]
+  (util/lookup-cache! job-uuid->dataset-maps-cache
+                      :job/uuid
+                      make-dataset-maps
+                      job))
 
 (histograms/defhistogram [cook-mesos data-locality cost-staleness])
 
@@ -73,7 +109,7 @@
                             (map (fn [{:keys [job/uuid job/submit-time] :as job}]
                                    {:job/uuid uuid
                                     :job/submit-time submit-time
-                                    :job/datasets (util/get-dataset-maps job)})))
+                                    :job/datasets (get-dataset-maps job)})))
           datasets->last-update-time @datasets->last-update-time-atom
           have-data?->job (group-by (fn [job] (contains? datasets->last-update-time (:job/datasets job)))
                                     pending-jobs)
@@ -144,7 +180,7 @@
   (calculateFitness [this task-request target-vm tracker-state]
     (let [base-fitness (.calculateFitness base-calculator task-request target-vm tracker-state)
           {:keys [job/uuid] :as job} (:job task-request)
-          datasets (util/get-dataset-maps job)]
+          datasets (get-dataset-maps job)]
       (if-not (empty? datasets)
         (let [normalized-fitness (- 1.0
                                     (get-in (get-data-local-costs) [datasets (.getHostname target-vm)] 1.0))

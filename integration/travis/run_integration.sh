@@ -109,7 +109,7 @@ esac
 
 pip install flask
 export DATA_LOCAL_SERVICE="http://localhost:5000"
-export DATA_LOCAL_ENDPOINT="${DATA_LOCAL_SERVICE}/api/v1/lookup"
+export DATA_LOCAL_ENDPOINT="${DATA_LOCAL_SERVICE}/api/v1/retrieve-costs"
 FLASK_APP=${PROJECT_DIR}/src/data_locality_service.py flask run &
 
 # Seed running jobs, which are used to test the task reconciler

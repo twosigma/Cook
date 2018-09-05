@@ -2514,7 +2514,7 @@ class CookTest(util.CookTest):
             return placement_reasons
 
         placement_reasons = util.wait_until(query_unscheduled, lambda r: len(r) > 0)
-        self.assertEqual(1, len(placement_reasons), placement_reasons)
+        self.assertEqual(1, len(placement_reasons), str(placement_reasons))
         reason = placement_reasons[0]
         data_locality_reasons = [r for r in reason['data']['reasons']
                                  if r['reason'] == 'data-locality-constraint']
@@ -2535,13 +2535,14 @@ class CookTest(util.CookTest):
             for slave in slaves:
                 costs.append({'node': slave['hostname'], 'cost': 0})
             data_local_service = os.getenv('DATA_LOCAL_SERVICE')
-            util.session.post(f'{data_local_service}/api/v1/set', json={str(job_uuid): costs})
+            util.session.post(f'{data_local_service}/api/v1/set-costs', json={str(job_uuid): costs})
 
             def get_last_update_time():
                 resp = util.session.get(f'{self.cook_url}/data-local')
                 return resp.json()
 
-            last_update = util.wait_until(get_last_update_time, lambda x: str(job_uuid) in x and x[str(job_uuid)] is not None)
+            last_update = util.wait_until(get_last_update_time, lambda x: x.get(str(job_uuid)) is not None)
+            # This will throw if the datetime is not formatted correctly
             datetime.datetime.strptime(last_update[str(job_uuid)], '%Y-%m-%dT%H:%M:%S.%fZ')
 
             cost_resp = util.session.get(f'{self.cook_url}/data-local/{str(job_uuid)}')

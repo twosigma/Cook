@@ -204,11 +204,16 @@
   (re-matches #"[\.a-zA-Z0-9_-]{1,128}" s))
 
 (defn non-empty-max-128-characters
+  "String of between 1 and 128 characters"
   [s]
-  (< 0 (.length s) 129))
+  (<= 1 (.length s) 128))
 
-(defn date?
+(def non-empty-max-128-characters-str
+  (s/constrained s/Str non-empty-max-128-characters))
+
+(defn valid-date-str?
   [s]
+  "yyyMMdd formatted date"
   (try
     (tf/parse partition-date-format s)
     true
@@ -221,15 +226,13 @@
 
 (def Dataset
   "Schema for a job dataset"
-  {:dataset {(s/constrained s/Str non-empty-max-128-characters)
-             (s/constrained s/Str non-empty-max-128-characters)}
-   (s/optional-key :partitions) [{(s/constrained s/Str non-empty-max-128-characters)
-                                  (s/constrained s/Str non-empty-max-128-characters)}]})
+  {:dataset {non-empty-max-128-characters-str non-empty-max-128-characters-str}
+   (s/optional-key :partitions) [{non-empty-max-128-characters-str non-empty-max-128-characters-str}]})
 
 (def DatePartition
   "Schema for a date partition"
-  {(s/required-key "begin") (s/constrained s/Str date?)
-   (s/required-key "end") (s/constrained s/Str date?)})
+  {(s/required-key "begin") (s/constrained s/Str valid-date-str?)
+   (s/required-key "end") (s/constrained s/Str valid-date-str?)})
 
 (def Constraint
   "Schema for user defined job host constraint"
@@ -669,7 +672,7 @@
                     progress-output-file (assoc :job/progress-output-file progress-output-file)
                     progress-regex-string (assoc :job/progress-regex-string progress-regex-string)
                     pool (assoc :job/pool (:db/id pool))
-                    (not (empty? datasets)) (assoc :job/datasets datasets))]
+                    (seq datasets) (assoc :job/datasets datasets))]
 
     ;; TODO batch these transactions to improve performance
     (-> ports
@@ -977,7 +980,7 @@
           submit-time (when (:job/submit-time job) ; due to a bug, submit time may not exist for some jobs
                         (.getTime (:job/submit-time job)))
           datasets (when (not (empty? (:job/datasets job)))
-                     (util/get-dataset-maps job))
+                     (dl/get-dataset-maps job))
           job-map {:command (:job/command job)
                    :constraints constraints
                    :cpus (:cpus resources)
@@ -2592,7 +2595,7 @@
                  (let [uuid->datasets (->> (d/db conn)
                                           util/get-pending-job-ents
                                           (filter (fn [j] (not (empty? (:job/datasets j)))))
-                                          (map (fn [j] [(:job/uuid j) (util/get-dataset-maps j)]))
+                                          (map (fn [j] [(:job/uuid j) (dl/get-dataset-maps j)]))
                                           (into {}))
                        datasets->update-time (dl/get-last-update-time)]
                    (pc/map-vals (fn [datasets]
@@ -2608,7 +2611,7 @@
     :exists? (fn [ctx]
                (let [uuid (get-in ctx [:request :params :uuid])
                      job-ent (d/entity (d/db conn) [:job/uuid (UUID/fromString uuid)])
-                     datasets (util/get-dataset-maps job-ent)]
+                     datasets (dl/get-dataset-maps job-ent)]
                  (if-let [costs (get (dl/get-data-local-costs) datasets nil)]
                    {:costs costs}
                    false)))
