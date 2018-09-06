@@ -40,7 +40,6 @@
                                   :resource/amount (double 10.0)}]
                   :job/state :job.state/running
                   :job/submit-time (Date.)
-                  :job/data-local false
                   :job/under-investigation false
                   :job/user "seed_running_jobs_user"
                   :job/uuid (d/squuid)}
