@@ -155,7 +155,7 @@
             db (d/db conn)
             _ (dl/update-data-local-costs {d1 {"hostA" 100}} [])
             {:keys [to-fetch to-remove]} (dl/jobs-to-update db)]
-        (is (= (map :job/datasets to-fetch) [d2 d4 d3]))
+        (is (= (map :job/datasets to-fetch) [d2 d4 d3 d1]))
         (is (= #{} to-remove))))
 
     (testing "removes jobs which are no longer waiting"

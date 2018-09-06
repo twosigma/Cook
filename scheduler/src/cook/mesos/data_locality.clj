@@ -102,8 +102,7 @@
     "Return the list of job ids to update data locality costs for in the next iteration.
      The number of jobs is limited by the configured batch size."
     [db]
-    (let [{:keys [batch-size]} (config/data-local-fitness-config)
-          pending-jobs (->> db
+    (let [pending-jobs (->> db
                             util/get-pending-job-ents
                             (filter (fn [j] (not (empty? (:job/datasets j)))))
                             (map (fn [{:keys [job/uuid job/submit-time] :as job}]
@@ -122,7 +121,7 @@
                                     (into #{}))
           no-longer-waiting (set/difference (-> datasets->last-update-time keys set)
                                             pending-job-datasets)]
-      {:to-fetch (into [] (take batch-size (concat missing-data sorted-have-data)))
+      {:to-fetch (concat missing-data sorted-have-data)
        :to-remove no-longer-waiting})))
 
 (defn fetch-data-local-costs
@@ -131,10 +130,12 @@
   (let [{:keys [cost-endpoint]} (config/data-local-fitness-config)
         job-uuid->datasets (into {} (map (fn [job] [(str (:job/uuid job)) (:job/datasets job)])
                                          jobs))
-        request {:batch (UUID/randomUUID)
+        batch-id (UUID/randomUUID)
+        request {:batch batch-id
                  :tasks (map (fn [job] {:task_id (str (:job/uuid job))
                                         :datasets (:job/datasets job)})
                              jobs)}
+        _ (log/info "Updating data local costs for" (count jobs) "tasks with batch id" batch-id)
         _ (log/debug "Updating data local costs :" (cheshire/generate-string request))
         {:keys [body]} (http/post cost-endpoint {:body (cheshire/generate-string request)
                                                  :content-type :json
@@ -150,10 +151,12 @@
   "Determine the datasets which need to be updated, fetch the costs, and update the cache with the
    latest costs."
   [db]
-  (let [{:keys [to-fetch to-remove]} (jobs-to-update db)]
-    (when (not (empty? to-fetch))
-      (log/debug "Updating data local costs for" (map :job/uuid to-fetch))
-      (let [new-costs (fetch-data-local-costs to-fetch)]
+  (let [{:keys [batch-size]} (config/data-local-fitness-config)
+        {:keys [to-fetch to-remove]} (jobs-to-update db)
+        batch (into [] (take batch-size to-fetch))]
+    (when (not (empty? batch))
+      (log/debug "Updating data local costs for" (map :job/uuid batch))
+      (let [new-costs (fetch-data-local-costs batch)]
         (log/info "Got updated costs for" (count new-costs) "jobs")
         (log/debug "Got updated costs" new-costs)
         (update-data-local-costs new-costs to-remove)))))
