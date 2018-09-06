@@ -1,6 +1,8 @@
 (ns cook.test.mesos.data-locality
   (:use clojure.test)
-  (:require [clj-time.coerce :as tc]
+  (:require [cheshire.core :as cheshire]
+            [clj-http.client :as http]
+            [clj-time.coerce :as tc]
             [clj-time.core :as t]
             [cook.config :as config]
             [cook.mesos.data-locality :as dl]
@@ -236,3 +238,43 @@
             (dl/fetch-and-update-data-local-costs db)
             ; Now, we should update the job we skipped last time
             (is (= third-cost (get (dl/get-data-local-costs) other-dataset)))))))))
+
+
+(deftest test-fetch-data-local-costs
+  (testing "correctly returns costs"
+    (let [jobs [{:job/uuid (UUID/randomUUID)
+                 :job/datasets #{{:dataset {"foo" "bar"}}}}
+                {:job/uuid (UUID/randomUUID)
+                 :job/datasets #{{:dataset {"bar" "baz"}}}}]
+          costs [[{"node" "hostA"
+                   "cost" 0.0}
+                  {"node" "hostB"
+                   "cost" 1.0}]
+                 [{"node" "hostA"
+                   "cost" 1.0}
+                  {"node" "hostB"
+                   "cost" 0.0}]]
+          request-body-atom (atom {})
+          cost-endpoint "http://test.example.com/cost"]
+      (with-redefs [config/data-local-fitness-config (constantly {:cost-endpoint cost-endpoint})
+                    http/post (fn [endpoint {:keys [body]}]
+                                (is (= cost-endpoint endpoint))
+                                (reset! request-body-atom body)
+                                {:body
+                                 {"costs" [{"task_id" (-> jobs first :job/uuid str)
+                                            "node_costs" (first costs)}
+                                           {"task_id" (-> jobs second :job/uuid str)
+                                            "node_costs" (second costs)}]}})]
+        (is (= {#{{:dataset {"foo" "bar"}}} {"hostA" 0.0
+                                             "hostB" 1.0}
+                #{{:dataset {"bar" "baz"}}} {"hostA" 1.0
+                                             "hostB" 0.0}}
+               (dl/fetch-data-local-costs jobs)))
+
+        (let [{:strs [batch tasks]} (cheshire/parse-string @request-body-atom)]
+          (is batch)
+          (is (= [{"task_id" (-> jobs first :job/uuid str)
+                   "datasets" [{"dataset" {"foo" "bar"}}]}
+                  {"task_id" (-> jobs second :job/uuid str)
+                   "datasets" [{"dataset" {"bar" "baz"}}]}]
+                 tasks)))))))
