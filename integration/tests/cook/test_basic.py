@@ -2543,7 +2543,7 @@ class CookTest(util.CookTest):
 
             last_update = util.wait_until(get_last_update_time, lambda x: x.get(str(job_uuid)) is not None)
             # This will throw if the datetime is not formatted correctly
-            datetime.datetime.strptime(last_update[str(job_uuid)], '%Y-%m-%dT%H:%M:%S.%fZ')
+            datetime.strptime(last_update[str(job_uuid)], '%Y-%m-%dT%H:%M:%S.%fZ')
 
             cost_resp = util.session.get(f'{self.cook_url}/data-local/{str(job_uuid)}')
             self.assertEqual(200, cost_resp.status_code)
