@@ -214,9 +214,16 @@ class MultiUserCookTest(util.CookTest):
                 util.kill_jobs(self.cook_url, all_job_uuids, assert_response=False)
                 util.reset_limit(self.cook_url, 'quota', user.name, reason=self.current_name())
 
-    @unittest.skipUnless(util.is_preemption_enabled(), 'Preemption is not enabled on the cluster')
-    @pytest.mark.serial
-    def test_preemption(self):
+    def trigger_preemption(self, pool):
+        """
+        Triggers preemption on the provided pool (which can be None) by doing the following:
+
+        1. Choose a user, X
+        2. Lower X's cpu share to 0.1 and cpu quota to 1.0
+        3. Submit a job, J1, from X with 1.0 cpu and priority 99 (fills the cpu quota)
+        4. Submit a job, J2, from X with 0.1 cpu and priority 100
+        5. Wait until J1 is preempted (to make room for J2)
+        """
         admin = self.user_factory.admin()
         user = self.user_factory.new_user()
         all_job_uuids = []
@@ -225,21 +232,22 @@ class MultiUserCookTest(util.CookTest):
             large_cpus = small_cpus * 10
             with admin:
                 # Lower the user's cpu share and quota
-                util.set_limit(self.cook_url, 'share', user.name, cpus=small_cpus)
-                util.set_limit(self.cook_url, 'quota', user.name, cpus=large_cpus)
+                util.set_limit(self.cook_url, 'share', user.name, cpus=small_cpus, pool=pool)
+                util.set_limit(self.cook_url, 'quota', user.name, cpus=large_cpus, pool=pool)
 
             with user:
                 # Submit a large job that fills up the user's quota
                 base_priority = 99
                 command = 'sleep 600'
-                uuid_large, _ = util.submit_job(self.cook_url, priority=base_priority, cpus=large_cpus, command=command)
+                uuid_large, _ = util.submit_job(self.cook_url, priority=base_priority,
+                                                cpus=large_cpus, command=command, pool=pool)
                 all_job_uuids.append(uuid_large)
                 util.wait_for_running_instance(self.cook_url, uuid_large)
 
                 # Submit a higher-priority job that should trigger preemption
                 uuid_high_priority, _ = util.submit_job(self.cook_url, priority=base_priority + 1,
                                                         cpus=small_cpus, command=command,
-                                                        name='higher_priority_job')
+                                                        name='higher_priority_job', pool=pool)
                 all_job_uuids.append(uuid_high_priority)
 
                 # Assert that the lower-priority job was preempted
@@ -268,5 +276,19 @@ class MultiUserCookTest(util.CookTest):
         finally:
             with admin:
                 util.kill_jobs(self.cook_url, all_job_uuids, assert_response=False)
-                util.reset_limit(self.cook_url, 'share', user.name, reason=self.current_name())
-                util.reset_limit(self.cook_url, 'quota', user.name, reason=self.current_name())
+                util.reset_limit(self.cook_url, 'share', user.name, reason=self.current_name(), pool=pool)
+                util.reset_limit(self.cook_url, 'quota', user.name, reason=self.current_name(), pool=pool)
+
+    @unittest.skipUnless(util.is_preemption_enabled(), 'Preemption is not enabled on the cluster')
+    @pytest.mark.serial
+    def test_preemption_basic(self):
+        self.trigger_preemption(pool=None)
+
+    @unittest.skipUnless(util.is_preemption_enabled(), 'Preemption is not enabled on the cluster')
+    @unittest.skipUnless(util.are_pools_enabled(), 'Pools are not enabled on the cluster')
+    @pytest.mark.serial
+    def test_preemption_for_pools(self):
+        pools, _ = util.active_pools(self.cook_url)
+        for pool in pools:
+            self.logger.info(f'Triggering preemption for {pool}')
+            self.trigger_preemption(pool=pool['name'])
