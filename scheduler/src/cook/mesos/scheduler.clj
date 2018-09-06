@@ -890,7 +890,7 @@
                                                             (cache/hit c slave-id)
                                                             (cache/miss c slave-id attrs)))))
                       _ (log/debug "In" pool "pool, passing following offers to handle-resource-offers!" offers)
-                      using-pools? (config/default-pool)
+                      using-pools? (not (nil? (config/default-pool)))
                       user->quota (quota/create-user->quota-fn (d/db conn) (if using-pools? pool nil))
                       matched-head? (handle-resource-offers! conn @driver-atom fenzo framework-id pending-jobs-atom
                                                              mesos-run-as-user @user->usage-future user->quota
