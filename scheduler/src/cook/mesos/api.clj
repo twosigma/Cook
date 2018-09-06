@@ -212,8 +212,8 @@
   (s/constrained s/Str non-empty-max-128-characters))
 
 (defn valid-date-str?
-  [s]
   "yyyMMdd formatted date"
+  [s]
   (try
     (tf/parse partition-date-format s)
     true
@@ -757,6 +757,7 @@
    :straggler-handling default-straggler-handling})
 
 (defn validate-partitions
+  "Validates the partitions"
   [{:keys [dataset partitions] :as in}]
   (let [partition-type (get dataset "partition-type" nil)]
     (cond
@@ -765,13 +766,14 @@
         (throw (ex-info "Dataset with partitions must supply partition-type"
                         {:dataset dataset})))
       (= "date" partition-type)
-      (doall (map (partial s/validate DatePartition) partitions))
+      (run! (partial s/validate DatePartition) partitions)
       :else
       (throw (ex-info "Dataset with unsupported partition type"
                       {:dataset dataset}))))
   in)
 
 (defn munge-datasets
+  "Converts dataset and partition keys into strings"
   [datasets]
   (->> datasets
        (map (fn [{:keys [dataset partitions]}]
@@ -979,7 +981,7 @@
           instances (map #(fetch-instance-map db %1) (:job/instance job))
           submit-time (when (:job/submit-time job) ; due to a bug, submit time may not exist for some jobs
                         (.getTime (:job/submit-time job)))
-          datasets (when (not (empty? (:job/datasets job)))
+          datasets (when (seq (:job/datasets job))
                      (dl/get-dataset-maps job))
           job-map {:command (:job/command job)
                    :constraints constraints

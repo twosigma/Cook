@@ -5,13 +5,13 @@
             [clj-time.core :as t]
             [clj-time.format :as tf]
             [clojure.set :as set]
+            [clojure.tools.logging :as log]
             [cook.config :as config]
             [cook.mesos.util :as util]
+            [datomic.api :as d]
             [metrics.histograms :as histograms]
             [metrics.timers :as timers]
-            [plumbing.core :as pc]
-            [clojure.tools.logging :as log]
-            [datomic.api :as d])
+            [plumbing.core :as pc])
   (:import com.google.common.cache.Cache
            com.netflix.fenzo.VMTaskFitnessCalculator
            com.netflix.fenzo.plugins.BinPackingFitnessCalculators
@@ -65,27 +65,27 @@
     [datasets->host->cost stale-datasets]
     (let [{:keys [cache-ttl-ms]} (config/data-local-fitness-config)
           datasets->last-update-time @datasets->last-update-time-atom
-          now (t/now)
+          current-time (t/now)
           datasets-to-remove (filter (fn [datasets]
                                        (when-let [update-time (datasets->last-update-time datasets nil)]
                                          (< cache-ttl-ms
-                                            (t/in-millis (t/interval update-time now)))))
+                                            (t/in-millis (t/interval update-time current-time)))))
                                      stale-datasets)
           clean-datasets->host->cost (pc/map-vals (fn [host->cost]
                                                     (pc/map-vals (fn [cost] (-> cost (min 1.0) (max 0)))
                                                                  host->cost))
                                                   datasets->host->cost)]
-      (doseq [[_ update-time] (filter (fn [[datasets _]] (not (contains? stale-datasets datasets))) datasets->last-update-time)]
-        (histograms/update! cost-staleness (t/in-millis (t/interval update-time now))))
+      (doseq [[_ update-time] (apply dissoc datasets->last-update-time stale-datasets)]
+        (histograms/update! cost-staleness (t/in-millis (t/interval update-time current-time))))
       (swap! datasets->host-name->cost-atom (fn update-datasets->host-name->cost-atom-atom
-                                [current]
-                                (let [remove-old-values (apply dissoc current datasets-to-remove)]
-                                  (merge remove-old-values clean-datasets->host->cost))))
+                                              [current]
+                                              (let [remove-old-values (apply dissoc current datasets-to-remove)]
+                                                (merge remove-old-values clean-datasets->host->cost))))
       (swap! datasets->last-update-time-atom (fn update-last-update-time
-                                [current]
-                                (let [remove-old-values (apply dissoc current datasets-to-remove)
-                                      new-values (pc/map-from-keys (constantly (t/now)) (keys clean-datasets->host->cost))]
-                                  (merge remove-old-values new-values))))))
+                                               [current]
+                                               (let [remove-old-values (apply dissoc current datasets-to-remove)
+                                                     new-values (pc/map-from-keys (constantly current-time) (keys clean-datasets->host->cost))]
+                                                 (merge remove-old-values new-values))))))
 
   (defn get-data-local-costs
     "Returns the current cost for jobs to run on each host"
@@ -119,7 +119,7 @@
                                 (sort-by (fn [j] (datasets->last-update-time (:job/datasets j)))))
           pending-job-datasets (->> pending-jobs
                                     (map :job/datasets)
-                                    (into (hash-set)))
+                                    (into #{}))
           no-longer-waiting (set/difference (-> datasets->last-update-time keys set)
                                             pending-job-datasets)]
       {:to-fetch (into [] (take batch-size (concat missing-data sorted-have-data)))
@@ -141,9 +141,8 @@
                                                  :accept :json
                                                  :as :json-string-keys
                                                  :spnego-auth true})
-        _ (log/debug "Got response:" body)
-        costs (body "costs")]
-    (->> costs
+        _ (log/debug "Got response:" body)]
+    (->> (body "costs")
          (map (fn [{:strs [task_id node_costs]}]
                 (let [costs (->> node_costs
                                  (map (fn [{:strs [node cost]}]
@@ -153,6 +152,8 @@
          (into {}))))
 
 (defn fetch-and-update-data-local-costs
+  "Determine the datasets which need to be updated, fetch the costs, and update the cache with the
+   latest costs."
   [db]
   (let [{:keys [to-fetch to-remove]} (jobs-to-update db)]
     (when (not (empty? to-fetch))
@@ -165,6 +166,7 @@
 (timers/deftimer [cook-mesos data-locality cost-update-duration])
 
 (defn start-update-cycles!
+  "Starts a `chime-at-ch` on `trigger-chan` to update data local costs."
   [datomic-conn trigger-chan]
   (log/info "Starting data local service update chan")
   (util/chime-at-ch trigger-chan
