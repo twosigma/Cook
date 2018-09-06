@@ -468,7 +468,7 @@
 
 (defn data-local-fitness-config
   []
-  (-> config :settings :data-local :fitness-calculator))
+  (-> config :settings :data-local-fitness-calculator))
 
 (defn fitness-calculator-config
   []

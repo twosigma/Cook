@@ -54,7 +54,7 @@ if ! [ -x "$(command -v flask)" ]; then
 fi
 
 INTEGRATION_DIR="$(dirname ${SCHEDULER_DIR})/integration"
-FLASK_APP=${INTEGRATION_DIR}/src/data_locality_service.py flask run &
+FLASK_APP=${INTEGRATION_DIR}/src/data_locality/service.py flask run &
 
 echo "Mesos Master IP is ${MASTER_IP}"
 
