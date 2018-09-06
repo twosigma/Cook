@@ -890,7 +890,8 @@
                                                             (cache/hit c slave-id)
                                                             (cache/miss c slave-id attrs)))))
                       _ (log/debug "In" pool "pool, passing following offers to handle-resource-offers!" offers)
-                      user->quota (quota/create-user->quota-fn (d/db conn) (name pool))
+                      using-pools? (not (nil? (config/default-pool)))
+                      user->quota (quota/create-user->quota-fn (d/db conn) (if using-pools? pool nil))
                       matched-head? (handle-resource-offers! conn @driver-atom fenzo framework-id pending-jobs-atom
                                                              mesos-run-as-user @user->usage-future user->quota
                                                              num-considerable offers-chan offers
@@ -1491,26 +1492,26 @@
                                          (->> o :attributes (filter #(= "cook-pool" (:name %))) first :text)
                                          "no-pool"))
                                      offers)
-              using-pools? (config/default-pool)
-              offer-count (count offers)]
+              using-pools? (config/default-pool)]
           (log/info "Offers by pool:" (pc/map-vals count pool->offers))
           (run!
             (fn [[pool-name offers]]
-              (if using-pools?
-                (if-let [offers-chan (get pool->offers-chan pool-name)]
-                  (do
-                    (log/info "Processing" offer-count "offer(s) for known pool" pool-name)
-                    (receive-offers offers-chan match-trigger-chan driver offers))
-                  (do
-                    (log/warn "Declining" offer-count "offer(s) for non-existent pool" pool-name)
-                    (decline-offers-safe driver offers)))
-                (if-let [offers-chan (get pool->offers-chan "no-pool")]
-                  (do
-                    (log/info "Processing" offer-count "offer(s) for pool" pool-name "(not using pools)")
-                    (receive-offers offers-chan match-trigger-chan driver offers))
-                  (do
-                    (log/error "Declining" offer-count "offer(s) for pool" pool-name "(missing no-pool offer chan)")
-                    (decline-offers-safe driver offers)))))
+              (let [offer-count (count offers)]
+                (if using-pools?
+                  (if-let [offers-chan (get pool->offers-chan pool-name)]
+                    (do
+                      (log/info "Processing" offer-count "offer(s) for known pool" pool-name)
+                      (receive-offers offers-chan match-trigger-chan driver offers))
+                    (do
+                      (log/warn "Declining" offer-count "offer(s) for non-existent pool" pool-name)
+                      (decline-offers-safe driver offers)))
+                  (if-let [offers-chan (get pool->offers-chan "no-pool")]
+                    (do
+                      (log/info "Processing" offer-count "offer(s) for pool" pool-name "(not using pools)")
+                      (receive-offers offers-chan match-trigger-chan driver offers))
+                    (do
+                      (log/error "Declining" offer-count "offer(s) for pool" pool-name "(missing no-pool offer chan)")
+                      (decline-offers-safe driver offers))))))
             pool->offers)
           (log/debug "Finished receiving offers for all pools")))
       (status-update
