@@ -15,6 +15,7 @@
 ;;
 (ns cook.mesos.rebalancer
   (:require [chime :refer [chime-at]]
+            [cook.config :as config]
             [clojure.core.async :as async]
             [clojure.core.cache :as cache]
             [clojure.data.priority-map :as pm]
@@ -222,7 +223,8 @@
                                          util/job->pool
                                          (= pool)))
                                    running-task-ents)
-         user->dru-divisors (dru/init-user->dru-divisors db running-task-ents pending-job-ents)
+         using-pools? (not (nil? (config/default-pool)))
+         user->dru-divisors (dru/init-user->dru-divisors db running-task-ents pending-job-ents (if using-pools? pool nil))
          user->sorted-running-task-ents (->> running-task-ents
                                              (group-by util/task-ent->user)
                                              (map (fn [[user task-ents]]

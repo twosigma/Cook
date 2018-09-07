@@ -75,7 +75,7 @@
         (is (= {"ljin" {:mem 25.0 :cpus 25.0 :gpus 1.0}
                 "wzhao" {:mem 10.0 :cpus 10.0 :gpus 1.0}
                 "sunil" {:mem 25.0 :cpus 25.0 :gpus 1.0}}
-               (dru/init-user->dru-divisors db running-task-ents pending-job-ents)))))))
+               (dru/init-user->dru-divisors db running-task-ents pending-job-ents nil)))))))
 
 (deftest test-sorted-task-scored-task-pairs
   (let [datomic-uri "datomic:mem://test-sorted-task-scored-task-pairs"
