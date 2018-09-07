@@ -25,13 +25,13 @@
 
 (defn init-user->dru-divisors
   "Initializes dru divisors map. This map will contain all users that have a running task or pending job"
-  [db running-task-ents pending-job-ents]
+  [db running-task-ents pending-job-ents pool-name]
   (timers/time!
     init-user->dru-divisors-duration
     (let [all-running-users (map util/task-ent->user running-task-ents)
           all-pending-users (map :job/user pending-job-ents)
           all-users-set (-> #{} (into all-running-users) (into all-pending-users))
-          user->dru-divisors (share/get-shares db all-users-set)]
+          user->dru-divisors (share/get-shares db all-users-set pool-name)]
       user->dru-divisors)))
 
 (defn accumulate-resources

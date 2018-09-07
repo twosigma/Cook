@@ -221,8 +221,9 @@ class MultiUserCookTest(util.CookTest):
         1. Choose a user, X
         2. Lower X's cpu share to 0.1 and cpu quota to 1.0
         3. Submit a job, J1, from X with 1.0 cpu and priority 99 (fills the cpu quota)
-        4. Submit a job, J2, from X with 0.1 cpu and priority 100
-        5. Wait until J1 is preempted (to make room for J2)
+        4. Wait for J1 to start running
+        5. Submit a job, J2, from X with 0.1 cpu and priority 100
+        6. Wait until J1 is preempted (to make room for J2)
         """
         admin = self.user_factory.admin()
         user = self.user_factory.new_user()
