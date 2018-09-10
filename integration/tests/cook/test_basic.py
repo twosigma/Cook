@@ -2134,10 +2134,13 @@ class CookTest(util.CookTest):
         try:
             jobs = util.wait_for_jobs(self.cook_url, job_uuids, 'completed')
             instances = []
+            non_mea_culpa_instances = []
             for job in jobs:
                 for instance in job['instances']:
                     instance['parent'] = job
                     instances.append(instance)
+                    if not instance['reason_mea_culpa']:
+                        non_mea_culpa_instances.append(instance)
             start_time = min(i['start_time'] for i in instances)
             end_time = max(i['start_time'] for i in instances)
             stats, _ = util.get_instance_stats(self.cook_url,
@@ -2145,11 +2148,13 @@ class CookTest(util.CookTest):
                                                start=util.to_iso(start_time),
                                                end=util.to_iso(end_time + 1),
                                                name=name)
+            self.logger.info(json.dumps(stats, indent=2))
             user = util.get_user(self.cook_url, job_uuid_1)
             stats_overall = stats['overall']
+            exited_non_zero = 'Command exited non-zero'
             self.assertEqual(len(instances), stats_overall['count'])
-            self.assertEqual(len(instances), stats['by-reason']['Command exited non-zero']['count'])
-            self.assertEqual(len(instances), stats['by-user-and-reason'][user]['Command exited non-zero']['count'])
+            self.assertEqual(len(non_mea_culpa_instances), stats['by-reason'][exited_non_zero]['count'])
+            self.assertEqual(len(non_mea_culpa_instances), stats['by-user-and-reason'][user][exited_non_zero]['count'])
             run_times = [(i['end_time'] - i['start_time']) / 1000 for i in instances]
             run_time_seconds = stats_overall['run-time-seconds']
             percentiles = run_time_seconds['percentiles']
