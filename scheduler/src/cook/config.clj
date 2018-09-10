@@ -395,12 +395,12 @@
                                          (let [fitness-calculator (get data-local :fitness-calculator {})]
                                            {:base-calculator (config-string->fitness-calculator
                                                               (get fitness-calculator :base-calculator  "com.netflix.fenzo.plugins.BinPackingFitnessCalculators/cpuMemBinPacker"))
-                                            :data-locality-weight (get fitness-calculator :data-locality-weight 0.95)
-                                            :cost-endpoint (get fitness-calculator :cost-endpoint nil)
                                             :batch-size (get fitness-calculator :batch-size 500)
-                                            :update-interval-ms (get fitness-calculator :update-interval-ms nil)
+                                            :cache-ttl-ms (get fitness-calculator :cache-ttl-ms 300000)
+                                            :cost-endpoint (get fitness-calculator :cost-endpoint nil)
+                                            :data-locality-weight (get fitness-calculator :data-locality-weight 0.95)
                                             :launch-wait-seconds (get fitness-calculator :launch-wait-seconds 60)
-                                            :cache-ttl-ms (get fitness-calculator :cache-ttl-ms 300000)}))}))
+                                            :update-interval-ms (get fitness-calculator :update-interval-ms nil)}))}))
 
 (defn read-config
   "Given a config file path, reads the config and returns the map"

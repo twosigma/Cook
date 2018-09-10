@@ -137,10 +137,10 @@
                              jobs)}
         _ (log/info "Updating data local costs for" (count jobs) "tasks with batch id" batch-id)
         _ (log/debug "Updating data local costs :" (cheshire/generate-string request))
-        {:keys [body]} (http/post cost-endpoint {:body (cheshire/generate-string request)
-                                                 :content-type :json
-                                                 :accept :json
+        {:keys [body]} (http/post cost-endpoint {:accept :json
                                                  :as :json-string-keys
+                                                 :body (cheshire/generate-string request)
+                                                 :content-type :json
                                                  :spnego-auth true})
         _ (log/debug "Got response:" body)]
     (pc/for-map [{:strs [task_id node_costs]} (body "costs")]
