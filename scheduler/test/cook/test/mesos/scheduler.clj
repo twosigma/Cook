@@ -1736,7 +1736,8 @@
 
 (deftest test-handle-resource-offers-with-data-locality
   (with-redefs [config/data-local-fitness-config (constantly {:data-locality-weight 0.95
-                                                              :base-calculator BinPackingFitnessCalculators/cpuMemBinPacker})]
+                                                              :base-calculator BinPackingFitnessCalculators/cpuMemBinPacker})
+                dl/job-uuid->dataset-maps-cache (util/new-cache)]
     (let [test-user (System/getProperty "user.name")
           uri "datomic:mem://test-handle-resource-offers"
           launched-tasks-atom (atom [])

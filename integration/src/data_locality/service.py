@@ -5,7 +5,7 @@ app = Flask(__name__)
 
 costs = {}
 
-@app.route('/api/v1/retrieve-costs', methods=['POST'])
+@app.route('/retrieve-costs', methods=['POST'])
 def get_costs():
     request_data = json.loads(request.data)
     batch = request_data['batch']
@@ -18,7 +18,7 @@ def get_costs():
 
     return make_response(json.dumps(response))
 
-@app.route('/api/v1/set-costs', methods=['POST'])
+@app.route('/set-costs', methods=['POST'])
 def set_costs():
     global costs
     payload = json.loads(request.data)

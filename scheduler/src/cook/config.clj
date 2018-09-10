@@ -393,7 +393,8 @@
                                                estimated-completion-constraint))
      :data-local-fitness-calculator (fnk [[:config {data-local {}}]]
                                          (let [fitness-calculator (get data-local :fitness-calculator {})]
-                                           {:base-calculator (config-string->fitness-calculator
+                                           {:auth (get fitness-calculator :auth nil)
+                                            :base-calculator (config-string->fitness-calculator
                                                               (get fitness-calculator :base-calculator  "com.netflix.fenzo.plugins.BinPackingFitnessCalculators/cpuMemBinPacker"))
                                             :batch-size (get fitness-calculator :batch-size 500)
                                             :cache-ttl-ms (get fitness-calculator :cache-ttl-ms 300000)

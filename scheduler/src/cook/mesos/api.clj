@@ -559,14 +559,16 @@
                       :commit-latch/uuid (d/squuid)}]
     [commit-latch-id commit-latch]))
 
-(defn- make-partition-ent
+(defn make-partition-ent
+  "Makes a datomic entity for a partition"
   [partition-type partition]
   (let [coerce-date (fn coerce-date [date-str]
                       (tc/to-date (tf/parse partition-date-format date-str)))]
     (case partition-type
       "date"
       {:dataset.partition/begin (coerce-date (partition "begin"))
-       :dataset.partition/end (coerce-date (partition "end"))})))
+       :dataset.partition/end (coerce-date (partition "end"))}
+      :default (throw (IllegalArgumentException. (str "Unsupported partition type " partition-type))))))
 
 (s/defn make-job-txn
   "Creates the necessary txn data to insert a job into the database"

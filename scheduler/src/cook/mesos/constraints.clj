@@ -144,7 +144,7 @@
       (if (or launch-without-data?
               (contains? data-locality-costs datasets))
         [true nil]
-        [false "No data locality data available"])))
+        [false "No data locality costs available"])))
   (job-constraint-evaluate [this _ _ _]
     (job-constraint-evaluate this _ _)))
 

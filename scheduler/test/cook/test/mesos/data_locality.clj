@@ -6,6 +6,7 @@
             [clj-time.core :as t]
             [cook.config :as config]
             [cook.mesos.data-locality :as dl]
+            [cook.mesos.util :as util]
             [cook.test.testutil :refer (restore-fresh-database! create-dummy-job)]
             [datomic.api :as d]
             [plumbing.core :as pc])
@@ -15,7 +16,8 @@
             VirtualMachineCurrentState]))
 
 (deftest test-update-data-local-costs
-  (with-redefs [config/data-local-fitness-config (constantly {:cache-ttl-ms 5000})]
+  (with-redefs [config/data-local-fitness-config (constantly {:cache-ttl-ms 5000})
+                dl/job-uuid->dataset-maps-cache (util/new-cache)]
     (testing "sanitizes input costs"
       (let [job-1 (str (UUID/randomUUID))
             job-2 (str (UUID/randomUUID))]
@@ -85,39 +87,41 @@
     TaskRequest)
 
 (deftest test-data-local-fitness-calculator
-  (let [conn (restore-fresh-database! "datomic:mem://test-data-local-fitness-calculator")
-        base-fitness 0.5
-        base-calculator (FixedFitnessCalculator. base-fitness)
-        data-locality-weight 0.9
-        base-fitness-portion (* base-fitness (- 1 data-locality-weight))
-        calculator (dl/->DataLocalFitnessCalculator base-calculator
-                                                    data-locality-weight)
-        [d1 d2] [#{{:dataset {"a" "a"}}} #{{:dataset {"b" "b"}}}]
-        j1 (create-dummy-job conn :job-state :job.state/waiting
-                             :datasets d1)
-        j2 (create-dummy-job conn :job-state :job.state/waiting)
-        job-1 (d/entity (d/db conn) j1)
-        job-2 (d/entity (d/db conn) j2)]
-    (dl/update-data-local-costs {d1 {"hostA" 0
-                                     "hostB" 0.5}
-                                 d2 {"hostA" 0
-                                     "hostB" 0}}
-                                [])
-    (testing "uses base fitness for jobs that do not support data locality"
-      (is (= base-fitness (.calculateFitness calculator (FakeTaskRequest. job-2) (fake-vm-for-host "hostA") nil)))
-      (is (= base-fitness (.calculateFitness calculator (FakeTaskRequest. job-2) (fake-vm-for-host "hostB") nil))))
+  (with-redefs [dl/job-uuid->dataset-maps-cache (util/new-cache)]
+    (let [conn (restore-fresh-database! "datomic:mem://test-data-local-fitness-calculator")
+          base-fitness 0.5
+          base-calculator (FixedFitnessCalculator. base-fitness)
+          data-locality-weight 0.9
+          base-fitness-portion (* base-fitness (- 1 data-locality-weight))
+          calculator (dl/->DataLocalFitnessCalculator base-calculator
+                                                      data-locality-weight)
+          [d1 d2] [#{{:dataset {"a" "a"}}} #{{:dataset {"b" "b"}}}]
+          j1 (create-dummy-job conn :job-state :job.state/waiting
+                               :datasets d1)
+          j2 (create-dummy-job conn :job-state :job.state/waiting)
+          job-1 (d/entity (d/db conn) j1)
+          job-2 (d/entity (d/db conn) j2)]
+      (dl/update-data-local-costs {d1 {"hostA" 0
+                                       "hostB" 0.5}
+                                   d2 {"hostA" 0
+                                       "hostB" 0}}
+                                  [])
+      (testing "uses base fitness for jobs that do not support data locality"
+        (is (= base-fitness (.calculateFitness calculator (FakeTaskRequest. job-2) (fake-vm-for-host "hostA") nil)))
+        (is (= base-fitness (.calculateFitness calculator (FakeTaskRequest. job-2) (fake-vm-for-host "hostB") nil))))
 
-    (testing "calculates fitness for jobs that support data locality"
-      (is (= (+ data-locality-weight base-fitness-portion)
-             (.calculateFitness calculator (FakeTaskRequest. job-1) (fake-vm-for-host "hostA") nil)))
-      (is (= (+ (* 0.5 data-locality-weight) base-fitness-portion)
-             (.calculateFitness calculator (FakeTaskRequest. job-1) (fake-vm-for-host "hostB") nil)))
-      (is (= base-fitness-portion
-             (.calculateFitness calculator (FakeTaskRequest. job-1) (fake-vm-for-host "hostC") nil))))))
+      (testing "calculates fitness for jobs that support data locality"
+        (is (= (+ data-locality-weight base-fitness-portion)
+               (.calculateFitness calculator (FakeTaskRequest. job-1) (fake-vm-for-host "hostA") nil)))
+        (is (= (+ (* 0.5 data-locality-weight) base-fitness-portion)
+               (.calculateFitness calculator (FakeTaskRequest. job-1) (fake-vm-for-host "hostB") nil)))
+        (is (= base-fitness-portion
+               (.calculateFitness calculator (FakeTaskRequest. job-1) (fake-vm-for-host "hostC") nil)))))))
 
 
 (deftest test-jobs-to-update
-  (with-redefs [config/data-local-fitness-config (constantly {:batch-size 3})]
+  (with-redefs [config/data-local-fitness-config (constantly {:batch-size 3})
+                dl/job-uuid->dataset-maps-cache (util/new-cache)]
     (dl/reset-data-local-costs!)
     (testing "does not update data for running and completed jobs"
       (let [conn (restore-fresh-database! "datomic:mem://test-job-ids-to-update")
@@ -188,7 +192,8 @@
                                                                 :cache-ttl-ms 30000})
                   dl/fetch-data-local-costs (fn [jobs]
                                               (pc/map-from-keys (fn [_] @current-cost-atom)
-                                                                (map :job/datasets jobs)))]
+                                                                (map :job/datasets jobs)))
+                  dl/job-uuid->dataset-maps-cache (util/new-cache)]
       (testing "calls service and updates jobs"
         (dl/reset-data-local-costs!)
         (let [conn (restore-fresh-database! "datomic:mem://test-fetch-and-update-data-local-costs")

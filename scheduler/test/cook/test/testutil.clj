@@ -92,13 +92,18 @@
 
 (defn- make-dataset-entity
   [{:keys [dataset partitions]}]
-  ; TODO - support partitions
-  {:db/id (d/tempid :db.part/user)
-   :dataset/parameters (map (fn [[k v]]
-                              {:db/id (d/tempid :db.part/user)
-                               :dataset.parameter/key k
-                               :dataset.parameter/value v})
-                            dataset)})
+  (let [dataset-ent {:db/id (d/tempid :db.part/user)
+                     :dataset/parameters (map (fn [[k v]]
+                                                {:db/id (d/tempid :db.part/user)
+                                                 :dataset.parameter/key k
+                                                 :dataset.parameter/value v})
+                                              dataset)}]
+    (if (contains? dataset "partition-type")
+      (let [partition-type (get dataset "partition-type")]
+        (assoc dataset-ent
+               :dataset/partition-type partition-type
+               :dataset/partitions (map (partial api/make-partition-ent partition-type) partitions)))
+      dataset-ent)))
 
 (defn create-dummy-job
   "Return the entity id for the created dummy job."

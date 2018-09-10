@@ -11,6 +11,7 @@
             [datomic.api :as d]
             [metrics.histograms :as histograms]
             [metrics.timers :as timers]
+            [mount.core :as mount]
             [plumbing.core :as pc])
   (:import com.google.common.cache.Cache
            com.netflix.fenzo.VMTaskFitnessCalculator
@@ -19,7 +20,7 @@
 
 (def partition-date-format (:basic-date tf/formatters))
 
-(defonce ^Cache job-uuid->dataset-maps-cache (util/new-cache))
+(mount/defstate job-uuid->dataset-maps-cache :start (util/new-cache))
 
 (defn- make-partition-map
   [partition-type partition]
@@ -75,8 +76,8 @@
                                                     (pc/map-vals (fn [cost] (-> cost (min 1.0) (max 0)))
                                                                  host->cost))
                                                   datasets->host->cost)]
-      (doseq [[_ update-time] (apply dissoc datasets->last-update-time stale-datasets)]
-        (histograms/update! cost-staleness (t/in-millis (t/interval update-time current-time))))
+      (run! (fn [[_ update-time]] (histograms/update! cost-staleness (t/in-millis (t/interval update-time current-time))))
+            (apply dissoc datasets->last-update-time stale-datasets))
       (swap! datasets->host-name->cost-atom (fn update-datasets->host-name->cost-atom-atom
                                               [current]
                                               (let [remove-old-values (apply dissoc current datasets-to-remove)]
@@ -127,7 +128,7 @@
 (defn fetch-data-local-costs
   "Contacts the server to obtain the data local costs for the given job ids"
   [jobs]
-  (let [{:keys [cost-endpoint]} (config/data-local-fitness-config)
+  (let [{:keys [auth cost-endpoint]} (config/data-local-fitness-config)
         job-uuid->datasets (into {} (map (fn [job] [(str (:job/uuid job)) (:job/datasets job)])
                                          jobs))
         batch-id (UUID/randomUUID)
@@ -137,11 +138,11 @@
                              jobs)}
         _ (log/info "Updating data local costs for" (count jobs) "tasks with batch id" batch-id)
         _ (log/debug "Updating data local costs :" (cheshire/generate-string request))
-        {:keys [body]} (http/post cost-endpoint {:accept :json
-                                                 :as :json-string-keys
-                                                 :body (cheshire/generate-string request)
-                                                 :content-type :json
-                                                 :spnego-auth true})
+        {:keys [body]} (http/post cost-endpoint (merge {:accept :json
+                                                        :as :json-string-keys
+                                                        :body (cheshire/generate-string request)
+                                                        :content-type :json}
+                                                       auth))
         _ (log/debug "Got response:" body)]
     (pc/for-map [{:strs [task_id node_costs]} (body "costs")]
        (job-uuid->datasets task_id)
