@@ -30,6 +30,9 @@ DEFAULT_TEST_TIMEOUT_SECS = 600
 # 2 minutes should be more than sufficient on most cases
 DEFAULT_TIMEOUT_MS = int(os.getenv('COOK_TEST_DEFAULT_TIMEOUT_MS', 120000))
 
+# default wait interval (i.e. time between attempts) used by most wait_* utility functions
+DEFAULT_WAIT_INTERVAL_MS = int(os.getenv('COOK_TEST_DEFAULT_WAIT_INTERVAL_MS', 1000))
+
 # Name of our custom HTTP header for user impersonation
 IMPERSONATION_HEADER = 'X-Cook-Impersonate'
 
@@ -567,7 +570,7 @@ def load_instance(cook_url, instance_uuid, assert_response=True):
     return load_resource(cook_url, 'instances', instance_uuid, assert_response)
 
 
-def wait_until(query, predicate, max_wait_ms=DEFAULT_TIMEOUT_MS, wait_interval_ms=1000):
+def wait_until(query, predicate, max_wait_ms=DEFAULT_TIMEOUT_MS, wait_interval_ms=DEFAULT_WAIT_INTERVAL_MS):
     """
     Block until the predicate is true for the result of the provided query.
     `query` is a thunk (nullary callable) that may be called multiple times.
