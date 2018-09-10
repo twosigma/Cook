@@ -670,7 +670,7 @@ def wait_for_jobs(cook_url, job_ids, status, max_wait_ms=DEFAULT_TIMEOUT_MS):
             logger.info(f"Job {job['uuid']} has status {job['status']}, expecting {status}.")
         return all([job['status'] == status for job in jobs])
 
-    response = wait_until(query, predicate, max_wait_ms=max_wait_ms, wait_interval_ms=2000)
+    response = wait_until(query, predicate, max_wait_ms=max_wait_ms, wait_interval_ms=DEFAULT_WAIT_INTERVAL_MS * 2)
     return response.json()
 
 
