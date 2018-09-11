@@ -229,7 +229,7 @@
 (def Dataset
   "Schema for a job dataset"
   {:dataset {non-empty-max-128-characters-str non-empty-max-128-characters-str}
-   (s/optional-key :partitions) [{non-empty-max-128-characters-str non-empty-max-128-characters-str}]})
+   (s/optional-key :partitions) #{{non-empty-max-128-characters-str non-empty-max-128-characters-str}}})
 
 (def DatePartition
   "Schema for a date partition"
