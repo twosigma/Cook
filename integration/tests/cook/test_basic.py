@@ -2502,12 +2502,12 @@ class CookTest(util.CookTest):
 
 
     def test_data_local_constraint(self):
-        uuid, resp = util.submit_job(self.cook_url, datasets=[{'dataset': {'uuid': str(uuid.uuid4())}}])
+        job_uuid, resp = util.submit_job(self.cook_url, datasets=[{'dataset': {'uuid': str(uuid.uuid4())}}])
         self.assertEqual(201, resp.status_code, resp.text)
 
         # Because the job has no data in the data locality service, it shouldn't be scheduled for a period of time.
         def query_unscheduled():
-            resp = util.unscheduled_jobs(self.cook_url, uuid)[0][0]
+            resp = util.unscheduled_jobs(self.cook_url, job_uuid)[0][0]
             placement_reasons = [reason for reason in resp['reasons']
                                  if reason['reason'] == reasons.COULD_NOT_PLACE_JOB]
             self.logger.info(f"unscheduled_jobs response: {resp}")
