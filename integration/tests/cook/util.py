@@ -24,7 +24,7 @@ session.headers['User-Agent'] = f"Cook-Scheduler-Integration-Tests ({session.hea
 
 # default time limit for each individual integration test
 # if a test takes more than 10 minutes, it's probably broken
-DEFAULT_TEST_TIMEOUT_SECS = 600
+DEFAULT_TEST_TIMEOUT_SECS = int(os.getenv('COOK_TEST_DEFAULT_TEST_TIMEOUT_SECS', 600))
 
 # default time limit used by most wait_* utility functions
 # 2 minutes should be more than sufficient on most cases
