@@ -132,7 +132,7 @@
   (defn update-cost-staleness-metric
     "Updates a data local cost staleness metric for the given jobs"
     [jobs]
-    (let [job-datasets (->> jobs (map :job/datasets) (filter #(not (empty? %))) (into #{}))
+    (let [job-datasets (->> jobs (map get-dataset-maps) (filter #(not (empty? %))) (into #{}))
           update-times (->> (get-last-update-time)
                             (filter (partial contains? job-datasets)))
           now (t/now)]
