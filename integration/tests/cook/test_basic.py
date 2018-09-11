@@ -1713,12 +1713,14 @@ class CookTest(util.CookTest):
             self.assertEqual(1, len(waiting_jobs), waiting_jobs)
             waiting_job = waiting_jobs[0]
             job_uuid = waiting_job['uuid']
+            constraint = 'balanced-host-placement-group-constraint'
 
             def query_unscheduled():
                 resp = util.unscheduled_jobs(self.cook_url, job_uuid)[0][0]
                 placement_reasons = [reason for reason in resp['reasons']
-                                     if reason['reason'] == reasons.COULD_NOT_PLACE_JOB
-                                     or reason['reason'] == reasons.JOB_IS_RUNNING_NOW]
+                                     if (reason['reason'] == reasons.COULD_NOT_PLACE_JOB
+                                         and any(r for r in reason['data']['reasons'] if r['reason'] == constraint)) or
+                                     reason['reason'] == reasons.JOB_IS_RUNNING_NOW]
                 self.logger.info(f"unscheduled_jobs response: {resp}")
                 return placement_reasons
 
@@ -1727,8 +1729,7 @@ class CookTest(util.CookTest):
             reason = placement_reasons[0]
             job = util.load_job(self.cook_url, job_uuid)
             if reason['reason'] == reasons.COULD_NOT_PLACE_JOB:
-                balanced_reasons = [r for r in reason['data']['reasons']
-                                    if r['reason'] == 'balanced-host-placement-group-constraint']
+                balanced_reasons = [r for r in reason['data']['reasons'] if r['reason'] == constraint]
                 self.logger.info(f'Job could not be placed: {balanced_reasons}')
                 self.assertEqual(1, len(balanced_reasons), balanced_reasons)
             elif reason['reason'] == reasons.JOB_IS_RUNNING_NOW:
