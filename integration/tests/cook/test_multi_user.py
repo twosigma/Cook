@@ -290,6 +290,7 @@ class MultiUserCookTest(util.CookTest):
     @pytest.mark.serial
     def test_preemption_for_pools(self):
         pools, _ = util.active_pools(self.cook_url)
+        self.assertLess(0, len(pools))
         for pool in pools:
             self.logger.info(f'Triggering preemption for {pool}')
             self.trigger_preemption(pool=pool['name'])
