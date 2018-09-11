@@ -1683,9 +1683,9 @@ class CookTest(util.CookTest):
                                      unique_reason['data']['reasons'][0]['reason'],
                                      unique_reason)
                 elif running_reasons:
-                    self.logger.info('Job is now running')
+                    self.logger.info(f'Job is now running: {job}')
                     self.assertEqual('running', job['status'])
-                    self.assertNotIn(job['hostname'], hosts)
+                    self.assertNotIn(job['instances'][0]['hostname'], hosts)
                 else:
                     self.fail(f'Expected job to either not be possible to place or to be running: {job}')
         finally:
