@@ -127,8 +127,10 @@ class ImpersonationCookTest(util.CookTest):
             # admin can self-impersonate for admin endpoints
             # i.e., self-impersonation is treated as a non-impersonated request
             with self.admin.impersonating(self.admin):
-                resp = util.query_queue(self.cook_url)
-                self.assertEqual(resp.status_code, 200, resp.text)
+                # The /queue endpoint redirects to the master, but we don't need to follow that.
+                # As long as we don't get an auth error, we're good.
+                resp = util.query_queue(self.cook_url, allow_redirects=False)
+                self.assertIn(resp.status_code, [200, 307], resp.text)
         finally:
             with self.admin:
                 util.kill_jobs(self.cook_url, [j for j in job_uuids if j])

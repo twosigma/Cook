@@ -1000,9 +1000,9 @@ def user_current_usage(cook_url, **kwargs):
     return session.get('%s/usage' % cook_url, params=kwargs)
 
 
-def query_queue(cook_url):
+def query_queue(cook_url, **kwargs):
     """Get current jobs via the queue endpoint (admin-only)"""
-    return session.get(f'{cook_url}/queue')
+    return session.get(f'{cook_url}/queue', **kwargs)
 
 
 def get_limit(cook_url, limit_type, user, pool=None):
