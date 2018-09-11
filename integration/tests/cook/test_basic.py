@@ -58,17 +58,18 @@ class CookTest(util.CookTest):
         self.assertEqual(False, job['disable_mea_culpa_retries'])
         self.assertTrue(len(util.wait_for_output_url(self.cook_url, job_uuid)['output_url']) > 0)
 
-        instance = util.wait_for_sandbox_directory(self.cook_url, job_uuid)
-        message = json.dumps(instance, sort_keys=True)
-        self.assertIsNotNone(instance['output_url'], message)
-        self.assertIsNotNone(instance['sandbox_directory'], message)
-
-        if instance['executor'] == 'cook':
-            instance = util.wait_for_exit_code(self.cook_url, job_uuid)
+        if util.should_expect_sandbox_directory(job=job):
+            instance = util.wait_for_sandbox_directory(self.cook_url, job_uuid)
             message = json.dumps(instance, sort_keys=True)
-            self.assertEqual(0, instance['exit_code'], message)
-        else:
-            self.logger.info(f'Exit code not checked because cook executor was not used for {instance}')
+            self.assertIsNotNone(instance['output_url'], message)
+            self.assertIsNotNone(instance['sandbox_directory'], message)
+
+            if instance['executor'] == 'cook':
+                instance = util.wait_for_exit_code(self.cook_url, job_uuid)
+                message = json.dumps(instance, sort_keys=True)
+                self.assertEqual(0, instance['exit_code'], message)
+            else:
+                self.logger.info(f'Exit code not checked because cook executor was not used for {instance}')
 
     @unittest.skipUnless(util.docker_tests_enabled(),
                          'Requires setting the COOK_TEST_DOCKER_IMAGE environment variable')
@@ -244,10 +245,11 @@ class CookTest(util.CookTest):
         self.assertEqual('failed', instance['status'], message)
         self.assertFalse(instance['reason_mea_culpa'], message)
 
-        instance = util.wait_for_sandbox_directory(self.cook_url, job_uuid)
-        message = json.dumps(instance, sort_keys=True)
-        self.assertIsNotNone(instance['output_url'], message)
-        self.assertIsNotNone(instance['sandbox_directory'], message)
+        if util.should_expect_sandbox_directory(instance):
+            instance = util.wait_for_sandbox_directory(self.cook_url, job_uuid)
+            message = json.dumps(instance, sort_keys=True)
+            self.assertIsNotNone(instance['output_url'], message)
+            self.assertIsNotNone(instance['sandbox_directory'], message)
 
         if instance['executor'] == 'cook':
             instance = util.wait_for_exit_code(self.cook_url, job_uuid)
