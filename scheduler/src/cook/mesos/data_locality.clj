@@ -30,6 +30,9 @@
               "end" (format-date (:dataset.partition/end partition))})))
 
 (defn- make-dataset-maps
+  "Takes a job and returns a set of datasets with the shape
+   #{{:dataset {\"key\" \"value\"}
+      :partitions [{\"key\" \"value\"}]}}"
   [job]
   (->> job
        :job/datasets
@@ -51,7 +54,8 @@
                       make-dataset-maps
                       job))
 
-(histograms/defhistogram [cook-mesos data-locality cost-staleness])
+(histograms/defhistogram [cook-mesos data-locality cost-update-staleness])
+(histograms/defhistogram [cook-mesos data-locality cost-match-staleness])
 
 (let [datasets->host-name->cost-atom (atom {})
       datasets->last-update-time-atom (atom {})]
@@ -76,7 +80,7 @@
                                                     (pc/map-vals (fn [cost] (-> cost (min 1.0) (max 0)))
                                                                  host->cost))
                                                   datasets->host->cost)]
-      (run! (fn [[_ update-time]] (histograms/update! cost-staleness (t/in-millis (t/interval update-time current-time))))
+      (run! (fn [[_ update-time]] (histograms/update! cost-update-staleness (t/in-millis (t/interval update-time current-time))))
             (apply dissoc datasets->last-update-time stale-datasets))
       (swap! datasets->host-name->cost-atom (fn update-datasets->host-name->cost-atom-atom
                                               [current]
@@ -123,7 +127,18 @@
           no-longer-waiting (set/difference (-> datasets->last-update-time keys set)
                                             pending-job-datasets)]
       {:to-fetch (concat missing-data sorted-have-data)
-       :to-remove no-longer-waiting})))
+       :to-remove no-longer-waiting}))
+
+  (defn update-cost-staleness-metric
+    "Updates a data local cost staleness metric for the given jobs"
+    [jobs]
+    (let [job-datasets (->> jobs (map :job/datasets) (filter #(not (empty? %))) (into #{}))
+          update-times (->> (get-last-update-time)
+                            (filter (partial contains? job-datasets)))
+          now (t/now)]
+      (run! (fn [[_ update-time]]
+              (histograms/update! cost-match-staleness (t/in-millis (t/interval update-time now))))
+            update-times))))
 
 (defn fetch-data-local-costs
   "Contacts the server to obtain the data local costs for the given job ids"

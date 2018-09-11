@@ -1181,9 +1181,9 @@
   (with-redefs [dl/job-uuid->dataset-maps-cache (util/new-cache)]
     (let [expected-job-map
           (fn
-                                        ; Converts the provided job and framework-id (framework-id) to the job-map we expect to get back from
-                                        ; api/fetch-job-map. Note that we don't include the submit_time field here, so assertions below
-                                        ; will have to dissoc it.
+            ; Converts the provided job and framework-id (framework-id) to the job-map we expect to get back from
+            ; api/fetch-job-map. Note that we don't include the submit_time field here, so assertions below
+            ; will have to dissoc it.
             [{:keys [mem max-retries max-runtime expected-runtime name gpus
                      command ports priority uuid user cpus application
                      disable-mea-culpa-retries executor datasets]

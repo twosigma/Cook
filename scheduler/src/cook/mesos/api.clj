@@ -212,7 +212,7 @@
   (s/constrained s/Str non-empty-max-128-characters))
 
 (defn valid-date-str?
-  "yyyMMdd formatted date"
+  "yyyMMdd"
   [s]
   (try
     (tf/parse partition-date-format s)
@@ -224,6 +224,8 @@
   {:name (s/constrained s/Str non-empty-max-128-characters-and-alphanum?)
    :version (s/constrained s/Str non-empty-max-128-characters-and-alphanum?)})
 
+; For locality purposes, we measure locality in terms of 'datasets which can optionally be broken up into a set of associated partitions'
+; a partition, if it exists is a date range. A dataset name is a dictionary with key and value strings of at most 128 characters"
 (def Dataset
   "Schema for a job dataset"
   {:dataset {non-empty-max-128-characters-str non-empty-max-128-characters-str}
@@ -759,7 +761,8 @@
    :straggler-handling default-straggler-handling})
 
 (defn validate-partitions
-  "Validates the partitions"
+  "Ensures that the given partitions are valid.
+   Currently, we only support date partitions which have a begin and end value, specified as a yyyyMMdd date."
   [{:keys [dataset partitions] :as in}]
   (let [partition-type (get dataset "partition-type" nil)]
     (cond
@@ -775,7 +778,7 @@
   in)
 
 (defn munge-datasets
-  "Converts dataset and partition keys into strings"
+  "Converts dataset and partition keys (keywords) into strings"
   [datasets]
   (->> datasets
        (map (fn [{:keys [dataset partitions]}]
@@ -2595,9 +2598,10 @@
   [conn]
   (base-cook-handler
    {:allowed-methods [:get]
+    ; TODO (pschorf) - cache this if it is a performance bottleneck
     :handle-ok (fn [_]
                  (let [uuid->datasets (->> (d/db conn)
-                                          util/get-pending-job-ents
+                                          util/get-pending-job-ents 
                                           (filter (fn [j] (not (empty? (:job/datasets j)))))
                                           (map (fn [j] [(:job/uuid j) (dl/get-dataset-maps j)]))
                                           (into {}))
@@ -2932,6 +2936,7 @@
              :get {:summary "Returns the pools."
                    :handler (pools-handler)}})))
 
+      ; Data locality debug endpoints
       (c-api/context
        "/data-local/:uuid" []
        :path-params [uuid :- s/Uuid]
