@@ -1701,8 +1701,11 @@ class CookTest(util.CookTest):
                 return util.query_jobs(self.cook_url, uuid=uuids).json()
 
             def num_running_predicate(response):
+                num_jobs_total = len(response)
                 num_running = len([j for j in response if j['status'] == 'running'])
                 num_waiting = len([j for j in response if j['status'] == 'waiting'])
+                self.logger.info(f'There are {num_jobs_total} total jobs, {num_running} running jobs, '
+                                 f'and {num_waiting} waiting job(s)')
                 return num_running == num_hosts and num_waiting == 1
 
             jobs = util.wait_until(query_list, num_running_predicate)
