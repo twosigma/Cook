@@ -1660,22 +1660,34 @@ class CookTest(util.CookTest):
                 waiting_jobs = [j for j in jobs if j['status'] == 'waiting']
                 self.assertEqual(1, len(waiting_jobs))
                 waiting_job = waiting_jobs[0]
+                job_uuid = waiting_job['uuid']
 
                 def query():
-                    unscheduled = util.unscheduled_jobs(self.cook_url, waiting_job['uuid'])[0][0]
+                    unscheduled = util.unscheduled_jobs(self.cook_url, job_uuid)[0][0]
                     self.logger.info(f"unscheduled_jobs response: {unscheduled}")
                     return unscheduled
 
                 def check_unique_constraint(response):
-                    self.logger.debug('unscheduled_jobs response: %s' % response)
-                    return any([r['reason'] == reasons.COULD_NOT_PLACE_JOB for r in response['reasons']])
+                    return any([r['reason'] == reasons.COULD_NOT_PLACE_JOB or
+                                r['reason'] == reasons.JOB_IS_RUNNING_NOW
+                                for r in response['reasons']])
 
                 unscheduled_jobs = util.wait_until(query, check_unique_constraint)
-                unique_reason = [r for r in unscheduled_jobs['reasons'] if r['reason'] ==
-                                 reasons.COULD_NOT_PLACE_JOB][0]
-                self.assertEqual("unique-host-placement-group-constraint",
-                                 unique_reason['data']['reasons'][0]['reason'],
-                                 unique_reason)
+                unique_reasons = [r for r in unscheduled_jobs['reasons'] if r['reason'] == reasons.COULD_NOT_PLACE_JOB]
+                running_reasons = [r for r in unscheduled_jobs['reasons'] if r['reason'] == reasons.JOB_IS_RUNNING_NOW]
+                job = util.load_job(self.cook_url, job_uuid)
+                if unique_reasons:
+                    unique_reason = unique_reasons[0]
+                    self.logger.info(f'Job could not be placed: {unique_reason}')
+                    self.assertEqual("unique-host-placement-group-constraint",
+                                     unique_reason['data']['reasons'][0]['reason'],
+                                     unique_reason)
+                elif running_reasons:
+                    self.logger.info('Job is now running')
+                    self.assertEqual('running', job['status'])
+                    self.assertNotIn(job['hostname'], hosts)
+                else:
+                    self.fail(f'Expected job to either not be possible to place or to be running: {job}')
         finally:
             util.kill_jobs(self.cook_url, uuids)
 
