@@ -865,9 +865,10 @@ class CookTest(util.CookTest):
         name = str(uuid.uuid4())
         pools, _ = util.active_pools(self.cook_url)
         start = util.current_milli_time()
+        sleep_command = 'sleep 600'
         for pool in pools:
             pool_name = pool['name']
-            job_uuid, resp = util.submit_job(self.cook_url, pool=pool_name, name=name, command='sleep 300')
+            job_uuid, resp = util.submit_job(self.cook_url, pool=pool_name, name=name, command=sleep_command)
             self.assertEqual(201, resp.status_code)
             jobs.append(util.load_job(self.cook_url, job_uuid))
             job_uuid, resp = util.submit_job(self.cook_url, pool=pool_name, name=name, command='exit 0')
@@ -885,7 +886,7 @@ class CookTest(util.CookTest):
                 pool_name = pool['name']
 
                 # List running / waiting
-                job_uuid = next(j['uuid'] for j in jobs if j['pool'] == pool_name and j['command'] == 'sleep 300')
+                job_uuid = next(j['uuid'] for j in jobs if j['pool'] == pool_name and j['command'] == sleep_command)
                 resp = util.jobs(self.cook_url, user=user, state=active,
                                  start=start, end=end, name=name, pool=pool_name)
                 self.assertEqual(200, resp.status_code, resp.text)
@@ -911,7 +912,7 @@ class CookTest(util.CookTest):
             if len(pools) > 0:
                 # List running / waiting with no pool should return all running / waiting
                 resp = util.jobs(self.cook_url, user=user, state=active, start=start, end=end, name=name)
-                job_uuids = [j['uuid'] for j in jobs if j['command'] == 'sleep 300']
+                job_uuids = [j['uuid'] for j in jobs if j['command'] == sleep_command]
                 self.assertEqual(200, resp.status_code)
                 self.assertEqual(sorted(job_uuids), sorted([j['uuid'] for j in resp.json()]))
 
