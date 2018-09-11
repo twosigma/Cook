@@ -1706,23 +1706,37 @@ class CookTest(util.CookTest):
                 return num_running == num_hosts and num_waiting == 1
 
             jobs = util.wait_until(query_list, num_running_predicate)
+            hosts = [job['instances'][0]['hostname'] for job in jobs if job['status'] == 'running']
+            # Only one job should run on each host
+            self.assertEqual(len(set(hosts)), len(hosts))
             waiting_jobs = [j for j in jobs if j['status'] == 'waiting']
             self.assertEqual(1, len(waiting_jobs), waiting_jobs)
             waiting_job = waiting_jobs[0]
+            job_uuid = waiting_job['uuid']
 
             def query_unscheduled():
-                resp = util.unscheduled_jobs(self.cook_url, waiting_job['uuid'])[0][0]
+                resp = util.unscheduled_jobs(self.cook_url, job_uuid)[0][0]
                 placement_reasons = [reason for reason in resp['reasons']
-                                     if reason['reason'] == reasons.COULD_NOT_PLACE_JOB]
+                                     if reason['reason'] == reasons.COULD_NOT_PLACE_JOB
+                                     or reason['reason'] == reasons.JOB_IS_RUNNING_NOW]
                 self.logger.info(f"unscheduled_jobs response: {resp}")
                 return placement_reasons
 
             placement_reasons = util.wait_until(query_unscheduled, lambda r: len(r) > 0)
             self.assertEqual(1, len(placement_reasons), placement_reasons)
             reason = placement_reasons[0]
-            balanced_reasons = [r for r in reason['data']['reasons']
-                                if r['reason'] == 'balanced-host-placement-group-constraint']
-            self.assertEqual(1, len(balanced_reasons), balanced_reasons)
+            job = util.load_job(self.cook_url, job_uuid)
+            if reason['reason'] == reasons.COULD_NOT_PLACE_JOB:
+                balanced_reasons = [r for r in reason['data']['reasons']
+                                    if r['reason'] == 'balanced-host-placement-group-constraint']
+                self.logger.info(f'Job could not be placed: {balanced_reasons}')
+                self.assertEqual(1, len(balanced_reasons), balanced_reasons)
+            elif reason['reason'] == reasons.JOB_IS_RUNNING_NOW:
+                self.logger.info(f'Job is now running: {job}')
+                self.assertEqual('running', job['status'])
+                self.assertNotIn(job['instances'][0]['hostname'], hosts)
+            else:
+                self.fail(f'Expected job to either not be possible to place or to be running: {job}')
         finally:
             util.kill_jobs(self.cook_url, uuids)
 
