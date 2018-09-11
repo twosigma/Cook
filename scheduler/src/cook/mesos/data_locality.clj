@@ -20,7 +20,7 @@
 
 (def partition-date-format (:basic-date tf/formatters))
 
-(mount/defstate job-uuid->dataset-maps-cache :start (util/new-cache))
+(defonce job-uuid->dataset-maps-cache (util/new-cache))
 
 (defn- make-partition-map
   [partition-type partition]

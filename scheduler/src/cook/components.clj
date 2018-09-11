@@ -25,7 +25,6 @@
             [cook.curator :as curator]
             [cook.datomic :as datomic]
             [cook.impersonation :refer (impersonation-authorized-wrapper)]
-            [cook.mesos.data-locality] ; required for mount
             [cook.mesos.pool :as pool]
             [cook.util :as util]
             [datomic.api :as d]
