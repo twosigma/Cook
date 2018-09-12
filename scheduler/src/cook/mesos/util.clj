@@ -17,7 +17,6 @@
   (:require [clj-time.coerce :as tc]
             [clj-time.core :as t]
             [clj-time.format :as tf]
-            [clj-time.periodic :refer [periodic-seq]]
             [cook.config :as config]
             [cook.mesos.pool :as pool]
             [cook.mesos.schema :as schema]

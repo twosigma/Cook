@@ -2,24 +2,17 @@
   (:use clojure.test)
   (:require [chime :refer [chime-ch]]
             [clj-time.core :as t]
-            [clj-time.periodic :as periodic]
             [clojure.core.async :as async]
-            [clojure.core.cache :as cache]
-            [clojure.data.csv :as csv]
-            [clojure.java.io :as io]
             [clojure.tools.logging :as log]
-            [cook.mesos :as c]
             [cook.mesos.mesos-mock :as mm]
             [cook.mesos.share :as share]
+            [cook.mesos.util :as util]
             [cook.test.simulator :refer (with-cook-scheduler pull-all-task-ents dump-jobs-to-csv)]
             [cook.test.testutil :refer (restore-fresh-database! create-dummy-job poll-until)]
             [datomic.api :as d]
             [mesomatic.scheduler :as mesos]
             [mesomatic.types :as mesos-types])
-  (:import java.util.UUID
-           org.apache.curator.framework.CuratorFrameworkFactory
-           org.apache.curator.framework.state.ConnectionStateListener
-           org.apache.curator.retry.BoundedExponentialBackoffRetry))
+  (:import java.util.UUID))
 
 (defn string->uuid
   "Parses the uuid if `uuid-str` is a uuid, returns nil otherwise"
@@ -407,7 +400,7 @@
                       (resource-offers [this driver offers]
                                        (swap! offer-atom into offers)))
           host (dummy-host)
-          offer-trigger-chan (chime-ch (periodic/periodic-seq (t/now) (t/millis 50)))
+          offer-trigger-chan (chime-ch (util/time-seq (t/now) (t/millis 50)))
           mock-driver (mm/mesos-mock [host] offer-trigger-chan scheduler)]
       (mesos/start! mock-driver)
       (poll-until #(= (count @offer-atom) 1) 20 600)
@@ -434,7 +427,7 @@
                                                  (log/error ex))))))
                                        (swap! offer-atom into offers)))
           hosts [(dummy-host)]
-          offer-trigger-chan (chime-ch (periodic/periodic-seq (t/now) (t/millis 50)))
+          offer-trigger-chan (chime-ch (util/time-seq (t/now) (t/millis 50)))
           mock-driver (mm/mesos-mock hosts offer-trigger-chan scheduler)]
       (mesos/start! mock-driver)
       (poll-until #(= (count @offer-atom) 2) 20 600)
@@ -460,7 +453,7 @@
                                                  (log/error ex))))))
                                        (swap! offer-atom into offers)))
           hosts [(dummy-host) (dummy-host) (dummy-host)]
-          offer-trigger-chan (chime-ch (periodic/periodic-seq (t/now) (t/millis 50)))
+          offer-trigger-chan (chime-ch (util/time-seq (t/now) (t/millis 50)))
           mock-driver (mm/mesos-mock hosts offer-trigger-chan scheduler)]
       (mesos/start! mock-driver)
       (poll-until #(= (count @offer-atom) 6) 20 1000)
@@ -542,7 +535,7 @@
                                            :task-running (swap! task-running-atom conj (-> status :task-id :value))
                                            (throw (ex-info "Unexpected status sent" {:status status})))))
               hosts [(dummy-host :mem mem :cpus cpus :ports ports :slave-id slave-id)]
-              offer-trigger-chan (chime-ch (periodic/periodic-seq (t/now) (t/millis 50)))
+              offer-trigger-chan (chime-ch (util/time-seq (t/now) (t/millis 50)))
               mock-driver (mm/mesos-mock hosts offer-trigger-chan scheduler)]
           (mesos/start! mock-driver)
           (poll-until #(= (count @task-complete-atom) 1) 20 1000)
@@ -593,7 +586,7 @@
                                            :task-running (swap! task-running-atom conj (-> status :task-id :value))
                                            (throw (ex-info "Unexpected status sent" {:status status})))))
               hosts [(dummy-host :mem mem :cpus cpus :ports ports :slave-id slave-id)]
-              offer-trigger-chan (chime-ch (periodic/periodic-seq (t/now) (t/millis 50)))
+              offer-trigger-chan (chime-ch (util/time-seq (t/now) (t/millis 50)))
               mock-driver (mm/mesos-mock hosts offer-trigger-chan scheduler)]
           (mesos/start! mock-driver)
           (poll-until #(= (count @task-complete-atom) 2) 20 1000)
@@ -646,7 +639,7 @@
                                                            (swap! task-running-atom conj task-id))
                                            (throw (ex-info "Unexpected status sent" {:status status})))))
               hosts [(dummy-host :mem mem :cpus cpus :ports ports :slave-id slave-id)]
-              offer-trigger-chan (chime-ch (periodic/periodic-seq (t/now) (t/millis 50)))
+              offer-trigger-chan (chime-ch (util/time-seq (t/now) (t/millis 50)))
               mock-driver (mm/mesos-mock hosts offer-trigger-chan scheduler)]
           (mesos/start! mock-driver)
           (poll-until #(= (count @offer-atom) 2) 20 1000)
@@ -674,7 +667,7 @@
           num-hosts 10
           hosts (for [_ (range num-hosts)]
                   (dummy-host :mem {"*" mem} :cpus {"*" cpus} :ports {"*" ports}))
-          offer-trigger-chan (chime-ch (periodic/periodic-seq (t/now) (t/millis 50)))
+          offer-trigger-chan (chime-ch (util/time-seq (t/now) (t/millis 50)))
           make-mesos-driver-fn (fn [scheduler _] ;; _ is framework-id
                                  (mm/mesos-mock hosts offer-trigger-chan scheduler))]
       (with-cook-scheduler

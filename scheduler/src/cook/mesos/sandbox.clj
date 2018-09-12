@@ -17,11 +17,11 @@
   (:require [chime :as chime]
             [clj-http.client :as http]
             [clj-time.core :as time]
-            [clj-time.periodic :as periodic]
             [clojure.core.cache :as cache]
             [clojure.set :as set]
             [clojure.string :as str]
             [clojure.tools.logging :as log]
+            [cook.mesos.util :as util]
             [datomic.api :as d]
             [metrics.counters :as counters]
             [metrics.histograms :as histograms]
@@ -263,7 +263,7 @@
   [task-id->sandbox-agent datomic-conn publish-batch-size publish-interval-ms]
   (log/info "Starting sandbox publisher at intervals of" publish-interval-ms "ms")
   (chime/chime-at
-    (periodic/periodic-seq (time/now) (time/millis publish-interval-ms))
+    (util/time-seq (time/now) (time/millis publish-interval-ms))
     (fn sandbox-publisher-task [_]
       (publish-instance-field-to-datomic!
         :instance/sandbox-directory datomic-conn publish-batch-size task-id->sandbox-agent))
@@ -275,7 +275,7 @@
   [{:keys [mesos-agent-query-cache pending-sync-agent] :as publisher-state} sync-interval-ms max-consecutive-sync-failure]
   (log/info "Starting sandbox syncer at intervals of" sync-interval-ms "ms")
   (chime/chime-at
-    (periodic/periodic-seq (time/now) (time/millis sync-interval-ms))
+    (util/time-seq (time/now) (time/millis sync-interval-ms))
     (fn host-sandbox-syncer-task [_]
       (let [{:keys [framework-id host->consecutive-failures pending-sync-hosts]} @pending-sync-agent
             num-pending-sync-hosts (count pending-sync-hosts)]
@@ -346,7 +346,7 @@
   [task-id->exit-code-agent datomic-conn publish-batch-size publish-interval-ms]
   (log/info "Starting exit-code publisher at intervals of" publish-interval-ms "ms")
   (chime/chime-at
-    (periodic/periodic-seq (time/now) (time/millis publish-interval-ms))
+    (util/time-seq (time/now) (time/millis publish-interval-ms))
     (fn exit-code-publisher-task [_]
       (publish-instance-field-to-datomic!
         :instance/exit-code datomic-conn publish-batch-size task-id->exit-code-agent))

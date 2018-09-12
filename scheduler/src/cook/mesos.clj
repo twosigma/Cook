@@ -15,11 +15,8 @@
 ;;
 (ns cook.mesos
   (:require [chime :refer [chime-ch]]
-            [clj-http.client :as http]
             [clj-time.core :as time]
-            [clj-time.periodic :as periodic]
             [clojure.core.async :as async]
-            [clojure.data.json :as json]
             [clojure.tools.logging :as log]
             [cook.config :as config]
             [cook.datomic :refer (transact-with-retries)]
@@ -29,7 +26,7 @@
             [cook.mesos.optimizer]
             [cook.mesos.rebalancer]
             [cook.mesos.scheduler :as sched]
-            [cook.mesos.util]
+            [cook.mesos.util :as util]
             [cook.util]
             [datomic.api :as d :refer (q)]
             [mesomatic.scheduler]
@@ -131,7 +128,7 @@
   (let [{:keys [update-interval-ms]} (config/data-local-fitness-config)
         prepare-trigger-chan (fn prepare-trigger-chan [interval]
                                (let [ch (async/chan (async/sliding-buffer 1))]
-                                 (async/pipe (chime-ch (periodic/periodic-seq (time/now) interval))
+                                 (async/pipe (chime-ch (util/time-seq (time/now) interval))
                                              ch)
                                  ch))]
     (cond->
