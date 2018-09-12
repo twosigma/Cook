@@ -1252,3 +1252,16 @@ def should_expect_sandbox_directory_for_job(job):
   
 def data_local_service_is_set():
     return os.getenv('DATA_LOCAL_SERVICE', None) is not None
+
+@functools.lru_cache()
+def _fenzo_fitness_calculator():
+    """Get the cook executor config from the /settings endpoint"""
+    cook_url = retrieve_cook_url()
+    _wait_for_cook(cook_url)
+    init_cook_session(cook_url)
+    fitness_calculator = get_in(settings(cook_url), 'fenzo-fitness-calculator')
+    logger.info(f"Cook's fitness calculator is {fitness_calculator}")
+    return fitness_calculator
+
+def using_data_local_fitness_calculator():
+    return _fenzo_fitness_calculator() == 'cook.mesos.data-locality/make-data-local-fitness-calculator'
