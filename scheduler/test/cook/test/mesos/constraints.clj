@@ -16,14 +16,16 @@
 
 (ns cook.test.mesos.constraints
   (:use [clojure.test])
-  (:require [clj-time.core :as t]
+  (:require [clj-time.coerce :as tc]
+            [clj-time.core :as t]
             [cook.config :as config]
             [cook.mesos.constraints :as constraints]
+            [cook.mesos.data-locality :as dl]
             [cook.mesos.scheduler :as sched]
             [cook.mesos.util :as util]
             [cook.test.testutil :refer (restore-fresh-database! create-dummy-group create-dummy-job create-dummy-instance create-dummy-job-with-instances)]
             [datomic.api :as d :refer (db)])
-  (:import java.util.Date
+  (:import [java.util Date UUID]
            org.joda.time.DateTime
            org.mockito.Mockito))
 
@@ -274,3 +276,50 @@
     (is (first (constraints/job-constraint-evaluate constraint nil {})))
     (is (not (first (constraints/job-constraint-evaluate constraint nil {"host-start-time" 0.0}))))
     (is (first (constraints/job-constraint-evaluate constraint nil {"host-start-time" 51.0})))))
+
+
+(deftest test-data-locality-constraint
+  (with-redefs [dl/job-uuid->dataset-maps-cache (util/new-cache)]
+    (testing "disabled when not using data local fitness calculator"
+      (with-redefs [config/fitness-calculator-config (constantly config/default-fitness-calculator)
+                    config/data-local-fitness-config (constantly {:launch-wait-seconds 60})]
+        (is (nil? (constraints/build-data-locality-constraint {:job/uuid (UUID/randomUUID)})))
+        (is (nil? (constraints/build-data-locality-constraint {:job/uuid (UUID/randomUUID)
+                                                               :job/datasets #{{:dataset {"a" "a"}}}})))))
+
+    (testing "disabled for non data-local jobs"
+      (with-redefs [config/fitness-calculator-config (constantly dl/data-local-fitness-calculator)
+                    config/data-local-fitness-config (constantly {:launch-wait-seconds 60})]
+        (is (nil? (constraints/build-data-locality-constraint {:job/uuid (UUID/randomUUID)})))
+        (is (not (nil? (constraints/build-data-locality-constraint {:job/uuid (UUID/randomUUID)
+                                                                    :job/datasets #{{:dataset {"a" "a"}}}}))))))
+
+    (testing "passes jobs older than launch-wait-seconds"
+      (with-redefs [config/fitness-calculator-config (constantly dl/data-local-fitness-calculator)
+                    config/data-local-fitness-config (constantly {:launch-wait-seconds 60})]
+        (dl/reset-data-local-costs!)
+        (let [submit-time (tc/to-date (t/minus (t/now) (t/seconds 61)))
+              constraint (constraints/build-data-locality-constraint {:job/uuid (UUID/randomUUID)
+                                                                      :job/datasets #{{:dataset {"a" "a"}}}
+                                                                      :job/submit-time submit-time})
+              [passes reason] (constraints/job-constraint-evaluate constraint
+                                                                   nil
+                                                                   nil)]
+          (is passes))))
+
+    (testing "requires data for newer jobs"
+      (dl/reset-data-local-costs!)
+      (with-redefs [config/fitness-calculator-config (constantly dl/data-local-fitness-calculator)
+                    config/data-local-fitness-config (constantly {:launch-wait-seconds 60})]
+        (let [with-data-datasets #{{:dataset {"a" "a"}}}
+              _ (dl/update-data-local-costs {with-data-datasets {"hostA" 0}} [])
+              with-data-constraint (constraints/build-data-locality-constraint {:job/uuid (UUID/randomUUID)
+                                                                                :job/datasets #{{:dataset/parameters #{{:dataset.parameter/key "a" :dataset.parameter/value "a"}}}}
+                                                                                :job/submit-time (tc/to-date (t/now))})
+              without-data-constraint (constraints/build-data-locality-constraint {:job/uuid (UUID/randomUUID)
+                                                                                   :job/datasets #{{:datasets {"b" "b"}}}
+                                                                                   :job/submit-time (tc/to-date (t/now))})
+              [with-data-result _] (constraints/job-constraint-evaluate with-data-constraint nil nil)
+              [without-data-result _] (constraints/job-constraint-evaluate without-data-constraint nil nil)]
+          (is with-data-result)
+          (is (not without-data-result)))))))

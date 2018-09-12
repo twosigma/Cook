@@ -24,7 +24,7 @@ session.headers['User-Agent'] = f"Cook-Scheduler-Integration-Tests ({session.hea
 
 # default time limit for each individual integration test
 # if a test takes more than 10 minutes, it's probably broken
-DEFAULT_TEST_TIMEOUT_SECS = 600
+DEFAULT_TEST_TIMEOUT_SECS = int(os.getenv('COOK_TEST_DEFAULT_TEST_TIMEOUT_SECS', 600))
 
 # default time limit used by most wait_* utility functions
 # 2 minutes should be more than sufficient on most cases
@@ -1240,7 +1240,7 @@ def should_expect_sandbox_directory(instance):
         logging.info('The sandbox directory is not expected to get populated')
     return expect_sandbox
 
-
+  
 def should_expect_sandbox_directory_for_job(job):
     """
     Returns true if we should expect the sandbox directory
@@ -1248,3 +1248,7 @@ def should_expect_sandbox_directory_for_job(job):
     """
     instance = job['instances'][0]
     return should_expect_sandbox_directory(instance)
+
+  
+def data_local_service_is_set():
+    return os.getenv('DATA_LOCAL_SERVICE', None) is not None

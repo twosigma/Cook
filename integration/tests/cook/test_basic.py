@@ -1,3 +1,4 @@
+import datetime
 import json
 import logging
 import math
@@ -867,9 +868,10 @@ class CookTest(util.CookTest):
         name = str(uuid.uuid4())
         pools, _ = util.active_pools(self.cook_url)
         start = util.current_milli_time()
+        sleep_command = 'sleep 600'
         for pool in pools:
             pool_name = pool['name']
-            job_uuid, resp = util.submit_job(self.cook_url, pool=pool_name, name=name, command='sleep 300')
+            job_uuid, resp = util.submit_job(self.cook_url, pool=pool_name, name=name, command=sleep_command)
             self.assertEqual(201, resp.status_code)
             jobs.append(util.load_job(self.cook_url, job_uuid))
             job_uuid, resp = util.submit_job(self.cook_url, pool=pool_name, name=name, command='exit 0')
@@ -887,7 +889,7 @@ class CookTest(util.CookTest):
                 pool_name = pool['name']
 
                 # List running / waiting
-                job_uuid = next(j['uuid'] for j in jobs if j['pool'] == pool_name and j['command'] == 'sleep 300')
+                job_uuid = next(j['uuid'] for j in jobs if j['pool'] == pool_name and j['command'] == sleep_command)
                 resp = util.jobs(self.cook_url, user=user, state=active,
                                  start=start, end=end, name=name, pool=pool_name)
                 self.assertEqual(200, resp.status_code, resp.text)
@@ -913,7 +915,7 @@ class CookTest(util.CookTest):
             if len(pools) > 0:
                 # List running / waiting with no pool should return all running / waiting
                 resp = util.jobs(self.cook_url, user=user, state=active, start=start, end=end, name=name)
-                job_uuids = [j['uuid'] for j in jobs if j['command'] == 'sleep 300']
+                job_uuids = [j['uuid'] for j in jobs if j['command'] == sleep_command]
                 self.assertEqual(200, resp.status_code)
                 self.assertEqual(sorted(job_uuids), sorted([j['uuid'] for j in resp.json()]))
 
@@ -1715,28 +1717,46 @@ class CookTest(util.CookTest):
                 return util.query_jobs(self.cook_url, uuid=uuids).json()
 
             def num_running_predicate(response):
+                num_jobs_total = len(response)
                 num_running = len([j for j in response if j['status'] == 'running'])
                 num_waiting = len([j for j in response if j['status'] == 'waiting'])
+                self.logger.info(f'There are {num_jobs_total} total jobs, {num_running} running jobs, '
+                                 f'and {num_waiting} waiting job(s)')
                 return num_running == num_hosts and num_waiting == 1
 
             jobs = util.wait_until(query_list, num_running_predicate)
+            hosts = [job['instances'][0]['hostname'] for job in jobs if job['status'] == 'running']
+            # Only one job should run on each host
+            self.assertEqual(len(set(hosts)), len(hosts))
             waiting_jobs = [j for j in jobs if j['status'] == 'waiting']
             self.assertEqual(1, len(waiting_jobs), waiting_jobs)
             waiting_job = waiting_jobs[0]
+            job_uuid = waiting_job['uuid']
+            constraint = 'balanced-host-placement-group-constraint'
 
             def query_unscheduled():
-                resp = util.unscheduled_jobs(self.cook_url, waiting_job['uuid'])[0][0]
+                resp = util.unscheduled_jobs(self.cook_url, job_uuid)[0][0]
                 placement_reasons = [reason for reason in resp['reasons']
-                                     if reason['reason'] == reasons.COULD_NOT_PLACE_JOB]
+                                     if (reason['reason'] == reasons.COULD_NOT_PLACE_JOB
+                                         and any(r for r in reason['data']['reasons'] if r['reason'] == constraint)) or
+                                     reason['reason'] == reasons.JOB_IS_RUNNING_NOW]
                 self.logger.info(f"unscheduled_jobs response: {resp}")
                 return placement_reasons
 
             placement_reasons = util.wait_until(query_unscheduled, lambda r: len(r) > 0)
             self.assertEqual(1, len(placement_reasons), placement_reasons)
             reason = placement_reasons[0]
-            balanced_reasons = [r for r in reason['data']['reasons']
-                                if r['reason'] == 'balanced-host-placement-group-constraint']
-            self.assertEqual(1, len(balanced_reasons), balanced_reasons)
+            job = util.load_job(self.cook_url, job_uuid)
+            if reason['reason'] == reasons.COULD_NOT_PLACE_JOB:
+                balanced_reasons = [r for r in reason['data']['reasons'] if r['reason'] == constraint]
+                self.logger.info(f'Job could not be placed: {balanced_reasons}')
+                self.assertEqual(1, len(balanced_reasons), balanced_reasons)
+            elif reason['reason'] == reasons.JOB_IS_RUNNING_NOW:
+                self.logger.info(f'Job is now running: {job}')
+                self.assertEqual('running', job['status'])
+                self.assertNotIn(job['instances'][0]['hostname'], hosts)
+            else:
+                self.fail(f'Expected job to either not be possible to place or to be running: {job}')
         finally:
             util.kill_jobs(self.cook_url, uuids)
 
@@ -2163,6 +2183,7 @@ class CookTest(util.CookTest):
                                                end=util.to_iso(end_time + 1),
                                                name=name)
             self.logger.info(json.dumps(stats, indent=2))
+            self.logger.info(f'Instances: {instances}')
             user = util.get_user(self.cook_url, job_uuid_1)
             stats_overall = stats['overall']
             exited_non_zero = 'Command exited non-zero'
@@ -2172,6 +2193,7 @@ class CookTest(util.CookTest):
             run_times = [(i['end_time'] - i['start_time']) / 1000 for i in instances]
             run_time_seconds = stats_overall['run-time-seconds']
             percentiles = run_time_seconds['percentiles']
+            self.logger.info(f'Run times: {json.dumps(run_times, indent=2)}')
             self.assertEqual(util.percentile(run_times, 50), percentiles['50'])
             self.assertEqual(util.percentile(run_times, 75), percentiles['75'])
             self.assertEqual(util.percentile(run_times, 95), percentiles['95'])
@@ -2181,6 +2203,7 @@ class CookTest(util.CookTest):
             cpu_times = [((i['end_time'] - i['start_time']) / 1000) * i['parent']['cpus'] for i in instances]
             cpu_seconds = stats_overall['cpu-seconds']
             percentiles = cpu_seconds['percentiles']
+            self.logger.info(f'CPU times: {json.dumps(cpu_times, indent=2)}')
             self.assertEqual(util.percentile(cpu_times, 50), percentiles['50'])
             self.assertEqual(util.percentile(cpu_times, 75), percentiles['75'])
             self.assertEqual(util.percentile(cpu_times, 95), percentiles['95'])
@@ -2190,6 +2213,7 @@ class CookTest(util.CookTest):
             mem_times = [((i['end_time'] - i['start_time']) / 1000) * i['parent']['mem'] for i in instances]
             mem_seconds = stats_overall['mem-seconds']
             percentiles = mem_seconds['percentiles']
+            self.logger.info(f'Mem times: {json.dumps(mem_times, indent=2)}')
             self.assertEqual(util.percentile(mem_times, 50), percentiles['50'])
             self.assertEqual(util.percentile(mem_times, 75), percentiles['75'])
             self.assertEqual(util.percentile(mem_times, 95), percentiles['95'])
@@ -2490,11 +2514,6 @@ class CookTest(util.CookTest):
                 resp = util.get_limit(self.cook_url, limit, user)
                 self.assertFalse('pools' in resp.json())
 
-    def test_data_local_support(self):
-        uuid, resp = util.submit_job(self.cook_url, data_local=True)
-        self.assertEqual(201, resp.status_code, resp.text)
-        job = util.load_job(self.cook_url, uuid)
-        self.assertEqual(True, job['data_local'], job)
 
     @unittest.skipIf(os.getenv('COOK_TEST_SKIP_RECONCILE') is not None,
                      'Requires not setting the COOK_TEST_SKIP_RECONCILE environment variable')
@@ -2522,3 +2541,60 @@ class CookTest(util.CookTest):
             self.assertEqual('failed', job['state'])
             self.assertEqual(1, len(instances))
             self.assertEqual('Mesos task reconciliation', instances[0]['reason_string'])
+
+
+    def test_data_local_constraint(self):
+        job_uuid, resp = util.submit_job(self.cook_url, datasets=[{'dataset': {'uuid': str(uuid.uuid4())}}])
+        self.assertEqual(201, resp.status_code, resp.text)
+
+        # Because the job has no data in the data locality service, it shouldn't be scheduled for a period of time.
+        def query_unscheduled():
+            resp = util.unscheduled_jobs(self.cook_url, job_uuid)[0][0]
+            placement_reasons = [reason for reason in resp['reasons']
+                                 if reason['reason'] == reasons.COULD_NOT_PLACE_JOB]
+            self.logger.info(f"unscheduled_jobs response: {resp}")
+            return placement_reasons
+
+        placement_reasons = util.wait_until(query_unscheduled, lambda r: len(r) > 0)
+        self.assertEqual(1, len(placement_reasons), str(placement_reasons))
+        reason = placement_reasons[0]
+        data_locality_reasons = [r for r in reason['data']['reasons']
+                                 if r['reason'] == 'data-locality-constraint']
+        self.assertEqual(1, len(data_locality_reasons))
+
+
+    @pytest.mark.serial
+    @unittest.skipUnless(util.data_local_service_is_set(), "Requires a data local service")
+    def test_data_local_debug_endpoint(self):
+        job_uuid, resp = util.submit_job(self.cook_url, constraints=[["HOSTNAME",
+                                                                      "EQUALS",
+                                                                      "lol won't get scheduled"]],
+                                         datasets=[{'dataset': {'foo': 'wont-get-scheduled'}}])
+        try:
+            self.assertEqual(201, resp.status_code, resp.text)
+            slaves = util.get_mesos_state(self.mesos_url)['slaves']
+            costs = []
+            for slave in slaves:
+                costs.append({'node': slave['hostname'], 'cost': 0.1})
+            data_local_service = os.getenv('DATA_LOCAL_SERVICE')
+            util.session.post(f'{data_local_service}/set-costs', json={str(job_uuid): costs})
+
+            def get_last_update_time():
+                resp = util.session.get(f'{self.cook_url}/data-local')
+                return resp.json()
+
+            last_update = util.wait_until(get_last_update_time, lambda x: x.get(str(job_uuid)) is not None)
+            # This will throw if the datetime is not formatted correctly
+            datetime.strptime(last_update[str(job_uuid)], '%Y-%m-%dT%H:%M:%S.%fZ')
+
+            cost_resp = util.session.get(f'{self.cook_url}/data-local/{str(job_uuid)}')
+            self.assertEqual(200, cost_resp.status_code)
+            expected_costs = {}
+            for slave in slaves:
+                expected_costs[slave['hostname']] = 0.1
+            self.assertEqual(expected_costs, cost_resp.json())
+
+            missing_resp = util.session.get(f'{self.cook_url}/data-local/{str(uuid.uuid4())}')
+            self.assertEqual(404, missing_resp.status_code, missing_resp.text)
+        finally:
+            util.kill_jobs(self.cook_url, [job_uuid], assert_response=False)

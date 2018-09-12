@@ -27,6 +27,7 @@
             [cook.config :as config]
             [cook.datomic :as datomic]
             [cook.mesos.constraints :as constraints]
+            [cook.mesos.data-locality :as dl]
             [cook.mesos.dru :as dru]
             [cook.mesos.fenzo-utils :as fenzo]
             [cook.mesos.group :as group]
@@ -534,6 +535,7 @@
   (log/debug "Matching" (count offers) "offers to" (count considerable) "jobs with fenzo")
   (log/debug "offers to scheduleOnce" offers)
   (log/debug "tasks to scheduleOnce" considerable)
+  (dl/update-cost-staleness-metric considerable)
   (let [t (System/currentTimeMillis)
         _ (log/debug "offer to scheduleOnce" offers)
         _ (log/debug "tasks to scheduleOnce" considerable)

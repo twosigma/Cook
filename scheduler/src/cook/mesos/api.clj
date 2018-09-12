@@ -29,6 +29,7 @@
             [cook.config :as config]
             [cook.cors :as cors]
             [cook.datomic :as datomic]
+            [cook.mesos.data-locality :as dl]
             [cook.mesos.pool :as pool]
             [cook.mesos.quota :as quota]
             [cook.mesos.reason :as reason]
@@ -116,6 +117,8 @@
 
 (def iso-8601-format (:date-time tf/formatters))
 
+(def partition-date-format (:basic-date tf/formatters))
+
 (s/defschema CookInfo
   "Schema for the /info endpoint response"
   {:authentication-scheme s/Str
@@ -200,10 +203,45 @@
   [s]
   (re-matches #"[\.a-zA-Z0-9_-]{1,128}" s))
 
+(defn non-empty-max-128-characters
+  "String of between 1 and 128 characters"
+  [s]
+  (<= 1 (.length s) 128))
+
+(def non-empty-max-128-characters-str
+  (s/constrained s/Str non-empty-max-128-characters))
+
+(defn valid-date-str?
+  "yyyyMMdd"
+  [s]
+  (try
+    (tf/parse partition-date-format s)
+    true
+    (catch Exception e false)))
+
 (def Application
   "Schema for the application a job corresponds to"
   {:name (s/constrained s/Str non-empty-max-128-characters-and-alphanum?)
    :version (s/constrained s/Str non-empty-max-128-characters-and-alphanum?)})
+
+; Datasets represent the data dependencies of jobs, which can be used by the scheduler to schedule jobs
+; on hosts to take advantage of data locality.
+; A dataset is decribed by two fields:
+; - dataset: a dictionary from string->string describing the dataset
+;   e.g. {"kind": "trades", "market": "NYSE"}
+; - partitions (optional): a description of a subset of the dataset required
+;   e.g. [{"begin": "20180101", "end": "20180201"}, {"begin": "20180301", "end": "20180401"}]
+; If partitions are specified, the dataset field must contain the key "partition-type" to describe the type of partition scheme.
+;   e.g. "partition-type": "date"
+(def Dataset
+  "Schema for a job dataset"
+  {:dataset {non-empty-max-128-characters-str non-empty-max-128-characters-str}
+   (s/optional-key :partitions) #{{non-empty-max-128-characters-str non-empty-max-128-characters-str}}})
+
+(def DatePartition
+  "Schema for a date partition"
+  {(s/required-key "begin") (s/constrained s/Str valid-date-str?)
+   (s/required-key "end") (s/constrained s/Str valid-date-str?)})
 
 (def Constraint
   "Schema for user defined job host constraint"
@@ -251,7 +289,6 @@
    (s/optional-key :progress-regex-string) NonEmptyString
    (s/optional-key :group) s/Uuid
    (s/optional-key :disable-mea-culpa-retries) s/Bool
-   (s/optional-key :data-local) s/Bool
    :cpus PosDouble
    :mem PosDouble
    (s/optional-key :gpus) (s/both s/Int (s/pred pos? 'pos?))
@@ -259,7 +296,8 @@
    ;; a lower case character or a digit, and has length between 2 to (62 + 2).
    :user UserName
    (s/optional-key :application) Application
-   (s/optional-key :expected-runtime) PosInt})
+   (s/optional-key :expected-runtime) PosInt
+   (s/optional-key :datasets) #{Dataset}})
 
 (def Job
   "Full schema for a job"
@@ -276,6 +314,8 @@
              (s/optional-key :max-runtime) PosInt
              (s/optional-key :name) JobName
              (s/optional-key :priority) JobPriority
+             (s/optional-key :datasets) [{:dataset {s/Keyword s/Str}
+                                          (s/optional-key :partitions) [{s/Keyword s/Str}]}]
              ;; The Java job client used to send the
              ;; status field on job submission. At some
              ;; point, that changed, but we will keep
@@ -303,7 +343,9 @@
               (s/optional-key :gpus) s/Int
               (s/optional-key :groups) [s/Uuid]
               (s/optional-key :instances) [Instance]
-              (s/optional-key :pool) s/Str})
+              (s/optional-key :pool) s/Str
+              (s/optional-key :datasets) #{{:dataset {s/Str s/Str}
+                                            (s/optional-key :partitions) #{{s/Str s/Str}}}}})
       prepare-schema-response))
 
 (def JobResponseDeprecated
@@ -526,13 +568,23 @@
                       :commit-latch/uuid (d/squuid)}]
     [commit-latch-id commit-latch]))
 
+(defn make-partition-ent
+  "Makes a datomic entity for a partition"
+  [partition-type partition]
+  (let [coerce-date (fn coerce-date [date-str]
+                      (tc/to-date (tf/parse partition-date-format date-str)))]
+    (case partition-type
+      "date"
+      {:dataset.partition/begin (coerce-date (partition "begin"))
+       :dataset.partition/end (coerce-date (partition "end"))}
+      :default (throw (IllegalArgumentException. (str "Unsupported partition type " partition-type))))))
+
 (s/defn make-job-txn
   "Creates the necessary txn data to insert a job into the database"
   [pool commit-latch-id job :- Job]
   (let [{:keys [uuid command max-retries max-runtime expected-runtime priority cpus mem gpus
                 user name ports uris env labels container group application disable-mea-culpa-retries
-                constraints executor progress-output-file progress-regex-string
-                data-local]
+                constraints executor progress-output-file progress-regex-string datasets]
          :or {group nil
               disable-mea-culpa-retries false}} job
         db-id (d/tempid :db.part/user)
@@ -593,6 +645,21 @@
                                    {:db/id gpus-id
                                     :resource/type :resource.type/gpus
                                     :resource/amount (double gpus)}]))])
+        datasets (map (fn [{:keys [dataset partitions]}]
+                        (let [parameters (map (fn [[k v]] {:db/id (d/tempid :db.part/user)
+                                                           :dataset.parameter/key k
+                                                           :dataset.parameter/value v})
+                                              dataset)]
+                          (if (contains? dataset "partition-type")
+                            (let [partition-type (get dataset "partition-type")
+                                  partitions (map (partial make-partition-ent partition-type) partitions)]
+                              {:db/id (d/tempid :db.part/user)
+                               :dataset/parameters parameters
+                               :dataset/partition-type partition-type
+                               :dataset/partitions partitions})
+                            {:db/id (d/tempid :db.part/user)
+                             :dataset/parameters parameters})))
+                      datasets)
         txn (cond-> {:db/id db-id
                      :job/command command
                      :job/commit-latch commit-latch-id
@@ -616,7 +683,7 @@
                     progress-output-file (assoc :job/progress-output-file progress-output-file)
                     progress-regex-string (assoc :job/progress-regex-string progress-regex-string)
                     pool (assoc :job/pool (:db/id pool))
-                    data-local (assoc :job/data-local data-local))]
+                    (seq datasets) (assoc :job/datasets datasets))]
 
     ;; TODO batch these transactions to improve performance
     (-> ports
@@ -700,6 +767,33 @@
    :host-placement (make-default-host-placement)
    :straggler-handling default-straggler-handling})
 
+(defn validate-partitions
+  "Ensures that the given partitions are valid.
+   Currently, we only support date partitions which have a begin and end value, specified as a yyyyMMdd date."
+  [{:keys [dataset partitions] :as in}]
+  (let [partition-type (get dataset "partition-type" nil)]
+    (cond
+      (nil? partition-type)
+      (when-not (empty? partitions)
+        (throw (ex-info "Dataset with partitions must supply partition-type"
+                        {:dataset dataset})))
+      (= "date" partition-type)
+      (run! (partial s/validate DatePartition) partitions)
+      :else
+      (throw (ex-info "Dataset with unsupported partition type"
+                      {:dataset dataset}))))
+  in)
+
+(defn munge-datasets
+  "Converts dataset and partition keys (keywords) into strings"
+  [datasets]
+  (->> datasets
+       (map (fn [{:keys [dataset partitions]}]
+              (cond-> {:dataset (walk/stringify-keys dataset)}
+                partitions
+                (assoc :partitions (into #{} (walk/stringify-keys partitions))))))
+       (into #{})))
+
 (defn validate-and-munge-job
   "Takes the user, the parsed json from the job and a list of the uuids of
    new-groups (submitted in the same request as the job). Returns proper Job
@@ -707,8 +801,7 @@
   [db user task-constraints gpu-enabled? new-group-uuids
    {:keys [cpus mem gpus uuid command priority max-retries max-runtime expected-runtime name
            uris ports env labels container group application disable-mea-culpa-retries
-           constraints executor progress-output-file progress-regex-string
-           data-local]
+           constraints executor progress-output-file progress-regex-string datasets]
     :or {group nil
          disable-mea-culpa-retries false}
     :as job}
@@ -746,7 +839,7 @@
                  (when progress-output-file {:progress-output-file progress-output-file})
                  (when progress-regex-string {:progress-regex-string progress-regex-string})
                  (when application {:application application})
-                 (when data-local {:data-local data-local}))]
+                 (when datasets {:datasets (munge-datasets datasets)}))]
     (s/validate Job munged)
     (when (and (:gpus munged) (not gpu-enabled?))
       (throw (ex-info (str "GPU support is not enabled") {:gpus gpus})))
@@ -768,6 +861,8 @@
     (doseq [{:keys [executable? extract?] :as uri} (:uris munged)
             :when (and (not (nil? executable?)) (not (nil? extract?)))]
       (throw (ex-info "Uri cannot set executable and extract" uri)))
+    (doseq [dataset (:datasets munged)]
+      (validate-partitions dataset))
     (when (and group-uuid
                (not (valid-group-uuid? db
                                        new-group-uuids
@@ -888,7 +983,6 @@
           progress-regex-string (:job/progress-regex-string job)
           pool (:job/pool job)
           container (:job/container job)
-          data-local (:job/data-local job)
           state (util/job-ent->state job)
           constraints (->> job
                            :job/constraint
@@ -899,6 +993,8 @@
           instances (map #(fetch-instance-map db %1) (:job/instance job))
           submit-time (when (:job/submit-time job) ; due to a bug, submit time may not exist for some jobs
                         (.getTime (:job/submit-time job)))
+          datasets (when (seq (:job/datasets job))
+                     (dl/get-dataset-maps job))
           job-map {:command (:job/command job)
                    :constraints constraints
                    :cpus (:cpus resources)
@@ -930,7 +1026,7 @@
               progress-regex-string (assoc :progress-regex-string progress-regex-string)
               pool (assoc :pool (:pool/name pool))
               container (assoc :container (container->response-map container))
-              data-local (assoc :data-local data-local)))))
+              datasets (assoc :datasets datasets)))))
 
 (defn fetch-group-live-jobs
   "Get all jobs from a group that are currently running or waiting (not complete)"
@@ -2498,6 +2594,45 @@
                     (->> (pool/all-pools db)
                          (mapv pool-entity->consumable-map))))}))
 
+(def DataLocalUpdateTimeResponse
+  {s/Uuid (s/maybe s/Str)})
+
+(def DataLocalCostResponse
+  {s/Str s/Num})
+
+(defn data-local-update-time-handler
+  "Handler for return the last update time of data locality"
+  [conn]
+  (base-cook-handler
+   {:allowed-methods [:get]
+    ; TODO (pschorf) - cache this if it is a performance bottleneck
+    :handle-ok (fn [_]
+                 (let [uuid->datasets (->> (d/db conn)
+                                          util/get-pending-job-ents 
+                                          (filter (fn [j] (not (empty? (:job/datasets j)))))
+                                          (map (fn [j] [(:job/uuid j) (dl/get-dataset-maps j)]))
+                                          (into {}))
+                       datasets->update-time (dl/get-last-update-time)]
+                   (pc/map-vals (fn [datasets]
+                                  (when-let [update-time (get datasets->update-time datasets nil)]
+                                    (tf/unparse iso-8601-format update-time)))
+                                uuid->datasets)))}))
+
+(defn data-local-cost-handler
+  "Handler which returns the data locality costs for a given job"
+  [conn]
+  (base-cook-handler
+   {:allowed-methods [:get]
+    :exists? (fn [ctx]
+               (let [uuid (get-in ctx [:request :params :uuid])
+                     job-ent (d/entity (d/db conn) [:job/uuid (UUID/fromString uuid)])
+                     datasets (dl/get-dataset-maps job-ent)]
+                 (if-let [costs (get (dl/get-data-local-costs) datasets nil)]
+                   {:costs costs}
+                   false)))
+    :handle-ok (fn [{:keys [costs]}]
+                 costs)}))
+
 (defn- streaming-json-encoder
   "Takes as input the response body which can be converted into JSON,
   and returns a function which takes a ServletResponse and writes the JSON
@@ -2807,6 +2942,24 @@
                               :description "The pools were returned."}}
              :get {:summary "Returns the pools."
                    :handler (pools-handler)}})))
+
+      ; Data locality debug endpoints
+      (c-api/context
+       "/data-local/:uuid" []
+       :path-params [uuid :- s/Uuid]
+       (c-api/resource
+        {:produces ["application/json"]
+         :responses {200 {:schema DataLocalCostResponse}}
+         :get {:summary "Returns summary information on the current data locality status"
+               :handler (data-local-cost-handler conn)}}))
+
+      (c-api/context
+       "/data-local" []
+       (c-api/resource
+        {:produces ["application/json"]
+         :responses {200 {:schema DataLocalUpdateTimeResponse}}
+         :get {:summary "Returns summary information on the current data locality status"
+               :handler (data-local-update-time-handler conn)}}))
 
       (ANY "/queue" []
         (waiting-jobs mesos-pending-jobs-fn is-authorized-fn mesos-leadership-atom leader-selector))
