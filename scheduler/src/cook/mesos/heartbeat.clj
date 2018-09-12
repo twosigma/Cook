@@ -17,9 +17,9 @@
   (:require [chime :refer [chime-at chime-ch]]
             [clj-time.coerce :as tc]
             [clj-time.core :as time]
-            [clj-time.periodic :as periodic]
             [clojure.core.async :as async :refer [alts! go-loop go >!]]
             [clojure.tools.logging :as log]
+            [cook.mesos.util :as util]
             [datomic.api :as d :refer (q)]
             [metatransaction.core :refer (db)]
             [metrics.meters :as meters]
@@ -126,7 +126,7 @@
   "Start heartbeat watcher. Return a fn to stop heartbeat watcher."
   [conn heartbeat-ch]
   (let [shutdown-ch (async/chan (async/dropping-buffer 1))
-        sync-datomic-ch (chime-ch (periodic/periodic-seq (time/now) (time/minutes 5)) (async/sliding-buffer 1))]
+        sync-datomic-ch (chime-ch (util/time-seq (time/now) (time/minutes 5)) (async/sliding-buffer 1))]
     (go-loop [[timeout-chs _ _ :as state] [#{} {} {}]]
              (let [;; Order is important here. We want to avoid the case where we timeout a task before having the chance to process its heartbeat.
                    [v ch] (async/alts! (into [shutdown-ch heartbeat-ch sync-datomic-ch] timeout-chs) :priority true)]

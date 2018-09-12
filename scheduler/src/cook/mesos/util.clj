@@ -17,7 +17,6 @@
   (:require [clj-time.coerce :as tc]
             [clj-time.core :as t]
             [clj-time.format :as tf]
-            [clj-time.periodic :refer [periodic-seq]]
             [cook.config :as config]
             [cook.mesos.pool :as pool]
             [cook.mesos.schema :as schema]
@@ -31,7 +30,8 @@
   (:import
     [com.google.common.cache Cache CacheBuilder]
     [java.util.concurrent TimeUnit]
-    [java.util Date]))
+    [java.util Date]
+    [org.joda.time DateTime ReadablePeriod]))
 
 (defn new-cache []
   "Build a new cache"
@@ -299,24 +299,6 @@
    (timers/time!
      get-pending-jobs-duration
      (get-pending-job-ents* unfiltered-db true))))
-
-(defn generate-intervals
-  "Generates a list of intervals between start and end as pairs
-   [interval-start interval-end]. The union of the intervals is
-   inclusive of both start and end
-
-   Parameters:
-   ----------
-   start : clj-time/datetime
-   end : clj-time/datetime
-   period-like : clj-time/period
-
-   Returns:
-   --------
-   list of pairs, [interval-start interval-end]"
-  ([start end period-like]
-   (->> (conj (vec (periodic-seq start end period-like)) end)
-        (partition 2 1))))
 
 (timers/deftimer [cook-mesos scheduler get-completed-jobs-by-user-duration])
 
@@ -842,3 +824,9 @@
   (if (nil? s)
     d
     (Integer/parseInt s)))
+
+(defn time-seq
+  "Returns a sequence of date-time values growing over specific period.
+   Takes as input the starting value and the growing value, returning a lazy infinite sequence."
+  [start ^ReadablePeriod period]
+  (iterate (fn [^DateTime t] (.plus t period)) start))

@@ -30,7 +30,8 @@
                      restore-fresh-database!]]
             [datomic.api :as d :refer (q db)])
   (:import [java.util Date]
-           [java.util.concurrent ExecutionException]))
+           [java.util.concurrent ExecutionException]
+           [org.joda.time DateTime]))
 
 (deftest test-total-resources-of-jobs
   (let [uri "datomic:mem://test-total-resources-of-jobs"
@@ -398,19 +399,6 @@
       (async/<!! oc)
       (is (= (count (util/read-chan ch 10)) 10)))))
 
-(deftest test-generate-intervals
-  (let [start (tc/from-date #inst "2017-06-01")
-        end (tc/from-date #inst "2017-06-02")]
-    (is (= [[start end]] (util/generate-intervals start end (t/days 1))))
-    (is (= [[start (tc/from-date #inst "2017-06-01T07:00:00")]
-            [(tc/from-date #inst "2017-06-01T07:00:00")
-             (tc/from-date #inst "2017-06-01T14:00:00")]
-            [(tc/from-date #inst "2017-06-01T14:00:00")
-             (tc/from-date #inst "2017-06-01T21:00:00")]
-            [(tc/from-date #inst "2017-06-01T21:00:00")
-             end]]
-           (util/generate-intervals start end (t/hours 7))))))
-
 (deftest test-get-jobs-by-user-and-states
   (let [uri "datomic:mem://test-get-pending-job-ents"
         conn (restore-fresh-database! uri)]
@@ -669,5 +657,25 @@
         (let [job-ent (d/entity (d/db conn) job)]
           (is (= 1 (:job/max-retries job-ent)))
           (is (= :job.state/waiting (:job/state job-ent))))))))
+
+(deftest test-time-seq
+  (testing "Generation of a sequence of times"
+
+    (testing "should work for small numbers of iterations"
+      (let [start (DateTime. 1000)
+            every-milli (util/time-seq start (t/millis 1))
+            every-ten-secs (util/time-seq start (t/seconds 10))]
+        (is (= (DateTime. 1000) (first every-milli)))
+        (is (= (DateTime. 1001) (second every-milli)))
+        (is (= (DateTime. 1002) (nth every-milli 2)))
+        (is (= (map #(DateTime. %) [1000 1001 1002 1003 1004 1005 1006 1007 1008 1009])
+               (take 10 every-milli)))
+        (is (= (map #(DateTime. %) [1000 11000 21000 31000 41000 51000 61000 71000 81000 91000])
+               (take 10 every-ten-secs)))))
+
+    (testing "should work for 52 weeks worth of ten-second intervals"
+      (let [now (t/now)
+            every-ten-secs (util/time-seq now (t/millis 10000))]
+        (is (true? (t/equal? (t/plus now (t/weeks 52)) (nth every-ten-secs 3144960))))))))
 
 (comment (run-tests))

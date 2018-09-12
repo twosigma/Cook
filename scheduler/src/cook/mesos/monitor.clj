@@ -16,7 +16,6 @@
 (ns cook.mesos.monitor
   (:require [chime :refer [chime-at]]
             [clj-time.core :as time]
-            [clj-time.periodic :as periodic]
             [clojure.set :refer (union difference)]
             [clojure.tools.logging :as log]
             [cook.config :refer (config)]
@@ -24,7 +23,6 @@
             [cook.mesos.share :as share]
             [cook.mesos.util :as util]
             [datomic.api :as d :refer (q)]
-            [metrics.core :as metrics]
             [metrics.counters :as counters]))
 
 (defn- get-job-stats
@@ -162,7 +160,7 @@
     (if interval-seconds
       (let [state->previous-stats-atom (atom {})]
         (log/info "Starting user stats collection at intervals of" interval-seconds "seconds")
-        (chime-at (periodic/periodic-seq (time/now) (time/seconds interval-seconds))
+        (chime-at (util/time-seq (time/now) (time/seconds interval-seconds))
                   (fn [_]
                     (let [mesos-db (d/db datomic/conn)]
                       (set-stats-counters! mesos-db state->previous-stats-atom)))

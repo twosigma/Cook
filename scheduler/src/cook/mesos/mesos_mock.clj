@@ -16,7 +16,6 @@
 (ns cook.mesos.mesos-mock
   (:require [chime :refer [chime-at chime-ch]]
             [clj-time.core :as t]
-            [clj-time.periodic :as periodic]
             [clojure.core.async :as async]
             [clojure.tools.logging :as log]
             [cook.mesos.util :as util]
@@ -394,7 +393,7 @@
      :or {task->complete-status default-task->complete-status
           task->runtime-ms default-task->runtime-ms
           state-atom (atom nil)
-          complete-trigger-chan (chime-ch (periodic/periodic-seq (t/now) (t/millis 20)))}}]
+          complete-trigger-chan (chime-ch (util/time-seq (t/now) (t/millis 20)))}}]
    (let [action-chan (async/chan 10) ; This will block calls to the driver. This may be problematic..
          exit-chan (async/chan)
          start-chan (async/chan)
