@@ -14,7 +14,7 @@ def get_costs():
     response = {'batch': batch, 'costs': []}
     for task in tasks:
         if task['task_id'] in costs:
-            response['costs'].append({'task_id': task['task_id'], 'node_costs': costs[task['task_id']]})
+            response['costs'].append({'task_id': task['task_id'], 'costs': costs[task['task_id']]})
 
     return make_response(json.dumps(response))
 

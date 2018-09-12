@@ -267,9 +267,9 @@
                                 (reset! request-body-atom body)
                                 {:body
                                  {"costs" [{"task_id" (-> jobs first :job/uuid str)
-                                            "node_costs" (first costs)}
+                                            "costs" (first costs)}
                                            {"task_id" (-> jobs second :job/uuid str)
-                                            "node_costs" (second costs)}]}})]
+                                            "costs" (second costs)}]}})]
         (is (= {#{{:dataset {"foo" "bar"}}} {"hostA" 0.0
                                              "hostB" 1.0}
                 #{{:dataset {"bar" "baz"}}} {"hostA" 1.0

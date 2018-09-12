@@ -159,9 +159,9 @@
                                                         :content-type :json}
                                                        auth))
         _ (log/debug "Got response:" body)]
-    (pc/for-map [{:strs [task_id node_costs]} (body "costs")]
+    (pc/for-map [{:strs [task_id costs]} (body "costs")]
        (job-uuid->datasets task_id)
-       (pc/for-map [{:strs [node cost]} node_costs] node cost))))
+       (pc/for-map [{:strs [node cost]} costs] node cost))))
 
 (defn fetch-and-update-data-local-costs
   "Determine the datasets which need to be updated, fetch the costs, and update the cache with the
