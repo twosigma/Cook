@@ -2180,6 +2180,7 @@ class CookTest(util.CookTest):
                                                end=util.to_iso(end_time + 1),
                                                name=name)
             self.logger.info(json.dumps(stats, indent=2))
+            self.logger.info(f'Instances: {instances}')
             user = util.get_user(self.cook_url, job_uuid_1)
             stats_overall = stats['overall']
             exited_non_zero = 'Command exited non-zero'
@@ -2189,6 +2190,7 @@ class CookTest(util.CookTest):
             run_times = [(i['end_time'] - i['start_time']) / 1000 for i in instances]
             run_time_seconds = stats_overall['run-time-seconds']
             percentiles = run_time_seconds['percentiles']
+            self.logger.info(f'Run times: {json.dumps(run_times, indent=2)}')
             self.assertEqual(util.percentile(run_times, 50), percentiles['50'])
             self.assertEqual(util.percentile(run_times, 75), percentiles['75'])
             self.assertEqual(util.percentile(run_times, 95), percentiles['95'])
@@ -2198,6 +2200,7 @@ class CookTest(util.CookTest):
             cpu_times = [((i['end_time'] - i['start_time']) / 1000) * i['parent']['cpus'] for i in instances]
             cpu_seconds = stats_overall['cpu-seconds']
             percentiles = cpu_seconds['percentiles']
+            self.logger.info(f'CPU times: {json.dumps(cpu_times, indent=2)}')
             self.assertEqual(util.percentile(cpu_times, 50), percentiles['50'])
             self.assertEqual(util.percentile(cpu_times, 75), percentiles['75'])
             self.assertEqual(util.percentile(cpu_times, 95), percentiles['95'])
@@ -2207,6 +2210,7 @@ class CookTest(util.CookTest):
             mem_times = [((i['end_time'] - i['start_time']) / 1000) * i['parent']['mem'] for i in instances]
             mem_seconds = stats_overall['mem-seconds']
             percentiles = mem_seconds['percentiles']
+            self.logger.info(f'Mem times: {json.dumps(mem_times, indent=2)}')
             self.assertEqual(util.percentile(mem_times, 50), percentiles['50'])
             self.assertEqual(util.percentile(mem_times, 75), percentiles['75'])
             self.assertEqual(util.percentile(mem_times, 95), percentiles['95'])
