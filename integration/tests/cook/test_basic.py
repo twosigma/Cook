@@ -58,7 +58,7 @@ class CookTest(util.CookTest):
         self.assertEqual(False, job['disable_mea_culpa_retries'])
         self.assertTrue(len(util.wait_for_output_url(self.cook_url, job_uuid)['output_url']) > 0)
 
-        if util.should_expect_sandbox_directory(job=job):
+        if util.should_expect_sandbox_directory_for_job(job):
             instance = util.wait_for_sandbox_directory(self.cook_url, job_uuid)
             message = json.dumps(instance, sort_keys=True)
             self.assertIsNotNone(instance['output_url'], message)

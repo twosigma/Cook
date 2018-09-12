@@ -1228,17 +1228,23 @@ def num_hosts_to_consider(cook_url, mesos_url):
     return num_hosts
 
 
-def should_expect_sandbox_directory(instance=None, job=None):
-    """Returns true if we should expect the sandbox directory to get populated"""
-    if not instance and not job:
-        raise Exception('You must provide either an instance or job to know whether the sandbox directory is expected')
-
-    if not instance:
-        instance = job['instances'][0]
-
+def should_expect_sandbox_directory(instance):
+    """
+    Returns true if we should expect the sandbox directory
+    to get populated for the provided instance
+    """
     expect_sandbox = not has_ephemeral_hosts() or instance['executor'] == 'cook'
     if expect_sandbox:
         logging.info('The sandbox directory is expected to get populated')
     else:
         logging.info('The sandbox directory is not expected to get populated')
     return expect_sandbox
+
+
+def should_expect_sandbox_directory_for_job(job):
+    """
+    Returns true if we should expect the sandbox directory
+    to get populated for the provided job
+    """
+    instance = job['instances'][0]
+    return should_expect_sandbox_directory(instance)
