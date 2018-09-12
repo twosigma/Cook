@@ -2543,10 +2543,8 @@ class CookTest(util.CookTest):
             self.assertEqual('Mesos task reconciliation', instances[0]['reason_string'])
 
 
+    @unittest.skipUnless(util.using_data_local_fitness_calculator(), "Requires the data local fitness calculator")
     def test_data_local_constraint(self):
-        settings = util.settings(self.cook_url)
-        if settings['fenzo-fitness-calculator'] != 'cook.mesos.data-locality/make-data-local-fitness-calculator':
-            return
         job_uuid, resp = util.submit_job(self.cook_url, datasets=[{'dataset': {'uuid': str(uuid.uuid4())}}])
         self.assertEqual(201, resp.status_code, resp.text)
 
