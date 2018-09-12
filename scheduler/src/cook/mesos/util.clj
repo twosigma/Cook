@@ -33,7 +33,6 @@
     [java.util.concurrent TimeUnit]
     [java.util Date]))
 
-
 (defn new-cache []
   "Build a new cache"
   (-> (CacheBuilder/newBuilder)

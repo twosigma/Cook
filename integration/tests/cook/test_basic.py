@@ -1,3 +1,4 @@
+import datetime
 import json
 import logging
 import math
@@ -2511,11 +2512,6 @@ class CookTest(util.CookTest):
                 resp = util.get_limit(self.cook_url, limit, user)
                 self.assertFalse('pools' in resp.json())
 
-    def test_data_local_support(self):
-        uuid, resp = util.submit_job(self.cook_url, data_local=True)
-        self.assertEqual(201, resp.status_code, resp.text)
-        job = util.load_job(self.cook_url, uuid)
-        self.assertEqual(True, job['data_local'], job)
 
     @unittest.skipIf(os.getenv('COOK_TEST_SKIP_RECONCILE') is not None,
                      'Requires not setting the COOK_TEST_SKIP_RECONCILE environment variable')
@@ -2543,3 +2539,60 @@ class CookTest(util.CookTest):
             self.assertEqual('failed', job['state'])
             self.assertEqual(1, len(instances))
             self.assertEqual('Mesos task reconciliation', instances[0]['reason_string'])
+
+
+    def test_data_local_constraint(self):
+        job_uuid, resp = util.submit_job(self.cook_url, datasets=[{'dataset': {'uuid': str(uuid.uuid4())}}])
+        self.assertEqual(201, resp.status_code, resp.text)
+
+        # Because the job has no data in the data locality service, it shouldn't be scheduled for a period of time.
+        def query_unscheduled():
+            resp = util.unscheduled_jobs(self.cook_url, job_uuid)[0][0]
+            placement_reasons = [reason for reason in resp['reasons']
+                                 if reason['reason'] == reasons.COULD_NOT_PLACE_JOB]
+            self.logger.info(f"unscheduled_jobs response: {resp}")
+            return placement_reasons
+
+        placement_reasons = util.wait_until(query_unscheduled, lambda r: len(r) > 0)
+        self.assertEqual(1, len(placement_reasons), str(placement_reasons))
+        reason = placement_reasons[0]
+        data_locality_reasons = [r for r in reason['data']['reasons']
+                                 if r['reason'] == 'data-locality-constraint']
+        self.assertEqual(1, len(data_locality_reasons))
+
+
+    @pytest.mark.serial
+    @unittest.skipUnless(util.data_local_service_is_set(), "Requires a data local service")
+    def test_data_local_debug_endpoint(self):
+        job_uuid, resp = util.submit_job(self.cook_url, constraints=[["HOSTNAME",
+                                                                      "EQUALS",
+                                                                      "lol won't get scheduled"]],
+                                         datasets=[{'dataset': {'foo': 'wont-get-scheduled'}}])
+        try:
+            self.assertEqual(201, resp.status_code, resp.text)
+            slaves = util.get_mesos_state(self.mesos_url)['slaves']
+            costs = []
+            for slave in slaves:
+                costs.append({'node': slave['hostname'], 'cost': 0.1})
+            data_local_service = os.getenv('DATA_LOCAL_SERVICE')
+            util.session.post(f'{data_local_service}/set-costs', json={str(job_uuid): costs})
+
+            def get_last_update_time():
+                resp = util.session.get(f'{self.cook_url}/data-local')
+                return resp.json()
+
+            last_update = util.wait_until(get_last_update_time, lambda x: x.get(str(job_uuid)) is not None)
+            # This will throw if the datetime is not formatted correctly
+            datetime.strptime(last_update[str(job_uuid)], '%Y-%m-%dT%H:%M:%S.%fZ')
+
+            cost_resp = util.session.get(f'{self.cook_url}/data-local/{str(job_uuid)}')
+            self.assertEqual(200, cost_resp.status_code)
+            expected_costs = {}
+            for slave in slaves:
+                expected_costs[slave['hostname']] = 0.1
+            self.assertEqual(expected_costs, cost_resp.json())
+
+            missing_resp = util.session.get(f'{self.cook_url}/data-local/{str(uuid.uuid4())}')
+            self.assertEqual(404, missing_resp.status_code, missing_resp.text)
+        finally:
+            util.kill_jobs(self.cook_url, [job_uuid], assert_response=False)

@@ -187,11 +187,12 @@ for a job. E.g. {:resources {:cpus 4 :mem 3} :constraints {\"unique_host_constra
     :db/cardinality :db.cardinality/one
     :db.install/_attribute :db.part/db}
    {:db/id (d/tempid :db.part/db)
-    :db/ident :job/data-local
-    :db/valueType :db.type/boolean
-    :db/cardinality :db.cardinality/one
+    :db/ident :job/datasets
+    :db/isComponent true
+    :db/valueType :db.type/ref
+    :db/cardinality :db.cardinality/many
     :db.install/_attribute :db.part/db
-    :db/doc "Indicates whether or not the job participates in data local scheduling"}
+    :db/doc "Datasets required by a job"}
    ;; Group attributes
    {:db/id (d/tempid :db.part/db)
     :db/ident :group/uuid
@@ -725,6 +726,52 @@ for a job. E.g. {:resources {:cpus 4 :mem 3} :constraints {\"unique_host_constra
     :db/ident :pool/dru-mode
     :db/doc "The DRU mode of the pool."
     :db/valueType :db.type/keyword
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+
+   ;; Dataset entity
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :dataset/partition-type
+    :db/doc "The partition type of the dataset"
+    :db/valueType :db.type/string
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :dataset/parameters
+    :db/isComponent true
+    :db/doc "Parameters defining the dataset"
+    :db/valueType :db.type/ref
+    :db/cardinality :db.cardinality/many
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :dataset/partitions
+    :db/isComponent true
+    :db/doc "Partitions of a dataset"
+    :db/valueType :db.type/ref
+    :db/cardinality :db.cardinality/many
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :dataset.parameter/key
+    :db/doc "Key for a parameter"
+    :db/valueType :db.type/string
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :dataset.parameter/value
+    :db/doc "Value for a parameter"
+    :db/valueType :db.type/string
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :dataset.partition/begin
+    :db/doc "Begin date for a date range partition"
+    :db/valueType :db.type/instant
+    :db/cardinality :db.cardinality/one
+    :db.install/_attribute :db.part/db}
+   {:db/id (d/tempid :db.part/db)
+    :db/ident :dataset.partition/end
+    :db/doc "End date for a date range partition"
+    :db/valueType :db.type/instant
     :db/cardinality :db.cardinality/one
     :db.install/_attribute :db.part/db}])
 

@@ -1735,9 +1735,9 @@
 
 
 (deftest test-handle-resource-offers-with-data-locality
-  (with-redefs [config/data-local-fitness-config (constantly {:maximum-cost 100
-                                                              :data-locality-weight 0.95
-                                                              :base-calculator BinPackingFitnessCalculators/cpuMemBinPacker})]
+  (with-redefs [config/data-local-fitness-config (constantly {:data-locality-weight 0.95
+                                                              :base-calculator BinPackingFitnessCalculators/cpuMemBinPacker})
+                dl/job-uuid->dataset-maps-cache (util/new-cache)]
     (let [test-user (System/getProperty "user.name")
           uri "datomic:mem://test-handle-resource-offers"
           launched-tasks-atom (atom [])
@@ -1756,6 +1756,7 @@
           offer-1 (offer-maker 10 2048 0)
           offer-2 (offer-maker 20 16384 0)
           offer-3 (offer-maker 30 8192 0)
+          [d1 d2] [#{{:dataset {"a" "a"}} {:dataset {"b" "b"}}}]
           run-handle-resource-offers! (fn [num-considerable offers & {:keys [user-quota user->usage rebalancer-reservation-atom job-name->uuid]
                                                                       :or {rebalancer-reservation-atom (atom {})
                                                                            job-name->uuid {}}}]
@@ -1774,20 +1775,21 @@
                                                                                             :name "job-1"
                                                                                             :ncpus 3
                                                                                             :memory 2048
-                                                                                            :data-local true))
+                                                                                            :datasets d1))
                                               job-2 (d/entity (d/db conn) (create-dummy-job conn
                                                                                             :uuid (get-uuid "job-2")
                                                                                             :group group-ent-id
                                                                                             :name "job-2"
                                                                                             :ncpus 13
                                                                                             :memory 1024
-                                                                                            :data-local true))
-                                              _ (dl/update-data-local-costs {(get-uuid "job-1") {(:hostname offer-1) 0.0
-                                                                                                 (:hostname offer-2) 0.0
-                                                                                                 (:hostname offer-3) 100.0}
-                                                                             (get-uuid "job-2") {(:hostname offer-1) 0.0
-                                                                                                 (:hostname offer-2) 0.0
-                                                                                                 (:hostname offer-3) 0.0}})
+                                                                                            :datasets d2))
+                                              _ (dl/update-data-local-costs {d1 {(:hostname offer-1) 0.0
+                                                                                 (:hostname offer-2) 0.0
+                                                                                 (:hostname offer-3) 100.0}
+                                                                             d2 {(:hostname offer-1) 0.0
+                                                                                 (:hostname offer-2) 0.0
+                                                                                 (:hostname offer-3) 0.0}}
+                                                                            [])
                                               entity->map (fn [entity]
                                                             (util/job-ent->map entity (d/db conn)))
                                               pool->pending-jobs (->> {:normal [job-1 job-2]}

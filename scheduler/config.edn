@@ -12,6 +12,8 @@
                         ;; users that are allowed to do things on behalf of others
                         :impersonators #{"poser" "other-impersonator"}}
  :cors-origins ["https?://cors.example.com"]
+ :data-local {:fitness-calculator {:cost-endpoint #config/env "DATA_LOCAL_ENDPOINT"
+                                   :update-interval-ms 1000}}
  :database {:datomic-uri #config/env "COOK_DATOMIC_URI"}
  :executor {:command #config/env "COOK_EXECUTOR_COMMAND"
             :environment {"EXECUTOR_DEFAULT_PROGRESS_OUTPUT_NAME" "stdout"}
@@ -25,6 +27,7 @@
        :levels {"datomic.db" :warn
                 "datomic.kv-cluster" :warn
                 "datomic.peer" :warn
+                "cook.mesos.data-locality" :debug
                 "cook.mesos.fenzo-utils" :debug
                 "cook.mesos.rebalancer" :debug
                 "cook.mesos.scheduler" :debug
@@ -50,7 +53,8 @@
               :min-dru-diff 1.0
               :safe-dru-threshold 1.0}
  :sandbox-syncer {:sync-interval-ms 1000}
- :scheduler {:offer-incubate-ms 15000
+ :scheduler {:fenzo-fitness-calculator "cook.mesos.data-locality/make-data-local-fitness-calculator"
+             :offer-incubate-ms 15000
              :task-constraints {:cpus 10
                                 :memory-gb 48
                                 :retry-limit 15

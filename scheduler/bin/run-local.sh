@@ -48,6 +48,14 @@ then
     keytool -genkeypair -keystore ${COOK_KEYSTORE_PATH} -storetype PKCS12 -storepass cookstore -dname "CN=cook, OU=Cook Developers, O=Two Sigma Investments, L=New York, ST=New York, C=US" -keyalg RSA -keysize 2048
 fi
 
+if ! [ -x "$(command -v flask)" ]; then
+    echo "Please install flask"
+    exit 1
+fi
+
+INTEGRATION_DIR="$(dirname ${SCHEDULER_DIR})/integration"
+FLASK_APP=${INTEGRATION_DIR}/src/data_locality/service.py flask run &
+
 echo "Mesos Master IP is ${MASTER_IP}"
 
 echo "Creating environment variables..."
@@ -68,6 +76,7 @@ export MESOS_MASTER="${MASTER_IP}:5050"
 export MESOS_NATIVE_JAVA_LIBRARY="${MESOS_NATIVE_JAVA_LIBRARY}"
 export COOK_SSL_PORT="${COOK_SSL_PORT}"
 export COOK_KEYSTORE_PATH="${COOK_KEYSTORE_PATH}"
+export DATA_LOCAL_ENDPOINT="http://localhost:5000/retrieve-costs"
 
 echo "Starting cook..."
 lein run config.edn
