@@ -300,24 +300,6 @@
      get-pending-jobs-duration
      (get-pending-job-ents* unfiltered-db true))))
 
-(defn generate-intervals
-  "Generates a list of intervals between start and end as pairs
-   [interval-start interval-end]. The union of the intervals is
-   inclusive of both start and end
-
-   Parameters:
-   ----------
-   start : clj-time/datetime
-   end : clj-time/datetime
-   period-like : clj-time/period
-
-   Returns:
-   --------
-   list of pairs, [interval-start interval-end]"
-  ([start end period-like]
-   (->> (conj (vec (periodic-seq start end period-like)) end)
-        (partition 2 1))))
-
 (timers/deftimer [cook-mesos scheduler get-completed-jobs-by-user-duration])
 
 (defn job-ent->user

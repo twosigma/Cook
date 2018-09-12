@@ -398,19 +398,6 @@
       (async/<!! oc)
       (is (= (count (util/read-chan ch 10)) 10)))))
 
-(deftest test-generate-intervals
-  (let [start (tc/from-date #inst "2017-06-01")
-        end (tc/from-date #inst "2017-06-02")]
-    (is (= [[start end]] (util/generate-intervals start end (t/days 1))))
-    (is (= [[start (tc/from-date #inst "2017-06-01T07:00:00")]
-            [(tc/from-date #inst "2017-06-01T07:00:00")
-             (tc/from-date #inst "2017-06-01T14:00:00")]
-            [(tc/from-date #inst "2017-06-01T14:00:00")
-             (tc/from-date #inst "2017-06-01T21:00:00")]
-            [(tc/from-date #inst "2017-06-01T21:00:00")
-             end]]
-           (util/generate-intervals start end (t/hours 7))))))
-
 (deftest test-get-jobs-by-user-and-states
   (let [uri "datomic:mem://test-get-pending-job-ents"
         conn (restore-fresh-database! uri)]
