@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.21.0] - 2018-09-12
+### Added
+- Support for contacting a data local service to obtain cost data for scheduling, from @pschorf
+### Fixed
+- Bug in quota-checking when running without pools, from @dposada
+- Bug in the rebalancer's retrieval of DRU divisors when running with pools, from @dposada
+- Integer overflows in timer tasks when the scheduler runs for a long time, from @shamsimam
+
 ## [1.20.0] - 2018-09-05
 ### Added
 - Per-pool job scheduling, from @dposada and @pschorf
