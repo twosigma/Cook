@@ -1212,8 +1212,7 @@ def hosts_to_consider(cook_url, mesos_url):
     state = get_mesos_state(mesos_url)
     slaves = state['slaves']
     pool = default_pool(cook_url)
-    slaves = [s for s in slaves if 'cook-pool' in s['attributes'] and s['attributes']['cook-pool'] == pool] \
-        if pool else slaves
+    slaves = [s for s in slaves if s['attributes'].get('cook-pool', None) == pool] if pool else slaves
     num_to_log = min(len(slaves), 10)
     logging.info(f'First {num_to_log} hosts to consider: {json.dumps(slaves[:num_to_log], indent=2)}')
     return slaves
