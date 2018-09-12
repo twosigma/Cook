@@ -31,7 +31,8 @@
   (:import
     [com.google.common.cache Cache CacheBuilder]
     [java.util.concurrent TimeUnit]
-    [java.util Date]))
+    [java.util Date]
+    [org.joda.time DateTime ReadablePeriod]))
 
 (defn new-cache []
   "Build a new cache"
@@ -824,3 +825,9 @@
   (if (nil? s)
     d
     (Integer/parseInt s)))
+
+(defn time-seq
+  "Returns a sequence of date-time values growing over specific period.
+   Takes as input the starting value and the growing value, returning a lazy infinite sequence."
+  [start ^ReadablePeriod period]
+  (iterate (fn [^DateTime t] (.plus t period)) start))

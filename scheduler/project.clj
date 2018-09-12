@@ -37,7 +37,7 @@
                  [org.clojure/tools.namespace "0.2.4"]
                  [org.clojure/core.cache "0.6.4"]
                  [org.clojure/core.memoize "0.5.8"]
-                 [clj-time "0.9.0"]
+                 [clj-time "0.12.0"]
                  [org.clojure/core.async "0.3.442" :exclusions [org.clojure/tools.reader]]
                  [org.clojure/tools.cli "0.3.5"]
                  [prismatic/schema "1.1.3"]
