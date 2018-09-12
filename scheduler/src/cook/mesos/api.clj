@@ -212,7 +212,7 @@
   (s/constrained s/Str non-empty-max-128-characters))
 
 (defn valid-date-str?
-  "yyyMMdd"
+  "yyyyMMdd"
   [s]
   (try
     (tf/parse partition-date-format s)
@@ -224,8 +224,15 @@
   {:name (s/constrained s/Str non-empty-max-128-characters-and-alphanum?)
    :version (s/constrained s/Str non-empty-max-128-characters-and-alphanum?)})
 
-; For locality purposes, we measure locality in terms of 'datasets which can optionally be broken up into a set of associated partitions'
-; a partition, if it exists is a date range. A dataset name is a dictionary with key and value strings of at most 128 characters"
+; Datasets represent the data dependencies of jobs, which can be used by the scheduler to schedule jobs
+; on hosts to take advantage of data locality.
+; A dataset is decribed by two fields:
+; - dataset: a dictionary from string->string describing the dataset
+;   e.g. {"kind": "trades", "market": "NYSE"}
+; - partitions (optional): a description of a subset of the dataset required
+;   e.g. [{"begin": "20180101", "end": "20180201"}, {"begin": "20180301", "end": "20180401"}]
+; If partitions are specified, the dataset field must contain the key "partition-type" to describe the type of partition scheme.
+;   e.g. "partition-type": "date"
 (def Dataset
   "Schema for a job dataset"
   {:dataset {non-empty-max-128-characters-str non-empty-max-128-characters-str}
