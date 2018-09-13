@@ -24,6 +24,8 @@
             [cook.mesos.api :as api]
             [cook.mesos.schema :as schema]
             [cook.mesos.util :as util]
+            [cook.rate-limit :refer [job-submission-rate-limiter]]
+            [cook.rate-limit.generic :as rt]
             [datomic.api :as d :refer (q db)]
             [mount.core :as mount]
             [plumbing.core :refer [mapply]]
@@ -38,14 +40,18 @@
   (let [authorized-fn (fn [w x y z] true)
         user (System/getProperty "user.name")
         api-handler (wrap-params
-                      (api/main-handler conn
-                                        "my-framework-id"
-                                        (fn [] [])
-                                        {:is-authorized-fn authorized-fn
-                                         :mesos-gpu-enabled false
-                                         :task-constraints {:cpus 12 :memory-gb 100 :retry-limit 200}}
-                                        (Object.)
-                                        (atom true)))
+                      (let [handler
+                            (api/main-handler conn
+                                              "my-framework-id"
+                                              (fn [] [])
+                                              {:is-authorized-fn authorized-fn
+                                               :mesos-gpu-enabled false
+                                               :task-constraints {:cpus 12 :memory-gb 100 :retry-limit 200}}
+                                              (Object.)
+                                              (atom true))]
+                        (fn [request]
+                          (with-redefs [job-submission-rate-limiter rt/AllowAllRateLimiter]
+                            (handler request)))))
         ; Add impersonation handler (current user is authorized to impersonate)
         api-handler-impersonation ((create-impersonation-middleware #{user}) api-handler)
         ; Mock kerberization, not testing that
@@ -315,3 +321,11 @@
                       :pool/purpose "This is a pool for unit testing"
                       :pool/state :pool.state/active
                       :pool/dru-mode dru-mode}]))
+
+(defn create-jobs!-wrapper
+  "Wrapper around create-jobs! That runs them with the ratelimiter preconfigured to use rate limiter that
+  allows all requests through."
+  [conn context]
+  (with-redefs
+    [job-submission-rate-limiter rt/AllowAllRateLimiter]
+    (api/create-jobs! conn context)))

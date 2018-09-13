@@ -78,7 +78,14 @@ If need it to bind to another port, you can specify that with the `:local-port` 
   The value of this key is a set of usernames who should be considered administrators when using the `configfile-admins-auth` authorization-fn.
 
 `:rate-limit`::
-  Configure rate limits for the scheduler. `rate-limit` is a map with two possible keys, `user-limit-per-m`. `user-limit-per-m` is the max requests a single user can send in a minute. The default is 600 requests.
+  Configure rate limits for the scheduler. `rate-limit` is a map with three possible keys `:user-limit-per-m` , `:job-submission`, `:expire-minutes`. These keys control rate limits.
+
+ * `:user-limit-per-m` is the max REST requests a single user can send in a minute. The default is 600 requests.
+
+ * `:job-submission` is a dictionary with a _token bucket filter configuration_ that allows per-user restriction of the job creation rate.
+ * `:expire-minutes` For our token-bucket-filter rate limits, we will create one token bucket filter rate limit object for each user. If a user has become very idle, we expire old unused rate-limit entries after a time period. This should be set to several hours, or at least as high as (`:bucket-size`/`:tokens-replenished-per-minute`)
+
+A _token bucket filter configuration_ has 3 keys `:enforce?` If this is off, the rate limit is not enforced however, violations of the rate limit are logged. Tokens are added to a bucket of maximum size `:bucket-size` at a rate of `:tokens-replenished-per-minute`. See https://en.wikipedia.org/wiki/Token_bucket.
 
 `:agent-query-cache`::
   Configure the cache used to store sandbox locations of tasks on different mesos agents.

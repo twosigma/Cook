@@ -204,9 +204,12 @@
                                      ((util/lazy-load-var 'cook.impersonation/create-impersonation-middleware) impersonators)
                                      {:json-value "config-impersonation"})))
      :rate-limit (fnk [[:config {rate-limit nil}]]
-                   (let [{:keys [user-limit-per-m]
-                          :or {user-limit-per-m 600}} rate-limit]
-                     {:user-limit (->UserRateLimit :user-limit user-limit-per-m (t/minutes 1))}))
+                   (let [{:keys [expire-minutes user-limit-per-m job-submission]
+                          :or {expire-minutes 120
+                               user-limit-per-m 600}} rate-limit]
+                     {:expire-minutes expire-minutes
+                      :job-submission job-submission
+                      :user-limit (->UserRateLimit :user-limit user-limit-per-m (t/minutes 1))}))
      :sim-agent-path (fnk [] "/usr/bin/sim-agent")
      :executor (fnk [[:config {executor {}}]]
                  (if (str/blank? (:command executor))

@@ -29,12 +29,15 @@
             [cook.mesos.reason :as reason]
             [cook.mesos.scheduler :as sched]
             [cook.mesos.util :as util]
+            [cook.rate-limit :refer [job-submission-rate-limiter]]
+            [cook.rate-limit.generic :as rt]
             [cook.test.testutil :refer [create-dummy-instance
                                         create-dummy-job
                                         create-dummy-job-with-instances
                                         create-pool
                                         flush-caches!
-                                        restore-fresh-database!]]
+                                        restore-fresh-database!
+                                        create-jobs!-wrapper]]
             [datomic.api :as d :refer [q db]]
             [mesomatic.scheduler :as msched]
             [schema.core :as s])
@@ -85,15 +88,18 @@
 (defn basic-handler
   [conn & {:keys [cpus memory-gb gpus-enabled retry-limit is-authorized-fn]
            :or {cpus 12, memory-gb 100, gpus-enabled false, retry-limit 200, is-authorized-fn authorized-fn}}]
-  (with-redefs [api/retrieve-url-path
-                (fn [hostname task-id _]
-                  (str "http://" hostname "/" task-id))]
-    (api/main-handler conn "my-framework-id" (fn [] [])
-                      {:is-authorized-fn is-authorized-fn
-                       :mesos-gpu-enabled gpus-enabled
-                       :task-constraints {:cpus cpus :memory-gb memory-gb :retry-limit retry-limit}}
-                      (Object.)
-                      (atom true))))
+  (fn [request]
+    (let [handler (api/main-handler conn "my-framework-id" (fn [] [])
+                                    {:is-authorized-fn is-authorized-fn
+                                     :mesos-gpu-enabled gpus-enabled
+                                     :task-constraints {:cpus cpus :memory-gb memory-gb :retry-limit retry-limit}}
+                                    (Object.)
+                                    (atom true))]
+      (with-redefs [api/retrieve-url-path
+                    (fn [hostname task-id _]
+                      (str "http://" hostname "/" task-id))
+                    job-submission-rate-limiter rt/AllowAllRateLimiter]
+        (handler request)))))
 
 (defn response->body-data [{:keys [body]}]
   (let [baos (ByteArrayOutputStream.)
@@ -1249,7 +1255,7 @@
                 {:keys [uuid] :as job} (minimal-job)
                 framework-id #mesomatic.types.FrameworkID{:value "framework-id"}]
             (is (= {::api/results (str "submitted jobs " uuid)}
-                   (api/create-jobs! conn {::api/jobs [job]})))
+                 (create-jobs!-wrapper conn {::api/jobs [job]})))
             (is (= (expected-job-map job framework-id)
                    (dissoc (api/fetch-job-map (db conn) framework-id uuid) :submit_time)))))
 
@@ -1257,10 +1263,10 @@
           (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
                 {:keys [uuid] :as job} (minimal-job)]
             (is (= {::api/results (str "submitted jobs " uuid)}
-                   (api/create-jobs! conn {::api/jobs [job]})))
+                 (create-jobs!-wrapper conn {::api/jobs [job]})))
             (is (thrown-with-msg? ExecutionException
                                   (re-pattern (str ".*:job/uuid.*" uuid ".*already exists"))
-                                  (api/create-jobs! conn {::api/jobs [job]})))))
+                                (create-jobs!-wrapper conn {::api/jobs [job]})))))
 
         (testing "should work with datasets"
           (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
@@ -1283,7 +1289,7 @@
                 {:keys [uuid] :as job} (assoc (minimal-job) :application application)
                 framework-id #mesomatic.types.FrameworkID{:value "framework-id"}]
             (is (= {::api/results (str "submitted jobs " uuid)}
-                   (api/create-jobs! conn {::api/jobs [job]})))
+                 (create-jobs!-wrapper conn {::api/jobs [job]})))
             (is (= (expected-job-map job framework-id)
                    (dissoc (api/fetch-job-map (db conn) framework-id uuid) :submit_time)))))
 
@@ -1292,7 +1298,7 @@
                 {:keys [uuid] :as job} (assoc (minimal-job) :expected-runtime 1)
                 framework-id #mesomatic.types.FrameworkID{:value "framework-id"}]
             (is (= {::api/results (str "submitted jobs " uuid)}
-                   (api/create-jobs! conn {::api/jobs [job]})))
+                 (create-jobs!-wrapper conn {::api/jobs [job]})))
             (is (= (expected-job-map job framework-id)
                    (-> (api/fetch-job-map (db conn) framework-id uuid)
                        (dissoc :submit_time))))))
@@ -1302,7 +1308,7 @@
                 {:keys [uuid] :as job} (assoc (minimal-job) :disable-mea-culpa-retries true)
                 framework-id #mesomatic.types.FrameworkID{:value "framework-id"}]
             (is (= {::api/results (str "submitted jobs " uuid)}
-                   (api/create-jobs! conn {::api/jobs [job]})))
+                 (create-jobs!-wrapper conn {::api/jobs [job]})))
             (is (= (expected-job-map job framework-id)
                    (-> (api/fetch-job-map (db conn) framework-id uuid)
                        (dissoc :submit_time))))))
@@ -1312,7 +1318,7 @@
                 {:keys [uuid] :as job} (assoc (minimal-job) :executor "cook")
                 framework-id #mesomatic.types.FrameworkID{:value "framework-id"}]
             (is (= {::api/results (str "submitted jobs " uuid)}
-                   (api/create-jobs! conn {::api/jobs [job]})))
+                 (create-jobs!-wrapper conn {::api/jobs [job]})))
             (is (= (expected-job-map job framework-id)
                    (-> (api/fetch-job-map (db conn) framework-id uuid)
                        (dissoc :submit_time)
@@ -1323,7 +1329,7 @@
                 {:keys [uuid] :as job} (assoc (minimal-job) :executor "mesos")
                 framework-id #mesomatic.types.FrameworkID{:value "framework-id"}]
             (is (= {::api/results (str "submitted jobs " uuid)}
-                   (api/create-jobs! conn {::api/jobs [job]})))
+                 (create-jobs!-wrapper conn {::api/jobs [job]})))
             (is (= (expected-job-map job framework-id)
                    (-> (api/fetch-job-map (db conn) framework-id uuid)
                        (dissoc :submit_time)
@@ -1334,7 +1340,7 @@
                 {:keys [uuid] :as job} (assoc (minimal-job) :supports_data_locality true)
                 framework-id #mesomatic.types.FrameworkID{:value "framework-id"}]
             (is (= {::api/results (str "submitted jobs " uuid)}
-                   (api/create-jobs! conn {::api/jobs [job]})))
+                 (create-jobs!-wrapper conn {::api/jobs [job]})))
             (is (= (expected-job-map job framework-id)
                    (-> (api/fetch-job-map (db conn) framework-id uuid)
                        (dissoc :submit_time))))))))))
@@ -1345,7 +1351,7 @@
         handler (api/destroy-jobs-handler conn is-authorized-fn)]
     (testing "should be able to destroy own jobs"
       (let [{:keys [uuid user] :as job} (minimal-job)
-            _ (api/create-jobs! conn {::api/jobs [job]})
+            _ (create-jobs!-wrapper conn {::api/jobs [job]})
             resp (handler {:request-method :delete
                            :authorization/user user
                            :query-params {:job uuid}})]
@@ -1353,7 +1359,7 @@
 
     (testing "should not be able to destroy another user's job"
       (let [{:keys [uuid] :as job} (assoc (minimal-job) :user "creator")
-            _ (api/create-jobs! conn {::api/jobs [job]})
+            _ (create-jobs!-wrapper conn {::api/jobs [job]})
             resp (handler {:request-method :delete
                            :authorization/user "destroyer"
                            :query-params {:job uuid}})]
@@ -1857,7 +1863,8 @@
     (with-redefs [api/no-job-exceeds-quota? (constantly true)]
       (testing "successful-job-creation-response"
         (with-redefs [api/create-jobs! (fn [in-conn _]
-                                         (is (= conn in-conn)))]
+                                     (is (= conn in-conn)))
+                      job-submission-rate-limiter rt/AllowAllRateLimiter]
           (let [handler (api/create-jobs-handler conn task-constraints gpu-enabled? is-authorized-fn)
                 {:keys [status]} (handler (new-request))]
             (is (= 201 status)))))
@@ -1866,7 +1873,9 @@
         (with-redefs [api/create-jobs! (fn [in-conn _]
                                          (is (= conn in-conn))
                                          (throw (ex-info "Transaction timed out."
-                                                         {:db.error :db.error/transaction-timeout})))]
+                                                         {:db.error :db.error/transaction-timeout})))
+                      job-submission-rate-limiter rt/AllowAllRateLimiter]
+
           (let [handler (api/create-jobs-handler conn task-constraints gpu-enabled? is-authorized-fn)
                 {:keys [body status]} (handler (new-request))]
             (is (= 500 status))
@@ -1875,23 +1884,25 @@
       (testing "generic-exception-job-creation-response"
         (with-redefs [api/create-jobs! (fn [in-conn _]
                                          (is (= conn in-conn))
-                                         (throw (Exception. "Thrown from test")))]
+                                         (throw (Exception. "Thrown from test")))
+                      job-submission-rate-limiter rt/AllowAllRateLimiter]
           (let [handler (api/create-jobs-handler conn task-constraints gpu-enabled? is-authorized-fn)
                 {:keys [body status]} (handler (new-request))]
             (is (= 500 status))
             (is (str/includes? body "Exception occurred while creating job - Thrown from test")))))
 
       (testing "should fail with duplicate uuids"
-        (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
-              {:keys [uuid] :as j1} (minimal-job)
-              j2 (assoc (minimal-job) :uuid uuid)
-              j3 (minimal-job)
-              request (assoc-in (new-request) [:body-params :jobs] [j1 j2 j3])
-              handler (api/create-jobs-handler conn task-constraints gpu-enabled? is-authorized-fn)
-              {:keys [body status]} (handler request)]
-          (is (= 400 status))
-          (is (str/includes? body (str uuid)))
-          (is (not (str/includes? body (str (:uuid j3))))))))))
+        (with-redefs [job-submission-rate-limiter rt/AllowAllRateLimiter]
+          (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
+                {:keys [uuid] :as j1} (minimal-job)
+                j2 (assoc (minimal-job) :uuid uuid)
+                j3 (minimal-job)
+                request (assoc-in (new-request) [:body-params :jobs] [j1 j2 j3])
+                handler (api/create-jobs-handler conn task-constraints gpu-enabled? is-authorized-fn)
+                {:keys [body status]} (handler request)]
+            (is (= 400 status))
+            (is (str/includes? body (str uuid)))
+            (is (not (str/includes? body (str (:uuid j3)))))))))))
 
 (deftest test-validate-partitions
   (is (api/validate-partitions {:dataset {"foo" "bar"}}))

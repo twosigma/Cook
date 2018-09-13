@@ -214,6 +214,25 @@ class MultiUserCookTest(util.CookTest):
                 util.kill_jobs(self.cook_url, all_job_uuids, assert_response=False)
                 util.reset_limit(self.cook_url, 'quota', user.name, reason=self.current_name())
 
+    def test_ratelimit_while_creating_job(self):
+        # Make sure the rate limit cuts a user off.
+        user = self.user_factory.new_user()
+        bucket_size = util.settings(self.cook_url)['rate-limit']['job-submission']['bucket-size']
+        if bucket_size > 3000:
+            pass; # Don't run in real production, only integration test environment.
+        command = 'sleep 1'
+        # First submit consumes all of the quota.
+        with user:
+            # First, empty most but not all of the tocken bucket.
+            _, resp1 = util.submit_jobs(self.cook_url, {"command" : command}, bucket_size - 60)
+            # Then another 1060 to get us very negative.
+            _, resp2 = util.submit_jobs(self.cook_url, {"command" : command}, 1060)
+            # And finally a request that gets cut off.
+            _, resp3 = util.submit_jobs(self.cook_url, {"command" : command}, 10)
+        self.assertEqual(resp1.status_code, 201)
+        self.assertEqual(resp2.status_code, 201)
+        self.assertEqual(resp3.status_code, 400)
+
     def trigger_preemption(self, pool):
         """
         Triggers preemption on the provided pool (which can be None) by doing the following:
