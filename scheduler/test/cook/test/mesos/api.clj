@@ -1218,11 +1218,11 @@
                      :state "waiting"
                      :status "waiting"
                      :uris nil}
-              ;; Only assoc these fields if the job specifies one
-              application (assoc :application application)
-              expected-runtime (assoc :expected-runtime expected-runtime)
-              executor (assoc :executor executor)
-              datasets (assoc :datasets datasets)))]
+                    ;; Only assoc these fields if the job specifies one
+                    application (assoc :application application)
+                    expected-runtime (assoc :expected-runtime expected-runtime)
+                    executor (assoc :executor executor)
+                    datasets (assoc :datasets datasets)))]
 
       (testing "Job creation"
         (testing "should work with a minimal job manually inserted"
@@ -1247,7 +1247,7 @@
             (is (= (expected-job-map job framework-id)
                    (dissoc job-resp :submit_time)))
             (s/validate api/JobResponseDeprecated
-                                        ; fetch-job-map returns a FrameworkID object instead of a string
+                        ; fetch-job-map returns a FrameworkID object instead of a string
                         (assoc job-resp :framework_id (str (:framework_id job-resp))))))
 
         (testing "should work with a minimal job"
@@ -1255,7 +1255,7 @@
                 {:keys [uuid] :as job} (minimal-job)
                 framework-id #mesomatic.types.FrameworkID{:value "framework-id"}]
             (is (= {::api/results (str "submitted jobs " uuid)}
-                 (create-jobs!-wrapper conn {::api/jobs [job]})))
+                   (create-jobs!-wrapper conn {::api/jobs [job]})))
             (is (= (expected-job-map job framework-id)
                    (dissoc (api/fetch-job-map (db conn) framework-id uuid) :submit_time)))))
 
@@ -1263,10 +1263,10 @@
           (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
                 {:keys [uuid] :as job} (minimal-job)]
             (is (= {::api/results (str "submitted jobs " uuid)}
-                 (create-jobs!-wrapper conn {::api/jobs [job]})))
+                   (create-jobs!-wrapper conn {::api/jobs [job]})))
             (is (thrown-with-msg? ExecutionException
                                   (re-pattern (str ".*:job/uuid.*" uuid ".*already exists"))
-                                (create-jobs!-wrapper conn {::api/jobs [job]})))))
+                                  (create-jobs!-wrapper conn {::api/jobs [job]})))))
 
         (testing "should work with datasets"
           (let [conn (restore-fresh-database! "datomic:mem://mesos-api-test")
@@ -1289,7 +1289,7 @@
                 {:keys [uuid] :as job} (assoc (minimal-job) :application application)
                 framework-id #mesomatic.types.FrameworkID{:value "framework-id"}]
             (is (= {::api/results (str "submitted jobs " uuid)}
-                 (create-jobs!-wrapper conn {::api/jobs [job]})))
+                   (create-jobs!-wrapper conn {::api/jobs [job]})))
             (is (= (expected-job-map job framework-id)
                    (dissoc (api/fetch-job-map (db conn) framework-id uuid) :submit_time)))))
 
@@ -1298,7 +1298,7 @@
                 {:keys [uuid] :as job} (assoc (minimal-job) :expected-runtime 1)
                 framework-id #mesomatic.types.FrameworkID{:value "framework-id"}]
             (is (= {::api/results (str "submitted jobs " uuid)}
-                 (create-jobs!-wrapper conn {::api/jobs [job]})))
+                   (create-jobs!-wrapper conn {::api/jobs [job]})))
             (is (= (expected-job-map job framework-id)
                    (-> (api/fetch-job-map (db conn) framework-id uuid)
                        (dissoc :submit_time))))))
@@ -1308,7 +1308,7 @@
                 {:keys [uuid] :as job} (assoc (minimal-job) :disable-mea-culpa-retries true)
                 framework-id #mesomatic.types.FrameworkID{:value "framework-id"}]
             (is (= {::api/results (str "submitted jobs " uuid)}
-                 (create-jobs!-wrapper conn {::api/jobs [job]})))
+                   (create-jobs!-wrapper conn {::api/jobs [job]})))
             (is (= (expected-job-map job framework-id)
                    (-> (api/fetch-job-map (db conn) framework-id uuid)
                        (dissoc :submit_time))))))
@@ -1318,7 +1318,7 @@
                 {:keys [uuid] :as job} (assoc (minimal-job) :executor "cook")
                 framework-id #mesomatic.types.FrameworkID{:value "framework-id"}]
             (is (= {::api/results (str "submitted jobs " uuid)}
-                 (create-jobs!-wrapper conn {::api/jobs [job]})))
+                   (create-jobs!-wrapper conn {::api/jobs [job]})))
             (is (= (expected-job-map job framework-id)
                    (-> (api/fetch-job-map (db conn) framework-id uuid)
                        (dissoc :submit_time)
@@ -1329,7 +1329,7 @@
                 {:keys [uuid] :as job} (assoc (minimal-job) :executor "mesos")
                 framework-id #mesomatic.types.FrameworkID{:value "framework-id"}]
             (is (= {::api/results (str "submitted jobs " uuid)}
-                 (create-jobs!-wrapper conn {::api/jobs [job]})))
+                   (create-jobs!-wrapper conn {::api/jobs [job]})))
             (is (= (expected-job-map job framework-id)
                    (-> (api/fetch-job-map (db conn) framework-id uuid)
                        (dissoc :submit_time)
@@ -1340,7 +1340,7 @@
                 {:keys [uuid] :as job} (assoc (minimal-job) :supports_data_locality true)
                 framework-id #mesomatic.types.FrameworkID{:value "framework-id"}]
             (is (= {::api/results (str "submitted jobs " uuid)}
-                 (create-jobs!-wrapper conn {::api/jobs [job]})))
+                   (create-jobs!-wrapper conn {::api/jobs [job]})))
             (is (= (expected-job-map job framework-id)
                    (-> (api/fetch-job-map (db conn) framework-id uuid)
                        (dissoc :submit_time))))))))))
@@ -1863,7 +1863,7 @@
     (with-redefs [api/no-job-exceeds-quota? (constantly true)]
       (testing "successful-job-creation-response"
         (with-redefs [api/create-jobs! (fn [in-conn _]
-                                     (is (= conn in-conn)))
+                                         (is (= conn in-conn)))
                       job-submission-rate-limiter rt/AllowAllRateLimiter]
           (let [handler (api/create-jobs-handler conn task-constraints gpu-enabled? is-authorized-fn)
                 {:keys [status]} (handler (new-request))]
