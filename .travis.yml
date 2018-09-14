@@ -22,45 +22,45 @@ before_install:
 
 matrix:
   allow_failures:
-    - env: NAME='Cook Scheduler benchmark tests'
+    - name: 'Cook Scheduler benchmark tests'
 
   fast_finish: true
 
   include:
-    - env: NAME='Cook Scheduler and JobClient unit tests'
+    - name: 'Cook Scheduler and JobClient unit tests'
       before_script: cd scheduler && ./travis/setup.sh
       script:
         - pushd ../jobclient && mvn test
         - popd && lein with-profile +test test :all-but-benchmark
 
-    - env: NAME='Cook Scheduler integration tests with HTTP Basic Auth'
+    - name: 'Cook Scheduler integration tests with HTTP Basic Auth'
       services: docker
       install: sudo ./travis/install_mesos.sh
       before_script: cd integration && ./travis/prepare_integration.sh
       script: ./travis/run_integration.sh --auth=http-basic
 
-    - env: NAME='Cook Scheduler integration tests with Cook Executor'
+    - name: 'Cook Scheduler integration tests with Cook Executor'
       services: docker
       install: sudo ./travis/install_mesos.sh
       before_script: cd integration && ./travis/prepare_integration.sh
       script: ./travis/run_integration.sh --executor=cook
 
-    - env: NAME='Cook Scheduler integration tests with no pools and with HTTP Basic Auth'
+    - name: 'Cook Scheduler integration tests with no pools and with HTTP Basic Auth'
       services: docker
       install: sudo ./travis/install_mesos.sh
       before_script: cd integration && ./travis/prepare_integration.sh
       script: ./travis/run_integration.sh --pools=off --auth=http-basic
 
-    - env: NAME='Cook Scheduler Simulator tests'
+    - name: 'Cook Scheduler Simulator tests'
       services: docker
       install: sudo ./travis/install_mesos.sh
       before_script: cd simulator && ./travis/prepare_simulation.sh
       script: ./travis/run_simulation.sh
 
-    - env: NAME='Cook Scheduler benchmark tests'
+    - name: 'Cook Scheduler benchmark tests'
       before_script: cd scheduler && ./travis/setup.sh
       script: lein with-profile +test test :benchmark
 
-    - env: NAME='Cook Executor tests'
+    - name: 'Cook Executor tests'
       before_script: cd executor && ./travis/setup.sh
       script: ./travis/run_tests.sh
