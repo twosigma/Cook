@@ -909,7 +909,8 @@
                     max-considerable
                     (let [new-considerable (max 1 (long (* scaleback num-considerable)))] ;; With max=1000 and 1 iter/sec, this will take 88 seconds to reach 1
                       (log/info "Failed to match head, reducing number of considerable jobs" {:prev-considerable num-considerable
-                                                                                              :new-considerable new-considerable})
+                                                                                              :new-considerable new-considerable
+                                                                                              :pool pool})
                       new-considerable)
                     ))
                 (catch Exception e
