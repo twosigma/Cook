@@ -2564,13 +2564,10 @@ class CookTest(util.CookTest):
         self.assertEqual(1, len(data_locality_reasons))
 
 
-    @pytest.mark.serial
     @unittest.skipUnless(util.data_local_service_is_set(), "Requires a data local service")
+    @pytest.mark.serial
     def test_data_local_debug_endpoint(self):
-        job_uuid, resp = util.submit_job(self.cook_url, constraints=[["HOSTNAME",
-                                                                      "EQUALS",
-                                                                      "lol won't get scheduled"]],
-                                         datasets=[{'dataset': {'foo': 'wont-get-scheduled'}}])
+        job_uuid, resp = util.submit_job(self.cook_url, datasets=[{'dataset': {'foo': str(uuid.uuid4())}}])
         try:
             self.assertEqual(201, resp.status_code, resp.text)
             slaves = util.get_mesos_state(self.mesos_url)['slaves']
@@ -2594,6 +2591,14 @@ class CookTest(util.CookTest):
             for slave in slaves:
                 expected_costs[slave['hostname']] = 0.1
             self.assertEqual(expected_costs, cost_resp.json())
+
+            util.wait_for_jobs(self.cook_url, [job_uuid], 'completed')
+            settings = util.settings(self.cook_url)
+            timeout = settings['data-local-fitness-calculator']['cache-ttl-ms'] + 2 * settings['data-local-fitness-calculator']['update-interval-ms']
+            def get_debug_status_code():
+                resp = util.session.get(f'{self.cook_url}/data-local/{str(job_uuid)}')
+                return resp.status_code
+            util.wait_until(get_debug_status_code, lambda c: c == 404, timeout)
 
             missing_resp = util.session.get(f'{self.cook_url}/data-local/{str(uuid.uuid4())}')
             self.assertEqual(404, missing_resp.status_code, missing_resp.text)

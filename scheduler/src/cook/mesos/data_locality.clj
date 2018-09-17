@@ -170,12 +170,11 @@
   (let [{:keys [batch-size]} (config/data-local-fitness-config)
         {:keys [to-fetch to-remove]} (jobs-to-update db)
         batch (into [] (take batch-size to-fetch))]
-    (when (not (empty? batch))
-      (log/debug "Updating data local costs for" (map :job/uuid batch))
-      (let [new-costs (fetch-data-local-costs batch)]
-        (log/info "Got updated costs for" (count new-costs) "jobs")
-        (log/debug "Got updated costs" new-costs)
-        (update-data-local-costs new-costs to-remove)))))
+    (log/debug "Updating data local costs for" (map :job/uuid batch))
+    (let [new-costs (fetch-data-local-costs batch)]
+      (log/info "Got updated costs for" (count new-costs) "jobs, attempting to remove" (count to-remove) "stale costs")
+      (log/debug "Got updated costs" new-costs)
+      (update-data-local-costs new-costs to-remove))))
 
 (timers/deftimer [cook-mesos data-locality cost-update-duration])
 
@@ -200,11 +199,13 @@
       (if-not (empty? (or datasets []))
         (let [normalized-fitness (- 1.0
                                     (get-in (get-data-local-costs) [datasets (.getHostname target-vm)] 1.0))
-              data-local-fitness (* data-locality-weight normalized-fitness)]
+              data-local-fitness (* data-locality-weight normalized-fitness)
+              fitness (+ data-local-fitness (* (- 1 data-locality-weight) base-fitness))]
           (log/debug "Computed data local fitness:" {:hostname (.getHostname target-vm)
                                                      :job uuid
-                                                     :costs (get (get-data-local-costs) datasets)})
-          (+ data-local-fitness (* (- 1 data-locality-weight) base-fitness)))
+                                                     :costs (get (get-data-local-costs) datasets)
+                                                     :fitness fitness})
+          fitness)
         base-fitness))))
 
 (def data-local-fitness-calculator "cook.mesos.data-locality/make-data-local-fitness-calculator")
