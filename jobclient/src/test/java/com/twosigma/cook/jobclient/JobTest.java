@@ -216,4 +216,41 @@ public class JobTest {
 
         Assert.assertEquals(progressOutputFile, actualJob.getProgressRegexString());
     }
+
+    @Test
+    public void testJsonizeDatasets() {
+        final JSONObject dataset = new JSONObject();
+        dataset.put("foo", "bar");
+        final JSONArray datasets = new JSONArray();
+        datasets.put(dataset);
+
+        final Job.Builder jobBuilder = new Job.Builder();
+        populateBuilder(jobBuilder);
+        jobBuilder.setDatasets(datasets);
+        final Job basicJob = jobBuilder.build();
+        final JSONObject jsonJob = Job.jsonizeJob(basicJob);
+
+        Assert.assertEquals(datasets.toString(), basicJob.getDatasets().toString());
+        Assert.assertEquals(datasets.toString(), jsonJob.getJSONArray("datasets").toString());
+    }
+
+    @Test
+    public void testParseDatasets() {
+        final JSONObject dataset = new JSONObject();
+        dataset.put("foo", "bar");
+        final JSONArray datasets = new JSONArray();
+        datasets.put(dataset);
+
+        final Job.Builder jobBuilder = new Job.Builder();
+        populateBuilder(jobBuilder);
+        jobBuilder.setDatasets(datasets);
+
+        final JSONObject json = convertJobToJsonObject(jobBuilder.build());
+        final String jsonString = new JSONArray().put(json).toString();
+        final List<Job> jobs = Job.parseFromJSON(jsonString);
+        Assert.assertEquals(jobs.size(), 1);
+        final Job actualJob = jobs.get(0);
+
+        Assert.assertEquals(datasets.toString(), actualJob.getDatasets().toString());
+    }
 }

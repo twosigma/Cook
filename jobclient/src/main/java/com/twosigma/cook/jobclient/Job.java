@@ -101,6 +101,7 @@ final public class Job {
         private String _progressOutputFile;
         private String _progressRegexString;
         private String _user;
+        private JSONArray _datasets;
 
         /**
          * Prior to {@code build()}, command, memory and cpus for a job must be provided.<br>
@@ -139,7 +140,7 @@ final public class Job {
             }
             return new Job(_uuid, _name, _command, _executor, _memory, _cpus, _retries, _maxRuntime, _expectedRuntime, _status,
                     _priority, _isMeaCulpaRetriesDisabled, _instances, _env, _uris, _container, _labels, _constraints,
-                    _groups, _application, _progressOutputFile, _progressRegexString, _user);
+                    _groups, _application, _progressOutputFile, _progressRegexString, _user, _datasets);
         }
 
         /**
@@ -159,6 +160,7 @@ final public class Job {
             setUris(job.getUris());
             setContainer(job.getContainer());
             setLabels(job.getLabels());
+            setDatasets(job.getDatasets());
             if (job.isMeaCulpaRetriesDisabled()) {
                 disableMeaCulpaRetries();
             } else {
@@ -568,6 +570,16 @@ final public class Job {
             _user = user;
             return this;
         }
+
+        /**
+         * Sets the datasets for the job being built.
+         * @param datasets {@link JSONArray} the datasets
+         * @return this builder
+         */
+        public Builder setDatasets(JSONArray datasets) {
+            _datasets = datasets;
+            return this;
+        }
     }
 
     final private UUID _uuid;
@@ -595,12 +607,13 @@ final public class Job {
     final private String _progressOutputFile;
     final private String _progressRegexString;
     final private String _user;
+    final private JSONArray _datasets;
 
     private Job(UUID uuid, String name, String command, Executor executor, Double memory, Double cpus, Integer retries,
                 Long maxRuntime, Long expectedRuntime, Status status, Integer priority, Boolean isMeaCulpaRetriesDisabled,
                 List<Instance> instances, Map<String, String> env, List<FetchableURI> uris, JSONObject container,
                 Map<String, String> labels, Set<Constraint> constraints, List<UUID> groups, Application application,
-                String progressOutputFile, String progressRegexString, String user) {
+                String progressOutputFile, String progressRegexString, String user, JSONArray datasets) {
         _uuid = uuid;
         _name = name;
         _command = command;
@@ -630,6 +643,15 @@ final public class Job {
             }
         } else {
             _container = null;
+        }
+        if (datasets != null) {
+            try {
+                _datasets = new JSONArray(datasets.toString());
+            } catch (JSONException e) {
+                throw new RuntimeException("Failed to parse datasets string", e);
+            }
+        } else {
+            _datasets = null;
         }
         _labels = ImmutableMap.copyOf(labels);
         _constraints = ImmutableSet.copyOf(constraints);
@@ -809,6 +831,13 @@ final public class Job {
     }
 
     /**
+     * @return the job's datasets
+     */
+    public JSONArray getDatasets() {
+        return _datasets;
+    }
+
+    /**
      * @return the job instance with the running state or {@code null} if can't find one.
      */
     public Instance getRunningInstance() {
@@ -901,6 +930,9 @@ final public class Job {
         }
         if (job._expectedRuntime != null) {
             object.put("expected_runtime", job._expectedRuntime);
+        }
+        if (job._datasets != null) {
+            object.put("datasets", job._datasets);
         }
         return object;
     }
@@ -1062,6 +1094,9 @@ final public class Job {
             }
             if (json.has("progress_regex_string")) {
                 jobBuilder.setProgressRegexString(json.getString("progress_regex_string"));
+            }
+            if (json.has("datasets")) {
+                jobBuilder.setDatasets(json.getJSONArray("datasets"));
             }
             jobs.add(jobBuilder.build());
         }
