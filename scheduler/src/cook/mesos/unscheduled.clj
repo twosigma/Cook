@@ -19,7 +19,8 @@
             [cook.mesos.quota :as quota]
             [cook.mesos.share :as share]
             [cook.mesos.util :as util]
-            [clojure.edn :as edn]))
+            [clojure.edn :as edn]
+            [metatransaction.core :as mt]))
 
 (defn check-exhausted-retries
   [db job]
@@ -107,7 +108,7 @@
   "IFF the job is not first in the user's queue, returns
   [\"You have x other jobs ahead in the queue\", {:jobs [other job uuids]]}]"
   [conn job]
-  (let [db (d/db conn)
+  (let [db (mt/db conn)
         user (:job/user job)
         job-uuid (:job/uuid job)
         pool-name (-> job :job/pool :pool/name)
