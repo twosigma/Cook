@@ -532,7 +532,7 @@
    Returns {:matches (list of tasks that got matched to the offer)
             :failures (list of unmatched tasks, and why they weren't matched)}"
   [db ^TaskScheduler fenzo considerable offers rebalancer-reservation-atom]
-  (log/debug "Matching" (count offers) "offers to" (count considerable) "jobs with fenzo")
+  (log/info "Matching" (count offers) "offers to" (count considerable) "jobs with fenzo")
   (log/debug "offers to scheduleOnce" offers)
   (log/debug "tasks to scheduleOnce" considerable)
   (dl/update-cost-staleness-metric considerable)
@@ -907,7 +907,12 @@
                   ;; freedom in the form of fewer jobs to consider.
                   (if matched-head?
                     max-considerable
-                    (max 1 (long (* scaleback num-considerable))))) ;; With max=1000 and 1 iter/sec, this will take 88 seconds to reach 1
+                    (let [new-considerable (max 1 (long (* scaleback num-considerable)))] ;; With max=1000 and 1 iter/sec, this will take 88 seconds to reach 1
+                      (log/info "Failed to match head, reducing number of considerable jobs" {:prev-considerable num-considerable
+                                                                                              :new-considerable new-considerable
+                                                                                              :pool pool})
+                      new-considerable)
+                    ))
                 (catch Exception e
                   (log/error e "Offer handler encountered exception; continuing")
                   max-considerable))]
