@@ -236,8 +236,9 @@ class MultiUserCookTest(util.CookTest):
                 # And finally a request that gets cut off.
                 jobs3, resp3 = util.submit_jobs(self.cook_url, {}, 10)
                 self.assertEqual(resp3.status_code, 400)
-                self.assertEqual(resp3.text, "FOO")
-                self.assertEqual(dir(resp3), 400)
+                # The timestamp can change so we should only match on the prefix.
+                expectedPrefix = """{"error":"User rate_limit_while_creating_job0 is inserting too quickly. Not allowed to insert for"""
+                self.assertEqual(resp3.text[:len(expectedPrefix)], expectedPrefix)
             finally:
                 util.kill_jobs(self.cook_url,jobs1, assert_response=False)
                 util.kill_jobs(self.cook_url,jobs2, assert_response=False)
