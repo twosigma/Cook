@@ -21,10 +21,10 @@
            (java.util.concurrent TimeUnit)))
 
 (defprotocol RateLimiter
-  (spend-tokens! [this key tokens]
-    "Request this number of tokens. Does not block (or otherwise indicate we're in debt")
+  (spend! [this key resources]
+    "Request this number of resources. Does not block (or otherwise indicate we're in debt)")
   (time-until-out-of-debt-millis! [this key]
-    "Time, in milliseconds, until this rate limiter is out of debt for this key. Earns tokens first.")
+    "Time, in milliseconds, until this rate limiter is out of debt for this key. Earns resources first.")
   (enforce? [this]
     "Are we enforcing this policy?"))
 
@@ -42,7 +42,7 @@
   fast requests don't get throttled immediately. This doesn't let users get much above their quota ---
   The fact that we don't have a TBF says that we are either just starting up (not likely) or haven't
   gotten anything from them in a long time. (Assuming the TTL is set at least as high as
-  (:bucket-size/:tokens-replenished-per-minute)."
+  (:bucket-size/:tokens-replenished-per-minute))."
   [limiter key]
   (let [{:keys [tokens-replenished-per-minute max-tokens]} limiter
         supplier (proxy [Callable] []
@@ -61,10 +61,10 @@
       (let [tbf (tbf/earn-tokens (get-token-bucket-filter this key) (current-time-in-millis))]
         (.put cache key tbf)))))
 
-(defrecord TBF-RateLimiter
+(defrecord TokenBucketFilterRateLimiter
   [^long max-tokens ^double tokens-replenished-per-minute cache ^Boolean enforce?]
   RateLimiter
-  (spend-tokens!
+  (spend!
     [this key tokens]
     (let [key (get-key key)]
       (locking cache
@@ -87,8 +87,12 @@
   {:pre [(> max-tokens 0)
          (> tokens-replenished-per-minute 0)
          (> bucket-expire-minutes 0)
-         (or (true? enforce?) (false? enforce?))]}
-  (->TBF-RateLimiter max-tokens tokens-replenished-per-minute
+         (or (true? enforce?) (false? enforce?))
+         ; The bucket-expiration-minutes is used for GC'ing old buckets. It should be more than
+         ; max-tokens/tokens-replenished-per-minute. Otherwise, we might expire non-full buckets and a user could get
+         ; extra tokens via expiration. (New token-bucket-filter's are born with a full bucket).
+         (> bucket-expire-minutes (/ max-tokens tokens-replenished-per-minute))]}
+  (->TokenBucketFilterRateLimiter max-tokens tokens-replenished-per-minute
                      (-> (CacheBuilder/newBuilder)
                          (.expireAfterAccess bucket-expire-minutes (TimeUnit/MINUTES))
                          (.build))
@@ -99,6 +103,6 @@
   "A noop rate limiter that doesn't put a limit on anything. Has {:enforce? false} as the policy key."
   (reify
     RateLimiter
-    (spend-tokens! [_ _ _] 0)
+    (spend! [_ _ _] 0)
     (time-until-out-of-debt-millis! [_ _] 0)
     (enforce? [_] false)))

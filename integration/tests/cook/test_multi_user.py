@@ -214,24 +214,35 @@ class MultiUserCookTest(util.CookTest):
                 util.kill_jobs(self.cook_url, all_job_uuids, assert_response=False)
                 util.reset_limit(self.cook_url, 'quota', user.name, reason=self.current_name())
 
-    def test_ratelimit_while_creating_job(self):
+    def test_rate_limit_while_creating_job(self):
         # Make sure the rate limit cuts a user off.
+        if util.settings(self.cook_url)['rate-limit']['job-submission'] is None:
+            raise pytest.skip()
         user = self.user_factory.new_user()
         bucket_size = util.settings(self.cook_url)['rate-limit']['job-submission']['bucket-size']
-        if bucket_size > 3000:
-            pass; # Don't run in real production, only integration test environment.
-        command = 'sleep 1'
-        # First submit consumes all of the quota.
+        extra_size = util.settings(self.cook_url)['rate-limit']['job-submission']['tokens-replenished-per-minute']
+        if extra_size < 100:
+            extra_size = 100;
+        if bucket_size > 3000 or extra_size > 1000:
+            raise pytest.skip() # Don't run if we'd have to create a whole lot of jobs to run the test.
         with user:
-            # First, empty most but not all of the tocken bucket.
-            _, resp1 = util.submit_jobs(self.cook_url, {"command" : command}, bucket_size - 60)
-            # Then another 1060 to get us very negative.
-            _, resp2 = util.submit_jobs(self.cook_url, {"command" : command}, 1060)
-            # And finally a request that gets cut off.
-            _, resp3 = util.submit_jobs(self.cook_url, {"command" : command}, 10)
-        self.assertEqual(resp1.status_code, 201)
-        self.assertEqual(resp2.status_code, 201)
-        self.assertEqual(resp3.status_code, 400)
+            try:
+                # First, empty most but not all of the tocken bucket.
+                jobs1, resp1 = util.submit_jobs(self.cook_url, {}, bucket_size - 60)
+                self.assertEqual(resp1.status_code, 201)
+                # Then another 1060 to get us very negative.
+                jobs2, resp2 = util.submit_jobs(self.cook_url, {}, extra_size + 60)
+                self.assertEqual(resp2.status_code, 201)
+                # And finally a request that gets cut off.
+                jobs3, resp3 = util.submit_jobs(self.cook_url, {}, 10)
+                self.assertEqual(resp3.status_code, 400)
+                self.assertEqual(resp3.text, "FOO")
+                self.assertEqual(dir(resp3), 400)
+            finally:
+                util.kill_jobs(self.cook_url,jobs1, assert_response=False)
+                util.kill_jobs(self.cook_url,jobs2, assert_response=False)
+                util.kill_jobs(self.cook_url,jobs3, assert_response=False)
+
 
     def trigger_preemption(self, pool):
         """

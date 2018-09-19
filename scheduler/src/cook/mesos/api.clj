@@ -39,8 +39,7 @@
             [cook.mesos.unscheduled :as unscheduled]
             [cook.mesos.util :as util]
             [cook.mesos]
-            [cook.rate-limit :refer [job-submission-rate-limiter]]
-            [cook.rate-limit.generic :as rt]
+            [cook.rate-limit :as rate-limit]
             [cook.util :refer [ZeroInt PosNum NonNegNum PosInt NonNegInt PosDouble UserName NonEmptyString]]
             [datomic.api :as d :refer [q]]
             [liberator.core :as liberator]
@@ -1559,7 +1558,7 @@
                           groups)]
 
       (let [user (get-in ctx [:request :authorization/user])]
-        (rt/spend-tokens! job-submission-rate-limiter user (count jobs)))
+        (rate-limit/spend! rate-limit/job-submission-rate-limiter user (count jobs)))
 
       @(d/transact
          conn
@@ -1636,16 +1635,16 @@
                          pool-name (get params :pool)
                          pool (when pool-name (d/entity (d/db conn) [:pool/name pool-name]))
                          uuid->count (pc/map-vals count (group-by :uuid jobs))
-                         time-until-out-of-debt (rt/time-until-out-of-debt-millis! job-submission-rate-limiter user)
+                         time-until-out-of-debt (rate-limit/time-until-out-of-debt-millis! rate-limit/job-submission-rate-limiter user)
                          in-debt? (not (zero? time-until-out-of-debt))]
                      (try
                        (when in-debt?
                          (log/info (str "User " user " is inserting too quickly (will be out of debt in "
-                                        (/ time-until-out-of-debt 1000.0) " seconds)")))
+                                        (/ time-until-out-of-debt 1000.0) " seconds).")))
                        (cond
-                         (and in-debt? (rt/enforce? job-submission-rate-limiter))
+                         (and in-debt? (rate-limit/enforce? rate-limit/job-submission-rate-limiter))
                          [true {::error (str "User " user " is inserting too quickly. Not allowed to insert for "
-                                             (/ time-until-out-of-debt 1000.0) " seconds")}]
+                                             (/ time-until-out-of-debt 1000.0) " seconds.")}]
 
                          (empty? params)
                          [true {::error (str "Must supply at least one job or group to start."

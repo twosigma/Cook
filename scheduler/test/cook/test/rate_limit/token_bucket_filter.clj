@@ -36,7 +36,6 @@
   (is (not (approx= 1.001 -1.002)))
   (is (not (approx= -1.001 1.002))))
 
-
 (deftest test-earn-tokens
   (let [tbf (tbf/create-tbf 10.0 100 0)] ; 10/time unit, 100 max total, and the current time is 0
     (testing "Initial state not in debt"
@@ -82,8 +81,8 @@
             tbf3 (tbf/earn-tokens tbf2 12) ; Timestamps are out of order, so we don't actually earn here.
             tbf4 (tbf/earn-tokens tbf3 10)
             tbf5 (tbf/earn-tokens tbf4 20)
-            tbf6 (tbf/earn-tokens tbf5 30)
-            ]
+            tbf6 (tbf/earn-tokens tbf5 30)]
+
         (is (= 5 (:last-update tbf1)))
         (is (= 15 (:last-update tbf2)))
         (is (= 15 (:last-update tbf3)))

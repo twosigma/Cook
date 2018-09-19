@@ -82,10 +82,10 @@ If need it to bind to another port, you can specify that with the `:local-port` 
 
  * `:user-limit-per-m` is the max REST requests a single user can send in a minute. The default is 600 requests.
 
- * `:job-submission` is a dictionary with a _token bucket filter configuration_ that allows per-user restriction of the job creation rate.
+ * `:job-submission` is a dictionary with a _token bucket filter configuration_ that allows per-user restriction of the job submission rate.
  * `:expire-minutes` For our token-bucket-filter rate limits, we will create one token bucket filter rate limit object for each user. If a user has become very idle, we expire old unused rate-limit entries after a time period. This should be set to several hours, or at least as high as (`:bucket-size`/`:tokens-replenished-per-minute`)
 
-A _token bucket filter configuration_ has 3 keys `:enforce?` If this is off, the rate limit is not enforced however, violations of the rate limit are logged. Tokens are added to a bucket of maximum size `:bucket-size` at a rate of `:tokens-replenished-per-minute`. See https://en.wikipedia.org/wiki/Token_bucket.
+A _token bucket filter configuration_ has 3 keys, `:enforce`, `:tokens-replenished-per-minute` and `:bucket-size`. Tokens are added to a bucket of maximum size `:bucket-size` at a rate of `:tokens-replenished-per-minute`, `:enforce` is used to decide whether we reject requests that violate this rate limit. Even if enforcement is off violations of the rate limit are logged.  See https://en.wikipedia.org/wiki/Token_bucket.
 
 `:agent-query-cache`::
   Configure the cache used to store sandbox locations of tasks on different mesos agents.

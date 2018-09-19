@@ -24,8 +24,7 @@
             [cook.mesos.api :as api]
             [cook.mesos.schema :as schema]
             [cook.mesos.util :as util]
-            [cook.rate-limit :refer [job-submission-rate-limiter]]
-            [cook.rate-limit.generic :as rt]
+            [cook.rate-limit :as rate-limit]
             [datomic.api :as d :refer (q db)]
             [mount.core :as mount]
             [plumbing.core :refer [mapply]]
@@ -50,7 +49,7 @@
                                               (Object.)
                                               (atom true))]
                         (fn [request]
-                          (with-redefs [job-submission-rate-limiter rt/AllowAllRateLimiter]
+                          (with-redefs [rate-limit/job-submission-rate-limiter rate-limit/AllowAllRateLimiter]
                             (handler request)))))
         ; Add impersonation handler (current user is authorized to impersonate)
         api-handler-impersonation ((create-impersonation-middleware #{user}) api-handler)
@@ -322,10 +321,10 @@
                       :pool/state :pool.state/active
                       :pool/dru-mode dru-mode}]))
 
-(defn create-jobs!-wrapper
+(defn create-jobs!
   "Wrapper around create-jobs! That runs them with the ratelimiter preconfigured to use rate limiter that
   allows all requests through."
   [conn context]
   (with-redefs
-    [job-submission-rate-limiter rt/AllowAllRateLimiter]
+    [rate-limit/job-submission-rate-limiter rate-limit/AllowAllRateLimiter]
     (api/create-jobs! conn context)))

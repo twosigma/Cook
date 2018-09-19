@@ -27,7 +27,7 @@
             [cook.impersonation :refer (impersonation-authorized-wrapper)]
             [cook.mesos.pool :as pool]
             ; This explicit require is needed so that mount can see the defstate defined in this namespace.
-            ; cook.rate-limit and everything else under cook.mesos.api is normally hidden from defstate because
+            ; cook.rate-limit and everything else under cook.mesos.api is normally hidden from mount's defstate because
             ; cook.mesos.api is loaded via util/lazy-load-var, not via 'ns :require'
             [cook.rate-limit]
             [cook.util :as util]
@@ -322,11 +322,9 @@
   [config-file-path & _]
   (println "Cook" @util/version "( commit" @util/commit ")")
   (try
-    (mount/start-with-args (cook.config/read-config config-file-path))
     ; Note: If the mount/start-with-args fails to initialize a defstate S, and/or you get weird errors on startup,
     ; you need to require S's namespace with ns :require. 'ns :require' is how mount finds defstates to initialize.
-    ; Note, we cannot directly require cook.mesos.api. This namespace is normally hidden from mount because cook.mesos.api is
-    ; loaded via util/lazy-load-var.
+    (mount/start-with-args (cook.config/read-config config-file-path))
     (pool/guard-invalid-default-pool (d/db datomic/conn))
     (metrics-jvm/instrument-jvm)
     (let [server (scheduler-server config)]

@@ -20,7 +20,7 @@
             [cook.mesos.api :as api]
             [cook.mesos.monitor :as monitor]
             [cook.mesos.share :as share]
-            [cook.test.testutil :refer [restore-fresh-database! setup create-jobs!-wrapper]]
+            [cook.test.testutil :refer [restore-fresh-database! setup] :as testutil]
             [datomic.api :as d :refer [db]]
             [metrics.counters :as counters])
   (:import (java.util UUID)
@@ -50,7 +50,7 @@
     (is (= 0 (counter ["hungry" "users"])))
     (is (= 0 (counter ["satisfied" "users"])))
 
-    (create-jobs!-wrapper conn {::api/jobs [job1 job2]})
+    (testutil/create-jobs! conn {::api/jobs [job1 job2]})
 
     (monitor/set-stats-counters! (db conn) stats-atom)
     (is (= 0 (counter ["running" "all" "jobs"])))
@@ -197,7 +197,7 @@
     (is (= 0 (counter ["hungry" "users"])))
     (is (= 0 (counter ["satisfied" "users"])))
 
-    (create-jobs!-wrapper conn {::api/jobs [job3]})
+    (testutil/create-jobs! conn {::api/jobs [job3]})
     (with-redefs [share/get-share (constantly {:cpus 0 :mem 0})]
       (monitor/set-stats-counters! (db conn) stats-atom))
     (is (= 0 (counter ["running" "all" "jobs"])))
