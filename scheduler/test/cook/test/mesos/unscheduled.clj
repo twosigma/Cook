@@ -79,6 +79,9 @@
         running-job-id2 (-> (create-dummy-job conn :user "mforsyth"
                                               :ncpus 1.0 :memory 3.1
                                               :job-state :job.state/running))
+        uncommitted-job-id (create-dummy-job conn :user "mforsyth"
+                                             :job-state :job.state/waiting
+                                             :committed? false)
         waiting-job-id (-> (create-dummy-job conn :user "mforsyth"
                                              :ncpus 1.0 :memory 3.0
                                              :job-state :job.state/waiting

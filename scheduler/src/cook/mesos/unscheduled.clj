@@ -19,8 +19,7 @@
             [cook.mesos.quota :as quota]
             [cook.mesos.share :as share]
             [cook.mesos.util :as util]
-            [clojure.edn :as edn]
-            [metatransaction.core :as mt]))
+            [clojure.edn :as edn]))
 
 (defn check-exhausted-retries
   [db job]
@@ -108,7 +107,7 @@
   "IFF the job is not first in the user's queue, returns
   [\"You have x other jobs ahead in the queue\", {:jobs [other job uuids]]}]"
   [conn job]
-  (let [db (mt/db conn)
+  (let [db (d/db conn)
         user (:job/user job)
         job-uuid (:job/uuid job)
         pool-name (-> job :job/pool :pool/name)
@@ -118,8 +117,9 @@
                                     (filter util/instance-running?)
                                     last))
                        (util/jobs-by-user-and-state db user :job.state/running pool-name))
-        pending-tasks (map util/create-task-ent
-                           (util/jobs-by-user-and-state db user :job.state/waiting pool-name))
+        pending-tasks (->> (util/jobs-by-user-and-state db user :job.state/waiting pool-name)
+                           (filter (fn [job] (-> job :job/commit-latch :commit-latch/committed?)))
+                           (map util/create-task-ent))
         all-tasks (into running-tasks pending-tasks)
         sorted-tasks (vec (sort (util/same-user-task-comparator) all-tasks))
         queue-pos (first
