@@ -117,8 +117,9 @@
                                     (filter util/instance-running?)
                                     last))
                        (util/jobs-by-user-and-state db user :job.state/running pool-name))
-        pending-tasks (map util/create-task-ent
-                           (util/jobs-by-user-and-state db user :job.state/waiting pool-name))
+        pending-tasks (->> (util/jobs-by-user-and-state db user :job.state/waiting pool-name)
+                           (filter (fn [job] (-> job :job/commit-latch :commit-latch/committed?)))
+                           (map util/create-task-ent))
         all-tasks (into running-tasks pending-tasks)
         sorted-tasks (vec (sort (util/same-user-task-comparator) all-tasks))
         queue-pos (first
