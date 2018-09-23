@@ -160,9 +160,11 @@ export COOK_MULTI_CLUSTER=
 export COOK_MASTER_SLAVE=
 export COOK_SLAVE_URL=http://localhost:12323
 export COOK_MESOS_LEADER_URL=${MINIMESOS_MASTER}
-echo "Using Mesos leader URL: ${COOK_MESOS_LEADER_URL}"
-pytest -n4 -v --color=no --timeout-method=thread --boxed -m "not serial" || test_failures=true
-pytest -n0 -v --color=no --timeout-method=thread --boxed -m "serial" || test_failures=true
+{
+    echo "Using Mesos leader URL: ${COOK_MESOS_LEADER_URL}"
+    pytest -n4 -v --color=no --timeout-method=thread --boxed -m "not serial" || test_failures=true
+    pytest -n0 -v --color=no --timeout-method=thread --boxed -m "serial" || test_failures=true
+} &> >(tee ./log/pytest.log)
 
 # If there were failures, then we should save the logs
 if [ "$test_failures" = true ]; then
