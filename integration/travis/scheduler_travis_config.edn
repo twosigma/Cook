@@ -33,7 +33,7 @@
                                 :cpus 10}}
  :rate-limit {:expire-minutes 120 ; Expire unused rate limit entries after 2 hours.
               ; Keep these job-submisison values as they are for integration tests. Making them smaller can cause
-              ; spurious failures,  and making them larger will cause the rate-limit unit test to fail.
+              ; spurious failures, and making them larger will cause the rate-limit integration test to skip itself.
               :job-submission {:bucket-size 1000
                                :enforce? true
                                :tokens-replenished-per-minute 600}

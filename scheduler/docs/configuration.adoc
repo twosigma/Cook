@@ -78,7 +78,7 @@ If need it to bind to another port, you can specify that with the `:local-port` 
   The value of this key is a set of usernames who should be considered administrators when using the `configfile-admins-auth` authorization-fn.
 
 `:rate-limit`::
-  Configure rate limits for the scheduler. `rate-limit` is a map with three possible keys `:user-limit-per-m` , `:job-submission`, `:expire-minutes`. These keys control rate limits.
+  Configure rate limits for the scheduler. `rate-limit` is a map with three possible keys: `:user-limit-per-m` , `:job-submission`, `:expire-minutes`. These keys control rate limits.
 
  * `:user-limit-per-m` is the max REST requests a single user can send in a minute. The default is 600 requests.
 
