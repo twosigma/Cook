@@ -45,8 +45,8 @@
   (:bucket-size/:tokens-replenished-per-minute))."
   [limiter key]
   (let [{:keys [tokens-replenished-per-minute max-tokens]} limiter
-        supplier (proxy [Callable] []
-                   (call []
+        supplier (reify Callable
+                   (call [_]
                      (tbf/create-tbf (/ tokens-replenished-per-minute 60000.)
                                      max-tokens
                                      (current-time-in-millis)
