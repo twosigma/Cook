@@ -17,6 +17,7 @@
   (:require [clj-time.coerce :as tc]
             [clj-time.core :as t]
             [clj-time.format :as tf]
+            [cook.cache :as ccache]
             [cook.config :as config]
             [cook.mesos.pool :as pool]
             [cook.mesos.schema :as schema]
@@ -43,25 +44,12 @@
       (.expireAfterAccess 2 TimeUnit/HOURS)
       (.build)))
 
-(defn lookup-cache!
-  "Generic cache. Caches under a key (extracted from the item with extract-key-fn. Uses miss-fn to fill
-  any misses. Caches only positive hits where both functions return non-nil"
-  [^Cache cache extract-key-fn miss-fn item]
-  (if-let [key (extract-key-fn item)]
-    (if-let [result (.getIfPresent cache key)]
-      result ; we got a hit.
-      (let [new-result (miss-fn item)]
-        ; Only cache non-nil
-        (when new-result
-          (.put cache key new-result))
-        new-result))
-    (miss-fn item)))
 
 (defn lookup-cache-datomic-entity!
   "Specialized function for caching where datomic entities are the key.
   Extracts :db/id so that we don't keep the entity alive in the cache."
   [cache miss-fn entity]
-  (lookup-cache! cache :db/id miss-fn entity))
+  (ccache/lookup-cache! cache :db/id miss-fn entity))
 
 (defonce ^Cache job-ent->resources-cache (new-cache))
 (defonce ^Cache job-ent->pool-cache (new-cache))
@@ -612,7 +600,7 @@
         extract-key
         (fn [item]
           (or (:db/id item) (:db/id (:job/_instance item))))]
-    (lookup-cache! task->feature-vector-cache extract-key task->feature-vector-miss task)))
+    (ccache/lookup-cache! task->feature-vector-cache extract-key task->feature-vector-miss task)))
 
 (defn same-user-task-comparator
   "Comparator to order same user's tasks"
