@@ -469,10 +469,8 @@ def kill_jobs(cook_url, jobs, assert_response=True, expected_status_code=204):
     response = []
     for chunk in chunks:
         params = {'job': [unpack_uuid(j) for j in chunk]}
-        print("Params: "+repr(params))
         response = session.delete(f'{cook_url}/rawscheduler', params=params)
         if assert_response:
-            print("Response was: "+str(response.status_code)+" and " + str(response.text))
             assert expected_status_code == response.status_code, response.text
     return response
 
