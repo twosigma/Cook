@@ -464,10 +464,16 @@ def retry_jobs(cook_url, assert_response=True, use_deprecated_post=False, **kwar
 
 def kill_jobs(cook_url, jobs, assert_response=True, expected_status_code=204):
     """Kill one or more jobs"""
-    params = {'job': [unpack_uuid(j) for j in jobs]}
-    response = session.delete(f'{cook_url}/rawscheduler', params=params)
-    if assert_response:
-        assert expected_status_code == response.status_code, response.text
+    chunksize = 100
+    chunks = [jobs[i:i+chunksize] for i in range(0,len(jobs),chunksize)]
+    response = []
+    for chunk in chunks:
+        params = {'job': [unpack_uuid(j) for j in chunk]}
+        print("Params: "+repr(params))
+        response = session.delete(f'{cook_url}/rawscheduler', params=params)
+        if assert_response:
+            print("Response was: "+str(response.status_code)+" and " + str(response.text))
+            assert expected_status_code == response.status_code, response.text
     return response
 
 

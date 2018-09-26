@@ -226,6 +226,7 @@ class MultiUserCookTest(util.CookTest):
         if bucket_size > 3000 or extra_size > 1000:
             raise pytest.skip() # Don't run if we'd have to create a whole lot of jobs to run the test.
         with user:
+            jobs1 = jobs2 = []
             try:
                 # First, empty most but not all of the tocken bucket.
                 jobs1, resp1 = util.submit_jobs(self.cook_url, {}, bucket_size - 60)
@@ -240,10 +241,8 @@ class MultiUserCookTest(util.CookTest):
                 expectedPrefix = """{"error":"User rate_limit_while_creating_job0 is inserting too quickly. Not allowed to insert for"""
                 self.assertEqual(resp3.text[:len(expectedPrefix)], expectedPrefix)
             finally:
-                util.kill_jobs(self.cook_url,jobs1, assert_response=False)
-                util.kill_jobs(self.cook_url,jobs2, assert_response=False)
-                util.kill_jobs(self.cook_url,jobs3, assert_response=False)
-
+                util.kill_jobs(self.cook_url,jobs1)
+                util.kill_jobs(self.cook_url,jobs2)
 
     def trigger_preemption(self, pool):
         """
