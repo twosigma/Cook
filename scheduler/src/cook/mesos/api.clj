@@ -29,6 +29,7 @@
             [cook.config :as config]
             [cook.cors :as cors]
             [cook.datomic :as datomic]
+            [cook.hooks :as hooks]
             [cook.mesos.data-locality :as dl]
             [cook.mesos.pool :as pool]
             [cook.mesos.quota :as quota]
@@ -1635,6 +1636,7 @@
                          pool-name (get params :pool)
                          pool (when pool-name (d/entity (d/db conn) [:pool/name pool-name]))
                          uuid->count (pc/map-vals count (group-by :uuid jobs))
+                         {:keys [any-bad? sample-error]} (hooks/hook-jobs-submission jobs)
                          time-until-out-of-debt (rate-limit/time-until-out-of-debt-millis! rate-limit/job-submission-rate-limiter user)
                          in-debt? (not (zero? time-until-out-of-debt))]
                      (try
@@ -1672,10 +1674,13 @@
                                              (set (map :uuid groups))
                                              %
                                              :override-group-immutability?
-                                             override-group-immutability?) jobs)]
-                           [false {::groups groups
-                                   ::jobs jobs
-                                   ::pool pool}]))
+                                             override-group-immutability?) jobs)
+                               {:keys [result message]} (hooks/hook-jobs-submission jobs)]
+                           (if (= :ok result)
+                             [false {::groups groups
+                                     ::jobs jobs
+                                     ::pool pool}]
+                             [true {::error (message)}])))
                        (catch Exception e
                          (log/warn e "Malformed raw api request")
                          [true {::error (.getMessage e)}]))))

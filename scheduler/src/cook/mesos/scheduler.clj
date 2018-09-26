@@ -26,6 +26,7 @@
             [clojure.tools.logging :as log]
             [cook.config :as config]
             [cook.datomic :as datomic]
+            [cook.hooks :as hooks]
             [cook.mesos.constraints :as constraints]
             [cook.mesos.data-locality :as dl]
             [cook.mesos.dru :as dru]
@@ -655,6 +656,11 @@
   (->> pending-jobs
        (filter-based-on-quota user->quota user->usage)
        (filter (fn [job] (util/job-allowed-to-start? db job)))
+       (take (* 2 num-considerable))
+       ; Yes there is some risk of head-of-line blocking here. If we handle deferred jobs
+       ; better we can clean this up.
+       (filter hooks/filter-jobs-invocations)
+       ; TODO: Where do we hook in to remove bad jobs? 
        (take num-considerable)))
 
 (defn matches->job-uuids
