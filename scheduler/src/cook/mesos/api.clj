@@ -39,6 +39,7 @@
             [cook.mesos.unscheduled :as unscheduled]
             [cook.mesos.util :as util]
             [cook.mesos]
+            [cook.rate-limit :as rate-limit]
             [cook.util :refer [ZeroInt PosNum NonNegNum PosInt NonNegInt PosDouble UserName NonEmptyString]]
             [datomic.api :as d :refer [q]]
             [liberator.core :as liberator]
@@ -1524,7 +1525,7 @@
   to Datomic.
   Preconditions:  The context must already have been populated with both
   ::jobs and ::groups, which specify the jobs and job groups."
-  [conn {:keys [::groups ::jobs ::pool]}]
+  [conn {:keys [::groups ::jobs ::pool] :as ctx}]
   (try
     (log/info "Submitting jobs through raw api:" (map #(dissoc % :command) jobs))
     (let [group-uuids (set (map :uuid groups))
@@ -1555,6 +1556,10 @@
                                                   (:uuid %)
                                                   []))
                           groups)]
+
+      (let [user (get-in ctx [:request :authorization/user])]
+        (rate-limit/spend! rate-limit/job-submission-rate-limiter user (count jobs)))
+
       @(d/transact
          conn
          (-> (vec group-asserts)
@@ -1629,9 +1634,18 @@
                          override-group-immutability? (boolean (get params :override-group-immutability))
                          pool-name (get params :pool)
                          pool (when pool-name (d/entity (d/db conn) [:pool/name pool-name]))
-                         uuid->count (pc/map-vals count (group-by :uuid jobs))]
+                         uuid->count (pc/map-vals count (group-by :uuid jobs))
+                         time-until-out-of-debt (rate-limit/time-until-out-of-debt-millis! rate-limit/job-submission-rate-limiter user)
+                         in-debt? (not (zero? time-until-out-of-debt))]
                      (try
+                       (when in-debt?
+                         (log/info (str "User " user " is inserting too quickly (will be out of debt in "
+                                        (/ time-until-out-of-debt 1000.0) " seconds).")))
                        (cond
+                         (and in-debt? (rate-limit/enforce? rate-limit/job-submission-rate-limiter))
+                         [true {::error (str "User " user " is inserting too quickly. Not allowed to insert for "
+                                             (/ time-until-out-of-debt 1000.0) " seconds.")}]
+
                          (empty? params)
                          [true {::error (str "Must supply at least one job or group to start."
                                              "Are you specifying that this is application/json?")}]
@@ -1648,7 +1662,6 @@
                                                                           (map first)
                                                                           (map str)
                                                                           (into [])))}]
-
                          :else
                          (let [groups (mapv #(validate-and-munge-group (db conn) %) groups)
                                jobs (mapv #(validate-and-munge-job
@@ -1690,7 +1703,6 @@
      ;; (see :allowed-methods above). It is simply what liberator eventually calls to persist
      ;; resource changes when conflict? has returned false.
      :put! (partial create-jobs! conn)
-
      :post! (partial create-jobs! conn)
      :handle-exception (fn [{:keys [exception]}]
                          (if (datomic/transaction-timeout? exception)
@@ -2763,7 +2775,6 @@
                                 400 {:description "One or more of the jobs were incorrectly specified."}
                                 409 {:description "One or more of the jobs UUIDs are already in use."}}
                     :handler (create-jobs-handler conn task-constraints gpu-enabled? is-authorized-fn)}}))
-
         (c-api/context
           "/info" []
           (c-api/resource
