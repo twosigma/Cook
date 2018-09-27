@@ -55,7 +55,6 @@
 (defn result-reducer
   [{accum-status :status accum-message :message accum-retry :retry-at :as accum}
    {in-status :status in-message :message in-retry :retry-at :as in}]
-
   (cond
     ; If either is OK, use the other.
     (= accum-status :ok) in
@@ -113,24 +112,23 @@
 (defn hook-jobs-submission
   [jobs]
   "Run the hooks for a set of jobs at submission time."
-  (println (str "QUERY-timeout " TODO-query-timeout))
   (let [deadline (->> TODO-query-timeout ; Deadline is half of the query timeout.
-                     (#(/ % 2))
-                     t/seconds ; TODO: Check units.
-                     (t/plus- (t/now)))]
+                      (#(/ % 2))
+                      t/seconds ; TODO: Check units.
+                      (t/plus- (t/now)))]
     (->> jobs
-         (pmap #(ccache/lookup-cache-with-expiration! job-submission-cache
-                                                :uuid
-                                                (partial run-all-job-submisison-hooks-and-merge-result deadline) %))
+         (map #(ccache/lookup-cache-with-expiration!
+                 job-submission-cache
+                 :uuid
+                 (partial run-all-job-submisison-hooks-and-merge-result deadline) %))
          (reduce result-reducer {:status :ok}))))
 
 
 (defn filter-jobs-invocations
   "Run the hooks for a set of jobs at invocation time, filter jobs that are not ready yet."
   [job]
-  (let [{:keys [status]} (ccache/lookup-cache-with-expiration! job-invocations-cache
-                                                        :uuid
-                                                        run-all-check-job-invocation-and-merge-result job)]
+  (let [{:keys [status]} (ccache/lookup-cache-with-expiration!
+                           job-invocations-cache
+                           :uuid
+                           run-all-check-job-invocation-and-merge-result job)]
     (= status :ok)))
-
-
