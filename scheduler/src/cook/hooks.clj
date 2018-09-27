@@ -19,6 +19,8 @@
   (:import (com.google.common.cache CacheBuilder)
            (java.util.concurrent TimeUnit)))
 
+
+
 (defprotocol ScheduleHooks
   (check-job-submission-default [this]
     "The default return value to use if check-job-submission if we've run out of time.")
@@ -51,6 +53,12 @@
       delay a job indefinitely, after a certain time (set via XXXX in the config.edn), a job will be killed automatically.
 
       In addition, certain rate limits apply for re-invocation."))
+
+
+(def TODO-query-timeout 60); Should get the default query timeout out of config and stuff it here.
+(def job-max-deferral 300) ; TODO: This should come from the config.
+
+
 
 (defn result-reducer
   [{accum-status :status accum-message :message accum-retry :retry-at :as accum}
@@ -88,6 +96,7 @@
                                     (check-job-submission hook-ob job-map)
                                     ; Default to accept.
                                     (check-job-submission-default hook-ob))))]
+
     (->> (get-hook-objects job-map)
          (pmap wrap-check-submission)
          (reduce result-reducer {:status :ok}))))
@@ -105,9 +114,23 @@
       (.expireAfterAccess 2 TimeUnit/HOURS)
       (.build)))
 
-(defonce job-submission-cache (new-cache))
+
 (defonce job-invocations-cache (new-cache))
-(def TODO-query-timeout 60); Should get the default query timeout out of config and stuff it here.
+(defn job-unschedule-kill-for-staleness [job]
+  "This job has become OK to run. So, take it off of the murder list"
+  ; TODO
+  )
+(defn job-schedule-kill-for-staleness [job]
+  "This job has entered the murder list. To avoid :later jobs from clogging up the queue, we murder them
+  once they get sufficiently old. They should be murdered TODO-murder-time after they are first contracted to
+  be murdered. Murders can be cancelled via job-murder-rescue."
+  ; TODO
+  )
+
+(defn job-kill-bad [job]
+  "This job is marked as bad by a plugin, kill it."
+  ; TODO
+  )
 
 (defn hook-jobs-submission
   [jobs]
@@ -117,18 +140,26 @@
                       t/seconds ; TODO: Check units.
                       (t/plus- (t/now)))]
     (->> jobs
-         (map #(ccache/lookup-cache-with-expiration!
-                 job-submission-cache
-                 :uuid
-                 (partial run-all-job-submisison-hooks-and-merge-result deadline) %))
+         (map #(partial run-all-job-submisison-hooks-and-merge-result deadline %))
          (reduce result-reducer {:status :ok}))))
 
 
 (defn filter-jobs-invocations
   "Run the hooks for a set of jobs at invocation time, filter jobs that are not ready yet."
   [job]
-  (let [{:keys [status]} (ccache/lookup-cache-with-expiration!
+  (let [miss-handler (fn miss-handler [job]
+                       (let [{:keys [status] :as result} (run-all-check-job-invocation-and-merge-result job)]
+                         (cond (= status :ok)
+                               (job-unschedule-kill-for-staleness job)
+                               (= status :later)
+                               (job-schedule-kill-for-staleness job)
+                               (= status :error)
+                               (do
+                                 (unschedule-kill-for-staleness job)
+                                 (job-kill-bad job)))
+                         status))
+        {:keys [status]} (ccache/lookup-cache-with-expiration!
                            job-invocations-cache
                            :uuid
-                           run-all-check-job-invocation-and-merge-result job)]
+                           miss-handler job)]
     (= status :ok)))
