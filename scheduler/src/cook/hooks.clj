@@ -15,7 +15,9 @@
 ;;
 (ns cook.hooks
   (:require [clj-time.core :as t]
-            [cook.cache :as ccache]))
+            [cook.cache :as ccache])
+  (:import (com.google.common.cache CacheBuilder)
+           (java.util.concurrent TimeUnit)))
 
 (defprotocol ScheduleHooks
   (check-job-submission-default [this]
@@ -53,6 +55,7 @@
 (defn result-reducer
   [{accum-status :status accum-message :message accum-retry :retry-at :as accum}
    {in-status :status in-message :message in-retry :retry-at :as in}]
+
   (cond
     ; If either is OK, use the other.
     (= accum-status :ok) in
@@ -97,17 +100,24 @@
        (pmap #(check-job-invocation % job-map))
        (reduce result-reducer {:status :ok})))
 
-(defonce job-submission-cache ())
-(defonce job-invocations-cache ())
-(defonce TODO-query-timeout 0); Should get the default query timeout out of config and stuff it here.
+(defn new-cache []
+  (-> (CacheBuilder/newBuilder)
+      (.maximumSize 200000)
+      (.expireAfterAccess 2 TimeUnit/HOURS)
+      (.build)))
+
+(defonce job-submission-cache (new-cache))
+(defonce job-invocations-cache (new-cache))
+(def TODO-query-timeout 60); Should get the default query timeout out of config and stuff it here.
 
 (defn hook-jobs-submission
   [jobs]
   "Run the hooks for a set of jobs at submission time."
-  (let [deadline (-> TODO-query-timeout ; Deadline is half of the query timeout.
-                     #(/ % 2)
-                     t/seconds ; TODO: CHeck units.
-                     (t/plus t/now))]
+  (println (str "QUERY-timeout " TODO-query-timeout))
+  (let [deadline (->> TODO-query-timeout ; Deadline is half of the query timeout.
+                     (#(/ % 2))
+                     t/seconds ; TODO: Check units.
+                     (t/plus- (t/now)))]
     (->> jobs
          (pmap #(ccache/lookup-cache-with-expiration! job-submission-cache
                                                 :uuid
