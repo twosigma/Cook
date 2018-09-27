@@ -1,5 +1,6 @@
 import json
 import logging
+import time
 import unittest
 
 import pytest
@@ -220,7 +221,7 @@ class MultiUserCookTest(util.CookTest):
             raise pytest.skip()
         user = self.user_factory.new_user()
         bucket_size = util.settings(self.cook_url)['rate-limit']['job-submission']['bucket-size']
-        extra_size = util.settings(self.cook_url)['rate-limit']['job-submission']['tokens-replenished-per-minute']
+        extra_size = replenishment_rate = util.settings(self.cook_url)['rate-limit']['job-submission']['tokens-replenished-per-minute']
         if extra_size < 100:
             extra_size = 100;
         if bucket_size > 3000 or extra_size > 1000:
@@ -240,9 +241,15 @@ class MultiUserCookTest(util.CookTest):
                 # The timestamp can change so we should only match on the prefix.
                 expectedPrefix = """{"error":"User rate_limit_while_creating_job0 is inserting too quickly. Not allowed to insert for"""
                 self.assertEqual(resp3.text[:len(expectedPrefix)], expectedPrefix)
+                # Earn back 70 seconds of tokens.
+                time.sleep(70.0*extra_size/replenishment_rate)
+                jobs4, resp4 = util.submit_jobs(self.cook_url, {}, 10)
+                self.assertEqual(resp4.status_code, 201)
+
             finally:
                 util.kill_jobs(self.cook_url,jobs1)
                 util.kill_jobs(self.cook_url,jobs2)
+                util.kill_jobs(self.cook_url,jobs4)
 
     def trigger_preemption(self, pool):
         """
