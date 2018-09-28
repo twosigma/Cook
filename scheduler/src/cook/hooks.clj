@@ -155,7 +155,7 @@
                                (job-schedule-kill-for-staleness job)
                                (= status :error)
                                (do
-                                 (unschedule-kill-for-staleness job)
+                                 (job-unschedule-kill-for-staleness job)
                                  (job-kill-bad job)))
                          status))
         {:keys [status]} (ccache/lookup-cache-with-expiration!

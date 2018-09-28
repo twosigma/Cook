@@ -7,11 +7,7 @@
             )
   (:import (com.google.common.cache CacheLoader Cache LoadingCache CacheBuilder))
   (:import (com.google.common.base Function)
-           (java.util.concurrent TimeUnit))
-  )
-
-
-
+           (java.util.concurrent TimeUnit)))
 
 
 (def hit-timeout (t/minutes 30)) ; How long store a good image status
