@@ -100,63 +100,65 @@
 
 (timers/deftimer [cook-mesos scheduler generate-user-usage-map-duration])
 
-(meters/defmeter [cook-mesos scheduler tasks-completed])
-(meters/defmeter [cook-mesos scheduler tasks-completed-mem])
-(meters/defmeter [cook-mesos scheduler tasks-completed-cpus])
-(histograms/defhistogram [cook-mesos scheduler hist-task-complete-times])
-(meters/defmeter [cook-mesos scheduler task-complete-times])
+(defn completion-rate-meter
+  [status pool]
+  (let [status-string (case status
+                        :succeeded "tasks-succeeded"
+                        :failed "tasks-failed"
+                        :completed "tasks-completed")]
+    (meters/meter ["cook-mesos" "scheduler" status-string pool])))
 
-(meters/defmeter [cook-mesos scheduler tasks-succeeded])
-(meters/defmeter [cook-mesos scheduler tasks-succeeded-mem])
-(meters/defmeter [cook-mesos scheduler tasks-succeeded-cpus])
-(histograms/defhistogram [cook-mesos scheduler hist-task-succeed-times])
-(meters/defmeter [cook-mesos scheduler task-succeed-times])
+(defn completion-mem-meter
+  [status pool]
+  (let [status-string (case status
+                        :succeeded "tasks-succeeded-mem"
+                        :failed "tasks-failed-mem"
+                        :completed "tasks-completed-mem")]
+    (meters/meter ["cook-mesos" "scheduler" status-string pool])))
 
-(meters/defmeter [cook-mesos scheduler tasks-failed])
-(meters/defmeter [cook-mesos scheduler tasks-failed-mem])
-(meters/defmeter [cook-mesos scheduler tasks-failed-cpus])
-(histograms/defhistogram [cook-mesos scheduler hist-task-fail-times])
-(meters/defmeter [cook-mesos scheduler task-fail-times])
+(defn completion-cpus-meter
+  [status pool]
+  (let [status-string (case status
+                        :succeeded "tasks-succeeded-cpus"
+                        :failed "tasks-failed-cpus"
+                        :completed "tasks-completed-cpus")]
+    (meters/meter ["cook-mesos" "scheduler" status-string pool])))
 
+(defn completion-run-times-histogram
+  [status pool]
+  (let [status-string (case status
+                        :succeeded "hist-task-succeed-times"
+                        :failed "hist-task-fail-times"
+                        :completed "hist-task-complete-times")]
+    (histograms/histogram ["cook-mesos" "scheduler" status-string pool])))
 
-(def success-throughput-metrics
-  {:completion-rate tasks-succeeded
-   :completion-mem tasks-succeeded-mem
-   :completion-cpus tasks-succeeded-cpus
-   :completion-hist-run-times hist-task-succeed-times
-   :completion-MA-run-times task-succeed-times})
+(defn completion-run-times-meter
+  [status pool]
+  (let [status-string (case status
+                        :succeeded "task-succeed-times"
+                        :failed "task-fail-times"
+                        :completed "task-complete-times")]
+    (meters/meter ["cook-mesos" "scheduler" status-string pool])))
 
-(def fail-throughput-metrics
-  {:completion-rate tasks-failed
-   :completion-mem tasks-failed-mem
-   :completion-cpus tasks-failed-cpus
-   :completion-hist-run-times hist-task-fail-times
-   :completion-MA-run-times task-fail-times})
-
-(def complete-throughput-metrics
-  {:completion-rate tasks-completed
-   :completion-mem tasks-completed-mem
-   :completion-cpus tasks-completed-cpus
-   :completion-hist-run-times hist-task-complete-times
-   :completion-MA-run-times task-complete-times})
-
-(defn handle-throughput-metrics [{:keys [completion-rate completion-mem completion-cpus
-                                         completion-hist-run-times completion-MA-run-times]}
-                                 job-resources
-                                 run-time]
-  (meters/mark! completion-rate)
-  (meters/mark!
-    completion-mem
-    (:mem job-resources))
-  (meters/mark!
-    completion-cpus
-    (:cpus job-resources))
-  (histograms/update!
-    completion-hist-run-times
-    run-time)
-  (meters/mark!
-    completion-MA-run-times
-    run-time))
+(defn handle-throughput-metrics [job-resources run-time status pool]
+  (let [completion-rate (completion-rate-meter status pool)
+        completion-mem (completion-mem-meter status pool)
+        completion-cpus (completion-cpus-meter status pool)
+        completion-hist-run-times (completion-run-times-histogram status pool)
+        completion-MA-run-times (completion-run-times-meter status pool)]
+    (meters/mark! completion-rate)
+    (meters/mark!
+      completion-mem
+      (:mem job-resources))
+    (meters/mark!
+      completion-cpus
+      (:cpus job-resources))
+    (histograms/update!
+      completion-hist-run-times
+      run-time)
+    (meters/mark!
+      completion-MA-run-times
+      run-time)))
 
 (defn interpret-task-status
   "Converts the status packet from Mesomatic into a more friendly data structure"
@@ -239,7 +241,8 @@
                instance-runtime (- (.getTime current-time) ; Used for reporting
                                    (.getTime (or (:instance/start-time instance-ent) current-time)))
                job-resources (util/job-ent->resources job-ent)
-               ^TaskScheduler fenzo (-> job-ent util/job->pool pool->fenzo)]
+               pool (util/job->pool job-ent)
+               ^TaskScheduler fenzo (get pool->fenzo pool)]
            (when (#{:instance.status/success :instance.status/failed} instance-status)
              (log/debug "Unassigning task" task-id "from" (:instance/hostname instance-ent))
              (try
@@ -250,19 +253,11 @@
                (catch Exception e
                  (log/error e "Failed to unassign task" task-id "from" (:instance/hostname instance-ent)))))
            (when (= instance-status :instance.status/success)
-             (handle-throughput-metrics success-throughput-metrics
-                                        job-resources
-                                        instance-runtime)
-             (handle-throughput-metrics complete-throughput-metrics
-                                        job-resources
-                                        instance-runtime))
+             (handle-throughput-metrics job-resources instance-runtime :succeeded pool)
+             (handle-throughput-metrics job-resources instance-runtime :completed pool))
            (when (= instance-status :instance.status/failed)
-             (handle-throughput-metrics fail-throughput-metrics
-                                        job-resources
-                                        instance-runtime)
-             (handle-throughput-metrics complete-throughput-metrics
-                                        job-resources
-                                        instance-runtime)
+             (handle-throughput-metrics job-resources instance-runtime :failed pool)
+             (handle-throughput-metrics job-resources instance-runtime :completed pool)
              (when-not previous-reason
                (update-reason-metrics! db reason instance-runtime job-resources)))
            ;; This code kills any task that "shouldn't" be running
