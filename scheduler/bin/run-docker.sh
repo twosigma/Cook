@@ -52,17 +52,17 @@ if [ "$(docker ps -aq -f name=${NAME})" ]; then
     docker stop ${NAME}
 fi
 
-#$(${DIR}/../../travis/minimesos info | grep MINIMESOS)
-#EXIT_CODE=$?
-#if [ ${EXIT_CODE} -eq 0 ]
-#then
-#    ZK=${MINIMESOS_ZOOKEEPER%;}
-#    echo "ZK = ${ZK}"
-#    echo "MINIMESOS_MASTER_IP = ${MINIMESOS_MASTER_IP}"
-#else
-#    echo "Could not get ZK URI from minimesos; you may need to restart minimesos"
-#    exit ${EXIT_CODE}
-#fi
+$(${DIR}/../../travis/minimesos info | grep MINIMESOS)
+EXIT_CODE=$?
+if [ ${EXIT_CODE} -eq 0 ]
+then
+    ZK=${MINIMESOS_ZOOKEEPER%;}
+    echo "ZK = ${ZK}"
+    echo "MINIMESOS_MASTER_IP = ${MINIMESOS_MASTER_IP}"
+else
+    echo "Could not get ZK URI from minimesos; you may need to restart minimesos"
+    exit ${EXIT_CODE}
+fi
 
 SCHEDULER_DIR="$( dirname ${DIR} )"
 SCHEDULER_EXECUTOR_DIR=${SCHEDULER_DIR}/resources/public
@@ -101,20 +101,20 @@ else
     COOK_ZOOKEEPER_LOCAL=true
 fi
 
-DATA_LOCAL_IP=$(docker inspect data-local | jq -r '.[].NetworkSettings.IPAddress')
-if [ "${DATA_LOCAL_IP}" = "null" ] || [[ -z "${DATA_LOCAL_IP}" ]];
+DATA_LOCAL_IP=$(docker inspect data-local | jq -r '.[].NetworkSettings.IPAddress // empty')
+if [[ -z "${DATA_LOCAL_IP}" ]];
 then
     echo "Starting data local server"
     PROJECT_ROOT="$( dirname ${SCHEDULER_DIR} )"
     ${PROJECT_ROOT}/integration/bin/run-data-local-server.sh &
     ITERATIONS=0
-    while [[ ("${DATA_LOCAL_IP}" = "null" || "${DATA_LOCAL_IP}" = "") && $ITERATIONS -lt 10 ]];
+    while [[ -z "${DATA_LOCAL_IP}" && $ITERATIONS -lt 10 ]];
     do
         sleep 1
-        DATA_LOCAL_IP=$(docker inspect data-local | jq -r '.[].NetworkSettings.IPAddress')
+        DATA_LOCAL_IP=$(docker inspect data-local | jq -r '.[].NetworkSettings.IPAddress // empty')
         ((ITERATIONS++))
     done
-    if [ "${DATA_LOCAL_IP}" = "null" ] || [[ -z "${DATA_LOCAL_IP}" ]];
+    if [[ -z "${DATA_LOCAL_IP}" ]];
     then
         echo "Unable to start data local server"
         exit 1
