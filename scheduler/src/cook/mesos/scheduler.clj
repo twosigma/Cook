@@ -100,45 +100,49 @@
 
 (timers/deftimer [cook-mesos scheduler generate-user-usage-map-duration])
 
+(defn metric-title
+  [metric-name pool]
+  ["cook-mesos" "scheduler" metric-name (str "pool-" pool)])
+
 (defn completion-rate-meter
   [status pool]
-  (let [status-string (case status
-                        :succeeded "tasks-succeeded"
-                        :failed "tasks-failed"
-                        :completed "tasks-completed")]
-    (meters/meter ["cook-mesos" "scheduler" status-string pool])))
+  (let [metric-name (case status
+                      :succeeded "tasks-succeeded"
+                      :failed "tasks-failed"
+                      :completed "tasks-completed")]
+    (meters/meter (metric-title metric-name pool))))
 
 (defn completion-mem-meter
   [status pool]
-  (let [status-string (case status
-                        :succeeded "tasks-succeeded-mem"
-                        :failed "tasks-failed-mem"
-                        :completed "tasks-completed-mem")]
-    (meters/meter ["cook-mesos" "scheduler" status-string pool])))
+  (let [metric-name (case status
+                      :succeeded "tasks-succeeded-mem"
+                      :failed "tasks-failed-mem"
+                      :completed "tasks-completed-mem")]
+    (meters/meter (metric-title metric-name pool))))
 
 (defn completion-cpus-meter
   [status pool]
-  (let [status-string (case status
-                        :succeeded "tasks-succeeded-cpus"
-                        :failed "tasks-failed-cpus"
-                        :completed "tasks-completed-cpus")]
-    (meters/meter ["cook-mesos" "scheduler" status-string pool])))
+  (let [metric-name (case status
+                      :succeeded "tasks-succeeded-cpus"
+                      :failed "tasks-failed-cpus"
+                      :completed "tasks-completed-cpus")]
+    (meters/meter (metric-title metric-name pool))))
 
 (defn completion-run-times-histogram
   [status pool]
-  (let [status-string (case status
-                        :succeeded "hist-task-succeed-times"
-                        :failed "hist-task-fail-times"
-                        :completed "hist-task-complete-times")]
-    (histograms/histogram ["cook-mesos" "scheduler" status-string pool])))
+  (let [metric-name (case status
+                      :succeeded "hist-task-succeed-times"
+                      :failed "hist-task-fail-times"
+                      :completed "hist-task-complete-times")]
+    (histograms/histogram (metric-title metric-name pool))))
 
 (defn completion-run-times-meter
   [status pool]
-  (let [status-string (case status
-                        :succeeded "task-succeed-times"
-                        :failed "task-fail-times"
-                        :completed "task-complete-times")]
-    (meters/meter ["cook-mesos" "scheduler" status-string pool])))
+  (let [metric-name (case status
+                      :succeeded "task-succeed-times"
+                      :failed "task-fail-times"
+                      :completed "task-complete-times")]
+    (meters/meter (metric-title metric-name pool))))
 
 (defn handle-throughput-metrics [job-resources run-time status pool]
   (let [completion-rate (completion-rate-meter status pool)
