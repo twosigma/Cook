@@ -101,20 +101,20 @@ else
     COOK_ZOOKEEPER_LOCAL=true
 fi
 
-DATA_LOCAL_IP=$(docker inspect data-local | jq -r '.[].NetworkSettings.IPAddress')
-if [ "${DATA_LOCAL_IP}" = "null" ];
+DATA_LOCAL_IP=$(docker inspect data-local | jq -r '.[].NetworkSettings.IPAddress // empty')
+if [[ -z "${DATA_LOCAL_IP}" ]];
 then
     echo "Starting data local server"
     PROJECT_ROOT="$( dirname ${SCHEDULER_DIR} )"
     ${PROJECT_ROOT}/integration/bin/run-data-local-server.sh &
     ITERATIONS=0
-    while [[ "${DATA_LOCAL_IP}" = "null" && $ITERATIONS -lt 10 ]];
+    while [[ -z "${DATA_LOCAL_IP}" && $ITERATIONS -lt 10 ]];
     do
         sleep 1
-        DATA_LOCAL_IP=$(docker inspect data-local | jq -r '.[].NetworkSettings.IPAddress')
+        DATA_LOCAL_IP=$(docker inspect data-local | jq -r '.[].NetworkSettings.IPAddress // empty')
         ((ITERATIONS++))
     done
-    if [ "${DATA_LOCAL_IP}" = "null" ];
+    if [[ -z "${DATA_LOCAL_IP}" ]];
     then
         echo "Unable to start data local server"
         exit 1
