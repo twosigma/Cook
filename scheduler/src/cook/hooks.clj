@@ -15,15 +15,20 @@
 ;;
 (ns cook.hooks
   (:require [clj-time.core :as t]
+            [clj-time.periodic]
+            [chime :as chime]
             [cook.cache :as ccache]
     ;            [cook.mesos :as mesos]
+    ;        [cook.mesos.api]
             [cook.datomic :as datomic])
   (:import (com.google.common.cache CacheBuilder)
            (java.util.concurrent TimeUnit Executors ScheduledExecutorService ScheduledFuture Future)))
 
 (defn kill-job [job-uuid error-code]
-  ; TODO: Note. Can't use cook.mesos/kill-job. because of circular dependencies
-  )
+  (cook.mesos/kill-job conn [job-uuid] error-code)
+  ;; TODO: Need database connection.
+  ;; TODO: Note. Can't actually use cook.mesos/kill-job. because of circular dependencies
+  ))
 
 
 
@@ -66,23 +71,25 @@
 
 (defn result-reducer
   [{accum-status :status accum-message :message accum-expire-at :cache-expire-at :as accum}
-   {in-status :status in-message :message in-expire-at :cache-expire-at :as in}]
+   {in-status :status in-message :message in-expire-at :cache-expire-at :as in}
+   joined-message (if (and accum-message (< (length accum-message) 1000))
+                    (str accum-message " AND " in-message) in-message)]
   (cond
     ; If either is OK, use the other.
     (= accum-status :ok) in
     (= in-status :ok) accum
     ;; If both are error, then merge the messages.
     (and (= accum-status :error) (= in-status :error))
-    ({:status :error :message (str accum-message " AND " in-message)})
+    ({:status :error :message joined-message})
     ; If one is error and the other not.
     (and (= accum-status :later) (= in-status :error)) in
     (and (= in-status :later) (= accum-status :error)) accum
     ; If both are later, use the smallest one.
     :else
     {:status :later
-      :message (str accum-message " AND " in-message)
-      :cache-expire-at (t/min-date (or accum-expire-at max-possible-date)
-                                   (or in-expire-at max-possible-date))}))
+     :message joined-message
+     :cache-expire-at (t/min-date (or accum-expire-at max-possible-date)
+                                  (or in-expire-at max-possible-date))}))
 
 (defn get-hook-objects
   [job-map]
@@ -133,19 +140,16 @@
 (defonce job-reap-scan-interval-minutes 120)
 
 (defn- being-reaped-soon? [^ScheduledFuture future]
-  "Identify futures that we will reap in the next 1.5 scan intervals If a future (representing something we plan on killing) in less than 1.5 scan intervals."
+  "Identify futures that we will reap in the next 2 scan intervals."
   (< (.getDelay future TimeUnit/MINUTES)
-     (-> job-reap-scan-interval-minutes
-         (/ 2)
-         (+ job-reap-scan-interval-minutes))))
-
+     (* 2 job-reap-scan-interval-minutes)))
 
 (defn job-unschedule-reap-for-staleness [job]
   "This job has become OK to run. So, take it off of the murder list"
   (locking job-reaper-lookup
     (let [{:keys [uuid]} job
-          ^ScheduledFuture future (get @job-reaper-lookup uuid)]
-      (when future (.cancel future false))
+          chime-ch (get @job-reaper-lookup uuid)]
+      (when future (clojure.core.async/close! chime-ch))
       (swap! job-reaper-lookup dissoc uuid))))
 
 (defn job-schedule-reap-for-staleness [job]
@@ -158,19 +162,8 @@
         (swap!
           assoc
           uuid
-          (.scheduled job-reaper-queue
-                      (fn ^Runnable [] (kill-job uuid 7002))
-                      job-reap-delay-minutes
-                      TimeUnit/MINUTES))))))
-
-
-(defn scan-for-reap []
-  ; TODO: Circular dependencies. How to handle?
-  )
-
-(def scan-for-reap-future
-  (.scheduleWithFixedDelay job-reaper-queue scan-for-reap job-reap-scan-interval-minutes job-reap-scan-interval-minutes TimeUnit/MINUTES))
-; TODO: Move this as part of mount initialization. Don't care about return value. We run until end of time.
+          (chime-at (-> job-reap-delay-minutes t/minutes t/from-now)
+                    (fn [time] (kill-job uuid 7002))))))))
 
 (defn hook-jobs-submission
   [jobs]
@@ -205,10 +198,27 @@
     (= status :ok)))
 
 
+;; TODO: Chime version of scan-for-reap-future.
+(defn scan-for-reap-chime-TODO
+  []
+  (let [times (clj-time.periodic/periodic-seq (-> 5 t/minutes t/from-now)
+                                              (-> job-reap-scan-interval-minutes t/minutes))
+        chimes (chime-ch times {:ch (a/chan (a/sliding-buffer 1))})]
+    (go-loop []
+             (when-let [time (<! chimes)]
+               (scan-for-reap)
+               (recur)))))
+
 (defn scan-for-reap
   []
-  (->> @job-reaper-queue
-       seq
-       (filter #(being-reaped-soon? (second %))) ; Filter out futures being reaped soon.
-       (map #(filter-job-invocations (first %)) ))) ; Force a cache update
-; TODO: PROBLEM: We only have the UUID here, not the full job-map, so we can't do filter-job-invoations.
+  (let [do-one-fn (fn [[uuid task]]
+                    (when (being-reaped-soon task)
+                      ;; TODO: Need to inject framework-id and db here.
+                      (let [job-map (cook.mesos.api/fetch-job-map db framework-id uuid)]
+                        ; Run for the side effects. We want this to either kill the job (if :error) or unschedule it (if :ok)
+                        filter-job-invocations job-map)))]
+
+    (->> @job-reaper-queue
+         seq
+         (map do-one-fn)
+         doall)))
