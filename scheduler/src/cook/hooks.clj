@@ -165,7 +165,7 @@
 
 
 (defn scan-for-reap []
-  ; TODO: Circular jobs. How to handle?
+  ; TODO: Circular dependencies. How to handle?
   )
 
 (def scan-for-reap-future
