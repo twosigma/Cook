@@ -16,9 +16,9 @@
 (def bad-cache-timeout (t/seconds 30)) ; How long ot store a 'image is bad' status.
 (def unknown-cache-timeout (t/seconds 60)) ; Time to defer when we have a
 (def odd-result-cache-timeout (t/seconds 30))
-(defn failed-image-validity-check [image-name]
+(defn failed-image-validity-check [docker-image]
   {:status :error
-   :message (str "Image " image-name " not found")
+   :message (str "Image " docker-image " not found")
    :cache-expire-at (t/plus (t/now) bad-cache-timeout)})
 
 (defn do-image-status-query-http
@@ -32,13 +32,13 @@
   "Determine if an image is valid from the http response body.
     Process a response containing a json body with a map with two keys:
     'built' and 'deployed' and true/valse as values."
-  [image-name {:keys [status body]}]
+  [docker-image {:keys [status body]}]
   (let [now (t/now)]
     (cond
       (= 200 status) {:status :ok
                       :cache-expire-at (t/plus now good-cache-timeout) }
       (= 404 status) {:status :error
-                      :message (str "Image " image-name " not found")
+                      :message (str "Image " docker-image " not found")
                       :cache-expire-at (t/plus now bad-cache-timeout)}
       ; TODO: What to return on other outputs? XXXX thinks we should default fail.
       :else {:status :ok
@@ -47,7 +47,7 @@
 (defn process-response-for-image-deployment-cache
   "Process a response containing a json body with a map with two keys:
     'built' and 'deployed' and true/valse as values."
-  [image-name {:keys [image-name status body]}]
+  [docker-image {:keys [docker-image status body]}]
   (let [now (t/now)
         built? ("built" body)
         deployed? ("deployed" body)
@@ -58,64 +58,58 @@
       (and (= 200 status) (not ready?)) {:status :later
                                          :cache-expire-at (t/plus now unknown-cache-timeout) }
       (= 404 status) {:status :error
-                      :message (str "Image " image-name " not found")
+                      :message (str "Image " docker-image " not found")
                       :cache-expire-at (t/plus now bad-cache-timeout)}
       ; TODO: What to return on other outputs? XXXX thinks we should default fail.
       :else {:status :ok
              :cache-expire-at (t/plus now odd-result-cache-timeout) })))
 
 (defn generate-url-from-image
-  [image-name]
+  [docker-image]
   "TODO")
 
 (defn image-deployment-miss
-  "Is the image deployed? Do the HTTP (with a 30 second timeout) and return the response."
-  [image-name]
+  "Is the image deployed? Do the HTTP and return the response."
+  [docker-image]
   (let [now (t/now)]
     (try
-      (let [url (generate-url-from-image image-name)
+      (let [url (generate-url-from-image docker-image)
             response (do-image-status-query-http url image-deployment-check-http-timeout-millis)]
-        (process-response-for-image-validity-cache image-name response))
+        (process-response-for-image-validity-cache docker-image response))
       (catch Exception e
         {:status :later
          :cache-expire-at (t/plus now odd-result-cache-timeout)}))))
 
 (def ^LoadingCache image-deployment-cache (-> (CacheBuilder/newBuilder)
                                               (.maximumSize 200000)
-                                              (.expireAfterAccess 48 TimeUnit/HOURS)
+                                              (.expireAfterAccess 72 TimeUnit/HOURS)
                                               (.build (CacheLoader/from
                                                         (reify Function
-                                                          (apply [_ image-name]
-                                                            (image-deployment-miss image-name)))))))
+                                                          (apply [_ docker-image]
+                                                            (image-deployment-miss docker-image)))))))
 
-(defn image-validity-miss [image-name]
+(defn image-validity-miss [docker-image]
   (try
     (let [now (t/now)
-          url (generate-url-from-image image-name)
+          url (generate-url-from-image docker-image)
           response (do-image-status-query-http url image-validity-check-http-timeout-millis)
-          validity (process-response-for-image-validity-cache image-name response)
-          {:keys [status] :as deployment} (process-response-for-image-deployment-cache image-name response)]
+          validity (process-response-for-image-validity-cache docker-image response)
+          {:keys [status] :as deployment} (process-response-for-image-deployment-cache docker-image response)]
       ; Opportunistically put the status into the image-deployment-cache if its good.
       (when (= :ok status)
-        (.put image-deployment-cache image-name deployment))
+        (.put image-deployment-cache docker-image deployment))
       validity)
     (catch Exception e
       (failed-image-validity-check))))
 
 (def ^LoadingCache image-validity-cache (-> (CacheBuilder/newBuilder)
                                             (.maximumSize 200000)
-                                            (.expireAfterAccess 48 TimeUnit/HOURS)
+                                            (.expireAfterAccess 72 TimeUnit/HOURS)
                                             (.build (CacheLoader/from
                                                       (reify Function
-                                                        (apply [_ image-name]
-                                                          (image-validity-miss image-name)))))))
+                                                        (apply [_ docker-image]
+                                                          (image-validity-miss docker-image)))))))
 
-
-(defn extract-image-query-uri-from-job-map
-  [job-map]
-  ; TODO:
-  "HTTP://TODO_image_query_uri/"
-  )
 
 ; Avoid the set of deferred tasks from diverging to infinity. Sole purpose of this is to avoid an infinite queue if the
 ; service is misbehaving.
@@ -128,20 +122,20 @@
 (defrecord Foo []
   hooks/ScheduleHooks
   (hooks/check-job-submission
-    [this {:keys [image-name] :as job-map}]
+    [this {:keys [docker-image] :as job-map}]
     (let [now (t/now)]
       ; Expire the deployment status if it should be expired.
-      (ccache/expire-key! image-validity-cache identity image-name)
+      (ccache/expire-key! image-validity-cache identity docker-image)
       ; If we have a status return it, else, dispatch sync work to refresh image status.
-      (ccache/lookup-cache! image-validity-cache identity image-validity-miss image-name)))
+      (ccache/lookup-cache! image-validity-cache identity image-validity-miss docker-image)))
 
   (hooks/check-job-invocation
-    [this {:keys [image-name] :as job-map}]
+    [this {:keys [docker-image] :as job-map}]
     (let [now (t/now)]
       ; Expire the deployment status if it should be expired.
-      (ccache/expire-key! image-deployment-cache identity image-name)
+      (ccache/expire-key! image-deployment-cache identity docker-image)
       ; If we have a status return it, else, dispatch async work to refresh image status.
-      (if-let [result (.getIfPresent image-deployment-cache image-name)]
+      (if-let [result (.getIfPresent image-deployment-cache docker-image)]
         result
         ; Dispatch async work to update with to avoid a queue explosion. Its OK to drop this; we'll requeue next time the
         ; scheduler tries to schedule it.
@@ -149,6 +143,5 @@
           (.submit async-pool
                    (reify Runnable
                      (run [_]
-                       (ccache/lookup-cache! image-deployment-cache identity image-deployment-miss image-name))))
+                       (ccache/lookup-cache! image-deployment-cache identity image-deployment-miss docker-image))))
           {:status :later :cache-expire-at (t/plus now unknown-cache-timeout)})))))
-

@@ -148,8 +148,8 @@
   "This job has become OK to run. So, take it off of the murder list"
   (locking job-reaper-lookup
     (let [{:keys [uuid]} job
-          chime-ch (get @job-reaper-lookup uuid)]
-      (when future (clojure.core.async/close! chime-ch))
+          chime-cancel-fn (get @job-reaper-lookup uuid)]
+      (when chime-cancel-fn (chime-cancel-fn))
       (swap! job-reaper-lookup dissoc uuid))))
 
 (defn job-schedule-reap-for-staleness [job]
