@@ -7,7 +7,7 @@
             )
   (:import (com.google.common.cache CacheLoader Cache LoadingCache CacheBuilder))
   (:import (com.google.common.base Function)
-           (java.util.concurrent TimeUnit)))
+           (java.util.concurrent TimeUnit ForkJoinPool ArrayBlockingQueue)))
 
 (def image-validity-check-http-timeout-millis 2000)
 (def image-deployment-check-http-timeout-millis 30000)
@@ -117,6 +117,13 @@
   "HTTP://TODO_image_query_uri/"
   )
 
+; Avoid the set of deferred tasks from diverging to infinity. Sole purpose of this is to avoid an infinite queue if the
+; service is misbehaving.
+(def' max-deferred-tasks 1000)
+
+; Configured for at most 5 async requests.
+(def ^ThreadPoolExecutor async-pool (ThreadPoolExecutor. 1 5 10 TimeUnit/MINUTES
+                                                         (ArrayBlockingQueue. (+ queue-size 100))))
 
 (defrecord Foo []
   hooks/ScheduleHooks
@@ -125,7 +132,7 @@
     (let [now (t/now)]
       ; Expire the deployment status if it should be expired.
       (ccache/expire-key! image-validity-cache identity image-name)
-      ; If we have a status return it, else, dispatch async work to refresh image status.
+      ; If we have a status return it, else, dispatch sync work to refresh image status.
       (ccache/lookup-cache! image-validity-cache identity image-validity-miss image-name)))
 
   (hooks/check-job-invocation
@@ -136,7 +143,12 @@
       ; If we have a status return it, else, dispatch async work to refresh image status.
       (if-let [result (.getIfPresent image-deployment-cache image-name)]
         result
-        (do
-          ; TODO: async dispatch request to load status
+        ; Dispatch async work to update with to avoid a queue explosion. Its OK to drop this; we'll requeue next time the
+        ; scheduler tries to schedule it.
+        (when (< (.size (.getQueue async-pool)) max-deferred-tasks)
+          (.submit async-pool
+                   (reify Runnable
+                     (run [_]
+                       (ccache/lookup-cache! image-deployment-cache identity image-deployment-miss image-name))))
           {:status :later :cache-expire-at (t/plus now unknown-cache-timeout)})))))
 
