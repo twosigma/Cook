@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.22.0] - 2018-10-04
+### Added
+- Rate limiting on job submission, from @scrosby
+### Fixed
+- Remove stale dataset cost data, from @pschorf
+- Don't show uncommitted jobs in unscheduled_jobs endpoint, from @pschorf
+
 ## [1.21.0] - 2018-09-12
 ### Added
 - Support for contacting a data local service to obtain cost data for scheduling, from @pschorf
