@@ -227,29 +227,30 @@ class MultiUserCookTest(util.CookTest):
         if bucket_size > 3000 or extra_size > 1000:
             raise pytest.skip() # Don't run if we'd have to create a whole lot of jobs to run the test.
         with user:
-            jobs1 = jobs2 = []
+            jobs_to_kill = []
             try:
                 # First, empty most but not all of the tocken bucket.
                 jobs1, resp1 = util.submit_jobs(self.cook_url, {}, bucket_size - 60)
+                jobs_to_kill.extend(jobs1)
                 self.assertEqual(resp1.status_code, 201)
                 # Then another 1060 to get us very negative.
                 jobs2, resp2 = util.submit_jobs(self.cook_url, {}, extra_size + 60)
+                jobs_to_kill.extend(jobs2)
                 self.assertEqual(resp2.status_code, 201)
                 # And finally a request that gets cut off.
                 jobs3, resp3 = util.submit_jobs(self.cook_url, {}, 10)
                 self.assertEqual(resp3.status_code, 400)
                 # The timestamp can change so we should only match on the prefix.
-                expectedPrefix = """{"error":"User rate_limit_while_creating_job0 is inserting too quickly. Not allowed to insert for"""
-                self.assertEqual(resp3.text[:len(expectedPrefix)], expectedPrefix)
+                expectedPrefix = f'User {user.name} is inserting too quickly. Not allowed to insert for'
+                self.assertEqual(resp3.json()['error'][:len(expectedPrefix)], expectedPrefix)
                 # Earn back 70 seconds of tokens.
                 time.sleep(70.0*extra_size/replenishment_rate)
                 jobs4, resp4 = util.submit_jobs(self.cook_url, {}, 10)
+                jobs_to_kill.extend(jobs4)
                 self.assertEqual(resp4.status_code, 201)
 
             finally:
-                util.kill_jobs(self.cook_url,jobs1)
-                util.kill_jobs(self.cook_url,jobs2)
-                util.kill_jobs(self.cook_url,jobs4)
+                util.kill_jobs(self.cook_url,jobs_to_kill)
 
     def trigger_preemption(self, pool):
         """
