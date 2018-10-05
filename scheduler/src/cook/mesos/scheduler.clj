@@ -597,10 +597,13 @@
 (meters/defmeter [cook-mesos scheduler matched-tasks])
 (meters/defmeter [cook-mesos scheduler matched-tasks-cpus])
 (meters/defmeter [cook-mesos scheduler matched-tasks-mem])
-(def front-of-job-queue-mem-atom (atom 0))
-(def front-of-job-queue-cpus-atom (atom 0))
-(gauges/defgauge [cook-mesos scheduler front-of-job-queue-mem] (fn [] @front-of-job-queue-mem-atom))
-(gauges/defgauge [cook-mesos scheduler front-of-job-queue-cpus] (fn [] @front-of-job-queue-cpus-atom))
+(def front-of-job-queue-mem-atom (atom {}))
+(def front-of-job-queue-cpus-atom (atom {}))
+(run!
+  (fn [{:keys [pool/name]}]
+    (gauges/gauge-fn (metric-title "front-of-job-queue-mem" name) (fn [] (get @front-of-job-queue-mem-atom name 0)))
+    (gauges/gauge-fn (metric-title "front-of-job-queue-cpus" name) (fn [] (get @front-of-job-queue-cpus-atom name 0))))
+  (pool/all-pools (d/db datomic/conn)))
 
 (defn below-quota?
   "Returns true if the usage is below quota-constraints on all dimensions"
@@ -800,8 +803,8 @@
           (fenzo/record-placement-failures! conn failures)
 
           (reset! offer-stash offers-scheduled)
-          (reset! front-of-job-queue-mem-atom (or (:mem first-considerable-job-resources) 0))
-          (reset! front-of-job-queue-cpus-atom (or (:cpus first-considerable-job-resources) 0))
+          (swap! front-of-job-queue-mem-atom #(assoc % pool (or (:mem first-considerable-job-resources) 0)))
+          (swap! front-of-job-queue-cpus-atom #(assoc % pool (or (:cpus first-considerable-job-resources) 0)))
 
           (cond
             ;; Possible innocuous reasons for no matches: no offers, or no pending jobs.
