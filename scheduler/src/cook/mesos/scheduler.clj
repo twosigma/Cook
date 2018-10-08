@@ -599,11 +599,6 @@
 (meters/defmeter [cook-mesos scheduler matched-tasks-mem])
 (def front-of-job-queue-mem-atom (atom {}))
 (def front-of-job-queue-cpus-atom (atom {}))
-(run!
-  (fn [{:keys [pool/name]}]
-    (gauges/gauge-fn (metric-title "front-of-job-queue-mem" name) (fn [] (get @front-of-job-queue-mem-atom name 0)))
-    (gauges/gauge-fn (metric-title "front-of-job-queue-cpus" name) (fn [] (get @front-of-job-queue-cpus-atom name 0))))
-  (pool/all-pools (d/db datomic/conn)))
 
 (defn below-quota?
   "Returns true if the usage is below quota-constraints on all dimensions"
@@ -1530,6 +1525,18 @@
           (async-in-order-processing
             task-id #(handle-status-update conn driver pool->fenzo sync-agent-sandboxes-fn status)))))))
 
+(defn create-front-of-queue-gauges
+  "Given a collection of pools, creates a front-of-job-queue-mem
+  and front-of-job-queue-cpus gauge for each pool"
+  [pools]
+  (run!
+    (fn [{:keys [pool/name]}]
+      (gauges/gauge-fn (metric-title "front-of-job-queue-mem" name)
+                       (fn [] (get @front-of-job-queue-mem-atom name 0)))
+      (gauges/gauge-fn (metric-title "front-of-job-queue-cpus" name)
+                       (fn [] (get @front-of-job-queue-cpus-atom name 0))))
+    pools))
+
 (defn create-datomic-scheduler
   [{:keys [conn driver-atom exit-code-syncer-state fenzo-fitness-calculator fenzo-floor-iterations-before-reset
            fenzo-floor-iterations-before-warn fenzo-max-jobs-considered fenzo-scaleback framework-id good-enough-fitness
@@ -1546,6 +1553,7 @@
                  [{:pool/name "no-pool"}])
         pool->fenzo (pool-map pools' (fn [_] (make-fenzo-scheduler driver-atom offer-incubate-time-ms
                                                                    fenzo-fitness-calculator good-enough-fitness)))
+        _  (create-front-of-queue-gauges pools')
         {:keys [pool->offers-chan pool->resources-atom]}
         (reduce (fn [m pool-ent]
                   (let [pool (:pool/name pool-ent)
