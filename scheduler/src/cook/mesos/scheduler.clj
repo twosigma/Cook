@@ -594,9 +594,6 @@
 (histograms/defhistogram [cook-mesos-scheduler number-offers-matched])
 (meters/defmeter [cook-mesos scheduler scheduler-offer-matched])
 (meters/defmeter [cook-mesos scheduler handle-resource-offer!-errors])
-(meters/defmeter [cook-mesos scheduler matched-tasks])
-(meters/defmeter [cook-mesos scheduler matched-tasks-cpus])
-(meters/defmeter [cook-mesos scheduler matched-tasks-mem])
 (def front-of-job-queue-mem-atom (atom 0))
 (def front-of-job-queue-cpus-atom (atom 0))
 (gauges/defgauge [cook-mesos scheduler front-of-job-queue-mem] (fn [] @front-of-job-queue-mem-atom))
@@ -666,8 +663,10 @@
     (log/debug "In" pool "pool, matched jobs:" (count job-uuids))
     (when (seq matches)
       (let [matched-normal-jobs-resource-requirements (util/sum-resources-of-jobs jobs)]
-        (meters/mark! matched-tasks-cpus (:cpus matched-normal-jobs-resource-requirements))
-        (meters/mark! matched-tasks-mem (:mem matched-normal-jobs-resource-requirements))))
+        (meters/mark! (meters/meter (metric-title "matched-tasks-cpus" pool))
+                      (:cpus matched-normal-jobs-resource-requirements))
+        (meters/mark! (meters/meter (metric-title "matched-tasks-mem" pool))
+                      (:mem matched-normal-jobs-resource-requirements))))
     job-uuids))
 
 (defn remove-matched-jobs-from-pending-jobs
@@ -714,7 +713,7 @@
 
 (defn launch-matched-tasks!
   "Updates the state of matched tasks in the database and then launches them."
-  [matches conn db driver fenzo framework-id mesos-run-as-user]
+  [matches conn db driver fenzo framework-id mesos-run-as-user pool]
   (let [matches (map #(update-match-with-task-metadata-seq % db framework-id mesos-run-as-user) matches)
         task-txns (matches->task-txns matches)]
     ;; Note that this transaction can fail if a job was scheduled
@@ -743,7 +742,7 @@
                                   (count))]
       (meters/mark! scheduler-offer-matched num-offers-matched)
       (histograms/update! number-offers-matched num-offers-matched))
-    (meters/mark! matched-tasks (count task-txns))
+    (meters/mark! (meters/meter (metric-title "matched-tasks" pool)) (count task-txns))
     (timers/time!
       handle-resource-offer!-mesos-submit-duration
       (doseq [{:keys [leases task-metadata-seq]} matches
@@ -814,7 +813,7 @@
             (do
               (swap! pool->pending-jobs-atom remove-matched-jobs-from-pending-jobs matched-job-uuids pool)
               (log/debug "In" pool "pool, updated pool->pending-jobs-atom:" @pool->pending-jobs-atom)
-              (launch-matched-tasks! matches conn db driver fenzo framework-id mesos-run-as-user)
+              (launch-matched-tasks! matches conn db driver fenzo framework-id mesos-run-as-user pool)
               (update-host-reservations! rebalancer-reservation-atom matched-job-uuids)
               matched-considerable-jobs-head?)))
         (catch Throwable t
