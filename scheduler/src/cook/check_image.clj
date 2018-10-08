@@ -16,6 +16,8 @@
 (def bad-cache-timeout (t/seconds 30)) ; How long ot store a 'image is bad' status.
 (def unknown-cache-timeout (t/seconds 60)) ; Time to defer when we have a
 (def odd-result-cache-timeout (t/seconds 30))
+
+
 (defn failed-image-validity-check [docker-image]
   {:status :error
    :message (str "Image " docker-image " not found")

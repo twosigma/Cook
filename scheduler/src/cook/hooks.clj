@@ -122,30 +122,33 @@
        (pmap #(check-job-invocation % job-map))
        (reduce result-reducer {:status :ok})))
 
+; We only look at the head few thousad jobs of the scheduler queue, so 200k is overkill.
+; This is called in the scheduler loop. If it hasn't been looked at in more than 2 hours, the job has almost assuredly long since run.
 (defn new-cache []
   (-> (CacheBuilder/newBuilder)
       (.maximumSize 200000)
       (.expireAfterAccess 2 TimeUnit/HOURS)
       (.build)))
 
-
 ;; Caches a map from job UUID to its invocation status map (i.e., :status :ok, :status :later}
 (defonce job-invocations-cache (new-cache))
 ;; A queue of job-killers. When a job gets stale, we time it out.
 (defonce ^ScheduledExecutorService job-reaper-queue (Executors/newScheduledThreadPool 1))
-;; A map from job UUID to the future for the task to kill it.
+;; A map from job UUID to the chime we use to kill it.
 (defonce job-reaper-lookup (atom {}))
+; When a job is in the :later state for this long, kill it. Note that we can experience head-of-line blocking
+; with hundreds of jobs in the queue, so this shouldn't be set too too high.
 (defonce ^int job-reap-delay-minutes 480)
 ; How often do we scan the queue to reap. Should be at least 30 minutes, and less than job-reap-delay-minutes/4.
-(defonce job-reap-scan-interval-minutes 120)
+(defonce ^int job-reap-scan-interval-minutes 120)
 
 (defn- being-reaped-soon? [^ScheduledFuture future]
-  "Identify futures that we will reap in the next 2 scan intervals."
+  "Identify jobs that we will reap in the next 2 scan intervals."
   (< (.getDelay future TimeUnit/MINUTES)
      (* 2 job-reap-scan-interval-minutes)))
 
 (defn job-unschedule-reap-for-staleness [job]
-  "This job has become OK to run. So, take it off of the murder list"
+  "This job has become OK to run. So, take it off of the reap list"
   (locking job-reaper-lookup
     (let [{:keys [uuid]} job
           chime-cancel-fn (get @job-reaper-lookup uuid)]
@@ -153,7 +156,7 @@
       (swap! job-reaper-lookup dissoc uuid))))
 
 (defn job-schedule-reap-for-staleness [job]
-  "This job has entered the murder list. To avoid :later jobs from clogging up the queue, we murder them
+  "This job has entered the reap list. To avoid suspended jobs from clogging up the queue, we murder them
   once they get sufficiently old. They should be murdered TODO-murder-time after they are first contracted to
   be murdered. Murders can be cancelled via job-murder-rescue."
   (locking job-reaper-lookup
