@@ -1635,7 +1635,7 @@
                          override-group-immutability? (boolean (get params :override-group-immutability))
                          pool-name (get params :pool)
                          pool (when pool-name (d/entity (d/db conn) [:pool/name pool-name]))
-                         uuid->count (pc/map-vals count (group-by :uuid jobs))]
+                         uuid->count (pc/map-vals count (group-by :uuid jobs))
                          {:keys [any-bad? sample-error]} (hooks/hook-jobs-submission jobs)
                          time-until-out-of-debt (rate-limit/time-until-out-of-debt-millis! rate-limit/job-submission-rate-limiter user)
                          in-debt? (not (zero? time-until-out-of-debt))]
