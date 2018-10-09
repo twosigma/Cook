@@ -140,15 +140,8 @@
 
 (defrecord State [task->scored-task user->sorted-running-task-ents host->spare-resources user->dru-divisors compute-pending-job-dru preempted-tasks])
 
-(timers/deftimer [cook-mesos rebalancer rebalance-duration])
-(timers/deftimer [cook-mesos rebalancer compute-preemption-decision-duration])
-
-(histograms/defhistogram [cook-mesos rebalancer pending-job-drus])
-(histograms/defhistogram [cook-mesos rebalancer nearest-task-drus])
-(histograms/defhistogram [cook-mesos rebalancer preemption-counts-for-host])
-(histograms/defhistogram [cook-mesos rebalancer positive-dru-diffs])
-(histograms/defhistogram [cook-mesos rebalancer task-counts-to-preempt])
-(histograms/defhistogram [cook-mesos rebalancer job-counts-to-run])
+(defn metric-title [metric-name pool]
+  ["cook-mesos" "rebalancer" metric-name (str "pool-" pool)])
 
 ;; If running on a cluster with very small DRU values,
 ;; may need to change this scale to facilitate metrics to e.g. (math/expt 10 305)
@@ -162,7 +155,7 @@
 
    This algorithm only should be used on jobs that use GPUs. It computes the GPU DRU."
   [{:keys [task->scored-task user->sorted-running-task-ents user->dru-divisors] :as state}
-   pending-job-ent]
+   pool pending-job-ent]
   (let [user (:job/user pending-job-ent)
         {gpu-req :gpus} (util/job-ent->resources pending-job-ent)
         gpu-divisor (-> user user->dru-divisors :gpus)
@@ -175,8 +168,8 @@
                            (get task->scored-task nearest-task-ent)
                            0.0)
         pending-job-dru (+ nearest-task-dru (/ gpu-req gpu-divisor))]
-    (histograms/update! pending-job-drus (dru-at-scale pending-job-dru))
-    (histograms/update! nearest-task-drus (dru-at-scale nearest-task-dru))
+    (histograms/update! (histograms/histogram (metric-title "pending-job-drus" pool)) (dru-at-scale pending-job-dru))
+    (histograms/update! (histograms/histogram (metric-title "nearest-task-drus" pool)) (dru-at-scale nearest-task-dru))
 
     pending-job-dru))
 
@@ -187,7 +180,7 @@
 
    This algorithm only should be used on jobs that use cpu & mem, not gpus. It computes the cpu/mem DRU."
   [{:keys [task->scored-task user->sorted-running-task-ents user->dru-divisors] :as state}
-   pending-job-ent]
+   pool pending-job-ent]
   (let [user (:job/user pending-job-ent)
         {mem-req :mem cpus-req :cpus} (util/job-ent->resources pending-job-ent)
         {mem-divisor :mem cpus-divisor :cpus} (user->dru-divisors user)
@@ -201,8 +194,8 @@
                            0.0)
         pending-job-dru (max (+ nearest-task-dru (/ mem-req mem-divisor))
                              (+ nearest-task-dru (/ cpus-req cpus-divisor)))]
-    (histograms/update! pending-job-drus (dru-at-scale pending-job-dru))
-    (histograms/update! nearest-task-drus (dru-at-scale nearest-task-dru))
+    (histograms/update! (histograms/histogram (metric-title "pending-job-drus" pool)) (dru-at-scale pending-job-dru))
+    (histograms/update! (histograms/histogram (metric-title "nearest-task-drus" pool)) (dru-at-scale nearest-task-dru))
 
     pending-job-dru))
 
@@ -292,10 +285,10 @@
     state'))
 
 (defn exceeds-min-diff?
-  [pending-job-dru min-dru-diff task]
+  [pending-job-dru min-dru-diff pool-name task]
   (let [diff (- (:dru task) pending-job-dru)]
     (if (pos? diff)
-      (histograms/update! positive-dru-diffs (dru-at-scale diff)))
+      (histograms/update! (histograms/histogram (metric-title "positive-dru-diffs" pool-name)) (dru-at-scale diff)))
     (> diff min-dru-diff)))
 
 (defn compute-preemption-decision
@@ -305,18 +298,19 @@
   [db agent-attributes-cache
    {:keys [task->scored-task host->spare-resources compute-pending-job-dru preempted-tasks] :as state}
    {:keys [min-dru-diff safe-dru-threshold]}
+   pool-name
    pending-job-ent
    cotask-cache]
   (timers/time!
-   compute-preemption-decision-duration
+   (timers/timer (metric-title "compute-preemption-decision-duration" pool-name))
    (let [{pending-job-mem :mem pending-job-cpus :cpus pending-job-gpus :gpus} (util/job-ent->resources pending-job-ent)
-         pending-job-dru (compute-pending-job-dru state pending-job-ent)
+         pending-job-dru (compute-pending-job-dru state pool-name pending-job-ent)
          _ (log/debug "DRU =" pending-job-dru "for pending job" pending-job-ent)
          ;; This will preserve the ordering of task->scored-task
          host->scored-tasks (->> task->scored-task
                                  vals
                                  (remove #(< (:dru %) safe-dru-threshold))
-                                 (filter (partial exceeds-min-diff? pending-job-dru min-dru-diff))
+                                 (filter (partial exceeds-min-diff? pending-job-dru min-dru-diff pool-name))
                                  (group-by (fn [{:keys [task]}]
                                              (:instance/hostname task))))
 
@@ -374,14 +368,14 @@
                                                    (>= (:gpus resource-sum) pending-job-gpus)
                                                    true))))
                                   (apply max-key (fnil :dru {:dru 0.0}) nil))]
-     (histograms/update! preemption-counts-for-host (-> preemption-decision :tasks count))
+     (histograms/update! (histograms/histogram (metric-title "preemption-counts-for-host" pool-name)) (-> preemption-decision :tasks count))
      preemption-decision)))
 
 (defn compute-next-state-and-preemption-decision
   "Takes state, params and a pending job entity, returns new state and preemption decision"
-  [db agent-attributes-cache state params pending-job cotask-cache]
+  [db agent-attributes-cache state params pending-job cotask-cache pool-name]
   (log/debug "Trying to find space for: " pending-job)
-  (if-let [preemption-decision (compute-preemption-decision db agent-attributes-cache state params pending-job cotask-cache)]
+  (if-let [preemption-decision (compute-preemption-decision db agent-attributes-cache state params pool-name pending-job cotask-cache)]
     [(next-state state pending-job preemption-decision)
      (assoc preemption-decision
             :to-make-room-for pending-job)]
@@ -405,8 +399,8 @@
 (defn rebalance
   "Returns a list of pending job entities to run and a list of task entities to preempt"
   [db agent-attributes-cache rebalancer-reservation-atom
-   {:keys [max-preemption] :as params} init-state jobs-to-make-room-for]
-  (let [timer (timers/start rebalance-duration)
+   {:keys [max-preemption] :as params} init-state jobs-to-make-room-for pool-name]
+  (let [timer (timers/start (timers/timer (metric-title "rebalance-duration" pool-name)))
         cotask-cache (atom (cache/lru-cache-factory {} :threshold (max 1 max-preemption)))]
     (log/debug "Jobs to make room for:" jobs-to-make-room-for)
     (loop [state init-state
@@ -416,7 +410,7 @@
       (if (and pending-job-ent (pos? remaining-preemption))
         (let [[state' preemption-decision]
               (compute-next-state-and-preemption-decision db agent-attributes-cache state
-                                                          params pending-job-ent cotask-cache)]
+                                                          params pending-job-ent cotask-cache pool-name)]
           (if preemption-decision
             (recur state'
                    (dec remaining-preemption)
@@ -428,8 +422,8 @@
                    preemption-decisions)))
         (do
           (timers/stop timer)
-          (histograms/update! task-counts-to-preempt (count (mapcat :task preemption-decisions)))
-          (histograms/update! job-counts-to-run (count preemption-decisions))
+          (histograms/update! (histograms/histogram (metric-title "task-counts-to-preempt" pool-name)) (count (mapcat :task preemption-decisions)))
+          (histograms/update! (histograms/histogram (metric-title "job-counts-to-run" pool-name)) (count preemption-decisions))
           (reserve-hosts! rebalancer-reservation-atom preemption-decisions)
           preemption-decisions)))))
 
@@ -449,11 +443,11 @@
 
 
 (defn rebalance!
-  [db conn driver agent-attributes-cache rebalancer-reservation-atom params init-state jobs-to-make-room-for]
+  [db conn driver agent-attributes-cache rebalancer-reservation-atom params init-state jobs-to-make-room-for pool-name]
   (try
     (log/info "Rebalancing...Params:" params)
     (let [preemption-decisions (rebalance db agent-attributes-cache rebalancer-reservation-atom
-                                          params init-state jobs-to-make-room-for)]
+                                          params init-state jobs-to-make-room-for pool-name)]
       (doseq [{job-ent-to-make-room-for :to-make-room-for
                task-ents-to-preempt :task} preemption-decisions]
         ;; Ensure that uuids are loaded in entity
@@ -551,7 +545,7 @@
                                                host->spare-resources pool-ent)]
                     (log/info "Rebalancing for pool" pool)
                     (rebalance! db conn driver agent-attributes-cache rebalancer-reservation-atom
-                                params init-state jobs-to-make-room-for)))
+                                params init-state jobs-to-make-room-for (:pool/name pool-ent))))
                 @pool->pending-jobs-atom)
               (log/info "Rebalance cycle ended"))
             (log/info "Skipping rebalancing because it's not cofigured"))))
