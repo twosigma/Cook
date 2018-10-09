@@ -7,7 +7,7 @@
             )
   (:import (com.google.common.cache CacheLoader Cache LoadingCache CacheBuilder))
   (:import (com.google.common.base Function)
-           (java.util.concurrent TimeUnit ForkJoinPool ArrayBlockingQueue)))
+           (java.util.concurrent TimeUnit)))
 
 (def image-validity-check-http-timeout-millis 2000)
 (def image-deployment-check-http-timeout-millis 30000)
@@ -113,23 +113,14 @@
                                                           (image-validity-miss docker-image)))))))
 
 
-; Avoid the set of deferred tasks from diverging to infinity. Sole purpose of this is to avoid an infinite queue if the
-; service is misbehaving.
-(def' max-deferred-tasks 1000)
 
-; Configured for at most 5 async requests.
-(def ^ThreadPoolExecutor async-pool (ThreadPoolExecutor. 1 5 10 TimeUnit/MINUTES
-                                                         (ArrayBlockingQueue. (+ queue-size 100))))
-
-(defrecord Foo []
+(defrecord DockerValidate []
   hooks/ScheduleHooks
   (hooks/check-job-submission
     [this {:keys [docker-image] :as job-map}]
     (let [now (t/now)]
-      ; Expire the deployment status if it should be expired.
-      (ccache/expire-key! image-validity-cache identity docker-image)
       ; If we have a status return it, else, dispatch sync work to refresh image status.
-      (ccache/lookup-cache! image-validity-cache identity image-validity-miss docker-image)))
+      (ccache/lookup-cache-with-expiration! image-validity-cache identity image-validity-miss docker-image)))
 
   (hooks/check-job-invocation
     [this {:keys [docker-image] :as job-map}]
@@ -139,11 +130,7 @@
       ; If we have a status return it, else, dispatch async work to refresh image status.
       (if-let [result (.getIfPresent image-deployment-cache docker-image)]
         result
-        ; Dispatch async work to update with to avoid a queue explosion. Its OK to drop this; we'll requeue next time the
-        ; scheduler tries to schedule it.
-        (when (< (.size (.getQueue async-pool)) max-deferred-tasks)
-          (.submit async-pool
-                   (reify Runnable
-                     (run [_]
-                       (ccache/lookup-cache! image-deployment-cache identity image-deployment-miss docker-image))))
+        (do
+          (future
+            (ccache/lookup-cache! image-deployment-cache identity image-deployment-miss docker-image))
           {:status :later :cache-expire-at (t/plus now unknown-cache-timeout)})))))
