@@ -21,13 +21,14 @@
 
 (defrecord ScoredTask [task dru mem cpus])
 
-(timers/deftimer [cook-mesos dru init-user->dru-divisors-duration])
+(defn metric-title [metric-name pool-name]
+  ["cook-mesos" "dru" metric-name (str "pool-" pool-name)])
 
 (defn init-user->dru-divisors
   "Initializes dru divisors map. This map will contain all users that have a running task or pending job"
   [db running-task-ents pending-job-ents pool-name]
   (timers/time!
-    init-user->dru-divisors-duration
+    (timers/timer (metric-title "init-user->dru-divisors-duration" pool-name))
     (let [all-running-users (map util/task-ent->user running-task-ents)
           all-pending-users (map :job/user pending-job-ents)
           all-users-set (-> #{} (into all-running-users) (into all-pending-users))
@@ -99,20 +100,18 @@
 
 (defn sorted-task-cumulative-gpu-score-pairs
   "Takes a sorted seq of task entities and the gpu divisor, returns a list of [task cumulative-gpus], preserving the same order of input tasks"
-  [user->dru-divisors user->sorted-running-task-ents]
+  [user->dru-divisors pool-name user->sorted-running-task-ents]
   (->> user->sorted-running-task-ents
        (map (fn [[user task-ents]]
               (compute-sorted-task-cumulative-gpu-score-pairs (-> user user->dru-divisors :gpus) task-ents)))
        (sorted-merge second)))
 
-(timers/deftimer [cook-mesos dru sorted-task-scored-task-pairs-duration])
-
 (defn sorted-task-scored-task-pairs
   "Returns a lazy sequence of [task,scored-task] pairs sorted by dru in ascending order.
    If jobs have the same dru, any ordering is allowed"
-  [user->dru-divisors user->sorted-running-task-ents]
+  [user->dru-divisors pool-name user->sorted-running-task-ents]
   (timers/time!
-    sorted-task-scored-task-pairs-duration
+    (timers/timer (metric-title "sorted-task-scored-task-pairs-duration" pool-name))
     (->> user->sorted-running-task-ents
          (sort-by first) ; Ensure this function is deterministic
          (map (fn [[user task-ents]]

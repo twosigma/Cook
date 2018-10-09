@@ -226,9 +226,9 @@
                                              (into {}))
          scored-task-pairs (case dru-mode
                              :pool.dru-mode/default (dru/sorted-task-scored-task-pairs
-                                                      user->dru-divisors user->sorted-running-task-ents)
+                                                      user->dru-divisors pool user->sorted-running-task-ents)
                              :pool.dru-mode/gpu (dru/sorted-task-cumulative-gpu-score-pairs
-                                                  user->dru-divisors user->sorted-running-task-ents))
+                                                  user->dru-divisors pool user->sorted-running-task-ents))
          task->scored-task (into (pm/priority-map-keyfn (case dru-mode
                                                           :pool.dru-mode/default (juxt (comp - :dru)
                                                                                        (comp util/task-ent->user :task))

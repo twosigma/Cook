@@ -22,7 +22,8 @@
             [cook.mesos.util :as util]
             [cook.test.testutil :refer (restore-fresh-database! create-dummy-group create-dummy-job create-dummy-instance poll-until)]
             [criterium.core :as cc]
-            [datomic.api :as d]))
+            [datomic.api :as d]
+            [metrics.timers :as timers]))
 
 (defn create-running-job
   [conn host & args]
@@ -63,5 +64,6 @@
                                                          running-task-ents
                                                          user->dru-divisors
                                                          sort-task-scored-task-pairs
-                                                         sched/sort-jobs-hierarchy-duration))
+                                                         (timers/timer (sched/metric-title "sort-jobs-hierarchy-duration" "no-pool"))
+                                                         "no-pool"))
           nil)))))

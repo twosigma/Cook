@@ -96,7 +96,6 @@
 (meters/defmeter [cook-mesos scheduler handle-status-update-rate])
 (timers/deftimer [cook-mesos scheduler handle-framework-message-duration])
 (meters/defmeter [cook-mesos scheduler handle-framework-message-rate])
-(meters/defmeter [cook-mesos scheduler tasks-killed-in-status-update])
 
 (timers/deftimer [cook-mesos scheduler generate-user-usage-map-duration])
 
@@ -276,7 +275,7 @@
              (log/warn "Attempting to kill task" task-id
                        "as instance" instance "with" prior-job-state "and" prior-instance-status
                        "should've been put down already")
-             (meters/mark! tasks-killed-in-status-update)
+             (meters/mark! (meters/meter (metric-title "tasks-killed-in-status-update" pool)))
              (mesos/kill-task! driver {:value task-id}))
            (when-not (nil? instance)
              (when (and (#{:task-starting :task-running} task-state)
@@ -579,17 +578,6 @@
     (meters/mark! scheduler-offer-declined)
     (mesos/decline-offer driver id)))
 
-(timers/deftimer [cook-mesos scheduler handle-resource-offer!-duration])
-(timers/deftimer [cook-mesos scheduler handle-resource-offer!-transact-task-duration])
-(timers/deftimer [cook-mesos scheduler handle-resource-offer!-process-matches-duration])
-(timers/deftimer [cook-mesos scheduler handle-resource-offer!-mesos-submit-duration])
-(timers/deftimer [cook-mesos scheduler handle-resource-offer!-match-duration])
-(timers/deftimer [cook-mesos scheduler handle-resource-offer!-considerable-jobs-duration])
-(timers/deftimer [cook-mesos scheduler handle-resource-offer!-match-job-uuids-duration])
-(meters/defmeter [cook-mesos scheduler pending-job-atom-contended])
-
-(histograms/defhistogram [cook-mesos scheduler offer-size-mem])
-(histograms/defhistogram [cook-mesos scheduler offer-size-cpus])
 (histograms/defhistogram [cook-mesos scheduler number-tasks-matched])
 (histograms/defhistogram [cook-mesos-scheduler number-offers-matched])
 (meters/defmeter [cook-mesos scheduler scheduler-offer-matched])
@@ -713,7 +701,7 @@
 
 (defn launch-matched-tasks!
   "Updates the state of matched tasks in the database and then launches them."
-  [matches conn db driver fenzo framework-id mesos-run-as-user pool]
+  [matches conn db driver fenzo framework-id mesos-run-as-user pool-name]
   (let [matches (map #(update-match-with-task-metadata-seq % db framework-id mesos-run-as-user) matches)
         task-txns (matches->task-txns matches)]
     ;; Note that this transaction can fail if a job was scheduled
@@ -721,7 +709,7 @@
     ;; be scheduled will not be eligible for rescheduling until
     ;; the pending-jobs atom is repopulated
     (timers/time!
-      handle-resource-offer!-transact-task-duration
+      (timers/timer (metric-title "handle-resource-offer!-transact-task-duration" pool-name))
       (datomic/transact
         conn
         (reduce into [] task-txns)
@@ -742,9 +730,9 @@
                                   (count))]
       (meters/mark! scheduler-offer-matched num-offers-matched)
       (histograms/update! number-offers-matched num-offers-matched))
-    (meters/mark! (meters/meter (metric-title "matched-tasks" pool)) (count task-txns))
+    (meters/mark! (meters/meter (metric-title "matched-tasks" pool-name)) (count task-txns))
     (timers/time!
-      handle-resource-offer!-mesos-submit-duration
+      (timers/timer (metric-title "handle-resource-offer!-mesos-submit-duration" pool-name))
       (doseq [{:keys [leases task-metadata-seq]} matches
               :let [offers (mapv :offer leases)
                     task-infos (task/compile-mesos-messages offers task-metadata-seq)]]
@@ -775,23 +763,23 @@
     ;; TODO: It is possible to have an offer expire by mesos because we recycle it a bunch of times.
     ;; TODO: If there is an exception before offers are sent to fenzo (scheduleOnce) then the offers will be lost. This is fine with offer expiration, but not great.
     (timers/time!
-      handle-resource-offer!-duration
+      (timers/timer (metric-title "handle-resource-offer!-duration" pool))
       (try
         (let [db (db conn)
               pending-jobs (get @pool->pending-jobs-atom pool)
               considerable-jobs (timers/time!
-                                  handle-resource-offer!-considerable-jobs-duration
+                                  (timers/timer (metric-title "handle-resource-offer!-considerable-jobs-duration" pool))
                                   (pending-jobs->considerable-jobs
                                     db pending-jobs user->quota user->usage num-considerable pool))
               {:keys [matches failures]} (timers/time!
-                                           handle-resource-offer!-match-duration
+                                           (timers/timer (metric-title "handle-resource-offer!-match-duration" pool))
                                            (match-offer-to-schedule db fenzo considerable-jobs offers rebalancer-reservation-atom))
               _ (log/debug "In" pool "pool, got matches:" matches)
               offers-scheduled (for [{:keys [leases]} matches
                                      lease leases]
                                  (:offer lease))
               matched-job-uuids (timers/time!
-                                  handle-resource-offer!-match-job-uuids-duration
+                                  (timers/timer (metric-title "handle-resource-offer!-match-job-uuids-duration" pool))
                                   (matches->job-uuids matches pool))
               first-considerable-job-resources (-> considerable-jobs first util/job-ent->resources)
               matched-considerable-jobs-head? (contains? matched-job-uuids (-> considerable-jobs first :job/uuid))]
@@ -1172,7 +1160,7 @@
 
 (defn sort-jobs-by-dru-helper
   "Return a list of job entities ordered by the provided sort function"
-  [pending-task-ents running-task-ents user->dru-divisors sort-task-scored-task-pairs sort-jobs-duration]
+  [pending-task-ents running-task-ents user->dru-divisors sort-task-scored-task-pairs sort-jobs-duration pool-name]
   (let [tasks (into (vec running-task-ents) pending-task-ents)
         task-comparator (util/same-user-task-comparator tasks)
         pending-task-ents-set (into #{} pending-task-ents)
@@ -1181,26 +1169,22 @@
                (->> tasks
                     (group-by util/task-ent->user)
                     (pc/map-vals (fn [task-ents] (sort task-comparator task-ents)))
-                    (sort-task-scored-task-pairs user->dru-divisors)
+                    (sort-task-scored-task-pairs user->dru-divisors pool-name)
                     (filter (fn [[task _]] (contains? pending-task-ents-set task)))
                     (map (fn [[task _]] (:job/_instance task)))))]
     jobs))
 
-(timers/deftimer [cook-mesos scheduler sort-jobs-hierarchy-duration])
-
 (defn- sort-normal-jobs-by-dru
   "Return a list of normal job entities ordered by dru"
-  [pending-task-ents running-task-ents user->dru-divisors]
+  [pending-task-ents running-task-ents user->dru-divisors timer pool-name]
   (sort-jobs-by-dru-helper pending-task-ents running-task-ents user->dru-divisors
-                           dru/sorted-task-scored-task-pairs sort-jobs-hierarchy-duration))
-
-(timers/deftimer [cook-mesos scheduler sort-gpu-jobs-hierarchy-duration])
+                           dru/sorted-task-scored-task-pairs timer pool-name))
 
 (defn- sort-gpu-jobs-by-dru
   "Return a list of gpu job entities ordered by dru"
-  [pending-task-ents running-task-ents user->dru-divisors]
+  [pending-task-ents running-task-ents user->dru-divisors timer pool-name]
   (sort-jobs-by-dru-helper pending-task-ents running-task-ents user->dru-divisors
-                           dru/sorted-task-cumulative-gpu-score-pairs sort-gpu-jobs-hierarchy-duration))
+                           dru/sorted-task-cumulative-gpu-score-pairs timer pool-name))
 
 (defn- pool-map
   "Given a collection of pools, and a function val-fn that takes a pool,
@@ -1237,8 +1221,9 @@
     (letfn [(sort-jobs-by-dru-pool-helper [[pool sort-jobs-by-dru]]
               (let [pending-tasks (pool->pending-task-ents pool)
                     running-tasks (pool->running-task-ents pool)
-                    user->dru-divisors (pool->user->dru-divisors pool)]
-                [pool (sort-jobs-by-dru pending-tasks running-tasks user->dru-divisors)]))]
+                    user->dru-divisors (pool->user->dru-divisors pool)
+                    timer (timers/timer (metric-title "sort-jobs-hierarchy-duration" pool))]
+                [pool (sort-jobs-by-dru pending-tasks running-tasks user->dru-divisors timer pool)]))]
       (into {} (map sort-jobs-by-dru-pool-helper) pool->sort-jobs-by-dru-fn))))
 
 (timers/deftimer [cook-mesos scheduler filter-offensive-jobs-duration])
@@ -1385,10 +1370,10 @@
       (log/error e "Unable to decline offers!"))))
 
 (defn receive-offers
-  [offers-chan match-trigger-chan driver offers]
+  [offers-chan match-trigger-chan driver pool-name offers]
   (doseq [offer offers]
-    (histograms/update! offer-size-cpus (get-in offer [:resources :cpus] 0))
-    (histograms/update! offer-size-mem (get-in offer [:resources :mem] 0)))
+    (histograms/update! (histograms/histogram (metric-title "offer-size-cpus" pool-name)) (get-in offer [:resources :cpus] 0))
+    (histograms/update! (histograms/histogram (metric-title "offer-size-mem" pool-name)) (get-in offer [:resources :mem] 0)))
   (if (async/offer! offers-chan offers)
     (do
       (counters/inc! offer-chan-depth)
@@ -1506,14 +1491,14 @@
                   (if-let [offers-chan (get pool->offers-chan pool-name)]
                     (do
                       (log/info "Processing" offer-count "offer(s) for known pool" pool-name)
-                      (receive-offers offers-chan match-trigger-chan driver offers))
+                      (receive-offers offers-chan match-trigger-chan driver pool-name offers))
                     (do
                       (log/warn "Declining" offer-count "offer(s) for non-existent pool" pool-name)
                       (decline-offers-safe driver offers)))
                   (if-let [offers-chan (get pool->offers-chan "no-pool")]
                     (do
                       (log/info "Processing" offer-count "offer(s) for pool" pool-name "(not using pools)")
-                      (receive-offers offers-chan match-trigger-chan driver offers))
+                      (receive-offers offers-chan match-trigger-chan driver pool-name offers))
                     (do
                       (log/error "Declining" offer-count "offer(s) for pool" pool-name "(missing no-pool offer chan)")
                       (decline-offers-safe driver offers))))))
