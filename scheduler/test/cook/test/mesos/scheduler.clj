@@ -2065,7 +2065,7 @@
                              (when (= :warn level)
                                (reset! logged-atom {:throwable throwable
                                                     :message message})))]
-      (is (thrown? ExceptionInfo (sched/launch-matched-tasks! matches conn nil nil nil nil nil)))
+      (is (thrown? ExceptionInfo (sched/launch-matched-tasks! matches conn nil nil nil nil nil nil)))
       (is (= timeout-exception (:throwable @logged-atom)))
       (is (str/includes? (:message @logged-atom) (str job-id))))))
 
