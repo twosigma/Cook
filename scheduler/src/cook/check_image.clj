@@ -3,8 +3,7 @@
             [clj-http.client :as http]
             [clj-time.core :as t]
             [cook.cache :as ccache]
-            [cook.hooks :as hooks]
-            )
+            [cook.hooks :as hooks])
   (:import (com.google.common.cache CacheLoader Cache LoadingCache CacheBuilder))
   (:import (com.google.common.base Function)
            (java.util.concurrent TimeUnit)))
@@ -18,10 +17,10 @@
 (def odd-result-cache-timeout (t/seconds 30))
 
 
-(defn failed-image-validity-check [docker-image]
-  {:status :error
-   :message (str "Image " docker-image " not found")
-   :cache-expire-at (t/plus (t/now) bad-cache-timeout)})
+(defn failed-image-validity-check [docker-image timeout]
+  {:status :rejected
+   :message (str "Problem with docker image '" docker-image "'")
+   :cache-expire-at (t/plus (t/now) timeout)})
 
 (defn do-image-status-query-http
   "Is the image valid? Do the HTTP (with a 2 second timeout) and return the response."
@@ -37,14 +36,11 @@
   [docker-image {:keys [status body]}]
   (let [now (t/now)]
     (cond
-      (= 200 status) {:status :ok
-                      :cache-expire-at (t/plus now good-cache-timeout) }
-      (= 404 status) {:status :error
-                      :message (str "Image " docker-image " not found")
-                      :cache-expire-at (t/plus now bad-cache-timeout)}
-      ; TODO: What to return on other outputs? XXXX thinks we should default fail.
-      :else {:status :ok
-             :cache-expire-at (t/plus now odd-result-cache-timeout) })))
+      (= 200 status) {:status :accepted
+                      :cache-expire-at (t/plus now good-cache-timeout)}
+      (= 404 status) (failed-image-validity-check docker-image bad-cache-timeout)
+      ; Weird outputs: Default fail.
+      :else (failed-image-validity-check docker-image odd-result-cache-timeout))))
 
 (defn process-response-for-image-deployment-cache
   "Process a response containing a json body with a map with two keys:
@@ -55,16 +51,16 @@
         deployed? ("deployed" body)
         ready? (and built? deployed?)]
     (cond
-      (and (= 200 status) ready?) {:status :ok
+      (and (= 200 status) ready?) {:status :accepted
                                    :cache-expire-at (t/plus now good-cache-timeout) }
-      (and (= 200 status) (not ready?)) {:status :later
+      (and (= 200 status) (not ready?)) {:status :deferred
                                          :cache-expire-at (t/plus now unknown-cache-timeout) }
-      (= 404 status) {:status :error
-                      :message (str "Image " docker-image " not found")
+      ; This can't happen, but if it does, lets flush the job out by executing it.
+      (= 404 status) {:status :accepted
                       :cache-expire-at (t/plus now bad-cache-timeout)}
-      ; TODO: What to return on other outputs? XXXX thinks we should default fail.
-      :else {:status :ok
-             :cache-expire-at (t/plus now odd-result-cache-timeout) })))
+      ; Try again later..
+      :else {:status :deferred
+             :cache-expire-at (t/plus now odd-result-cache-timeout)})))
 
 (defn generate-url-from-image
   [docker-image]
@@ -79,7 +75,7 @@
             response (do-image-status-query-http url image-deployment-check-http-timeout-millis)]
         (process-response-for-image-validity-cache docker-image response))
       (catch Exception e
-        {:status :later
+        {:status :deferred
          :cache-expire-at (t/plus now odd-result-cache-timeout)}))))
 
 (def ^LoadingCache image-deployment-cache (-> (CacheBuilder/newBuilder)
@@ -102,7 +98,7 @@
         (.put image-deployment-cache docker-image deployment))
       validity)
     (catch Exception e
-      (failed-image-validity-check))))
+      (failed-image-validity-check odd-result-cache-timeout))))
 
 (def ^LoadingCache image-validity-cache (-> (CacheBuilder/newBuilder)
                                             (.maximumSize 200000)
@@ -111,7 +107,6 @@
                                                       (reify Function
                                                         (apply [_ docker-image]
                                                           (image-validity-miss docker-image)))))))
-
 
 
 (defrecord DockerValidate []
