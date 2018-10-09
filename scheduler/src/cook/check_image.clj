@@ -10,17 +10,14 @@
 
 (def image-validity-check-http-timeout-millis 2000)
 (def image-deployment-check-http-timeout-millis 30000)
-
-(def good-cache-timeout (t/minutes 240)) ; How long store a good image status
 (def bad-cache-timeout (t/seconds 30)) ; How long ot store a 'image is bad' status.
 (def unknown-cache-timeout (t/seconds 60)) ; Time to defer when we have a
 (def odd-result-cache-timeout (t/seconds 30))
 
-
 (defn failed-image-validity-check [docker-image timeout]
   {:status :rejected
    :message (str "Problem with docker image '" docker-image "'")
-   :cache-expire-at (t/plus (t/now) timeout)})
+   :cache-expires-at (t/plus (t/now) timeout)})
 
 (defn do-image-status-query-http
   "Is the image valid? Do the HTTP (with a 2 second timeout) and return the response."
@@ -28,6 +25,15 @@
   (let [reqdict {:socket-timeout timeout :conn-timeout timeout
                  :as :json-string-keys :content-type :json}]
     (http/get url reqdict)))
+
+(defn calculate-expiration
+  [body]
+  ; TODO: Is customized from plugin.
+  (t/plus now (t/minutes 240)))
+
+(defn generate-url-from-image
+  [docker-image]
+  "TODO")
 
 (defn process-response-for-image-validity-cache
   "Determine if an image is valid from the http response body.
@@ -37,7 +43,7 @@
   (let [now (t/now)]
     (cond
       (= 200 status) {:status :accepted
-                      :cache-expire-at (t/plus now good-cache-timeout)}
+                      :cache-expires-at (calculate-expiration body)}
       (= 404 status) (failed-image-validity-check docker-image bad-cache-timeout)
       ; Weird outputs: Default fail.
       :else (failed-image-validity-check docker-image odd-result-cache-timeout))))
@@ -52,19 +58,15 @@
         ready? (and built? deployed?)]
     (cond
       (and (= 200 status) ready?) {:status :accepted
-                                   :cache-expire-at (t/plus now good-cache-timeout) }
+                                   :cache-expires-at (calculate-expiration body)}
       (and (= 200 status) (not ready?)) {:status :deferred
-                                         :cache-expire-at (t/plus now unknown-cache-timeout) }
+                                         :cache-expires-at (t/plus now unknown-cache-timeout)}
       ; This can't happen, but if it does, lets flush the job out by executing it.
       (= 404 status) {:status :accepted
-                      :cache-expire-at (t/plus now bad-cache-timeout)}
+                      :cache-expires-at (t/plus now bad-cache-timeout)}
       ; Try again later..
       :else {:status :deferred
-             :cache-expire-at (t/plus now odd-result-cache-timeout)})))
-
-(defn generate-url-from-image
-  [docker-image]
-  "TODO")
+             :cache-expires-at (t/plus now odd-result-cache-timeout)})))
 
 (defn image-deployment-miss
   "Is the image deployed? Do the HTTP and return the response."
@@ -76,7 +78,7 @@
         (process-response-for-image-validity-cache docker-image response))
       (catch Exception e
         {:status :deferred
-         :cache-expire-at (t/plus now odd-result-cache-timeout)}))))
+         :cache-expires-at (t/plus now odd-result-cache-timeout)}))))
 
 (def ^LoadingCache image-deployment-cache (-> (CacheBuilder/newBuilder)
                                               (.maximumSize 200000)
@@ -100,13 +102,14 @@
     (catch Exception e
       (failed-image-validity-check odd-result-cache-timeout))))
 
-(def ^LoadingCache image-validity-cache (-> (CacheBuilder/newBuilder)
-                                            (.maximumSize 200000)
-                                            (.expireAfterAccess 72 TimeUnit/HOURS)
-                                            (.build (CacheLoader/from
-                                                      (reify Function
-                                                        (apply [_ docker-image]
-                                                          (image-validity-miss docker-image)))))))
+(def ^LoadingCache image-validity-cache
+  (-> (CacheBuilder/newBuilder)
+      (.maximumSize 200000)
+      (.expireAfterAccess 72 TimeUnit/HOURS)
+      (.build (CacheLoader/from
+                (reify Function
+                  (apply [_ docker-image]
+                    (image-validity-miss docker-image)))))))
 
 
 (defrecord DockerValidate []
@@ -128,4 +131,4 @@
         (do
           (future
             (ccache/lookup-cache! image-deployment-cache identity image-deployment-miss docker-image))
-          {:status :later :cache-expire-at (t/plus now unknown-cache-timeout)})))))
+          {:status :later :cache-expires-at (t/plus now unknown-cache-timeout)})))))

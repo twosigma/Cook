@@ -39,8 +39,8 @@
       thousands of jobs), the whole batch of responeses MUST complete within a different timeout seconds.")
   (check-job-invocation [this job-map]
     "Check a job submission for if we can run it now. Returns a map with one of two possibilities:
-      {:status :accepted :cache-expire-at <DateTime to expire>}
-      {:status :deferred :cache-expire-at <DateTime to expire>}
+      {:status :accepted :cache-expires-at <DateTime to expire>}
+      {:status :deferred :cache-expires-at <DateTime to expire>}
 
       This check is run just before a job is about to launch, and MUST return within milliseconds, without blocking
       (If you don't have have a definitive result, return a retry a few tens of milliseconds later)
@@ -50,7 +50,7 @@
 
 (def default-accept
   "A default accept object with an expiration at infinity"
-  {:status :accepted :cache-expire-at (t/date-time 2783 12 03)})
+  {:status :accepted :cache-expires-at (t/date-time 2783 12 03)})
 
 (defn create-job-submission-rate-limiter
   "Returns the hook object that matches to a given job map. Returns an always-accept Hook object if nothing is defined."
