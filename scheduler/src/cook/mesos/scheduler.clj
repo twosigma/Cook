@@ -656,11 +656,6 @@
   (->> pending-jobs
        (filter-based-on-quota user->quota user->usage)
        (filter (fn [job] (util/job-allowed-to-start? db job)))
-       (take (* 2 num-considerable))
-       ; Yes there is some risk of head-of-line blocking here. If we handle deferred jobs
-       ; better we can clean this up.
-       (filter hooks/filter-job-invocations)
-       ; TODO: Where do we hook in to remove bad jobs? 
        (take num-considerable)))
 
 (defn matches->job-uuids
@@ -1325,6 +1320,7 @@
            ;; Apply the offensive job filter first before taking.
            (pc/map-vals offensive-job-filter)
            (pc/map-vals #(map util/job-ent->map %))
+           (pc/map-vals #(map hooks/filter-job-invocations %))
            (pc/map-vals #(remove nil? %)))
       (catch Throwable t
         (log/error t "Failed to rank jobs")

@@ -1636,7 +1636,6 @@
                          pool-name (get params :pool)
                          pool (when pool-name (d/entity (d/db conn) [:pool/name pool-name]))
                          uuid->count (pc/map-vals count (group-by :uuid jobs))
-                         {:keys [any-bad? sample-error]} (hooks/hook-jobs-submission jobs)
                          time-until-out-of-debt (rate-limit/time-until-out-of-debt-millis! rate-limit/job-submission-rate-limiter user)
                          in-debt? (not (zero? time-until-out-of-debt))]
                      (try
@@ -1675,8 +1674,8 @@
                                              %
                                              :override-group-immutability?
                                              override-group-immutability?) jobs)
-                               {:keys [result message]} (hooks/hook-jobs-submission jobs)]
-                           (if (or true (= :ok result))
+                               {:keys [status message]} (hooks/hook-jobs-submission jobs)]
+                           (if (= :accepted status)
                              [false {::groups groups
                                      ::jobs jobs
                                      ::pool pool}]
