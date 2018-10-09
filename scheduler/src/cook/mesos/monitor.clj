@@ -20,32 +20,30 @@
             [clojure.tools.logging :as log]
             [cook.config :refer (config)]
             [cook.datomic :as datomic]
+            [cook.mesos.pool :as pool]
             [cook.mesos.share :as share]
             [cook.mesos.util :as util]
             [datomic.api :as d :refer (q)]
             [metrics.counters :as counters]))
 
 (defn- get-job-stats
-  "Query all jobs for the given job state, e.g. :job.state/running or
-   :job.state/waiting and produce basic stats per user.
+  "Given all jobs for a particular job state, e.g. running or
+   waiting, produces basic stats per user.
 
    Return a map from users to their stats where a stats is a map from stats
    types to amounts."
-  [db state]
-  (let [job-ents (case state
-                   :job.state/waiting (util/get-pending-job-ents db)
-                   :job.state/running (util/get-running-job-ents db)
-                   (throw (ex-info "Encountered unexpected job state" {:state state})))]
-    (->> job-ents
-         ;; Produce a list of maps from user's name to his stats.
-         (mapv (fn [job-ent]
-                 (let [user (:job/user job-ent)
-                       stats (-> job-ent
-                                 util/job-ent->resources
-                                 (select-keys [:cpus :mem])
-                                 (assoc :jobs 1))]
-                   {user stats})))
-         (reduce (partial merge-with (partial merge-with +)) {}))))
+  [job-ents pool]
+  (->> job-ents
+       (filter #(= pool (util/job->pool %)))
+       ;; Produce a list of maps from user's name to his stats.
+       (mapv (fn [job-ent]
+               (let [user (:job/user job-ent)
+                     stats (-> job-ent
+                               util/job-ent->resources
+                               (select-keys [:cpus :mem])
+                               (assoc :jobs 1))]
+                 {user stats})))
+       (reduce (partial merge-with (partial merge-with +)) {})))
 
 (defn- add-aggregated-stats
   "Given a map from users to their stats, associcate a special user
@@ -60,9 +58,9 @@
 (defn- get-starved-job-stats
   "Return a map from starved users ONLY to their stats where a stats is a map
    from stats types to amounts."
-  ([db running-stats waiting-stats]
+  ([db running-stats waiting-stats pool]
    (let [waiting-users (keys waiting-stats)
-         shares (share/get-shares db waiting-users nil [:cpus :mem])
+         shares (share/get-shares db waiting-users pool [:cpus :mem])
          promised-resources (fn [user] (get shares user))
          compute-starvation (fn [user]
                               (->> (merge-with - (promised-resources user) (get running-stats user))
@@ -92,26 +90,26 @@
   but not in the current iteration. This avoids the situation
   where a user's job changes state but the old state's counter
   doesn't reflect the change."
-  [state stats state->previous-stats-atom]
-  (let [previous-stats (get @state->previous-stats-atom state)
+  [state stats state->previous-stats-atom pool]
+  (let [previous-stats (get-in @state->previous-stats-atom [pool state])
         previous-users (set (keys previous-stats))
         current-users (set (keys stats))
         users-to-clear (difference previous-users current-users)]
     (run! (fn [user]
             (run! (fn [[type _]]
-                    (set-counter! (counters/counter [state user (name type)]) 0))
+                    (set-counter! (counters/counter [state user (name type) (str "pool-" pool)]) 0))
                   (get previous-stats user)))
           users-to-clear)))
 
 (defn- set-user-counters!
   "Sets counters for jobs with the given state, e.g. running, waiting and starved."
-  [state stats state->previous-stats-atom]
-  (clear-old-counters! state stats state->previous-stats-atom)
-  (swap! state->previous-stats-atom #(assoc % state stats))
+  [state stats state->previous-stats-atom pool]
+  (clear-old-counters! state stats state->previous-stats-atom pool)
+  (swap! state->previous-stats-atom #(assoc-in % [pool state] stats))
   (run!
     (fn [[user stats]]
       (run! (fn [[type amount]]
-              (-> [state user (name type)]
+              (-> [state user (name type) (str "pool-" pool)]
                   counters/counter
                   (set-counter! amount)))
             stats))
@@ -119,19 +117,19 @@
 
 (defn set-total-counter!
   "Given a state (e.g. starved) and a value, sets the corresponding counter."
-  [state value]
-  (-> [state "users"]
+  [state value pool]
+  (-> [state "users" (str "pool-" pool)]
       counters/counter
       (set-counter! value)))
 
 (defn set-stats-counters!
   "Queries the database for running and waiting jobs per user, and sets
   counters for running, waiting, starved, hungry and satisifed users."
-  [db state->previous-stats-atom]
-  (log/info "Querying database for running and waiting jobs per user")
-  (let [running-stats (get-job-stats db :job.state/running)
-        waiting-stats (get-job-stats db :job.state/waiting)
-        starved-stats (get-starved-job-stats db running-stats waiting-stats)
+  [db state->previous-stats-atom pending-job-ents running-job-ents pool]
+  (log/info "Setting stats counters for running and waiting jobs per user for" pool "pool")
+  (let [running-stats (get-job-stats running-job-ents pool)
+        waiting-stats (get-job-stats pending-job-ents pool)
+        starved-stats (get-starved-job-stats db running-stats waiting-stats pool)
         running-users (set (keys running-stats))
         waiting-users (set (keys waiting-stats))
         satisfied-users (difference running-users waiting-users)
@@ -141,14 +139,14 @@
         starved-count (count starved-users)
         hungry-count (count hungry-users)
         satisfied-count (count satisfied-users)]
-    (set-user-counters! "running" running-stats state->previous-stats-atom)
-    (set-user-counters! "waiting" waiting-stats state->previous-stats-atom)
-    (set-user-counters! "starved" starved-stats state->previous-stats-atom)
-    (set-total-counter! "total" total-count)
-    (set-total-counter! "starved" starved-count)
-    (set-total-counter! "hungry" hungry-count)
-    (set-total-counter! "satisfied" satisfied-count)
-    (log/info "User stats: total" total-count "starved" starved-count
+    (set-user-counters! "running" running-stats state->previous-stats-atom pool)
+    (set-user-counters! "waiting" waiting-stats state->previous-stats-atom pool)
+    (set-user-counters! "starved" starved-stats state->previous-stats-atom pool)
+    (set-total-counter! "total" total-count pool)
+    (set-total-counter! "starved" starved-count pool)
+    (set-total-counter! "hungry" hungry-count pool)
+    (set-total-counter! "satisfied" satisfied-count pool)
+    (log/info "Pool" pool "user stats: total" total-count "starved" starved-count
               "hungry" hungry-count "satisfied" satisfied-count)))
 
 (defn start-collecting-stats
@@ -162,8 +160,15 @@
         (log/info "Starting user stats collection at intervals of" interval-seconds "seconds")
         (chime-at (util/time-seq (time/now) (time/seconds interval-seconds))
                   (fn [_]
-                    (let [mesos-db (d/db datomic/conn)]
-                      (set-stats-counters! mesos-db state->previous-stats-atom)))
+                    (log/info "Querying database for running and waiting jobs")
+                    (let [mesos-db (d/db datomic/conn)
+                          pending-job-ents (util/get-pending-job-ents mesos-db)
+                          running-job-ents (util/get-running-job-ents mesos-db)]
+                      (run!
+                        (fn [{:keys [pool/name]}]
+                          (set-stats-counters! mesos-db state->previous-stats-atom
+                                               pending-job-ents running-job-ents name))
+                        (pool/all-pools mesos-db))))
                   {:error-handler (fn [ex]
                                     (log/error ex "Setting user stats counters failed!"))}))
       (log/info "User stats collection is disabled"))))
