@@ -1307,7 +1307,18 @@ for a job. E.g. {:resources {:cpus 4 :mem 3} :constraints {\"unique_host_constra
     :reason/name :mesos-executor-unregistered
     :reason/mea-culpa? false
     :reason/mesos-reason :reason-executor-unregistered}
-
+   {:db/id (d/tempid :db.part/user)
+    :reason/code 7001
+    :reason/string "Container image is bad"
+    :reason/name :image-bad-container
+    :reason/mea-culpa? false
+    :reason/mesos-reason :bad-image}
+   {:db/id (d/tempid :db.part/user)
+    :reason/code 7002
+    :reason/string "Job deferred too long and reaped"
+    :reason/name :job-reaped
+    :reason/mea-culpa? false
+    :reason/mesos-reason :excessive-deferral}
    {:db/id (d/tempid :db.part/user)
     :reason/code 99000
     :reason/string "Unknown reason"

@@ -15,9 +15,15 @@
 ;;
 (ns cook.hooks
   (:require [clj-time.core :as t]
-            [cook.cache :as ccache])
+            [cook.cache :as ccache]
+    ;            [cook.mesos :as mesos]
+            [cook.datomic :as datomic])
   (:import (com.google.common.cache CacheBuilder)
-           (java.util.concurrent TimeUnit)))
+           (java.util.concurrent TimeUnit Executors ScheduledExecutorService ScheduledFuture Future)))
+
+(defn kill-job [job-uuid error-code]
+  ; TODO: Note. Can't use cook.mesos/kill-job. because of circular dependencies
+  )
 
 
 
@@ -28,7 +34,7 @@
   (check-job-submission [this job-map]
     "Check a job submission for correctness at the time of submission. Returns a map with one of two possibilities:
       {:status :ok}
-      {:status :error :message "<SOME MESSAGE>"}
+      {:status :error :message "<SOME MESSAGE>" :error-code <number>}
 
       This check is run synchronously with jobs submisison and MUST respond within 2 seconds, and should ideally return within
       100ms, or less. Furthermore, if multiple jobs are submitted in a batch (which may contain tens to hundreds to
@@ -40,8 +46,8 @@
   (check-job-invocation [this job-map]
     "Check a job submission for if we can run it now. Returns a map with one of three possibilities:
       {:status :ok}
-      {:status :error :message \"Message\"}
-      {:status :later :message \"Message\" :retry-at <DateTime to relaunch>}
+      {:status :error :message \"Message\" :error-code <number>}
+      {:status :later :message \"Message\" :cache-expire-at <DateTime to relaunch>}
 
       This check is run just before a job is about to launch, and MUST return within milliseconds, without blocking
       (If you don't have have a definitive result, return a retry a few tens of milliseconds later)
@@ -56,13 +62,11 @@
 
 
 (def TODO-query-timeout 60); Should get the default query timeout out of config and stuff it here.
-(def job-max-deferral 300) ; TODO: This should come from the config.
-
-
+(def max-possible-date  (t/date-time 2783 12 03)) ; 27831203
 
 (defn result-reducer
-  [{accum-status :status accum-message :message accum-retry :retry-at :as accum}
-   {in-status :status in-message :message in-retry :retry-at :as in}]
+  [{accum-status :status accum-message :message accum-expire-at :cache-expire-at :as accum}
+   {in-status :status in-message :message in-expire-at :cache-expire-at :as in}]
   (cond
     ; If either is OK, use the other.
     (= accum-status :ok) in
@@ -75,7 +79,10 @@
     (and (= in-status :later) (= accum-status :error)) accum
     ; If both are later, use the smallest one.
     :else
-    ({:status :later :message (str accum-message " AND " in-message) :retry-at (min accum-retry in-retry)})))
+    {:status :later
+      :message (str accum-message " AND " in-message)
+      :cache-expire-at (t/min-date (or accum-expire-at max-possible-date)
+                                   (or in-expire-at max-possible-date))}))
 
 (defn get-hook-objects
   [job-map]
@@ -98,7 +105,7 @@
                                     (check-job-submission-default hook-ob))))]
 
     (->> (get-hook-objects job-map)
-         (pmap wrap-check-submission)
+         (map wrap-check-submission)
          (reduce result-reducer {:status :ok}))))
 
 (defn run-all-check-job-invocation-and-merge-result
@@ -115,22 +122,55 @@
       (.build)))
 
 
+;; Caches a map from job UUID to its invocation status map (i.e., :status :ok, :status :later}
 (defonce job-invocations-cache (new-cache))
-(defn job-unschedule-kill-for-staleness [job]
+;; A queue of job-killers. When a job gets stale, we time it out.
+(defonce ^ScheduledExecutorService job-reaper-queue (Executors/newScheduledThreadPool 1))
+;; A map from job UUID to the future for the task to kill it.
+(defonce job-reaper-lookup (atom {}))
+(defonce ^int job-reap-delay-minutes 480)
+; How often do we scan the queue to reap. Should be at least 30 minutes, and less than job-reap-delay-minutes/4.
+(defonce job-reap-scan-interval-minutes 120)
+
+(defn- being-reaped-soon? [^ScheduledFuture future]
+  "Identify futures that we will reap in the next 1.5 scan intervals If a future (representing something we plan on killing) in less than 1.5 scan intervals."
+  (< (.getDelay future TimeUnit/MINUTES)
+     (-> job-reap-scan-interval-minutes
+         (/ 2)
+         (+ job-reap-scan-interval-minutes))))
+
+
+(defn job-unschedule-reap-for-staleness [job]
   "This job has become OK to run. So, take it off of the murder list"
-  ; TODO
-  )
-(defn job-schedule-kill-for-staleness [job]
+  (locking job-reaper-lookup
+    (let [{:keys [uuid]} job
+          ^ScheduledFuture future (get @job-reaper-lookup uuid)]
+      (when future (.cancel future false))
+      (swap! job-reaper-lookup dissoc uuid))))
+
+(defn job-schedule-reap-for-staleness [job]
   "This job has entered the murder list. To avoid :later jobs from clogging up the queue, we murder them
   once they get sufficiently old. They should be murdered TODO-murder-time after they are first contracted to
   be murdered. Murders can be cancelled via job-murder-rescue."
-  ; TODO
+  (locking job-reaper-lookup
+    (let [{:keys [uuid]} job]
+      (when-not (get @job-reaper-lookup uuid)
+        (swap!
+          assoc
+          uuid
+          (.scheduled job-reaper-queue
+                      (fn ^Runnable [] (kill-job uuid 7002))
+                      job-reap-delay-minutes
+                      TimeUnit/MINUTES))))))
+
+
+(defn scan-for-reap []
+  ; TODO: Circular jobs. How to handle?
   )
 
-(defn job-kill-bad [job]
-  "This job is marked as bad by a plugin, kill it."
-  ; TODO
-  )
+(def scan-for-reap-future
+  (.scheduleWithFixedDelay job-reaper-queue scan-for-reap job-reap-scan-interval-minutes job-reap-scan-interval-minutes TimeUnit/MINUTES))
+; TODO: Move this as part of mount initialization. Don't care about return value. We run until end of time.
 
 (defn hook-jobs-submission
   [jobs]
@@ -144,22 +184,31 @@
          (reduce result-reducer {:status :ok}))))
 
 
-(defn filter-jobs-invocations
-  "Run the hooks for a set of jobs at invocation time, filter jobs that are not ready yet."
+(defn filter-job-invocations
+  "Run the hooks for a set of jobs at invocation time, return true if a job is ready to run now."
   [job]
-  (let [miss-handler (fn miss-handler [job]
-                       (let [{:keys [status] :as result} (run-all-check-job-invocation-and-merge-result job)]
+  (let [miss-handler (fn miss-handler [{:keys [uuid] :as job}]
+                       (let [{:keys [status error-code] :as result} (run-all-check-job-invocation-and-merge-result job)]
                          (cond (= status :ok)
-                               (job-unschedule-kill-for-staleness job)
+                               (job-unschedule-reap-for-staleness job)
                                (= status :later)
-                               (job-schedule-kill-for-staleness job)
+                               (job-schedule-reap-for-staleness job)
                                (= status :error)
                                (do
-                                 (job-unschedule-kill-for-staleness job)
-                                 (job-kill-bad job)))
-                         status))
+                                 (job-unschedule-reap-for-staleness job)
+                                 (kill-job uuid error-code)))
+                         result))
         {:keys [status]} (ccache/lookup-cache-with-expiration!
                            job-invocations-cache
                            :uuid
                            miss-handler job)]
     (= status :ok)))
+
+
+(defn scan-for-reap
+  []
+  (->> @job-reaper-queue
+       seq
+       (filter #(being-reaped-soon? (second %))) ; Filter out futures being reaped soon.
+       (map #(filter-job-invocations (first %)) ))) ; Force a cache update
+; TODO: PROBLEM: We only have the UUID here, not the full job-map, so we can't do filter-job-invoations.

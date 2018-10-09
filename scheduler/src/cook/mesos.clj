@@ -287,17 +287,19 @@
 (defn kill-job
   "Kills jobs. It works by marking them completed, which will trigger the subscription
    monitor to attempt to kill any instances"
-  [conn job-uuids]
-  (when (seq job-uuids)
-    (log/info "Killing some jobs!!")
-    (doseq [uuids (partition-all 50 job-uuids)]
-      (async/<!!
-        (transact-with-retries conn
-                               (mapv
-                                 (fn [job-uuid]
-                                   [:db/add [:job/uuid job-uuid] :job/state :job.state/completed])
-                                 uuids)
-                               (into (repeat 10 500) (repeat 10 1000)))))))
+  ([conn job-uuids]
+   (when (seq job-uuids)
+     (log/info "Killing some jobs!!")
+     (doseq [uuids (partition-all 50 job-uuids)]
+       (async/<!!
+         (transact-with-retries conn
+                                (mapv
+                                  (fn [job-uuid]
+                                    [:db/add [:job/uuid job-uuid] :job/state :job.state/completed])
+                                  uuids)
+                                (into (repeat 10 500) (repeat 10 1000)))))))
+  ([conn job-uuids error-code]
+   (kill-job conn job-uuids)))
 
 (defn kill-instances
   "Kills instances.  Marks them as cancelled in datomic;

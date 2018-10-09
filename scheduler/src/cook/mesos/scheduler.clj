@@ -659,7 +659,7 @@
        (take (* 2 num-considerable))
        ; Yes there is some risk of head-of-line blocking here. If we handle deferred jobs
        ; better we can clean this up.
-       (filter hooks/filter-jobs-invocations)
+       (filter hooks/filter-job-invocations)
        ; TODO: Where do we hook in to remove bad jobs? 
        (take num-considerable)))
 
