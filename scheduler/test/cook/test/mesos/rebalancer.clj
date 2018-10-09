@@ -143,9 +143,9 @@
           pool-ent {:pool/name "no-pool"
                     :pool/dru-mode :pool.dru-mode/default}
           state (rebalancer/init-state db running-tasks pending-jobs {} pool-ent)]
-      (is (= 1.92 (rebalancer/compute-pending-default-job-dru state (d/entity db job9))))
-      (is (= 0.8 (rebalancer/compute-pending-default-job-dru state (d/entity db job10))))
-      (is (= 2.6 (rebalancer/compute-pending-default-job-dru state (d/entity db job11)))))))
+      (is (= 1.92 (rebalancer/compute-pending-default-job-dru state "no-pool" (d/entity db job9))))
+      (is (= 0.8 (rebalancer/compute-pending-default-job-dru state "no-pool"(d/entity db job10))))
+      (is (= 2.6 (rebalancer/compute-pending-default-job-dru state "no-pool" (d/entity db job11)))))))
 
 (deftest test-pending-gpu-job-dru
   (let [datomic-uri "datomic:mem://test-rebalancer/compute-pending-normal-job-dru"
@@ -182,11 +182,11 @@
         pool-ent {:pool/name "no-pool"
                   :pool/dru-mode :pool.dru-mode/gpu}
         state (rebalancer/init-state db running-tasks pending-jobs {} pool-ent)]
-    (is (= (rebalancer/compute-pending-gpu-job-dru state (d/entity db job2))
-           (rebalancer/compute-pending-gpu-job-dru state (d/entity db job6))))
-    (is (= 5.0 (rebalancer/compute-pending-gpu-job-dru state (d/entity db job9))))
-    (is (= 1.0 (rebalancer/compute-pending-gpu-job-dru state (d/entity db job10))))
-    (is (= 6.0 (rebalancer/compute-pending-gpu-job-dru state (d/entity db job11))))))
+    (is (= (rebalancer/compute-pending-gpu-job-dru state "no-pool" (d/entity db job2))
+           (rebalancer/compute-pending-gpu-job-dru state "no-pool" (d/entity db job6))))
+    (is (= 5.0 (rebalancer/compute-pending-gpu-job-dru state "no-pool" (d/entity db job9))))
+    (is (= 1.0 (rebalancer/compute-pending-gpu-job-dru state "no-pool" (d/entity db job10))))
+    (is (= 6.0 (rebalancer/compute-pending-gpu-job-dru state "no-pool" (d/entity db job11))))))
 
 (defn initialize-rebalancer
   [db pending-job-ids]
@@ -254,6 +254,7 @@
                                                               rebalancer/compute-pending-default-job-dru
                                                               [])
                                                      {:min-dru-diff 0.05 :safe-dru-threshold 1.0}
+                                                     "no-pool"
                                                      (d/entity db job9)
                                                      cotask-cache)))
 
@@ -266,6 +267,7 @@
                                                               rebalancer/compute-pending-default-job-dru
                                                               [])
                                                      {:min-dru-diff 0.5 :safe-dru-threshold 1.0}
+                                                     "no-pool"
                                                      (d/entity db job9)
                                                      cotask-cache)))
 
@@ -279,6 +281,7 @@
                                                               rebalancer/compute-pending-default-job-dru
                                                               [])
                                                      {:min-dru-diff 0.5 :safe-dru-threshold 1.0}
+                                                     "no-pool"
                                                      (d/entity db job9)
                                                      cotask-cache)))
 
@@ -292,6 +295,7 @@
                                                               rebalancer/compute-pending-default-job-dru
                                                               [])
                                                      {:min-dru-diff 0.0 :safe-dru-threshold 1.0}
+                                                     "no-pool"
                                                      (d/entity db job9)
                                                      cotask-cache)))
 
@@ -304,6 +308,7 @@
                                                               rebalancer/compute-pending-default-job-dru
                                                               [])
                                                      {:min-dru-diff 0.5 :safe-dru-threshold 1.0}
+                                                     "no-pool"
                                                      (d/entity db job10)
                                                      cotask-cache)))
 
@@ -316,6 +321,7 @@
                                                               rebalancer/compute-pending-default-job-dru
                                                               [])
                                                      {:min-dru-diff 0.5 :safe-dru-threshold 1.0}
+                                                     "no-pool"
                                                      (d/entity db job11)
                                                      cotask-cache)))
 
@@ -328,6 +334,7 @@
                                                               rebalancer/compute-pending-default-job-dru
                                                               [])
                                                      {:min-dru-diff 0.0 :safe-dru-threshold 1.0}
+                                                     "no-pool"
                                                      (d/entity db job12)
                                                      cotask-cache)))
 
@@ -340,6 +347,7 @@
                                                               rebalancer/compute-pending-default-job-dru
                                                               [])
                                                      {:min-dru-diff 0.5 :safe-dru-threshold 1.0}
+                                                     "no-pool"
                                                      (d/entity db job12)
                                                      cotask-cache)))
 
@@ -352,6 +360,7 @@
                                                               rebalancer/compute-pending-default-job-dru
                                                               [])
                                                      {:min-dru-diff 0.0 :safe-dru-threshold 1.0}
+                                                     "no-pool"
                                                      (d/entity db job12)
                                                      cotask-cache)))
 
@@ -365,6 +374,7 @@
                                                               rebalancer/compute-pending-default-job-dru
                                                               [])
                                                      {:min-dru-diff 0.5 :safe-dru-threshold 1.0}
+                                                     "no-pool"
                                                      (d/entity db job12)
                                                      cotask-cache)))
 
@@ -377,6 +387,7 @@
                                                               rebalancer/compute-pending-default-job-dru
                                                               [])
                                                      {:min-dru-diff 0.5 :safe-dru-threshold 1.0}
+                                                     "no-pool"
                                                      (d/entity db job13)
                                                      cotask-cache)))
 
@@ -389,6 +400,7 @@
                                                               rebalancer/compute-pending-default-job-dru
                                                               [])
                                                      {:min-dru-diff 2.0 :safe-dru-threshold 1.0}
+                                                     "no-pool"
                                                      (d/entity db job13)
                                                      cotask-cache)))
 
@@ -401,6 +413,7 @@
                                                               rebalancer/compute-pending-default-job-dru
                                                               [])
                                                      {:min-dru-diff 0.5 :safe-dru-threshold 1.0}
+                                                     "no-pool"
                                                      (d/entity db job14)
                                                      cotask-cache)))))
   (testing "test preemption with novel-host job constraint"
@@ -441,6 +454,7 @@
                                                                             rebalancer/compute-pending-default-job-dru
                                                                             [])
                                                                    {:min-dru-diff 0.05 :safe-dru-threshold 1.0}
+                                                                   "no-pool"
                                                                    (d/entity db pending-job)
                                                                    cotask-cache))))))
 
@@ -467,6 +481,7 @@
                                                                             rebalancer/compute-pending-default-job-dru
                                                                             [])
                                                                    {:min-dru-diff 0.05 :safe-dru-threshold 1.0}
+                                                                   "no-pool"
                                                                    (d/entity db pending-job)
                                                                    cotask-cache))))))
       (testing "try placing an unconstrained job"
@@ -483,6 +498,7 @@
                                                                           rebalancer/compute-pending-default-job-dru
                                                                           [])
                                                                  {:min-dru-diff 0.05 :safe-dru-threshold 1.0}
+                                                                 "no-pool"
                                                                  (d/entity db pending-job)
                                                                  cotask-cache)))))))))
 
@@ -522,6 +538,7 @@
                                                                             rebalancer/compute-pending-default-job-dru
                                                                             [])
                                                                    {:min-dru-diff 0.05 :safe-dru-threshold 1.0}
+                                                                   "no-pool"
                                                                    (d/entity db pending-job)
                                                                    cotask-cache))))))
 
@@ -543,6 +560,7 @@
                                                                  rebalancer/compute-pending-default-job-dru
                                                                  [])
                                                         {:min-dru-diff 0.05 :safe-dru-threshold 1.0}
+                                                        "no-pool"
                                                         (d/entity db pending-job)
                                                         cotask-cache)))))))
 
@@ -588,6 +606,7 @@
                                                                             rebalancer/compute-pending-default-job-dru
                                                                             [])
                                                                    {:min-dru-diff 0.05 :safe-dru-threshold 1.0}
+                                                                   "no-pool"
                                                                    (d/entity db pending-job)
                                                                    cotask-cache))))))
 
@@ -612,6 +631,7 @@
                                                                  rebalancer/compute-pending-default-job-dru
                                                                  [])
                                                         {:min-dru-diff 0.05 :safe-dru-threshold 1.0}
+                                                        "no-pool"
                                                         (d/entity db pending-job)
                                                         cotask-cache)))))))
 
@@ -669,6 +689,7 @@
                                                       rebalancer/compute-pending-default-job-dru
                                                       [])
                                              {:min-dru-diff 0.05 :safe-dru-threshold 1.0}
+                                             "no-pool"
                                              (d/entity db pending-job)
                                              cotask-cache))]
             (is (true? (or (= "titanium" preempted-host) (= "rebar" preempted-host)))))))
@@ -708,6 +729,7 @@
                                                       rebalancer/compute-pending-default-job-dru
                                                       [task-preempted-this-cycle])
                                              {:min-dru-diff 0.05 :safe-dru-threshold 1.0}
+                                             "no-pool"
                                              (d/entity db pending-job)
                                              cotask-cache))]
             (is (true? (or (= "bricks" preempted-host) (= "gold" preempted-host))))))))))
@@ -899,7 +921,7 @@
         init-state (rebalancer/init-state db (util/get-running-task-ents db) jobs-to-make-room-for
                                           host->spare-resources pool-ent)]
     (rebalancer/rebalance db agent-attributes-cache rebalancer-reservation-atom
-                          params init-state jobs-to-make-room-for)))
+                          params init-state jobs-to-make-room-for (:pool/name pool-ent))))
 
 (deftest test-rebalance
   (let [datomic-uri "datomic:mem://test-rebalance"
