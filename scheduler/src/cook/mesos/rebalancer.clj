@@ -209,15 +209,15 @@
   ([db running-task-ents pending-job-ents host->spare-resources pool-ent]
    (init-state db running-task-ents pending-job-ents host->spare-resources pool-ent []))
   ([db running-task-ents pending-job-ents host->spare-resources {:keys [pool/name pool/dru-mode]} preempted-tasks]
-   (let [pool name
+   (let [pool-name name
          running-task-ents (filter (fn [task]
                                      (-> task
                                          :job/_instance
                                          util/job->pool
-                                         (= pool)))
+                                         (= pool-name)))
                                    running-task-ents)
          using-pools? (not (nil? (config/default-pool)))
-         user->dru-divisors (dru/init-user->dru-divisors db running-task-ents pending-job-ents (if using-pools? pool nil))
+         user->dru-divisors (dru/init-user->dru-divisors db running-task-ents pending-job-ents (if using-pools? pool-name nil))
          user->sorted-running-task-ents (->> running-task-ents
                                              (group-by util/task-ent->user)
                                              (map (fn [[user task-ents]]
@@ -226,9 +226,9 @@
                                              (into {}))
          scored-task-pairs (case dru-mode
                              :pool.dru-mode/default (dru/sorted-task-scored-task-pairs
-                                                      user->dru-divisors pool user->sorted-running-task-ents)
+                                                      user->dru-divisors pool-name user->sorted-running-task-ents)
                              :pool.dru-mode/gpu (dru/sorted-task-cumulative-gpu-score-pairs
-                                                  user->dru-divisors pool user->sorted-running-task-ents))
+                                                  user->dru-divisors pool-name user->sorted-running-task-ents))
          task->scored-task (into (pm/priority-map-keyfn (case dru-mode
                                                           :pool.dru-mode/default (juxt (comp - :dru)
                                                                                        (comp util/task-ent->user :task))
