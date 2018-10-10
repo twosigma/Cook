@@ -32,9 +32,9 @@
 
    Return a map from users to their stats where a stats is a map from stats
    types to amounts."
-  [job-ents pool]
+  [job-ents pool-name]
   (->> job-ents
-       (filter #(= pool (util/job->pool %)))
+       (filter #(= pool-name (util/job->pool %)))
        ;; Produce a list of maps from user's name to his stats.
        (mapv (fn [job-ent]
                (let [user (:job/user job-ent)
@@ -58,9 +58,9 @@
 (defn- get-starved-job-stats
   "Return a map from starved users ONLY to their stats where a stats is a map
    from stats types to amounts."
-  ([db running-stats waiting-stats pool]
+  ([db running-stats waiting-stats pool-name]
    (let [waiting-users (keys waiting-stats)
-         shares (share/get-shares db waiting-users pool [:cpus :mem])
+         shares (share/get-shares db waiting-users pool-name [:cpus :mem])
          promised-resources (fn [user] (get shares user))
          compute-starvation (fn [user]
                               (->> (merge-with - (promised-resources user) (get running-stats user))
@@ -90,26 +90,26 @@
   but not in the current iteration. This avoids the situation
   where a user's job changes state but the old state's counter
   doesn't reflect the change."
-  [state stats state->previous-stats-atom pool]
-  (let [previous-stats (get-in @state->previous-stats-atom [pool state])
+  [state stats state->previous-stats-atom pool-name]
+  (let [previous-stats (get-in @state->previous-stats-atom [pool-name state])
         previous-users (set (keys previous-stats))
         current-users (set (keys stats))
         users-to-clear (difference previous-users current-users)]
     (run! (fn [user]
             (run! (fn [[type _]]
-                    (set-counter! (counters/counter [state user (name type) (str "pool-" pool)]) 0))
+                    (set-counter! (counters/counter [state user (name type) (str "pool-" pool-name)]) 0))
                   (get previous-stats user)))
           users-to-clear)))
 
 (defn- set-user-counters!
   "Sets counters for jobs with the given state, e.g. running, waiting and starved."
-  [state stats state->previous-stats-atom pool]
-  (clear-old-counters! state stats state->previous-stats-atom pool)
-  (swap! state->previous-stats-atom #(assoc-in % [pool state] stats))
+  [state stats state->previous-stats-atom pool-name]
+  (clear-old-counters! state stats state->previous-stats-atom pool-name)
+  (swap! state->previous-stats-atom #(assoc-in % [pool-name state] stats))
   (run!
     (fn [[user stats]]
       (run! (fn [[type amount]]
-              (-> [state user (name type) (str "pool-" pool)]
+              (-> [state user (name type) (str "pool-" pool-name)]
                   counters/counter
                   (set-counter! amount)))
             stats))
@@ -117,19 +117,19 @@
 
 (defn set-total-counter!
   "Given a state (e.g. starved) and a value, sets the corresponding counter."
-  [state value pool]
-  (-> [state "users" (str "pool-" pool)]
+  [state value pool-name]
+  (-> [state "users" (str "pool-" pool-name)]
       counters/counter
       (set-counter! value)))
 
 (defn set-stats-counters!
   "Queries the database for running and waiting jobs per user, and sets
   counters for running, waiting, starved, hungry and satisifed users."
-  [db state->previous-stats-atom pending-job-ents running-job-ents pool]
-  (log/info "Setting stats counters for running and waiting jobs per user for" pool "pool")
-  (let [running-stats (get-job-stats running-job-ents pool)
-        waiting-stats (get-job-stats pending-job-ents pool)
-        starved-stats (get-starved-job-stats db running-stats waiting-stats pool)
+  [db state->previous-stats-atom pending-job-ents running-job-ents pool-name]
+  (log/info "Setting stats counters for running and waiting jobs per user for" pool-name "pool")
+  (let [running-stats (get-job-stats running-job-ents pool-name)
+        waiting-stats (get-job-stats pending-job-ents pool-name)
+        starved-stats (get-starved-job-stats db running-stats waiting-stats pool-name)
         running-users (set (keys running-stats))
         waiting-users (set (keys waiting-stats))
         satisfied-users (difference running-users waiting-users)
@@ -139,14 +139,14 @@
         starved-count (count starved-users)
         hungry-count (count hungry-users)
         satisfied-count (count satisfied-users)]
-    (set-user-counters! "running" running-stats state->previous-stats-atom pool)
-    (set-user-counters! "waiting" waiting-stats state->previous-stats-atom pool)
-    (set-user-counters! "starved" starved-stats state->previous-stats-atom pool)
-    (set-total-counter! "total" total-count pool)
-    (set-total-counter! "starved" starved-count pool)
-    (set-total-counter! "hungry" hungry-count pool)
-    (set-total-counter! "satisfied" satisfied-count pool)
-    (log/info "Pool" pool "user stats: total" total-count "starved" starved-count
+    (set-user-counters! "running" running-stats state->previous-stats-atom pool-name)
+    (set-user-counters! "waiting" waiting-stats state->previous-stats-atom pool-name)
+    (set-user-counters! "starved" starved-stats state->previous-stats-atom pool-name)
+    (set-total-counter! "total" total-count pool-name)
+    (set-total-counter! "starved" starved-count pool-name)
+    (set-total-counter! "hungry" hungry-count pool-name)
+    (set-total-counter! "satisfied" satisfied-count pool-name)
+    (log/info "Pool" pool-name "user stats: total" total-count "starved" starved-count
               "hungry" hungry-count "satisfied" satisfied-count)))
 
 (defn start-collecting-stats
