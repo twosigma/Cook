@@ -1518,8 +1518,6 @@
     x
     [x]))
 
-(meters/defmeter [cook-mesos scheduler jobs-created])
-
 (defn create-jobs!
   "Based on the context, persists the specified jobs, along with their groups,
   to Datomic.
@@ -1568,7 +1566,9 @@
              (into job-txns)
              (into group-txns)))
 
-      (meters/mark! jobs-created (count jobs))
+      (meters/mark! (meters/meter ["cook-mesos" "scheduler" "jobs-created"
+                                   (str "pool-" (pool/pool-name-or-default (:pool/name pool)))])
+                    (count jobs))
       {::results (str/join
                    \space (concat ["submitted jobs"]
                                   (map (comp str :uuid) jobs)
