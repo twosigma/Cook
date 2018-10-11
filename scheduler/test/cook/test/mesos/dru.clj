@@ -97,16 +97,19 @@
                (map (comp :dru second)
                     (dru/sorted-task-scored-task-pairs
                       {"ljin" share "wzhao" share "sunil" share}
+                      "no-pool"
                       (map-vals (partial sort-by identity (util/same-user-task-comparator))
                                 (group-by util/task-ent->user task-ents)))))))
       ;; Check that the order of users doesn't affect dru order
       (testing "order of users doesn't affect dru order"
         (is (= (dru/sorted-task-scored-task-pairs
                  {"ljin" share "wzhao" share "sunil" share}
+                 "no-pool"
                  (map-vals (partial sort-by identity (util/same-user-task-comparator))
                            (group-by util/task-ent->user task-ents)))
                (dru/sorted-task-scored-task-pairs
                  {"ljin" share "wzhao" share "sunil" share}
+                 "no-pool"
                  (->> task-ents
                       (group-by util/task-ent->user)
                       (map-vals (partial sort-by identity (util/same-user-task-comparator)))
@@ -165,6 +168,7 @@
                    {"ljin"  {:gpus 5.0}
                     "wzhao" {:gpus 10.0}
                     "sunil" {:gpus 2.5}}
+                   "no-pool"
                    (map-vals (partial sort-by identity (util/same-user-task-comparator))
                              (group-by util/task-ent->user task-ents))))))))))
 

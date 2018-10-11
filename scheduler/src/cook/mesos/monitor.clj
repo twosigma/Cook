@@ -163,12 +163,14 @@
                     (log/info "Querying database for running and waiting jobs")
                     (let [mesos-db (d/db datomic/conn)
                           pending-job-ents (util/get-pending-job-ents mesos-db)
-                          running-job-ents (util/get-running-job-ents mesos-db)]
+                          running-job-ents (util/get-running-job-ents mesos-db)
+                          all-pools (pool/all-pools mesos-db)
+                          pools (if (seq all-pools) all-pools [{:pool/name "no-pool"}])]
                       (run!
                         (fn [{:keys [pool/name]}]
                           (set-stats-counters! mesos-db state->previous-stats-atom
                                                pending-job-ents running-job-ents name))
-                        (pool/all-pools mesos-db))))
+                        pools)))
                   {:error-handler (fn [ex]
                                     (log/error ex "Setting user stats counters failed!"))}))
       (log/info "User stats collection is disabled"))))

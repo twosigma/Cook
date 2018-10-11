@@ -1214,9 +1214,9 @@
         offer-2 {:id {:value "bar"}}
         offer-3 {:id {:value "baz"}}]
     (testing "offer chan overflow"
-      (sched/receive-offers offers-chan match-trigger-chan mock-driver [offer-1])
-      @(sched/receive-offers offers-chan match-trigger-chan mock-driver [offer-2])
-      @(sched/receive-offers offers-chan match-trigger-chan mock-driver [offer-3])
+      (sched/receive-offers offers-chan match-trigger-chan mock-driver "no-pool" [offer-1])
+      @(sched/receive-offers offers-chan match-trigger-chan mock-driver "no-pool" [offer-2])
+      @(sched/receive-offers offers-chan match-trigger-chan mock-driver "no-pool" [offer-3])
       (is (= @declined-offer-ids-atom [(:id offer-2) (:id offer-3)]))
       (async/close! match-trigger-chan)
       (is (= (count (async/<!! (async/into [] match-trigger-chan))) 1)))))
