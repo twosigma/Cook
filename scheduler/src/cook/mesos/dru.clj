@@ -22,7 +22,9 @@
 (defrecord ScoredTask [task dru mem cpus])
 
 (defn metric-title [metric-name pool-name]
-  ["cook-mesos" "dru" metric-name (str "pool-" pool-name)])
+  (if pool-name
+    ["cook-mesos" "dru" metric-name (str "pool-" pool-name)]
+    ["cook-mesos" "dru" metric-name]))
 
 (defn init-user->dru-divisors
   "Initializes dru divisors map. This map will contain all users that have a running task or pending job"
