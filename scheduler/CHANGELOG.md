@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.23.0] - 2018-10-11
+### Changed
+- Updated some metric names to incorporate pools, from @pschorf and @dposada
+
 ## [1.22.0] - 2018-10-04
 ### Added
 - Rate limiting on job submission, from @scrosby
