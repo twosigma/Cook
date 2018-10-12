@@ -19,122 +19,251 @@
             [clj-http.client :as http]
             [clj-time.core :as t]
             [clj-time.coerce :as tc]
-            [clj-time.periodic :as periodic]
-            [clojure.core.async :as async]
             [clojure.tools.logging :as log]
-            [cook.util :refer [lazy-load-var PosNum PosInt NonNegInt]]
+            [cook.util :refer [lazy-load-var NonNegInt PosNum PosInt]]
             [cook.mesos.util :as util]
-            [datomic.api :as d :refer (q)]
-            [schema.core :as s]))
+            [metrics.timers :as timers]
+            [plumbing.core :as pc]
+            [schema.core :as s])
+  (:import (java.util UUID)))
 
 (def TimePeriodMs NonNegInt)
 
-(def HostInfo
-  {:count NonNegInt
-   :instance-type s/Str
-   :cpus PosNum
-   :mem PosNum
-   (s/optional-key :gpus) PosNum})
 
-(defprotocol HostFeed
-  "Protocol defining a service to get information on hosts that can be purchased."
-  (get-available-host-info [this] "Returns a list of host info maps conforming
-                                   to HostInfo schema above"))
+;; Elements missing:
+;;   1. Attributes (chip set, az, ..) -- have a combinatorial problem here
+;;   2. Price
+;;   3. Prob preemption in 10 minutes increments (or something like that)
+(def HostInfo
+  "Example:
+   {\"count\" 4
+    \"cpus\" 8
+    \"instance-type\" \"basic\"
+    \"mem\" 240000}"
+  {:count NonNegInt
+   :cpus PosNum
+   :instance-type s/Str
+   :mem PosNum
+   (s/optional-key :attributes) {s/Keyword s/Any}
+   (s/optional-key :gpus) PosNum
+   (s/optional-key :time-to-start) TimePeriodMs})
 
 (def Schedule
-  "Schedule returned by optimizer. Each TimePeriodMs is some milliseconds into the future the optimizer
-   recommendation map applies.
-   The optimizer recommendation map currently only has one key, :suggested-matches which has the matches
-   recommended as a value. The matches recommended are structured as a map from the host type in question
-   to a list of job UUIDs the optimizer recommends scheduling
+  "Schedule returned by optimizer.
+   Each TimePeriodMs is some milliseconds into the future the optimizer recommendation map applies.
+   The optimizer recommendation map currently only has one key,
+   :suggested-matches which has the matches recommended as a value.
+   The matches recommended are structured as a map from the host type in question to a list of job UUIDs
+   the optimizer recommends scheduling.
 
    Example schedule:
-   {0 {:suggested-matches {{:count 10, :instance-type :mem-optimized, :cpus 10, :mem 200000}
-                           [#uuid \"1db521d2-b1d5-41b4-9a93-a7e12abd940b\"]
-                           {:count 100, :instance-type :cpu-optimized, :cpus 40, :mem 60000}
-                           [#uuid \"5ac521d2-b1d5-41b4-9a93-a7e12abd4326\"]}}
-    60000 {:suggested-matches {{:count 10, :instance-type :mem-optimized, :cpus 10, :mem 200000}
-                               [#uuid \"724521d2-b1d5-41b4-9a93-a7e12abd940b\"]
-                               {:count 100, :instance-type :cpu-optimized, :cpus 40, :mem 60000}
-                               [#uuid \"adc521d2-b1d5-41b4-9a93-a7e12abd4326\"]}}}"
-  {TimePeriodMs {:suggested-matches {HostInfo [s/Uuid]}}})
+   {0 {:suggested-matches [#uuid \"1db521d2-b1d5-41b4-9a93-a7e12abd940b\"]}
+    60000 {:suggested-matches [#uuid \"724521d2-b1d5-41b4-9a93-a7e12abd940b\"]}}"
+  {TimePeriodMs {:suggested-matches [s/Uuid]}})
 
 
 (defprotocol Optimizer
   "Protocol defining a tool to produce a schedule to execute"
-  (produce-schedule [this queue running available host-infos]
-                    "Returns a schedule of what jobs to place on what machines
-                     and what hosts to purchase at different time steps.
-                     Conforms to the Schedule schema above
+  (produce-schedule
+    [this queue running]
+    "Returns a schedule of what jobs to place on what machines
+     and what hosts to purchase at different time steps.
+     Conforms to the Schedule schema above
 
-                     Parameters:
-                     queue -- Ordered list of jobs to run (see cook.mesos.schema job)
-                     running -- Set of tasks running (see cook.mesos.schema instance)
-                     available -- Set of offers outstanding
-                     host-infos -- Host infos from HostFeed
+     Parameters:
+     queue -- Ordered list of jobs to run (see cook.mesos.schema job)
+     running -- Set of tasks running (see cook.mesos.schema instance)
+     host-infos -- Host infos from HostFeed
 
-                     Returns:
-                     A schedule: a map where the keys are milliseconds in the future
-                     and  the values are recommendations to take at that point in the future"))
-
-(defn create-dummy-host-feed
-  "Returns an instance of HostFeed which returns an empty list of hosts"
-  [_]
-  (log/info "Creating dummy host feed")
-  (reify HostFeed
-    (get-available-host-info [this]
-      [])))
+     Returns:
+     A schedule: a map where the keys are milliseconds in the future
+     and  the values are recommendations to take at that point in the future"))
 
 (defn create-dummy-optimizer
   "Returns an instance of Optimizer which returns an empty schedule"
   [_]
   (log/info "Creating dummy optimizer")
   (reify Optimizer
-    (produce-schedule [this queue running available host-infos]
-      {0 {:suggested-matches {}}})))
+    (produce-schedule [_ _ _] {0 {:suggested-matches []}})))
 
-(defn optimizer-cycle!
+(defn instance-runtime
+  "Returns the instance runtime."
+  [instance now]
+  (let [start (:instance/start-time instance)
+        end (:instance/end-time instance now)]
+    (- (.getTime end)
+       (.getTime start))))
+
+(defn calculate-expected-complete-time
+  "Returns the expected time remaining to job completion.
+   Simple model for if run time exceeds expected runtime: the more it exceeds expected, the longer we expect it to take.
+   TODO: get better model!"
+  [instance expected-duration now]
+  (->> (instance-runtime instance now)
+       (- expected-duration)
+       Math/abs))
+
+(defn job->batch-uuid
+  "Retrieves a batch UUID for the provided job."
+  [job]
+  (or (-> job :group/_job :group/uuid)
+      (:job/uuid job)))
+
+(defn waiting-job->optimizer-job
+  "Converts a waiting job to an optimizer job representation."
+  [job default-runtime]
+  (let [expected-duration (get job :job/expected-runtime default-runtime)
+        resources (util/job-ent->resources job)
+        batch-uuid (job->batch-uuid job)]
+    (merge {:batch batch-uuid
+            :count 1
+            :dur expected-duration
+            :expected_complete_time -1
+            :running_host_group -1 ; TODO write function to determine this
+            :state "waiting"
+            :submit_time (-> job :job/submit-time .getTime)
+            :user (:job/user job)
+            :uuid (:job/uuid job)}
+           resources)))
+
+(defn running-instance->optimizer-job
+  "Converts a running instance to an optimizer job representation."
+  [instance default-runtime now host-name->host-group]
+  (let [job (:job/_instance instance)
+        expected-duration (get job :job/expected-runtime default-runtime)
+        expected-complete-time (calculate-expected-complete-time instance expected-duration now)
+        resources (util/job-ent->resources job)
+        batch-uuid (job->batch-uuid job)]
+    (merge {:batch batch-uuid
+            :count 1
+            :dur expected-duration
+            :expected_complete_time expected-complete-time
+            :running_host_group (-> instance :instance/hostname host-name->host-group)
+            :state "running"
+            :submit_time (-> job :job/submit-time .getTime)
+            :user (:job/user job)
+            :uuid (:job/uuid job)}
+           resources)))
+
+(defn create-optimizer-server
+  [{:keys [cpu-share default-runtime host-info max-waiting mem-share opt-params opt-server step-list]
+    :or {opt-params {}}
+    :as config}]
+  {:pre [(integer? default-runtime)
+         (pos? default-runtime)
+         (s/validate HostInfo host-info)
+         (integer? max-waiting)
+         (pos? max-waiting)
+         (seq step-list)]}
+  (log/info "Optimizer config" config)
+  (let [host-group 0
+        host-name->host-group (constantly host-group)
+        host-infos [host-info]
+        user->ema-mem-usage (atom {})]
+    (reify Optimizer
+      (produce-schedule [_ queued-jobs running-tasks]
+        (let [waiting-jobs (take max-waiting queued-jobs)]
+          (log/info "Optimizer inputs" {:running-tasks (count running-tasks)
+                                        :waiting-jobs (count waiting-jobs)})
+          (if (-> waiting-jobs count pos?)
+            (let [alpha 0.5
+                  now (tc/to-date (t/now))
+                  _ (log/info "Converting waiting jobs to optimizer jobs")
+                  waiting-opt-jobs (timers/time!
+                                     (timers/timer ["cook-mesos" "scheduler" "optimizer" "waiting-jobs"])
+                                     (->> waiting-jobs
+                                          (take max-waiting)
+                                          (mapv #(waiting-job->optimizer-job % default-runtime))))
+                  _ (log/info "Converting running jobs to optimizer jobs")
+                  running-opt-jobs (timers/time!
+                                     (timers/timer ["cook-mesos" "scheduler" "optimizer" "running-jobs"])
+                                     (->> running-tasks
+                                          (mapv #(running-instance->optimizer-job % default-runtime now host-name->host-group))))
+                  _ (log/info "Computing user memory usage")
+                  user->mem-usage (timers/time!
+                                    (timers/timer ["cook-mesos" "scheduler" "optimizer" "user->mem-usage"])
+                                    (->> running-opt-jobs
+                                         (group-by :user)
+                                         (pc/map-vals #(reduce + 0 (map :mem %)))
+                                         (pc/map-vals #(* (- 1 alpha) %))))
+                  _ (swap! user->ema-mem-usage
+                           (fn [ema-usage]
+                             (->> (pc/map-vals (partial * alpha) ema-usage)
+                                  (merge-with + user->mem-usage))))
+                  ;; Running must be before waiting here because optimizer determines batch order from job order
+                  opt-jobs (concat running-opt-jobs waiting-opt-jobs)
+                  ;; TODO mem-share should be computed per user.
+                  user->ema-usage (pc/map-vals #(/ % mem-share) @user->ema-mem-usage)
+                  _ (log/info "Preparing request body")
+                  request-body (timers/time!
+                                 (timers/timer ["cook-mesos" "scheduler" "optimizer" "prepare-request"])
+                                 (cheshire/generate-string
+                                   {"cpu_share" cpu-share
+                                    "host_groups" host-infos
+                                    "mem_share" mem-share
+                                    "now" (.getTime now)
+                                    "opt_jobs" opt-jobs
+                                    "opt_params" opt-params
+                                    "seed" (.getTime now)
+                                    "step_list" step-list
+                                    "user_to_ema_usage" user->ema-usage}))
+                  _ (log/info "Making request to optimizer")
+                  raw-schedule (timers/time!
+                                 (timers/timer ["cook-mesos" "scheduler" "optimizer" "server"])
+                                 (-> opt-server
+                                     (http/post {:as :json-string-keys
+                                                 :body request-body
+                                                 :content-type :json})
+                                     :body))
+                  _ (log/info "Received optimizer schedule")
+                  scheduled-job-ids (->> (get-in raw-schedule ["schedule" "0" "suggested-matches" (str host-group)] [])
+                                         (map #(UUID/fromString %)))]
+              (log/info "Num jobs scheduled immediately:" (count scheduled-job-ids))
+              {0 {:suggested-matches scheduled-job-ids}})
+            {0 {:suggested-matches []}}))))))
+
+(defn pool-optimizer-cycle
   "Starts a cycle that:
    1. Gets queue, running, offer and purchasable host info
    2. Calls the `optimizer` to get a schedule
 
    Parameters:
-   get-queue -- fn, no args fn that returns ordered list of jobs to run
-   get-running -- fn, no args fn that returns a set of tasks running
-   get-offers -- fn, 1 arg fn that takes a pool name and returns a set of offers in that pool
-   host-feed -- instance of HostFeed
+   get-queue -- fn, 1-args fn that returns ordered list of jobs to run for provided pool-name
+   get-running -- fn, 1-args fn that returns a set of tasks running for provided pool-name
    optimizer -- instance of Optimizer
-   interval -- joda-time period
 
    Raises an exception if there was a problem in the execution"
-  [get-queue get-running get-offers host-feed optimizer]
-  (let [queue (future (get-queue))
-        running (future (get-running))
-        ; TODO: Call get-offers. Integration of the optimizer with pools is not yet implemented.
-        offers (future [])
-        host-infos (get-available-host-info host-feed)
-        _ (s/validate [HostInfo] host-infos)
-        schedule (produce-schedule optimizer @queue @running @offers host-infos)]
+  [pool-name get-queue get-running optimizer]
+  (let [queue (future (get-queue pool-name))
+        running (future (get-running pool-name))
+        schedule (produce-schedule optimizer @queue @running)]
     (s/validate Schedule schedule)
     schedule))
+
+(defn optimizer-cycle!
+  "Run the pool-optimizer-cycle for every pool and populates the result into pool-name->optimizer-schedule-job-ids-atom."
+  [optimizer get-pool-names pool-name->queue pool-name->running pool-name->optimizer-schedule-job-ids-atom]
+  (doseq [pool-name (get-pool-names)]
+    (try
+      (log/info "Starting optimization cycle for pool" pool-name)
+      (let [scheduler (pool-optimizer-cycle pool-name pool-name->queue pool-name->running optimizer)
+            job-ids (get-in scheduler [0 :suggested-matches] [])]
+        (swap! pool-name->optimizer-schedule-job-ids-atom assoc pool-name job-ids))
+      (catch Exception ex
+        (log/warn ex "Error running optimizer cycle for pool" pool-name)))))
 
 (defn start-optimizer-cycles!
   "Every interval, call `optimizer-cycle!`.
    Returns a function of no arguments to stop"
-  [get-queue get-running get-offers optimizer-config trigger-chan]
-  (log/info "Starting optimization cycler")
-  (let [construct (fn construct [{:keys [create-fn config] :as c}]
+  [optimizer-config trigger-chan get-pool-names pool-name->queue pool-name->running
+   pool-name->optimizer-schedule-job-ids-atom]
+  (log/info "Starting optimization cycles")
+  (let [construct (fn construct-optimizer [{:keys [create-fn config]}]
                     ((lazy-load-var create-fn) config))
-        host-feed (-> optimizer-config :host-feed construct)
         optimizer (-> optimizer-config :optimizer construct)]
     (log/info "Optimizer constructed")
     (util/chime-at-ch trigger-chan
                       (fn []
-                        (log/info "Starting optimization cycle")
-                        (optimizer-cycle! get-queue
-                                          get-running
-                                          get-offers
-                                          host-feed
-                                          optimizer))
-                      {:error-handler (fn [e]
-                                        (log/warn e "Error running optimizer"))})))
+                        (optimizer-cycle! optimizer get-pool-names pool-name->queue pool-name->running
+                                          pool-name->optimizer-schedule-job-ids-atom))
+                      {:error-handler (fn [e] (log/warn e "Error running optimizer cycle"))})))

@@ -23,7 +23,7 @@
             [cook.mesos.data-locality :as dl]
             [cook.mesos.heartbeat]
             [cook.mesos.monitor]
-            [cook.mesos.optimizer]
+            [cook.mesos.optimizer :as optimizer]
             [cook.mesos.rebalancer]
             [cook.mesos.scheduler :as sched]
             [cook.mesos.util :as util]
@@ -178,6 +178,7 @@
         datomic-report-chan (async/chan (async/sliding-buffer 4096))
         mesos-heartbeat-chan (async/chan (async/buffer 4096))
         current-driver (atom nil)
+        pool-name->optimizer-schedule-job-ids-atom (atom {})
         rebalancer-reservation-atom (atom {})
         leader-selector (LeaderSelector.
                           curator-framework
@@ -209,6 +210,7 @@
                                           :mesos-run-as-user mesos-run-as-user
                                           :agent-attributes-cache agent-attributes-cache
                                           :offer-incubate-time-ms offer-incubate-time-ms
+                                          :pool-name->optimizer-schedule-job-ids-atom pool-name->optimizer-schedule-job-ids-atom
                                           :pool-name->pending-jobs-atom pool-name->pending-jobs-atom
                                           :progress-config progress-config
                                           :rebalancer-reservation-atom rebalancer-reservation-atom
@@ -233,16 +235,18 @@
                                                                               :trigger-chan rebalancer-trigger-chan
                                                                               :view-incubating-offers view-incubating-offers})
                                     (when (seq optimizer-config)
-                                      (cook.mesos.optimizer/start-optimizer-cycles! (fn get-queue []
-                                                                                      ;; TODO Use filter of queue that scheduler uses to filter to considerable.
-                                                                                      ;;      Specifically, think about filtering to jobs that are waiting and 
-                                                                                      ;;      think about how to handle quota 
-                                                                                      @pool-name->pending-jobs-atom)
-                                                                                    (fn get-running []
-                                                                                      (cook.mesos.util/get-running-task-ents (d/db mesos-datomic-conn)))
-                                                                                    view-incubating-offers
-                                                                                    optimizer-config
-                                                                                    optimizer-trigger-chan))
+                                      (optimizer/start-optimizer-cycles!
+                                        optimizer-config
+                                        optimizer-trigger-chan
+                                        (fn get-pool-names []
+                                          (keys @pool-name->pending-jobs-atom))
+                                        (fn pool-name->queue [pool-name]
+                                          (get @pool-name->pending-jobs-atom pool-name))
+                                        (fn pool-name->running [pool-name]
+                                          (->> (util/get-running-task-ents (d/db mesos-datomic-conn))
+                                               (remove (fn [task-ent]
+                                                         #(not= pool-name (-> task-ent :job/_instance util/job->pool-name))))))
+                                        pool-name->optimizer-schedule-job-ids-atom))
                                     (when (:update-data-local-costs-trigger-chan trigger-chans)
                                       (dl/start-update-cycles! mesos-datomic-conn (:update-data-local-costs-trigger-chan trigger-chans)))
                                     (counters/inc! mesos-leader)
