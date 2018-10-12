@@ -1328,70 +1328,70 @@
             num-considerable 5]
         (is (= non-gpu-jobs
                (sched/pending-jobs->considerable-jobs
-                 (d/db conn) non-gpu-jobs user->quota user->usage num-considerable nil)))
+                 (d/db conn) non-gpu-jobs user->quota user->usage num-considerable (atom {}) nil)))
         (is (= gpu-jobs
                (sched/pending-jobs->considerable-jobs
-                 (d/db conn) gpu-jobs user->quota user->usage num-considerable nil)))))
+                 (d/db conn) gpu-jobs user->quota user->usage num-considerable (atom {}) nil)))))
     (testing "jobs inside usage quota limited by num-considerable of 3"
       (let [user->usage {test-user {:count 1, :cpus 2, :mem 1024, :gpus 0}}
             user->quota {test-user {:count 10, :cpus 50, :mem 32768, :gpus 10}}
             num-considerable 3]
         (is (= [job-1 job-2 job-3]
                (sched/pending-jobs->considerable-jobs
-                 (d/db conn) non-gpu-jobs user->quota user->usage num-considerable nil)))
+                 (d/db conn) non-gpu-jobs user->quota user->usage num-considerable (atom {}) nil)))
         (is (= gpu-jobs
                (sched/pending-jobs->considerable-jobs
-                 (d/db conn) gpu-jobs user->quota user->usage num-considerable nil)))))
+                 (d/db conn) gpu-jobs user->quota user->usage num-considerable (atom {}) nil)))))
     (testing "jobs inside usage quota limited by num-considerable of 2"
       (let [user->usage {test-user {:count 1, :cpus 2, :mem 1024, :gpus 0}}
             user->quota {test-user {:count 10, :cpus 50, :mem 32768, :gpus 10}}
             num-considerable 2]
         (is (= [job-1 job-2]
                (sched/pending-jobs->considerable-jobs
-                 (d/db conn) non-gpu-jobs user->quota user->usage num-considerable nil)))
+                 (d/db conn) non-gpu-jobs user->quota user->usage num-considerable (atom {}) nil)))
         (is (= gpu-jobs
                (sched/pending-jobs->considerable-jobs
-                 (d/db conn) gpu-jobs user->quota user->usage num-considerable nil)))))
+                 (d/db conn) gpu-jobs user->quota user->usage num-considerable (atom {}) nil)))))
     (testing "jobs inside usage quota limited by num-considerable of 1"
       (let [user->usage {test-user {:count 1, :cpus 2, :mem 1024, :gpus 0}}
             user->quota {test-user {:count 10, :cpus 50, :mem 32768, :gpus 10}}
             num-considerable 1]
         (is (= [job-1]
                (sched/pending-jobs->considerable-jobs
-                 (d/db conn) non-gpu-jobs user->quota user->usage num-considerable nil)))
+                 (d/db conn) non-gpu-jobs user->quota user->usage num-considerable (atom {}) nil)))
         (is (= [job-5]
                (sched/pending-jobs->considerable-jobs
-                 (d/db conn) gpu-jobs user->quota user->usage num-considerable nil)))))
+                 (d/db conn) gpu-jobs user->quota user->usage num-considerable (atom {}) nil)))))
     (testing "some jobs inside usage quota"
       (let [user->usage {test-user {:count 1, :cpus 2, :mem 1024, :gpus 0}}
             user->quota {test-user {:count 5, :cpus 10, :mem 4096, :gpus 10}}
             num-considerable 5]
         (is (= [job-1]
                (sched/pending-jobs->considerable-jobs
-                 (d/db conn) non-gpu-jobs user->quota user->usage num-considerable nil)))
+                 (d/db conn) non-gpu-jobs user->quota user->usage num-considerable (atom {}) nil)))
         (is (= [job-5]
                (sched/pending-jobs->considerable-jobs
-                 (d/db conn) gpu-jobs user->quota user->usage num-considerable nil)))))
+                 (d/db conn) gpu-jobs user->quota user->usage num-considerable (atom {}) nil)))))
     (testing "some jobs inside usage quota - quota gpus not ignored"
       (let [user->usage {test-user {:count 1, :cpus 2, :mem 1024, :gpus 0}}
             user->quota {test-user {:count 5, :cpus 10, :mem 4096, :gpus 0}}
             num-considerable 5]
         (is (= [job-1]
                (sched/pending-jobs->considerable-jobs
-                 (d/db conn) non-gpu-jobs user->quota user->usage num-considerable nil)))
+                 (d/db conn) non-gpu-jobs user->quota user->usage num-considerable (atom {}) nil)))
         (is (= []
                (sched/pending-jobs->considerable-jobs
-                 (d/db conn) gpu-jobs user->quota user->usage num-considerable nil)))))
+                 (d/db conn) gpu-jobs user->quota user->usage num-considerable (atom {}) nil)))))
     (testing "all jobs exceed quota"
       (let [user->usage {test-user {:count 1, :cpus 2, :mem 1024, :gpus 0}}
             user->quota {test-user {:count 5, :cpus 3, :mem 4096, :gpus 10}}
             num-considerable 5]
         (is (= []
                (sched/pending-jobs->considerable-jobs
-                 (d/db conn) non-gpu-jobs user->quota user->usage num-considerable nil)))
+                 (d/db conn) non-gpu-jobs user->quota user->usage num-considerable (atom {}) nil)))
         (is (= []
                (sched/pending-jobs->considerable-jobs
-                 (d/db conn) gpu-jobs user->quota user->usage num-considerable nil)))))))
+                 (d/db conn) gpu-jobs user->quota user->usage num-considerable (atom {}) nil)))))))
 
 (deftest test-matches->job-uuids
   (let [create-task-result (fn [job-uuid _ _ gpus]
@@ -1527,9 +1527,14 @@
         offer-7 (offer-maker 20 4096 5)
         offer-8 (offer-maker 30 16384 1)
         offer-9 (offer-maker 100 200000 0)
-        run-handle-resource-offers! (fn [num-considerable offers pool & {:keys [user-quota user->usage rebalancer-reservation-atom job-name->uuid]
-                                                                         :or {rebalancer-reservation-atom (atom {})
-                                                                              job-name->uuid {}}}]
+        run-handle-resource-offers! (fn [num-considerable offers pool-name &
+                                         {:keys [job-name->uuid
+                                                 pool-name->optimizer-schedule-job-ids-atom
+                                                 rebalancer-reservation-atom
+                                                 user-quota user->usage]
+                                          :or {job-name->uuid {}
+                                               pool-name->optimizer-schedule-job-ids-atom (atom {})
+                                               rebalancer-reservation-atom (atom {})}}]
                                       (reset! launched-offer-ids-atom [])
                                       (reset! launched-job-ids-atom [])
                                       (let [conn (restore-fresh-database! uri)
@@ -1586,7 +1591,9 @@
                                             mesos-run-as-user nil
                                             result (sched/handle-resource-offers!
                                                      conn driver fenzo framework-id pool-name->pending-jobs-atom mesos-run-as-user
-                                                     user->usage user->quota num-considerable offers-chan offers rebalancer-reservation-atom pool)]
+                                                     user->usage user->quota num-considerable offers-chan offers
+                                                     rebalancer-reservation-atom pool-name->optimizer-schedule-job-ids-atom
+                                                     pool-name)]
                                         (async/>!! offers-chan :end-marker)
                                         result))]
     (with-redefs [cook.config/executor-config (constantly executor)]
@@ -1757,9 +1764,14 @@
           offer-2 (offer-maker 20 16384 0)
           offer-3 (offer-maker 30 8192 0)
           [d1 d2] [#{{:dataset {"a" "a"}} {:dataset {"b" "b"}}}]
-          run-handle-resource-offers! (fn [num-considerable offers & {:keys [user-quota user->usage rebalancer-reservation-atom job-name->uuid]
-                                                                      :or {rebalancer-reservation-atom (atom {})
-                                                                           job-name->uuid {}}}]
+          run-handle-resource-offers! (fn [num-considerable offers &
+                                           {:keys [job-name->uuid
+                                                   pool-name->optimizer-schedule-job-ids-atom
+                                                   rebalancer-reservation-atom
+                                                   user-quota user->usage]
+                                            :or {job-name->uuid {}
+                                                 pool-name->optimizer-schedule-job-ids-atom (atom {})
+                                                 rebalancer-reservation-atom (atom {})}}]
                                         (reset! launched-tasks-atom [])
                                         (let [conn (restore-fresh-database! uri)
                                               driver-atom (atom nil)
@@ -1799,8 +1811,10 @@
                                               user->quota (or user-quota {test-user {:count 10, :cpus 50, :mem 32768, :gpus 10}})
                                               mesos-run-as-user nil
                                               result (sched/handle-resource-offers!
-                                                      conn driver fenzo framework-id pool-name->pending-jobs-atom mesos-run-as-user
-                                                      user->usage user->quota num-considerable offers-chan offers rebalancer-reservation-atom :normal)]
+                                                       conn driver fenzo framework-id pool-name->pending-jobs-atom mesos-run-as-user
+                                                       user->usage user->quota num-considerable offers-chan offers
+                                                       rebalancer-reservation-atom pool-name->optimizer-schedule-job-ids-atom
+                                                       :normal)]
                                           result))]
       (testing "enough offers for all normal jobs"
         (let [num-considerable 10

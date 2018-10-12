@@ -17,7 +17,6 @@
   (:require [chime :refer [chime-at chime-ch]]
             [clj-time.coerce :as tc]
             [clj-time.core :as time]
-            [clj-time.periodic :as periodic]
             [clojure.core.async :as async]
             [clojure.core.cache :as cache]
             [clojure.data.json :as json]
@@ -51,7 +50,7 @@
             [plumbing.core :as pc])
   (import [com.netflix.fenzo ConstraintEvaluator ConstraintEvaluator$Result
                              TaskAssignmentResult TaskRequest TaskScheduler TaskScheduler$Builder
-                             VMTaskFitnessCalculator VirtualMachineLease VirtualMachineLease$Range
+                             VirtualMachineLease VirtualMachineLease$Range
                              VirtualMachineCurrentState]
           [com.netflix.fenzo.functions Action1 Func1]))
 
@@ -634,12 +633,23 @@
 (defn pending-jobs->considerable-jobs
   "Limit the pending jobs to considerable jobs based on usage and quota.
    Further limit the considerable jobs to a maximum of num-considerable jobs."
-  [db pending-jobs user->quota user->usage num-considerable pool-name]
+  [db pending-jobs user->quota user->usage num-considerable pool-name->optimizer-schedule-job-ids-atom pool-name]
   (log/debug "In" pool-name "pool, there are" (count pending-jobs) "pending jobs:" pending-jobs)
-  (->> pending-jobs
-       (filter-based-on-quota user->quota user->usage)
-       (filter (fn [job] (util/job-allowed-to-start? db job)))
-       (take num-considerable)))
+  (let [optimizer-schedule-job-ids-promise (promise)]
+    (swap! pool-name->optimizer-schedule-job-ids-atom
+           (fn [pool-name->optimizer-schedule-job-ids]
+             (->> (pool-name->optimizer-schedule-job-ids pool-name)
+                  (deliver optimizer-schedule-job-ids-promise))
+             (assoc pool-name->optimizer-schedule-job-ids pool-name [])))
+    (let [optimizer-schedule-job-ids (into #{} @optimizer-schedule-job-ids-promise)
+          optimizer-approved? (fn [job] (contains? optimizer-schedule-job-ids (:job/uuid job)))]
+      (->> (concat
+             ;; TODO shams preserve order from optimizer-schedule-job-ids-promise
+             (filter optimizer-approved? pending-jobs)
+             (remove optimizer-approved? pending-jobs))
+           (filter-based-on-quota user->quota user->usage)
+           (filter (fn [job] (util/job-allowed-to-start? db job)))
+           (take num-considerable)))))
 
 (defn matches->job-uuids
   "Returns the matched job uuids."
@@ -757,7 +767,8 @@
   "Gets a list of offers from mesos. Decides what to do with them all--they should all
    be accepted or rejected at the end of the function."
   [conn driver ^TaskScheduler fenzo framework-id pool-name->pending-jobs-atom mesos-run-as-user
-   user->usage user->quota num-considerable offers-chan offers rebalancer-reservation-atom pool-name]
+   user->usage user->quota num-considerable offers-chan offers rebalancer-reservation-atom
+   pool-name->optimizer-schedule-job-ids-atom pool-name]
   (log/debug "In" pool-name "pool, invoked handle-resource-offers!")
   (let [offer-stash (atom nil)] ;; This is a way to ensure we never lose offers fenzo assigned if an error occurs in the middle of processing
     ;; TODO: It is possible to have an offer expire by mesos because we recycle it a bunch of times.
@@ -770,7 +781,8 @@
               considerable-jobs (timers/time!
                                   (timers/timer (metric-title "handle-resource-offer!-considerable-jobs-duration" pool-name))
                                   (pending-jobs->considerable-jobs
-                                    db pending-jobs user->quota user->usage num-considerable pool-name))
+                                    db pending-jobs user->quota user->usage num-considerable
+                                    pool-name->optimizer-schedule-job-ids-atom pool-name))
               {:keys [matches failures]} (timers/time!
                                            (timers/timer (metric-title "handle-resource-offer!-match-duration" pool-name))
                                            (match-offer-to-schedule db fenzo considerable-jobs offers rebalancer-reservation-atom))
@@ -833,7 +845,7 @@
 (defn make-offer-handler
   [conn driver-atom fenzo framework-id pending-jobs-atom agent-attributes-cache max-considerable scaleback
    floor-iterations-before-warn floor-iterations-before-reset trigger-chan rebalancer-reservation-atom
-   mesos-run-as-user pool-name]
+   mesos-run-as-user pool-name pool-name->optimizer-schedule-job-ids-atom]
   (let [chan-length 100
         offers-chan (async/chan (async/buffer chan-length))
         resources-atom (atom (view-incubating-offers fenzo))]
@@ -883,7 +895,8 @@
                       matched-head? (handle-resource-offers! conn @driver-atom fenzo framework-id pending-jobs-atom
                                                              mesos-run-as-user @user->usage-future user->quota
                                                              num-considerable offers-chan offers
-                                                             rebalancer-reservation-atom pool-name)]
+                                                             rebalancer-reservation-atom pool-name->optimizer-schedule-job-ids-atom
+                                                             pool-name)]
                   (when (seq offers)
                     (reset! resources-atom (view-incubating-offers fenzo)))
                   ;; This check ensures that, although we value Fenzo's optimizations,
@@ -1515,8 +1528,8 @@
   [{:keys [conn driver-atom exit-code-syncer-state fenzo-fitness-calculator fenzo-floor-iterations-before-reset
            fenzo-floor-iterations-before-warn fenzo-max-jobs-considered fenzo-scaleback framework-id good-enough-fitness
            gpu-enabled? heartbeat-ch mea-culpa-failure-limit mesos-run-as-user agent-attributes-cache offer-incubate-time-ms
-           pool-name->pending-jobs-atom progress-config rebalancer-reservation-atom sandbox-syncer-state task-constraints
-           trigger-chans]}]
+           pool-name->optimizer-schedule-job-ids-atom pool-name->pending-jobs-atom progress-config rebalancer-reservation-atom
+           sandbox-syncer-state task-constraints trigger-chans ]}]
 
   (persist-mea-culpa-failure-limit! conn mea-culpa-failure-limit)
 
@@ -1535,7 +1548,8 @@
                         (make-offer-handler
                           conn driver-atom fenzo framework-id pool-name->pending-jobs-atom agent-attributes-cache fenzo-max-jobs-considered
                           fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset
-                          match-trigger-chan rebalancer-reservation-atom mesos-run-as-user pool-name)]
+                          match-trigger-chan rebalancer-reservation-atom mesos-run-as-user pool-name
+                          pool-name->optimizer-schedule-job-ids-atom)]
                     (-> m
                         (assoc-in [:pool->offers-chan pool-name] offers-chan)
                         (assoc-in [:pool->resources-atom pool-name] resources-atom))))
