@@ -23,9 +23,11 @@
             [datomic.api :as d]
             [plumbing.core :refer (map-vals map-keys map-from-vals)])
   (:import java.util.Date
+           java.util.UUID
            org.apache.curator.framework.CuratorFrameworkFactory
            org.apache.curator.framework.state.ConnectionStateListener
            org.apache.curator.retry.BoundedExponentialBackoffRetry
+           org.apache.curator.test.TestingServer
            org.joda.time.DateTimeUtils)
   (:gen-class))
 
@@ -48,14 +50,14 @@
    (let [retry-policy (BoundedExponentialBackoffRetry. 100 120000 10)
          ;; The 180s session and 30s connection timeouts were pulled from a google group
          ;; recommendation
-         zookeeper-server (org.apache.curator.test.TestingServer. zk-port false)
+         zookeeper-server (TestingServer. ^long zk-port false)
          zk-str (str "localhost:" zk-port)
          curator-framework (CuratorFrameworkFactory/newClient zk-str 180000 30000 retry-policy)]
      (.start zookeeper-server)
      (.. curator-framework
          getConnectionStateListenable
          (addListener (reify ConnectionStateListener
-                        (stateChanged [_ client newState]
+                        (stateChanged [_ _ newState]
                           (log/info "Curator state changed:"
                                     (str newState))))))
      (.start curator-framework)
@@ -247,7 +249,7 @@
           job-id (d/tempid :db.part/user)
           group (when group-uuid
                   [{:db/id (d/tempid :db.part/user)
-                    :group/uuid (java.util.UUID/fromString group-uuid)
+                    :group/uuid (UUID/fromString group-uuid)
                     :group/job job-id}])
           txn [runtime-env
                status-env
@@ -259,7 +261,7 @@
                           :job/label [status-label-id runtime-label-id]
                           :job/state :job.state/waiting
                           :job/submit-time (tc/to-date (t/now)))
-                   (update :job/uuid #(java.util.UUID/fromString %))
+                   (update :job/uuid #(UUID/fromString %))
                    (update :job/command #(or % ""))
                    (update :job/name #(or % ""))
                    (update :job/max-runtime #(int (or % (-> 7 t/days t/in-millis)))))]
@@ -317,7 +319,7 @@
    The start simulation time is the min submit time in the trace.
 
    Returns a list of the task entities run"
-  [mesos-hosts trace cycle-step-ms config temp-out-trace-file]
+  [mesos-hosts trace config temp-out-trace-file]
   (let [simulation-time (-> trace first :submit-time-ms)
         mesos-datomic-conn (restore-fresh-database! (get config :datomic-url "datomic:mem://mock-mesos"))
         offer-trigger-chan (async/chan)
@@ -329,30 +331,56 @@
         state-atom (atom {})
         make-mesos-driver-fn (fn [scheduler _]
                                (mm/mesos-mock mesos-hosts offer-trigger-chan scheduler
-                                              :task->runtime-ms task->runtime-ms
-                                              :task->complete-status task->complete-status
                                               :complete-trigger-chan complete-trigger-chan
-                                              :state-atom state-atom))
-        config (merge {:shares [{:user "default" :mem 4000.0 :cpus 4.0 :gpus 1.0}]
+                                              :state-atom state-atom
+                                              :task->runtime-ms task->runtime-ms
+                                              :task->complete-status task->complete-status))
+        config (merge {:opt-params {"ema_multiplier" 2
+                                    "index_divisor" 1
+                                    "slowdown_bound" (-> 30 t/minutes t/in-millis)}
+                       :shares [{:user "default" :mem 4000.0 :cpus 4.0 :gpus 1.0}]
                        :time-ms-between-incremental-output (-> 10 t/minutes t/in-millis)
                        :time-ms-between-optimizer-calls (-> 3 t/minutes t/in-millis)
                        :time-ms-between-rebalancing (-> 30 t/minutes t/in-millis)}
                       config)
-        opt-config {:host-feed {:create-fn 'cook.mesos.optimizer/create-dummy-host-feed
-                                :config {}}
-                    :optimizer {:create-fn 'cook.mesos.optimizer/create-dummy-optimizer
-                                :config {}}}
-        scheduler-config (merge (:scheduler-config config)
-                                {:optimizer-config opt-config}
-                                {:trigger-chans {:rank-trigger-chan ranker-trigger-chan
-                                                 :match-trigger-chan matcher-trigger-chan
-                                                 :rebalancer-trigger-chan rebalancer-trigger-chan
-                                                 :optimizer-trigger-chan optimizer-trigger-chan
-                                                 ;; Don't care about these yet
-                                                 :progress-updater-trigger-chan (async/chan)
-                                                 :straggler-trigger-chan (async/chan)
-                                                 :lingering-task-trigger-chan (async/chan)
-                                                 :cancelled-task-trigger-chan (async/chan)}})
+        _ (log/info "Simulation config:" config)
+        num-hosts (count mesos-hosts)
+        ;; TODO Don't hard code this!
+        host-mem (-> mesos-hosts first (get-in [:resources :mem "*"]))
+        host-cpus (-> mesos-hosts first (get-in [:resources :cpus "*"]))
+        max-waiting (-> config :scheduler-config :fenzo-config :fenzo-max-jobs-considered)
+        cycle-step-ms (-> config :cycle-step-ms)
+        step-multiplers [0 1 2 4 8 12 18 24]
+        default-share (->> config
+                           :shares
+                           (filter #(= "default" (:user %)))
+                           first)
+        optimizer-config {:optimizer {:create-fn 'cook.mesos.optimizer/create-optimizer-server
+                                      :config {:cpu-share (:cpus default-share)
+                                               :default-runtime (-> (last step-multiplers) (* cycle-step-ms))
+                                               :host-info {:attributes {:runtime-multiplier 1}
+                                                           :count num-hosts
+                                                           :cpus host-cpus
+                                                           :instance-type "host"
+                                                           :mem host-mem
+                                                           :time-to-start 100}
+                                               :max-waiting (* 5 max-waiting)
+                                               :mem-share (:mem default-share)
+                                               :opt-params (-> config :opt-params)
+                                               :opt-server "http://localhost:5000/optimize"
+                                               :step-list (map (partial * cycle-step-ms) step-multiplers)}}}
+        scheduler-config (util/deep-merge
+                           {:optimizer-config optimizer-config}
+                           {:trigger-chans {:rank-trigger-chan ranker-trigger-chan
+                                            :match-trigger-chan matcher-trigger-chan
+                                            :rebalancer-trigger-chan rebalancer-trigger-chan
+                                            :optimizer-trigger-chan optimizer-trigger-chan
+                                            ;; Don't care about these yet
+                                            :progress-updater-trigger-chan (async/chan)
+                                            :straggler-trigger-chan (async/chan)
+                                            :lingering-task-trigger-chan (async/chan)
+                                            :cancelled-task-trigger-chan (async/chan)}}
+                           (:scheduler-config config))
         {:keys [time-ms-between-incremental-output time-ms-between-optimizer-calls time-ms-between-rebalancing]} config]
     ;; launch a thread to perform incremental writes of completed jobs
     (when temp-out-trace-file
@@ -427,7 +455,7 @@
                                 ;; 2. We increment time for each job submitted
                                 (tc/to-date (t/now)))
                           50
-                          60000))
+                          120000))
             (log/info "Batch submission complete")
 
             ;; Request for jobs that are complete to have cook be notified
@@ -442,7 +470,7 @@
                             (set (map str
                                       (keys (:task-id->task @state-atom)))))
                         50
-                        60000
+                        120000
                         #(let [cook-tasks (set (map (comp str :instance/task-id)
                                                     (util/get-running-task-ents (d/db mesos-datomic-conn))))
                                mesos-tasks (set (map str
@@ -477,7 +505,7 @@
             (poll-until #(every? :instance/mesos-start-time
                                  (util/get-running-task-ents (d/db mesos-datomic-conn)))
                         50
-                        60000)
+                        120000)
             (log/info "Match complete")
 
             ;; Rebalance
@@ -560,15 +588,16 @@
                      keywordize-keys
                      ;; This is needed because we want the roles to be strings
                      (transform [ALL :resources MAP-VALS MAP-KEYS] name))
+          _ (println "config file:" config-file)
           config (if config-file
                    (edn/read-string (slurp config-file))
                    {})
           cycle-step-ms (or cycle-step-ms (:cycle-step-ms config))
           _ (when-not cycle-step-ms
               (throw (ex-info "Must configure cycle-step-ms on command line or config file" {})))
+          _ (assoc config :cycle-step-ms cycle-step-ms)
           task-ents (simulate hosts
                               (cheshire/parse-stream (clojure.java.io/reader trace-file) true)
-                              cycle-step-ms
                               config
                               (str out-trace-file ".temp-" (System/nanoTime)))]
       (println "tasks run: " (count task-ents))
@@ -579,35 +608,35 @@
 (defn create-trace-job
   "Returns a job that can be used in the trace"
   [run-time-ms submit-time-ms &
-   {:keys [user uuid command ncpus memory name retry-count max-runtime priority job-state submit-time custom-executor? gpus group committed?
-           disable-mea-culpa-retries]
-    :or {user (System/getProperty "user.name")
-         uuid (d/squuid)
-         committed? true
+   {:keys [command committed? disable-mea-culpa-retries gpus job-state max-runtime memory name ncpus
+           priority retry-count submit-time user uuid]
+    :or {committed? true
          command "dummy command"
-         ncpus 1.0
-         memory 10.0
-         name "dummy_job"
-         submit-time (java.util.Date.)
-         retry-count 5
-         max-runtime (* 1000 60 60 24 5)
-         priority 50
+         disable-mea-culpa-retries false
          job-state :job.state/waiting
-         disable-mea-culpa-retries false}}]
-  (let [job-info (merge {:job/uuid (str uuid)
-                         :job/command command
-                         :job/user user
-                         :job/name name
-                         :job/max-retries retry-count
-                         :job/max-runtime max-runtime
-                         :job/priority priority
-                         :job/disable-mea-culpa-retries disable-mea-culpa-retries
-                         :job/resource [{:resource/type :resource.type/cpus
-                                         :resource/amount (double ncpus)}
-                                        {:resource/type :resource.type/mem
-                                         :resource/amount (double memory)}]}
-                        {:submit-time-ms submit-time-ms
-                         :run-time-ms run-time-ms})
+         max-runtime (* 1000 60 60 24 5)
+         memory 10.0
+         ncpus 1.0
+         name "dummy_job"
+         priority 50
+         retry-count 5
+         submit-time (java.util.Date.)
+         user (System/getProperty "user.name")
+         uuid (d/squuid)}}]
+  (let [job-info {:job/uuid (str uuid)
+                  :job/command command
+                  :job/user user
+                  :job/name name
+                  :job/max-retries retry-count
+                  :job/max-runtime max-runtime
+                  :job/priority priority
+                  :job/disable-mea-culpa-retries disable-mea-culpa-retries
+                  :job/resource [{:resource/type :resource.type/cpus
+                                  :resource/amount (double ncpus)}
+                                 {:resource/type :resource.type/mem
+                                  :resource/amount (double memory)}]
+                  :run-time-ms run-time-ms
+                  :submit-time-ms submit-time-ms}
         job-info (if gpus
                    (update-in job-info [:job/resource] conj {:resource/type :resource.type/gpus
                                                              :resource/amount (double gpus)})
@@ -616,13 +645,13 @@
 
 (defn trace-host
   [host-name mem cpus]
-  {:hostname (str host-name)
-   :attributes {}
+  {:attributes {}
+   :hostname (str host-name)
    :resources {:cpus {"*" cpus}
                :mem {"*" mem}
                :ports {"*" [{:begin 1
                              :end 100}]}}
-   :slave-id (java.util.UUID/randomUUID)})
+   :slave-id (UUID/randomUUID)})
 
 (defn summary-stats [jobs]
   (->> jobs
@@ -671,37 +700,39 @@
   (not (seq (trace-diffs trace-a trace-b))))
 
 (deftest test-simulator
-  (let [users ["a" "b" "c" "d"]
-        jobs (-> (for [minute (range 5)
-                       sim-i (range (+ (rand-int 50) 30))]
-                   (create-trace-job (+ (rand-int 1200000) 600000) ; 1 to 20 minutes
-                                     (+ (* 1000 60 minute) (+ (rand-int 2000) -1000))
-                                     :user (first (shuffle users))
-                                     :command "sleep 10" ;; Doesn't matter
-                                     :custom-executor? false
-                                     :memory (+ (rand-int 1000) 2000)
-                                     :ncpus (+ (rand-int 3) 1)))
-                 (conj (create-trace-job 10000
-                                         (-> 1 t/hours t/in-millis)
-                                         :user "e"
-                                         :command "sleep 10"
-                                         :custom-executor? false
-                                         :memory 10000
-                                         :ncpus 3)))
-        jobs (sort-by :submit-time-ms jobs)
-        num-hosts 120
-        host-mem 20000.0
-        host-cpus 20.0
-        hosts (for [i (range num-hosts)]
-                (trace-host i host-mem host-cpus))
-        cycle-step-ms 30000
-        config {:shares [{:cpus (/ host-cpus 10) :gpus 1.0 :mem (/ host-mem 10) :user "default"}]
-                :scheduler-config {:rebalancer-config {:max-preemption 1.0}
-                                   :fenzo-config {:fenzo-max-jobs-considered 200}}}
-        out-trace-a (simulate hosts jobs cycle-step-ms config nil)
-        out-trace-b (simulate hosts jobs cycle-step-ms config nil)]
-    (is (> (count out-trace-a) 0))
-    (is (> (count out-trace-b) 0))
-    (is (traces-equivalent? out-trace-a out-trace-b)
-        {:diffs (sort-by (comp :submit-time first second)
-                         (trace-diffs out-trace-a out-trace-b))})))
+  (time
+    (let [users ["a" "b" "c" "d"]
+          jobs (-> (for [minute (range 5)
+                         _ (range (+ (rand-int 50) 30))]
+                     (create-trace-job (+ (rand-int 1200000) 600000) ; 1 to 20 minutes
+                                       (+ (* 1000 60 minute) (+ (rand-int 2000) -1000))
+                                       :user (first (shuffle users))
+                                       :command "sleep 10" ;; Doesn't matter
+                                       :custom-executor? false
+                                       :memory (+ (rand-int 1000) 2000)
+                                       :ncpus (+ (rand-int 3) 1)))
+                   (conj (create-trace-job 10000
+                                           (-> 1 t/hours t/in-millis)
+                                           :user "e"
+                                           :command "sleep 10"
+                                           :custom-executor? false
+                                           :memory 10000
+                                           :ncpus 3)))
+          jobs (sort-by :submit-time-ms jobs)
+          num-hosts 120
+          host-mem 20000.0
+          host-cpus 20.0
+          hosts (for [i (range num-hosts)]
+                  (trace-host i host-mem host-cpus))
+          cycle-step-ms 30000
+          config {:cycle-step-ms cycle-step-ms
+                  :shares [{:cpus (/ host-cpus 10) :gpus 1.0 :mem (/ host-mem 10) :user "default"}]
+                  :scheduler-config {:rebalancer-config {:max-preemption 1.0}
+                                     :fenzo-config {:fenzo-max-jobs-considered 200}}}
+          out-trace-a (simulate hosts jobs config nil)
+          out-trace-b (simulate hosts jobs config nil)]
+      (is (> (count out-trace-a) 0))
+      (is (> (count out-trace-b) 0))
+      (is (traces-equivalent? out-trace-a out-trace-b)
+          {:diffs (sort-by (comp :submit-time first second)
+                           (trace-diffs out-trace-a out-trace-b))}))))

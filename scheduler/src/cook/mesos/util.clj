@@ -830,3 +830,10 @@
    Takes as input the starting value and the growing value, returning a lazy infinite sequence."
   [start ^ReadablePeriod period]
   (iterate (fn [^DateTime t] (.plus t period)) start))
+
+(defn deep-merge
+  "Like merge, but merges maps recursively."
+  [& maps]
+  (if (every? map? maps)
+    (apply merge-with deep-merge maps)
+    (last maps)))
