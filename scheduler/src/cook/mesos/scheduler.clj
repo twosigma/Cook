@@ -640,16 +640,24 @@
            (fn [pool-name->optimizer-schedule-job-ids]
              (->> (pool-name->optimizer-schedule-job-ids pool-name)
                   (deliver optimizer-schedule-job-ids-promise))
+             ;; TODO should we be clearing out optimizer data in one use?
              (assoc pool-name->optimizer-schedule-job-ids pool-name [])))
-    (let [optimizer-schedule-job-ids (into #{} @optimizer-schedule-job-ids-promise)
-          optimizer-approved? (fn [job] (contains? optimizer-schedule-job-ids (:job/uuid job)))]
-      (->> (concat
-             ;; TODO shams preserve order from optimizer-schedule-job-ids-promise
-             (filter optimizer-approved? pending-jobs)
-             (remove optimizer-approved? pending-jobs))
-           (filter-based-on-quota user->quota user->usage)
-           (filter (fn [job] (util/job-allowed-to-start? db job)))
-           (take num-considerable)))))
+    (->> (if-let [optimizer-schedule-job-ids (seq @optimizer-schedule-job-ids-promise)]
+           (let [optimizer-schedule-job-ids-set (into #{} optimizer-schedule-job-ids)
+                 optimizer-approved? (fn optimizer-approved? [job]
+                                       (contains? optimizer-schedule-job-ids-set (:job/uuid job)))]
+             (concat
+               (let [job-id->optimizer-schedule-jobs (->> (filter optimizer-approved? pending-jobs)
+                                                          (pc/map-from-vals :job/uuid))
+                     optimizer-schedule-jobs (->> (map job-id->optimizer-schedule-jobs optimizer-schedule-job-ids)
+                                                  (remove nil?))]
+                 (log/info "In" pool-name "pool, using" (count optimizer-schedule-jobs) "optimizer schedule jobs")
+                 optimizer-schedule-jobs)
+               (remove optimizer-approved? pending-jobs)))
+           pending-jobs)
+         (filter-based-on-quota user->quota user->usage)
+         (filter (fn [job] (util/job-allowed-to-start? db job)))
+         (take num-considerable))))
 
 (defn matches->job-uuids
   "Returns the matched job uuids."

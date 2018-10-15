@@ -40,8 +40,7 @@
             [mesomatic.types :as mtypes]
             [plumbing.core :as pc])
   (:import (clojure.lang ExceptionInfo)
-           (com.netflix.fenzo SimpleAssignmentResult TaskAssignmentResult
-                              TaskRequest TaskScheduler VMTaskFitnessCalculator)
+           (com.netflix.fenzo SimpleAssignmentResult TaskAssignmentResult TaskRequest TaskScheduler)
            (com.netflix.fenzo.plugins BinPackingFitnessCalculators)
            (java.util UUID)
            (java.util.concurrent CountDownLatch TimeUnit)
@@ -1362,6 +1361,38 @@
         (is (= [job-5]
                (sched/pending-jobs->considerable-jobs
                  (d/db conn) gpu-jobs user->quota user->usage num-considerable (atom {}) nil)))))
+    (testing "jobs inside usage quota influenced by optimizer"
+      (let [user->usage {test-user {:count 1, :cpus 2, :mem 1024, :gpus 0}}
+            user->quota {test-user {:count 10, :cpus 50, :mem 32768, :gpus 10}}
+            num-considerable 5
+            pool-name->optimizer-schedule-job-ids-atom (atom {"cpu-pool" [(:job/uuid job-4) (:job/uuid job-2) (:job/uuid job-6)]
+                                                              "gpu-pool" [(:job/uuid job-2) (:job/uuid job-6)]})]
+        (is (= [job-4 job-2 job-1 job-3]
+               (sched/pending-jobs->considerable-jobs
+                 (d/db conn) non-gpu-jobs user->quota user->usage num-considerable
+                 pool-name->optimizer-schedule-job-ids-atom "cpu-pool")))
+        (is (= [job-6 job-5]
+               (sched/pending-jobs->considerable-jobs
+                 (d/db conn) gpu-jobs user->quota user->usage num-considerable
+                 pool-name->optimizer-schedule-job-ids-atom "gpu-pool")))
+        (is (= {"cpu-pool" [] "gpu-pool" []}
+               @pool-name->optimizer-schedule-job-ids-atom))))
+    (testing "jobs inside usage quota influenced by optimizer limited by num-considerable of 1"
+      (let [user->usage {test-user {:count 1, :cpus 2, :mem 1024, :gpus 0}}
+            user->quota {test-user {:count 10, :cpus 50, :mem 32768, :gpus 10}}
+            num-considerable 1
+            pool-name->optimizer-schedule-job-ids-atom (atom {"cpu-pool" [(:job/uuid job-4) (:job/uuid job-2) (:job/uuid job-6)]
+                                                              "gpu-pool" [(:job/uuid job-2) (:job/uuid job-6)]})]
+        (is (= [job-4]
+               (sched/pending-jobs->considerable-jobs
+                 (d/db conn) non-gpu-jobs user->quota user->usage num-considerable
+                 pool-name->optimizer-schedule-job-ids-atom "cpu-pool")))
+        (is (= [job-6]
+               (sched/pending-jobs->considerable-jobs
+                 (d/db conn) gpu-jobs user->quota user->usage num-considerable
+                 pool-name->optimizer-schedule-job-ids-atom "gpu-pool")))
+        (is (= {"cpu-pool" [] "gpu-pool" []}
+               @pool-name->optimizer-schedule-job-ids-atom))))
     (testing "some jobs inside usage quota"
       (let [user->usage {test-user {:count 1, :cpus 2, :mem 1024, :gpus 0}}
             user->quota {test-user {:count 5, :cpus 10, :mem 4096, :gpus 10}}
