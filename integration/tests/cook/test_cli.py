@@ -419,10 +419,13 @@ class CookCliTest(util.CookTest):
         self.assertIn('No matching running jobs', cli.stdout(cp))
         self.assertIn(f'found in {self.cook_url}.', cli.stdout(cp))
 
-    def list_jobs(self, name, user, *states):
+    def list_jobs(self, name, user, states, pool=None):
         """Invokes the jobs subcommand with the given name, user, and state filters"""
         state_flags = ' '.join([f'--{state}' for state in states])
-        cp, jobs = cli.jobs_json(self.cook_url, '--name %s --user %s %s' % (name, user, state_flags))
+        jobs_flags = f'--name {name} --user {user} {state_flags}'
+        if pool:
+            jobs_flags = f'{jobs_flags} --pool {pool}'
+        cp, jobs = cli.jobs_json(self.cook_url, jobs_flags)
         return cp, jobs
 
     def test_list_by_state(self):
@@ -458,34 +461,34 @@ class CookCliTest(util.CookTest):
             util.wait_for_job(self.cook_url, failed_uuid, 'completed')
 
             # waiting
-            cp, jobs = self.list_jobs(name, user, 'waiting')
+            cp, jobs = self.list_jobs(name, user, ['waiting'])
             self.assertEqual(0, cp.returncode, cp.stderr)
             self.assertEqual(1, len(jobs))
             self.assertEqual(waiting_uuid, jobs[0]['uuid'])
             # running
-            cp, jobs = self.list_jobs(name, user, 'running')
+            cp, jobs = self.list_jobs(name, user, ['running'])
             self.assertEqual(0, cp.returncode, cp.stderr)
             self.assertEqual(1, len(jobs))
             self.assertEqual(running_uuid, jobs[0]['uuid'])
             # completed
-            cp, jobs = self.list_jobs(name, user, 'completed')
+            cp, jobs = self.list_jobs(name, user, ['completed'])
             uuids = [j['uuid'] for j in jobs]
             self.assertEqual(0, cp.returncode, cp.stderr)
             self.assertEqual(2, len(jobs))
             self.assertIn(success_uuid, uuids)
             self.assertIn(failed_uuid, uuids)
             # success
-            cp, jobs = self.list_jobs(name, user, 'success')
+            cp, jobs = self.list_jobs(name, user, ['success'])
             self.assertEqual(0, cp.returncode, cp.stderr)
             self.assertEqual(1, len(jobs))
             self.assertEqual(success_uuid, jobs[0]['uuid'])
             # failed
-            cp, jobs = self.list_jobs(name, user, 'failed')
+            cp, jobs = self.list_jobs(name, user, ['failed'])
             self.assertEqual(0, cp.returncode, cp.stderr)
             self.assertEqual(1, len(jobs))
             self.assertEqual(failed_uuid, jobs[0]['uuid'])
             # all
-            cp, jobs = self.list_jobs(name, user, 'all')
+            cp, jobs = self.list_jobs(name, user, ['all'])
             uuids = [j['uuid'] for j in jobs]
             self.assertEqual(0, cp.returncode, cp.stderr)
             self.assertEqual(4, len(jobs))
@@ -494,14 +497,14 @@ class CookCliTest(util.CookTest):
             self.assertIn(success_uuid, uuids)
             self.assertIn(failed_uuid, uuids)
             # waiting+running
-            cp, jobs = self.list_jobs(name, user, 'waiting', 'running')
+            cp, jobs = self.list_jobs(name, user, ['waiting', 'running'])
             uuids = [j['uuid'] for j in jobs]
             self.assertEqual(0, cp.returncode, cp.stderr)
             self.assertEqual(2, len(jobs))
             self.assertIn(waiting_uuid, uuids)
             self.assertIn(running_uuid, uuids)
             # completed+waiting
-            cp, jobs = self.list_jobs(name, user, 'completed', 'waiting')
+            cp, jobs = self.list_jobs(name, user, ['completed', 'waiting'])
             uuids = [j['uuid'] for j in jobs]
             self.assertEqual(0, cp.returncode, cp.stderr)
             self.assertEqual(3, len(jobs), f'Expected 3 jobs, got: {jobs}')
@@ -602,6 +605,55 @@ class CookCliTest(util.CookTest):
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertIn('/jobs', cli.decode(cp.stderr))
         self.assertNotIn('/list', cli.decode(cp.stderr))
+
+    @unittest.skipUnless(util.are_pools_enabled(), 'Pools are not enabled on the cluster')
+    def test_jobs_pool(self):
+        pools, _ = util.active_pools(self.cook_url)
+        self.assertLess(0, len(pools))
+        job_uuids = []
+        try:
+            user = None
+            name = f'{self.current_name()}_{uuid.uuid4()}'
+
+            # Submit a long-running job in each pool
+            for pool in pools:
+                pool_name = pool['name']
+                cp, uuids = cli.submit('sleep 300', self.cook_url, submit_flags=f'--name {name} --pool {pool_name}')
+                self.assertEqual(0, cp.returncode, cp.stderr)
+                job_uuids.append(uuids[0])
+                user = util.get_user(self.cook_url, uuids[0])
+
+            # We should get back all jobs when we don't specify --pool
+            cp, jobs = self.list_jobs(name, user, ['waiting', 'running'])
+            self.assertEqual(0, cp.returncode, cp.stderr)
+            self.assertEqual(len(pools), len(jobs))
+
+            # We should get back only the single job per pool when we do specify --pool
+            for pool in pools:
+                pool_name = pool['name']
+                cp, jobs = self.list_jobs(name, user, ['waiting', 'running'], pool_name)
+                self.assertEqual(0, cp.returncode, cp.stderr)
+                self.assertEqual(1, len(jobs))
+                self.assertEqual(pool_name, jobs[0]['pool'])
+
+            # Submit a long-running job without specifying the pool explicitly
+            cp, uuids = cli.submit('sleep 300', self.cook_url, submit_flags=f'--name {name}')
+            self.assertEqual(0, cp.returncode, cp.stderr)
+            job_uuids.append(uuids[0])
+
+            # Make sure we can retrieve both jobs (explicit and implicit default pool) using the default pool
+            default_pool = util.default_pool(self.cook_url)
+            cp, jobs = self.list_jobs(name, user, ['waiting', 'running'], default_pool)
+            self.assertEqual(0, cp.returncode, cp.stderr)
+            self.assertEqual(2, len(jobs))
+            self.assertIn(uuids[0], [j['uuid'] for j in jobs])
+
+            # We should (still) get back all jobs when we don't specify --pool
+            cp, jobs = self.list_jobs(name, user, ['waiting', 'running'])
+            self.assertEqual(0, cp.returncode, cp.stderr)
+            self.assertEqual(len(pools) + 1, len(jobs))
+        finally:
+            util.kill_jobs(self.cook_url, job_uuids)
 
     def test_ssh_job_uuid(self):
         cp, uuids = cli.submit('ls', self.cook_url, submit_flags=f'--name {self.current_name()}')
