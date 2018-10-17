@@ -895,6 +895,11 @@ class CookTest(util.CookTest):
                 self.assertEqual(200, resp.status_code, resp.text)
                 self.assertEqual(1, len(resp.json()))
                 self.assertEqual(job_uuid, resp.json()[0]['uuid'])
+                resp = util.jobs(self.cook_url, headers={'x-cook-pool': pool_name}, user=user,
+                                 state=active, start=start, end=end, name=name)
+                self.assertEqual(200, resp.status_code, resp.text)
+                self.assertEqual(1, len(resp.json()))
+                self.assertEqual(job_uuid, resp.json()[0]['uuid'])
 
                 # List completed
                 job_uuid = next(j['uuid'] for j in jobs if j['pool'] == pool_name and j['command'] == 'exit 0')
@@ -903,11 +908,21 @@ class CookTest(util.CookTest):
                 self.assertEqual(200, resp.status_code, resp.text)
                 self.assertEqual(1, len(resp.json()), json.dumps(resp.json(), indent=2))
                 self.assertEqual(job_uuid, resp.json()[0]['uuid'])
+                resp = util.jobs(self.cook_url, headers={'x-cook-pool': pool_name}, user=user,
+                                 state=completed, start=start, end=end, name=name)
+                self.assertEqual(200, resp.status_code, resp.text)
+                self.assertEqual(1, len(resp.json()), json.dumps(resp.json(), indent=2))
+                self.assertEqual(job_uuid, resp.json()[0]['uuid'])
 
                 # List all states
                 job_uuids = [j['uuid'] for j in jobs if j['pool'] == pool_name]
                 resp = util.jobs(self.cook_url, user=user, state=completed + active,
                                  start=start, end=end, name=name, pool=pool_name)
+                self.assertEqual(200, resp.status_code, resp.text)
+                self.assertEqual(2, len(resp.json()), json.dumps(resp.json(), indent=2))
+                self.assertEqual(sorted(job_uuids), sorted(j['uuid'] for j in resp.json()))
+                resp = util.jobs(self.cook_url, headers={'x-cook-pool': pool_name}, user=user,
+                                 state=completed + active, start=start, end=end, name=name)
                 self.assertEqual(200, resp.status_code, resp.text)
                 self.assertEqual(2, len(resp.json()), json.dumps(resp.json(), indent=2))
                 self.assertEqual(sorted(job_uuids), sorted(j['uuid'] for j in resp.json()))
@@ -1977,6 +1992,12 @@ class CookTest(util.CookTest):
                     usage_data = resp.json()
                     my_group_usage = [x for x in usage_data['grouped'] if x['group']['uuid'] == group_uuid]
                     self.assertEqual(0, len(my_group_usage))
+
+                    resp = util.user_current_usage(self.cook_url, headers={'x-cook-pool': pool}, user=user, group_breakdown='true')
+                    self.assertEqual(resp.status_code, 200, resp.content)
+                    usage_data = resp.json()
+                    my_group_usage = [x for x in usage_data['grouped'] if x['group']['uuid'] == group_uuid]
+                    self.assertEqual(0, len(my_group_usage))
                 else:
                     self.logger.info('There is no pool that is not the default pool')
             else:
@@ -2108,6 +2129,23 @@ class CookTest(util.CookTest):
                     resp = util.get_limit(self.cook_url, limit, user, pool=pool)
                     self.assertEqual(resp.status_code, 200, resp.text)
                     self.assertEqual(1000, resp.json()['cpus'], resp.text)
+
+                    # now delete the pool limit with headers
+                    resp = util.reset_limit(self.cook_url, limit, user, reason=self.current_name(), headers={'x-cook-pool': pool})
+                    self.assertEqual(resp.status_code, 204, resp.text)
+
+                    # check that the default value is returned
+                    resp = util.get_limit(self.cook_url, limit, user, headers={'x-cook-pool': pool})
+                    self.assertEqual(resp.status_code, 200, resp.text)
+                    self.assertEqual(default_cpus, resp.json()['cpus'], resp.text)
+
+                    # set a pool-specific limit
+                    resp = util.set_limit(self.cook_url, limit, user, cpus=1000, headers={'x-cook-pool': pool})
+                    self.assertEqual(resp.status_code, 201, resp.text)
+
+                    # check that the pool-specific limit is returned
+                    resp = util.get_limit(self.cook_url, limit, user, headers={'x-cook-pool': pool})
+                    self.assertEqual(resp.status_code, 200, resp.text)
 
     def test_submit_with_no_name(self):
         # We need to manually set the 'uuid' to avoid having the
@@ -2377,6 +2415,15 @@ class CookTest(util.CookTest):
                 self.assertEqual(pool_name, job['pool'])
             else:
                 self.assertEqual(resp.status_code, 400, msg=resp.content)
+
+            job_uuid, resp = util.submit_job(self.cook_url, headers={'x-cook-pool': pool['name']})
+            if pool['state'] == 'active':
+                self.assertEqual(resp.status_code, 201, msg=resp.content)
+                job = util.load_job(self.cook_url, job_uuid)
+                self.assertEqual(pool_name, job['pool'])
+            else:
+                self.assertEqual(resp.status_code, 400, msg=resp.content)
+
         # Try submitting to a pool that doesn't exist
         job_uuid, resp = util.submit_job(self.cook_url, pool=str(uuid.uuid4()))
         self.assertEqual(resp.status_code, 400, msg=resp.content)

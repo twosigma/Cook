@@ -5,7 +5,7 @@
                  :one-user #config/env "COOK_ONE_USER_AUTH"}
  :authorization-config {;; These users have admin privileges when using configfile-admins-auth;
                         ;; e.g., they can view and modify other users' jobs.
-                        :admins #{"admin" "root"}
+                        :admins #{"admin" "root" #config/env "USER"}
                         ;; What function should be used to perform user authorization?
                         ;; See the docstring in cook.authorization for details.
                         :authorization-fn cook.authorization/configfile-admins-auth-open-gets
