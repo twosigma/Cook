@@ -220,9 +220,13 @@ def jobs_json(cook_url=None, jobs_flags=None, flags=None):
     """Invokes the jobs subcommand with --json"""
     jobs_flags = f'{jobs_flags} --json' if jobs_flags else '--json'
     cp = jobs(cook_url, jobs_flags=jobs_flags, flags=flags)
-    response = json.loads(stdout(cp))
-    job_list = [job for entities in response['clusters'].values() for job in entities['jobs']]
-    return cp, job_list
+    try:
+        response = json.loads(stdout(cp))
+        job_list = [job for entities in response['clusters'].values() for job in entities['jobs']]
+        return cp, job_list
+    except:
+        logging.exception(f'Exception when parsing output from jobs ({output(cp)})')
+        raise
 
 
 def output(cp):

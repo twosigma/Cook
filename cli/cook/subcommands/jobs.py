@@ -29,7 +29,7 @@ def print_no_data(clusters, states, user):
     print(colors.failed(f'No matching {states_text} jobs for {user} found in {clusters_text}.'))
 
 
-def list_jobs_on_cluster(cluster, state, user, start_ms, end_ms, name, limit, include_custom_executor):
+def list_jobs_on_cluster(cluster, state, user, start_ms, end_ms, name, limit, include_custom_executor, pool):
     """Queries cluster for jobs with the given state / user / time / name"""
     if 'all' in state:
         state = ['waiting', 'running', 'completed']
@@ -38,6 +38,7 @@ def list_jobs_on_cluster(cluster, state, user, start_ms, end_ms, name, limit, in
         params['state'] = state
         params['start'] = start_ms
         params['end'] = end_ms
+        params['pool'] = pool
         jobs = http.make_data_request(cluster, lambda: http.get(cluster, 'jobs', params=params))
     else:
         params['state'] = '+'.join(state)
@@ -48,7 +49,7 @@ def list_jobs_on_cluster(cluster, state, user, start_ms, end_ms, name, limit, in
     return entities
 
 
-def query(clusters, state, user, start_ms, end_ms, name, limit, include_custom_executor):
+def query(clusters, state, user, start_ms, end_ms, name, limit, include_custom_executor, pool):
     """
     Uses query_across_clusters to make the /list
     requests in parallel across the given clusters
@@ -56,7 +57,7 @@ def query(clusters, state, user, start_ms, end_ms, name, limit, include_custom_e
 
     def submit(cluster, executor):
         return executor.submit(list_jobs_on_cluster, cluster, state, user, start_ms,
-                               end_ms, name, limit, include_custom_executor)
+                               end_ms, name, limit, include_custom_executor, pool)
 
     return query_across_clusters(clusters, submit)
 
@@ -90,6 +91,7 @@ def print_as_table(query_result):
     """Given a collection of (cluster, job) pairs, formats a table showing the most relevant job fields"""
     cluster_job_pairs = query_result_to_cluster_job_pairs(query_result)
     rows = [collections.OrderedDict([("Cluster", cluster),
+                                     ("Pool", job.get('pool', '-')),
                                      ("UUID", job['uuid']),
                                      ("Name", job['name']),
                                      ("Memory", format_job_memory(job)),
@@ -148,6 +150,7 @@ def jobs(clusters, args, _):
     name = args.get('name')
     limit = args.get('limit')
     include_custom_executor = not args.get('exclude_custom_executor')
+    pool = args.get('pool')
 
     if lookback_hours and (submitted_after or submitted_before):
         raise Exception('You cannot specify both lookback hours and submitted after / before times.')
@@ -160,7 +163,7 @@ def jobs(clusters, args, _):
     else:
         start_ms, end_ms = lookback_hours_to_range(lookback_hours or DEFAULT_LOOKBACK_HOURS)
 
-    query_result = query(clusters, states, user, start_ms, end_ms, name, limit, include_custom_executor)
+    query_result = query(clusters, states, user, start_ms, end_ms, name, limit, include_custom_executor, pool)
     found_jobs = query_result['count'] > 0
     if as_json:
         print_as_json(query_result)
@@ -189,6 +192,7 @@ def register(add_parser, add_defaults):
     parser.add_argument('--all', '-a', help='include all jobs, regardless of status', dest='states',
                         action='append_const', const='all')
     parser.add_argument('--user', '-u', help='list jobs for a user')
+    parser.add_argument('--pool', '-P', help='list jobs for a pool')
     parser.add_argument('--lookback', '-t',
                         help=f'list jobs submitted in the last HOURS hours (default = {DEFAULT_LOOKBACK_HOURS})',
                         type=float, metavar='HOURS')
