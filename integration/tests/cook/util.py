@@ -422,7 +422,7 @@ def minimal_group(**kwargs):
     return dict(uuid=str(uuid.uuid4()), **kwargs)
 
 
-def submit_jobs(cook_url, job_specs, clones=1, pool=None, **kwargs):
+def submit_jobs(cook_url, job_specs, clones=1, pool=None, headers={}, **kwargs):
     """
     Create and submit multiple jobs, either cloned from a single job spec,
     or specified individually in multiple job specs.
@@ -443,7 +443,7 @@ def submit_jobs(cook_url, job_specs, clones=1, pool=None, **kwargs):
         request_body['pool'] = pool
     request_body.update(kwargs)
     logger.info(request_body)
-    resp = session.post(f'{cook_url}/jobs', json=request_body)
+    resp = session.post(f'{cook_url}/jobs', json=request_body, headers=headers)
     return [j['uuid'] for j in jobs], resp
 
 
@@ -484,9 +484,9 @@ def kill_groups(cook_url, groups, assert_response=True, expected_status_code=204
     return response
 
 
-def submit_job(cook_url, pool=None, **kwargs):
+def submit_job(cook_url, pool=None, headers={}, **kwargs):
     """Create and submit a single job"""
-    uuids, resp = submit_jobs(cook_url, job_specs=[kwargs], pool=pool)
+    uuids, resp = submit_jobs(cook_url, job_specs=[kwargs], pool=pool, headers=headers)
     return uuids[0], resp
 
 
@@ -831,10 +831,10 @@ def list_jobs(cook_url, **kwargs):
     return resp
 
 
-def jobs(cook_url, **kwargs):
+def jobs(cook_url, headers={}, **kwargs):
     """Makes a request to the /jobs endpoint using the provided kwargs as the query params"""
     query_params = urlencode(kwargs, doseq=True)
-    resp = session.get('%s/jobs?%s' % (cook_url, query_params))
+    resp = session.get('%s/jobs?%s' % (cook_url, query_params), headers=headers)
     return resp
 
 
@@ -999,12 +999,12 @@ def group_submit_retry(cook_url, command, predicate_statuses, retry_failed_jobs_
         kill_groups(cook_url, [group_uuid])
 
 
-def user_current_usage(cook_url, **kwargs):
+def user_current_usage(cook_url, headers={}, **kwargs):
     """
     Queries cook for a user's current resource usage
     based on their currently running jobs.
     """
-    return session.get('%s/usage' % cook_url, params=kwargs)
+    return session.get('%s/usage' % cook_url, params=kwargs, headers=headers)
 
 
 def query_queue(cook_url, **kwargs):
@@ -1012,14 +1012,14 @@ def query_queue(cook_url, **kwargs):
     return session.get(f'{cook_url}/queue', **kwargs)
 
 
-def get_limit(cook_url, limit_type, user, pool=None):
+def get_limit(cook_url, limit_type, user, pool=None, headers={}):
     params = {'user': user}
     if pool is not None:
         params['pool'] = pool
-    return session.get(f'{cook_url}/{limit_type}', params=params)
+    return session.get(f'{cook_url}/{limit_type}', params=params, headers=headers)
 
 
-def set_limit(cook_url, limit_type, user, mem=None, cpus=None, gpus=None, count=None, reason='testing', pool=None):
+def set_limit(cook_url, limit_type, user, mem=None, cpus=None, gpus=None, count=None, reason='testing', pool=None, headers={}):
     """
     Set resource limits for the given user.
     The limit_type parameter should be either 'share' or 'quota', specifying which type of limit is being set.
@@ -1040,10 +1040,10 @@ def set_limit(cook_url, limit_type, user, mem=None, cpus=None, gpus=None, count=
     if pool is not None:
         body['pool'] = pool
     logger.debug(f'Setting {user} {limit_type} to {limits}: {body}')
-    return session.post(f'{cook_url}/{limit_type}', json=body)
+    return session.post(f'{cook_url}/{limit_type}', json=body, headers=headers)
 
 
-def reset_limit(cook_url, limit_type, user, reason='testing', pool=None):
+def reset_limit(cook_url, limit_type, user, reason='testing', pool=None, headers={}):
     """
     Resets resource limits for the given user to the default for the cluster.
     The limit_type parameter should be either 'share' or 'quota', specifying which type of limit is being reset.
@@ -1053,7 +1053,7 @@ def reset_limit(cook_url, limit_type, user, reason='testing', pool=None):
         params['reason'] = reason
     if pool is not None:
         params['pool'] = pool
-    return session.delete(f'{cook_url}/{limit_type}', params=params)
+    return session.delete(f'{cook_url}/{limit_type}', params=params, headers=headers)
 
 
 def retrieve_progress_file_env(cook_url):

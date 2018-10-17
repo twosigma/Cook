@@ -1357,7 +1357,9 @@
   "Returns a [true {::error ...}] pair if the request is malformed, and
   otherwise [false m], where m represents data that gets merged into the ctx"
   [ctx]
-  (let [{:strs [state user start end limit name pool]} (get-in ctx [:request :query-params])
+  (let [{:strs [state user start end limit name]} (get-in ctx [:request :query-params])
+        pool (or (get-in ctx [:request :query-params "pool"])
+                 (get-in ctx [:request :headers "x-cook-pool"]))
         states (wrap-seq state)]
     (cond
       (not (and states user start end))
@@ -1628,11 +1630,12 @@
     {:allowed-methods [:post]
      :malformed? (fn [ctx]
                    (let [params (get-in ctx [:request :body-params])
+                         headers (get-in ctx [:request :headers])
                          jobs (get params :jobs)
                          groups (get params :groups)
                          user (get-in ctx [:request :authorization/user])
                          override-group-immutability? (boolean (get params :override-group-immutability))
-                         pool-name (get params :pool)
+                         pool-name (or (get params :pool) (get headers "x-cook-pool"))
                          pool (when pool-name (d/entity (d/db conn) [:pool/name pool-name]))
                          uuid->count (pc/map-vals count (group-by :uuid jobs))
                          time-until-out-of-debt (rate-limit/time-until-out-of-debt-millis! rate-limit/job-submission-rate-limiter user)
@@ -2162,7 +2165,8 @@
   (let [user (or (get-in ctx [:request :query-params :user])
                  (get-in ctx [:request :body-params :user]))
         pool (or (get-in ctx [:request :query-params :pool])
-                 (get-in ctx [:request :body-params :pool]))
+                 (get-in ctx [:request :body-params :pool])
+                 (get-in ctx [:request :headers "x-cook-pool"]))
         db (d/db conn)
         response (get-limit-fn db user pool)]
     (if (nil? pool)
@@ -2200,7 +2204,8 @@
      :delete! (fn [ctx]
                 (retract-limit-fn conn
                                   (get-in ctx [:request :query-params :user])
-                                  (get-in ctx [:request :query-params :pool])
+                                  (or (get-in ctx [:request :query-params :pool])
+                                      (get-in ctx [:request :headers "x-cook-pool"]))
                                   (get-in ctx [:request :query-params :reason])))}))
 
 (defn coerce-limit-values
@@ -2233,7 +2238,8 @@
               (apply set-limit-fn
                      conn
                      (get-in ctx [:request :body-params :user])
-                     (get-in ctx [:request :body-params :pool])
+                     (or (get-in ctx [:request :body-params :pool])
+                         (get-in ctx [:request :headers "x-cook-pool"]))
                      (get-in ctx [:request :body-params :reason])
                      (reduce into [] (::limits ctx))))}))
 
@@ -2305,7 +2311,8 @@
   [db ctx]
   (let [user (get-in ctx [:request :query-params :user])
         with-group-breakdown? (get-in ctx [:request :query-params :group_breakdown])
-        pool (get-in ctx [:request :query-params :pool])]
+        pool (or (get-in ctx [:request :query-params :pool])
+                 (get-in ctx [:request :headers "x-cook-pool"]))]
     (if pool
       (let [jobs (util/get-user-running-job-ents-in-pool db user pool)]
         (user-usage with-group-breakdown? jobs))
