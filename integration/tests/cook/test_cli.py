@@ -1179,8 +1179,8 @@ class CookCliTest(util.CookTest):
         self.assertEqual('completed', jobs[0]['status'])
 
     def test_kill_instance(self):
-        # Submit a job, allowing for a second try
-        cp, uuids = cli.submit('sleep 60', self.cook_url, submit_flags='--max-retries 2')
+        # Submit a long-running job
+        cp, uuids = cli.submit('sleep 600', self.cook_url)
         self.assertEqual(0, cp.returncode, cp.stderr)
 
         # Wait for an instance to appear, and kill it
@@ -1189,11 +1189,10 @@ class CookCliTest(util.CookTest):
         self.assertEqual(0, cp.returncode, cp.stderr)
         self.assertIn(f'Killed job instance {instance_uuid}', cli.stdout(cp))
 
-        # Wait for the second instance to appear and check their statuses
-        job = util.wait_until(lambda: cli.show_jobs(uuids, self.cook_url)[1][0], lambda j: len(j['instances']) == 2)
-        self.assertEqual('failed', next(i['status'] for i in job['instances'] if i['task_id'] == instance_uuid))
-        self.assertIn(next(i['status'] for i in job['instances'] if i['task_id'] != instance_uuid),
-                      ['running', 'unknown'])
+        # Wait for the instance to be marked failed
+        util.wait_until(
+            lambda: util.load_job(self.cook_url, uuids[0]),
+            lambda j: next(i['status'] for i in j['instances'] if i['task_id'] == instance_uuid) == 'failed')
 
     def test_kill_group(self):
         # Submit a group with one job

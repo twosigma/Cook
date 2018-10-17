@@ -465,7 +465,7 @@ def retry_jobs(cook_url, assert_response=True, use_deprecated_post=False, **kwar
 def kill_jobs(cook_url, jobs, assert_response=True, expected_status_code=204):
     """Kill one or more jobs"""
     chunksize = 100
-    chunks = [jobs[i:i+chunksize] for i in range(0,len(jobs),chunksize)]
+    chunks = [jobs[i:i + chunksize] for i in range(0, len(jobs), chunksize)]
     response = []
     for chunk in chunks:
         params = {'job': [unpack_uuid(j) for j in chunk]}
@@ -1247,7 +1247,7 @@ def should_expect_sandbox_directory(instance):
         logging.info('The sandbox directory is not expected to get populated')
     return expect_sandbox
 
-  
+
 def should_expect_sandbox_directory_for_job(job):
     """
     Returns true if we should expect the sandbox directory
@@ -1256,9 +1256,10 @@ def should_expect_sandbox_directory_for_job(job):
     instance = job['instances'][0]
     return should_expect_sandbox_directory(instance)
 
-  
+
 def data_local_service_is_set():
     return os.getenv('DATA_LOCAL_SERVICE', None) is not None
+
 
 @functools.lru_cache()
 def _fenzo_fitness_calculator():
@@ -1269,6 +1270,7 @@ def _fenzo_fitness_calculator():
     fitness_calculator = get_in(settings(cook_url), 'fenzo-fitness-calculator')
     logger.info(f"Cook's fitness calculator is {fitness_calculator}")
     return fitness_calculator
+
 
 def using_data_local_fitness_calculator():
     return _fenzo_fitness_calculator() == 'cook.mesos.data-locality/make-data-local-fitness-calculator'
