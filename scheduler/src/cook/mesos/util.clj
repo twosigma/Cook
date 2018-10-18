@@ -646,6 +646,9 @@
         min-group-ranking-value (max 0 (min 100 (Integer/parseInt (or min-group-ranking-env "0"))))]
     (log/info "Minimum group ranking score environment variable is" min-group-ranking-env)
     (log/info "Minimum group ranking score configured to" min-group-ranking-value)
+    ;; TODO shams remove prints
+    (println "Minimum group ranking score environment variable is" min-group-ranking-env)
+    (println "Minimum group ranking score configured to" min-group-ranking-value)
     min-group-ranking-value))
 
 (defn- job-ent->group-id
