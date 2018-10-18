@@ -581,10 +581,10 @@
 (defn create-task-ent
   "Takes a pending job entity and returns a synthetic running task entity for that job"
   [pending-job-ent & {:keys [hostname slave-id] :or {hostname nil slave-id nil}}]
-  (merge {:job/_instance pending-job-ent
-          :instance/status :instance.status/running}
-         (when hostname {:instance/hostname hostname})
-         (when slave-id {:instance/slave-id slave-id})))
+  (cond-> {:job/_instance pending-job-ent
+           :instance/status :instance.status/running}
+    hostname (assoc :instance/hostname hostname)
+    slave-id (assoc :instance/slave-id slave-id)))
 
 (defn task-ent->user
   [task-ent]
@@ -595,10 +595,9 @@
 
 (def ^:const default-job-priority 50)
 
-
 (defn task->feature-vector
   "Vector of comparable features of a task.
-   Last two elements are aribitary tie breakers.
+   Last two elements are arbitrary tie breakers.
    Use :db/id because they guarantee uniqueness for different entities
    (:db/id task) is not sufficient because synthetic task entities don't have :db/id
    This assumes there are at most one synthetic task for a job, otherwise uniqueness invariant will break"
@@ -616,12 +615,72 @@
 
 (defn same-user-task-comparator
   "Comparator to order same user's tasks"
-  ([]
-   (same-user-task-comparator []))
-  ([tasks]
-   (fn [task1 task2]
-     (compare (task->feature-vector task1)
-              (task->feature-vector task2)))))
+  []
+  (fn [task1 task2]
+    (compare (task->feature-vector task1)
+             (task->feature-vector task2))))
+
+(defn group-id->non-queued-resources-percentage
+  "Computes and returns the maximum of the sum of cpus/gpus/mem resource usage of non-queued jobs."
+  [db group-id]
+  (let [group-jobs (:group/job (d/entity db group-id))
+        sum-merge (fn [m1 m2] (merge-with + m1 m2))
+        {:keys [queued total]} (reduce (fn resource-usage-reducer [accum-map job]
+                                         (let [resources (select-keys (job-ent->resources job) [:cpus :gpus :mem])
+                                               job-queued? (= :job.state/waiting (:job/state job))]
+                                           (cond-> (update accum-map :total sum-merge resources)
+                                             job-queued? (update :queued sum-merge resources))))
+                                       {:queued {}
+                                        :total {}}
+                                       group-jobs)]
+    (->> (merge-with / queued total)
+         vals
+         (apply max)
+         (- 1.0)
+         (* 100)
+         int)))
+
+;; TODO shams make this configurable and add docstring
+(def min-group-ranking-score
+  (let [min-group-ranking-env (System/getenv "MIN_GROUP_RANKING_SCORE")
+        min-group-ranking-value (max 0 (min 100 (Integer/parseInt (or min-group-ranking-env "0"))))]
+    (log/info "Minimum group ranking score environment variable is" min-group-ranking-env)
+    (log/info "Minimum group ranking score configured to" min-group-ranking-value)
+    min-group-ranking-value))
+
+(defn- job-ent->group-id
+  "Returns the group-id for the provided job."
+  [job]
+  (some-> job :group/_job first :db/id))
+
+(defn job->group-processing-score
+  "TODO shams docstring"
+  [db job]
+  (-> (some->> job
+               job-ent->group-id
+               (group-id->non-queued-resources-percentage db))
+      (or 0)
+      (max min-group-ranking-score)
+      unchecked-negate-int))
+
+(defn same-user-group-biased-task-comparator
+  "Comparator to order same user's tasks with a bias towards promoting tasks with higher group completion percentage."
+  [db]
+  (let [group-id->ranking-score-atom (atom {})
+        task->group-ranking-score (fn [task]
+                                    (let [group-id (some-> task :job/_instance job-ent->group-id)]
+                                      (if-let [group-ranking-score (get @group-id->ranking-score-atom group-id)]
+                                        group-ranking-score
+                                        (let [group-ranking-score (job->group-processing-score db (:job/_instance task))]
+                                          (swap! group-id->ranking-score-atom assoc group-id group-ranking-score)
+                                          group-ranking-score))))]
+    (fn [task1 task2]
+      (let [group-ranking-comparison (compare (task->group-ranking-score task1)
+                                              (task->group-ranking-score task2))]
+        (if (zero? group-ranking-comparison)
+          (compare (task->feature-vector task1)
+                   (task->feature-vector task2))
+          group-ranking-comparison)))))
 
 (defn retry-job!
   "Sets :job/max-retries to the given value for the given job UUID.

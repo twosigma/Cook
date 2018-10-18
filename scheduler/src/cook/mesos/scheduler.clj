@@ -1160,9 +1160,8 @@
 
 (defn sort-jobs-by-dru-helper
   "Return a list of job entities ordered by the provided sort function"
-  [pending-task-ents running-task-ents user->dru-divisors sort-task-scored-task-pairs sort-jobs-duration pool-name]
+  [pending-task-ents running-task-ents user->dru-divisors task-comparator sort-task-scored-task-pairs sort-jobs-duration pool-name]
   (let [tasks (into (vec running-task-ents) pending-task-ents)
-        task-comparator (util/same-user-task-comparator tasks)
         pending-task-ents-set (into #{} pending-task-ents)
         jobs (timers/time!
                sort-jobs-duration
@@ -1176,14 +1175,14 @@
 
 (defn- sort-normal-jobs-by-dru
   "Return a list of normal job entities ordered by dru"
-  [pending-task-ents running-task-ents user->dru-divisors timer pool-name]
-  (sort-jobs-by-dru-helper pending-task-ents running-task-ents user->dru-divisors
+  [pending-task-ents running-task-ents user->dru-divisors task-comparator timer pool-name]
+  (sort-jobs-by-dru-helper pending-task-ents running-task-ents user->dru-divisors task-comparator
                            dru/sorted-task-scored-task-pairs timer pool-name))
 
 (defn- sort-gpu-jobs-by-dru
   "Return a list of gpu job entities ordered by dru"
-  [pending-task-ents running-task-ents user->dru-divisors timer pool-name]
-  (sort-jobs-by-dru-helper pending-task-ents running-task-ents user->dru-divisors
+  [pending-task-ents running-task-ents user->dru-divisors task-comparator timer pool-name]
+  (sort-jobs-by-dru-helper pending-task-ents running-task-ents user->dru-divisors task-comparator
                            dru/sorted-task-cumulative-gpu-score-pairs timer pool-name))
 
 (defn- pool-map
@@ -1217,13 +1216,14 @@
                                                            (case dru-mode
                                                              :pool.dru-mode/default sort-normal-jobs-by-dru
                                                              :pool.dru-mode/gpu sort-gpu-jobs-by-dru)))
-                                         {"no-pool" sort-normal-jobs-by-dru})]
+                                         {"no-pool" sort-normal-jobs-by-dru})
+        task-comparator (util/same-user-group-biased-task-comparator unfiltered-db)]
     (letfn [(sort-jobs-by-dru-pool-helper [[pool-name sort-jobs-by-dru]]
               (let [pending-tasks (pool-name->pending-task-ents pool-name)
                     running-tasks (pool-name->running-task-ents pool-name)
                     user->dru-divisors (pool-name->user->dru-divisors pool-name)
                     timer (timers/timer (metric-title "sort-jobs-hierarchy-duration" pool-name))]
-                [pool-name (sort-jobs-by-dru pending-tasks running-tasks user->dru-divisors timer pool-name)]))]
+                [pool-name (sort-jobs-by-dru pending-tasks running-tasks user->dru-divisors task-comparator timer pool-name)]))]
       (into {} (map sort-jobs-by-dru-pool-helper) pool-name->sort-jobs-by-dru-fn))))
 
 (timers/deftimer [cook-mesos scheduler filter-offensive-jobs-duration])

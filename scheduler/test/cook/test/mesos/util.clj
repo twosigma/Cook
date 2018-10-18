@@ -678,4 +678,89 @@
             every-ten-secs (util/time-seq now (t/millis 10000))]
         (is (true? (t/equal? (t/plus now (t/weeks 52)) (nth every-ten-secs 3144960))))))))
 
+(deftest test-job-group-resources-usage-ranking-score
+  (let [uri "datomic:mem://test-group-uuid-non-queued-resources-percentage"
+        conn (restore-fresh-database! uri)]
+    (testing "all jobs queued"
+      (let [group-ent-id (create-dummy-group conn)
+            j1 (create-dummy-job conn :group group-ent-id)
+            j2 (create-dummy-job conn :group group-ent-id)
+            j3 (create-dummy-job conn :group group-ent-id)
+            db (d/db conn)]
+        (is (zero? (util/group-id->non-queued-resources-percentage db group-ent-id)))
+        (is (zero? (util/job->group-processing-score db (d/entity db j1))))
+        (is (zero? (util/job->group-processing-score db (d/entity db j2))))
+        (is (zero? (util/job->group-processing-score db (d/entity db j3))))))
+
+    (testing "all jobs queued with min-group-ranking-score 40"
+      (with-redefs [util/min-group-ranking-score 40]
+        (let [group-ent-id (create-dummy-group conn)
+              j1 (create-dummy-job conn :group group-ent-id)
+              j2 (create-dummy-job conn :group group-ent-id)
+              j3 (create-dummy-job conn :group group-ent-id)
+              db (d/db conn)]
+          (is (zero? (util/group-id->non-queued-resources-percentage db group-ent-id)))
+          (is (= -40 (util/job->group-processing-score db (d/entity db j1))))
+          (is (= -40 (util/job->group-processing-score db (d/entity db j2))))
+          (is (= -40 (util/job->group-processing-score db (d/entity db j3)))))))
+
+    (testing "one job running"
+      (let [group-ent-id (create-dummy-group conn)
+            j1 (create-dummy-job conn :group group-ent-id)
+            j2 (create-dummy-job conn :group group-ent-id :job-state :job.state/running)
+            j3 (create-dummy-job conn :group group-ent-id)
+            db (d/db conn)]
+        (is (= 33 (util/group-id->non-queued-resources-percentage db group-ent-id)))
+        (is (= -33 (util/job->group-processing-score db (d/entity db j1))))
+        (is (= -33 (util/job->group-processing-score db (d/entity db j2))))
+        (is (= -33 (util/job->group-processing-score db (d/entity db j3))))))
+
+    (testing "one job queued"
+      (let [group-ent-id (create-dummy-group conn)
+            j1 (create-dummy-job conn :group group-ent-id)
+            j2 (create-dummy-job conn :group group-ent-id :job-state :job.state/completed)
+            j3 (create-dummy-job conn :group group-ent-id :job-state :job.state/running)
+            j4 (create-dummy-job conn :group group-ent-id :job-state :job.state/running)
+            j5 (create-dummy-job conn :group group-ent-id :job-state :job.state/completed)
+            db (d/db conn)]
+        (is (= 80 (util/group-id->non-queued-resources-percentage db group-ent-id)))
+        (is (= -80 (util/job->group-processing-score db (d/entity db j1))))
+        (is (= -80 (util/job->group-processing-score db (d/entity db j2))))
+        (is (= -80 (util/job->group-processing-score db (d/entity db j3))))
+        (is (= -80 (util/job->group-processing-score db (d/entity db j4))))
+        (is (= -80 (util/job->group-processing-score db (d/entity db j5))))))
+
+    (testing "one job running with memory dominating"
+      (let [group-ent-id (create-dummy-group conn)
+            j1 (create-dummy-job conn :group group-ent-id :memory 100 :ncpus 20)
+            j2(create-dummy-job conn :group group-ent-id :job-state :job.state/running :memory 300 :ncpus 70)
+            j3 (create-dummy-job conn :group group-ent-id :memory 200 :ncpus 10)
+            db (d/db conn)]
+        (is (= 50 (util/group-id->non-queued-resources-percentage db group-ent-id)))
+        (is (= -50 (util/job->group-processing-score db (d/entity db j1))))
+        (is (= -50 (util/job->group-processing-score db (d/entity db j2))))
+        (is (= -50 (util/job->group-processing-score db (d/entity db j3))))))
+
+    (testing "one job running with cpu dominating"
+      (let [group-ent-id (create-dummy-group conn)
+            j1 (create-dummy-job conn :group group-ent-id :memory 100 :ncpus 20)
+            j2 (create-dummy-job conn :group group-ent-id :job-state :job.state/running :memory 300 :ncpus 10)
+            j3 (create-dummy-job conn :group group-ent-id :memory 200 :ncpus 10)
+            db (d/db conn)]
+        (is (= 25 (util/group-id->non-queued-resources-percentage db group-ent-id)))
+        (is (= -25 (util/job->group-processing-score db (d/entity db j1))))
+        (is (= -25 (util/job->group-processing-score db (d/entity db j2))))
+        (is (= -25 (util/job->group-processing-score db (d/entity db j3))))))
+
+    (testing "one job running and one completed"
+      (let [group-ent-id (create-dummy-group conn)
+            j1 (create-dummy-job conn :group group-ent-id)
+            j2 (create-dummy-job conn :group group-ent-id :job-state :job.state/running)
+            j3 (create-dummy-job conn :group group-ent-id :job-state :job.state/completed)
+            db (d/db conn)]
+        (is (= 66 (util/group-id->non-queued-resources-percentage db group-ent-id)))
+        (is (= -66 (util/job->group-processing-score db (d/entity db j1))))
+        (is (= -66 (util/job->group-processing-score db (d/entity db j2))))
+        (is (= -66 (util/job->group-processing-score db (d/entity db j3))))))))
+
 (comment (run-tests))

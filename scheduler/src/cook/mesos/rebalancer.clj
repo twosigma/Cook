@@ -221,7 +221,7 @@
          user->sorted-running-task-ents (->> running-task-ents
                                              (group-by util/task-ent->user)
                                              (map (fn [[user task-ents]]
-                                                    [user (into (sorted-set-by (util/same-user-task-comparator))
+                                                    [user (into (sorted-set-by (util/same-user-group-biased-task-comparator db))
                                                                 task-ents)]))
                                              (into {}))
          scored-task-pairs (case dru-mode
@@ -248,8 +248,7 @@
 (defn next-state
   "Takes state, a pending job entity to launch and a preemption decision, returns the next state"
   [{:keys [task->scored-task user->sorted-running-task-ents host->spare-resources user->dru-divisors compute-pending-job-dru preempted-tasks] :as state}
-   pending-job-ent
-   preemption-decision]
+   db pending-job-ent preemption-decision]
   {:pre [(not (nil? preemption-decision))]}
   (let [hostname (:hostname preemption-decision)
         slave-id (-> preemption-decision :task first :instance/slave-id)
@@ -266,7 +265,7 @@
         (reduce (fn [task-ents-by-user task-ent]
                   (let [user (util/task-ent->user task-ent)
                         f (if (= new-running-task-ent task-ent)
-                            (fnil conj (sorted-set-by (util/same-user-task-comparator)))
+                            (fnil conj (sorted-set-by (util/same-user-group-biased-task-comparator db)))
                             disj)]
                     (update-in task-ents-by-user [user] f task-ent)))
                 user->sorted-running-task-ents
@@ -376,7 +375,7 @@
   [db agent-attributes-cache state params pending-job cotask-cache pool-name]
   (log/debug "Trying to find space for: " pending-job)
   (if-let [preemption-decision (compute-preemption-decision db agent-attributes-cache state params pool-name pending-job cotask-cache)]
-    [(next-state state pending-job preemption-decision)
+    [(next-state state db pending-job preemption-decision)
      (assoc preemption-decision
             :to-make-room-for pending-job)]
     [state nil]))

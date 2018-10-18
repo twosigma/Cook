@@ -830,7 +830,7 @@
                user->sorted-running-task-ents'' :user->sorted-running-task-ents
                host->spare-resources'' :host->spare-resources
                user->dru-divisors'' :user->dru-divisors}
-              (rebalancer/next-state state job-ent9 {:hostname "hostB" :task [task-ent6 task-ent8] :mem 20.0 :cpus 20.0 :gpus 0.0})]
+              (rebalancer/next-state state db job-ent9 {:hostname "hostB" :task [task-ent6 task-ent8] :mem 20.0 :cpus 20.0 :gpus 0.0})]
           (is (= user->sorted-running-task-ents' user->sorted-running-task-ents''))
           (is (= host->spare-resources' host->spare-resources''))
           (is (= user->dru-divisors user->dru-divisors''))
@@ -856,7 +856,7 @@
         (let [{task->scored-task'' :task->scored-task
                user->sorted-running-task-ents'' :user->sorted-running-task-ents
                host->spare-resources'' :host->spare-resources}
-              (rebalancer/next-state state job-ent10 {:hostname "hostA" :task [task-ent2 task-ent7] :mem 65.0 :cpus 65.0})]
+              (rebalancer/next-state state db job-ent10 {:hostname "hostA" :task [task-ent2 task-ent7] :mem 65.0 :cpus 65.0})]
           (is (= user->sorted-running-task-ents' user->sorted-running-task-ents''))
           (is (= host->spare-resources' host->spare-resources''))
           (is (= [task-ent4 task-ent3 task-ent8 task-ent6 task-ent10 task-ent1 task-ent5]
@@ -881,7 +881,7 @@
         (let [{task->scored-task'' :task->scored-task
                user->sorted-running-task-ents'' :user->sorted-running-task-ents
                host->spare-resources'' :host->spare-resources}
-              (rebalancer/next-state state job-ent12 {:hostname "hostA" :task [] :mem 50.0 :cpus 50.0})]
+              (rebalancer/next-state state db job-ent12 {:hostname "hostA" :task [] :mem 50.0 :cpus 50.0})]
           (is (= user->sorted-running-task-ents' user->sorted-running-task-ents''))
           (is (= host->spare-resources' host->spare-resources''))
           ;; If these tests break, know that the ordering for equal dru tasks is undefined..

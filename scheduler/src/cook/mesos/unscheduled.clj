@@ -121,7 +121,7 @@
                            (filter (fn [job] (-> job :job/commit-latch :commit-latch/committed?)))
                            (map util/create-task-ent))
         all-tasks (into running-tasks pending-tasks)
-        sorted-tasks (vec (sort (util/same-user-task-comparator) all-tasks))
+        sorted-tasks (vec (sort (util/same-user-group-biased-task-comparator db) all-tasks))
         queue-pos (first
                    (keep-indexed
                     (fn [i instance]

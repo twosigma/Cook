@@ -63,6 +63,7 @@
           (cc/quick-bench (sched/sort-jobs-by-dru-helper pending-task-ents
                                                          running-task-ents
                                                          user->dru-divisors
+                                                         (util/same-user-task-comparator)
                                                          sort-task-scored-task-pairs
                                                          (timers/timer (sched/metric-title "sort-jobs-hierarchy-duration" "no-pool"))
                                                          "no-pool"))
