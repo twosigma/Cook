@@ -623,7 +623,8 @@
 (defn group-id->non-queued-resources-percentage
   "Computes and returns the maximum of the sum of cpus/gpus/mem resource usage of non-queued jobs."
   [db group-id]
-  (let [group-jobs (:group/job (d/entity db group-id))
+  (let [group-ent (d/entity db group-id)
+        group-jobs (:group/job group-ent)
         sum-merge (fn [m1 m2] (merge-with + m1 m2))
         {:keys [queued total]} (reduce (fn resource-usage-reducer [accum-map job]
                                          (let [resources (select-keys (job-ent->resources job) [:cpus :gpus :mem])
@@ -632,13 +633,17 @@
                                              job-queued? (update :queued sum-merge resources))))
                                        {:queued {}
                                         :total {}}
-                                       group-jobs)]
-    (->> (merge-with / queued total)
-         vals
-         (apply max)
-         (- 1.0)
-         (* 100)
-         int)))
+                                       group-jobs)
+        queued-percentage (->> (merge-with / queued total)
+                               vals
+                               (apply max))]
+    (if (<= 0 queued-percentage 1.0)
+      (->> queued-percentage
+           (- 1.0)
+           (* 100)
+           int)
+      (log/warn "group" (select-keys group-ent [:db/id :group/uuid]) "has queued percentage" queued-percentage
+                {:num-jobs (count group-jobs) :queued queued :total total}))))
 
 ;; TODO shams make this configurable and add docstring
 (def min-group-ranking-score
