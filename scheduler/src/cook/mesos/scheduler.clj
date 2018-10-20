@@ -1222,8 +1222,14 @@
               (let [pending-tasks (pool-name->pending-task-ents pool-name)
                     running-tasks (pool-name->running-task-ents pool-name)
                     user->dru-divisors (pool-name->user->dru-divisors pool-name)
-                    timer (timers/timer (metric-title "sort-jobs-hierarchy-duration" pool-name))]
-                [pool-name (sort-jobs-by-dru pending-tasks running-tasks user->dru-divisors task-comparator timer pool-name)]))]
+                    timer (timers/timer (metric-title "sort-jobs-hierarchy-duration" pool-name))
+                    ranked-jobs (sort-jobs-by-dru pending-tasks running-tasks user->dru-divisors task-comparator timer pool-name)]
+                (log/info "Group scores of first 20 jobs"
+                          (->> ranked-jobs
+                               (take 20)
+                               (map (fn [job] [(:job/user job) (-> job :job/uuid str) (util/job->group-processing-score unfiltered-db job)]))
+                               (vec)))
+                [pool-name ranked-jobs]))]
       (into {} (map sort-jobs-by-dru-pool-helper) pool-name->sort-jobs-by-dru-fn))))
 
 (timers/deftimer [cook-mesos scheduler filter-offensive-jobs-duration])
