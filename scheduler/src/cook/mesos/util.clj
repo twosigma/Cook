@@ -626,17 +626,21 @@
   (let [group-ent (d/entity db group-id)
         group-jobs (:group/job group-ent)
         sum-merge (fn [m1 m2] (merge-with + m1 m2))
+        resource-keys [:cpus :gpus :mem]
         {:keys [queued total]} (reduce (fn resource-usage-reducer [accum-map job]
-                                         (let [resources (select-keys (job-ent->resources job) [:cpus :gpus :mem])
+                                         (let [resources (select-keys (job-ent->resources job) resource-keys)
                                                job-queued? (= :job.state/waiting (:job/state job))]
                                            (cond-> (update accum-map :total sum-merge resources)
                                              job-queued? (update :queued sum-merge resources))))
-                                       {:queued {}
+                                       {:queued (pc/map-from-keys (constantly 0) resource-keys)
                                         :total {}}
                                        group-jobs)
         queued-percentage (->> (merge-with / queued total)
                                vals
                                (apply max))]
+    (when-not (seq group-jobs)
+      (log/warn "no jobs in group"
+                (select-keys group-ent [:db/id :group/commit-latch :group/uuid :job/commit-latch :job/uuid])))
     (if (<= 0 queued-percentage 1.0)
       (->> queued-percentage
            (- 1.0)

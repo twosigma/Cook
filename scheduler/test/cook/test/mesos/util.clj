@@ -681,6 +681,11 @@
 (deftest test-job-group-resources-usage-ranking-score
   (let [uri "datomic:mem://test-group-uuid-non-queued-resources-percentage"
         conn (restore-fresh-database! uri)]
+    (testing "group with no jobs"
+      (let [group-ent-id (create-dummy-group conn)
+            db (d/db conn)]
+        (is (= 100 (util/group-id->non-queued-resources-percentage db group-ent-id)))))
+
     (testing "all jobs queued"
       (let [group-ent-id (create-dummy-group conn)
             j1 (create-dummy-job conn :group group-ent-id)
@@ -729,6 +734,21 @@
         (is (= -80 (util/job->group-processing-score db (d/entity db j3))))
         (is (= -80 (util/job->group-processing-score db (d/entity db j4))))
         (is (= -80 (util/job->group-processing-score db (d/entity db j5))))))
+
+    (testing "no job queued"
+      (let [group-ent-id (create-dummy-group conn)
+            j1 (create-dummy-job conn :group group-ent-id :job-state :job.state/completed)
+            j2 (create-dummy-job conn :group group-ent-id :job-state :job.state/completed)
+            j3 (create-dummy-job conn :group group-ent-id :job-state :job.state/running)
+            j4 (create-dummy-job conn :group group-ent-id :job-state :job.state/running)
+            j5 (create-dummy-job conn :group group-ent-id :job-state :job.state/completed)
+            db (d/db conn)]
+        (is (= 100 (util/group-id->non-queued-resources-percentage db group-ent-id)))
+        (is (= -100 (util/job->group-processing-score db (d/entity db j1))))
+        (is (= -100 (util/job->group-processing-score db (d/entity db j2))))
+        (is (= -100 (util/job->group-processing-score db (d/entity db j3))))
+        (is (= -100 (util/job->group-processing-score db (d/entity db j4))))
+        (is (= -100 (util/job->group-processing-score db (d/entity db j5))))))
 
     (testing "one job running with memory dominating"
       (let [group-ent-id (create-dummy-group conn)
