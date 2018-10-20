@@ -642,7 +642,8 @@
            (- 1.0)
            (* 100)
            int)
-      (log/warn "group" (select-keys group-ent [:db/id :group/uuid]) "has queued percentage" queued-percentage
+      (log/warn "group" (select-keys group-ent [:db/id :group/commit-latch :group/uuid :job/commit-latch :job/uuid])
+                "has queued percentage" queued-percentage
                 {:num-jobs (count group-jobs) :queued queued :total total}))))
 
 ;; TODO shams make this configurable and add docstring
