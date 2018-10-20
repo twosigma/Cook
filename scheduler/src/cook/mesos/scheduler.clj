@@ -207,11 +207,11 @@
 (defn handle-status-update
   "Takes a status update from mesos."
   [conn driver pool->fenzo sync-agent-sandboxes-fn status]
-  (log/info "Mesos status is:" status)
   (timers/time!
     handle-status-update-duration
     (try (let [db (db conn)
-               {:keys [task-id reason task-state progress]} (interpret-task-status status)
+               {:keys [task-id reason task-state progress] :as task-status} (interpret-task-status status)
+               _ (log/info "Mesos status is:" task-status)
                _ (when-not task-id
                    (throw (ex-info "task-id is nil. Something unexpected has happened."
                                    {:status status
