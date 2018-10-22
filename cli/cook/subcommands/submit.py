@@ -164,6 +164,17 @@ def submit(clusters, args, _):
     job_template['application'] = {'name': application_name, 'version': application_version}
     pool = job_template.pop('pool-name', None)
 
+    docker_image = job_template.pop('docker-image', None)
+    if docker_image:
+        job_template['container'] = {
+            'type': 'docker',
+            'docker': {
+                'image': docker_image,
+                'network': 'HOST',
+                'force-pull-image': False
+            }
+        }
+
     group = None
     if 'group-name' in job_template:
         # If the user did not also specify a group uuid, generate
@@ -243,6 +254,8 @@ def register(add_parser, add_defaults):
     submit_parser.add_argument('--raw', '-r', help='raw job spec in json format', dest='raw', action='store_true')
     submit_parser.add_argument('--command-prefix', help='prefix to use for all commands', dest='command-prefix')
     submit_parser.add_argument('--pool', '-P', help='pool name for job', type=str, metavar='NAME', dest='pool-name')
+    submit_parser.add_argument('--docker-image', '-i', help='docker image for job',
+                               type=str, metavar='IMAGE', dest='docker-image')
     submit_parser.add_argument('command', nargs=argparse.REMAINDER)
 
     add_defaults('submit', {'cpus': 1, 'max-retries': 1, 'mem': 128, 'command-prefix': ''})
