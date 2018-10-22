@@ -6,6 +6,7 @@ branches:
   only:
     - master
     - /^build\/.*$/
+    - cs-submit-docker
 
 cache:
   directories:
