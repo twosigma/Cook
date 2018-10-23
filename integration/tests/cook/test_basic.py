@@ -2043,8 +2043,18 @@ class CookTest(util.CookTest):
         finally:
             util.kill_jobs(self.cook_url, job_uuids)
 
+    @unittest.skipUnless(util.are_pools_enabled(), "Requires pools")
     @pytest.mark.serial
     def test_user_total_usage(self):
+        # Kill all running and waiting jobs
+        start = util.current_milli_time() - (60 * 60 * 1000)
+        end = util.current_milli_time()
+        user = self.determine_user()
+        resp = util.jobs(self.cook_url, user=user, state=['running', 'waiting'],
+                         start=start, end=end)
+        self.assertEqual(200, resp.status_code)
+        util.kill_jobs(self.cook_url, [j['uuid'] for j in resp.json()])
+
         job_spec = {'cpus': 0.11, 'mem': 123, 'command': 'sleep 600'}
         pools, _ = util.active_pools(self.cook_url)
         job_uuids = []
@@ -2055,7 +2065,6 @@ class CookTest(util.CookTest):
                 job_uuids.append(job_uuid)
 
             util.wait_for_jobs(self.cook_url, job_uuids, 'running')
-            user = util.get_user(self.cook_url, job_uuids[0])
             resp = util.user_current_usage(self.cook_url, user=user, group_breakdown='true')
             self.assertEqual(resp.status_code, 200, resp.content)
             usage_data = resp.json()
