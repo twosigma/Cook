@@ -1931,3 +1931,22 @@ class CookCliTest(util.CookTest):
                 os.remove(executed_notebook_filename)
         finally:
             os.remove(notebook_filename)
+
+    @unittest.skipUnless(util.docker_tests_enabled(),
+                         'Requires setting the COOK_TEST_DOCKER_IMAGE environment variable')
+    def test_submit_docker(self):
+        docker_image = util.docker_image()
+        self.assertIsNotNone(docker_image)
+        cp, uuids = cli.submit('sleep 600', self.cook_url, submit_flags=f'--docker-image {docker_image}')
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        try:
+            job = util.load_job(self.cook_url, uuids[0])
+            container = job['container']
+            docker = container['docker']
+            self.assertEqual('DOCKER', container['type'])
+            self.assertEqual(docker_image, docker['image'])
+            self.assertEqual('HOST', docker['network'])
+            self.assertEqual(False, docker['force-pull-image'])
+            util.wait_for_running_instance(self.cook_url, uuids[0])
+        finally:
+            util.kill_jobs(self.cook_url, uuids)
