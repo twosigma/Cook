@@ -244,7 +244,7 @@
                instance-runtime (- (.getTime current-time) ; Used for reporting
                                    (.getTime (or (:instance/start-time instance-ent) current-time)))
                job-resources (util/job-ent->resources job-ent)
-               pool-name (util/job->pool job-ent)
+               pool-name (util/job->pool-name job-ent)
                ^TaskScheduler fenzo (get pool->fenzo pool-name)]
            (when (#{:instance.status/success :instance.status/failed} instance-status)
              (log/debug "Unassigning task" task-id "from" (:instance/hostname instance-ent))
@@ -619,12 +619,12 @@
 
 (defn generate-user-usage-map
   "Returns a mapping from user to usage stats"
-  [unfiltered-db pool]
+  [unfiltered-db pool-name]
   (timers/time!
     generate-user-usage-map-duration
     (->> (util/get-running-task-ents unfiltered-db)
          (map :job/_instance)
-         (remove #(not= pool (util/job->pool %)))
+         (remove #(not= pool-name (util/job->pool-name %)))
          (group-by :job/user)
          (pc/map-vals (fn [jobs]
                         (->> jobs
@@ -634,8 +634,8 @@
 (defn pending-jobs->considerable-jobs
   "Limit the pending jobs to considerable jobs based on usage and quota.
    Further limit the considerable jobs to a maximum of num-considerable jobs."
-  [db pending-jobs user->quota user->usage num-considerable pool]
-  (log/debug "In" pool "pool, there are" (count pending-jobs) "pending jobs:" pending-jobs)
+  [db pending-jobs user->quota user->usage num-considerable pool-name]
+  (log/debug "In" pool-name "pool, there are" (count pending-jobs) "pending jobs:" pending-jobs)
   (->> pending-jobs
        (filter-based-on-quota user->quota user->usage)
        (filter (fn [job] (util/job-allowed-to-start? db job)))
@@ -643,24 +643,24 @@
 
 (defn matches->job-uuids
   "Returns the matched job uuids."
-  [matches pool]
+  [matches pool-name]
   (let [jobs (->> matches
                   (mapcat #(-> % :tasks))
                   (map #(-> % .getRequest :job)))
         job-uuids (set (map :job/uuid jobs))]
-    (log/debug "In" pool "pool, matched jobs:" (count job-uuids))
+    (log/debug "In" pool-name "pool, matched jobs:" (count job-uuids))
     (when (seq matches)
       (let [matched-normal-jobs-resource-requirements (util/sum-resources-of-jobs jobs)]
-        (meters/mark! (meters/meter (metric-title "matched-tasks-cpus" pool))
+        (meters/mark! (meters/meter (metric-title "matched-tasks-cpus" pool-name))
                       (:cpus matched-normal-jobs-resource-requirements))
-        (meters/mark! (meters/meter (metric-title "matched-tasks-mem" pool))
+        (meters/mark! (meters/meter (metric-title "matched-tasks-mem" pool-name))
                       (:mem matched-normal-jobs-resource-requirements))))
     job-uuids))
 
 (defn remove-matched-jobs-from-pending-jobs
   "Removes matched jobs from pool->pending-jobs."
-  [pool->pending-jobs matched-job-uuids pool]
-  (update-in pool->pending-jobs [pool]
+  [pool-name->pending-jobs matched-job-uuids pool-name]
+  (update-in pool-name->pending-jobs [pool-name]
              (fn [jobs]
                (remove #(contains? matched-job-uuids (:job/uuid %)) jobs))))
 
@@ -756,7 +756,7 @@
 (defn handle-resource-offers!
   "Gets a list of offers from mesos. Decides what to do with them all--they should all
    be accepted or rejected at the end of the function."
-  [conn driver ^TaskScheduler fenzo framework-id pool->pending-jobs-atom mesos-run-as-user
+  [conn driver ^TaskScheduler fenzo framework-id pool-name->pending-jobs-atom mesos-run-as-user
    user->usage user->quota num-considerable offers-chan offers rebalancer-reservation-atom pool-name]
   (log/debug "In" pool-name "pool, invoked handle-resource-offers!")
   (let [offer-stash (atom nil)] ;; This is a way to ensure we never lose offers fenzo assigned if an error occurs in the middle of processing
@@ -766,7 +766,7 @@
       (timers/timer (metric-title "handle-resource-offer!-duration" pool-name))
       (try
         (let [db (db conn)
-              pending-jobs (get @pool->pending-jobs-atom pool-name)
+              pending-jobs (get @pool-name->pending-jobs-atom pool-name)
               considerable-jobs (timers/time!
                                   (timers/timer (metric-title "handle-resource-offer!-considerable-jobs-duration" pool-name))
                                   (pending-jobs->considerable-jobs
@@ -799,8 +799,8 @@
             (empty? matches) true
             :else
             (do
-              (swap! pool->pending-jobs-atom remove-matched-jobs-from-pending-jobs matched-job-uuids pool-name)
-              (log/debug "In" pool-name "pool, updated pool->pending-jobs-atom:" @pool->pending-jobs-atom)
+              (swap! pool-name->pending-jobs-atom remove-matched-jobs-from-pending-jobs matched-job-uuids pool-name)
+              (log/debug "In" pool-name "pool, updated pool-name->pending-jobs-atom:" @pool-name->pending-jobs-atom)
               (launch-matched-tasks! matches conn db driver fenzo framework-id mesos-run-as-user pool-name)
               (update-host-reservations! rebalancer-reservation-atom matched-job-uuids)
               matched-considerable-jobs-head?)))
@@ -833,7 +833,7 @@
 (defn make-offer-handler
   [conn driver-atom fenzo framework-id pending-jobs-atom agent-attributes-cache max-considerable scaleback
    floor-iterations-before-warn floor-iterations-before-reset trigger-chan rebalancer-reservation-atom
-   mesos-run-as-user pool]
+   mesos-run-as-user pool-name]
   (let [chan-length 100
         offers-chan (async/chan (async/buffer chan-length))
         resources-atom (atom (view-incubating-offers fenzo))]
@@ -862,7 +862,7 @@
                       ;;  2. Once the above two items are addressed, user->usage should always correctly
                       ;;     reflect *Cook*'s understanding of the state of the world at this point.
                       ;;     When this happens, users should never exceed their quota
-                      user->usage-future (future (generate-user-usage-map (d/db conn) pool))
+                      user->usage-future (future (generate-user-usage-map (d/db conn) pool-name))
                       ;; Try to clear the channel
                       offers (->> (util/read-chan offers-chan chan-length)
                                   ((fn decrement-offer-chan-depth [offer-lists]
@@ -877,13 +877,13 @@
                                                           (if (cache/has? c slave-id)
                                                             (cache/hit c slave-id)
                                                             (cache/miss c slave-id attrs)))))
-                      _ (log/debug "In" pool "pool, passing following offers to handle-resource-offers!" offers)
+                      _ (log/debug "In" pool-name "pool, passing following offers to handle-resource-offers!" offers)
                       using-pools? (not (nil? (config/default-pool)))
-                      user->quota (quota/create-user->quota-fn (d/db conn) (if using-pools? pool nil))
+                      user->quota (quota/create-user->quota-fn (d/db conn) (if using-pools? pool-name nil))
                       matched-head? (handle-resource-offers! conn @driver-atom fenzo framework-id pending-jobs-atom
                                                              mesos-run-as-user @user->usage-future user->quota
                                                              num-considerable offers-chan offers
-                                                             rebalancer-reservation-atom pool)]
+                                                             rebalancer-reservation-atom pool-name)]
                   (when (seq offers)
                     (reset! resources-atom (view-incubating-offers fenzo)))
                   ;; This check ensures that, although we value Fenzo's optimizations,
@@ -896,7 +896,7 @@
                     (let [new-considerable (max 1 (long (* scaleback num-considerable)))] ;; With max=1000 and 1 iter/sec, this will take 88 seconds to reach 1
                       (log/info "Failed to match head, reducing number of considerable jobs" {:prev-considerable num-considerable
                                                                                               :new-considerable new-considerable
-                                                                                              :pool pool})
+                                                                                              :pool pool-name})
                       new-considerable)
                     ))
                 (catch Exception e
@@ -963,7 +963,7 @@
                                              hostname (:instance/hostname task-ent)]]
                                    (when-let [job (util/job-ent->map (:job/_instance task-ent))]
                                      (let [task-request (make-task-request db job :task-id task-id)
-                                           ^TaskScheduler fenzo (-> job util/job->pool pool->fenzo)]
+                                           ^TaskScheduler fenzo (-> job util/job->pool-name pool->fenzo)]
                                        ;; Need to lock on fenzo when accessing taskAssigner because taskAssigner and
                                        ;; scheduleOnce can not be called at the same time.
                                        (locking fenzo
@@ -1202,29 +1202,29 @@
   ;; e.g. running jobs or when it is always considered committed e.g. shares
   ;; The unfiltered db can also be used on pending job entities once the filtered db is used to limit
   ;; to only those jobs that have been committed.
-  (let [pool->pending-job-ents (group-by util/job->pool (util/get-pending-job-ents unfiltered-db))
-        pool->pending-task-ents (pc/map-vals #(map util/create-task-ent %1) pool->pending-job-ents)
-        pool->running-task-ents (group-by (comp util/job->pool :job/_instance)
-                                              (util/get-running-task-ents unfiltered-db))
+  (let [pool-name->pending-job-ents (group-by util/job->pool-name (util/get-pending-job-ents unfiltered-db))
+        pool-name->pending-task-ents (pc/map-vals #(map util/create-task-ent %1) pool-name->pending-job-ents)
+        pool-name->running-task-ents (group-by (comp util/job->pool-name :job/_instance)
+                                               (util/get-running-task-ents unfiltered-db))
         pools (pool/all-pools unfiltered-db)
         using-pools? (-> pools count pos?)
-        pool->user->dru-divisors (if using-pools?
-                                   (pool-map pools (fn [{:keys [pool/name]}]
-                                                     (share/create-user->share-fn unfiltered-db name)))
-                                   {"no-pool" (share/create-user->share-fn unfiltered-db nil)})
-        pool->sort-jobs-by-dru-fn (if using-pools?
-                                    (pool-map pools (fn [{:keys [pool/dru-mode]}]
-                                                      (case dru-mode
-                                                        :pool.dru-mode/default sort-normal-jobs-by-dru
-                                                        :pool.dru-mode/gpu sort-gpu-jobs-by-dru)))
-                                    {"no-pool" sort-normal-jobs-by-dru})]
+        pool-name->user->dru-divisors (if using-pools?
+                                        (pool-map pools (fn [{:keys [pool/name]}]
+                                                          (share/create-user->share-fn unfiltered-db name)))
+                                        {"no-pool" (share/create-user->share-fn unfiltered-db nil)})
+        pool-name->sort-jobs-by-dru-fn (if using-pools?
+                                         (pool-map pools (fn [{:keys [pool/dru-mode]}]
+                                                           (case dru-mode
+                                                             :pool.dru-mode/default sort-normal-jobs-by-dru
+                                                             :pool.dru-mode/gpu sort-gpu-jobs-by-dru)))
+                                         {"no-pool" sort-normal-jobs-by-dru})]
     (letfn [(sort-jobs-by-dru-pool-helper [[pool-name sort-jobs-by-dru]]
-              (let [pending-tasks (pool->pending-task-ents pool-name)
-                    running-tasks (pool->running-task-ents pool-name)
-                    user->dru-divisors (pool->user->dru-divisors pool-name)
+              (let [pending-tasks (pool-name->pending-task-ents pool-name)
+                    running-tasks (pool-name->running-task-ents pool-name)
+                    user->dru-divisors (pool-name->user->dru-divisors pool-name)
                     timer (timers/timer (metric-title "sort-jobs-hierarchy-duration" pool-name))]
                 [pool-name (sort-jobs-by-dru pending-tasks running-tasks user->dru-divisors timer pool-name)]))]
-      (into {} (map sort-jobs-by-dru-pool-helper) pool->sort-jobs-by-dru-fn))))
+      (into {} (map sort-jobs-by-dru-pool-helper) pool-name->sort-jobs-by-dru-fn))))
 
 (timers/deftimer [cook-mesos scheduler filter-offensive-jobs-duration])
 
@@ -1309,12 +1309,12 @@
         {}))))
 
 (defn- start-jobs-prioritizer!
-  [conn pending-jobs-atom task-constraints trigger-chan]
+  [conn pool-name->pending-jobs-atom task-constraints trigger-chan]
   (let [offensive-jobs-ch (make-offensive-job-stifler conn)
         offensive-job-filter (partial filter-offensive-jobs task-constraints offensive-jobs-ch)]
     (util/chime-at-ch trigger-chan
                       (fn rank-jobs-event []
-                        (reset! pending-jobs-atom
+                        (reset! pool-name->pending-jobs-atom
                                 (rank-jobs (d/db conn) offensive-job-filter))))))
 
 (meters/defmeter [cook-mesos scheduler mesos-error])
@@ -1515,7 +1515,7 @@
   [{:keys [conn driver-atom exit-code-syncer-state fenzo-fitness-calculator fenzo-floor-iterations-before-reset
            fenzo-floor-iterations-before-warn fenzo-max-jobs-considered fenzo-scaleback framework-id good-enough-fitness
            gpu-enabled? heartbeat-ch mea-culpa-failure-limit mesos-run-as-user agent-attributes-cache offer-incubate-time-ms
-           pool->pending-jobs-atom progress-config rebalancer-reservation-atom sandbox-syncer-state task-constraints
+           pool-name->pending-jobs-atom progress-config rebalancer-reservation-atom sandbox-syncer-state task-constraints
            trigger-chans]}]
 
   (persist-mea-culpa-failure-limit! conn mea-culpa-failure-limit)
@@ -1525,20 +1525,20 @@
         pools' (if (-> pools count pos?)
                  pools
                  [{:pool/name "no-pool"}])
-        pool->fenzo (pool-map pools' (fn [_] (make-fenzo-scheduler driver-atom offer-incubate-time-ms
-                                                                   fenzo-fitness-calculator good-enough-fitness)))
+        pool-name->fenzo (pool-map pools' (fn [_] (make-fenzo-scheduler driver-atom offer-incubate-time-ms
+                                                                        fenzo-fitness-calculator good-enough-fitness)))
         {:keys [pool->offers-chan pool->resources-atom]}
         (reduce (fn [m pool-ent]
-                  (let [pool (:pool/name pool-ent)
-                        fenzo (pool->fenzo pool)
+                  (let [pool-name (:pool/name pool-ent)
+                        fenzo (pool-name->fenzo pool-name)
                         [offers-chan resources-atom]
                         (make-offer-handler
-                          conn driver-atom fenzo framework-id pool->pending-jobs-atom agent-attributes-cache fenzo-max-jobs-considered
+                          conn driver-atom fenzo framework-id pool-name->pending-jobs-atom agent-attributes-cache fenzo-max-jobs-considered
                           fenzo-scaleback fenzo-floor-iterations-before-warn fenzo-floor-iterations-before-reset
-                          match-trigger-chan rebalancer-reservation-atom mesos-run-as-user pool)]
+                          match-trigger-chan rebalancer-reservation-atom mesos-run-as-user pool-name)]
                     (-> m
-                        (assoc-in [:pool->offers-chan pool] offers-chan)
-                        (assoc-in [:pool->resources-atom pool] resources-atom))))
+                        (assoc-in [:pool->offers-chan pool-name] offers-chan)
+                        (assoc-in [:pool->resources-atom pool-name] resources-atom))))
                 {}
                 pools')
         {:keys [batch-size]} progress-config
@@ -1548,8 +1548,8 @@
                                   (progress/handle-progress-message! progress-aggregator-chan progress-message-map))
         handle-exit-code (fn handle-exit-code [task-id exit-code]
                            (sandbox/aggregate-exit-code exit-code-syncer-state task-id exit-code))]
-    (start-jobs-prioritizer! conn pool->pending-jobs-atom task-constraints rank-trigger-chan)
-    {:scheduler (create-mesos-scheduler framework-id gpu-enabled? conn heartbeat-ch pool->fenzo pool->offers-chan
+    (start-jobs-prioritizer! conn pool-name->pending-jobs-atom task-constraints rank-trigger-chan)
+    {:scheduler (create-mesos-scheduler framework-id gpu-enabled? conn heartbeat-ch pool-name->fenzo pool->offers-chan
                                         match-trigger-chan handle-exit-code handle-progress-message sandbox-syncer-state)
      :view-incubating-offers (fn get-resources-atom [p]
                                (deref (get pool->resources-atom p)))}))

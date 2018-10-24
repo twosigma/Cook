@@ -66,11 +66,11 @@
                 "max-age=0"))))
 
 (def raw-scheduler-routes
-  {:scheduler (fnk [mesos mesos-leadership-atom pool->pending-jobs-atom framework-id settings]
+  {:scheduler (fnk [mesos mesos-leadership-atom pool-name->pending-jobs-atom framework-id settings]
                 ((util/lazy-load-var 'cook.mesos.api/main-handler)
                   datomic/conn
                   framework-id
-                  (fn [] @pool->pending-jobs-atom)
+                  (fn [] @pool-name->pending-jobs-atom)
                   settings
                   (get-in mesos [:mesos-scheduler :leader-selector])
                   mesos-leadership-atom))
@@ -91,7 +91,7 @@
                            mesos-role mesos-run-as-user offer-incubate-time-ms optimizer progress rebalancer server-port
                            task-constraints]
                           curator-framework exit-code-syncer-state framework-id mesos-datomic-mult mesos-leadership-atom
-                          mesos-agent-attributes-cache pool->pending-jobs-atom sandbox-syncer-state]
+                          mesos-agent-attributes-cache pool-name->pending-jobs-atom sandbox-syncer-state]
                       (if (cook.config/api-only-mode?)
                         (if curator-framework
                           (throw (ex-info "This node is configured for API-only mode, but also has a curator configured"
@@ -126,7 +126,7 @@
                                    :mesos-datomic-conn datomic/conn
                                    :mesos-datomic-mult mesos-datomic-mult
                                    :mesos-leadership-atom mesos-leadership-atom
-                                   :pool->pending-jobs-atom pool->pending-jobs-atom
+                                   :pool-name->pending-jobs-atom pool-name->pending-jobs-atom
                                    :mesos-run-as-user mesos-run-as-user
                                    :agent-attributes-cache mesos-agent-attributes-cache
                                    :offer-incubate-time-ms offer-incubate-time-ms
@@ -307,7 +307,7 @@
                                  framework-id datomic/conn publish-batch-size publish-interval-ms sync-interval-ms
                                  max-consecutive-sync-failure mesos-agent-query-cache)))
      :mesos-leadership-atom (fnk [] (atom false))
-     :pool->pending-jobs-atom (fnk [] (atom {}))
+     :pool-name->pending-jobs-atom (fnk [] (atom {}))
      :mesos-agent-attributes-cache (fnk [[:settings {agent-attributes-cache nil}]]
                                      (when agent-attributes-cache
                                        (log/info "Agent attributes cache max size =" (:max-size agent-attributes-cache))
