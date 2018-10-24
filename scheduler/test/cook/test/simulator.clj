@@ -10,6 +10,7 @@
             [clojure.data.csv :as csv]
             [clojure.data.json :as json]
             [clojure.java.io :as io]
+            [clojure.string :as str]
             [clojure.tools.cli :refer [parse-opts]]
             [clojure.tools.logging :as log]
             [clojure.walk :refer (keywordize-keys)]
@@ -21,7 +22,7 @@
             [cook.mesos.util :as util]
             [cook.test.testutil :refer (restore-fresh-database! poll-until)]
             [datomic.api :as d]
-            [plumbing.core :refer (map-vals map-keys map-from-vals)])
+            [plumbing.core :refer (map-keys map-vals map-from-keys map-from-vals)])
   (:import java.util.Date
            java.util.UUID
            org.apache.curator.framework.CuratorFrameworkFactory
@@ -381,7 +382,8 @@
                                             :lingering-task-trigger-chan (async/chan)
                                             :cancelled-task-trigger-chan (async/chan)}}
                            (:scheduler-config config))
-        {:keys [time-ms-between-incremental-output time-ms-between-optimizer-calls time-ms-between-rebalancing]} config]
+        {:keys [time-ms-between-incremental-output time-ms-between-optimizer-calls time-ms-between-rebalancing]} config
+        job-submission-counter (atom 0)]
     ;; launch a thread to perform incremental writes of completed jobs
     (when temp-out-trace-file
       (let [last-start-time-atom (atom simulation-time)
@@ -422,6 +424,7 @@
                time-ms-since-last-optimizer-call 0]
 
           (DateTimeUtils/setCurrentMillisFixed simulation-time)
+          (log/info "Simulation time: " simulation-time)
 
           (let [start-ms (System/currentTimeMillis)
                 submission-batch (take-while #(<= (:submit-time-ms %) simulation-time) trace)
@@ -435,8 +438,9 @@
               (throw (ex-info "Trace jobs are expected to be sorted by submit-time-ms"
                               {:simulation-time simulation-time
                                :first-100-times (vec (take 100 (map :submit-time-ms submission-batch)))})))
-            (log/info "Simulation time: " simulation-time)
-            (log/info "submission-batch size: " (count submission-batch))
+            (swap! job-submission-counter + (count submission-batch))
+            (log/info "submission-batch size:" (count submission-batch))
+            (comment println "Simulation time: " simulation-time "with" (count submission-batch) "jobs [total=" @job-submission-counter "].")
 
             (log/info "Submitting batch")
             ;; Submit new jobs
@@ -736,3 +740,106 @@
       (is (traces-equivalent? out-trace-a out-trace-b)
           {:diffs (sort-by (comp :submit-time first second)
                            (trace-diffs out-trace-a out-trace-b))}))))
+
+(defn create-hosts []
+  (let [num-hosts 20
+        template-host (-> "resources/template-hosts.json"
+                          slurp
+                          json/read-str
+                          first)
+        host-id-atom (atom 0)
+        hosts (repeatedly
+                num-hosts
+                (fn []
+                  (swap! host-id-atom inc)
+                  (-> template-host
+                      (assoc "hostname" (str @host-id-atom))
+                      (assoc "slave-id" (str (UUID/randomUUID))))))]
+    (->> hosts
+         json/write-str
+         (spit (str "resources/hosts-" num-hosts ".json")))))
+
+(defn weighted-rand-choice [m]
+  (let [w (reductions #(+ % %2) (vals m))
+        r (rand-int (last w))]
+    (nth (keys m) (count (take-while #(<= % r) w)))))
+
+(defn create-jobs []
+  (let [num-hosts 20
+        num-cpus-per-host 16
+        num-mem-per-host 131072
+        oversubscribe-factor 1.75
+        duration-ms (* 1000 60 60 5)
+        resources (* oversubscribe-factor num-hosts num-cpus-per-host num-mem-per-host duration-ms)
+        _ (println "resources:" resources)
+        template-job (-> "resources/template-jobs.json"
+                         slurp
+                         json/read-str
+                         first
+                         keywordize-keys)
+        job-id-atom (atom 0)
+        submit-time-atom (atom 0)
+        max-group-size 100
+        group-size-weights (map-from-keys
+                             (fn [k] (-> max-group-size (Math/pow 2) (/ k) (int)))
+                             (map inc (range max-group-size)))
+        _ (println "group-size-weights:" group-size-weights)
+        jobs (loop [jobs (transient [])
+                    resources-left resources]
+               (if (or (neg? resources-left)
+                       (> @job-id-atom 4000))
+                 (persistent! jobs)
+                 (let [num-jobs-in-group (weighted-rand-choice group-size-weights)
+                       group-uuid (str (UUID/randomUUID))
+                       commit-latch-uuid (str (UUID/randomUUID))
+                       job-user (str "user" (weighted-rand-choice group-size-weights))
+                       _ (swap! submit-time-atom + (-> (weighted-rand-choice group-size-weights) inc (* (max 100 (/ (count jobs) 10)))))
+                       submit-time-ms @submit-time-atom
+                       group-jobs (repeatedly
+                                    num-jobs-in-group
+                                    (fn []
+                                      (swap! job-id-atom inc)
+                                      (let [run-time-ms (-> (weighted-rand-choice group-size-weights) inc (* 1000 15))]
+                                        (into (sorted-map)
+                                              (-> template-job
+                                                  (assoc :db/id @job-id-atom)
+                                                  (assoc :job/commit-latch-uuid commit-latch-uuid)
+                                                  (assoc :job/end-time (+ submit-time-ms run-time-ms))
+                                                  (assoc :job/expected-runtime (-> (rand-int 25) (* 0.01) (* run-time-ms) int))
+                                                  (assoc :job/group group-uuid)
+                                                  (assoc :job/priority (rand-int 100))
+                                                  (assoc-in [:job/resource 0 :resource/amount] (-> (rand-int num-cpus-per-host)
+                                                                                                   (* 0.5)
+                                                                                                   inc
+                                                                                                   double))
+                                                  (assoc-in [:job/resource 1 :resource/amount] (-> (/ num-mem-per-host 15)
+                                                                                                   rand-int
+                                                                                                   inc
+                                                                                                   (* 15)
+                                                                                                   (min num-mem-per-host)
+                                                                                                   double))
+                                                  (assoc :job/user job-user)
+                                                  (assoc :job/uuid (str (UUID/randomUUID)))
+                                                  (assoc :run-time-ms run-time-ms)
+                                                  (assoc :submit-time-ms submit-time-ms))))))
+                       resources-consumed (reduce (fn [resources job]
+                                                    (let [cpus (get-in job [:job/resource 0 :resource/amount])
+                                                          mem (get-in job [:job/resource 1 :resource/amount])
+                                                          run-time-ms (get job :run-time-ms)]
+                                                      (-> (* cpus mem run-time-ms)
+                                                          (+ resources))))
+                                                  0
+                                                  group-jobs)]
+                   (println {:num-jobs (count group-jobs)
+                             :resources {:consumed resources-consumed
+                                         :left (- resources-left resources-consumed)}})
+                   (recur (reduce conj! jobs group-jobs)
+                          (- resources-left resources-consumed)))))]
+    (println "created" (count jobs) "jobs.")
+    (-> (json/write-str jobs :key-fn #(-> % str (subs 1)))
+        (str/replace "\\/" "/")
+        (->> (spit (str "resources/in-jobs-4K.json"))))))
+
+(comment create-jobs-and-hosts
+  (create-hosts)
+  (create-jobs))
