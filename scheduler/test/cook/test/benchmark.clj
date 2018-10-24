@@ -44,14 +44,16 @@
       (let [db (d/db conn)
             task-constraints {:memory-gb 100 :cpus 30}
             offensive-jobs-ch (sched/make-offensive-job-stifler conn)
-            offensive-job-filter (partial sched/filter-offensive-jobs task-constraints offensive-jobs-ch)]
+            offensive-job-filter (partial sched/filter-offensive-jobs task-constraints offensive-jobs-ch)
+            use-group-completion? (constantly true)]
         (println "============ rank-jobs timing ============")
-        (cc/quick-bench (sched/rank-jobs db offensive-job-filter))))
+        (cc/quick-bench (sched/rank-jobs db offensive-job-filter use-group-completion?))))
     (testing "rank-jobs minus offensive-job-filter"
       (let [db (d/db conn)
-            offensive-job-filter identity]
+            offensive-job-filter identity
+            use-group-completion? (constantly true)]
         (println "============ rank-jobs minus offensive-job-filter timing ============")
-        (cc/quick-bench (sched/rank-jobs db offensive-job-filter))))
+        (cc/quick-bench (sched/rank-jobs db offensive-job-filter use-group-completion?))))
     (testing "sort-jobs-by-dru-helper"
       (let [db (d/db conn)
             pending-task-ents (util/get-pending-job-ents db)

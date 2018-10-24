@@ -211,7 +211,7 @@
     handle-status-update-duration
     (try (let [db (db conn)
                {:keys [task-id reason task-state progress] :as task-status} (interpret-task-status status)
-               _ (log/info "Mesos status is:" task-status)
+               _ (log/debug "Mesos status is:" task-status)
                _ (when-not task-id
                    (throw (ex-info "task-id is nil. Something unexpected has happened."
                                    {:status status
@@ -1195,7 +1195,7 @@
 
 (defn sort-jobs-by-dru-pool
   "Returns a map from job pool to a list of job entities, ordered by dru"
-  [unfiltered-db]
+  [unfiltered-db use-group-completion?]
   ;; This function does not use the filtered db when it is not necessary in order to get better performance
   ;; The filtered db is not necessary when an entity could only arrive at a given state if it was already committed
   ;; e.g. running jobs or when it is always considered committed e.g. shares
@@ -1217,7 +1217,11 @@
                                                              :pool.dru-mode/default sort-normal-jobs-by-dru
                                                              :pool.dru-mode/gpu sort-gpu-jobs-by-dru)))
                                          {"no-pool" sort-normal-jobs-by-dru})
-        task-comparator (util/same-user-group-biased-task-comparator unfiltered-db)]
+        task-comparator (if (use-group-completion?)
+                          (do
+                            (log/info "using group biased task comparator for ranking")
+                            (util/same-user-group-biased-task-comparator unfiltered-db))
+                          (util/same-user-task-comparator))]
     (letfn [(sort-jobs-by-dru-pool-helper [[pool-name sort-jobs-by-dru]]
               (let [pending-tasks (pool-name->pending-task-ents pool-name)
                     running-tasks (pool-name->running-task-ents pool-name)
@@ -1300,11 +1304,11 @@
   "Return a map of lists of job entities ordered by dru, keyed by pool.
 
    It ranks the jobs by dru first and then apply several filters if provided."
-  [unfiltered-db offensive-job-filter]
+  [unfiltered-db offensive-job-filter use-group-completion?]
   (timers/time!
     rank-jobs-duration
     (try
-      (->> (sort-jobs-by-dru-pool unfiltered-db)
+      (->> (sort-jobs-by-dru-pool unfiltered-db use-group-completion?)
            ;; Apply the offensive job filter first before taking.
            (pc/map-vals offensive-job-filter)
            (pc/map-vals #(map util/job-ent->map %))
@@ -1317,11 +1321,15 @@
 (defn- start-jobs-prioritizer!
   [conn pool-name->pending-jobs-atom task-constraints trigger-chan]
   (let [offensive-jobs-ch (make-offensive-job-stifler conn)
-        offensive-job-filter (partial filter-offensive-jobs task-constraints offensive-jobs-ch)]
+        offensive-job-filter (partial filter-offensive-jobs task-constraints offensive-jobs-ch)
+        use-group-counter (atom 0)
+        use-group-completion? (fn use-group-completion? []
+                                (swap! use-group-counter inc)
+                                (zero? (mod @use-group-counter 10)))]
     (util/chime-at-ch trigger-chan
                       (fn rank-jobs-event []
                         (reset! pool-name->pending-jobs-atom
-                                (rank-jobs (d/db conn) offensive-job-filter))))))
+                                (rank-jobs (d/db conn) offensive-job-filter use-group-completion?))))))
 
 (meters/defmeter [cook-mesos scheduler mesos-error])
 (meters/defmeter [cook-mesos scheduler offer-chan-full-error])
