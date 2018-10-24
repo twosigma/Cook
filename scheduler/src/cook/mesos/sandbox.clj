@@ -138,8 +138,8 @@
   [pending-sync-state hostname reason]
   (update-pending-sync-host-counter!
     (cond-> (update pending-sync-state :pending-sync-hosts conj hostname)
-            (= :error reason)
-            (update-in [:host->consecutive-failures hostname] (fnil inc 0)))))
+      (= :error reason)
+      (update-in [:host->consecutive-failures hostname] (fnil inc 0)))))
 
 (defn- clear-pending-sync-hostname
   "Clears the hostname as a pending sync item from pending-sync-state.
@@ -147,23 +147,24 @@
   [pending-sync-state hostname reason]
   (update-pending-sync-host-counter!
     (cond-> (update pending-sync-state :pending-sync-hosts disj hostname)
-            (contains? #{:success :threshold} reason)
-            (update :host->consecutive-failures dissoc hostname))))
+      (contains? #{:success :threshold} reason)
+      (update :host->consecutive-failures dissoc hostname))))
 
 (defn- aggregate-unprocessed-task-ids!
   "Aggregates the unprocessed task-id into the unprocessed-host->task-ids-atom for a given host."
   [unprocessed-host->task-ids-atom host task-id]
-  (swap! unprocessed-host->task-ids-atom
-         (fn [unprocessed-host->task-ids-in-atom]
-           (let [unprocessed-task-ids (get unprocessed-host->task-ids-in-atom host #{})]
-             (if-not (contains? unprocessed-task-ids task-id)
-               (do
-                 (counters/inc! sandbox-updater-unprocessed-count)
-                 (->> task-id
-                      (conj unprocessed-task-ids)
-                      (assoc unprocessed-host->task-ids-in-atom host)))
-               unprocessed-host->task-ids-in-atom))))
-  (histograms/update! sandbox-updater-unprocessed-entries (counters/value sandbox-updater-unprocessed-count)))
+  (when unprocessed-host->task-ids-atom
+    (swap! unprocessed-host->task-ids-atom
+           (fn [unprocessed-host->task-ids-in-atom]
+             (let [unprocessed-task-ids (get unprocessed-host->task-ids-in-atom host #{})]
+               (if-not (contains? unprocessed-task-ids task-id)
+                 (do
+                   (counters/inc! sandbox-updater-unprocessed-count)
+                   (->> task-id
+                        (conj unprocessed-task-ids)
+                        (assoc unprocessed-host->task-ids-in-atom host)))
+                 unprocessed-host->task-ids-in-atom))))
+    (histograms/update! sandbox-updater-unprocessed-entries (counters/value sandbox-updater-unprocessed-count))))
 
 (defn- remove-processed-task-ids!
   "Removes the processed-task-ids from the unprocessed-host->task-ids-atom for a given host."
@@ -211,35 +212,36 @@
    unprocessed-host->task-ids-atom to be processed in the future."
   [{:keys [mesos-agent-query-cache pending-sync-agent unprocessed-host->task-ids-atom] :as publisher-state}
    framework-id host task-id]
-  (try
-    (when task-id
-      (aggregate-unprocessed-task-ids! unprocessed-host->task-ids-atom host task-id))
-    (let [unprocessed-task-ids (get @unprocessed-host->task-ids-atom host)
-          run (delay
-                (try
-                  (let [task-id->sandbox-directory (retrieve-sandbox-directories-on-agent framework-id host)]
-                    (process-task-id->sandbox-directory-on-host
-                      publisher-state host unprocessed-task-ids task-id->sandbox-directory)
-                    (send pending-sync-agent clear-pending-sync-hostname host :success)
-                    (when-let [unprocessed-task-ids-new (get @unprocessed-host->task-ids-atom host)]
-                      (log/info host "has" (count unprocessed-task-ids-new) "pending tasks even after a state lookup")
-                      (send pending-sync-agent aggregate-pending-sync-hostname host :pending))
-                    :success)
-                  (catch Exception e
-                    (log/error e "Failed to get mesos agent state on" host)
-                    (send pending-sync-agent aggregate-pending-sync-hostname host :error)
-                    :error)))
-          cs (swap! mesos-agent-query-cache
-                    (fn mesos-agent-query-cache-swap-fn [c]
-                      (if (cache/has? c host)
-                        (do
-                          (send pending-sync-agent aggregate-pending-sync-hostname host :pending)
-                          (cache/hit c host))
-                        (cache/miss c host run))))
-          val (cache/lookup cs host)]
-      (if val @val @run))
-    (catch Exception e
-      (log/error e "Failed to refresh mesos agent state" {:host host}))))
+  (when unprocessed-host->task-ids-atom
+    (try
+      (when task-id
+        (aggregate-unprocessed-task-ids! unprocessed-host->task-ids-atom host task-id))
+      (let [unprocessed-task-ids (get @unprocessed-host->task-ids-atom host)
+            run (delay
+                  (try
+                    (let [task-id->sandbox-directory (retrieve-sandbox-directories-on-agent framework-id host)]
+                      (process-task-id->sandbox-directory-on-host
+                        publisher-state host unprocessed-task-ids task-id->sandbox-directory)
+                      (send pending-sync-agent clear-pending-sync-hostname host :success)
+                      (when-let [unprocessed-task-ids-new (get @unprocessed-host->task-ids-atom host)]
+                        (log/info host "has" (count unprocessed-task-ids-new) "pending tasks even after a state lookup")
+                        (send pending-sync-agent aggregate-pending-sync-hostname host :pending))
+                      :success)
+                    (catch Exception e
+                      (log/error e "Failed to get mesos agent state on" host)
+                      (send pending-sync-agent aggregate-pending-sync-hostname host :error)
+                      :error)))
+            cs (swap! mesos-agent-query-cache
+                      (fn mesos-agent-query-cache-swap-fn [c]
+                        (if (cache/has? c host)
+                          (do
+                            (send pending-sync-agent aggregate-pending-sync-hostname host :pending)
+                            (cache/hit c host))
+                          (cache/miss c host run))))
+            val (cache/lookup cs host)]
+        (if val @val @run))
+      (catch Exception e
+        (log/error e "Failed to refresh mesos agent state" {:host host})))))
 
 (defn update-sandbox
   "Sends a message to the agent to update the sandbox information."
