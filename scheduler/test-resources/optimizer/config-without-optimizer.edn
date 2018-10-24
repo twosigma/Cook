@@ -1,0 +1,14 @@
+{:cycle-step-ms 10000
+ :opt-params {"ema_multiplier" 2
+              "index_divisor" 1
+              "slowdown_bound" 1800000}
+ :scheduler-config {:fenzo-config {:fenzo-fitness-calculator "com.netflix.fenzo.plugins.BinPackingFitnessCalculators/cpuMemBinPacker"
+                                   :fenzo-max-jobs-considered 250}
+                    :offer-incubate-time-ms 4.32e8
+                    :optimizer-config {:optimizer {:create-fn cook.mesos.optimizer/create-dummy-optimizer
+                                                   :config {:opt-server "http://optimizer.com/does-not-exist"}}}
+                    :rebalancer-config {:max-preemption 500.0
+                                        :min-dru-diff 1.0
+                                        :min-utilization-threshold 0.8
+                                        :safe-dru-threshold 1.0}}
+ :shares [{:cpus 24.0 :gpus 1.0 :mem 131072.0 :user "default"}]}

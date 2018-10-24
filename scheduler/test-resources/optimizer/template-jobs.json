@@ -1,0 +1,27 @@
+[
+  {
+    "db/id": 1234,
+    "job/commit-latch-uuid": "some-uuid-c",
+    "job/disable-mea-culpa-retries": false,
+    "job/end-time": 20000,
+    "job/expected-runtime": 1200,
+    "job/group": "some-uuid-g",
+    "job/max-retries": 1,
+    "job/name": "cookjob",
+    "job/resource": [
+      {
+        "resource/amount": 2.0,
+        "resource/type": "resource.type/cpus"
+      },
+      {
+        "resource/amount": 16384,
+        "resource/type": "resource.type/mem"
+      }
+    ],
+    "job/user": "some-user",
+    "job/uuid": "some-uuid-j",
+    "run-time-ms": 1000,
+    "status": "finished",
+    "submit-time-ms": 15000
+  }
+]

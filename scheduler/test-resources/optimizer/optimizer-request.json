@@ -1,0 +1,143 @@
+{
+  "cpu_share": 200,
+  "user_to_ema_usage": {
+    "user-1": 1.25E-4,
+    "user-2": 2.5E-4,
+    "user-3": 3.75E-4
+  },
+  "mem_share": 40000,
+  "seed": 12578900,
+  "host_groups": [
+    {
+      "count": 100,
+      "cpus": 40,
+      "instance-type": "basic",
+      "mem": 320000,
+      "time-to-start": 100
+    }
+  ],
+  "opt_jobs": [
+    {
+      "mem": 10,
+      "expected_complete_time": 1100,
+      "state": "running",
+      "batch": "d1efa9cd-568d-450a-9568-d425f29a02ba",
+      "ports": 0,
+      "submit_time": 12345600,
+      "dur": 10000,
+      "count": 1,
+      "uuid": "d1efa9cd-568d-450a-9568-d425f29a02ba",
+      "user": "user-1",
+      "running_host_group": 0,
+      "cpus": 1
+    },
+    {
+      "mem": 20,
+      "expected_complete_time": 8900,
+      "state": "running",
+      "batch": "65a17d4c-6f20-443b-9893-6dfa6af2840b",
+      "ports": 0,
+      "submit_time": 12345600,
+      "dur": 20000,
+      "count": 1,
+      "uuid": "65a17d4c-6f20-443b-9893-6dfa6af2840b",
+      "user": "user-2",
+      "running_host_group": 0,
+      "cpus": 2
+    },
+    {
+      "mem": 30,
+      "expected_complete_time": 18900,
+      "state": "running",
+      "batch": "bcbb1f2b-8c3a-4fd3-bb01-ae3a5968a402",
+      "ports": 0,
+      "submit_time": 12345600,
+      "dur": 30000,
+      "count": 1,
+      "uuid": "bcbb1f2b-8c3a-4fd3-bb01-ae3a5968a402",
+      "user": "user-3",
+      "running_host_group": 0,
+      "cpus": 3
+    },
+    {
+      "mem": 40,
+      "expected_complete_time": -1,
+      "state": "waiting",
+      "batch": "53487be9-fb2f-42f6-8bb8-97b5ed61ebfc",
+      "ports": 0,
+      "submit_time": 12345600,
+      "dur": 10000,
+      "count": 1,
+      "uuid": "53487be9-fb2f-42f6-8bb8-97b5ed61ebfc",
+      "user": "user-1",
+      "running_host_group": -1,
+      "cpus": 4
+    },
+    {
+      "mem": 50,
+      "expected_complete_time": -1,
+      "state": "waiting",
+      "batch": "70bf7703-bf7c-49f5-bafb-33db7db82a84",
+      "ports": 0,
+      "submit_time": 12345600,
+      "dur": 20000,
+      "count": 1,
+      "uuid": "70bf7703-bf7c-49f5-bafb-33db7db82a84",
+      "user": "user-2",
+      "running_host_group": -1,
+      "cpus": 5
+    },
+    {
+      "mem": 60,
+      "expected_complete_time": -1,
+      "state": "waiting",
+      "batch": "eb61f383-0f2b-4024-a45e-67a6124358dc",
+      "ports": 0,
+      "submit_time": 12345600,
+      "dur": 30000,
+      "count": 1,
+      "uuid": "eb61f383-0f2b-4024-a45e-67a6124358dc",
+      "user": "user-3",
+      "running_host_group": -1,
+      "cpus": 6
+    },
+    {
+      "mem": 70,
+      "expected_complete_time": -1,
+      "state": "waiting",
+      "batch": "aa8ec30d-c00a-473a-965c-c7daac42a421",
+      "ports": 0,
+      "submit_time": 12345600,
+      "dur": 120000,
+      "count": 1,
+      "uuid": "aa8ec30d-c00a-473a-965c-c7daac42a421",
+      "user": "user-1",
+      "running_host_group": -1,
+      "cpus": 7
+    },
+    {
+      "mem": 80,
+      "expected_complete_time": -1,
+      "state": "waiting",
+      "batch": "e112f9d6-69c3-4e06-9460-ae5f7e0087f4",
+      "ports": 0,
+      "submit_time": 12345600,
+      "dur": 50000,
+      "count": 1,
+      "uuid": "e112f9d6-69c3-4e06-9460-ae5f7e0087f4",
+      "user": "user-2",
+      "running_host_group": -1,
+      "cpus": 8
+    }
+  ],
+  "step_list": [
+    0,
+    30,
+    60
+  ],
+  "opt_params": {
+    "param1": "value1",
+    "param2": "value2"
+  },
+  "now": 12578900
+}

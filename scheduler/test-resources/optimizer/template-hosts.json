@@ -1,0 +1,23 @@
+[
+  {
+    "attributes": {},
+    "hostname": 0,
+    "resources": {
+      "cpus": {
+        "*": 16
+      },
+      "mem": {
+        "*": 131072
+      },
+      "ports": {
+        "*": [
+          {
+            "begin": 10000,
+            "end": 19000
+          }
+        ]
+      }
+    },
+    "slave-id": "some-uuid-string"
+  }
+]
