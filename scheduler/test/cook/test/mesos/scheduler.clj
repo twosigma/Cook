@@ -1580,12 +1580,12 @@
                                                           (util/job-ent->map entity (d/db conn)))
                                             pool->pending-jobs (->> {:normal [job-1 job-2 job-3 job-4] :gpu [job-5 job-6]}
                                                                     (pc/map-vals (partial map entity->map)))
-                                            pool->pending-jobs-atom (atom pool->pending-jobs)
+                                            pool-name->pending-jobs-atom (atom pool->pending-jobs)
                                             user->usage (or user->usage {test-user {:count 1, :cpus 2, :mem 1024, :gpus 0}})
                                             user->quota (or user-quota {test-user {:count 10, :cpus 50, :mem 32768, :gpus 10}})
                                             mesos-run-as-user nil
                                             result (sched/handle-resource-offers!
-                                                     conn driver fenzo framework-id pool->pending-jobs-atom mesos-run-as-user
+                                                     conn driver fenzo framework-id pool-name->pending-jobs-atom mesos-run-as-user
                                                      user->usage user->quota num-considerable offers-chan offers rebalancer-reservation-atom pool)]
                                         (async/>!! offers-chan :end-marker)
                                         result))]
@@ -1794,12 +1794,12 @@
                                                             (util/job-ent->map entity (d/db conn)))
                                               pool->pending-jobs (->> {:normal [job-1 job-2]}
                                                                       (pc/map-vals (partial map entity->map)))
-                                              pool->pending-jobs-atom (atom pool->pending-jobs)
+                                              pool-name->pending-jobs-atom (atom pool->pending-jobs)
                                               user->usage (or user->usage {test-user {:count 1, :cpus 2, :mem 1024, :gpus 0}})
                                               user->quota (or user-quota {test-user {:count 10, :cpus 50, :mem 32768, :gpus 10}})
                                               mesos-run-as-user nil
                                               result (sched/handle-resource-offers!
-                                                      conn driver fenzo framework-id pool->pending-jobs-atom mesos-run-as-user
+                                                      conn driver fenzo framework-id pool-name->pending-jobs-atom mesos-run-as-user
                                                       user->usage user->quota num-considerable offers-chan offers rebalancer-reservation-atom :normal)]
                                           result))]
       (testing "enough offers for all normal jobs"

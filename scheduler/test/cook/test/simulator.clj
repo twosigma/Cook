@@ -82,8 +82,8 @@
   `(let [[zookeeper-server# curator-framework#] (setup-test-curator-framework)
          mesos-mult# (or (:mesos-datomic-mult ~scheduler-config)
                          (async/mult (async/chan)))
-         pending-jobs-atom# (or (:mesos-pending-jobs-atom ~scheduler-config)
-                                (atom []))
+         pool-name->pending-jobs-atom# (or (:pool-name->pending-jobs-atom ~scheduler-config)
+                                           (atom {}))
          agent-attributes-cache# (or (:mesos-agent-attributes-cache ~scheduler-config)
                                      (-> {}
                                          (cache/fifo-cache-factory :threshold 100)
@@ -134,7 +134,7 @@
             :mesos-datomic-conn ~conn
             :mesos-datomic-mult mesos-mult#
             :mesos-leadership-atom mesos-leadership-atom#
-            :pool->pending-jobs-atom pending-jobs-atom#
+            :pool-name->pending-jobs-atom pool-name->pending-jobs-atom#
             :mesos-run-as-user nil
             :agent-attributes-cache agent-attributes-cache#
             :offer-incubate-time-ms offer-incubate-time-ms#

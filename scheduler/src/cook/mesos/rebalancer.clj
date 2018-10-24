@@ -213,7 +213,7 @@
          running-task-ents (filter (fn [task]
                                      (-> task
                                          :job/_instance
-                                         util/job->pool
+                                         util/job->pool-name
                                          (= pool-name)))
                                    running-task-ents)
          using-pools? (not (nil? (config/default-pool)))
@@ -514,7 +514,7 @@
               recognized-params))]))))
 
 (defn start-rebalancer!
-  [{:keys [config conn driver agent-attributes-cache pool->pending-jobs-atom
+  [{:keys [config conn driver agent-attributes-cache pool-name->pending-jobs-atom
            rebalancer-reservation-atom trigger-chan view-incubating-offers]}]
   (binding [metrics-dru-scale (:dru-scale config)]
     (update-datomic-params-from-config! conn config)
@@ -546,7 +546,7 @@
                     (log/info "Rebalancing for pool" pool)
                     (rebalance! db conn driver agent-attributes-cache rebalancer-reservation-atom
                                 params init-state jobs-to-make-room-for (:pool/name pool-ent))))
-                @pool->pending-jobs-atom)
+                @pool-name->pending-jobs-atom)
               (log/info "Rebalance cycle ended"))
             (log/info "Skipping rebalancing because it's not cofigured"))))
       {:error-handler (fn [ex] (log/error ex "Rebalance failed"))})

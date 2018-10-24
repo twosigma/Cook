@@ -81,8 +81,8 @@
 (let [default-pool (config/default-pool)
       miss-fn (fn [{:keys [job/pool]}]
                 (or (:pool/name pool) default-pool "no-pool"))]
-  (defn job->pool
-    "Return the pool of the job."
+  (defn job->pool-name
+    "Return the pool name of the job."
     [job]
     (lookup-cache-datomic-entity! job-ent->pool-cache miss-fn job)))
 

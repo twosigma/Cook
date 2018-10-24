@@ -34,7 +34,7 @@
    types to amounts."
   [job-ents pool-name]
   (->> job-ents
-       (filter #(= pool-name (util/job->pool %)))
+       (filter #(= pool-name (util/job->pool-name %)))
        ;; Produce a list of maps from user's name to his stats.
        (mapv (fn [job-ent]
                (let [user (:job/user job-ent)
