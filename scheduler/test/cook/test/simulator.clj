@@ -474,6 +474,7 @@
 (defn -main
   [& args]
   (println "Starting simulation")
+  (System/setProperty "COOK.SIMULATION" (str true))
   (init-logger)
   (let [{:keys [options errors summary]} (parse-opts args cli-options)
         {:keys [trace-file host-file cycle-step-ms out-trace-file config-file help]} options]

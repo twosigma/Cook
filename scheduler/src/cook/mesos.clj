@@ -259,7 +259,7 @@
                                       (log/warn "Lost mesos leadership naturally"))
                                     ;; Better to fail over and rely on start up code we trust then rely on rarely run code
                                     ;; to make sure we yield leadership correctly (and fully)
-                                    (log/fatal "Lost mesos leadership. Exitting. Expecting a supervisor to restart me!")
+                                    (log/fatal "Lost mesos leadership. Exiting. Expecting a supervisor to restart me!")
                                     (System/exit 0)))))
                             (stateChanged [_ client newState]
                               ;; We will give up our leadership whenever it seems that we lost
@@ -270,8 +270,11 @@
                                   (counters/dec! mesos-leader)
                                   ;; Better to fail over and rely on start up code we trust then rely on rarely run code
                                   ;; to make sure we yield leadership correctly (and fully)
-                                  (log/fatal "Lost leadership in zookeeper. Exitting. Expecting a supervisor to restart me!")
-                                  (System/exit 0))))))]
+                                  (if (-> "COOK.SIMULATION" System/getProperty str Boolean/parseBoolean)
+                                    (log/warn "Lost leadership in zookeeper. Not exiting as simulation is running.")
+                                    (do
+                                      (log/fatal "Lost leadership in zookeeper. Exiting. Expecting a supervisor to restart me!")
+                                      (System/exit 0))))))))]
     (.setId leader-selector (str hostname \#
                                  (or server-port server-https-port) \#
                                  (if server-port "http" "https") \#
