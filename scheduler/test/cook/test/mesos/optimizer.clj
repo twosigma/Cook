@@ -232,7 +232,7 @@
                                                   {0 {:suggested-matches [(UUID/randomUUID) (UUID/randomUUID)]}})
                                                 pool-names)
         optimizer (Object.)
-        pool-name->optimizer-schedule-job-ids-atom (atom {})]
+        pool-name->optimizer-suggested-job-ids-atom (atom {})]
     (with-redefs [optimizer/pool-optimizer-cycle
                   (fn [pool-name & _]
                     (pool-name->optimizer-schedule-job-ids pool-name))]
@@ -241,6 +241,6 @@
         (constantly pool-names)
         nil
         nil
-        pool-name->optimizer-schedule-job-ids-atom)
+        pool-name->optimizer-suggested-job-ids-atom)
       (is (= (pc/map-vals #(get-in % [0 :suggested-matches] []) pool-name->optimizer-schedule-job-ids)
-             @pool-name->optimizer-schedule-job-ids-atom)))))
+             @pool-name->optimizer-suggested-job-ids-atom)))))

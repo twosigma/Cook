@@ -1365,34 +1365,34 @@
       (let [user->usage {test-user {:count 1, :cpus 2, :mem 1024, :gpus 0}}
             user->quota {test-user {:count 10, :cpus 50, :mem 32768, :gpus 10}}
             num-considerable 5
-            pool-name->optimizer-schedule-job-ids-atom (atom {"cpu-pool" [(:job/uuid job-4) (:job/uuid job-2) (:job/uuid job-6)]
+            pool-name->optimizer-suggested-job-ids-atom (atom {"cpu-pool" [(:job/uuid job-4) (:job/uuid job-2) (:job/uuid job-6)]
                                                               "gpu-pool" [(:job/uuid job-2) (:job/uuid job-6)]})]
         (is (= [job-4 job-2 job-1 job-3]
                (sched/pending-jobs->considerable-jobs
                  (d/db conn) non-gpu-jobs user->quota user->usage num-considerable
-                 pool-name->optimizer-schedule-job-ids-atom "cpu-pool")))
+                 pool-name->optimizer-suggested-job-ids-atom "cpu-pool")))
         (is (= [job-6 job-5]
                (sched/pending-jobs->considerable-jobs
                  (d/db conn) gpu-jobs user->quota user->usage num-considerable
-                 pool-name->optimizer-schedule-job-ids-atom "gpu-pool")))
+                 pool-name->optimizer-suggested-job-ids-atom "gpu-pool")))
         (is (= {"cpu-pool" [] "gpu-pool" []}
-               @pool-name->optimizer-schedule-job-ids-atom))))
+               @pool-name->optimizer-suggested-job-ids-atom))))
     (testing "jobs inside usage quota influenced by optimizer limited by num-considerable of 1"
       (let [user->usage {test-user {:count 1, :cpus 2, :mem 1024, :gpus 0}}
             user->quota {test-user {:count 10, :cpus 50, :mem 32768, :gpus 10}}
             num-considerable 1
-            pool-name->optimizer-schedule-job-ids-atom (atom {"cpu-pool" [(:job/uuid job-4) (:job/uuid job-2) (:job/uuid job-6)]
+            pool-name->optimizer-suggested-job-ids-atom (atom {"cpu-pool" [(:job/uuid job-4) (:job/uuid job-2) (:job/uuid job-6)]
                                                               "gpu-pool" [(:job/uuid job-2) (:job/uuid job-6)]})]
         (is (= [job-4]
                (sched/pending-jobs->considerable-jobs
                  (d/db conn) non-gpu-jobs user->quota user->usage num-considerable
-                 pool-name->optimizer-schedule-job-ids-atom "cpu-pool")))
+                 pool-name->optimizer-suggested-job-ids-atom "cpu-pool")))
         (is (= [job-6]
                (sched/pending-jobs->considerable-jobs
                  (d/db conn) gpu-jobs user->quota user->usage num-considerable
-                 pool-name->optimizer-schedule-job-ids-atom "gpu-pool")))
+                 pool-name->optimizer-suggested-job-ids-atom "gpu-pool")))
         (is (= {"cpu-pool" [] "gpu-pool" []}
-               @pool-name->optimizer-schedule-job-ids-atom))))
+               @pool-name->optimizer-suggested-job-ids-atom))))
     (testing "some jobs inside usage quota"
       (let [user->usage {test-user {:count 1, :cpus 2, :mem 1024, :gpus 0}}
             user->quota {test-user {:count 5, :cpus 10, :mem 4096, :gpus 10}}
@@ -1560,11 +1560,11 @@
         offer-9 (offer-maker 100 200000 0)
         run-handle-resource-offers! (fn [num-considerable offers pool-name &
                                          {:keys [job-name->uuid
-                                                 pool-name->optimizer-schedule-job-ids-atom
+                                                 pool-name->optimizer-suggested-job-ids-atom
                                                  rebalancer-reservation-atom
                                                  user-quota user->usage]
                                           :or {job-name->uuid {}
-                                               pool-name->optimizer-schedule-job-ids-atom (atom {})
+                                               pool-name->optimizer-suggested-job-ids-atom (atom {})
                                                rebalancer-reservation-atom (atom {})}}]
                                       (reset! launched-offer-ids-atom [])
                                       (reset! launched-job-ids-atom [])
@@ -1623,7 +1623,7 @@
                                             result (sched/handle-resource-offers!
                                                      conn driver fenzo framework-id pool-name->pending-jobs-atom mesos-run-as-user
                                                      user->usage user->quota num-considerable offers-chan offers
-                                                     rebalancer-reservation-atom pool-name->optimizer-schedule-job-ids-atom
+                                                     rebalancer-reservation-atom pool-name->optimizer-suggested-job-ids-atom
                                                      pool-name)]
                                         (async/>!! offers-chan :end-marker)
                                         result))]
@@ -1797,11 +1797,11 @@
           [d1 d2] [#{{:dataset {"a" "a"}} {:dataset {"b" "b"}}}]
           run-handle-resource-offers! (fn [num-considerable offers &
                                            {:keys [job-name->uuid
-                                                   pool-name->optimizer-schedule-job-ids-atom
+                                                   pool-name->optimizer-suggested-job-ids-atom
                                                    rebalancer-reservation-atom
                                                    user-quota user->usage]
                                             :or {job-name->uuid {}
-                                                 pool-name->optimizer-schedule-job-ids-atom (atom {})
+                                                 pool-name->optimizer-suggested-job-ids-atom (atom {})
                                                  rebalancer-reservation-atom (atom {})}}]
                                         (reset! launched-tasks-atom [])
                                         (let [conn (restore-fresh-database! uri)
@@ -1844,7 +1844,7 @@
                                               result (sched/handle-resource-offers!
                                                        conn driver fenzo framework-id pool-name->pending-jobs-atom mesos-run-as-user
                                                        user->usage user->quota num-considerable offers-chan offers
-                                                       rebalancer-reservation-atom pool-name->optimizer-schedule-job-ids-atom
+                                                       rebalancer-reservation-atom pool-name->optimizer-suggested-job-ids-atom
                                                        :normal)]
                                           result))]
       (testing "enough offers for all normal jobs"

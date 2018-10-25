@@ -241,14 +241,14 @@
     schedule))
 
 (defn optimizer-cycle!
-  "Run the pool-optimizer-cycle for every pool and populates the result into pool-name->optimizer-schedule-job-ids-atom."
-  [optimizer get-pool-names pool-name->queue pool-name->running pool-name->optimizer-schedule-job-ids-atom]
+  "Run the pool-optimizer-cycle for every pool and populates the result into pool-name->optimizer-suggested-job-ids-atom."
+  [optimizer get-pool-names pool-name->queue pool-name->running pool-name->optimizer-suggested-job-ids-atom]
   (doseq [pool-name (get-pool-names)]
     (try
       (log/info "Starting optimization cycle for pool" pool-name)
       (let [scheduler (pool-optimizer-cycle pool-name pool-name->queue pool-name->running optimizer)
             job-ids (get-in scheduler [0 :suggested-matches] [])]
-        (swap! pool-name->optimizer-schedule-job-ids-atom assoc pool-name job-ids))
+        (swap! pool-name->optimizer-suggested-job-ids-atom assoc pool-name job-ids))
       (catch Exception ex
         (log/warn ex "Error running optimizer cycle for pool" pool-name)))))
 
@@ -256,7 +256,7 @@
   "Every interval, call `optimizer-cycle!`.
    Returns a function of no arguments to stop"
   [optimizer-config trigger-chan get-pool-names pool-name->queue pool-name->running
-   pool-name->optimizer-schedule-job-ids-atom]
+   pool-name->optimizer-suggested-job-ids-atom]
   (log/info "Starting optimization cycles")
   (let [construct (fn construct-optimizer [{:keys [create-fn config]}]
                     ((lazy-load-var create-fn) config))
@@ -265,5 +265,5 @@
     (util/chime-at-ch trigger-chan
                       (fn []
                         (optimizer-cycle! optimizer get-pool-names pool-name->queue pool-name->running
-                                          pool-name->optimizer-schedule-job-ids-atom))
+                                          pool-name->optimizer-suggested-job-ids-atom))
                       {:error-handler (fn [e] (log/warn e "Error running optimizer cycle"))})))

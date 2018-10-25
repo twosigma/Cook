@@ -178,7 +178,7 @@
         datomic-report-chan (async/chan (async/sliding-buffer 4096))
         mesos-heartbeat-chan (async/chan (async/buffer 4096))
         current-driver (atom nil)
-        pool-name->optimizer-schedule-job-ids-atom (atom {})
+        pool-name->optimizer-suggested-job-ids-atom (atom {})
         rebalancer-reservation-atom (atom {})
         leader-selector (LeaderSelector.
                           curator-framework
@@ -210,7 +210,7 @@
                                           :mesos-run-as-user mesos-run-as-user
                                           :agent-attributes-cache agent-attributes-cache
                                           :offer-incubate-time-ms offer-incubate-time-ms
-                                          :pool-name->optimizer-schedule-job-ids-atom pool-name->optimizer-schedule-job-ids-atom
+                                          :pool-name->optimizer-suggested-job-ids-atom pool-name->optimizer-suggested-job-ids-atom
                                           :pool-name->pending-jobs-atom pool-name->pending-jobs-atom
                                           :progress-config progress-config
                                           :rebalancer-reservation-atom rebalancer-reservation-atom
@@ -245,7 +245,7 @@
                                         (fn pool-name->running [pool-name]
                                           (->> (util/get-running-task-ents (d/db mesos-datomic-conn))
                                                (filter #(= pool-name (-> % :job/_instance util/job->pool-name)))))
-                                        pool-name->optimizer-schedule-job-ids-atom))
+                                        pool-name->optimizer-suggested-job-ids-atom))
                                     (when (:update-data-local-costs-trigger-chan trigger-chans)
                                       (dl/start-update-cycles! mesos-datomic-conn (:update-data-local-costs-trigger-chan trigger-chans)))
                                     (counters/inc! mesos-leader)
