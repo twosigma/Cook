@@ -1217,7 +1217,8 @@
                                                              :pool.dru-mode/default sort-normal-jobs-by-dru
                                                              :pool.dru-mode/gpu sort-gpu-jobs-by-dru)))
                                          {"no-pool" sort-normal-jobs-by-dru})
-        task-comparator (if (use-group-completion?)
+        use-group-scores? (use-group-completion?)
+        task-comparator (if use-group-scores?
                           (do
                             (log/info "using group biased task comparator for ranking")
                             (util/same-user-group-biased-task-comparator unfiltered-db))
@@ -1228,11 +1229,14 @@
                     user->dru-divisors (pool-name->user->dru-divisors pool-name)
                     timer (timers/timer (metric-title "sort-jobs-hierarchy-duration" pool-name))
                     ranked-jobs (sort-jobs-by-dru pending-tasks running-tasks user->dru-divisors task-comparator timer pool-name)]
-                (log/info "Group scores of first 20 jobs"
-                          (->> ranked-jobs
-                               (take 20)
-                               (map (fn [job] [(:job/user job) (-> job :job/uuid str) (util/job->group-processing-score unfiltered-db job)]))
-                               (vec)))
+                (when use-group-scores?
+                  (log/info "Group scores of first 20 jobs"
+                            (->> ranked-jobs
+                                 (take 20)
+                                 (map (fn [job] [(:job/user job)
+                                                 (-> job :job/uuid str)
+                                                 (util/job->group-processing-score unfiltered-db job)]))
+                                 (vec))))
                 [pool-name ranked-jobs]))]
       (into {} (map sort-jobs-by-dru-pool-helper) pool-name->sort-jobs-by-dru-fn))))
 
