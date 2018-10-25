@@ -21,8 +21,12 @@
             [cook.mesos.util :as util]
             [cook.test.testutil :refer (create-dummy-instance
                                         create-dummy-job
-                                        restore-fresh-database!)]
-            [cook.mesos.quota :as quota]))
+                                        restore-fresh-database!
+                                        setup)]
+            [cook.mesos.quota :as quota]
+            [cook.rate-limit :as rate-limit]))
+
+(setup)
 
 (defn resource-map->list
   [m]
@@ -122,4 +126,43 @@
 
         (is (= (nth reasons 3)
                ["The job is now under investigation. Check back in a minute for more details!"
-                {}]))))))
+                {}]))))
+    (testing "Waiting job returns multiple reasons, and is placed under investigation."
+      @(d/transact conn [[:db/add waiting-job-id :job/state :job.state/waiting]])
+      (let [db (d/db conn)
+            running-job-ent1 (d/touch (d/entity db running-job-id1))
+            running-job-ent2 (d/touch (d/entity db running-job-id2))
+            waiting-job-ent (d/touch (d/entity db waiting-job-id))
+            running-job-uuids [(-> running-job-ent1 :job/uuid str)
+                               (-> running-job-ent2 :job/uuid str)]
+            reasons
+            (with-redefs [rate-limit/time-until-out-of-debt-millis! (constantly 1999)
+                          rate-limit/job-launch-rate-limiter
+                          (rate-limit/create-job-launch-rate-limiter
+                            {:settings {:rate-limit {:expire-minutes 180
+                                                     :job-launch {:bucket-size 500
+                                                                  :enforce? true
+                                                                  :tokens-replenished-per-minute 100}}}})]
+              (u/reasons conn waiting-job-ent))]
+
+        (is (= (nth reasons 0)
+               ["Job has exhausted its maximum number of retries."
+                {:max-retries 2, :instance-count 2}]))
+
+        (is (= (nth reasons 1)
+               ["The job would cause you to exceed resource quotas."
+                {:count {:limit 2 :usage 3}}]))
+
+        (is (= (nth reasons 2)
+               ["You have exceeded the limit of jobs per minute" {:max-jobs-per-minute 100.0, :millis-until-can-launch 1999}]))
+
+        (is (= (nth reasons 3)
+               ["You have 2 other jobs ahead in the queue."
+                {:jobs running-job-uuids}]))
+
+        (is (= (nth reasons 4)
+               ["The job is now under investigation. Check back in a minute for more details!"
+                {}]))))
+
+
+    ))

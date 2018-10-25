@@ -39,3 +39,18 @@
 
 (mount/defstate job-submission-rate-limiter
   :start (create-job-submission-rate-limiter config))
+
+(defn create-job-launch-rate-limiter
+  "From the configuration map, extract the keys that setup the job-launch rate limiter and return
+  the constructed object. If the configuration map is not found, the AllowAllRateLimiter is returned."
+  [config]
+  (let [{:keys [settings]} config
+        {:keys [rate-limit]} settings
+        {:keys [expire-minutes job-launch]} rate-limit]
+    (if (seq job-launch)
+      (let [{:keys [bucket-size enforce? tokens-replenished-per-minute]} job-launch]
+        (rtg/make-token-bucket-filter bucket-size tokens-replenished-per-minute expire-minutes enforce?))
+      AllowAllRateLimiter)))
+
+(mount/defstate job-launch-rate-limiter
+  :start (create-job-launch-rate-limiter config))

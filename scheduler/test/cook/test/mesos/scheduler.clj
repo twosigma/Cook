@@ -33,12 +33,13 @@
             [cook.mesos.util :as util]
             [cook.test.testutil :refer [restore-fresh-database! create-dummy-group create-dummy-job
                                         create-dummy-instance init-agent-attributes-cache poll-until wait-for
-                                        create-dummy-job-with-instances create-pool]]
+                                        create-dummy-job-with-instances create-pool setup]]
             [criterium.core :as crit]
             [datomic.api :as d :refer (q db)]
             [mesomatic.scheduler :as msched]
             [mesomatic.types :as mtypes]
-            [plumbing.core :as pc])
+            [plumbing.core :as pc]
+            [cook.rate-limit :as rate-limit])
   (:import (clojure.lang ExceptionInfo)
            (com.netflix.fenzo SimpleAssignmentResult TaskAssignmentResult
                               TaskRequest TaskScheduler VMTaskFitnessCalculator)
@@ -46,6 +47,7 @@
            (java.util UUID)
            (java.util.concurrent CountDownLatch TimeUnit)
            (org.mockito Mockito)))
+(setup)
 
 (def datomic-uri "datomic:mem://test-mesos-jobs")
 
@@ -1332,6 +1334,23 @@
         (is (= gpu-jobs
                (sched/pending-jobs->considerable-jobs
                  (d/db conn) gpu-jobs user->quota user->usage num-considerable nil)))))
+    (testing "jobs inside usage quota, but beyond rate limit"
+      ;; Same as last, except result should be empty.
+      (let [user->usage {test-user {:count 1, :cpus 2, :mem 1024, :gpus 0}}
+            user->quota {test-user {:count 10, :cpus 50, :mem 32768, :gpus 10}}
+            num-considerable 5]
+        (with-redefs [rate-limit/job-launch-rate-limiter
+                      (rate-limit/create-job-launch-rate-limiter
+                        {:settings {:rate-limit {:expire-minutes 180
+                                                 :job-launch {:bucket-size 500
+                                                              :enforce? true
+                                                              :tokens-replenished-per-minute 100}}}})rate-limit/time-until-out-of-debt-millis! (constantly 1)]
+          (is (= []
+                 (sched/pending-jobs->considerable-jobs
+                   (d/db conn) non-gpu-jobs user->quota user->usage num-considerable nil)))
+          (is (= []
+                 (sched/pending-jobs->considerable-jobs
+                   (d/db conn) gpu-jobs user->quota user->usage num-considerable nil))))))
     (testing "jobs inside usage quota limited by num-considerable of 3"
       (let [user->usage {test-user {:count 1, :cpus 2, :mem 1024, :gpus 0}}
             user->quota {test-user {:count 10, :cpus 50, :mem 32768, :gpus 10}}
@@ -1616,6 +1635,35 @@
           (is (= 2 (count @launched-offer-ids-atom)))
           (is (= 2 (count @launched-job-ids-atom)))
           (is (= #{"job-1" "job-2"} (set @launched-job-ids-atom)))))
+
+      (with-redefs [rate-limit/job-launch-rate-limiter
+                    (rate-limit/create-job-launch-rate-limiter
+                      {:settings {:rate-limit {:expire-minutes 180
+                                               :job-launch {:bucket-size 500
+                                                            :enforce? true
+                                                            :tokens-replenished-per-minute 100}}}})
+                    rate-limit/time-until-out-of-debt-millis! (constantly 1)]
+        (testing "enough offers for all normal jobs, limited by num-considerable of 2, but beyond rate limit"
+          ;; We do pending filtering here, so we should filter off the excess jobs and launch nothing.
+          (let [num-considerable 2
+                offers [offer-1 offer-2 offer-3]]
+            (is (run-handle-resource-offers! num-considerable offers :normal))
+            (is (= :end-marker (async/<!! offers-chan)))
+            (is (= 0 (count @launched-offer-ids-atom)))
+            (is (= 0 (count @launched-job-ids-atom)))
+            (is (= #{} (set @launched-job-ids-atom))))))
+
+      (let [total-spent (atom 0)]
+        (with-redefs [rate-limit/spend! (fn [_ _ tokens] (reset! total-spent (-> @total-spent (+ tokens))))]
+          (testing "enough offers for all normal jobs, limited by num-considerable of 2. Make sure we spend the tokens."
+            (let [num-considerable 2
+                  offers [offer-1 offer-2 offer-3]]
+              (is (run-handle-resource-offers! num-considerable offers :normal))
+              (is (= :end-marker (async/<!! offers-chan)))
+              (is (= 2 (count @launched-offer-ids-atom)))
+              (is (= 2 (count @launched-job-ids-atom)))
+              (is (= #{"job-1" "job-2"} (set @launched-job-ids-atom)))
+              (is (= 2 @total-spent))))))
 
       (testing "enough offers for all normal jobs, limited by quota"
         (let [num-considerable 1

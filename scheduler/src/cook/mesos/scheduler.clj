@@ -40,6 +40,7 @@
             [cook.mesos.share :as share]
             [cook.mesos.task :as task]
             [cook.mesos.util :as util]
+            [cook.rate-limit :as ratelimit]
             [datomic.api :as d :refer (q)]
             [mesomatic.scheduler :as mesos]
             [metatransaction.core :refer (db)]
@@ -603,6 +604,19 @@
     (cond-> {:count 1 :cpus cpus :mem mem}
             gpus (assoc :gpus gpus))))
 
+(defn filter-with-launch-rate-limit
+  "Lazily filters jobs for which the sum of running jobs and jobs earlier in the queue exceeds one of the constraints,
+   max-jobs, max-cpus or max-mem"
+  [job]
+  (let [user (:job/user job)
+        time-until-out-of-debt-millis (ratelimit/time-until-out-of-debt-millis! ratelimit/job-launch-rate-limiter user)
+        in-debt? (not (zero? time-until-out-of-debt-millis))]
+    (when in-debt?
+      (log/debug "Launch Rate Limit check" {:user user
+                                            :time-until-out-of-debt-millis time-until-out-of-debt-millis}))
+    (not (and in-debt? (ratelimit/enforce? ratelimit/job-launch-rate-limiter)))))
+
+
 (defn filter-based-on-quota
   "Lazily filters jobs for which the sum of running jobs and jobs earlier in the queue exceeds one of the constraints,
    max-jobs, max-cpus or max-mem"
@@ -639,6 +653,7 @@
   (->> pending-jobs
        (filter-based-on-quota user->quota user->usage)
        (filter (fn [job] (util/job-allowed-to-start? db job)))
+       (filter filter-with-launch-rate-limit)
        (take num-considerable)))
 
 (defn matches->job-uuids
@@ -733,12 +748,16 @@
     (meters/mark! (meters/meter (metric-title "matched-tasks" pool-name)) (count task-txns))
     (timers/time!
       (timers/timer (metric-title "handle-resource-offer!-mesos-submit-duration" pool-name))
+      ;; Iterates over offers (each offer can match to multiple tasks)
       (doseq [{:keys [leases task-metadata-seq]} matches
               :let [offers (mapv :offer leases)
                     task-infos (task/compile-mesos-messages offers task-metadata-seq)]]
         (log/debug "Matched task-infos" task-infos)
         (mesos/launch-tasks! driver (mapv :id offers) task-infos)
-        (doseq [{:keys [hostname task-request]} task-metadata-seq]
+        (doseq [{:keys [hostname task-request user] :as meta} task-metadata-seq]
+          ; Iterate over the tasks we matched
+          (let [user (get-in task-request [:job :job/user])]
+            (ratelimit/spend! ratelimit/job-launch-rate-limiter user 1))
           (locking fenzo
             (.. fenzo
                 (getTaskAssigner)

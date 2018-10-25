@@ -35,7 +35,8 @@
                                         create-dummy-job-with-instances
                                         create-pool
                                         flush-caches!
-                                        restore-fresh-database!] :as testutil]
+                                        restore-fresh-database!
+                                        setup] :as testutil]
             [datomic.api :as d :refer [q db]]
             [mesomatic.scheduler :as msched]
             [schema.core :as s])
@@ -48,6 +49,7 @@
            java.util.concurrent.ExecutionException
            (javax.servlet ServletOutputStream ServletResponse)
            org.apache.curator.test.TestingServer))
+(setup)
 
 (defn kw-keys
   [m]
