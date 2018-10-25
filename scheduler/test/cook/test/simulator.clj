@@ -440,18 +440,18 @@
             (poll-until #(= (set (map (comp str :instance/task-id)
                                       (util/get-running-task-ents (d/db mesos-datomic-conn))))
                             (set (map str
-                                      (keys (:task-id->task @state-atom)))))
-                        50
-                        60000
-                        #(let [cook-tasks (set (map (comp str :instance/task-id)
-                                                    (util/get-running-task-ents (d/db mesos-datomic-conn))))
-                               mesos-tasks (set (map str
-                                                     (keys (:task-id->task @state-atom))))]
-                           {:running-tasks-ents (count cook-tasks)
-                            :tasks-in-mesos (count mesos-tasks)
-                            :cook-minus-mesos (count (clojure.set/difference cook-tasks mesos-tasks))
-                            :mesos-minus-cook (count (clojure.set/difference mesos-tasks cook-tasks))}))
-            (log/info "Completion statuses sent")
+                                     (keys (:task-id->task @state-atom)))))
+                       50
+                       60000
+                       #(let [cook-tasks (set (map (comp str :instance/task-id)
+                                                   (util/get-running-task-ents (d/db mesos-datomic-conn))))
+                              mesos-tasks (set (map str
+                                                    (keys (:task-id->task @state-atom))))]
+                          {:running-tasks-ents (count cook-tasks)
+                           :tasks-in-mesos (count mesos-tasks)
+                           :cook-minus-mesos (count (clojure.set/difference cook-tasks mesos-tasks))
+                           :mesos-minus-cook (count (clojure.set/difference mesos-tasks cook-tasks))}))
+            (log/info "Completion statuses sent, tasks in mesos:"  (count (:task-id->task @state-atom)))
 
             ;; Request rank occurs
             (log/info "Starting rank")

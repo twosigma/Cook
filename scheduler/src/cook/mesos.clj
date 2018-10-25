@@ -23,7 +23,7 @@
             [cook.mesos.data-locality :as dl]
             [cook.mesos.heartbeat]
             [cook.mesos.monitor]
-            [cook.mesos.optimizer]
+            [cook.mesos.optimizer :as optimizer]
             [cook.mesos.rebalancer]
             [cook.mesos.scheduler :as sched]
             [cook.mesos.util :as util]
@@ -233,16 +233,17 @@
                                                                               :trigger-chan rebalancer-trigger-chan
                                                                               :view-incubating-offers view-incubating-offers})
                                     (when (seq optimizer-config)
-                                      (cook.mesos.optimizer/start-optimizer-cycles! (fn get-queue []
-                                                                                      ;; TODO Use filter of queue that scheduler uses to filter to considerable.
-                                                                                      ;;      Specifically, think about filtering to jobs that are waiting and 
-                                                                                      ;;      think about how to handle quota 
-                                                                                      @pool-name->pending-jobs-atom)
-                                                                                    (fn get-running []
-                                                                                      (cook.mesos.util/get-running-task-ents (d/db mesos-datomic-conn)))
-                                                                                    view-incubating-offers
-                                                                                    optimizer-config
-                                                                                    optimizer-trigger-chan))
+                                      (optimizer/start-optimizer-cycles!
+                                        (fn get-queue []
+                                          ;; TODO Use filter of queue that scheduler uses to filter to considerable.
+                                          ;;      Specifically, think about filtering to jobs that are waiting and
+                                          ;;      think about how to handle quota
+                                          @pool-name->pending-jobs-atom)
+                                        (fn get-running []
+                                          (cook.mesos.util/get-running-task-ents (d/db mesos-datomic-conn)))
+                                        view-incubating-offers
+                                        optimizer-config
+                                        optimizer-trigger-chan))
                                     (when (:update-data-local-costs-trigger-chan trigger-chans)
                                       (dl/start-update-cycles! mesos-datomic-conn (:update-data-local-costs-trigger-chan trigger-chans)))
                                     (counters/inc! mesos-leader)
