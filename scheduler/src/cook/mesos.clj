@@ -244,8 +244,7 @@
                                           (get @pool-name->pending-jobs-atom pool-name))
                                         (fn pool-name->running [pool-name]
                                           (->> (util/get-running-task-ents (d/db mesos-datomic-conn))
-                                               (remove (fn [task-ent]
-                                                         #(not= pool-name (-> task-ent :job/_instance util/job->pool-name))))))
+                                               (filter #(= pool-name (-> % :job/_instance util/job->pool-name)))))
                                         pool-name->optimizer-schedule-job-ids-atom))
                                     (when (:update-data-local-costs-trigger-chan trigger-chans)
                                       (dl/start-update-cycles! mesos-datomic-conn (:update-data-local-costs-trigger-chan trigger-chans)))
