@@ -20,35 +20,30 @@
             [clj-time.core :as t]
             [clj-time.coerce :as tc]
             [clojure.tools.logging :as log]
-            [cook.util :refer [lazy-load-var NonNegInt PosNum PosInt]]
             [cook.mesos.util :as util]
+            [cook.util :refer [NonNegInt PosNum PosInt lazy-load-var]]
             [metrics.timers :as timers]
             [plumbing.core :as pc]
             [schema.core :as s])
   (:import (java.util UUID)))
 
-(def TimePeriodMs NonNegInt)
+(s/defschema TimePeriodMs NonNegInt)
 
-
-;; Elements missing:
-;;   1. Attributes (chip set, az, ..) -- have a combinatorial problem here
-;;   2. Price
-;;   3. Prob preemption in 10 minutes increments (or something like that)
-(def HostInfo
+(s/defschema HostInfo
   "Example:
-   {\"count\" 4
-    \"cpus\" 8
-    \"instance-type\" \"basic\"
-    \"mem\" 240000}"
-  {:count NonNegInt
-   :cpus PosNum
-   :instance-type s/Str
-   :mem PosNum
+   {:count 4
+    :cpus 8
+    :instance-type \"basic\"
+    :mem 240000}"
+  {(s/required-key :count) NonNegInt
+   (s/required-key :cpus) PosNum
+   (s/required-key :instance-type) s/Str
+   (s/required-key :mem) PosNum
    (s/optional-key :attributes) {s/Keyword s/Any}
    (s/optional-key :gpus) PosNum
    (s/optional-key :time-to-start) TimePeriodMs})
 
-(def Schedule
+(s/defschema Schedule
   "Schedule returned by optimizer.
    Each TimePeriodMs is some milliseconds into the future the optimizer recommendation map applies.
    The optimizer recommendation map currently only has one key,
@@ -59,8 +54,7 @@
    Example schedule:
    {0 {:suggested-matches [#uuid \"1db521d2-b1d5-41b4-9a93-a7e12abd940b\"]}
     60000 {:suggested-matches [#uuid \"724521d2-b1d5-41b4-9a93-a7e12abd940b\"]}}"
-  {TimePeriodMs {:suggested-matches [s/Uuid]}})
-
+  {TimePeriodMs {(s/required-key :suggested-matches) [s/Uuid]}})
 
 (defprotocol Optimizer
   "Protocol defining a tool to produce a schedule to execute"
@@ -68,19 +62,18 @@
     [this queue running]
     "Returns a schedule of what jobs to place on what machines
      and what hosts to purchase at different time steps.
-     Conforms to the Schedule schema above
+     The returned value must conform to the Schedule schema above.
 
      Parameters:
-     queue -- Ordered list of jobs to run (see cook.mesos.schema job)
-     running -- Set of tasks running (see cook.mesos.schema instance)
-     host-infos -- Host infos from HostFeed
+     queue -- ordered sequence of jobs to run (see cook.mesos.schema job)
+     running -- sequence of running tasks (see cook.mesos.schema instance)
 
      Returns:
-     A schedule: a map where the keys are milliseconds in the future
-     and  the values are recommendations to take at that point in the future"))
+     A schedule: a map where the keys are milliseconds in the future and
+     the values are recommendations to take at that point in the future."))
 
 (defn create-dummy-optimizer
-  "Returns an instance of Optimizer which returns an empty schedule"
+  "Returns an instance of Optimizer which returns an empty schedule."
   [_]
   (log/info "Creating dummy optimizer")
   (reify Optimizer
@@ -97,7 +90,7 @@
 (defn calculate-expected-complete-time
   "Returns the expected time remaining to job completion.
    Simple model for if run time exceeds expected runtime: the more it exceeds expected, the longer we expect it to take.
-   TODO: get better model!"
+   TODO: Issue #484 get better model!"
   [instance expected-duration now]
   (->> (instance-runtime instance now)
        (- expected-duration)
@@ -119,7 +112,7 @@
             :count 1
             :dur expected-duration
             :expected_complete_time -1
-            :running_host_group -1 ; TODO write function to determine this
+            :running_host_group -1 ; we do not support multiple host groups currently
             :state "waiting"
             :submit_time (-> job :job/submit-time .getTime)
             :user (:job/user job)
@@ -145,7 +138,18 @@
             :uuid (:job/uuid job)}
            resources)))
 
+;; TODO Issue #485 remote optimizer should support cpu-share and mem-share computed per user.
 (defn create-optimizer-server
+  "Returns an instance of Optimizer which returns the schedule received from sending the request
+   to a remote server. The input configuration has the following keys:
+   cpu-share: the global cpu share of each user,
+   default-runtime: the default expected runtime of a job,
+   host-info: the homogeneous profile of the cluster we are targeting,
+   max-waiting: the maximum number of waiting jobs to send to the optimizer,
+   mem-share: the global mem share of each user,
+   opt-params: a map with string keys that are passed to the optimizer as additional configuration parameters,
+   opt-server: the url for the remote optimizer server,
+   step-list: the list of future run times (s.g. starting at 0) we want the optimizer to compute for."
   [{:keys [cpu-share default-runtime host-info max-waiting mem-share opt-params opt-server step-list]
     :or {opt-params {}}
     :as config}]
@@ -158,7 +162,8 @@
   (log/info "Optimizer config" config)
   (let [host-group 0
         host-name->host-group (constantly host-group)
-        host-infos [host-info]
+        host-group-descriptions [host-info]
+        ;; exponential moving average (ema) of memory usage based on running tasks of users
         user->ema-mem-usage (atom {})]
     (reify Optimizer
       (produce-schedule [_ queued-jobs running-tasks]
@@ -192,14 +197,13 @@
                                   (merge-with + user->mem-usage))))
                   ;; Running must be before waiting here because optimizer determines batch order from job order
                   opt-jobs (concat running-opt-jobs waiting-opt-jobs)
-                  ;; TODO mem-share should be computed per user.
                   user->ema-usage (pc/map-vals #(/ % mem-share) @user->ema-mem-usage)
                   _ (log/info "Preparing request body")
                   request-body (timers/time!
                                  (timers/timer ["cook-mesos" "scheduler" "optimizer" "prepare-request"])
                                  (cheshire/generate-string
                                    {"cpu_share" cpu-share
-                                    "host_groups" host-infos
+                                    "host_groups" host-group-descriptions
                                     "mem_share" mem-share
                                     "now" (.getTime now)
                                     "opt_jobs" opt-jobs

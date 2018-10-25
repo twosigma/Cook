@@ -640,7 +640,7 @@
            (fn [pool-name->optimizer-schedule-job-ids]
              (->> (pool-name->optimizer-schedule-job-ids pool-name)
                   (deliver optimizer-schedule-job-ids-promise))
-             ;; TODO should we be clearing out optimizer data in one use?
+             ;; TODO determine whether we should be clearing out optimizer data after one use?
              (assoc pool-name->optimizer-schedule-job-ids pool-name [])))
     (->> (if-let [optimizer-schedule-job-ids (seq @optimizer-schedule-job-ids-promise)]
            (let [optimizer-schedule-job-ids-set (into #{} optimizer-schedule-job-ids)

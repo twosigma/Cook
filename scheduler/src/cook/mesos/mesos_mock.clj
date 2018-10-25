@@ -294,8 +294,11 @@
           task->runtime-ms (-> state :config :task->runtime-ms)
           runtime-multiplier (get-in host [:attributes :runtime-multiplier] 1)
           new-time-task-id-pairs (map (fn [{:keys [task-id] :as task}]
-                                        [(t/plus (t/now)
-                                                 (-> task task->runtime-ms (* runtime-multiplier) t/millis))
+                                        [(->> task
+                                              task->runtime-ms
+                                              (* runtime-multiplier)
+                                              t/millis
+                                              (t/plus (t/now)))
                                          (:value task-id)])
                                       tasks)]     
       (log/debug "Resources requested by tasks: " {:requested-resources requested-resources})
