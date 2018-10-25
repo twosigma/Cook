@@ -2328,8 +2328,8 @@
                 no-usage (no-usage-map with-group-breakdown?)
                 pool-name->usage (pc/map-vals (partial user-usage with-group-breakdown?) pool-name->jobs)
                 pool-name->no-usage (into {} (map (fn [{:keys [pool/name]}] [name no-usage]) pools))
-                default-pool-usage (get pool-name->usage default-pool-name no-usage)]
-            (assoc default-pool-usage
+                total-usage (user-usage with-group-breakdown? jobs)]
+            (assoc total-usage
               :pools (merge pool-name->no-usage pool-name->usage)))
           (user-usage with-group-breakdown? jobs))))))
 

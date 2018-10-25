@@ -1801,10 +1801,10 @@
                       :memory 910
                       :gpus 1112
                       :pool "baz")
-    (is (= {:total-usage {:cpus 12.0
-                          :mem 34.0
-                          :gpus 56.0
-                          :jobs 1}
+    (is (= {:total-usage {:cpus 90.0
+                          :mem 944.0
+                          :gpus 1168.0
+                          :jobs 2}
             :pools {"foo" {:total-usage {:cpus 12.0
                                          :mem 34.0
                                          :gpus 56.0
