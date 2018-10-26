@@ -604,19 +604,6 @@
     (cond-> {:count 1 :cpus cpus :mem mem}
             gpus (assoc :gpus gpus))))
 
-(defn filter-with-launch-rate-limit
-  "Lazily filters jobs for which the sum of running jobs and jobs earlier in the queue exceeds one of the constraints,
-   max-jobs, max-cpus or max-mem"
-  [job]
-  (let [user (:job/user job)
-        time-until-out-of-debt-millis (ratelimit/time-until-out-of-debt-millis! ratelimit/job-launch-rate-limiter user)
-        in-debt? (not (zero? time-until-out-of-debt-millis))]
-    (when in-debt?
-      (log/debug "Launch Rate Limit check" {:user user
-                                            :time-until-out-of-debt-millis time-until-out-of-debt-millis}))
-    (not (and in-debt? (ratelimit/enforce? ratelimit/job-launch-rate-limiter)))))
-
-
 (defn filter-based-on-quota
   "Lazily filters jobs for which the sum of running jobs and jobs earlier in the queue exceeds one of the constraints,
    max-jobs, max-cpus or max-mem"
@@ -650,11 +637,29 @@
    Further limit the considerable jobs to a maximum of num-considerable jobs."
   [db pending-jobs user->quota user->usage num-considerable pool-name]
   (log/debug "In" pool-name "pool, there are" (count pending-jobs) "pending jobs:" pending-jobs)
-  (->> pending-jobs
-       (filter-based-on-quota user->quota user->usage)
-       (filter (fn [job] (util/job-allowed-to-start? db job)))
-       (filter filter-with-launch-rate-limit)
-       (take num-considerable)))
+  (let [enforcing? (ratelimit/enforce? ratelimit/job-launch-rate-limiter)
+        number-jobs-by-user (atom {})
+        max-time-until-out-of-debt-by-user (atom {})
+        user-within-launch-rate-limit
+        (fn
+          [{:keys [job/user]}]
+          (let [time-until-out-of-debt-millis (ratelimit/time-until-out-of-debt-millis! ratelimit/job-launch-rate-limiter user)
+                in-debt? (not (zero? time-until-out-of-debt-millis))]
+            (when in-debt?
+              (swap! max-time-until-out-of-debt-by-user update user #(max (or % 0) time-until-out-of-debt-millis))
+              (swap! number-jobs-by-user update user #(inc (or % 0))))
+            (not (and in-debt? enforcing?))))
+        out
+        (->> pending-jobs
+             (filter-based-on-quota user->quota user->usage)
+             (filter (fn [job] (util/job-allowed-to-start? db job)))
+             (filter user-within-launch-rate-limit)
+             (take num-considerable)
+             (doall))]
+    (log/info "Users job launch rate-limit filtered and counts: " @number-jobs-by-user)
+    (log/info "Users job launch rate-limit filtered and max time until out of debt: " @max-time-until-out-of-debt-by-user)
+    out))
+
 
 (defn matches->job-uuids
   "Returns the matched job uuids."
@@ -756,8 +761,7 @@
         (mesos/launch-tasks! driver (mapv :id offers) task-infos)
         (doseq [{:keys [hostname task-request user] :as meta} task-metadata-seq]
           ; Iterate over the tasks we matched
-          (let [user (get-in task-request [:job :job/user])]
-            (ratelimit/spend! ratelimit/job-launch-rate-limiter user 1))
+          (ratelimit/spend! ratelimit/job-launch-rate-limiter user 1)
           (locking fenzo
             (.. fenzo
                 (getTaskAssigner)

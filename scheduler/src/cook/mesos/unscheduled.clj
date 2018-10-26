@@ -19,7 +19,7 @@
             [cook.mesos.quota :as quota]
             [cook.mesos.share :as share]
             [cook.mesos.util :as util]
-            [cook.rate-limit :as ratelimit :refer (job-launch-rate-limiter)]
+            [cook.rate-limit :as ratelimit]
             [clojure.edn :as edn]))
 
 (defn check-exhausted-retries
@@ -62,23 +62,6 @@
                 (read-limit-fn db user pool-name)
                 (util/jobs-by-user-and-state db user :job.state/running pool-name)
                 job)]
-      (when (seq ways)
-        [err-msg ways]))))
-
-(defn check-exceeds-launch-rate-limit
-  "If running the job would cause a user's resource limits to be exceeded,
-  return [err-msg, (data structure describing the ways the limit would be exceeded)].
-  This function can be used for different types of limts (quota or share);
-  the function to read the user's limit as well as the error message on
-  exceeding the limit are parameters."
-  [read-limit-fn err-msg db job]
-  (when (= (:job/state job) :job.state/waiting)
-    (let [user (:job/user job)
-          pool-name (-> job :job/pool :pool/name)
-          ways (how-job-would-exceed-resource-limits
-                 (read-limit-fn db user pool-name)
-                 (util/jobs-by-user-and-state db user :job.state/running pool-name)
-                 job)]
       (when (seq ways)
         [err-msg ways]))))
 
@@ -153,14 +136,15 @@
                    (mapv #(-> % :job/_instance :job/uuid str)))}])))
 
 (defn- check-launch-rate-limit
-  [job]
-  (let [time-until-out-of-debt (ratelimit/time-until-out-of-debt-millis! ratelimit/job-launch-rate-limiter (:job/user job))
+  "Return the appropriate error message if a user's job is unscheduled because they're over the job launch rate limit threshold"
+  [{:keys [job/user]}]
+  (let [time-until-out-of-debt (ratelimit/time-until-out-of-debt-millis! ratelimit/job-launch-rate-limiter user)
         in-debt? (not (zero? time-until-out-of-debt))
         {:keys [tokens-replenished-per-minute]} ratelimit/job-launch-rate-limiter]
     (when in-debt?
-      ["You have exceeded the limit of jobs per minute"
+      ["You have exceeded the limit of jobs launched per minute"
        {:max-jobs-per-minute tokens-replenished-per-minute
-        :millis-until-can-launch time-until-out-of-debt}])))
+        :seconds-until-can-launch (int (Math/ceil (/ time-until-out-of-debt 1000.0)))}])))
 
 (defn reasons
   "Top level function which assembles a data structure representing the list
@@ -186,5 +170,3 @@
                (check-launch-rate-limit job)
                (check-queue-position conn job)
                (check-fenzo-placement conn job)]))))
-
-

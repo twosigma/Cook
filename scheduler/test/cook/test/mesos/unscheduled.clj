@@ -19,14 +19,11 @@
             [datomic.api :as d]
             [cook.mesos.scheduler :as scheduler]
             [cook.mesos.util :as util]
+            [cook.rate-limit :as rate-limit]
             [cook.test.testutil :refer (create-dummy-instance
                                         create-dummy-job
-                                        restore-fresh-database!
-                                        setup)]
-            [cook.mesos.quota :as quota]
-            [cook.rate-limit :as rate-limit]))
-
-(setup)
+                                        restore-fresh-database!)]
+            [cook.mesos.quota :as quota]))
 
 (defn resource-map->list
   [m]
@@ -154,7 +151,7 @@
                 {:count {:limit 2 :usage 3}}]))
 
         (is (= (nth reasons 2)
-               ["You have exceeded the limit of jobs per minute" {:max-jobs-per-minute 100.0, :millis-until-can-launch 1999}]))
+               ["You have exceeded the limit of jobs launched per minute" {:max-jobs-per-minute 100.0, :seconds-until-can-launch 2}]))
 
         (is (= (nth reasons 3)
                ["You have 2 other jobs ahead in the queue."
@@ -162,7 +159,4 @@
 
         (is (= (nth reasons 4)
                ["The job is now under investigation. Check back in a minute for more details!"
-                {}]))))
-
-
-    ))
+                {}]))))))

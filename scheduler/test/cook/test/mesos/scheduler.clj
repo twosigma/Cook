@@ -31,6 +31,7 @@
             [cook.mesos.scheduler :as sched]
             [cook.mesos.share :as share]
             [cook.mesos.util :as util]
+            [cook.rate-limit :as rate-limit]
             [cook.test.testutil :refer [restore-fresh-database! create-dummy-group create-dummy-job
                                         create-dummy-instance init-agent-attributes-cache poll-until wait-for
                                         create-dummy-job-with-instances create-pool setup]]
@@ -38,8 +39,7 @@
             [datomic.api :as d :refer (q db)]
             [mesomatic.scheduler :as msched]
             [mesomatic.types :as mtypes]
-            [plumbing.core :as pc]
-            [cook.rate-limit :as rate-limit])
+            [plumbing.core :as pc])
   (:import (clojure.lang ExceptionInfo)
            (com.netflix.fenzo SimpleAssignmentResult TaskAssignmentResult
                               TaskRequest TaskScheduler VMTaskFitnessCalculator)
@@ -47,7 +47,6 @@
            (java.util UUID)
            (java.util.concurrent CountDownLatch TimeUnit)
            (org.mockito Mockito)))
-(setup)
 
 (def datomic-uri "datomic:mem://test-mesos-jobs")
 
@@ -243,6 +242,13 @@
 (d/create-database "datomic:mem://preemption-testdb")
 ;;NB you shouldn't transact to this DB--it's read only once it's been initialized
 (def c (d/connect "datomic:mem://preemption-testdb"))
+
+(def job-launch-rate-limit-config-for-testing
+  "A basic config, designed to be big enough that everything passes, but enforcing."
+  {:settings {:rate-limit {:expire-minutes 180
+                           :job-launch {:bucket-size 500
+                                        :enforce? true
+                                        :tokens-replenished-per-minute 100}}}})
 
 (doseq [[t i] (mapv vector cook.mesos.schema/work-item-schema (range))]
   (deref (d/transact c (conj t
@@ -1334,23 +1340,22 @@
         (is (= gpu-jobs
                (sched/pending-jobs->considerable-jobs
                  (d/db conn) gpu-jobs user->quota user->usage num-considerable nil)))))
+
     (testing "jobs inside usage quota, but beyond rate limit"
-      ;; Same as last, except result should be empty.
+      ;; Jobs inside of usage quota, but beyond rate limit, so should return no considerable jobs.
       (let [user->usage {test-user {:count 1, :cpus 2, :mem 1024, :gpus 0}}
             user->quota {test-user {:count 10, :cpus 50, :mem 32768, :gpus 10}}
             num-considerable 5]
         (with-redefs [rate-limit/job-launch-rate-limiter
-                      (rate-limit/create-job-launch-rate-limiter
-                        {:settings {:rate-limit {:expire-minutes 180
-                                                 :job-launch {:bucket-size 500
-                                                              :enforce? true
-                                                              :tokens-replenished-per-minute 100}}}})rate-limit/time-until-out-of-debt-millis! (constantly 1)]
+                      (rate-limit/create-job-launch-rate-limiter job-launch-rate-limit-config-for-testing)
+                      rate-limit/time-until-out-of-debt-millis! (constantly 1)]
           (is (= []
                  (sched/pending-jobs->considerable-jobs
                    (d/db conn) non-gpu-jobs user->quota user->usage num-considerable nil)))
           (is (= []
                  (sched/pending-jobs->considerable-jobs
                    (d/db conn) gpu-jobs user->quota user->usage num-considerable nil))))))
+
     (testing "jobs inside usage quota limited by num-considerable of 3"
       (let [user->usage {test-user {:count 1, :cpus 2, :mem 1024, :gpus 0}}
             user->quota {test-user {:count 10, :cpus 50, :mem 32768, :gpus 10}}
@@ -1361,6 +1366,7 @@
         (is (= gpu-jobs
                (sched/pending-jobs->considerable-jobs
                  (d/db conn) gpu-jobs user->quota user->usage num-considerable nil)))))
+
     (testing "jobs inside usage quota limited by num-considerable of 2"
       (let [user->usage {test-user {:count 1, :cpus 2, :mem 1024, :gpus 0}}
             user->quota {test-user {:count 10, :cpus 50, :mem 32768, :gpus 10}}
@@ -1371,6 +1377,7 @@
         (is (= gpu-jobs
                (sched/pending-jobs->considerable-jobs
                  (d/db conn) gpu-jobs user->quota user->usage num-considerable nil)))))
+
     (testing "jobs inside usage quota limited by num-considerable of 1"
       (let [user->usage {test-user {:count 1, :cpus 2, :mem 1024, :gpus 0}}
             user->quota {test-user {:count 10, :cpus 50, :mem 32768, :gpus 10}}
@@ -1381,6 +1388,7 @@
         (is (= [job-5]
                (sched/pending-jobs->considerable-jobs
                  (d/db conn) gpu-jobs user->quota user->usage num-considerable nil)))))
+
     (testing "some jobs inside usage quota"
       (let [user->usage {test-user {:count 1, :cpus 2, :mem 1024, :gpus 0}}
             user->quota {test-user {:count 5, :cpus 10, :mem 4096, :gpus 10}}
@@ -1391,6 +1399,7 @@
         (is (= [job-5]
                (sched/pending-jobs->considerable-jobs
                  (d/db conn) gpu-jobs user->quota user->usage num-considerable nil)))))
+
     (testing "some jobs inside usage quota - quota gpus not ignored"
       (let [user->usage {test-user {:count 1, :cpus 2, :mem 1024, :gpus 0}}
             user->quota {test-user {:count 5, :cpus 10, :mem 4096, :gpus 0}}
@@ -1401,6 +1410,7 @@
         (is (= []
                (sched/pending-jobs->considerable-jobs
                  (d/db conn) gpu-jobs user->quota user->usage num-considerable nil)))))
+
     (testing "all jobs exceed quota"
       (let [user->usage {test-user {:count 1, :cpus 2, :mem 1024, :gpus 0}}
             user->quota {test-user {:count 5, :cpus 3, :mem 4096, :gpus 10}}
@@ -1507,6 +1517,7 @@
                (:normal (sched/remove-matched-jobs-from-pending-jobs pool->pending-jobs (:normal pool->matched-job-uuids) :normal))))))))
 
 (deftest test-handle-resource-offers
+  (setup)
   (let [test-user (System/getProperty "user.name")
         uri "datomic:mem://test-handle-resource-offers"
         executor {:command "cook-executor"
@@ -1637,11 +1648,7 @@
           (is (= #{"job-1" "job-2"} (set @launched-job-ids-atom)))))
 
       (with-redefs [rate-limit/job-launch-rate-limiter
-                    (rate-limit/create-job-launch-rate-limiter
-                      {:settings {:rate-limit {:expire-minutes 180
-                                               :job-launch {:bucket-size 500
-                                                            :enforce? true
-                                                            :tokens-replenished-per-minute 100}}}})
+                    (rate-limit/create-job-launch-rate-limiter job-launch-rate-limit-config-for-testing)
                     rate-limit/time-until-out-of-debt-millis! (constantly 1)]
         (testing "enough offers for all normal jobs, limited by num-considerable of 2, but beyond rate limit"
           ;; We do pending filtering here, so we should filter off the excess jobs and launch nothing.
@@ -1783,6 +1790,7 @@
 
 
 (deftest test-handle-resource-offers-with-data-locality
+  (setup)
   (with-redefs [config/data-local-fitness-config (constantly {:data-locality-weight 0.95
                                                               :base-calculator BinPackingFitnessCalculators/cpuMemBinPacker})
                 dl/job-uuid->dataset-maps-cache (util/new-cache)]
