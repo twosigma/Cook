@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/) and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.24.0] - 2018-10-26
+### Added
+- Support for x-cook-pool header, from @pschorf
+### Fixed
+- Bug in reporting total usage when pools are enabled, from @pschorf
+
 ## [1.23.0] - 2018-10-11
 ### Changed
 - Updated some metric names to incorporate pools, from @pschorf and @dposada
