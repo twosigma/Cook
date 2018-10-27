@@ -31,7 +31,6 @@
             [datomic.api :as d :refer (q)]
             [mesomatic.scheduler]
             [mesomatic.types]
-            [metatransaction.core :as mt :refer (db)]
             [metatransaction.utils :as dutils]
             [metrics.counters :as counters]
             [swiss.arrows :refer :all])

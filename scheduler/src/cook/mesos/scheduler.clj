@@ -42,7 +42,6 @@
             [cook.mesos.util :as util]
             [datomic.api :as d :refer (q)]
             [mesomatic.scheduler :as mesos]
-            [metatransaction.core :refer (db)]
             [metrics.counters :as counters]
             [metrics.gauges :as gauges]
             [metrics.histograms :as histograms]
@@ -209,7 +208,7 @@
   [conn driver pool->fenzo sync-agent-sandboxes-fn status]
   (timers/time!
     handle-status-update-duration
-    (try (let [db (db conn)
+    (try (let [db (d/db conn)
                {:keys [task-id reason task-state progress] :as task-status} (interpret-task-status status)
                _ (log/debug "Mesos status is:" task-status)
                _ (when-not task-id
@@ -323,7 +322,7 @@
     (try
       (when (str/blank? task-id)
         (throw (ex-info "task-id is empty in framework message" {:message message})))
-      (let [instance-id (task-id->instance-id (db conn) task-id)]
+      (let [instance-id (task-id->instance-id (d/db conn) task-id)]
         (if (nil? instance-id)
           (throw (ex-info "No instance found!" {:task-id task-id}))
           (do
@@ -377,7 +376,7 @@
                                tx-report-queue-processing-duration
                                (let [{:keys [tx-data db-after]} tx-report]
                                  (when (< query-basis (d/basis-t db-after))
-                                   (let [db (db conn)]
+                                   (let [db (d/db conn)]
                                      (meters/mark! tx-report-queue-datoms (count tx-data))
                                      ;; Monitoring whether a job is completed.
                                      (doseq [{:keys [e a v]} tx-data]
@@ -765,7 +764,7 @@
     (timers/time!
       (timers/timer (metric-title "handle-resource-offer!-duration" pool-name))
       (try
-        (let [db (db conn)
+        (let [db (d/db conn)
               pending-jobs (get @pool-name->pending-jobs-atom pool-name)
               considerable-jobs (timers/time!
                                   (timers/timer (metric-title "handle-resource-offer!-considerable-jobs-duration" pool-name))
@@ -931,8 +930,8 @@
                              :in $ [?status ...]
                              :where
                              [?j :job/state ?status]]
-                           (db conn) [:job.state/waiting
-                                      :job.state/running]))]
+                           (d/db conn) [:job.state/waiting
+                                        :job.state/running]))]
     (doseq [js (partition-all 25 jobs)]
       (async/<!! (datomic/transact-with-retries conn
                                                 (mapv (fn [j]
@@ -1453,7 +1452,7 @@
         (future
           (try
             (reconcile-jobs conn)
-            (reconcile-tasks (db conn) driver pool->fenzo)
+            (reconcile-tasks (d/db conn) driver pool->fenzo)
             (catch Exception e
               (log/error e "Reconciliation error")))))
       (reregistered
@@ -1462,7 +1461,7 @@
         (future
           (try
             (reconcile-jobs conn)
-            (reconcile-tasks (db conn) driver pool->fenzo)
+            (reconcile-tasks (d/db conn) driver pool->fenzo)
             (catch Exception e
               (log/error e "Reconciliation error")))))
       ;; Ignore this--we can just wait for new offers

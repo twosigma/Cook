@@ -21,7 +21,6 @@
             [clojure.tools.logging :as log]
             [cook.mesos.util :as util]
             [datomic.api :as d :refer (q)]
-            [metatransaction.core :refer (db)]
             [metrics.meters :as meters]
             [metrics.timers :as timers]))
 
@@ -112,7 +111,7 @@
    (Completed/failed tasks will have timeout event too since we don't clean up timeout channels for completed/failed tasks."
   [conn task-id txn]
   ;; The query is an optimization. It will reduce the number of transactions significantly.
-  (let [db (db conn)
+  (let [db (d/db conn)
         status (:instance/status (d/entity db [:instance/task-id task-id]))]
     (when (#{:instance.status/running :instance.status/unknown} status)
       #_(log/info "Timed out task:" task-id "(But not really...)")
@@ -153,7 +152,7 @@
 
                            (= sync-datomic-ch ch)
                            (try
-                             (let [state' (sync-with-datomic state (db conn))]
+                             (let [state' (sync-with-datomic state (d/db conn))]
                                state')
                              (catch Throwable t
                                (log/error t "Failed to sync heartbeat with datomic")
@@ -162,7 +161,7 @@
                            (timeout-chs ch)
                            (try
                              (meters/mark! timeouts)
-                             (let [[state' task-id txn] (handle-timeout state (db conn) ch)]
+                             (let [[state' task-id txn] (handle-timeout state (d/db conn) ch)]
                                (transact-timeout-async conn task-id txn)
                                state')
                              (catch Throwable t
@@ -187,7 +186,7 @@
 
 (comment
   (let [conn (d/connect  "datomic:mem://mesos-jobs")
-        db (db conn)]
+        db (d/db conn)]
     (q '[:find ?instance ?state
          :in $ ?task-id
          :where
@@ -198,7 +197,7 @@
 
 (comment
   (let [conn (d/connect  "datomic:mem://mesos-jobs")
-        db (db conn)]
+        db (d/db conn)]
     (->>
      (q '[:find ?task-id
           :in $ [?status ...]

@@ -17,7 +17,6 @@
   (:require [clojure.core.async :as async]
             [clojure.tools.logging :as log]
             [datomic.api :as d :refer (q)]
-            [metatransaction.core :as mt :refer (db)]
             [metrics.core :as metrics])
   (:import com.codahale.metrics.ConsoleReporter
            [com.codahale.metrics.graphite Graphite GraphiteReporter PickledGraphite]

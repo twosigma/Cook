@@ -319,7 +319,10 @@
    Returns a list of the task entities run"
   [mesos-hosts trace cycle-step-ms config temp-out-trace-file]
   (let [simulation-time (-> trace first :submit-time-ms)
-        mesos-datomic-conn (restore-fresh-database! (get config :datomic-url "datomic:mem://mock-mesos"))
+        datomic-url (get config :datomic-url (or (System/getenv "DATOMIC_URL") "datomic:mem://mock-mesos"))
+        _ (log/info "datomic-url:" datomic-url)
+        _ (println "datomic-url:" datomic-url)
+        mesos-datomic-conn (restore-fresh-database! datomic-url)
         offer-trigger-chan (async/chan)
         complete-trigger-chan (async/chan)
         ranker-trigger-chan (async/chan)

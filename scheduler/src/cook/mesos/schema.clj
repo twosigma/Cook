@@ -14,8 +14,7 @@
 ;; limitations under the License.
 ;;
 (ns cook.mesos.schema
-  (:require [datomic.api :as d]
-            [metatransaction.core :as mt]))
+  (:require [datomic.api :as d]))
 
 (def schema-attributes
   [;; Job attributes
@@ -904,10 +903,8 @@ for a job. E.g. {:resources {:cpus 4 :mem 3} :constraints {\"unique_host_constra
     :db/doc "Given a long-valued attribute, adds x to it atomically. If it doesn't exist, sets the value to x"
     :db/fn #db/fn {:lang "clojure"
                    :params [db e a x]
-                   :requires [[metatransaction.core :as mt]]
                    :code
-                   (let [db (mt/filter-committed db)
-                         old-val (get (d/entity db e) a 0)]
+                   (let [old-val (get (d/entity db e) a 0)]
                      [[:db/add e a (+ x old-val)]])}}
 
    {:db/id (d/tempid :db.part/user)
@@ -915,14 +912,11 @@ for a job. E.g. {:resources {:cpus 4 :mem 3} :constraints {\"unique_host_constra
     :db/doc "Ensures an attribute of an entity is what we expected it to be. Throws exception otherwise"
     :db/fn #db/fn {:lang "clojure"
                    :params [db e a v]
-                   :requires [[metatransaction.core :as mt]]
                    :code
-                   (let [db (mt/filter-committed db)]
-                     (if (seq (d/datoms db :eavt e a v))
-                       nil
-                       (throw (ex-info "Fail to ensure attribute" {:entity e
-                                                                   :attribute a
-                                                                   :expected v}))))}}
+                   (when-not (seq (d/datoms db :eavt e a v))
+                     (throw (ex-info "Fail to ensure attribute" {:entity e
+                                                                 :attribute a
+                                                                 :expected v})))}}
 
    {:db/id (d/tempid :db.part/user)
     :db/ident :job/reasons->attempts-consumed
@@ -982,10 +976,8 @@ for a job. E.g. {:resources {:cpus 4 :mem 3} :constraints {\"unique_host_constra
              - task failed, other tasks running => job running"
     :db/fn #db/fn {:lang "clojure"
                    :params [db j]
-                   :requires [[metatransaction.core :as mt]]
                    :code
-                   (let [db (mt/filter-committed db)
-                         job (d/entity db j)
+                   (let [job (d/entity db j)
                          instance-states (map :instance/status (:job/instance job))
                          any-success? (some #{:instance.status/success} instance-states)
                          any-running? (some #{:instance.status/running} instance-states)
@@ -1023,10 +1015,8 @@ for a job. E.g. {:resources {:cpus 4 :mem 3} :constraints {\"unique_host_constra
              from the perspective of the current Datomic state, the state of jobA will not be set to completed. After the transaction completes, the state of jobA is still running."
     :db/fn #db/fn {:lang "clojure"
                    :params [db instance new-state reason]
-                   :requires [[metatransaction.core :as mt]]
                    :code
-                   (let [db (mt/filter-committed db)
-                         state-transitions {:instance.status/unknown #{:instance.status/running :instance.status/failed}
+                   (let [state-transitions {:instance.status/unknown #{:instance.status/running :instance.status/failed}
                                             :instance.status/running #{:instance.status/failed :instance.status/success}
                                             ;; terminal states
                                             :instance.status/success #{}
@@ -1100,10 +1090,8 @@ for a job. E.g. {:resources {:cpus 4 :mem 3} :constraints {\"unique_host_constra
              - job completed => job waiting"
     :db/fn #db/fn {:lang "clojure"
                    :params [db j]
-                   :requires [[metatransaction.core :as mt]]
                    :code
-                   (let [db (mt/filter-committed db)
-                         job (d/entity db j)
+                   (let [job (d/entity db j)
                          prior-state (:job/state job)]
                      (if (= prior-state :job.state/completed)
                        [[:db/add j :job/state :job.state/waiting]]

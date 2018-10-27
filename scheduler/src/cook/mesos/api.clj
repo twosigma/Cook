@@ -46,7 +46,6 @@
             [liberator.util :refer [combine]]
             [me.raynes.conch :as sh]
             [mesomatic.scheduler]
-            [metatransaction.core :refer [db]]
             [metrics.histograms :as histograms]
             [metrics.meters :as meters]
             [metrics.timers :as timers]
@@ -1101,7 +1100,7 @@
         allow-partial-results (get-in ctx [:request :query-params :partial])
         instance-uuid->job-uuid #(instance-uuid->job-uuid (d/db conn) %)
         instance-jobs (mapv instance-uuid->job-uuid instances)
-        exists? #(job-exists? (db conn) %)
+        exists? #(job-exists? (d/db conn) %)
         existing-jobs (filter exists? jobs)]
     (cond
       (and (= (count existing-jobs) (count jobs))
@@ -1182,7 +1181,7 @@
   [conn ctx]
   (let [uuids (::jobs ctx)
         allow-partial-results? (::allow-partial-results? ctx)
-        exists? #(job-exists? (db conn) %)
+        exists? #(job-exists? (d/db conn) %)
         existing-uuids (filter exists? uuids)]
     (cond
       (= (count existing-uuids) (count uuids))
@@ -1221,7 +1220,7 @@
 (defn user-authorized-for-job?
   [conn is-authorized-fn ctx job-uuid]
   (let [request-user (get-in ctx [:request :authorization/user])
-        job-user (:job/user (d/entity (db conn) [:job/uuid job-uuid]))
+        job-user (:job/user (d/entity (d/db conn) [:job/uuid job-uuid]))
         impersonator (get-in ctx [:request :authorization/impersonator])
         request-method (get-in ctx [:request :request-method])]
     (is-authorized-fn request-user request-method impersonator {:owner job-user :item :job})))
@@ -1262,11 +1261,11 @@
 
 (defn render-jobs-for-response-deprecated
   [conn framework-id ctx]
-  (mapv (partial fetch-job-map (db conn) framework-id) (::jobs ctx)))
+  (mapv (partial fetch-job-map (d/db conn) framework-id) (::jobs ctx)))
 
 (defn render-jobs-for-response
   [conn framework-id ctx]
-  (let [db (db conn)
+  (let [db (d/db conn)
 
         fetch-group
         (fn fetch-group [group-uuid]
@@ -1284,7 +1283,7 @@
 
 (defn render-instances-for-response
   [conn framework-id ctx]
-  (let [db (db conn)
+  (let [db (d/db conn)
         fetch-job (partial fetch-job-map db framework-id)
         job-uuids (::jobs ctx)
         jobs (mapv fetch-job job-uuids)
@@ -1601,7 +1600,7 @@
 
   where \"...\" is a detailed error string describing the quota bounds exceeded."
   [conn {:keys [::jobs ::pool] :as ctx}]
-  (let [db (db conn)
+  (let [db (d/db conn)
         resource-keys [:cpus :mem :gpus]
         user (get-in ctx [:request :authorization/user])
         user-quota (quota/get-quota db user (:pool/name pool))
@@ -1666,9 +1665,9 @@
                                                                           (map str)
                                                                           (into [])))}]
                          :else
-                         (let [groups (mapv #(validate-and-munge-group (db conn) %) groups)
+                         (let [groups (mapv #(validate-and-munge-group (d/db conn) %) groups)
                                jobs (mapv #(validate-and-munge-job
-                                             (db conn)
+                                             (d/db conn)
                                              user
                                              task-constraints
                                              gpu-enabled?
@@ -1738,7 +1737,7 @@
                                 vectorize
                                 (mapv #(UUID/fromString %)))
           allow-partial-results (get-in ctx [:request :query-params :partial])
-          exists? #(group-exists? (db conn) %)
+          exists? #(group-exists? (d/db conn) %)
           {existing-groups true missing-groups false} (group-by exists? requested-guuids)]
       [false {::allow-partial-results? allow-partial-results
               ::guuids existing-groups
@@ -1754,7 +1753,7 @@
      :allowed? (fn [ctx]
                  (let [user (get-in ctx [:request :authorization/user])
                        guuids (::guuids ctx)
-                       group-user (fn [guuid] (-> (d/entity (db conn) [:group/uuid guuid])
+                       group-user (fn [guuid] (-> (d/entity (d/db conn) [:group/uuid guuid])
                                                   :group/job first :job/user))
                        request-method (get-in ctx [:request :request-method])
                        impersonator (get-in ctx [:request :authorization/impersonator])
@@ -1782,12 +1781,12 @@
                                          (str/join \space (::non-existing-guuids ctx)))}]))
      :handle-ok (fn [ctx]
                   (if (Boolean/valueOf (get-in ctx [:request :query-params "detailed"]))
-                    (mapv #(merge (fetch-group-map (db conn) %)
-                                  (fetch-group-job-details (db conn) %))
+                    (mapv #(merge (fetch-group-map (d/db conn) %)
+                                  (fetch-group-job-details (d/db conn) %))
                           (::guuids ctx))
-                    (mapv #(fetch-group-map (db conn) %) (::guuids ctx))))
+                    (mapv #(fetch-group-map (d/db conn) %) (::guuids ctx))))
      :delete! (fn [ctx]
-                (let [jobs (mapcat #(fetch-group-live-jobs (db conn) %)
+                (let [jobs (mapcat #(fetch-group-live-jobs (d/db conn) %)
                                    (::guuids ctx))
                       juuids (mapv :job/uuid jobs)]
                   (cook.mesos/kill-job conn juuids)))}))
@@ -1869,7 +1868,7 @@
    :handle-forbidden render-error
    :handle-malformed render-error
    :handle-ok (fn [ctx]
-                (->> (util/get-running-task-ents (db conn))
+                (->> (util/get-running-task-ents (d/db conn))
                      (take (::limit ctx))
                      (map d/touch)))))
 
@@ -1899,7 +1898,7 @@
 
 (defn display-retries
   [conn ctx]
-  (:job/max-retries (d/entity (db conn) [:job/uuid (-> ctx ::jobs first)])))
+  (:job/max-retries (d/entity (d/db conn) [:job/uuid (-> ctx ::jobs first)])))
 
 (defn job-failed?
   "Checks if the specified job is in a failed state."
@@ -2044,7 +2043,7 @@
 
 (defn user-can-retry-job?
   [conn is-authorized-fn request-user impersonator job]
-  (let [job-owner (:job/user (d/entity (db conn) [:job/uuid job]))]
+  (let [job-owner (:job/user (d/entity (d/db conn) [:job/uuid job]))]
     (is-authorized-fn request-user :retry impersonator {:owner job-owner :item :job})))
 
 (defn check-retry-allowed
@@ -2053,7 +2052,7 @@
         impersonator (get-in ctx [:request :authorization/impersonator])
         unauthorized-job? #(not (user-can-retry-job? conn is-authorized-fn request-user impersonator %))]
     (or (first (for [guuid (::groups ctx)
-                     :let [group (d/entity (db conn) [:group/uuid guuid])
+                     :let [group (d/entity (d/db conn) [:group/uuid guuid])
                            job (-> group :group/job first)]
                      :when (some-> job :job/uuid unauthorized-job?)]
                  [false {::error (str "You are not authorized to retry jobs from group " guuid ".")}]))
@@ -2338,7 +2337,7 @@
   [conn is-authorized-fn]
   (base-limit-handler
     :usage is-authorized-fn
-    {:handle-ok (partial get-user-usage (db conn))}))
+    {:handle-ok (partial get-user-usage (d/db conn))}))
 
 
 ;; /failure-reasons
