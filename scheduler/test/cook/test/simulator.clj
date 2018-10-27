@@ -22,7 +22,8 @@
             [cook.test.testutil :refer (restore-fresh-database! poll-until)]
             [datomic.api :as d]
             [plumbing.core :refer (map-vals map-keys map-from-vals)])
-  (:import org.apache.curator.framework.CuratorFrameworkFactory
+  (:import java.util.Date
+           org.apache.curator.framework.CuratorFrameworkFactory
            org.apache.curator.framework.state.ConnectionStateListener
            org.apache.curator.retry.BoundedExponentialBackoffRetry
            org.joda.time.DateTimeUtils)
@@ -42,8 +43,8 @@
   ([]
    (setup-test-curator-framework 2282))
   ([zk-port]
-   ;; Copied from src/cook/components
-   ;; TODO: don't copy from components
+    ;; Copied from src/cook/components
+    ;; TODO: don't copy from components
    (let [retry-policy (BoundedExponentialBackoffRetry. 100 120000 10)
          ;; The 180s session and 30s connection timeouts were pulled from a google group
          ;; recommendation
@@ -191,15 +192,15 @@
 
 (defn dump-jobs-to-csv
   "Given a mesos db, dump a csv with a row per task"
-  [task-ents file]
+  [task-ents file & {:keys [add-headers append] :or {add-headers true append false}}]
   ;; Use snake case to make it easier for downstream tools to consume
   (let [headers [:job_id :instance_id :group_id :submit_time_ms :mesos_start_time_ms :start_time_ms
                  :end_time_ms :hostname :slave_id :status :reason :user :mem :cpus :job_name
                  :requested_run_time :expected_run_time :requested_status]
         tasks (map generate-task-trace-map task-ents)]
-    (with-open [out-file (io/writer file)]
+    (with-open [out-file (io/writer file :append append)]
       (csv/write-csv out-file
-                     (concat [(mapv name headers)]
+                     (concat (when add-headers [(mapv name headers)])
                              (map (apply juxt headers) tasks))))))
 
 (defn pull-all-task-ents
@@ -209,6 +210,19 @@
               :where
               [?i :instance/task-id _]]
             mesos-db)
+       (map (partial d/entity mesos-db))))
+
+(defn pull-all-task-ents-completed-in-time-range
+  "Returns a seq of task entities from the db for the specified time range."
+  [mesos-db start-time-inc end-time-exc]
+  (->> (d/q '[:find [?i ...]
+              :in $ ?st ?et
+              :where
+              [?i :instance/task-id _]
+              [?i :instance/end-time ?t]
+              [(>= ?t ?st)]
+              [(< ?t ?et)]]
+            mesos-db start-time-inc end-time-exc)
        (map (partial d/entity mesos-db))))
 
 (defn submit-job
@@ -290,7 +304,7 @@
    The start simulation time is the min submit time in the trace.
 
    Returns a list of the task entities run"
-  [mesos-hosts trace cycle-step-ms config]
+  [mesos-hosts trace cycle-step-ms config temp-out-trace-file]
   (let [simulation-time (-> trace first :submit-time-ms)
         mesos-datomic-conn (restore-fresh-database! (get config :datomic-url "datomic:mem://mock-mesos"))
         offer-trigger-chan (async/chan)
@@ -307,6 +321,7 @@
                                               :complete-trigger-chan complete-trigger-chan
                                               :state-atom state-atom))
         config (merge {:shares [{:user "default" :mem 4000.0 :cpus 4.0 :gpus 1.0}]
+                       :time-ms-between-incremental-output (-> 10 t/minutes t/in-millis)
                        :time-ms-between-optimizer-calls (-> 3 t/minutes t/in-millis)
                        :time-ms-between-rebalancing (-> 30 t/minutes t/in-millis)}
                       config)
@@ -325,12 +340,42 @@
                                                  :straggler-trigger-chan (async/chan)
                                                  :lingering-task-trigger-chan (async/chan)
                                                  :cancelled-task-trigger-chan (async/chan)}})
-        {:keys [time-ms-between-optimizer-calls time-ms-between-rebalancing]} config]
+        {:keys [time-ms-between-incremental-output time-ms-between-optimizer-calls time-ms-between-rebalancing]} config]
+    ;; launch a thread to perform incremental writes of completed jobs
+    (when temp-out-trace-file
+      (let [last-start-time-atom (atom simulation-time)
+            write-thread (Thread.
+                           ^Runnable
+                           (fn write-completed-tasks []
+                             (while true
+                               (Thread/sleep time-ms-between-incremental-output)
+                               (try
+                                 (let [start-time @last-start-time-atom
+                                       current-time (.getMillis (t/now))
+                                       _ (log/info "Starting temporary output iteration" start-time "to" current-time)
+                                       start-date (Date. ^long start-time)
+                                       end-date (Date. ^long current-time)
+                                       completed-task-ents (pull-all-task-ents-completed-in-time-range
+                                                             (d/db mesos-datomic-conn) start-date end-date)]
+                                   (if (seq completed-task-ents)
+                                     (do
+                                       (log/info "Writing" (count completed-task-ents) "tasks to temporary output for simulation time" current-time)
+                                       (dump-jobs-to-csv completed-task-ents temp-out-trace-file
+                                                         :add-headers (= start-time simulation-time)
+                                                         :append true))
+                                     (log/info "No completed tasks in last" time-ms-between-incremental-output "ms"))
+                                   (reset! last-start-time-atom current-time))
+                                 (catch Throwable ex
+                                   (log/error ex "Error writing incremental completed job output!"))))))]
+        (log/info "temporary output will be updated every" time-ms-between-incremental-output "ms")
+        (.setDaemon write-thread true)
+        (.start write-thread)))
     ;; We are setting time to enable us to have deterministic runs
     ;; of the simulator while hooking into the scheduler as non-invasively
     ;; as possible. A longer explanation can be found in the simulator dev docs.
     (DateTimeUtils/setCurrentMillisFixed simulation-time)
-    (log/info "Starting simulation.")
+    (log/info "Starting simulation at" simulation-time)
+    ;; launch the simulator
     (with-cook-scheduler
       mesos-datomic-conn
       make-mesos-driver-fn
@@ -515,11 +560,12 @@
                    {})
           cycle-step-ms (or cycle-step-ms (:cycle-step-ms config))
           _ (when-not cycle-step-ms
-              (throw (ex-info "Must configure cycle-step-ms on command line or config file")))
+              (throw (ex-info "Must configure cycle-step-ms on command line or config file" {})))
           task-ents (simulate hosts
                               (cheshire/parse-stream (clojure.java.io/reader trace-file) true)
                               cycle-step-ms
-                              config)]
+                              config
+                              (str out-trace-file ".temp-" (System/nanoTime)))]
       (println "tasks run: " (count task-ents))
       (dump-jobs-to-csv task-ents out-trace-file)
       (println "Done writing trace")
@@ -647,8 +693,8 @@
         config {:shares [{:cpus (/ host-cpus 10) :gpus 1.0 :mem (/ host-mem 10) :user "default"}]
                 :scheduler-config {:rebalancer-config {:max-preemption 1.0}
                                    :fenzo-config {:fenzo-max-jobs-considered 200}}}
-        out-trace-a (simulate hosts jobs cycle-step-ms config)
-        out-trace-b (simulate hosts jobs cycle-step-ms config)]
+        out-trace-a (simulate hosts jobs cycle-step-ms config nil)
+        out-trace-b (simulate hosts jobs cycle-step-ms config nil)]
     (is (> (count out-trace-a) 0))
     (is (> (count out-trace-b) 0))
     (is (traces-equivalent? out-trace-a out-trace-b)
