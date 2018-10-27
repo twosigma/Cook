@@ -668,12 +668,14 @@
 (defn job->group-processing-score
   "TODO shams docstring"
   [db job]
-  (-> (some->> job
-               job-ent->group-id
-               (group-id->non-queued-resources-percentage db))
-      (or 0)
-      (max min-group-ranking-score)
-      unchecked-negate-int))
+  (if-let [group-score (some->> job
+                                job-ent->group-id
+                                (group-id->non-queued-resources-percentage db))]
+    ;; prefer longer jobs from the same group
+    [(unchecked-negate-int (max group-score min-group-ranking-score))
+     (some-> job :job/expected-runtime unchecked-negate-int)]
+    [(unchecked-negate-int (max 0 min-group-ranking-score))
+     nil]))
 
 (defn same-user-group-biased-task-comparator
   "Comparator to order same user's tasks with a bias towards promoting tasks with higher group completion percentage."

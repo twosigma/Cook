@@ -1229,9 +1229,9 @@
                     timer (timers/timer (metric-title "sort-jobs-hierarchy-duration" pool-name))
                     ranked-jobs (sort-jobs-by-dru pending-tasks running-tasks user->dru-divisors task-comparator timer pool-name)]
                 (when use-group-scores?
-                  (log/info "Group scores of first 20 jobs"
+                  (log/info "Group scores of first 10 jobs"
                             (->> ranked-jobs
-                                 (take 20)
+                                 (take 10)
                                  (map (fn [job] [(:job/user job)
                                                  (-> job :job/uuid str)
                                                  (util/job->group-processing-score unfiltered-db job)]))
