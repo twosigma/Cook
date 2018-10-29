@@ -294,7 +294,20 @@
   [coll]
   (= coll (sort coll)))
 
-()
+(defn- write-completed-tasks
+  "Writes completed tasks between start-time and current-time to the temp-out-trace-file."
+  [mesos-db time-ms-between-incremental-output temp-out-trace-file simulation-start-time start-time current-time]
+  (log/info "Starting temporary output iteration" start-time "to" current-time)
+  (let [start-date (Date. ^long start-time)
+        end-date (Date. ^long current-time)
+        completed-task-ents (pull-all-task-ents-completed-in-time-range mesos-db start-date end-date)]
+    (if (seq completed-task-ents)
+      (do
+        (log/info "Writing" (count completed-task-ents) "tasks to temporary output for simulation time" current-time)
+        (dump-jobs-to-csv completed-task-ents temp-out-trace-file
+                          :add-headers (= start-time simulation-start-time)
+                          :append true))
+      (log/info "No completed tasks in last" time-ms-between-incremental-output "ms"))))
 
 ;; TODO need way of setting share
 (defn simulate
@@ -346,28 +359,20 @@
       (let [last-start-time-atom (atom simulation-time)
             write-thread (Thread.
                            ^Runnable
-                           (fn write-completed-tasks []
+                           (fn write-completed-tasks-runner []
                              (while true
                                (Thread/sleep time-ms-between-incremental-output)
                                (try
                                  (let [start-time @last-start-time-atom
                                        current-time (.getMillis (t/now))
-                                       _ (log/info "Starting temporary output iteration" start-time "to" current-time)
-                                       start-date (Date. ^long start-time)
-                                       end-date (Date. ^long current-time)
-                                       completed-task-ents (pull-all-task-ents-completed-in-time-range
-                                                             (d/db mesos-datomic-conn) start-date end-date)]
-                                   (if (seq completed-task-ents)
-                                     (do
-                                       (log/info "Writing" (count completed-task-ents) "tasks to temporary output for simulation time" current-time)
-                                       (dump-jobs-to-csv completed-task-ents temp-out-trace-file
-                                                         :add-headers (= start-time simulation-time)
-                                                         :append true))
-                                     (log/info "No completed tasks in last" time-ms-between-incremental-output "ms"))
+                                       mesos-db (d/db mesos-datomic-conn)]
+                                   (write-completed-tasks
+                                     mesos-db time-ms-between-incremental-output temp-out-trace-file
+                                     simulation-time start-time current-time)
                                    (reset! last-start-time-atom current-time))
                                  (catch Throwable ex
                                    (log/error ex "Error writing incremental completed job output!"))))))]
-        (log/info "temporary output will be updated every" time-ms-between-incremental-output "ms")
+        (log/info "Temporary output will be updated every" time-ms-between-incremental-output "ms")
         (.setDaemon write-thread true)
         (.start write-thread)))
     ;; We are setting time to enable us to have deterministic runs
