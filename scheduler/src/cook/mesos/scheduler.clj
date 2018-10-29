@@ -635,15 +635,16 @@
    Further limit the considerable jobs to a maximum of num-considerable jobs."
   [db pending-jobs user->quota user->usage num-considerable pool-name->optimizer-suggested-job-ids-atom pool-name]
   (log/debug "In" pool-name "pool, there are" (count pending-jobs) "pending jobs:" pending-jobs)
-  (let [optimizer-schedule-job-ids-promise (promise)]
-    (swap! pool-name->optimizer-suggested-job-ids-atom
-           (fn [pool-name->optimizer-schedule-job-ids]
-             (->> (pool-name->optimizer-schedule-job-ids pool-name)
-                  (deliver optimizer-schedule-job-ids-promise))
-             ;; TODO determine whether we should be clearing out optimizer data after one use?
-             (assoc pool-name->optimizer-schedule-job-ids pool-name [])))
-    (->> (if-let [optimizer-schedule-job-ids (seq @optimizer-schedule-job-ids-promise)]
-           (let [optimizer-schedule-job-ids-set (into #{} optimizer-schedule-job-ids)
+  (let [optimizer-schedule-job-ids-atom (atom [])]
+    (when (seq @pool-name->optimizer-suggested-job-ids-atom)
+      (swap! pool-name->optimizer-suggested-job-ids-atom
+             (fn [pool-name->optimizer-schedule-job-ids]
+               (->> (pool-name->optimizer-schedule-job-ids pool-name)
+                    (reset! optimizer-schedule-job-ids-atom))
+               ;; TODO determine whether we should be clearing out optimizer data after one use?
+               (assoc pool-name->optimizer-schedule-job-ids pool-name []))))
+    (->> (if-let [optimizer-schedule-job-ids (seq @optimizer-schedule-job-ids-atom)]
+           (let [optimizer-schedule-job-ids-set (set optimizer-schedule-job-ids)
                  optimizer-approved? (fn optimizer-approved? [job]
                                        (contains? optimizer-schedule-job-ids-set (:job/uuid job)))]
              (concat
