@@ -124,6 +124,7 @@
         (is (= (nth reasons 3)
                ["The job is now under investigation. Check back in a minute for more details!"
                 {}]))))
+
     (testing "Waiting job returns multiple reasons, and is placed under investigation."
       @(d/transact conn [[:db/add waiting-job-id :job/state :job.state/waiting]])
       (let [db (d/db conn)

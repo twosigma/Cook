@@ -144,7 +144,7 @@
     (when in-debt?
       ["You have exceeded the limit of jobs launched per minute"
        {:max-jobs-per-minute tokens-replenished-per-minute
-        :seconds-until-can-launch (int (Math/ceil (/ time-until-out-of-debt 1000.0)))}])))
+        :seconds-until-can-launch (-> time-until-out-of-debt (/ 1000.0) Math/ceil int)}])))
 
 (defn reasons
   "Top level function which assembles a data structure representing the list
