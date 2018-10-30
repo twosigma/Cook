@@ -138,10 +138,11 @@
 (defn- check-launch-rate-limit
   "Return the appropriate error message if a user's job is unscheduled because they're over the job launch rate limit threshold"
   [{:keys [job/user]}]
-  (let [time-until-out-of-debt (ratelimit/time-until-out-of-debt-millis! ratelimit/job-launch-rate-limiter user)
+  (let [enforcing-job-launch-rate-limit? (ratelimit/enforce? ratelimit/job-launch-rate-limiter)
+        time-until-out-of-debt (ratelimit/time-until-out-of-debt-millis! ratelimit/job-launch-rate-limiter user)
         in-debt? (not (zero? time-until-out-of-debt))
         {:keys [tokens-replenished-per-minute]} ratelimit/job-launch-rate-limiter]
-    (when in-debt?
+    (when (and enforcing-job-launch-rate-limit? in-debt?)
       ["You have exceeded the limit of jobs launched per minute"
        {:max-jobs-per-minute tokens-replenished-per-minute
         :seconds-until-can-launch (-> time-until-out-of-debt (/ 1000.0) Math/ceil int)}])))
