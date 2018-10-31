@@ -60,8 +60,7 @@
   "Protocol defining a tool to produce a schedule to execute"
   (produce-schedule
     [this queue running]
-    "Returns a schedule of what jobs to place on what machines
-     and what hosts to purchase at different time steps.
+    "Returns a schedule of what jobs to place on what machines at different time steps.
      The returned value must conform to the Schedule schema above.
 
      Parameters:
@@ -90,7 +89,7 @@
 (defn calculate-expected-complete-time
   "Returns the expected time remaining to job completion.
    Simple model for if run time exceeds expected runtime: the more it exceeds expected, the longer we expect it to take.
-   TODO: Issue #484 get better model!"
+   TODO: Issue #1007 https://github.com/twosigma/Cook/issues/1007"
   [instance expected-duration now]
   (->> (instance-runtime instance now)
        (- expected-duration)
@@ -144,12 +143,12 @@
    to a remote server. The input configuration has the following keys:
    cpu-share: the global cpu share of each user,
    default-runtime: the default expected runtime of a job,
-   host-group-infos: the homogeneous profile of the cluster we are targeting,
+   host-group-infos: the profile of the (homogeneous) agents on the Mesos cluster we are targeting,
    max-waiting: the maximum number of waiting jobs to send to the optimizer,
    mem-share: the global mem share of each user,
    opt-params: a map with string keys that are passed to the optimizer as additional configuration parameters,
    opt-server: the url for the remote optimizer server,
-   step-list: the list of future run times (s.g. starting at 0) we want the optimizer to compute for."
+   step-list: the list of future run times (e.g. starting at 0) we want the optimizer to compute for."
   [{:keys [cpu-share default-runtime host-group-infos max-waiting mem-share opt-params opt-server step-list]
     :or {opt-params {}}
     :as config}]
@@ -171,7 +170,7 @@
           (log/info "Optimizer inputs" {:running-tasks (count running-tasks)
                                         :waiting-jobs (count waiting-jobs)})
           (if (-> waiting-jobs count pos?)
-            (let [alpha 0.5
+            (let [alpha 0.5 ;; smoothing factor for computing the ema of memory usage
                   now (tc/to-date (t/now))
                   _ (log/info "Converting waiting jobs to optimizer jobs")
                   waiting-opt-jobs (timers/time!
@@ -228,15 +227,16 @@
 
 (defn pool-optimizer-cycle
   "Starts a cycle that:
-   1. Gets queue, running, offer and purchasable host info
-   2. Calls the `optimizer` to get a schedule
+   1. Gets queued and running jobs, and
+   2. Calls the `optimizer` to get a schedule.
 
    Parameters:
    get-queue -- fn, 1-args fn that returns ordered list of jobs to run for provided pool-name
    get-running -- fn, 1-args fn that returns a set of tasks running for provided pool-name
    optimizer -- instance of Optimizer
 
-   Raises an exception if there was a problem in the execution"
+   Returns the schedule produced by the optimizer.
+   Raises an exception if there was a problem in the execution."
   [pool-name get-queue get-running optimizer]
   (let [queue (future (get-queue pool-name))
         running (future (get-running pool-name))
