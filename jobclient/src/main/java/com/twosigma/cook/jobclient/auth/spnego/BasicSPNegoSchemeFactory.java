@@ -40,6 +40,19 @@ import org.ietf.jgss.Oid;
 public class BasicSPNegoSchemeFactory extends SPNegoSchemeFactory {
 
     /**
+     * The canonical name lookup done by the HttpClient does not always give the value
+     * expected by the underlying Kerberos library, leading to hostname mismatch errors.
+     * We disable canonicalization here and allow Kerberos to do its own resolution.
+     */
+    public static final boolean USE_CANONICAL_HOSTNAME = false;
+
+    public static SPNegoSchemeFactory build(final boolean stripPort, final GSSCredentialProvider credentialProvider) {
+        return credentialProvider == null
+            ? new SPNegoSchemeFactory(true, USE_CANONICAL_HOSTNAME)
+            : new BasicSPNegoSchemeFactory(true, credentialProvider);
+    }
+
+    /**
      * In the apache.httpclient 4.3.x version, {@code SPNEGO_OID = "1.3.6.1.5.5.2"}. However, we are
      * using {@code SPNEGO_OID = "1.2.840.113554.1.2.2"} here.
      *
@@ -72,7 +85,7 @@ public class BasicSPNegoSchemeFactory extends SPNegoSchemeFactory {
         }
 
         BasicSPNegoScheme(final boolean stripPort, final GSSCredentialProvider credentialProvider) {
-            super(stripPort);
+            super(stripPort, USE_CANONICAL_HOSTNAME);
             _credentialProvider = credentialProvider;
         }
 
@@ -109,8 +122,8 @@ public class BasicSPNegoSchemeFactory extends SPNegoSchemeFactory {
 
     private final GSSCredentialProvider _credentialProvider;
 
-    public BasicSPNegoSchemeFactory(final boolean stripPort, final GSSCredentialProvider credentialProvider) {
-        super(stripPort);
+    protected BasicSPNegoSchemeFactory(final boolean stripPort, final GSSCredentialProvider credentialProvider) {
+        super(stripPort, USE_CANONICAL_HOSTNAME);
         _credentialProvider = credentialProvider;
     }
 
