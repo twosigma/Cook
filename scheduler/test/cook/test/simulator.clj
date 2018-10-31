@@ -359,12 +359,12 @@
         optimizer-config {:optimizer {:create-fn 'cook.mesos.optimizer/create-optimizer-server
                                       :config {:cpu-share (:cpus default-share)
                                                :default-runtime (-> (last step-multiplers) (* cycle-step-ms))
-                                               :host-info {:attributes {:runtime-multiplier 1}
-                                                           :count num-hosts
-                                                           :cpus host-cpus
-                                                           :instance-type "host"
-                                                           :mem host-mem
-                                                           :time-to-start 100}
+                                               :host-group-infos {:attributes {:runtime-multiplier 1}
+                                                                  :count num-hosts
+                                                                  :cpus host-cpus
+                                                                  :instance-type "host"
+                                                                  :mem host-mem
+                                                                  :time-to-start 100}
                                                :max-waiting (* 5 max-waiting)
                                                :mem-share (:mem default-share)
                                                :opt-params (-> config :opt-params)

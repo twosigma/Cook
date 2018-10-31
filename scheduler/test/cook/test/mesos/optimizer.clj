@@ -12,11 +12,11 @@
   (let [server-url "http://optimizer.com/cook"
         config {:cpu-share 200
                 :default-runtime 120000
-                :host-info {:count 100
-                            :cpus 40
-                            :instance-type "basic"
-                            :mem 320000
-                            :time-to-start 100}
+                :host-group-infos {:count 100
+                                   :cpus 40
+                                   :instance-type "basic"
+                                   :mem 320000
+                                   :time-to-start 100}
                 :max-waiting 1500
                 :mem-share 40000
                 :opt-params {"param1" "value1"

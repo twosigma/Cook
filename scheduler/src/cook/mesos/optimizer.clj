@@ -29,7 +29,7 @@
 
 (s/defschema TimePeriodMs NonNegInt)
 
-(s/defschema HostInfo
+(s/defschema HostGroupInfo
   "Example:
    {:count 4
     :cpus 8
@@ -144,25 +144,25 @@
    to a remote server. The input configuration has the following keys:
    cpu-share: the global cpu share of each user,
    default-runtime: the default expected runtime of a job,
-   host-info: the homogeneous profile of the cluster we are targeting,
+   host-group-infos: the homogeneous profile of the cluster we are targeting,
    max-waiting: the maximum number of waiting jobs to send to the optimizer,
    mem-share: the global mem share of each user,
    opt-params: a map with string keys that are passed to the optimizer as additional configuration parameters,
    opt-server: the url for the remote optimizer server,
    step-list: the list of future run times (s.g. starting at 0) we want the optimizer to compute for."
-  [{:keys [cpu-share default-runtime host-info max-waiting mem-share opt-params opt-server step-list]
+  [{:keys [cpu-share default-runtime host-group-infos max-waiting mem-share opt-params opt-server step-list]
     :or {opt-params {}}
     :as config}]
   {:pre [(integer? default-runtime)
          (pos? default-runtime)
-         (s/validate HostInfo host-info)
+         (s/validate HostGroupInfo host-group-infos)
          (integer? max-waiting)
          (pos? max-waiting)
          (seq step-list)]}
   (log/info "Optimizer config" config)
   (let [host-group 0
         host-name->host-group (constantly host-group)
-        host-group-descriptions [host-info]
+        host-group-descriptions [host-group-infos]
         ;; exponential moving average (ema) of memory usage based on running tasks of users
         user->ema-mem-usage (atom {})]
     (reify Optimizer
