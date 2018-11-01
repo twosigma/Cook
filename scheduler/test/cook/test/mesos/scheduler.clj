@@ -1331,6 +1331,7 @@
         (is (= gpu-jobs
                (sched/pending-jobs->considerable-jobs
                  (d/db conn) gpu-jobs user->quota user->usage num-considerable (atom {}) nil)))))
+
     (testing "jobs inside usage quota limited by num-considerable of 3"
       (let [user->usage {test-user {:count 1, :cpus 2, :mem 1024, :gpus 0}}
             user->quota {test-user {:count 10, :cpus 50, :mem 32768, :gpus 10}}
@@ -1341,6 +1342,7 @@
         (is (= gpu-jobs
                (sched/pending-jobs->considerable-jobs
                  (d/db conn) gpu-jobs user->quota user->usage num-considerable (atom {}) nil)))))
+
     (testing "jobs inside usage quota limited by num-considerable of 2"
       (let [user->usage {test-user {:count 1, :cpus 2, :mem 1024, :gpus 0}}
             user->quota {test-user {:count 10, :cpus 50, :mem 32768, :gpus 10}}
@@ -1351,6 +1353,7 @@
         (is (= gpu-jobs
                (sched/pending-jobs->considerable-jobs
                  (d/db conn) gpu-jobs user->quota user->usage num-considerable (atom {}) nil)))))
+
     (testing "jobs inside usage quota limited by num-considerable of 1"
       (let [user->usage {test-user {:count 1, :cpus 2, :mem 1024, :gpus 0}}
             user->quota {test-user {:count 10, :cpus 50, :mem 32768, :gpus 10}}
@@ -1361,6 +1364,7 @@
         (is (= [job-5]
                (sched/pending-jobs->considerable-jobs
                  (d/db conn) gpu-jobs user->quota user->usage num-considerable (atom {}) nil)))))
+
     (testing "jobs inside usage quota influenced by optimizer"
       (let [user->usage {test-user {:count 1, :cpus 2, :mem 1024, :gpus 0}}
             user->quota {test-user {:count 10, :cpus 50, :mem 32768, :gpus 10}}
@@ -1377,6 +1381,7 @@
                  pool-name->optimizer-suggested-job-ids-atom "gpu-pool")))
         (is (= {"cpu-pool" [] "gpu-pool" []}
                @pool-name->optimizer-suggested-job-ids-atom))))
+
     (testing "jobs inside usage quota influenced by optimizer limited by num-considerable of 1"
       (let [user->usage {test-user {:count 1, :cpus 2, :mem 1024, :gpus 0}}
             user->quota {test-user {:count 10, :cpus 50, :mem 32768, :gpus 10}}
@@ -1393,6 +1398,7 @@
                  pool-name->optimizer-suggested-job-ids-atom "gpu-pool")))
         (is (= {"cpu-pool" [] "gpu-pool" []}
                @pool-name->optimizer-suggested-job-ids-atom))))
+
     (testing "some jobs inside usage quota"
       (let [user->usage {test-user {:count 1, :cpus 2, :mem 1024, :gpus 0}}
             user->quota {test-user {:count 5, :cpus 10, :mem 4096, :gpus 10}}
@@ -1403,6 +1409,7 @@
         (is (= [job-5]
                (sched/pending-jobs->considerable-jobs
                  (d/db conn) gpu-jobs user->quota user->usage num-considerable (atom {}) nil)))))
+
     (testing "some jobs inside usage quota - quota gpus not ignored"
       (let [user->usage {test-user {:count 1, :cpus 2, :mem 1024, :gpus 0}}
             user->quota {test-user {:count 5, :cpus 10, :mem 4096, :gpus 0}}
@@ -1413,6 +1420,7 @@
         (is (= []
                (sched/pending-jobs->considerable-jobs
                  (d/db conn) gpu-jobs user->quota user->usage num-considerable (atom {}) nil)))))
+
     (testing "all jobs exceed quota"
       (let [user->usage {test-user {:count 1, :cpus 2, :mem 1024, :gpus 0}}
             user->quota {test-user {:count 5, :cpus 3, :mem 4096, :gpus 10}}
