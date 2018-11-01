@@ -78,20 +78,18 @@
   (reify Optimizer
     (produce-schedule [_ _ _] {0 {:suggested-matches []}})))
 
-(defn instance-runtime
+(defn instance->runtime
   "Returns the instance runtime."
-  [instance now]
-  (let [start (:instance/start-time instance)
-        end (:instance/end-time instance now)]
-    (- (.getTime end)
-       (.getTime start))))
+  [{:keys [instance/end-time instance/start-time]} now]
+  (- (-> end-time (or now) .getTime)
+     (.getTime start-time)))
 
 (defn calculate-expected-complete-time
   "Returns the expected time remaining to job completion.
    Simple model for if run time exceeds expected runtime: the more it exceeds expected, the longer we expect it to take.
    TODO: Issue #1007 https://github.com/twosigma/Cook/issues/1007"
   [instance expected-duration now]
-  (->> (instance-runtime instance now)
+  (->> (instance->runtime instance now)
        (- expected-duration)
        Math/abs))
 
@@ -103,8 +101,8 @@
 
 (defn waiting-job->optimizer-job
   "Converts a waiting job to an optimizer job representation."
-  [job default-runtime]
-  (let [expected-duration (get job :job/expected-runtime default-runtime)
+  [{:keys [job/expected-runtime job/submit-time job/user job/uuid] :as job} default-runtime]
+  (let [expected-duration (or expected-runtime default-runtime)
         resources (util/job-ent->resources job)
         batch-uuid (job->batch-uuid job)]
     (merge {:batch batch-uuid
@@ -113,9 +111,9 @@
             :expected_complete_time -1
             :running_host_group -1 ; we do not support multiple host groups currently
             :state "waiting"
-            :submit_time (-> job :job/submit-time .getTime)
-            :user (:job/user job)
-            :uuid (:job/uuid job)}
+            :submit_time (.getTime submit-time)
+            :user user
+            :uuid uuid}
            resources)))
 
 (defn running-instance->optimizer-job
