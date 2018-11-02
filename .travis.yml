@@ -66,3 +66,9 @@ matrix:
     - name: 'Cook Executor tests'
       before_script: cd executor && ./travis/setup.sh
       script: ./travis/run_tests.sh
+
+    - name: 'Cook Scheduler integration tests with job launch rate limit'
+      services: docker
+      install: sudo ./travis/install_mesos.sh
+      before_script: cd integration && ./travis/prepare_integration.sh
+      script: ./travis/run_integration.sh --pools=off --auth=http-basic --job-launch-rate-limit=on

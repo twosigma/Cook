@@ -759,9 +759,10 @@
                     task-infos (task/compile-mesos-messages offers task-metadata-seq)]]
         (log/debug "Matched task-infos" task-infos)
         (mesos/launch-tasks! driver (mapv :id offers) task-infos)
-        (doseq [{:keys [hostname task-request user] :as meta} task-metadata-seq]
+        (doseq [{:keys [hostname task-request] :as meta} task-metadata-seq]
           ; Iterate over the tasks we matched
-          (ratelimit/spend! ratelimit/job-launch-rate-limiter user 1)
+          (let [user (get-in task-request [:job :job/user])]
+            (ratelimit/spend! ratelimit/job-launch-rate-limiter user 1))
           (locking fenzo
             (.. fenzo
                 (getTaskAssigner)

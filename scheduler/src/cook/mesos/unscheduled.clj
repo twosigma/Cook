@@ -143,7 +143,7 @@
         in-debt? (not (zero? time-until-out-of-debt))
         {:keys [tokens-replenished-per-minute]} ratelimit/job-launch-rate-limiter]
     (when (and enforcing-job-launch-rate-limit? in-debt?)
-      ["You have exceeded the limit of jobs launched per minute"
+      ["You have exceeded the limit of jobs launched per minute."
        {:max-jobs-per-minute tokens-replenished-per-minute
         :seconds-until-can-launch (-> time-until-out-of-debt (/ 1000.0) Math/ceil int)}])))
 

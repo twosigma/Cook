@@ -152,7 +152,7 @@
                 {:count {:limit 2 :usage 3}}]))
 
         (is (= (nth reasons 2)
-               ["You have exceeded the limit of jobs launched per minute" {:max-jobs-per-minute 100.0, :seconds-until-can-launch 2}]))
+               ["You have exceeded the limit of jobs launched per minute." {:max-jobs-per-minute 100.0, :seconds-until-can-launch 2}]))
 
         (is (= (nth reasons 3)
                ["You have 2 other jobs ahead in the queue."
