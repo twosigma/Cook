@@ -1950,3 +1950,17 @@ class CookCliTest(util.CookTest):
             util.wait_for_running_instance(self.cook_url, uuids[0])
         finally:
             util.kill_jobs(self.cook_url, uuids)
+
+    def test_submit_labels(self):
+        label_value_1 = str(uuid.uuid4())
+        label_value_2 = str(uuid.uuid4())
+        cp, uuids = cli.submit('ls', self.cook_url,
+                               submit_flags=f'--label label1={label_value_1} --label label2={label_value_2}')
+        self.assertEqual(0, cp.returncode, cp.stderr)
+        try:
+            job = util.load_job(self.cook_url, uuids[0])
+            labels = job['labels']
+            self.assertEqual(label_value_1, labels['label1'])
+            self.assertEqual(label_value_2, labels['label2'])
+        finally:
+            util.kill_jobs(self.cook_url, uuids)
