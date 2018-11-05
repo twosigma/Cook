@@ -1229,13 +1229,18 @@
                     timer (timers/timer (metric-title "sort-jobs-hierarchy-duration" pool-name))
                     ranked-jobs (sort-jobs-by-dru pending-tasks running-tasks user->dru-divisors task-comparator timer pool-name)]
                 (when use-group-scores?
-                  (log/info "Group scores of first 10 jobs"
-                            (->> ranked-jobs
-                                 (take 10)
-                                 (map (fn [job] [(:job/user job)
-                                                 (-> job :job/uuid str)
-                                                 (util/job->group-processing-score unfiltered-db job)]))
-                                 (vec))))
+                  (log/info "Multi-job user group scores from first 100 jobs:")
+                  (->> ranked-jobs
+                       (take 100)
+                       (map (fn [job]
+                              [(-> job :job/user)
+                               (-> job :job/uuid str)
+                               (-> job :job/priority)
+                               (util/job->group-processing-score unfiltered-db job)]))
+                       (group-by first)
+                       (pc/map-vals (fn [es]
+                                      (when (-> es count (> 3))
+                                        (log/info es) )))))
                 [pool-name ranked-jobs]))]
       (into {} (map sort-jobs-by-dru-pool-helper) pool-name->sort-jobs-by-dru-fn))))
 
@@ -1325,10 +1330,7 @@
   [conn pool-name->pending-jobs-atom task-constraints trigger-chan]
   (let [offensive-jobs-ch (make-offensive-job-stifler conn)
         offensive-job-filter (partial filter-offensive-jobs task-constraints offensive-jobs-ch)
-        use-group-counter (atom 0)
-        use-group-completion? (fn use-group-completion? []
-                                (swap! use-group-counter inc)
-                                (zero? (mod @use-group-counter 10)))]
+        use-group-completion? (constantly true)]
     (util/chime-at-ch trigger-chan
                       (fn rank-jobs-event []
                         (reset! pool-name->pending-jobs-atom

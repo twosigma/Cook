@@ -163,7 +163,7 @@
                           ; The :group/job key normally returns a set, so let's do the same for compatibility
                           hash-set))]
          (cond-> job
-                 group (assoc :group/_job group)))
+           group (assoc :group/_job group)))
        (catch Exception e
          ;; not logging the stacktrace as it adds noise and can cause the log files to blow up in size
          (log/error "Error while converting job entity to a map" {:job job :message (.getMessage e)}))))))
@@ -227,10 +227,10 @@
                       (condp contains? resource
                         #{:cpus :mem :gpus} (assoc m resource (:resource/amount r))
                         #{:uri} (update-in m [:uris] (fnil conj [])
-                                           {:cache (:resource.uri/cache? r false)
-                                            :executable (:resource.uri/executable? r false)
-                                            :value (:resource.uri/value r)
-                                            :extract (:resource.uri/extract? r false)}))))
+                                             {:cache (:resource.uri/cache? r false)
+                                              :executable (:resource.uri/executable? r false)
+                                              :value (:resource.uri/value r)
+                                              :extract (:resource.uri/extract? r false)}))))
                   {:ports (:job/ports job-ent 0)}
                   (:job/resource job-ent)))]
     (lookup-cache-datomic-entity! job-ent->resources-cache job-ent->resources-miss job)))
@@ -423,9 +423,9 @@
                (filter #(pool/check-pool-for-listing % :job/pool pool-name' default-pool?)))]
       (->>
         (cond->> jobs
-                 (not include-custom-executor?) (filter #(false? (:job/custom-executor %)))
-                 (instance-states state) (filter #(= state (job-ent->state %)))
-                 name-filter-fn (filter #(name-filter-fn (:job/name %))))
+          (not include-custom-executor?) (filter #(false? (:job/custom-executor %)))
+          (instance-states state) (filter #(= state (job-ent->state %)))
+          name-filter-fn (filter #(name-filter-fn (:job/name %))))
         ; No need to sort. We're traversing in entity_id order, so in time order.
         (take limit)
         doall))))
@@ -452,9 +452,9 @@
       (timers/timer ["cook-mesos" "scheduler" (str "get-" (name state) "-jobs-by-user-duration")])
       (->>
         (cond->> (get-jobs-by-user-and-state-and-submit db user start end state-keyword)
-                 (not include-custom-executor?) (filter #(false? (:job/custom-executor %)))
-                 name-filter-fn (filter #(name-filter-fn (:job/name %)))
-                 (and include-custom-executor? (= :job.state/waiting state-keyword)) (remove uncommitted?))
+          (not include-custom-executor?) (filter #(false? (:job/custom-executor %)))
+          name-filter-fn (filter #(name-filter-fn (:job/name %)))
+          (and include-custom-executor? (= :job.state/waiting state-keyword)) (remove uncommitted?))
         (filter #(pool/check-pool-for-listing % :job/pool pool-name' default-pool?))
         ; No need to sort. We're traversing in entity_id order, so in time order.
         (take limit)
@@ -680,21 +680,32 @@
 (defn same-user-group-biased-task-comparator
   "Comparator to order same user's tasks with a bias towards promoting tasks with higher group completion percentage."
   [db]
-  (let [group-id->ranking-score-atom (atom {})
-        task->group-ranking-score (fn [task]
-                                    (let [group-id (some-> task :job/_instance job-ent->group-id)]
-                                      (if-let [group-ranking-score (get @group-id->ranking-score-atom group-id)]
-                                        group-ranking-score
-                                        (let [group-ranking-score (job->group-processing-score db (:job/_instance task))]
-                                          (swap! group-id->ranking-score-atom assoc group-id group-ranking-score)
-                                          group-ranking-score))))]
+  (let [comparator-id (str "comp-" (System/nanoTime))
+        entry-id->feature-vector-atom (atom {})
+        task->group-feature-vector (fn [task]
+                                     (let [entry-id (or (some-> task :instance/task-id str)
+                                                        (some-> task :job/_instance :job/uuid str))]
+                                       (if-let [feature-vector (get @entry-id->feature-vector-atom entry-id)]
+                                         feature-vector
+                                         (let [[priority-score & rem-score] (task->feature-vector task)
+                                               group-score (job->group-processing-score db (:job/_instance task))
+                                               feature-vector (-> rem-score
+                                                                  (conj group-score)
+                                                                  (conj priority-score)
+                                                                  vec)]
+                                           (swap! entry-id->feature-vector-atom assoc entry-id feature-vector)
+                                           (comment
+                                             log/info
+                                             "group feature vector for"
+                                             comparator-id
+                                             (some-> task :job/_instance :job/user)
+                                             (or (some-> task :instance/task-id str)
+                                                 (some-> task :job/_instance :job/uuid str))
+                                             feature-vector)
+                                           feature-vector))))]
     (fn [task1 task2]
-      (let [group-ranking-comparison (compare (task->group-ranking-score task1)
-                                              (task->group-ranking-score task2))]
-        (if (zero? group-ranking-comparison)
-          (compare (task->feature-vector task1)
-                   (task->feature-vector task2))
-          group-ranking-comparison)))))
+      (compare (task->group-feature-vector task1)
+               (task->group-feature-vector task2)))))
 
 (defn retry-job!
   "Sets :job/max-retries to the given value for the given job UUID.
