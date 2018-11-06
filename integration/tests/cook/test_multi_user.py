@@ -268,7 +268,7 @@ class MultiUserCookTest(util.CookTest):
         with user:
             jobs = []
             try:
-                jobspec = {"command":"sleep 240", 'cpus': 0.13, 'mem': 132}
+                jobspec = {"command":"sleep 240", 'cpus': 0.03, 'mem': 32}
                 # Submit 9 jobs. They should all launch.
                 jobs1a, resp1a = util.submit_jobs(self.cook_url, jobspec, 9)
                 jobs.extend(jobs1a)
