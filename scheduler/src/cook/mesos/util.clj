@@ -595,22 +595,32 @@
 
 (def ^:const default-job-priority 50)
 
-
+;; TODO shams fix the docstring
 (defn task->feature-vector
   "Vector of comparable features of a task.
-   Last two elements are aribitary tie breakers.
+   Last two elements are arbitrary tie breakers.
    Use :db/id because they guarantee uniqueness for different entities
    (:db/id task) is not sufficient because synthetic task entities don't have :db/id
-   This assumes there are at most one synthetic task for a job, otherwise uniqueness invariant will break"
+   This assumes there are at most one synthetic task for a job, otherwise uniqueness invariant will break."
   [task]
   (let [task->feature-vector-miss
-        (fn [task]
-          [(- (:job/priority (:job/_instance task) default-job-priority))
-           (:instance/start-time task (java.util.Date. Long/MAX_VALUE))
-           (:db/id task)
-           (:db/id (:job/_instance task))])
+        (fn task->feature-vector-miss [task]
+          [;; higher priority jobs always go first
+           (-> task :job/_instance :job/priority (or default-job-priority) unchecked-negate-int)
+           ;; prefer already running tasks over queued tasks (jobs)
+           (or (some-> task :instance/start-time .getTime)
+               Long/MAX_VALUE)
+           ;; prioritize on batch submission time
+           (or (-> task :job/_instance :group/_job first :db/id)
+               (-> task :job/_instance :job/commit-latch :db/id)
+               (-> task :job/_instance :db/id))
+           ;; prefer longer running jobs in the same batch
+           (-> task :job/_instance :job/expected-runtime (or 0) unchecked-negate-int)
+           ;; break ties
+           (or (-> task :db/id)
+               (-> task :job/_instance :db/id))])
         extract-key
-        (fn [item]
+        (fn task->feature-vector-key [item]
           (or (:db/id item) (:db/id (:job/_instance item))))]
     (lookup-cache! task->feature-vector-cache extract-key task->feature-vector-miss task)))
 
