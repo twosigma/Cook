@@ -307,6 +307,14 @@
            port-mapping))
        port-mappings))
 
+(defn- resource-map->mesos-resources
+  [resource-map]
+  (map (fn [[type amount]]
+         {:name (name type)
+          :type :value-scalar
+          :scalar amount})
+       resource-map))
+
 (defn task-info->mesos-message
   "Given a clojure data structure (based on Cook's internal data format for jobs),
    which has already been decorated with everything we need to know about
@@ -332,6 +340,7 @@
                                 (fn [volumes]
                                   (map #(update % :mode cook-volume-mode->mesomatic-volume-mode)
                                        volumes)))))
+        executor-config (config/executor-config)
         executor {:command command
                   :executor-id (mtypes/->ExecutorID (str task-id))
                   :framework-id (mtypes/->FrameworkID framework-id)
@@ -357,6 +366,7 @@
 
             (= executor-key :cook-executor)
             (assoc :executor (assoc executor :name cook-executor-name
+                                             :resources (resource-map->mesos-resources (:resources executor-config))
                                              :source cook-executor-source))
 
             (= executor-key :custom-executor)

@@ -220,19 +220,23 @@
               (is (= (-> msg-env :variables first :value) "VAR"))))))
 
       (testing "cook-executor"
-        (let [cook-executor-task (assoc task :data (.getBytes command "UTF-8")
-                                             :executor-key :cook-executor)
-              cook-executor-msg (->> cook-executor-task
-                                     task/task-info->mesos-message
-                                     (mtypes/->pb :TaskInfo)
-                                     mtypes/pb->data)]
-          ;; Check custom executor built correctly
-          (is (= command (String. (.toByteArray (:data cook-executor-msg)))))
-          (is (= (-> cook-executor-msg :executor :command :value) (-> task :command :value)))
-          (is (= (-> cook-executor-msg :executor :executor-id :value) (:task-id task)))
-          (is (= (-> cook-executor-msg :executor :framework-id :value) (-> task :framework-id)))
-          (is (= (-> cook-executor-msg :executor :name) task/cook-executor-name))
-          (is (= (-> cook-executor-msg :executor :source) task/cook-executor-source))))
+        (with-redefs [cook.config/executor-config (constantly {:resources {:cpus 0.01
+                                                                           :mem 32}})]
+          (let [cook-executor-task (assoc task :data (.getBytes command "UTF-8")
+                                          :executor-key :cook-executor)
+                cook-executor-msg (->> cook-executor-task
+                                       task/task-info->mesos-message
+                                       (mtypes/->pb :TaskInfo)
+                                       mtypes/pb->data)]
+            ;; Check custom executor built correctly
+            (is (= command (String. (.toByteArray (:data cook-executor-msg)))))
+            (is (= (-> cook-executor-msg :executor :command :value) (-> task :command :value)))
+            (is (= (-> cook-executor-msg :executor :executor-id :value) (:task-id task)))
+            (is (= (-> cook-executor-msg :executor :framework-id :value) (-> task :framework-id)))
+            (is (= (-> cook-executor-msg :executor :name) task/cook-executor-name))
+            (is (= (-> cook-executor-msg :executor :resources) [(mtypes/->Resource "cpus" :value-scalar 0.01 [] #{} "*")
+                                                                (mtypes/->Resource "mem" :value-scalar 32.0 [] #{} "*")]))
+            (is (= (-> cook-executor-msg :executor :source) task/cook-executor-source)))))
 
       (testing "custom-executor"
         (let [custom-executor-task (assoc task :data (.getBytes (pr-str {:instance "5"}) "UTF-8")
