@@ -200,6 +200,13 @@ def submit(clusters, args, _):
         if job_template.get('env'):
             job_template['env'] = dict([e.split('=', maxsplit=1) for e in job_template['env']])
 
+        if job_template.get('label'):
+            labels = dict([l.split('=', maxsplit=1) for l in job_template['label']])
+            job_template.pop('label')
+            if 'labels' not in job_template:
+                job_template['labels'] = {}
+            job_template['labels'].update(labels)
+
         jobs = [deep_merge(job_template, {'command': c}) for c in commands]
 
     for job in jobs:
@@ -256,6 +263,8 @@ def register(add_parser, add_defaults):
     submit_parser.add_argument('--pool', '-P', help='pool name for job', type=str, metavar='NAME', dest='pool-name')
     submit_parser.add_argument('--docker-image', '-i', help='docker image for job',
                                type=str, metavar='IMAGE', dest='docker-image')
+    submit_parser.add_argument('--label', '-l', help='label for job (can be repeated)',
+                               metavar='KEY=VALUE', action='append')
     submit_parser.add_argument('command', nargs=argparse.REMAINDER)
 
     add_defaults('submit', {'cpus': 1, 'max-retries': 1, 'mem': 128, 'command-prefix': ''})

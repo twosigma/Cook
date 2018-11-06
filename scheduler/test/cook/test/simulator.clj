@@ -10,7 +10,7 @@
             [clojure.data.csv :as csv]
             [clojure.data.json :as json]
             [clojure.java.io :as io]
-            [clojure.tools.cli :refer  [parse-opts]]
+            [clojure.tools.cli :refer [parse-opts]]
             [clojure.tools.logging :as log]
             [clojure.walk :refer (keywordize-keys)]
             [com.rpl.specter :refer (transform ALL MAP-VALS MAP-KEYS select FIRST)]
@@ -22,9 +22,11 @@
             [cook.test.testutil :refer (restore-fresh-database! poll-until)]
             [datomic.api :as d]
             [plumbing.core :refer (map-vals map-keys map-from-vals)])
-  (:import org.apache.curator.framework.CuratorFrameworkFactory
+  (:import java.util.Date
+           org.apache.curator.framework.CuratorFrameworkFactory
            org.apache.curator.framework.state.ConnectionStateListener
-           org.apache.curator.retry.BoundedExponentialBackoffRetry)
+           org.apache.curator.retry.BoundedExponentialBackoffRetry
+           org.joda.time.DateTimeUtils)
   (:gen-class))
 
 ;;; This namespace contains a simulator for cook scheduler that accepts a trace file
@@ -41,8 +43,8 @@
   ([]
    (setup-test-curator-framework 2282))
   ([zk-port]
-   ;; Copied from src/cook/components
-   ;; TODO: don't copy from components
+    ;; Copied from src/cook/components
+    ;; TODO: don't copy from components
    (let [retry-policy (BoundedExponentialBackoffRetry. 100 120000 10)
          ;; The 180s session and 30s connection timeouts were pulled from a google group
          ;; recommendation
@@ -159,46 +161,46 @@
   (let [job (:job/_instance task)
         resources (util/job-ent->resources job)
         group (first (:group/_job job))]
-    {:job_id  (str (:job/uuid job))
-     :instance_id  (:instance/task-id task)
-     :submit_time_ms  (.getTime (:job/submit-time job))
-     :mesos_start_time_ms  (if (:instance/mesos-start-time task)
-                             (.getTime (:instance/mesos-start-time task))
-                             -1)
+    {:job_id (str (:job/uuid job))
+     :instance_id (:instance/task-id task)
+     :submit_time_ms (.getTime (:job/submit-time job))
+     :mesos_start_time_ms (if (:instance/mesos-start-time task)
+                            (.getTime (:instance/mesos-start-time task))
+                            -1)
      :group_id (:group/uuid group)
-     :start_time_ms  (.getTime (:instance/start-time task))
-     :end_time_ms  (.getTime (or (:instance/end-time task) (tc/to-date (t/now))))
+     :start_time_ms (.getTime (:instance/start-time task))
+     :end_time_ms (.getTime (or (:instance/end-time task) (tc/to-date (t/now))))
      :expected_run_time (:job/expected-runtime job)
-     :status  (:instance/status task)
-     :hostname  (:instance/hostname task)
-     :slave_id  (:instance/slave-id task)
-     :reason  (or (when (= (:instance/status task) :instance.status/failed)
-                    (:reason/string (:instance/reason task)))
-                  "")
-     :user  (:job/user job)
-     :mem  (or (:mem resources) -1)
-     :cpus  (or (:cpus resources) -1)
-     :job_name  (or (:job/name job) "")
-     :requested_run_time  (->> (:job/label job)
-                               (filter #(= (:label/key %) "JOB-RUNTIME"))
-                               first
-                               :label/value)
-     :requested_status  (->> (:job/label job)
-                             (filter #(= (:label/key %) "JOB-STATUS"))
-                             first
-                             :label/value)}))
+     :status (:instance/status task)
+     :hostname (:instance/hostname task)
+     :slave_id (:instance/slave-id task)
+     :reason (or (when (= (:instance/status task) :instance.status/failed)
+                   (:reason/string (:instance/reason task)))
+                 "")
+     :user (:job/user job)
+     :mem (or (:mem resources) -1)
+     :cpus (or (:cpus resources) -1)
+     :job_name (or (:job/name job) "")
+     :requested_run_time (->> (:job/label job)
+                              (filter #(= (:label/key %) "JOB-RUNTIME"))
+                              first
+                              :label/value)
+     :requested_status (->> (:job/label job)
+                            (filter #(= (:label/key %) "JOB-STATUS"))
+                            first
+                            :label/value)}))
 
 (defn dump-jobs-to-csv
   "Given a mesos db, dump a csv with a row per task"
-  [task-ents file]
+  [task-ents file & {:keys [add-headers append] :or {add-headers true append false}}]
   ;; Use snake case to make it easier for downstream tools to consume
   (let [headers [:job_id :instance_id :group_id :submit_time_ms :mesos_start_time_ms :start_time_ms
                  :end_time_ms :hostname :slave_id :status :reason :user :mem :cpus :job_name
                  :requested_run_time :expected_run_time :requested_status]
         tasks (map generate-task-trace-map task-ents)]
-    (with-open [out-file (io/writer file)]
+    (with-open [out-file (io/writer file :append append)]
       (csv/write-csv out-file
-                     (concat [(mapv name headers)]
+                     (concat (when add-headers [(mapv name headers)])
                              (map (apply juxt headers) tasks))))))
 
 (defn pull-all-task-ents
@@ -208,6 +210,19 @@
               :where
               [?i :instance/task-id _]]
             mesos-db)
+       (map (partial d/entity mesos-db))))
+
+(defn pull-all-task-ents-completed-in-time-range
+  "Returns a seq of task entities from the db for the specified time range."
+  [mesos-db start-time-inc end-time-exc]
+  (->> (d/q '[:find [?i ...]
+              :in $ ?st ?et
+              :where
+              [?i :instance/task-id _]
+              [?i :instance/end-time ?t]
+              [(>= ?t ?st)]
+              [(< ?t ?et)]]
+            mesos-db start-time-inc end-time-exc)
        (map (partial d/entity mesos-db))))
 
 (defn submit-job
@@ -233,7 +248,7 @@
           group (when group-uuid
                   [{:db/id (d/tempid :db.part/user)
                     :group/uuid (java.util.UUID/fromString group-uuid)
-                    :group/job job-id }])
+                    :group/job job-id}])
           txn [runtime-env
                status-env
                commit-latch
@@ -279,7 +294,20 @@
   [coll]
   (= coll (sort coll)))
 
-()
+(defn- write-completed-tasks
+  "Writes completed tasks between start-time and current-time to the temp-out-trace-file."
+  [mesos-db time-ms-between-incremental-output temp-out-trace-file simulation-start-time start-time current-time]
+  (log/info "Starting temporary output iteration" start-time "to" current-time)
+  (let [start-date (Date. ^long start-time)
+        end-date (Date. ^long current-time)
+        completed-task-ents (pull-all-task-ents-completed-in-time-range mesos-db start-date end-date)]
+    (if (seq completed-task-ents)
+      (do
+        (log/info "Writing" (count completed-task-ents) "tasks to temporary output for simulation time" current-time)
+        (dump-jobs-to-csv completed-task-ents temp-out-trace-file
+                          :add-headers (= start-time simulation-start-time)
+                          :append true))
+      (log/info "No completed tasks in last" time-ms-between-incremental-output "ms"))))
 
 ;; TODO need way of setting share
 (defn simulate
@@ -289,7 +317,7 @@
    The start simulation time is the min submit time in the trace.
 
    Returns a list of the task entities run"
-  [mesos-hosts trace cycle-step-ms config]
+  [mesos-hosts trace cycle-step-ms config temp-out-trace-file]
   (let [simulation-time (-> trace first :submit-time-ms)
         mesos-datomic-conn (restore-fresh-database! (get config :datomic-url "datomic:mem://mock-mesos"))
         offer-trigger-chan (async/chan)
@@ -306,6 +334,8 @@
                                               :complete-trigger-chan complete-trigger-chan
                                               :state-atom state-atom))
         config (merge {:shares [{:user "default" :mem 4000.0 :cpus 4.0 :gpus 1.0}]
+                       :time-ms-between-incremental-output (-> 10 t/minutes t/in-millis)
+                       :time-ms-between-optimizer-calls (-> 3 t/minutes t/in-millis)
                        :time-ms-between-rebalancing (-> 30 t/minutes t/in-millis)}
                       config)
         opt-config {:host-feed {:create-fn 'cook.mesos.optimizer/create-dummy-host-feed
@@ -322,22 +352,48 @@
                                                  :progress-updater-trigger-chan (async/chan)
                                                  :straggler-trigger-chan (async/chan)
                                                  :lingering-task-trigger-chan (async/chan)
-                                                 :cancelled-task-trigger-chan (async/chan)}})]
+                                                 :cancelled-task-trigger-chan (async/chan)}})
+        {:keys [time-ms-between-incremental-output time-ms-between-optimizer-calls time-ms-between-rebalancing]} config]
+    ;; launch a thread to perform incremental writes of completed jobs
+    (when temp-out-trace-file
+      (let [last-start-time-atom (atom simulation-time)
+            write-thread (Thread.
+                           ^Runnable
+                           (fn write-completed-tasks-runner []
+                             (while true
+                               (Thread/sleep time-ms-between-incremental-output)
+                               (try
+                                 (let [start-time @last-start-time-atom
+                                       current-time (.getMillis (t/now))
+                                       mesos-db (d/db mesos-datomic-conn)]
+                                   (write-completed-tasks
+                                     mesos-db time-ms-between-incremental-output temp-out-trace-file
+                                     simulation-time start-time current-time)
+                                   (reset! last-start-time-atom current-time))
+                                 (catch Throwable ex
+                                   (log/error ex "Error writing incremental completed job output!"))))))]
+        (log/info "Temporary output will be updated every" time-ms-between-incremental-output "ms")
+        (.setDaemon write-thread true)
+        (.start write-thread)))
     ;; We are setting time to enable us to have deterministic runs
     ;; of the simulator while hooking into the scheduler as non-invasively
     ;; as possible. A longer explanation can be found in the simulator dev docs.
-    (org.joda.time.DateTimeUtils/setCurrentMillisFixed simulation-time)
-    (log/info "Starting simulation.")
-    (with-cook-scheduler mesos-datomic-conn make-mesos-driver-fn
+    (DateTimeUtils/setCurrentMillisFixed simulation-time)
+    (log/info "Starting simulation at" simulation-time)
+    ;; launch the simulator
+    (with-cook-scheduler
+      mesos-datomic-conn
+      make-mesos-driver-fn
       scheduler-config
       (try
         (doseq [{:keys [user mem cpus gpus]} (:shares config)]
           (share/set-share! mesos-datomic-conn user nil "simulation" :mem mem :cpus cpus :gpus gpus))
         (loop [trace trace
                simulation-time simulation-time
-               time-ms-since-last-rebalancer 0]
+               time-ms-since-last-rebalancer 0
+               time-ms-since-last-optimizer-call 0]
 
-          (org.joda.time.DateTimeUtils/setCurrentMillisFixed simulation-time)
+          (DateTimeUtils/setCurrentMillisFixed simulation-time)
 
           (let [start-ms (System/currentTimeMillis)
                 submission-batch (take-while #(<= (:submit-time-ms %) simulation-time) trace)
@@ -357,79 +413,81 @@
             (log/info "Submitting batch")
             ;; Submit new jobs
             (doseq [job submission-batch]
-              (org.joda.time.DateTimeUtils/setCurrentMillisFixed (inc (.getTime (tc/to-date (t/now)))))
+              (DateTimeUtils/setCurrentMillisFixed (inc (.getTime (tc/to-date (t/now)))))
               (submit-job mesos-datomic-conn job))
             ;; Ensure peer has acknowledged the new jobs
             (when (seq submission-batch)
               (poll-until #(d/q '[:find ?j .
-                                      :in $ ?t
-                                      :where
-                                      [?j :job/submit-time ?t]]
-                                    (d/db mesos-datomic-conn)
-                                    ;; This relies on
-                                    ;; 1. Time is controlled
-                                    ;; 2. We increment time for each job submitted
-                                    (tc/to-date (t/now)))
-                        50
-                        60000))
+                                  :in $ ?t
+                                  :where
+                                  [?j :job/submit-time ?t]]
+                                (d/db mesos-datomic-conn)
+                                ;; This relies on
+                                ;; 1. Time is controlled
+                                ;; 2. We increment time for each job submitted
+                                (tc/to-date (t/now)))
+                          50
+                          60000))
             (log/info "Batch submission complete")
 
             ;; Request for jobs that are complete to have cook be notified
             (log/info "Send completion status to scheduler")
-            (org.joda.time.DateTimeUtils/setCurrentMillisFixed (inc (.getTime (tc/to-date (t/now)))))
+            (DateTimeUtils/setCurrentMillisFixed (inc (.getTime (tc/to-date (t/now)))))
             (async/>!! complete-trigger-chan flush-complete-chan)
             (async/<!! flush-complete-chan)
 
             ;; Ensure mesos and cook state of running jobs matches
             (poll-until #(= (set (map (comp str :instance/task-id)
-                                     (util/get-running-task-ents (d/db mesos-datomic-conn))))
+                                      (util/get-running-task-ents (d/db mesos-datomic-conn))))
                             (set (map str
-                                     (keys (:task-id->task @state-atom)))))
-                       50
-                       60000
-                       #(let [cook-tasks (set (map (comp str :instance/task-id)
-                                                   (util/get-running-task-ents (d/db mesos-datomic-conn))))
-                              mesos-tasks (set (map str
-                                                    (keys (:task-id->task @state-atom))))]
-                          {:running-tasks-ents (count cook-tasks)
-                           :tasks-in-mesos (count mesos-tasks)
-                           :cook-minus-mesos (count (clojure.set/difference cook-tasks mesos-tasks))
-                           :mesos-minus-cook (count (clojure.set/difference mesos-tasks cook-tasks))})
-                       )
+                                      (keys (:task-id->task @state-atom)))))
+                        50
+                        60000
+                        #(let [cook-tasks (set (map (comp str :instance/task-id)
+                                                    (util/get-running-task-ents (d/db mesos-datomic-conn))))
+                               mesos-tasks (set (map str
+                                                     (keys (:task-id->task @state-atom))))]
+                           {:running-tasks-ents (count cook-tasks)
+                            :tasks-in-mesos (count mesos-tasks)
+                            :cook-minus-mesos (count (clojure.set/difference cook-tasks mesos-tasks))
+                            :mesos-minus-cook (count (clojure.set/difference mesos-tasks cook-tasks))}))
             (log/info "Completion statuses sent")
 
             ;; Request rank occurs
             (log/info "Starting rank")
-            (org.joda.time.DateTimeUtils/setCurrentMillisFixed (inc (.getTime (tc/to-date (t/now)))))
+            (DateTimeUtils/setCurrentMillisFixed (inc (.getTime (tc/to-date (t/now)))))
             (async/>!! ranker-trigger-chan rank-complete-chan)
             (async/<!! rank-complete-chan)
             (log/info "Rank complete")
 
-            (async/>!! optimizer-trigger-chan optimizer-complete-chan)
-            (async/<!! optimizer-complete-chan)
+            (when (> time-ms-since-last-optimizer-call time-ms-between-optimizer-calls)
+              (log/info "Starting optimizer")
+              (async/>!! optimizer-trigger-chan optimizer-complete-chan)
+              (async/<!! optimizer-complete-chan)
+              (log/info "Optimizer complete"))
 
             ;; Match
             (log/info "Starting match")
-            (org.joda.time.DateTimeUtils/setCurrentMillisFixed (inc (.getTime (tc/to-date (t/now)))))
+            (DateTimeUtils/setCurrentMillisFixed (inc (.getTime (tc/to-date (t/now)))))
             (async/>!! offer-trigger-chan send-offers-complete-chan)
             (async/<!! send-offers-complete-chan)
             (async/>!! matcher-trigger-chan match-complete-chan)
             (async/<!! match-complete-chan)
             ;; Ensure the launch has been processed by mesos
             (poll-until #(every? :instance/mesos-start-time
-                                (util/get-running-task-ents (d/db mesos-datomic-conn)))
+                                 (util/get-running-task-ents (d/db mesos-datomic-conn)))
                         50
                         60000)
             (log/info "Match complete")
 
             ;; Rebalance
-            (when (> time-ms-since-last-rebalancer (:time-ms-between-rebalancing config))
+            (when (> time-ms-since-last-rebalancer time-ms-between-rebalancing)
               (log/info "Starting rebalance")
-              (org.joda.time.DateTimeUtils/setCurrentMillisFixed (inc (.getTime (tc/to-date (t/now)))))
+              (DateTimeUtils/setCurrentMillisFixed (inc (.getTime (tc/to-date (t/now)))))
               (async/>!! rebalancer-trigger-chan rebalancer-complete-chan)
               (async/<!! rebalancer-complete-chan)
               (log/info "Rebalance complete"))
-            
+
             ;; Periodically perform full gc under hypothesis that holding onto
             ;; lot of memory is causing problems
             (when (> (rand) 0.9)
@@ -439,9 +497,12 @@
             (when (seq trace)
               (recur (drop (count submission-batch) trace)
                      (+ simulation-time cycle-step-ms)
-                     (if (> time-ms-since-last-rebalancer (:time-ms-between-rebalancing config))
+                     (if (> time-ms-since-last-rebalancer time-ms-between-rebalancing)
                        0
-                       (+ time-ms-since-last-rebalancer cycle-step-ms))))))
+                       (+ time-ms-since-last-rebalancer cycle-step-ms))
+                     (if (> time-ms-since-last-optimizer-call time-ms-between-optimizer-calls)
+                       0
+                       (+ time-ms-since-last-optimizer-call cycle-step-ms))))))
         (println "count of jobs submitted " (count (d/q '[:find ?e
                                                           :where
                                                           [?e :job/uuid _]]
@@ -487,11 +548,11 @@
       (System/exit 0))
     (when (not= (count required-options) (count (select-keys options required-options)))
       (println "Missing required options: "
-             (->> options
-                  keys
-                  set
-                  (clojure.set/difference required-options)
-                  (map name)))
+               (->> options
+                    keys
+                    set
+                    (clojure.set/difference required-options)
+                    (map name)))
       (println (usage summary))
       (System/exit 1))
     (log/info "Pulling input files")
@@ -504,11 +565,12 @@
                    {})
           cycle-step-ms (or cycle-step-ms (:cycle-step-ms config))
           _ (when-not cycle-step-ms
-              (throw (ex-info "Must configure cycle-step-ms on command line or config file")))
+              (throw (ex-info "Must configure cycle-step-ms on command line or config file" {})))
           task-ents (simulate hosts
                               (cheshire/parse-stream (clojure.java.io/reader trace-file) true)
                               cycle-step-ms
-                              config)]
+                              config
+                              (str out-trace-file ".temp-" (System/nanoTime)))]
       (println "tasks run: " (count task-ents))
       (dump-jobs-to-csv task-ents out-trace-file)
       (println "Done writing trace")
@@ -518,7 +580,7 @@
   "Returns a job that can be used in the trace"
   [run-time-ms submit-time-ms &
    {:keys [user uuid command ncpus memory name retry-count max-runtime priority job-state submit-time custom-executor? gpus group committed?
-           disable-mea-culpa-retries ]
+           disable-mea-culpa-retries]
     :or {user (System/getProperty "user.name")
          uuid (d/squuid)
          committed? true
@@ -636,8 +698,8 @@
         config {:shares [{:cpus (/ host-cpus 10) :gpus 1.0 :mem (/ host-mem 10) :user "default"}]
                 :scheduler-config {:rebalancer-config {:max-preemption 1.0}
                                    :fenzo-config {:fenzo-max-jobs-considered 200}}}
-        out-trace-a (simulate hosts jobs cycle-step-ms config)
-        out-trace-b (simulate hosts jobs cycle-step-ms config)]
+        out-trace-a (simulate hosts jobs cycle-step-ms config nil)
+        out-trace-b (simulate hosts jobs cycle-step-ms config nil)]
     (is (> (count out-trace-a) 0))
     (is (> (count out-trace-b) 0))
     (is (traces-equivalent? out-trace-a out-trace-b)
