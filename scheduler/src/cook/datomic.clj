@@ -33,7 +33,6 @@
   (let [conn ((util/lazy-load-var 'datomic.api/connect) mesos-datomic-uri)]
     (doseq [txn (deref (util/lazy-load-var 'cook.mesos.schema/work-item-schema))]
       (deref ((util/lazy-load-var 'datomic.api/transact) conn txn))
-      ((util/lazy-load-var 'metatransaction.core/install-metatransaction-support) conn)
       ((util/lazy-load-var 'metatransaction.utils/install-utils-support) conn))
     conn))
 

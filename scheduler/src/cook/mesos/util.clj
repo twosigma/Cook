@@ -24,7 +24,6 @@
             [clojure.core.cache :as cache]
             [clojure.tools.logging :as log]
             [datomic.api :as d :refer (q)]
-            [metatransaction.core :refer (db)]
             [metrics.timers :as timers]
             [plumbing.core :as pc :refer (map-vals map-keys)])
   (:import

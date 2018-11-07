@@ -15,8 +15,7 @@
 ;;
 (ns metatransaction.utils
   (:require [clojure.core.async :as async]
-            [datomic.api :as d]
-            [metatransaction.core :as mt]))
+            [datomic.api :as d]))
 
 (def assert-db
   "db-fn: [:utils/assert-db test-type query-structure & inputs]

@@ -18,13 +18,12 @@
             [cook.datomic :refer (transact-with-retries)]
             [cook.mesos.scheduler :as sched]
             [cook.test.testutil :as testutil]
-            [datomic.api :as d :refer (q)]
-            [metatransaction.core :refer (db)]))
+            [datomic.api :as d :refer (q)]))
 
 (comment
   ;; Mark instance failed.
   (let [conn (d/connect "datomic:riak://db.example.com:8098/datomic/mesos-jobs?interface=http")
-        db (db conn)
+        db (d/db conn)
         user "testuser"
         running-instances (q '[:find ?i
                                :in $ ?user [?status ...]
@@ -41,7 +40,7 @@
 
   ;; Query a job
   (let [conn (d/connect "datomic:riak://db.example.com:8098/datomic/mesos-jobs?interface=http")
-        db (db conn)
+        db (d/db conn)
         user "testuser"
         running-instances (q '[:find ?i ?state ?task-id
                                :in $ ?user [?status ...]
@@ -64,20 +63,20 @@
                        [?j :job/user "testuser"]
                        [?j :job/state ?status]
                        [?j :job/uuid ?uuid]]
-                     (db conn) [:job.state/waiting
+                     (d/db conn) [:job.state/waiting
                                 :job.state/running])]
     (->> job-uuids
          (map first)
          (sched/kill-job conn)))
 
   (let [conn (d/connect "datomic:riak://db.example.com:8098/datomic/mesos-jobs?interface=http")]
-    (println "testuser" (sched/get-used-quota (db conn) "testuser"))
-    (println "testuser2" (sched/get-quota (db conn) "testuser2")))
+    (println "testuser" (sched/get-used-quota (d/db conn) "testuser"))
+    (println "testuser2" (sched/get-quota (d/db conn) "testuser2")))
 
   ;; List users who has pre-defined quota.
   (let [conn (d/connect "datomic:riak://db.example.com:8098/datomic/mesos-jobs?interface=http")
         user "testuser"
-        db (db conn)
+        db (d/db conn)
         users (q '[:find ?u
                    :in $
                    :where
@@ -88,7 +87,7 @@
 
   ;; Count the job which has multiple instances.
   (let [conn (d/connect "datomic:riak://db.example.com:8098/datomic/mesos-jobs?interface=http")
-        db (db conn)
+        db (d/db conn)
         jobs (q '[:find ?j
                   :in $
                   :where
@@ -162,7 +161,7 @@
             user (rand-nth ["alice" "bob" "claire" "doug" "emily" "frank" "gloria" "henry"])
             start-time (.toDate (t/ago (t/minutes (inc (rand-int 120)))))
             end-time (.toDate (t/now))
-            reason (:reason/name (rand-nth (cook.mesos.reason/all-known-reasons (db conn))))]
+            reason (:reason/name (rand-nth (cook.mesos.reason/all-known-reasons (d/db conn))))]
         (create-job conn host instance-status start-time end-time reason :user user :job-state :job.state/completed)))
     (range 100)))
 

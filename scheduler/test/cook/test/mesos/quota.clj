@@ -19,7 +19,6 @@
             [cook.mesos.scheduler :as sched]
             [cook.mesos.quota :as quota]
             [cook.test.testutil :refer (create-pool restore-fresh-database!)]
-            [metatransaction.core :as mt :refer (db)]
             [datomic.api :as d]))
 
 (deftest test-quota
@@ -33,7 +32,7 @@
     (quota/set-quota! conn "u3" nil "needs no GPUs" :gpus 0.0)
     (quota/set-quota! conn "u4" nil "no jobs allowed" :count 0)
     (quota/set-quota! conn "default" nil "lock most users down" :cpus 1.0 :mem 2.0 :gpus 1.0)
-    (let [db (db conn)]
+    (let [db (d/db conn)]
       (testing "set and query zero job count"
         (is (= {:count 0 :cpus 1.0 :mem 2.0 :gpus 1.0} (quota/get-quota db "u4" nil))))
       (testing "set and query zero gpus"
@@ -51,7 +50,7 @@
         (is (= (quota/get-quota db "whoami" nil) (quota/get-quota db "default" nil))))
       (testing "retract quota"
         (quota/retract-quota! conn "u2" nil "not special anymore")
-        (let [db (mt/db conn)]
+        (let [db (d/db conn)]
           (is (= {:count Integer/MAX_VALUE
                   :cpus 1.0 :mem 2.0 :gpus 1.0} (quota/get-quota db "u2" nil))))))))
 
@@ -117,7 +116,7 @@
     (quota/set-quota! conn "u1" nil "power user" :cpus 20.0 :mem 20.0)
     (quota/set-quota! conn "u1" "pool-1" "really lenient" :cpus 100.0 :mem 100.0)
     (testing "get-quota, no default pool configured"
-      (let [db (mt/db conn)]
+      (let [db (d/db conn)]
         (is (= {:cpus 20.0 :mem 20.0 :gpus 1.0 :count 1} (quota/get-quota db "u1" nil)))
         (is (= {:cpus 100.0 :mem 100.0 :gpus 10.0 :count 10} (quota/get-quota db "u1" "pool-1")))
         (is (= {:cpus Double/MAX_VALUE :mem Double/MAX_VALUE :gpus Double/MAX_VALUE
@@ -129,7 +128,7 @@
 
     (testing "get-quota, default pool configured"
       (with-redefs [config/default-pool (constantly "pool-1")]
-        (let [db (mt/db conn)]
+        (let [db (d/db conn)]
           ; Should use the explicit defaults from pool-1
           (is (= {:cpus 100.0 :mem 100.0 :gpus 10.0 :count 10} (quota/get-quota db "u1" nil)))
           (is (= {:cpus 100.0 :mem 100.0 :gpus 10.0 :count 10} (quota/get-quota db "u1" "pool-1")))
@@ -143,15 +142,15 @@
     (testing "retract quota, no default pool configured"
       (quota/set-quota! conn "u2" nil "defaults" :cpus 1.0 :mem 1.0 :gpus 1.0 :count 1)
       (quota/set-quota! conn "u2" "pool-2" "pool-2 settings" :cpus 2.0 :mem 2.0 :gpus 2.0 :count 2)
-      (let [db (mt/db conn)]
+      (let [db (d/db conn)]
         (is (= {:cpus 2.0 :mem 2.0 :gpus 2.0 :count 2} (quota/get-quota db "u2" "pool-2"))))
 
       (quota/retract-quota! conn "u2" "pool-2" "removing quota")
-      (let [db (mt/db conn)]
+      (let [db (d/db conn)]
         (is (= {:cpus 1.0 :mem 1.0 :gpus 1.0 :count 1}) (quota/get-quota db "u2" "pool-2")))
 
       (quota/retract-quota! conn "u2" nil "removing default quota")
-      (let [db (mt/db conn)]
+      (let [db (d/db conn)]
         ; With no default pool, we should get the default quota values
         (is (= {:cpus Double/MAX_VALUE :mem Double/MAX_VALUE :gpus Double/MAX_VALUE
                 :count Integer/MAX_VALUE}
@@ -168,13 +167,13 @@
       (quota/set-quota! conn "u3" nil "reason" :cpus 5.0 :mem 5.0 :gpus 5.0 :count 5)
       (quota/set-quota! conn "default" nil "reason" :cpus 6.0 :mem 6.0 :gpus 6.0 :count 6)
 
-      (let [user->quota-fn (quota/create-user->quota-fn (mt/db conn) "pool-2")]
+      (let [user->quota-fn (quota/create-user->quota-fn (d/db conn) "pool-2")]
         (doseq [user ["u1" "u2" "u3"]]
           (is (= {:cpus 1.0 :mem 1.0 :gpus 1.0 :count 1} (user->quota-fn user))))
         (is (= {:cpus 2.0 :mem 2.0 :gpus 2.0 :count 2} (user->quota-fn "u4"))))
 
       (with-redefs [config/default-pool (constantly "pool-3")]
-        (let [user->quota-fn (quota/create-user->quota-fn (mt/db conn) "pool-3")]
+        (let [user->quota-fn (quota/create-user->quota-fn (d/db conn) "pool-3")]
           (doseq [user ["u1" "u2" "u3"]]
             (is (= {:cpus 5.0 :mem 5.0 :gpus 5.0 :count 5} (user->quota-fn user))))
           (is (= {:cpus 6.0 :mem 6.0 :gpus 6.0 :count 6} (user->quota-fn "u4"))))))))

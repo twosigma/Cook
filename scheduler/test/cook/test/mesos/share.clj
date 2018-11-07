@@ -18,7 +18,6 @@
   (:require [cook.config :as config]
             [cook.mesos.share :as share]
             [cook.test.testutil :refer (restore-fresh-database! create-pool)]
-            [metatransaction.core :as mt]
             [datomic.api :as d]))
 
 (deftest test'
@@ -30,7 +29,7 @@
     (share/set-share! conn "u2" nil "custom limits" :cpus 5.0  :mem 10.0)
     (share/set-share! conn "u3" nil "needs cpus, mem, and gpus" :cpus 10.0 :mem 20.0 :gpus 4.0)
     (share/set-share! conn "default" nil "lock most users down" :cpus 1.0 :mem 2.0 :gpus 1.0)
-    (let [db (mt/db conn)]
+    (let [db (d/db conn)]
       (testing "set and query."
         (is (= {:cpus 5.0 :mem 10.0 :gpus 1.0} (share/get-share db "u2"))))
       (testing "set and override."
@@ -41,7 +40,7 @@
         (is (= (share/get-share db "whoami") (share/get-share db "default"))))
       (testing "retract share"
         (share/retract-share! conn "u2" nil "not special anymore")
-        (let [db (mt/db conn)]
+        (let [db (d/db conn)]
           (is (= {:cpus 1.0 :mem 2.0 :gpus 1.0} (share/get-share db "u2")))))
 
       (testing "get-shares:all-defaults-available"
@@ -53,7 +52,7 @@
       (testing "get-shares:some-defaults-available"
         (share/retract-share! conn "default" nil "clear defaults")
         (share/set-share! conn "default" nil "cpu and gpu defaults available" :cpus 3.0 :gpus 1.0)
-        (let [db (mt/db conn)]
+        (let [db (d/db conn)]
           (is (= {"u1" {:cpus 5.0 :mem 10.0 :gpus 1.0}
                   "u2" {:cpus 3.0 :mem Double/MAX_VALUE :gpus 1.0}
                   "u3" {:cpus 10.0 :mem 20.0 :gpus 4.0}
@@ -79,7 +78,7 @@
     (share/set-share! conn "u1" nil "power user" :cpus 20.0 :mem 20.0)
     (share/set-share! conn "u1" "pool-1" "really lenient" :cpus 100.0 :mem 100.0)
     (testing "get-share, no default pool configured"
-      (let [db (mt/db conn)]
+      (let [db (d/db conn)]
         (is (= {:cpus 20.0 :mem 20.0 :gpus 1.0} (share/get-share db "u1" nil)))
         (is (= {:cpus 100.0 :mem 100.0 :gpus 10.0} (share/get-share db "u1" "pool-1")))
         (is (= {:cpus Double/MAX_VALUE :mem Double/MAX_VALUE :gpus Double/MAX_VALUE}
@@ -90,7 +89,7 @@
 
     (testing "get-share, default pool configured"
       (with-redefs [config/default-pool (constantly "pool-1")]
-        (let [db (mt/db conn)]
+        (let [db (d/db conn)]
           ; Should use the explicit defaults from pool-1
           (is (= {:cpus 100.0 :mem 100.0 :gpus 10.0} (share/get-share db "u1" nil)))
           (is (= {:cpus 100.0 :mem 100.0 :gpus 10.0} (share/get-share db "u1" "pool-1")))
@@ -103,15 +102,15 @@
     (testing "retract share, no default pool configured"
       (share/set-share! conn "u2" nil "defaults" :cpus 1.0 :mem 1.0 :gpus 1.0)
       (share/set-share! conn "u2" "pool-2" "pool-2 settings" :cpus 2.0 :mem 2.0 :gpus 2.0)
-      (let [db (mt/db conn)]
+      (let [db (d/db conn)]
         (is (= {:cpus 2.0 :mem 2.0 :gpus 2.0} (share/get-share db "u2" "pool-2"))))
 
       (share/retract-share! conn "u2" "pool-2" "removing share")
-      (let [db (mt/db conn)]
+      (let [db (d/db conn)]
         (is (= {:cpus 1.0 :mem 1.0 :gpus 1.0}) (share/get-share db "u2" "pool-2")))
 
       (share/retract-share! conn "u2" nil "removing default share")
-      (let [db (mt/db conn)]
+      (let [db (d/db conn)]
         ; With no default pool, we should get the default share values
         (is (= {:cpus Double/MAX_VALUE :mem Double/MAX_VALUE :gpus Double/MAX_VALUE}
                (share/get-share db "u2" "pool-2")))))
@@ -121,12 +120,12 @@
         (share/set-share! conn "u2" nil "defaults" :cpus 4.0 :mem 4.0 :gpus 4.0)
         (share/set-share! conn "u2" "pool-2" "pool-2 settings" :cpus 5.0 :mem 5.0 :gpus 5.0)
         (share/set-share! conn "u2" "pool-1" "pool-1 settings" :cpus 6.0 :mem 6.0 :gpus 6.0)
-        (let [db (mt/db conn)]
+        (let [db (d/db conn)]
           ; Should get the "u2"/pool-2 share
           (is (= {:cpus 5.0 :mem 5.0 :gpus 5.0} (share/get-share db "u2" "pool-2"))))
 
         (share/retract-share! conn "u2" "pool-2" "removing share")
-        (let [db (mt/db conn)]
+        (let [db (d/db conn)]
           ; We should now get the "default"/nil share since we're querying the default pool
           (is (= {:cpus 1.0 :mem 1.0 :gpus 1.0} (share/get-share db "u2" "pool-2")))
 
@@ -144,13 +143,13 @@
       (share/set-share! conn "u3" nil "reason" :cpus 5.0 :mem 5.0 :gpus 5.0)
       (share/set-share! conn "default" nil "reason" :cpus 6.0 :mem 6.0 :gpus 6.0)
 
-      (let [user->share-fn (share/create-user->share-fn (mt/db conn) "pool-2")]
+      (let [user->share-fn (share/create-user->share-fn (d/db conn) "pool-2")]
         (doseq [user ["u1" "u2" "u3"]]
           (is (= {:cpus 1.0 :mem 1.0 :gpus 1.0} (user->share-fn user))))
         (is (= {:cpus 2.0 :mem 2.0 :gpus 2.0} (user->share-fn "u4"))))
 
       (with-redefs [config/default-pool (constantly "pool-3")]
-        (let [user->share-fn (share/create-user->share-fn (mt/db conn) "pool-3")]
+        (let [user->share-fn (share/create-user->share-fn (d/db conn) "pool-3")]
           (doseq [user ["u1" "u2" "u3"]]
             (is (= {:cpus 5.0 :mem 5.0 :gpus 5.0} (user->share-fn user))))
           (is (= {:cpus 6.0 :mem 6.0 :gpus 6.0} (user->share-fn "u4"))))))))

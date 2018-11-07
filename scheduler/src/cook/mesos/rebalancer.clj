@@ -27,7 +27,6 @@
             [cook.mesos.util :as util]
             [datomic.api :as d :refer (q)]
             [mesomatic.scheduler :as mesos]
-            [metatransaction.core :as mt]
             [metrics.histograms :as histograms]
             [metrics.timers :as timers]
             [plumbing.core :refer [map-keys]]
@@ -496,7 +495,7 @@
 (defn read-datomic-params
   [conn]
   (-<>>
-   (d/pull (mt/db conn) ["*"] :rebalancer/config)
+   (d/pull (d/db conn) ["*"] :rebalancer/config)
    (dissoc <> ":db/id" ":db/ident")
    (map-keys #(keyword (name (keyword %))))))
 
@@ -537,7 +536,7 @@
                                    {:pool/name pool
                                     :pool/dru-mode :pool.dru-mode/default}
                                    (d/entity (d/db conn) [:pool/name pool]))
-                        db (mt/db conn)
+                        db (d/db conn)
                         jobs-to-make-room-for (->> pending-jobs
                                                    (filter (partial util/job-allowed-to-start? db))
                                                    (take max-preemption))

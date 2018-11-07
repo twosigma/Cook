@@ -17,7 +17,6 @@
   (:require [clojure.core.async :as async]
             [clojure.test :refer :all]
             [datomic.api :as d]
-            [metatransaction.core :as mt]
             [metatransaction.utils :refer :all]))
 
 (def wait
@@ -61,7 +60,6 @@
 (defn get-test-conn []
   (let [conn (get-conn)
         _ (install-utils-support conn)
-        _ (mt/install-metatransaction-support conn)
         _ @(d/transact conn test-schema)]
     conn))
 

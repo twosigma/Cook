@@ -19,7 +19,6 @@
             [cook.mesos.pool :as pool]
             [cook.mesos.util :as util]
             [datomic.api :as d]
-            [metatransaction.core :refer (db)]
             [metrics.timers :as timers]
             [plumbing.core :as pc])
   (:import [java.util UUID]))
@@ -38,7 +37,7 @@
 
 (defn- retract-share-by-type!
   [conn type user pool]
-  (let [db (db conn)
+  (let [db (d/db conn)
         type (resource-type->datomic-resource-type type)
         resource (first (d/q '[:find [?r ...]
                                :in $ ?u ?t ?pool-name ?requesting-default-pool
