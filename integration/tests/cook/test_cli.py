@@ -1768,7 +1768,8 @@ class CookCliTest(util.CookTest):
             self.logger.info(f'Usage map: {json.dumps(usage, indent=2)}')
 
             # Check default pool, gamma
-            cluster_usage = usage['clusters'][self.cook_url]['pools']['gamma']
+            usage_data = usage['clusters'][self.cook_url]
+            cluster_usage = usage_data['pools']['gamma'] if usage_data.get('using_pools', False) else usage_data
             total_usage = cluster_usage['usage']
             share = cluster_usage['share']
             applications = cluster_usage['applications']
@@ -1818,30 +1819,31 @@ class CookCliTest(util.CookTest):
             self.assertIn(uuid_8, custom_application_grouped_jobs)
             self.assertIn(uuid_9, custom_application_grouped_jobs)
 
-            # Check default pool, alpha
-            cluster_usage = usage['clusters'][self.cook_url]['pools']['alpha']
-            total_usage = cluster_usage['usage']
-            share = cluster_usage['share']
-            applications = cluster_usage['applications']
-            cs_usage = applications['cook-scheduler-cli']['usage']
-            ungrouped_usage = applications['cook-scheduler-cli']['groups']['null']['usage']
-            ungrouped_jobs = applications['cook-scheduler-cli']['groups']['null']['jobs']
+            if usage_data.get('using_pools', False):
+                # Check default pool, alpha
+                cluster_usage = usage['clusters'][self.cook_url]['pools']['alpha']
+                total_usage = cluster_usage['usage']
+                share = cluster_usage['share']
+                applications = cluster_usage['applications']
+                cs_usage = applications['cook-scheduler-cli']['usage']
+                ungrouped_usage = applications['cook-scheduler-cli']['groups']['null']['usage']
+                ungrouped_jobs = applications['cook-scheduler-cli']['groups']['null']['jobs']
 
-            self.assertLessEqual(round(0.2 * 2, 1), round(total_usage['cpus'], 1))
-            self.assertLessEqual(round(32 * 2, 1), round(total_usage['mem'], 1))
-            self.assertLessEqual(0, total_usage['gpus'])
-            self.assertLessEqual(9, usage['count'])
-            self.assertLessEqual(0, share['cpus'])
-            self.assertLessEqual(0, share['mem'])
-            self.assertLessEqual(0, share['gpus'])
-            self.assertLessEqual(round(0.2 * 2, 1), round(cs_usage['cpus'], 1))
-            self.assertLessEqual(round(32 * 2, 1), round(cs_usage['mem'], 1))
-            self.assertLessEqual(0, cs_usage['gpus'])
-            self.assertLessEqual(round(0.2 * 2, 1), round(ungrouped_usage['cpus'], 1))
-            self.assertLessEqual(round(32 * 2, 1), round(ungrouped_usage['mem'], 1))
-            self.assertLessEqual(0, ungrouped_usage['gpus'])
-            self.assertIn(uuid_10, ungrouped_jobs)
-            self.assertIn(uuid_11, ungrouped_jobs)
+                self.assertLessEqual(round(0.2 * 2, 1), round(total_usage['cpus'], 1))
+                self.assertLessEqual(round(32 * 2, 1), round(total_usage['mem'], 1))
+                self.assertLessEqual(0, total_usage['gpus'])
+                self.assertLessEqual(9, usage['count'])
+                self.assertLessEqual(0, share['cpus'])
+                self.assertLessEqual(0, share['mem'])
+                self.assertLessEqual(0, share['gpus'])
+                self.assertLessEqual(round(0.2 * 2, 1), round(cs_usage['cpus'], 1))
+                self.assertLessEqual(round(32 * 2, 1), round(cs_usage['mem'], 1))
+                self.assertLessEqual(0, cs_usage['gpus'])
+                self.assertLessEqual(round(0.2 * 2, 1), round(ungrouped_usage['cpus'], 1))
+                self.assertLessEqual(round(32 * 2, 1), round(ungrouped_usage['mem'], 1))
+                self.assertLessEqual(0, ungrouped_usage['gpus'])
+                self.assertIn(uuid_10, ungrouped_jobs)
+                self.assertIn(uuid_11, ungrouped_jobs)
 
         finally:
             cli.kill(all_uuids, self.cook_url)
