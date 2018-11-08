@@ -649,7 +649,7 @@
               (swap! user->max-time-until-out-of-debt update user #(max (or % 0) time-until-out-of-debt-millis))
               (swap! user->number-jobs update user #(inc (or % 0))))
             (not (and in-debt? enforcing-job-launch-rate-limit?))))
-        out
+        considerable-jobs
         (->> pending-jobs
              (filter-based-on-quota user->quota user->usage)
              (filter (fn [job] (util/job-allowed-to-start? db job)))
@@ -658,7 +658,7 @@
              (doall))]
     (log/info "Users job launch rate-limit filtered and counts: " @user->number-jobs)
     (log/info "Users job launch rate-limit filtered and max time until out of debt: " @user->max-time-until-out-of-debt)
-    out))
+    considerable-jobs))
 
 
 (defn matches->job-uuids

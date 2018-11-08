@@ -114,7 +114,7 @@ esac
 
 case "$JOB_LAUNCH_RATE_LIMIT" in
     on)
-      # Note: Carefully chosen for XXX unit test.
+      # Note: Carefully chosen for test_rate_limit_launching_jobs unit test.
       export JOB_LAUNCH_RATE_LIMIT_BUCKET_SIZE=10
       export JOB_LAUNCH_RATE_LIMIT_REPLENISHED_PER_MINUTE=5
       echo "Job launch rate limit turned on"
